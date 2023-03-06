@@ -5,7 +5,7 @@ services:
         image: react-app
         restart: always
         ports:
-            - "3000:3000"
+            - "3050:80"
         volumes:
             - ./client:/client
             - /client/node_modules
@@ -16,8 +16,14 @@ services:
     api:
         image: node-api
         restart: always
+        environment:
+                - PORT=3080
+                - MONGO_URI=mongodb://mongodb:27017
+                - OPENAI_KEY=
+                - CHATGPT_TOKEN=""
+                - BING_TOKEN=""
         ports:
-            - "9000:9000"
+            - "3080:3080"
         volumes:
             - ./api:/api
             - /api/node_modules
@@ -32,7 +38,7 @@ services:
         volumes:
             - ./data-node:/data/db
         ports:
-            - 27017:27017
+            - 27020:27017
         command: mongod --noauth
         networks:
             - webappnetwork
