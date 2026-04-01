@@ -1,0 +1,864 @@
+import { z } from 'zod';
+import yaml from 'js-yaml';
+import { queryOptions } from '@tanstack/react-query';
+import { AppService } from '@librechat/data-schemas';
+import { configSchema } from 'librechat-data-provider';
+import { createServerFn } from '@tanstack/react-start';
+import { SystemCapabilities } from '@librechat/data-schemas/capabilities';
+import type { AdminConfigResponse } from '@librechat/data-schemas';
+import type * as t from '@/types';
+import {
+  filterInterfacePermissionChildren,
+  isInterfacePermissionPath,
+  stripInterfacePermissionFields,
+} from '@/utils/interfacePermissions';
+import {
+  requireCapability,
+  requireAnyCapability,
+  requireAllSectionCapabilities,
+} from './capabilities';
+import { BASE_CONFIG_PRINCIPAL_ID } from './constants';
+import { safeFieldPath } from './utils/validation';
+import { flattenObject } from '@/utils/format';
+import { apiFetch } from './utils/api';
+
+const WRAPPER_TYPES = new Set([
+  'ZodOptional',
+  'ZodDefault',
+  'ZodNullable',
+  'ZodEffects',
+  'ZodLazy',
+  'ZodPipeline',
+]);
+
+function unwrapSchema(schema: t.ZodSchemaLike): t.ZodSchemaLike {
+  const seen = new Set<t.ZodSchemaLike>();
+  let current = schema;
+  while (current?._def?.typeName && WRAPPER_TYPES.has(current._def.typeName)) {
+    if (seen.has(current)) break;
+    seen.add(current);
+    let next: t.ZodSchemaLike | undefined;
+    if (current._def.typeName === 'ZodLazy') {
+      next = current._def.getter?.();
+    } else if (current._def.typeName === 'ZodPipeline') {
+      next = current._def.out;
+    } else if (current._def.typeName === 'ZodEffects') {
+      next = current._def.schema;
+    } else {
+      next = current._def.innerType;
+    }
+    if (!next) break;
+    current = next;
+  }
+  return current;
+}
+
+/** Merges the object shapes from both sides of a ZodIntersection. Non-object
+ *  sides (e.g. arrays) are intentionally dropped — only object shapes are
+ *  extractable for the schema-driven form renderer. */
+function resolveIntersection(schema: t.ZodSchemaLike): t.ZodSchemaLike | null {
+  if (schema?._def?.typeName !== 'ZodIntersection') return null;
+  const left = unwrapSchema(schema._def.left ?? ({} as t.ZodSchemaLike));
+  const right = unwrapSchema(schema._def.right ?? ({} as t.ZodSchemaLike));
+  const leftShape = left && typeof left === 'object' && 'shape' in left ? left.shape : undefined;
+  const rightShape =
+    right && typeof right === 'object' && 'shape' in right ? right.shape : undefined;
+  if (!leftShape && !rightShape) return null;
+  return { shape: { ...leftShape, ...rightShape } };
+}
+
+/** Detects union(boolean | object{...}) — a feature toggle pattern where
+ *  `false` disables and an object gives fine-grained control.
+ *  Handles boolean variants wrapped in ZodOptional/ZodDefault. */
+function hasBooleanObjectUnion(schema: t.ZodSchemaLike): boolean {
+  if (!schema?._def || schema._def.typeName !== 'ZodUnion') return false;
+  const options = schema._def.options || [];
+  if (options.length < 2) return false;
+  let hasBool = false;
+  let hasObj = false;
+  for (const opt of options) {
+    const unwrapped = unwrapSchema(opt);
+    if (!hasBool && unwrapped?._def?.typeName === 'ZodBoolean') hasBool = true;
+    if (!hasObj && unwrapped && typeof unwrapped === 'object' && 'shape' in unwrapped)
+      hasObj = true;
+    if (hasBool && hasObj) return true;
+  }
+  return false;
+}
+
+function isUnionOfObjects(schema: t.ZodSchemaLike): boolean {
+  if (!schema?._def || schema._def.typeName !== 'ZodUnion') return false;
+  const options = schema._def.options || [];
+  return (
+    options.length > 0 &&
+    options.every((opt: t.ZodSchemaLike) => opt && typeof opt === 'object' && 'shape' in opt)
+  );
+}
+
+function hasUnionObjectVariant(schema: t.ZodSchemaLike): boolean {
+  if (!schema?._def || schema._def.typeName !== 'ZodUnion') return false;
+  const options = schema._def.options || [];
+  return options.some((opt: t.ZodSchemaLike) => opt && typeof opt === 'object' && 'shape' in opt);
+}
+
+/** Merges fields from union object variants into a single list.
+ *  When the same key appears in multiple variants with different literal
+ *  types, the literals are combined into a union(literal(...) | literal(...))
+ *  so discriminator fields like `type` render as selects. */
+function mergeVariantFields(
+  schema: t.ZodSchemaLike,
+  parentPath: string[],
+  depth: number,
+  objectsOnly: boolean,
+): t.SchemaField[] {
+  const options = schema._def?.options ?? [];
+  const byKey = new Map<string, t.SchemaField>();
+
+  for (const opt of options) {
+    if (objectsOnly && !(opt && typeof opt === 'object' && 'shape' in opt)) continue;
+    for (const field of extractSchemaTree(opt, parentPath, depth)) {
+      const existing = byKey.get(field.key);
+      if (!existing) {
+        byKey.set(field.key, { ...field, isOptional: true });
+      } else if (
+        existing.type !== field.type &&
+        isLiteralLike(existing.type) &&
+        isLiteralLike(field.type)
+      ) {
+        existing.type = mergeLiteralTypes(existing.type, field.type);
+      }
+    }
+  }
+  return [...byKey.values()];
+}
+
+function isLiteralLike(type: string): boolean {
+  if (type.startsWith('literal(')) return true;
+  if (type.startsWith('union(') && type.includes('literal(')) return true;
+  return false;
+}
+
+function extractLiterals(type: string): string[] {
+  if (type.startsWith('literal(')) return [type];
+  if (type.startsWith('union(')) {
+    const inner = type.slice(6, -1);
+    return inner.split(' | ').filter((s) => s.startsWith('literal('));
+  }
+  return [];
+}
+
+function mergeLiteralTypes(a: string, b: string): string {
+  const existing = extractLiterals(a);
+  for (const lit of extractLiterals(b)) {
+    if (!existing.includes(lit)) existing.push(lit);
+  }
+  return existing.length === 1 ? existing[0] : `union(${existing.join(' | ')})`;
+}
+
+function extractUnionObjectVariants(
+  schema: t.ZodSchemaLike,
+  parentPath: string[],
+  depth: number,
+): t.SchemaField[] {
+  return mergeVariantFields(schema, parentPath, depth, true);
+}
+
+function mergeUnionVariantFields(
+  schema: t.ZodSchemaLike,
+  parentPath: string[],
+  depth: number,
+): t.SchemaField[] {
+  return mergeVariantFields(schema, parentPath, depth, false);
+}
+
+export function extractSchemaTree(
+  schema: t.ZodSchemaLike,
+  path: string[] = [],
+  depth: number = 0,
+): t.SchemaField[] {
+  const fields: t.SchemaField[] = [];
+
+  if (schema && typeof schema === 'object' && 'shape' in schema) {
+    const shape = schema.shape;
+    if (shape && typeof shape === 'object') {
+      for (const [key, value] of Object.entries(shape)) {
+        const currentPath = [...path, key];
+        const fieldPath = currentPath.join('.');
+
+        let isOptional = false;
+        let isNullable = false;
+        let innerSchema: t.ZodSchemaLike = value;
+        let description: string | undefined;
+
+        while (innerSchema?._def?.typeName && WRAPPER_TYPES.has(innerSchema._def.typeName)) {
+          const def = innerSchema._def;
+          if (def.description && !description) {
+            description = def.description;
+          }
+          if (def.typeName === 'ZodOptional' || def.typeName === 'ZodDefault') {
+            isOptional = true;
+          }
+          if (def.typeName === 'ZodNullable') {
+            isNullable = true;
+          }
+          let next: t.ZodSchemaLike | undefined;
+          if (def.typeName === 'ZodLazy') {
+            next = def.getter?.();
+          } else if (def.typeName === 'ZodPipeline') {
+            next = def.out;
+          } else if (def.typeName === 'ZodEffects') {
+            next = def.schema;
+          } else {
+            next = def.innerType;
+          }
+          if (!next) break;
+          innerSchema = next;
+        }
+
+        if (innerSchema?._def?.description && !description) {
+          description = innerSchema._def.description;
+        }
+
+        const resolved = resolveIntersection(innerSchema);
+        if (resolved) innerSchema = resolved;
+
+        if (innerSchema && typeof innerSchema === 'object' && 'shape' in innerSchema) {
+          const children = extractSchemaTree(innerSchema, currentPath, depth + 1);
+          fields.push({
+            path: fieldPath,
+            key,
+            type: 'object',
+            isOptional,
+            isNullable,
+            isArray: false,
+            isObject: true,
+            description,
+            children,
+            depth,
+          });
+        } else if (isUnionOfObjects(innerSchema)) {
+          const children = mergeUnionVariantFields(innerSchema, currentPath, depth + 1);
+          fields.push({
+            path: fieldPath,
+            key,
+            type: 'object',
+            isOptional,
+            isNullable,
+            isArray: false,
+            isObject: true,
+            description,
+            children,
+            depth,
+          });
+        } else if (hasBooleanObjectUnion(innerSchema)) {
+          const children = extractUnionObjectVariants(innerSchema, currentPath, depth + 1);
+          fields.push({
+            path: fieldPath,
+            key,
+            type: getZodTypeName(innerSchema),
+            isOptional,
+            isNullable,
+            isArray: false,
+            isObject: false,
+            description,
+            children,
+            depth,
+          });
+        } else {
+          const typeName = getZodTypeName(innerSchema);
+          const isArray = checkIsArray(innerSchema);
+          const isObject = checkIsObject(innerSchema);
+
+          let children: t.SchemaField[] | undefined;
+          let recordValueType: 'primitive' | 'complex' | undefined;
+          let recordValueAllowsPrimitive: boolean | undefined;
+
+          if (isArray && innerSchema?._def?.type) {
+            let elementSchema: t.ZodSchemaLike = innerSchema._def.type;
+            const resolvedElement = resolveIntersection(elementSchema);
+            if (resolvedElement) elementSchema = resolvedElement;
+            if (elementSchema && typeof elementSchema === 'object' && 'shape' in elementSchema) {
+              children = extractSchemaTree(elementSchema, [...currentPath, '[]'], depth + 1);
+            } else if (isUnionOfObjects(elementSchema)) {
+              children = mergeUnionVariantFields(elementSchema, [...currentPath, '[]'], depth + 1);
+            }
+          }
+
+          if (typeName === 'record' && innerSchema?._def) {
+            const valueSchema = (innerSchema._def as t.ZodDef & { valueType?: t.ZodSchemaLike })
+              .valueType;
+            if (valueSchema) {
+              const unwrapped = unwrapSchema(valueSchema);
+              if (unwrapped && typeof unwrapped === 'object' && 'shape' in unwrapped) {
+                children = extractSchemaTree(unwrapped, [...currentPath, '{}'], depth + 1);
+                recordValueType = 'complex';
+              } else if (isUnionOfObjects(unwrapped)) {
+                children = mergeUnionVariantFields(unwrapped, [...currentPath, '{}'], depth + 1);
+                recordValueType = 'complex';
+              } else if (hasUnionObjectVariant(unwrapped)) {
+                children = extractUnionObjectVariants(unwrapped, [...currentPath, '{}'], depth + 1);
+                recordValueType = 'complex';
+                recordValueAllowsPrimitive = true;
+              } else {
+                recordValueType = 'primitive';
+              }
+            }
+          }
+
+          fields.push({
+            path: fieldPath,
+            key,
+            type: typeName,
+            isOptional,
+            isNullable,
+            isArray,
+            isObject,
+            children,
+            description,
+            depth,
+            recordValueType,
+            recordValueAllowsPrimitive,
+          });
+        }
+      }
+    }
+  }
+
+  return fields;
+}
+
+export function flattenTree(fields: t.SchemaField[]): t.SchemaField[] {
+  const result: t.SchemaField[] = [];
+  for (const field of fields) {
+    result.push(field);
+    if (field.children) {
+      result.push(...flattenTree(field.children));
+    }
+  }
+  return result;
+}
+
+function checkIsArray(schema: t.ZodSchemaLike): boolean {
+  if (!schema || typeof schema !== 'object') return false;
+  if ('_def' in schema) {
+    return schema._def?.typeName === 'ZodArray';
+  }
+  return false;
+}
+
+function checkIsObject(schema: t.ZodSchemaLike): boolean {
+  if (!schema || typeof schema !== 'object') return false;
+  return 'shape' in schema;
+}
+
+const MAX_ZOD_TYPE_DEPTH = 10;
+
+export function getZodTypeName(
+  schema: t.ZodSchemaLike,
+  _seen?: Set<t.ZodSchemaLike>,
+  _depth?: number,
+): string {
+  if (!schema || typeof schema !== 'object') return 'unknown';
+
+  const depth = _depth ?? 0;
+  if (depth >= MAX_ZOD_TYPE_DEPTH) return 'unknown';
+
+  const seen = _seen ?? new Set<t.ZodSchemaLike>();
+  if (seen.has(schema)) return 'unknown';
+  seen.add(schema);
+
+  const innerSchema = unwrapSchema(schema);
+
+  if (!innerSchema || typeof innerSchema !== 'object' || !innerSchema._def) {
+    return 'unknown';
+  }
+
+  if (innerSchema !== schema) {
+    if (seen.has(innerSchema)) return 'unknown';
+    seen.add(innerSchema);
+  }
+
+  const typeName = innerSchema._def.typeName;
+
+  if (typeName === 'ZodString') return 'string';
+  if (typeName === 'ZodNumber') return 'number';
+  if (typeName === 'ZodBoolean') return 'boolean';
+  if (typeName === 'ZodNull') return 'null';
+  if (typeName === 'ZodArray') {
+    const elementType = innerSchema._def.type;
+    if (!elementType) return 'array<unknown>';
+    const elementTypeName = getZodTypeName(elementType, seen, depth + 1);
+    return `array<${elementTypeName}>`;
+  }
+  if (typeName === 'ZodObject') return 'object';
+  if (typeName === 'ZodEnum') {
+    const values = innerSchema._def?.values ?? [];
+    return `enum(${Array.isArray(values) ? values.join(' | ') : Object.values(values).join(' | ')})`;
+  }
+  if (typeName === 'ZodNativeEnum') {
+    const raw = innerSchema._def?.values ?? {};
+    const numericValues = Object.entries(raw).filter(([, v]) => typeof v === 'number') as Array<
+      [string, number]
+    >;
+    if (numericValues.length > 0) {
+      return `enum(${numericValues.map(([label, val]) => `${label}=${val}`).join(' | ')})`;
+    }
+    const stringValues = Object.values(raw).filter((v): v is string => typeof v === 'string');
+    if (stringValues.length > 0) return `enum(${stringValues.join(' | ')})`;
+    return 'enum';
+  }
+  if (typeName === 'ZodUnion') {
+    const options = innerSchema._def.options || [];
+    const types = options.map((opt: t.ZodSchemaLike) => getZodTypeName(opt, seen, depth + 1));
+    return `union(${types.join(' | ')})`;
+  }
+  if (typeName === 'ZodLiteral') {
+    const literalValue = innerSchema._def.value;
+    return `literal(${JSON.stringify(literalValue)})`;
+  }
+  if (typeName === 'ZodRecord') return 'record';
+  if (typeName === 'ZodAny') return 'any';
+  if (typeName === 'ZodUnknown') return 'unknown';
+  return typeName || 'unknown';
+}
+
+/** Walks a Zod schema tree to find the sub-schema at a given dot-path.
+ *  Returns the schema **with wrappers intact** so `.safeParse()` runs the
+ *  full validation chain (refine, transform, pipe). Returns `null` if the
+ *  path cannot be resolved. */
+export function resolveSubSchema(
+  schema: t.ZodSchemaLike,
+  segments: string[],
+): t.ZodSchemaLike | null {
+  let current: t.ZodSchemaLike = schema;
+
+  for (const segment of segments) {
+    const unwrapped = unwrapSchema(current);
+    if (!unwrapped?._def) return null;
+
+    const typeName = unwrapped._def.typeName;
+
+    if (unwrapped.shape && typeof unwrapped.shape === 'object') {
+      const next = unwrapped.shape[segment];
+      if (!next) return null;
+      current = next;
+    } else if (typeName === 'ZodArray') {
+      const elementType = unwrapped._def.type;
+      if (!elementType) return null;
+      current = elementType;
+    } else if (typeName === 'ZodRecord') {
+      const valueType = (unwrapped._def as t.ZodDef & { valueType?: t.ZodSchemaLike }).valueType;
+      if (!valueType) return null;
+      current = valueType;
+    } else if (typeName === 'ZodUnion') {
+      const options = unwrapped._def.options ?? [];
+      let found: t.ZodSchemaLike | null = null;
+      for (const opt of options) {
+        const optUnwrapped = unwrapSchema(opt);
+        if (optUnwrapped?.shape?.[segment]) {
+          found = optUnwrapped.shape[segment];
+          break;
+        }
+      }
+      if (!found) return null;
+      current = found;
+    } else if (typeName === 'ZodIntersection') {
+      const resolved = resolveIntersection(unwrapped);
+      if (!resolved?.shape?.[segment]) return null;
+      current = resolved.shape[segment];
+    } else {
+      return null;
+    }
+  }
+
+  return current;
+}
+
+export function validateFieldValue(
+  fieldPath: string,
+  value: unknown,
+): { success: true } | { success: false; error: string } {
+  const segments = fieldPath.split('.');
+  const subSchema = resolveSubSchema(configSchema as t.ZodSchemaLike, segments);
+
+  if (!subSchema) return { success: true };
+
+  if (
+    typeof subSchema === 'object' &&
+    'safeParse' in subSchema &&
+    typeof subSchema.safeParse === 'function'
+  ) {
+    const result = (
+      subSchema as {
+        safeParse: (v: unknown) => {
+          success: boolean;
+          error?: { issues: Array<{ message: string; path: (string | number)[] }> };
+        };
+      }
+    ).safeParse(value);
+    if (!result.success && result.error) {
+      const messages = result.error.issues.map((i) => i.message);
+      return { success: false, error: messages.join('; ') || 'Validation failed' };
+    }
+  }
+
+  return { success: true };
+}
+
+/** Shared queryOptions for the schema tree used by command palette search. */
+export const configSchemaTreeOptions = queryOptions({
+  queryKey: ['configSchemaTree'],
+  queryFn: () => getConfigSchemaFields().then((r) => r.tree),
+  staleTime: Infinity,
+});
+
+export const getConfigSchemaFields = createServerFn({ method: 'GET' }).handler(async () => {
+  try {
+    const tree = extractSchemaTree(configSchema);
+    for (const section of tree) {
+      if (section.key === 'interface' && section.children) {
+        section.children = filterInterfacePermissionChildren(section.children);
+      }
+    }
+    const flatFields = flattenTree(tree);
+    tree.sort((a, b) => a.key.localeCompare(b.key));
+
+    return { tree, totalFields: flatFields.length, topLevelSections: tree.length };
+  } catch (error) {
+    console.error('Failed to extract schema fields:', error);
+    throw new Error(
+      `Failed to extract schema fields: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    );
+  }
+});
+
+export const parseImportedYaml = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({ yamlContent: z.string() }))
+  .handler(async ({ data }: { data: { yamlContent: string } }) => {
+    let rawConfig: unknown;
+    try {
+      rawConfig = yaml.load(data.yamlContent, { schema: yaml.JSON_SCHEMA });
+    } catch (parseError) {
+      console.error('Failed to parse imported YAML content:', parseError);
+      return {
+        success: false,
+        error: 'Invalid YAML syntax. Please check the content for syntax errors.',
+        validationErrors: undefined,
+        appConfig: null,
+      };
+    }
+
+    if (!rawConfig || typeof rawConfig !== 'object') {
+      return {
+        success: false,
+        error: 'YAML did not produce a valid configuration object',
+        validationErrors: undefined,
+        appConfig: null,
+      };
+    }
+
+    const result = configSchema.safeParse(rawConfig);
+
+    if (!result.success) {
+      return {
+        success: false,
+        error: 'Config validation failed',
+        validationErrors: result.error.errors.map(
+          (e: { path: (string | number)[]; message: string }) => ({
+            path: e.path.join('.'),
+            message: e.message,
+          }),
+        ),
+        appConfig: null,
+      };
+    }
+
+    try {
+      const appConfig = await AppService({ config: result.data });
+      return { success: true, error: undefined, validationErrors: undefined, appConfig };
+    } catch (appServiceError) {
+      console.warn(
+        'AppService failed for imported config, falling back to raw config:',
+        appServiceError instanceof Error ? appServiceError.message : appServiceError,
+      );
+      const fallbackConfig = result.data;
+      return {
+        success: true,
+        error: undefined,
+        validationErrors: undefined,
+        appConfig: fallbackConfig,
+      };
+    }
+  });
+
+function getFieldDefault(schema: t.ZodSchemaLike): { hasDefault: boolean; value: unknown } {
+  let current = schema;
+  while (current?._def) {
+    if (current._def.typeName === 'ZodDefault') {
+      const defVal = (current._def as unknown as { defaultValue: () => unknown }).defaultValue;
+      return { hasDefault: true, value: typeof defVal === 'function' ? defVal() : defVal };
+    }
+    const next =
+      current._def.typeName === 'ZodEffects' ? current._def.schema : current._def.innerType;
+    if (!next) break;
+    current = next;
+  }
+  return { hasDefault: false, value: undefined };
+}
+
+function extractSchemaDefaults(schema: t.ZodSchemaLike): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  if (!schema || typeof schema !== 'object' || !('shape' in schema) || !schema.shape) return result;
+
+  for (const [key, fieldSchema] of Object.entries(
+    schema.shape as Record<string, t.ZodSchemaLike>,
+  )) {
+    const { hasDefault, value } = getFieldDefault(fieldSchema);
+    if (hasDefault) {
+      result[key] = value;
+      continue;
+    }
+
+    const inner = unwrapSchema(fieldSchema);
+
+    if (inner && typeof inner === 'object' && 'shape' in inner) {
+      const nested = extractSchemaDefaults(inner);
+      if (Object.keys(nested).length > 0) {
+        result[key] = nested;
+      }
+    }
+  }
+  return result;
+}
+
+function computeConfiguredPaths(
+  config: Record<string, t.ConfigValue>,
+  defaults: Record<string, unknown>,
+): string[] {
+  const flatConfig = flattenObject(config);
+  const flatDefaults = flattenObject(defaults as Record<string, t.ConfigValue>);
+  const configured: string[] = [];
+  for (const [path, value] of Object.entries(flatConfig)) {
+    if (value === '' || value === null || value === undefined) continue;
+    if (!(path in flatDefaults)) {
+      configured.push(path);
+      continue;
+    }
+    const defaultVal = flatDefaults[path];
+    if (value === defaultVal) continue;
+    if (JSON.stringify(value) === JSON.stringify(defaultVal)) continue;
+    configured.push(path);
+  }
+  return configured;
+}
+
+/** Maps AppService output keys back to canonical config schema keys.
+ *  `interfaceConfig` → `interface` still flows through; permission fields
+ *  within `interface` are stripped in `normalizeAppServiceKeys` below. */
+const APP_SERVICE_KEY_MAP: Record<string, string> = {
+  interfaceConfig: 'interface',
+  turnstileConfig: 'turnstile',
+  mcpConfig: 'mcpServers',
+};
+
+const AZURE_OPENAI_DERIVED_KEYS = new Set([
+  'errors',
+  'isValid',
+  'groupMap',
+  'modelNames',
+  'modelGroupMap',
+  'assistantModels',
+  'serverless',
+  'instanceName',
+  'deploymentName',
+]);
+
+function normalizeEndpointValue(value: t.ConfigValue): t.ConfigValue {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const obj = value as Record<string, t.ConfigValue>;
+  if ('groupMap' in obj && 'isValid' in obj) {
+    const groupMap = obj.groupMap;
+    const cleaned: Record<string, t.ConfigValue> = {};
+    for (const [k, v] of Object.entries(obj)) {
+      if (AZURE_OPENAI_DERIVED_KEYS.has(k)) continue;
+      cleaned[k] = v;
+    }
+    if (groupMap && typeof groupMap === 'object' && !Array.isArray(groupMap)) {
+      cleaned.groups = Object.entries(groupMap as Record<string, t.ConfigValue>).map(
+        ([group, config]) => ({
+          group,
+          ...(typeof config === 'object' && config !== null && !Array.isArray(config)
+            ? (config as Record<string, t.ConfigValue>)
+            : {}),
+        }),
+      );
+    }
+    return cleaned;
+  }
+  return value;
+}
+
+function normalizeAppServiceKeys(
+  raw: Record<string, t.ConfigValue>,
+): Record<string, t.ConfigValue> {
+  const result: Record<string, t.ConfigValue> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    result[APP_SERVICE_KEY_MAP[key] ?? key] = value;
+  }
+  if (
+    result.interface &&
+    typeof result.interface === 'object' &&
+    !Array.isArray(result.interface)
+  ) {
+    result.interface = stripInterfacePermissionFields(
+      result.interface as Record<string, unknown>,
+    ) as t.ConfigValue;
+  }
+  if (
+    result.endpoints &&
+    typeof result.endpoints === 'object' &&
+    !Array.isArray(result.endpoints)
+  ) {
+    const endpoints = { ...(result.endpoints as Record<string, t.ConfigValue>) };
+    result.endpoints = endpoints;
+    for (const [epKey, epValue] of Object.entries(endpoints)) {
+      endpoints[epKey] = normalizeEndpointValue(epValue);
+    }
+  }
+  return result;
+}
+
+export const getBaseConfigFn = createServerFn({ method: 'GET' }).handler(async () => {
+  const [baseResponse, dbBaseResponse] = await Promise.all([
+    apiFetch('/api/admin/config/base'),
+    apiFetch(`/api/admin/config/role/${BASE_CONFIG_PRINCIPAL_ID}`),
+  ]);
+
+  if (!baseResponse.ok) {
+    throw new Error(`Failed to fetch base config: ${baseResponse.status}`);
+  }
+
+  const { config: rawConfig } = (await baseResponse.json()) as {
+    config: Record<string, t.ConfigValue>;
+  };
+  const config = normalizeAppServiceKeys(rawConfig);
+
+  let configuredFromBase: string[] = [];
+  let flatDefaults: Record<string, t.ConfigValue> = {};
+  try {
+    const schemaDefaults = extractSchemaDefaults(configSchema as t.ZodSchemaLike);
+    flatDefaults = flattenObject(schemaDefaults as Record<string, t.ConfigValue>);
+    configuredFromBase = computeConfiguredPaths(config, schemaDefaults);
+  } catch (e) {
+    console.warn('[getBaseConfigFn] Failed to compute schema defaults:', e);
+  }
+
+  let dbOverrides: Record<string, t.ConfigValue> | undefined;
+
+  if (dbBaseResponse.ok) {
+    const { config: dbConfig } = (await dbBaseResponse.json()) as AdminConfigResponse;
+    dbOverrides = dbConfig.overrides as Record<string, t.ConfigValue>;
+  }
+
+  return { config, dbOverrides, configuredFromBase, schemaDefaults: flatDefaults };
+});
+
+export const baseConfigOptions = queryOptions({
+  queryKey: ['baseConfig'],
+  queryFn: () => getBaseConfigFn(),
+  staleTime: 30_000,
+});
+
+export const saveBaseConfigFn = createServerFn({ method: 'POST' })
+  .inputValidator(
+    z.object({
+      entries: z
+        .array(z.object({ fieldPath: safeFieldPath, value: z.unknown() }))
+        .min(1)
+        .max(100),
+    }),
+  )
+  .handler(async ({ data }) => {
+    const filtered = data.entries.filter((e) => !isInterfacePermissionPath(e.fieldPath));
+    if (filtered.length === 0) return { success: true };
+    const sections = [...new Set(filtered.map((e) => e.fieldPath.split('.')[0]))];
+    await requireAllSectionCapabilities(sections);
+
+    const errors: t.FieldValidationError[] = [];
+    for (const entry of filtered) {
+      const result = validateFieldValue(entry.fieldPath, entry.value);
+      if (!result.success) {
+        errors.push({ fieldPath: entry.fieldPath, error: result.error });
+      }
+    }
+    if (errors.length > 0) {
+      const details = errors.map((e) => `${e.fieldPath}: ${e.error}`).join('; ');
+      throw new Error(`Validation failed — ${details}`);
+    }
+
+    const response = await apiFetch(`/api/admin/config/role/${BASE_CONFIG_PRINCIPAL_ID}/fields`, {
+      method: 'PATCH',
+      body: JSON.stringify({ entries: filtered, priority: 0 }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(
+        (err as { error?: string }).error ?? `Failed to save base config: ${response.status}`,
+      );
+    }
+
+    return { success: true };
+  });
+
+/** Full-replace save used by YAML import (intentionally sends the entire config). */
+export const importBaseConfigFn = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({ config: z.record(z.string(), z.unknown()) }))
+  .handler(async ({ data }) => {
+    await requireCapability(SystemCapabilities.MANAGE_CONFIGS);
+    const overrides = { ...data.config };
+    if (
+      overrides.interface &&
+      typeof overrides.interface === 'object' &&
+      !Array.isArray(overrides.interface)
+    ) {
+      overrides.interface = stripInterfacePermissionFields(
+        overrides.interface as Record<string, unknown>,
+      );
+    }
+
+    const response = await apiFetch(`/api/admin/config/role/${BASE_CONFIG_PRINCIPAL_ID}`, {
+      method: 'PUT',
+      body: JSON.stringify({ overrides, priority: 0 }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(
+        (err as { error?: string }).error ?? `Failed to import config: ${response.status}`,
+      );
+    }
+
+    return { success: true };
+  });
+
+export const resetBaseConfigFieldFn = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({ fieldPath: safeFieldPath }))
+  .handler(async ({ data }) => {
+    if (isInterfacePermissionPath(data.fieldPath)) return { success: true };
+    const section = data.fieldPath.split('.')[0];
+    await requireAnyCapability([SystemCapabilities.MANAGE_CONFIGS, `manage:configs:${section}`]);
+    const response = await apiFetch(
+      `/api/admin/config/role/${BASE_CONFIG_PRINCIPAL_ID}/fields?fieldPath=${encodeURIComponent(data.fieldPath)}`,
+      { method: 'DELETE' },
+    );
+
+    if (!response.ok && response.status !== 404) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(
+        (err as { error?: string }).error ?? `Failed to reset field: ${response.status}`,
+      );
+    }
+
+    return { success: true };
+  });

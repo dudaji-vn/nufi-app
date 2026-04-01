@@ -1,0 +1,920 @@
+import { createPortal } from 'react-dom';
+import { Icon } from '@clickhouse/click-ui';
+import { PrincipalType } from 'librechat-data-provider';
+import { getRouteApi, useBlocker, useNavigate } from '@tanstack/react-router';
+import { useState, useMemo, useRef, useCallback, useEffect, startTransition } from 'react';
+import { queryOptions, useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import type * as t from '@/types';
+import {
+  removeFieldProfileValueFn,
+  bulkSaveProfileValuesFn,
+  getBatchFieldProfilesFn,
+  availableScopesOptions,
+  resetBaseConfigFieldFn,
+  getResolvedConfigFn,
+  importBaseConfigFn,
+  baseConfigOptions,
+  saveBaseConfigFn,
+} from '@/server';
+import {
+  flattenObject,
+  unflattenObject,
+  serializeKVPairs,
+  cn,
+  normalizeImportConfig,
+  hasConfigCapability,
+  getTabsWithPermission,
+} from '@/utils';
+import { useLocalize, useHighlightRef, useActiveSection, useCapabilities } from '@/hooks';
+import { ScopeSelector, ScopeTriggerButton } from './ScopeSelector';
+import { CONFIG_TABS, OTHER_TAB, SECTION_META, HIDDEN_SECTIONS } from './configMeta';
+import { ConfigTableOfContents } from './ConfigTableOfContents';
+import { ConfirmSaveDialog } from './ConfirmSaveDialog';
+import { StickyActionBar } from '@/components/shared';
+import { ConfigTabContent } from './ConfigTabContent';
+import { ImportYamlDialog } from './ImportYamlDialog';
+import { ContentToolbar } from './ContentToolbar';
+import { SystemCapabilities } from '@/constants';
+import { ConfigTabBar } from './ConfigTabBar';
+import { InfoBanner } from './InfoBanner';
+
+const routeApi = getRouteApi('/_app/configuration/');
+const LAST_SCOPE_KEY = 'config:lastScope';
+
+function collectFieldPaths(fields: t.SchemaField[], prefix = ''): string[] {
+  const paths: string[] = [];
+  for (const field of fields) {
+    const path = prefix ? `${prefix}.${field.key}` : field.key;
+    if (field.children && field.children.length > 0) {
+      paths.push(...collectFieldPaths(field.children, path));
+    } else {
+      paths.push(path);
+    }
+  }
+  return paths;
+}
+
+const profileMapOptions = (fieldPaths: string[]) =>
+  queryOptions({
+    queryKey: ['profileMap', fieldPaths],
+    queryFn: () =>
+      getBatchFieldProfilesFn({ data: { paths: fieldPaths } }).then(
+        (r: { profileMap: Record<string, string[]> }) => r.profileMap,
+      ),
+    enabled: fieldPaths.length > 0,
+  });
+
+function resolvedConfigOptions(scope: t.ScopeSelection) {
+  const principalType = scope.type === 'SCOPE' ? scope.scope.principalType : null;
+  const principalId = scope.type === 'SCOPE' ? scope.scope.principalId : null;
+  return queryOptions({
+    queryKey: ['resolvedConfig', principalType, principalId] as const,
+    queryFn: () =>
+      getResolvedConfigFn({
+        data: {
+          principalType: principalType!,
+          principalId: principalId!,
+        },
+      }),
+    enabled: principalType != null && principalId != null,
+  });
+}
+
+export function ConfigPage({ initialTab, highlightField, initialScope }: t.ConfigPageProps) {
+  const localize = useLocalize();
+  const queryClient = useQueryClient();
+  const { hasCapability } = useCapabilities();
+  const canManageConfig = hasCapability(SystemCapabilities.MANAGE_CONFIGS);
+  const canAssignConfigs = hasCapability(SystemCapabilities.ASSIGN_CONFIGS) || canManageConfig;
+  const navigate = useNavigate({ from: '/configuration/' });
+  const { tree: schemaTree } = routeApi.useLoaderData();
+
+  /** Per-section permission map: { [sectionKey]: { canView, canEdit } } */
+  const sectionPermissions = useMemo(() => {
+    const perms: Record<string, { canView: boolean; canEdit: boolean }> = {};
+    for (const section of schemaTree) {
+      perms[section.key] = {
+        canView: hasConfigCapability(hasCapability, section.key, 'read'),
+        canEdit: hasConfigCapability(hasCapability, section.key, 'manage'),
+      };
+    }
+    return perms;
+  }, [schemaTree, hasCapability]);
+
+  const { data: baseConfigData } = useQuery(baseConfigOptions);
+  const configValues = baseConfigData?.config ?? null;
+  const dbOverrides = baseConfigData?.dbOverrides;
+  const configuredFromBase = baseConfigData?.configuredFromBase;
+  const schemaDefaults = baseConfigData?.schemaDefaults ?? {};
+  const flatBaseline = useMemo(() => flattenObject(configValues ?? {}), [configValues]);
+  const [editedValues, setEditedValues] = useState<t.FlatConfigMap>({});
+  const [touchedPaths, setTouchedPaths] = useState<Set<string>>(() => new Set());
+
+  const configuredPaths = useMemo(() => {
+    const paths = new Set<string>();
+    if (configuredFromBase) {
+      for (const p of configuredFromBase) paths.add(p);
+    }
+    if (dbOverrides) {
+      for (const p of Object.keys(flattenObject(dbOverrides))) paths.add(p);
+    }
+    return paths;
+  }, [configuredFromBase, dbOverrides]);
+
+  const dbOverridePaths = useMemo(() => {
+    if (!dbOverrides) return new Set<string>();
+    return new Set(Object.keys(flattenObject(dbOverrides)));
+  }, [dbOverrides]);
+
+  const hasUnmappedSections = useMemo(
+    () =>
+      schemaTree.some(
+        (s: t.SchemaField) => !HIDDEN_SECTIONS.has(s.key) && !Object.hasOwn(SECTION_META, s.key),
+      ),
+    [schemaTree],
+  );
+
+  const { viewableTabIds, editableTabIds } = useMemo(
+    () => ({
+      viewableTabIds: getTabsWithPermission(
+        schemaTree,
+        SECTION_META,
+        OTHER_TAB.id,
+        sectionPermissions,
+        'canView',
+        HIDDEN_SECTIONS,
+      ),
+      editableTabIds: getTabsWithPermission(
+        schemaTree,
+        SECTION_META,
+        OTHER_TAB.id,
+        sectionPermissions,
+        'canEdit',
+        HIDDEN_SECTIONS,
+      ),
+    }),
+    [schemaTree, sectionPermissions],
+  );
+
+  const visibleTabs = useMemo(() => {
+    const allTabs = hasUnmappedSections ? [...CONFIG_TABS, OTHER_TAB] : CONFIG_TABS;
+    return allTabs.filter((tab) => viewableTabIds.has(tab.id));
+  }, [hasUnmappedSections, viewableTabIds]);
+
+  const activeTab =
+    initialTab && visibleTabs.some((tab) => tab.id === initialTab)
+      ? initialTab
+      : (visibleTabs[0]?.id ?? CONFIG_TABS[0].id);
+
+  const handleTabChange = useCallback(
+    (newTab: string) => {
+      navigate({ search: (prev: Record<string, unknown>) => ({ ...prev, tab: newTab }) });
+    },
+    [navigate],
+  );
+
+  const [importOpen, setImportOpen] = useState(false);
+  const [importSuccess, setImportSuccess] = useState(false);
+  const dismissTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(dismissTimer.current), []);
+
+  const [toast, setToast] = useState<t.ToastState>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(toastTimer.current), []);
+
+  const showToast = useCallback((state: t.ToastState, autoHideMs?: number) => {
+    setToast(state);
+    clearTimeout(toastTimer.current);
+    if (autoHideMs) {
+      toastTimer.current = setTimeout(() => setToast(null), autoHideMs);
+    }
+  }, []);
+
+  const [showConfiguredOnly, setShowConfiguredOnly] = useState(false);
+
+  const [scopeSelectorOpen, setScopeSelectorOpen] = useState(false);
+  const [selectedScope, setSelectedScope] = useState<t.ScopeSelection>({ type: 'BASE' });
+
+  const handleScopeChange = useCallback(
+    (newSelection: t.ScopeSelection) => {
+      if (Object.keys(editedValues).length > 0) {
+        if (!window.confirm(localize('com_config_unsaved_leave'))) return;
+        setEditedValues({});
+        setTouchedPaths(new Set());
+      }
+      setConfirmSaveOpen(false);
+      setSelectedScope(newSelection);
+      const scopeId =
+        newSelection.type === 'SCOPE' && newSelection.scope._id
+          ? newSelection.scope._id
+          : undefined;
+      if (scopeId) {
+        localStorage.setItem(LAST_SCOPE_KEY, scopeId);
+      } else {
+        localStorage.removeItem(LAST_SCOPE_KEY);
+      }
+      navigate({ search: (prev: Record<string, unknown>) => ({ ...prev, scope: scopeId }) });
+    },
+    [editedValues, localize, navigate],
+  );
+
+  const savedScope = useRef(localStorage.getItem(LAST_SCOPE_KEY) ?? undefined);
+  const scopeToRestore = initialScope ?? savedScope.current;
+  const { data: allScopes } = useQuery({
+    ...availableScopesOptions,
+    enabled: !!scopeToRestore,
+  });
+  const initialScopeApplied = useRef(false);
+  useEffect(() => {
+    if (scopeToRestore && allScopes && !initialScopeApplied.current) {
+      const match =
+        allScopes.find((s) => s._id === scopeToRestore) ??
+        (() => {
+          const [type, ...rest] = scopeToRestore.split(':');
+          const id = rest.join(':');
+          return allScopes.find(
+            (s) => s.principalType === (type as PrincipalType) && s.principalId === id,
+          );
+        })();
+      if (match) {
+        initialScopeApplied.current = true;
+        setSelectedScope({ type: 'SCOPE', scope: match });
+        if (!initialScope) {
+          navigate({ search: (prev: Record<string, unknown>) => ({ ...prev, scope: match._id }) });
+        }
+      }
+    }
+  }, [scopeToRestore, allScopes, initialScope, navigate]);
+
+  const isEditingScope = selectedScope.type === 'SCOPE';
+  const editingScope: t.ConfigScope | undefined =
+    selectedScope.type === 'SCOPE' ? selectedScope.scope : undefined;
+
+  const fieldPaths = useMemo(() => collectFieldPaths(schemaTree), [schemaTree]);
+  const { data: profileMap = {} } = useQuery(profileMapOptions(fieldPaths));
+
+  const handleProfileChange = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['profileMap'] });
+    queryClient.invalidateQueries({ queryKey: ['resolvedConfig'] });
+  }, [queryClient]);
+
+  const { data: resolvedData } = useQuery(resolvedConfigOptions(selectedScope));
+  const scopeChangedPaths = resolvedData?.changedPaths ?? null;
+  const scopeResolvedValues = resolvedData?.resolvedConfig ?? null;
+
+  const scopeConfigValues = useMemo(() => {
+    if (!isEditingScope || !scopeResolvedValues) return null;
+    return unflattenObject(scopeResolvedValues) as Record<string, t.ConfigValue>;
+  }, [isEditingScope, scopeResolvedValues]);
+
+  const activeConfigValues = isEditingScope ? scopeConfigValues : configValues;
+
+  const scopeConfiguredPaths = useMemo(() => {
+    if (!scopeChangedPaths) return new Set<string>();
+    return new Set(scopeChangedPaths);
+  }, [scopeChangedPaths]);
+
+  const activeConfiguredPaths = isEditingScope ? scopeConfiguredPaths : configuredPaths;
+
+  const tabConfiguredCounts = useMemo(() => {
+    if (activeConfiguredPaths.size === 0) return {};
+    const schemaKeyToTabs: Record<string, string[]> = {};
+    for (const [metaKey, meta] of Object.entries(SECTION_META)) {
+      if (meta.schemaKey) {
+        (schemaKeyToTabs[meta.schemaKey] ??= []).push(meta.tab);
+      }
+      if (!meta.schemaKey) {
+        (schemaKeyToTabs[metaKey] ??= []).push(meta.tab);
+      }
+    }
+
+    const counts: Record<string, number> = {};
+    for (const tab of visibleTabs) {
+      if (tab.id === 'mcp' && activeConfigValues) {
+        const mcpValue = activeConfigValues.mcpServers;
+        counts[tab.id] =
+          mcpValue && typeof mcpValue === 'object' && !Array.isArray(mcpValue)
+            ? Object.keys(mcpValue).length
+            : 0;
+        continue;
+      }
+
+      if (tab.id === 'custom' && activeConfigValues) {
+        const endpointsValue = activeConfigValues.endpoints as
+          | Record<string, t.ConfigValue>
+          | undefined;
+        const customArray = endpointsValue?.custom;
+        counts[tab.id] = Array.isArray(customArray) ? customArray.length : 0;
+        continue;
+      }
+
+      const tabSections = schemaTree.filter((section: t.SchemaField) => {
+        if (HIDDEN_SECTIONS.has(section.key)) return false;
+        if (tab.id === OTHER_TAB.id) return !Object.hasOwn(SECTION_META, section.key);
+        return schemaKeyToTabs[section.key]?.includes(tab.id) ?? false;
+      });
+      let count = 0;
+      for (const section of tabSections) {
+        const paths = section.children?.length
+          ? collectFieldPaths(section.children, section.key)
+          : [section.key];
+        for (const p of paths) {
+          if (tab.id === 'providers' && p.startsWith('endpoints.custom')) continue;
+          if (activeConfiguredPaths.has(p)) count++;
+        }
+      }
+      counts[tab.id] = count;
+    }
+    return counts;
+  }, [activeConfiguredPaths, activeConfigValues, visibleTabs, schemaTree]);
+
+  const scopeBaseline = useMemo(() => {
+    if (!isEditingScope) return flatBaseline;
+    return scopeResolvedValues ?? {};
+  }, [isEditingScope, flatBaseline, scopeResolvedValues]);
+
+  const handleFieldChange = useCallback(
+    (path: string, value: t.ConfigValue) => {
+      startTransition(() => {
+        setTouchedPaths((prev) => {
+          if (prev.has(path)) return prev;
+          const next = new Set(prev);
+          next.add(path);
+          return next;
+        });
+        setEditedValues((prev) => {
+          const baseline = scopeBaseline[path];
+          const match =
+            value === baseline ||
+            (typeof value === 'object' &&
+              typeof baseline === 'object' &&
+              JSON.stringify(value) === JSON.stringify(baseline));
+          if (match) {
+            const next = { ...prev };
+            delete next[path];
+            return next;
+          }
+          return { ...prev, [path]: value };
+        });
+      });
+    },
+    [scopeBaseline],
+  );
+
+  const isDirty = Object.keys(editedValues).length > 0;
+
+  const pendingResets = useMemo(() => {
+    const resets = new Set<string>();
+    for (const [k, v] of Object.entries(editedValues)) {
+      if (v === undefined) resets.add(k);
+    }
+    return resets;
+  }, [editedValues]);
+
+  useBlocker({
+    shouldBlockFn: ({ current, next }) => {
+      if (!isDirty) return false;
+      if (current.pathname === next.pathname) return false;
+      return !window.confirm(localize('com_config_unsaved_leave'));
+    },
+  });
+
+  const [confirmSaveOpen, setConfirmSaveOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const handleDiscard = useCallback(() => {
+    setEditedValues({});
+    setTouchedPaths(new Set());
+  }, []);
+
+  const clearEdits = useCallback(() => {
+    setEditedValues({});
+    setTouchedPaths(new Set());
+    setConfirmSaveOpen(false);
+    setSaving(false);
+    setSaveError(null);
+    showToast({ type: 'saved' }, 3000);
+  }, [showToast]);
+
+  const invalidateAndResetBase = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['baseConfig'] });
+    clearEdits();
+  }, [queryClient, clearEdits]);
+
+  const invalidateAndResetScope = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['resolvedConfig'] });
+    queryClient.invalidateQueries({ queryKey: ['profileMap'] });
+    queryClient.invalidateQueries({ queryKey: ['availableScopes'] });
+    clearEdits();
+  }, [queryClient, clearEdits]);
+
+  const importMutation = useMutation({
+    mutationFn: (config: Record<string, t.ConfigValue>) => importBaseConfigFn({ data: { config } }),
+    onMutate: () => showToast({ type: 'saving' }),
+    onError: (err: Error) => showToast({ type: 'error', message: err.message }, 5000),
+    onSuccess: invalidateAndResetBase,
+  });
+
+  const handleResetField = useCallback((fieldPath: string) => {
+    startTransition(() => {
+      setTouchedPaths((prev) => {
+        if (prev.has(fieldPath)) return prev;
+        const next = new Set(prev);
+        next.add(fieldPath);
+        return next;
+      });
+      setEditedValues((prev) => ({ ...prev, [fieldPath]: undefined }));
+    });
+  }, []);
+
+  const handleConfirmSave = useCallback(async () => {
+    if (saving) return;
+    const touched = [...touchedPaths].filter((p) => p in editedValues);
+    if (touched.length === 0) return;
+
+    const saves = touched
+      .filter((p) => editedValues[p] !== undefined)
+      .map((p) => ({ fieldPath: p, value: serializeKVPairs(editedValues[p]) }));
+    const resets = touched.filter((p) => editedValues[p] === undefined);
+
+    setSaving(true);
+    setSaveError(null);
+    showToast({ type: 'saving' });
+
+    try {
+      const promises: Promise<unknown>[] = [];
+
+      if (saves.length > 0) {
+        if (isEditingScope) {
+          promises.push(
+            bulkSaveProfileValuesFn({
+              data: {
+                principalType: editingScope!.principalType,
+                principalId: editingScope!.principalId,
+                entries: saves,
+              },
+            }),
+          );
+        } else {
+          promises.push(saveBaseConfigFn({ data: { entries: saves } }));
+        }
+      }
+
+      for (const fieldPath of resets) {
+        if (isEditingScope) {
+          promises.push(
+            removeFieldProfileValueFn({
+              data: {
+                fieldPath,
+                principalType: editingScope!.principalType,
+                principalId: editingScope!.principalId,
+              },
+            }),
+          );
+        } else {
+          promises.push(resetBaseConfigFieldFn({ data: { fieldPath } }));
+        }
+      }
+
+      await Promise.all(promises);
+
+      if (isEditingScope) {
+        invalidateAndResetScope();
+      } else {
+        invalidateAndResetBase();
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setSaving(false);
+      setSaveError(message);
+      showToast({ type: 'error', message }, 5000);
+    }
+  }, [
+    touchedPaths,
+    editedValues,
+    isEditingScope,
+    editingScope,
+    showToast,
+    invalidateAndResetBase,
+    invalidateAndResetScope,
+    saving,
+  ]);
+
+  const serializedEditedValues = useMemo(() => {
+    const result: t.FlatConfigMap = {};
+    for (const [k, v] of Object.entries(editedValues)) {
+      result[k] = serializeKVPairs(v);
+    }
+    return result;
+  }, [editedValues]);
+
+  const [importSuccessMessage, setImportSuccessMessage] = useState<string | null>(null);
+
+  const showImportSuccess = useCallback((message?: string) => {
+    setImportSuccessMessage(message ?? null);
+    setImportSuccess(true);
+    clearTimeout(dismissTimer.current);
+    dismissTimer.current = setTimeout(() => setImportSuccess(false), 4000);
+  }, []);
+
+  const handleImportAsProfile = useCallback(
+    async (appConfig: Record<string, t.ConfigValue>, scope: t.ConfigScope) => {
+      const normalized = normalizeImportConfig(appConfig);
+      const flat = flattenObject(normalized);
+      const entries = Object.entries(flat)
+        .filter(([, value]) => value != null)
+        .map(([fieldPath, value]) => ({ fieldPath, value }));
+      await bulkSaveProfileValuesFn({
+        data: {
+          principalType: scope.principalType,
+          principalId: scope.principalId,
+          entries,
+        },
+      });
+      queryClient.invalidateQueries({ queryKey: ['profileMap'] });
+      queryClient.invalidateQueries({ queryKey: ['resolvedConfig'] });
+      queryClient.invalidateQueries({ queryKey: ['availableScopes'] });
+      queryClient.invalidateQueries({ queryKey: ['roles'] });
+      queryClient.invalidateQueries({ queryKey: ['groups'] });
+      showImportSuccess(
+        localize('com_config_import_profile_success', {
+          count: entries.length,
+          name: scope.name,
+        }),
+      );
+    },
+    [queryClient, localize, showImportSuccess],
+  );
+
+  const handleImport = useCallback(
+    (appConfig: Record<string, t.ConfigValue>) => {
+      const normalized = normalizeImportConfig(appConfig);
+      if (isEditingScope && editingScope) {
+        handleImportAsProfile(normalized, editingScope).catch((err: Error) => {
+          showToast({ type: 'error', message: err.message }, 5000);
+        });
+      } else {
+        importMutation.mutate(normalized, { onSuccess: () => showImportSuccess() });
+      }
+    },
+    [isEditingScope, editingScope, importMutation, showImportSuccess, handleImportAsProfile],
+  );
+
+  const highlightRef = useHighlightRef(highlightField);
+  const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
+  const [tocEl, setTocEl] = useState<HTMLElement | null>(null);
+  const scrollCallbackRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      setScrollEl(el);
+      highlightRef(el);
+    },
+    [highlightRef],
+  );
+  const setActiveSection = useActiveSection(scrollEl, tocEl, activeTab);
+
+  const canEditActiveTab = editableTabIds.has(activeTab);
+
+  /** Route-level gating ensures canView; canEdit reflects per-tab manage capability. */
+  const permissions: t.ScopePermissions = useMemo(
+    () => ({
+      canView: true,
+      canEdit: canEditActiveTab,
+      canAssign: canAssignConfigs,
+    }),
+    [canEditActiveTab, canAssignConfigs],
+  );
+
+  const sectionsForActiveTab = useMemo((): t.ConfigSectionConfig[] => {
+    // Collect virtual section entries (those with schemaKey) that target this tab
+    const virtualEntries = Object.entries(SECTION_META).filter(
+      ([, m]) => m.schemaKey && m.tab === activeTab,
+    );
+
+    const directSections = schemaTree
+      .filter((section: t.SchemaField) => {
+        if (HIDDEN_SECTIONS.has(section.key)) return false;
+        if (activeTab === OTHER_TAB.id) return !Object.hasOwn(SECTION_META, section.key);
+        return SECTION_META[section.key]?.tab === activeTab;
+      })
+      .map((section: t.SchemaField) => {
+        const meta = SECTION_META[section.key];
+        const children = section.children ?? [];
+        const hasStructuredChildren =
+          (section.isObject || section.type === 'record') && children.length > 0;
+        return {
+          id: section.key,
+          titleKey: meta?.titleKey ?? `com_config_section_${section.key}`,
+          descriptionKey: meta?.descriptionKey,
+          fields: hasStructuredChildren ? children : [],
+          ...(!hasStructuredChildren && { sectionField: section }),
+          ...(section.key === 'interface' && {
+            bannerText: localize('com_config_interface_permissions_info'),
+          }),
+        };
+      });
+
+    // Add virtual sections — these reference another schema section's data
+    // but render under a different tab with their own section renderer.
+    const virtualSections = virtualEntries.flatMap(([metaKey, meta]) => {
+      const schemaSection = schemaTree.find((s: t.SchemaField) => s.key === meta.schemaKey);
+      if (!schemaSection) return [];
+      const hasStructuredChildren =
+        (schemaSection.isObject || schemaSection.type === 'record') &&
+        schemaSection.children &&
+        schemaSection.children.length > 0;
+      return [
+        {
+          id: metaKey,
+          schemaKey: meta.schemaKey,
+          titleKey: meta.titleKey,
+          descriptionKey: meta.descriptionKey,
+          fields: hasStructuredChildren ? (schemaSection.children ?? []) : [],
+          ...(!hasStructuredChildren && { sectionField: schemaSection }),
+        },
+      ];
+    });
+
+    const allSections: t.ConfigSectionConfig[] = [...directSections, ...virtualSections].filter(
+      (s) => {
+        const permKey = 'schemaKey' in s && s.schemaKey ? s.schemaKey : s.id;
+        return sectionPermissions[permKey]?.canView === true;
+      },
+    );
+
+    // Custom Endpoints tab: show configured endpoint names in TOC
+    if (activeTab === 'custom' && activeConfigValues) {
+      for (const section of allSections) {
+        const dataKey = section.schemaKey ?? section.id;
+        const sectionValue = activeConfigValues[dataKey] as
+          | Record<string, t.ConfigValue>
+          | undefined;
+        const customArray = sectionValue?.custom;
+        section.titleKey = 'com_config_tab_custom_endpoints';
+        if (Array.isArray(customArray) && customArray.length > 0) {
+          section.tocItems = customArray.map((entry, i) => {
+            const obj =
+              entry && typeof entry === 'object' && !Array.isArray(entry)
+                ? (entry as Record<string, t.ConfigValue>)
+                : {};
+            const name =
+              typeof obj.name === 'string' && obj.name
+                ? obj.name
+                : localize('com_config_entry_n', { n: String(i + 1) });
+            return {
+              id: `section-${dataKey}-custom-${i}`,
+              label: name,
+              dataPath: `${dataKey}.custom`,
+            };
+          });
+        }
+      }
+    }
+
+    // MCP Servers tab: show configured server names in TOC
+    if (activeTab === 'mcp' && activeConfigValues) {
+      for (const section of allSections) {
+        if (section.id !== 'mcpServers') continue;
+        const dataKey = section.schemaKey ?? section.id;
+        const mcpValue = activeConfigValues[dataKey];
+        if (mcpValue && typeof mcpValue === 'object' && !Array.isArray(mcpValue)) {
+          const serverKeys = Object.keys(mcpValue as Record<string, t.ConfigValue>);
+          if (serverKeys.length > 0) {
+            section.tocItems = serverKeys.map((name) => ({
+              id: `section-mcpServers-${encodeURIComponent(name)}`,
+              label: name,
+              dataPath: `mcpServers.${name}`,
+            }));
+          }
+        }
+      }
+    }
+
+    // AI Providers tab: show provider names in TOC (excluding 'custom')
+    if (activeTab === 'providers') {
+      for (const section of allSections) {
+        const providerFields = section.fields.filter(
+          (f) => f.key !== 'custom' && f.children && f.children.length > 0,
+        );
+        if (providerFields.length > 0) {
+          const dataKey = section.schemaKey ?? section.id;
+          section.tocItems = providerFields.map((f) => ({
+            id: `section-${dataKey}.${f.key}`,
+            label: localize(`com_config_field_${f.key}`),
+          }));
+        }
+      }
+    }
+
+    return allSections;
+  }, [schemaTree, activeTab, activeConfigValues, localize, sectionPermissions]);
+
+  const renderBanner = () => {
+    if (importSuccess) {
+      return (
+        <InfoBanner
+          text={importSuccessMessage ?? localize('com_config_import_success')}
+          dismissible={false}
+        />
+      );
+    }
+    return null;
+  };
+
+  const banner = renderBanner();
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden pt-2">
+      <div className="shrink-0 px-4">
+        {banner && <div className="pt-4 pb-2">{banner}</div>}
+        <HeaderActions
+          showImport
+          importDisabled={isDirty || !canManageConfig}
+          importTitle={
+            !canManageConfig
+              ? localize('com_cap_no_permission', { cap: SystemCapabilities.MANAGE_CONFIGS })
+              : undefined
+          }
+          onImportClick={() => setImportOpen(true)}
+          showScope={permissions.canView}
+          scopeSelection={selectedScope}
+          onScopeClick={() => setScopeSelectorOpen(true)}
+        />
+        <ConfigTabBar
+          tabs={visibleTabs}
+          activeTab={activeTab}
+          onTabChange={handleTabChange}
+          tabCounts={tabConfiguredCounts}
+        />
+      </div>
+
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <div className="relative min-h-0 flex-1">
+          {activeTab !== 'custom' && (
+            <div className="pointer-events-none absolute top-2 right-3 z-(--z-floating)">
+              <ContentToolbar
+                scrollContainer={scrollEl}
+                showConfiguredOnly={showConfiguredOnly}
+                onShowConfiguredOnlyChange={setShowConfiguredOnly}
+                showConfiguredToggle={activeConfiguredPaths.size > 0}
+              />
+            </div>
+          )}
+          <div
+            className="h-full overflow-auto pl-4 [scrollbar-gutter:stable]"
+            ref={scrollCallbackRef}
+          >
+            <ConfigTabContent
+              sections={sectionsForActiveTab}
+              configValues={activeConfigValues}
+              editedValues={editedValues}
+              onFieldChange={handleFieldChange}
+              onResetField={handleResetField}
+              profileMap={profileMap}
+              previewMode={false}
+              previewScope={editingScope}
+              previewChangedPaths={scopeChangedPaths}
+              resolvedValues={scopeResolvedValues}
+              permissions={permissions}
+              onProfileChange={handleProfileChange}
+              showChangedOnly={false}
+              readOnly={!canEditActiveTab}
+              configuredPaths={activeConfiguredPaths}
+              dbOverridePaths={isEditingScope ? scopeConfiguredPaths : dbOverridePaths}
+              touchedPaths={touchedPaths}
+              pendingResets={pendingResets}
+              sectionPermissions={sectionPermissions}
+              schemaDefaults={schemaDefaults}
+              showConfiguredOnly={showConfiguredOnly}
+            />
+          </div>
+        </div>
+        <ConfigTableOfContents
+          sections={sectionsForActiveTab}
+          scrollContainer={scrollEl}
+          tocRef={setTocEl}
+          showConfiguredOnly={showConfiguredOnly}
+          configuredPaths={activeConfiguredPaths}
+          onNavigate={setActiveSection}
+        />
+      </div>
+
+      {isDirty && canEditActiveTab && (
+        <StickyActionBar
+          message={localize('com_config_unsaved_changes')}
+          discardLabel={localize('com_config_discard')}
+          saveLabel={localize('com_config_save')}
+          onDiscard={handleDiscard}
+          onSave={() => setConfirmSaveOpen(true)}
+        />
+      )}
+
+      {toast &&
+        createPortal(
+          <div
+            className={cn(
+              'config-toast',
+              toast.type === 'saving' && 'config-toast-info',
+              toast.type === 'saved' && 'config-toast-success',
+              toast.type === 'error' && 'config-toast-error',
+            )}
+          >
+            {toast.type === 'saving' && (
+              <>
+                <span className="config-toast-spinner" />
+                {localize('com_config_saving')}
+              </>
+            )}
+            {toast.type === 'saved' && (
+              <>
+                <Icon name="check" size="sm" />
+                {localize('com_config_saved')}
+              </>
+            )}
+            {toast.type === 'error' && (
+              <>
+                <Icon name="warning" size="sm" />
+                {toast.message}
+              </>
+            )}
+          </div>,
+          document.body,
+        )}
+
+      <ConfirmSaveDialog
+        open={confirmSaveOpen}
+        editedValues={serializedEditedValues}
+        originalValues={isEditingScope ? scopeBaseline : flatBaseline}
+        saving={saving}
+        error={saveError}
+        onConfirm={handleConfirmSave}
+        onCancel={() => setConfirmSaveOpen(false)}
+      />
+
+      <ScopeSelector
+        open={scopeSelectorOpen}
+        onOpenChange={setScopeSelectorOpen}
+        currentSelection={selectedScope}
+        onSelect={handleScopeChange}
+        permissions={permissions}
+        onError={(msg) => showToast({ type: 'error', message: msg }, 5000)}
+      />
+
+      <ImportYamlDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImport={handleImport}
+        onImportAsProfile={handleImportAsProfile}
+      />
+    </div>
+  );
+}
+
+function HeaderActions({
+  showImport,
+  importDisabled,
+  importTitle,
+  onImportClick,
+  showScope,
+  scopeSelection,
+  onScopeClick,
+}: {
+  showImport: boolean;
+  importDisabled: boolean;
+  importTitle?: string;
+  onImportClick: () => void;
+  showScope: boolean;
+  scopeSelection: t.ScopeSelection;
+  onScopeClick: () => void;
+}) {
+  const localize = useLocalize();
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    setPortalTarget(document.getElementById('header-actions-portal'));
+  }, []);
+
+  const content = (
+    <>
+      {showImport && (
+        <button
+          type="button"
+          onClick={onImportClick}
+          disabled={importDisabled}
+          aria-disabled={importDisabled || undefined}
+          title={importTitle}
+          className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-(--cui-color-stroke-default) bg-transparent px-3 py-1.5 text-sm text-(--cui-color-text-default) transition-colors hover:bg-(--cui-color-background-hover) disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <span aria-hidden="true">
+            <Icon name="upload" size="xs" />
+          </span>
+          {localize('com_config_import_yaml')}
+        </button>
+      )}
+      {showScope && <ScopeTriggerButton currentSelection={scopeSelection} onClick={onScopeClick} />}
+    </>
+  );
+
+  if (portalTarget) return createPortal(content, portalTarget);
+  return null;
+}
