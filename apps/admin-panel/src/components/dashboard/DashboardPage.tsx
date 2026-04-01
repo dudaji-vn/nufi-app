@@ -86,7 +86,7 @@ export function DashboardPage() {
 
       <section
         aria-label={localize('com_dash_nav_tips')}
-        className="max-w-lg rounded-lg border border-(--cui-color-stroke-default) bg-(--cui-color-background-panel) p-5"
+        className="rounded-lg border border-(--cui-color-stroke-default) bg-(--cui-color-background-panel) p-5"
       >
         <h3 className="mb-3 text-sm font-medium text-(--cui-color-text-default)">
           {localize('com_dash_nav_tips')}

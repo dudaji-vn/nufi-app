@@ -3,7 +3,7 @@ import { Icon, Dropdown } from '@clickhouse/click-ui';
 import { Link, useRouter } from '@tanstack/react-router';
 import type * as t from '@/types';
 import { useStripAriaExpanded, useCapabilities, useLocalize } from '@/hooks';
-import { SidebarIcon } from '@/components/shared';
+import libreChatLogo from '@/assets/librechat.svg';
 import { SettingsDialog } from './SettingsDialog';
 import { SystemCapabilities } from '@/constants';
 import { getInitials, cn } from '@/utils';
@@ -79,31 +79,24 @@ export function Sidebar({ user, collapsed, onToggle }: t.SidebarProps) {
         aria-label={localize('com_a11y_admin_panel')}
         className={cn(
           'sticky top-0 z-(--z-floating) flex h-screen shrink-0 flex-col overflow-hidden border-r border-(--cui-color-stroke-default) bg-(--cui-color-background-panel) transition-[width] duration-200',
-          collapsed ? 'w-14' : 'w-46',
+          collapsed ? 'w-14' : 'w-63',
         )}
       >
-        <div className="shrink-0 px-2 py-2 pt-4">
-          <button
-            type="button"
-            onClick={onToggle}
-            aria-label={localize(collapsed ? 'com_nav_expand_sidebar' : 'com_nav_collapse_sidebar')}
-            title={localize(collapsed ? 'com_nav_expand_sidebar' : 'com_nav_collapse_sidebar')}
-            className={cn(
-              'flex h-9 cursor-pointer items-center rounded-lg border-none bg-transparent text-(--cui-color-text-muted) transition-colors hover:bg-(--cui-color-background-hover) hover:text-(--cui-color-text-default)',
-              collapsed ? 'w-9 justify-center' : 'gap-3 pr-2.5 pl-2',
-            )}
+        <div className="flex h-14 shrink-0 items-center px-2">
+          <div
+            className={cn('flex items-center', collapsed ? 'w-9 justify-center' : 'gap-2.5 px-1.5')}
           >
-            <span aria-hidden="true" className="shrink-0">
-              <SidebarIcon className="h-5 w-5" />
-            </span>
+            <img src={libreChatLogo} alt="LibreChat" className="h-6 w-6 shrink-0" />
             {!collapsed && (
-              <span className="truncate text-sm">{localize('com_nav_collapse_sidebar')}</span>
+              <span className="flex-1 truncate text-sm font-semibold text-(--cui-color-text-default)">
+                Admin Panel
+              </span>
             )}
-          </button>
+          </div>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-2 pt-2" role="navigation">
-          <div className="flex flex-col gap-1">
+        <nav className="flex-1 overflow-y-auto px-2 py-2" role="navigation">
+          <div className="flex flex-col gap-0.5">
             {visibleItems.map((item) => (
               <Link
                 key={item.path}
@@ -112,8 +105,8 @@ export function Sidebar({ user, collapsed, onToggle }: t.SidebarProps) {
                 aria-label={collapsed ? localize(item.labelKey) : undefined}
                 title={collapsed ? localize(item.labelKey) : undefined}
                 className={cn(
-                  'flex h-9 items-center rounded-lg text-sm no-underline transition-colors duration-100',
-                  collapsed ? 'w-9 justify-center' : 'gap-3 px-2.5',
+                  'flex h-8 items-center rounded-md text-sm no-underline transition-colors duration-100',
+                  collapsed ? 'w-9 justify-center' : 'gap-2.5 px-2.5',
                   isActive(item.path)
                     ? 'bg-(--cui-color-background-active) font-medium text-(--cui-color-text-default)'
                     : 'font-normal text-(--cui-color-text-muted) hover:bg-(--cui-color-background-hover) hover:text-(--cui-color-text-default)',
@@ -129,68 +122,80 @@ export function Sidebar({ user, collapsed, onToggle }: t.SidebarProps) {
         </nav>
 
         {initials && (
-          <div
-            className={cn(
-              'flex shrink-0 items-center border-t border-(--cui-color-stroke-default) py-3',
-              collapsed ? 'justify-center' : 'px-3',
-            )}
-          >
-            <Dropdown>
-              <Dropdown.Trigger>
-                <button
-                  ref={userMenuRef}
-                  type="button"
-                  className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border border-(--cui-color-stroke-default) bg-(--cui-color-background-default) transition-colors hover:border-(--cui-color-stroke-intense) hover:bg-(--cui-color-background-hover)"
-                  aria-label={`${localize('com_nav_user_menu')}, ${user?.name || user?.email || ''}`}
-                  aria-haspopup="true"
-                  title={user?.name || user?.email || ''}
-                >
-                  <span
-                    aria-hidden="true"
-                    className="text-xs font-medium text-(--cui-color-text-muted)"
+          <div className="flex shrink-0 items-center border-t border-(--cui-color-stroke-default) px-2 py-3">
+            <div
+              className={cn(
+                'flex items-center',
+                collapsed ? 'w-9 justify-center' : 'gap-2.5 px-0.5',
+              )}
+            >
+              <Dropdown>
+                <Dropdown.Trigger>
+                  <button
+                    ref={userMenuRef}
+                    type="button"
+                    className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border border-(--cui-color-stroke-default) bg-(--cui-color-background-default) transition-colors hover:border-(--cui-color-stroke-intense) hover:bg-(--cui-color-background-hover)"
+                    aria-label={`${localize('com_nav_user_menu')}, ${user?.name || user?.email || ''}`}
+                    aria-haspopup="true"
+                    title={user?.name || user?.email || ''}
                   >
-                    {initials}
-                  </span>
-                </button>
-              </Dropdown.Trigger>
-              <Dropdown.Content>
-                <div className="user-dropdown flex min-w-45 flex-col select-none">
-                  {user && (
-                    <div className="px-3 pt-3 pb-2">
-                      <span className="block text-sm leading-tight font-medium text-(--cui-color-text-default)">
-                        {user.name || ''}
-                      </span>
-                      {user.email && (
-                        <span className="mt-0.5 block text-xs leading-tight text-(--cui-color-text-muted)">
-                          {user.email}
+                    <span
+                      aria-hidden="true"
+                      className="text-xs font-medium text-(--cui-color-text-muted)"
+                    >
+                      {initials}
+                    </span>
+                  </button>
+                </Dropdown.Trigger>
+                <Dropdown.Content>
+                  <div className="user-dropdown flex min-w-45 flex-col select-none">
+                    {user && (
+                      <div className="px-3 pt-3 pb-2">
+                        <span className="block text-sm leading-tight font-medium text-(--cui-color-text-default)">
+                          {user.name || ''}
                         </span>
-                      )}
-                    </div>
-                  )}
-                  <div className="border-t border-(--cui-color-stroke-default)" />
-                  <Dropdown.Item icon="settings" onClick={() => setSettingsOpen(true)}>
-                    {localize('com_ui_settings')}
-                  </Dropdown.Item>
-                  <Dropdown.Item icon="slide-out" onClick={handleLogout} disabled={isLoggingOut}>
-                    {isLoggingOut ? localize('com_ui_signing_out') : localize('com_ui_sign_out')}
-                  </Dropdown.Item>
-                </div>
-              </Dropdown.Content>
-            </Dropdown>
-            {!collapsed && user && (
-              <div className="ml-2 min-w-0 flex-1">
-                <span className="block truncate text-sm leading-tight font-medium text-(--cui-color-text-default)">
-                  {user.name || ''}
-                </span>
-                {user.email && (
-                  <span className="block truncate text-xs leading-tight text-(--cui-color-text-muted)">
-                    {user.email}
+                        {user.email && (
+                          <span className="mt-0.5 block text-xs leading-tight text-(--cui-color-text-muted)">
+                            {user.email}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    <div className="border-t border-(--cui-color-stroke-default)" />
+                    <Dropdown.Item icon="settings" onClick={() => setSettingsOpen(true)}>
+                      {localize('com_ui_settings')}
+                    </Dropdown.Item>
+                    <Dropdown.Item icon="slide-out" onClick={handleLogout} disabled={isLoggingOut}>
+                      {isLoggingOut ? localize('com_ui_signing_out') : localize('com_ui_sign_out')}
+                    </Dropdown.Item>
+                  </div>
+                </Dropdown.Content>
+              </Dropdown>
+              {!collapsed && user && (
+                <div className="min-w-0 flex-1">
+                  <span className="block truncate text-sm leading-tight font-medium text-(--cui-color-text-default)">
+                    {user.name || ''}
                   </span>
-                )}
-              </div>
-            )}
+                  {user.email && (
+                    <span className="block truncate text-xs leading-tight text-(--cui-color-text-muted)">
+                      {user.email}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
+
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-label={localize(collapsed ? 'com_nav_expand_sidebar' : 'com_nav_collapse_sidebar')}
+          title={localize(collapsed ? 'com_nav_expand_sidebar' : 'com_nav_collapse_sidebar')}
+          className="flex w-full shrink-0 cursor-pointer items-center justify-center border-t border-(--cui-color-stroke-default) bg-transparent py-3 text-(--cui-color-text-muted) transition-colors hover:bg-(--cui-color-background-hover) hover:text-(--cui-color-text-default)"
+        >
+          <Icon name={collapsed ? 'slide-in' : 'slide-out'} size="sm" />
+        </button>
       </aside>
 
       <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />

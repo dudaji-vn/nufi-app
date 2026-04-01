@@ -5,8 +5,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import { configSchema } from 'librechat-data-provider';
-import { extractSchemaTree, flattenTree } from '@/server/config';
 import type { ZodSchemaLike } from '@/types/config';
+import { extractSchemaTree, flattenTree } from '@/server/config';
 import translation from '@/locales/en/translation.json';
 
 const localeKeys = new Set(Object.keys(translation));

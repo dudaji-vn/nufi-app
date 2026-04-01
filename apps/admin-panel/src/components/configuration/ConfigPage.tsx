@@ -26,8 +26,8 @@ import {
   getTabsWithPermission,
 } from '@/utils';
 import { useLocalize, useHighlightRef, useActiveSection, useCapabilities } from '@/hooks';
-import { ScopeSelector, ScopeTriggerButton } from './ScopeSelector';
 import { CONFIG_TABS, OTHER_TAB, SECTION_META, HIDDEN_SECTIONS } from './configMeta';
+import { ScopeSelector, ScopeTriggerButton } from './ScopeSelector';
 import { ConfigTableOfContents } from './ConfigTableOfContents';
 import { ConfirmSaveDialog } from './ConfirmSaveDialog';
 import { StickyActionBar } from '@/components/shared';

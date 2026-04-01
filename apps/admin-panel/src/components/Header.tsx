@@ -1,7 +1,7 @@
 import type * as t from '@/types';
 import { useLocalize } from '@/hooks';
 
-export default function Header({ title, description, onSearchClick, children }: t.HeaderProps) {
+export function Header({ title, onSearchClick, children }: t.HeaderProps) {
   const localize = useLocalize();
   const isMac =
     typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.userAgent);
@@ -15,9 +15,6 @@ export default function Header({ title, description, onSearchClick, children }: 
             <h1 className="text-base font-bold text-(--cui-color-text-default)">{title}</h1>
           ) : (
             <div />
-          )}
-          {description && (
-            <p className="text-xs text-(--cui-color-text-muted)">{description}</p>
           )}
         </div>
         <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
