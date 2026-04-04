@@ -20,6 +20,7 @@ import {
   flattenObject,
   unflattenObject,
   serializeKVPairs,
+  deepSerializeKVPairs,
   cn,
   normalizeImportConfig,
   hasConfigCapability,
@@ -62,6 +63,7 @@ const profileMapOptions = (fieldPaths: string[]) =>
         (r: { profileMap: Record<string, string[]> }) => r.profileMap,
       ),
     enabled: fieldPaths.length > 0,
+    staleTime: 60_000,
   });
 
 function resolvedConfigOptions(scope: t.ScopeSelection) {
@@ -77,6 +79,7 @@ function resolvedConfigOptions(scope: t.ScopeSelection) {
         },
       }),
     enabled: principalType != null && principalId != null,
+    staleTime: 60_000,
   });
 }
 
@@ -267,7 +270,32 @@ export function ConfigPage({ initialTab, highlightField, initialScope }: t.Confi
     return unflattenObject(scopeResolvedValues) as Record<string, t.ConfigValue>;
   }, [isEditingScope, scopeResolvedValues]);
 
-  const activeConfigValues = isEditingScope ? scopeConfigValues : configValues;
+  const baseActiveConfigValues = isEditingScope ? scopeConfigValues : configValues;
+
+  const activeConfigValues = useMemo(() => {
+    if (!baseActiveConfigValues) return baseActiveConfigValues;
+    const indexedEdits = Object.entries(editedValues).filter(([k]) => /\.\d+$/.test(k));
+    if (indexedEdits.length === 0) return baseActiveConfigValues;
+    const merged = { ...baseActiveConfigValues };
+    for (const [path, value] of indexedEdits) {
+      const segments = path.split('.');
+      const index = Number(segments.pop()!);
+      const arrayPath = segments;
+      let parent: Record<string, t.ConfigValue> = merged;
+      for (let i = 0; i < arrayPath.length - 1; i++) {
+        const seg = arrayPath[i];
+        if (parent[seg] && typeof parent[seg] === 'object' && !Array.isArray(parent[seg])) {
+          parent[seg] = { ...(parent[seg] as Record<string, t.ConfigValue>) };
+          parent = parent[seg] as Record<string, t.ConfigValue>;
+        } else break;
+      }
+      const lastSeg = arrayPath[arrayPath.length - 1];
+      const arr = Array.isArray(parent[lastSeg]) ? [...(parent[lastSeg] as t.ConfigValue[])] : [];
+      arr[index] = value;
+      parent[lastSeg] = arr;
+    }
+    return merged;
+  }, [baseActiveConfigValues, editedValues]);
 
   const scopeConfiguredPaths = useMemo(() => {
     if (!scopeChangedPaths) return new Set<string>();
@@ -354,7 +382,16 @@ export function ConfigPage({ initialTab, highlightField, initialScope }: t.Confi
             delete next[path];
             return next;
           }
-          return { ...prev, [path]: value };
+          const next = { ...prev, [path]: value };
+          if (Array.isArray(value)) {
+            const prefix = `${path}.`;
+            for (const k of Object.keys(next)) {
+              if (k.startsWith(prefix) && /\.\d+$/.test(k)) delete next[k];
+            }
+          }
+          const indexMatch = /^(.+)\.\d+$/.exec(path);
+          if (indexMatch) delete next[indexMatch[1]];
+          return next;
         });
       });
     },
@@ -435,7 +472,10 @@ export function ConfigPage({ initialTab, highlightField, initialScope }: t.Confi
 
     const saves = touched
       .filter((p) => editedValues[p] !== undefined)
-      .map((p) => ({ fieldPath: p, value: serializeKVPairs(editedValues[p]) }));
+      .map((p) => ({
+        fieldPath: p,
+        value: /\.\d+$/.test(p) ? deepSerializeKVPairs(editedValues[p]) : serializeKVPairs(editedValues[p]),
+      }));
     const resets = touched.filter((p) => editedValues[p] === undefined);
 
     setSaving(true);
@@ -504,10 +544,28 @@ export function ConfigPage({ initialTab, highlightField, initialScope }: t.Confi
   const serializedEditedValues = useMemo(() => {
     const result: t.FlatConfigMap = {};
     for (const [k, v] of Object.entries(editedValues)) {
-      result[k] = serializeKVPairs(v);
+      result[k] = /\.\d+$/.test(k) ? deepSerializeKVPairs(v) : serializeKVPairs(v);
     }
     return result;
   }, [editedValues]);
+
+  const originalValuesForDialog = useMemo(() => {
+    const baseline = isEditingScope ? scopeBaseline : flatBaseline;
+    const result: t.FlatConfigMap = { ...baseline };
+    for (const path of Object.keys(editedValues)) {
+      if (path in result) continue;
+      const segments = path.split('.');
+      let current: t.ConfigValue = configValues;
+      for (const seg of segments) {
+        if (current == null || typeof current !== 'object') { current = undefined; break; }
+        current = Array.isArray(current)
+          ? (current as t.ConfigValue[])[Number(seg)]
+          : (current as Record<string, t.ConfigValue>)[seg];
+      }
+      if (current !== undefined) result[path] = current;
+    }
+    return result;
+  }, [editedValues, flatBaseline, isEditingScope, scopeBaseline, configValues]);
 
   const [importSuccessMessage, setImportSuccessMessage] = useState<string | null>(null);
 
@@ -844,7 +902,7 @@ export function ConfigPage({ initialTab, highlightField, initialScope }: t.Confi
       <ConfirmSaveDialog
         open={confirmSaveOpen}
         editedValues={serializedEditedValues}
-        originalValues={isEditingScope ? scopeBaseline : flatBaseline}
+        originalValues={originalValuesForDialog}
         saving={saving}
         error={saveError}
         onConfirm={handleConfirmSave}

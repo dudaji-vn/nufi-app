@@ -632,6 +632,7 @@ export function CustomEndpointsRenderer(props: t.FieldRendererProps) {
         value={value}
         fields={customField.children ?? []}
         onChange={(v) => onChange(path, v)}
+        onEntryChange={(index, v) => onChange(`${path}.${index}`, v)}
         disabled={disabled}
         hideAddButton
         renderFields={renderGroupedEndpointFields}

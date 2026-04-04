@@ -66,6 +66,16 @@ export function ConfirmSaveDialog({
   );
 }
 
+function resolvePathLabel(path: string, newValue: t.ConfigValue, oldValue: t.ConfigValue): string {
+  const match = /^(.+)\.(\d+)$/.exec(path);
+  if (!match) return path;
+  const val = (newValue ?? oldValue) as Record<string, t.ConfigValue> | undefined;
+  const name = val && typeof val === 'object' && !Array.isArray(val)
+    ? (val as Record<string, string>).name
+    : undefined;
+  return name ? `${match[1]}[${match[2]}] (${name})` : `${match[1]}[${match[2]}]`;
+}
+
 function ChangeCard({
   path,
   oldValue,
@@ -79,12 +89,13 @@ function ChangeCard({
   const notSet = localize('com_config_field_not_set');
   const isRemoval = newValue === undefined || newValue === null;
   const isAddition = oldValue === undefined || oldValue === null;
+  const displayPath = resolvePathLabel(path, newValue, oldValue);
 
   return (
     <div className="rounded-lg border border-(--cui-color-stroke-default) bg-(--cui-color-background-muted)">
       <div className="flex items-center gap-2 border-b border-(--cui-color-stroke-default) px-3 py-2">
         <span className="font-mono text-xs font-medium text-(--cui-color-text-default)">
-          {path}
+          {displayPath}
         </span>
         {isAddition && (
           <Badge text={localize('com_config_field_added')} state="success" size="sm" />

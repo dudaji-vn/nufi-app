@@ -19,6 +19,7 @@ export function ArrayObjectField({
   value,
   fields,
   onChange,
+  onEntryChange,
   disabled,
   hideAddButton,
   addTriggerRef,
@@ -83,11 +84,15 @@ export function ArrayObjectField({
 
   const handleEntryChange = useCallback(
     (index: number, newValue: t.ConfigValue) => {
+      if (onEntryChange) {
+        onEntryChange(index, newValue);
+        return;
+      }
       const next = [...items];
       next[index] = newValue;
       onChange(next);
     },
-    [items, onChange],
+    [items, onChange, onEntryChange],
   );
 
   return (

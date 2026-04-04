@@ -71,6 +71,26 @@ const config = defineConfig({
       'seroval',
     ],
   },
+  build: {
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            {
+              name: 'icons',
+              test: /click-ui.*Icon|click-ui.*icon/,
+              priority: 30,
+            },
+            {
+              name: 'vendor-ui',
+              test: /node_modules\/@clickhouse\/click-ui/,
+              priority: 20,
+            },
+          ],
+        },
+      },
+    },
+  },
   ssr: {
     external: ['@playwright/test', 'playwright-core', 'playwright', '@axe-core/playwright'],
     noExternal: ['@clickhouse/click-ui'],

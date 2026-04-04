@@ -101,6 +101,35 @@ function hasUnionObjectVariant(schema: t.ZodSchemaLike): boolean {
   return options.some((opt: t.ZodSchemaLike) => opt && typeof opt === 'object' && 'shape' in opt);
 }
 
+const ZOD_TO_KV: Record<string, t.KVValueType> = {
+  ZodString: 'string',
+  ZodNumber: 'number',
+  ZodBoolean: 'boolean',
+};
+
+function inferRecordKVTypes(schema: t.ZodSchemaLike): t.KVValueType[] | undefined {
+  if (!schema?._def) return undefined;
+  const tn = schema._def.typeName;
+  if (tn && tn in ZOD_TO_KV) return [ZOD_TO_KV[tn]];
+  if (tn !== 'ZodUnion') return undefined;
+  const types = new Set<t.KVValueType>();
+  for (const opt of schema._def.options ?? []) {
+    const optTn = opt?._def?.typeName;
+    if (optTn && optTn in ZOD_TO_KV) {
+      types.add(ZOD_TO_KV[optTn]);
+    } else if (
+      optTn === 'ZodRecord' ||
+      optTn === 'ZodArray' ||
+      optTn === 'ZodObject' ||
+      (opt && typeof opt === 'object' && 'shape' in opt)
+    ) {
+      types.add('json');
+    }
+  }
+  return types.size > 0 ? [...types] : undefined;
+}
+
+
 /** Merges fields from union object variants into a single list.
  *  When the same key appears in multiple variants with different literal
  *  types, the literals are combined into a union(literal(...) | literal(...))
@@ -272,6 +301,7 @@ export function extractSchemaTree(
           let children: t.SchemaField[] | undefined;
           let recordValueType: 'primitive' | 'complex' | undefined;
           let recordValueAllowsPrimitive: boolean | undefined;
+          let recordValueKVTypes: t.KVValueType[] | undefined;
 
           if (isArray && innerSchema?._def?.type) {
             let elementSchema: t.ZodSchemaLike = innerSchema._def.type;
@@ -301,6 +331,7 @@ export function extractSchemaTree(
                 recordValueAllowsPrimitive = true;
               } else {
                 recordValueType = 'primitive';
+                recordValueKVTypes = inferRecordKVTypes(unwrapped);
               }
             }
           }
@@ -318,6 +349,7 @@ export function extractSchemaTree(
             depth,
             recordValueType,
             recordValueAllowsPrimitive,
+            recordValueKVTypes,
           });
         }
       }
@@ -769,6 +801,52 @@ export const baseConfigOptions = queryOptions({
   staleTime: 30_000,
 });
 
+const INDEXED_ARRAY_RE = /^(.+)\.(\d+)$/;
+
+async function mergeIndexedArrayEntries(
+  entries: Array<{ fieldPath: string; value: unknown }>,
+  mergedPaths?: Set<string>,
+): Promise<Array<{ fieldPath: string; value: unknown }>> {
+  const indexed = new Map<string, Map<number, unknown>>();
+  const rest: Array<{ fieldPath: string; value: unknown }> = [];
+
+  for (const entry of entries) {
+    const match = INDEXED_ARRAY_RE.exec(entry.fieldPath);
+    if (match) {
+      const [, arrayPath, indexStr] = match;
+      if (!indexed.has(arrayPath)) indexed.set(arrayPath, new Map());
+      indexed.get(arrayPath)!.set(Number(indexStr), entry.value);
+    } else {
+      rest.push(entry);
+    }
+  }
+
+  if (indexed.size === 0) return entries;
+
+  const baseResponse = await apiFetch('/api/admin/config/base');
+  if (!baseResponse.ok) throw new Error(`Failed to fetch base config: ${baseResponse.status}`);
+  const { config: baseConfig } = (await baseResponse.json()) as {
+    config: Record<string, unknown>;
+  };
+
+  for (const [arrayPath, updates] of indexed) {
+    const segments = arrayPath.split('.');
+    let current: unknown = baseConfig;
+    for (const seg of segments) {
+      if (current == null || typeof current !== 'object') { current = undefined; break; }
+      current = (current as Record<string, unknown>)[seg];
+    }
+    const arr = Array.isArray(current) ? [...current] : [];
+    for (const [idx, value] of updates) {
+      arr[idx] = value;
+    }
+    rest.push({ fieldPath: arrayPath, value: arr });
+    mergedPaths?.add(arrayPath);
+  }
+
+  return rest;
+}
+
 export const saveBaseConfigFn = createServerFn({ method: 'POST' })
   .inputValidator(
     z.object({
@@ -779,13 +857,23 @@ export const saveBaseConfigFn = createServerFn({ method: 'POST' })
     }),
   )
   .handler(async ({ data }) => {
-    const filtered = data.entries.filter((e) => !isInterfacePermissionPath(e.fieldPath));
+    let filtered = data.entries.filter((e) => !isInterfacePermissionPath(e.fieldPath));
     if (filtered.length === 0) return { success: true };
+
+    // Merge indexed array entries (e.g. endpoints.custom.2) back into
+    // full arrays so the API receives complete field values.
+    // Track which paths were merged so we can skip re-validation — the
+    // individual entries were already validated by the client and the
+    // merge only splices them into the existing array.
+    const mergedArrayPaths = new Set<string>();
+    filtered = await mergeIndexedArrayEntries(filtered, mergedArrayPaths);
+
     const sections = [...new Set(filtered.map((e) => e.fieldPath.split('.')[0]))];
     await requireAllSectionCapabilities(sections);
 
     const errors: t.FieldValidationError[] = [];
     for (const entry of filtered) {
+      if (mergedArrayPaths.has(entry.fieldPath)) continue;
       const result = validateFieldValue(entry.fieldPath, entry.value);
       if (!result.success) {
         errors.push({ fieldPath: entry.fieldPath, error: result.error });

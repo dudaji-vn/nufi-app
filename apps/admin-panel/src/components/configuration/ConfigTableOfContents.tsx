@@ -98,14 +98,30 @@ export const ConfigTableOfContents = memo(function ConfigTableOfContents({
         return true;
       };
 
-      const cardExpanded = existing ? expandCard(existing) : false;
+      // Expand collapsed Radix accordion items (MultiAccordion.Item).
+      const expandAccordionItem = (el: HTMLElement): boolean => {
+        if (el.getAttribute('data-state') !== 'closed') return false;
+        const trigger = el.querySelector<HTMLElement>(':scope > button[data-state="closed"]');
+        if (trigger) {
+          trigger.click();
+          return true;
+        }
+        return false;
+      };
+
+      const cardExpanded = existing
+        ? expandCard(existing) || expandAccordionItem(existing)
+        : false;
       const needsSettle = parentExpanded || needsExpand || cardExpanded;
 
       if (needsSettle) {
         scrollTimerRef.current = setTimeout(() => {
           expandAncestors(id);
           const el = document.getElementById(id) ?? existing;
-          if (el) expandCard(el);
+          if (el) {
+            expandCard(el);
+            expandAccordionItem(el);
+          }
           setTimeout(() => {
             const target = document.getElementById(id) ?? existing;
             if (target) scrollToEl(target);

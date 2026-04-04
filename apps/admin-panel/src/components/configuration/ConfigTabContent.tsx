@@ -304,6 +304,8 @@ export function ConfigTabContent({
             {group.sections.map((section) => (
               <MultiAccordion.Item
                 key={section.id}
+                id={`section-${section.id}`}
+                data-section-id={`section-${section.id}`}
                 value={section.id}
                 title={localize(section.titleKey)}
               >

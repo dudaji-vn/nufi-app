@@ -852,3 +852,134 @@ describe('YAML-editor fallback audit', () => {
     expect(codeFields.length).toBe(Object.keys(expectedCodeFields).length);
   });
 });
+
+/* ---------------------------------------------------------------------------
+ * Custom endpoint validation and schema extraction
+ * -----------------------------------------------------------------------*/
+
+const ldpEndpoint = (
+  require3('librechat-data-provider') as { endpointSchema: ZodV3Schema }
+).endpointSchema;
+
+describe('custom endpoint schema', () => {
+  const endpointTree = extractSchemaTree(ldpEndpoint);
+
+  describe('addParams field detection', () => {
+    const addParams = findField(endpointTree, 'addParams');
+
+    it('detects addParams as a record type', () => {
+      expect(addParams).toBeDefined();
+      expect(addParams!.type).toBe('record');
+    });
+
+    it('marks addParams as primitive recordValueType', () => {
+      expect(addParams!.recordValueType).toBe('primitive');
+    });
+
+    it('includes json in recordValueKVTypes for addParams', () => {
+      expect(addParams!.recordValueKVTypes).toBeDefined();
+      expect(addParams!.recordValueKVTypes).toContain('json');
+      expect(addParams!.recordValueKVTypes).toContain('string');
+      expect(addParams!.recordValueKVTypes).toContain('number');
+      expect(addParams!.recordValueKVTypes).toContain('boolean');
+    });
+  });
+
+  describe('headers field detection', () => {
+    const headers = findField(endpointTree, 'headers');
+
+    it('detects headers as a record type', () => {
+      expect(headers).toBeDefined();
+      expect(headers!.type).toBe('record');
+    });
+
+    it('marks headers as primitive recordValueType', () => {
+      expect(headers!.recordValueType).toBe('primitive');
+    });
+
+    it('restricts headers to string-only KV types', () => {
+      expect(headers!.recordValueKVTypes).toEqual(['string']);
+    });
+  });
+
+  describe('dropParams field detection', () => {
+    const dropParams = findField(endpointTree, 'dropParams');
+
+    it('detects dropParams as an array type', () => {
+      expect(dropParams).toBeDefined();
+      expect(dropParams!.type).toMatch(/^array/);
+    });
+  });
+});
+
+describe('resolveSubSchema for endpoints', () => {
+  it('resolves endpoints.custom to an array schema', () => {
+    const sub = resolveSubSchema(realConfigSchema, ['endpoints', 'custom']);
+    expect(sub).not.toBeNull();
+  });
+
+  it('resolves endpoints.custom array element via numeric index', () => {
+    const sub = resolveSubSchema(realConfigSchema, ['endpoints', 'custom', '0']);
+    expect(sub).not.toBeNull();
+  });
+
+  it('resolves named provider paths', () => {
+    for (const provider of ['openAI', 'anthropic', 'google', 'azureOpenAI']) {
+      const sub = resolveSubSchema(realConfigSchema, ['endpoints', provider]);
+      expect(sub).not.toBeNull();
+    }
+  });
+});
+
+describe('validateFieldValue for endpoints', () => {
+  const validEndpoint = {
+    name: 'TestEndpoint',
+    apiKey: '${TEST_KEY}',
+    baseURL: 'https://api.test.com/v1',
+    models: { default: ['model-1'], fetch: true },
+    titleConvo: true,
+    titleModel: 'current_model',
+  };
+
+  it('validates a single custom endpoint entry (object)', () => {
+    const result = validateFieldValue('endpoints.custom.0', validEndpoint);
+    expect(result).toEqual({ success: true });
+  });
+
+  it('validates a custom endpoint with addParams as object', () => {
+    const result = validateFieldValue('endpoints.custom.0', {
+      ...validEndpoint,
+      addParams: { stream: true, temperature: 0.7 },
+    });
+    expect(result).toEqual({ success: true });
+  });
+
+  it('validates a custom endpoint with nested addParams', () => {
+    const result = validateFieldValue('endpoints.custom.0', {
+      ...validEndpoint,
+      addParams: { config: { nested: { deep: true } } },
+    });
+    expect(result).toEqual({ success: true });
+  });
+
+  it('validates a custom endpoint with headers', () => {
+    const result = validateFieldValue('endpoints.custom.0', {
+      ...validEndpoint,
+      headers: { 'x-api-key': '${API_KEY}', 'x-custom': 'value' },
+    });
+    expect(result).toEqual({ success: true });
+  });
+
+  it('validates a custom endpoint with dropParams', () => {
+    const result = validateFieldValue('endpoints.custom.0', {
+      ...validEndpoint,
+      dropParams: ['stop', 'frequency_penalty'],
+    });
+    expect(result).toEqual({ success: true });
+  });
+
+  it('gracefully handles unknown deep paths', () => {
+    const result = validateFieldValue('endpoints.custom.0.nonexistent.deep', 'value');
+    expect(result).toEqual({ success: true });
+  });
+});
