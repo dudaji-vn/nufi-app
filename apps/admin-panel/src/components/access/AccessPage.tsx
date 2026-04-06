@@ -34,7 +34,7 @@ export function AccessPage({
         </Tabs>
       )}
 
-      <div className="min-h-0 flex-1 overflow-hidden pt-3">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden pt-3">
         {activeTab === 'groups' && canReadGroups && (
           <GroupsTab onCreateGroup={() => setCreateGroupOpen(true)} />
         )}
