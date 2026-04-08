@@ -7,7 +7,7 @@ import { createServerFn } from '@tanstack/react-start';
 import { getRequestHeader } from '@tanstack/react-start/server';
 import type * as t from '@/types';
 import { useAppSession, SESSION_CONFIG } from './session';
-import { getApiBaseUrl } from './utils/api';
+import { getApiBaseUrl, getServerApiUrl } from './utils/api';
 
 /** Extract a named cookie value from `set-cookie` response headers. */
 function extractCookieValue(response: Response, name: string): string | undefined {
@@ -29,7 +29,7 @@ export const adminLoginFn = createServerFn({ method: 'POST' })
   )
   .handler(async ({ data }) => {
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/admin/login/local`, {
+      const response = await fetch(`${getServerApiUrl()}/api/admin/login/local`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -93,7 +93,7 @@ export const adminVerify2FAFn = createServerFn({ method: 'POST' })
   )
   .handler(async ({ data }) => {
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/auth/2fa/verify-temp`, {
+      const response = await fetch(`${getServerApiUrl()}/api/auth/2fa/verify-temp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tempToken: data.tempToken, token: data.totpCode }),
@@ -170,7 +170,7 @@ async function refreshAdminToken(
       cookieParts.push('token_provider=openid');
     }
 
-    const response = await fetch(`${getApiBaseUrl()}/api/auth/refresh`, {
+    const response = await fetch(`${getServerApiUrl()}/api/auth/refresh`, {
       method: 'POST',
       headers: { Cookie: cookieParts.join('; ') },
     });
@@ -216,7 +216,7 @@ export const verifyAdminTokenFn = createServerFn({ method: 'GET' }).handler(asyn
 
     if (needsRevalidation) {
       try {
-        const response = await fetch(`${getApiBaseUrl()}/api/admin/verify`, {
+        const response = await fetch(`${getServerApiUrl()}/api/admin/verify`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 
@@ -236,7 +236,7 @@ export const verifyAdminTokenFn = createServerFn({ method: 'GET' }).handler(asyn
                   lastActivity: now,
                 };
                 try {
-                  const reVerify = await fetch(`${getApiBaseUrl()}/api/admin/verify`, {
+                  const reVerify = await fetch(`${getServerApiUrl()}/api/admin/verify`, {
                     headers: { Authorization: `Bearer ${refreshed.token}` },
                   });
                   if (reVerify.ok) {
@@ -305,7 +305,7 @@ export const adminLogoutFn = createServerFn({ method: 'POST' }).handler(async ()
 
     if (token) {
       try {
-        await fetch(`${getApiBaseUrl()}/api/auth/logout`, {
+        await fetch(`${getServerApiUrl()}/api/auth/logout`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -340,7 +340,7 @@ export const openIdCheckOptions = queryOptions({
 
 export const checkOpenIdFn = createServerFn({ method: 'GET' }).handler(async () => {
   try {
-    const response = await fetch(`${getApiBaseUrl()}/api/admin/oauth/openid/check`);
+    const response = await fetch(`${getServerApiUrl()}/api/admin/oauth/openid/check`);
     if (!response.ok) return { available: false, ssoOnly: false };
     const ssoOnly = process.env.ADMIN_SSO_ONLY === 'true';
     return { available: true, ssoOnly };
@@ -389,7 +389,7 @@ export const oauthExchangeFn = createServerFn({ method: 'POST' })
       const session = await useAppSession();
       const { codeVerifier } = session.data;
 
-      const response = await fetch(`${getApiBaseUrl()}/api/admin/oauth/exchange`, {
+      const response = await fetch(`${getServerApiUrl()}/api/admin/oauth/exchange`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ code: data.code, code_verifier: codeVerifier }),

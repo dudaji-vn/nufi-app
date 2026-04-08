@@ -10,6 +10,14 @@ export function getApiBaseUrl(): string {
   return 'http://localhost:3080';
 }
 
+/** Server-to-server API URL. Falls back to getApiBaseUrl() if API_SERVER_URL is not set. */
+export function getServerApiUrl(): string {
+  if (typeof process !== 'undefined' && process.env?.API_SERVER_URL) {
+    return process.env.API_SERVER_URL;
+  }
+  return getApiBaseUrl();
+}
+
 /**
  * Make an authenticated request to the LibreChat API.
  * Reads the JWT token from the admin session and sets the Authorization header.
@@ -23,7 +31,7 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
     throw new Error('No admin session token available');
   }
 
-  const url = `${getApiBaseUrl()}${path}`;
+  const url = `${getServerApiUrl()}${path}`;
   return fetch(url, {
     ...init,
     headers: {
