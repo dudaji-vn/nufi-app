@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Button } from '@clickhouse/click-ui';
-import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type * as t from '@/types';
 import {
   LoadingState,
@@ -9,12 +9,11 @@ import {
   EmptyState,
   TrashButton,
 } from '@/components/shared';
-import { deleteRoleFn, rolesQueryOptions, ROLES_PAGE_SIZE } from '@/server';
+import { deleteRoleFn, allRolesQueryOptions, ROLES_PAGE_SIZE } from '@/server';
 import { useCapabilities, useLocalize } from '@/hooks';
 import { EditRoleDialog } from './EditRoleDialog';
 import { SystemCapabilities } from '@/constants';
 import { ConfirmDialog } from './ConfirmDialog';
-import { cn } from '@/utils';
 
 export function RolesTab({ onCreateRole }: t.RolesTabProps) {
   const localize = useLocalize();
@@ -27,14 +26,26 @@ export function RolesTab({ onCreateRole }: t.RolesTabProps) {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
 
-  const { data, isLoading, isError, isFetching } = useQuery({
-    ...rolesQueryOptions(page),
-    placeholderData: keepPreviousData,
-  });
+  const { data: allRoles = [], isLoading, isError } = useQuery(allRolesQueryOptions);
 
-  const roles = data?.roles ?? [];
-  const total = data?.total ?? 0;
-  const totalPages = Math.ceil(total / ROLES_PAGE_SIZE);
+  const filtered = useMemo(() => {
+    if (!search) return allRoles;
+    const q = search.toLowerCase();
+    return allRoles.filter(
+      (role) => role.name.toLowerCase().includes(q) || role.description.toLowerCase().includes(q),
+    );
+  }, [allRoles, search]);
+
+  const totalPages = Math.ceil(filtered.length / ROLES_PAGE_SIZE);
+  const paged = useMemo(
+    () => filtered.slice((page - 1) * ROLES_PAGE_SIZE, page * ROLES_PAGE_SIZE),
+    [filtered, page],
+  );
+
+  const handleSearchChange = (value: string) => {
+    setSearch(value);
+    setPage(1);
+  };
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteRoleFn({ data: { id } }),
@@ -45,24 +56,18 @@ export function RolesTab({ onCreateRole }: t.RolesTabProps) {
       queryClient.invalidateQueries({ queryKey: ['roleMembers'] });
       setDeleteTarget(null);
       setDeleteError('');
-      if (roles.length === 1) {
+      if (paged.length === 1) {
         setPage((prev) => (prev > 1 ? prev - 1 : prev));
       }
     },
     onError: (err: Error) => setDeleteError(err.message),
   });
 
-  const filtered = roles.filter((role) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return role.name.toLowerCase().includes(q) || role.description.toLowerCase().includes(q);
-  });
-
-  if (isLoading && !data) {
+  if (isLoading) {
     return <LoadingState />;
   }
 
-  if (isError && !data) {
+  if (isError) {
     return <EmptyState message={localize('com_access_roles_error')} />;
   }
 
@@ -71,7 +76,7 @@ export function RolesTab({ onCreateRole }: t.RolesTabProps) {
       <div className="flex items-center justify-between gap-3">
         <SearchInput
           value={search}
-          onChange={setSearch}
+          onChange={handleSearchChange}
           placeholder={localize('com_access_search_roles')}
         />
         <Button
@@ -89,17 +94,17 @@ export function RolesTab({ onCreateRole }: t.RolesTabProps) {
         />
       </div>
 
-      {filtered.length === 0 ? (
+      {paged.length === 0 ? (
         <EmptyState
           message={
-            search && roles.length > 0
+            search
               ? localize('com_access_no_results')
               : localize('com_access_roles_empty')
           }
         />
       ) : (
-        <div className={cn('flex flex-col', isFetching && 'opacity-60 transition-opacity')}>
-          {filtered.map((role) => (
+        <div className="flex flex-col">
+          {paged.map((role) => (
             <div
               key={role.id}
               className="mb-2 flex items-center gap-3 rounded-lg border border-(--cui-color-stroke-default) bg-(--cui-color-background-panel) px-3 py-3"
