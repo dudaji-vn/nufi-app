@@ -1,11 +1,12 @@
 # --- Base ---
-FROM oven/bun:1.3.3-alpine AS base
+FROM oven/bun:1.3.11-alpine AS base
 WORKDIR /app
 
 # --- Install ---
 FROM base AS deps
 COPY package.json bun.lock .npmrc ./
 COPY patches/ patches/
+COPY tools/ tools/
 RUN bun install --frozen-lockfile
 
 # --- Build ---
@@ -19,6 +20,7 @@ RUN bun run build
 FROM base AS prod-deps
 COPY package.json bun.lock .npmrc ./
 COPY patches/ patches/
+COPY tools/ tools/
 RUN bun install --frozen-lockfile \
     && bun install --frozen-lockfile --production
 
