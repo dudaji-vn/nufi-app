@@ -3,6 +3,8 @@ import { Button, Icon } from '@clickhouse/click-ui';
 import { PrincipalType } from 'librechat-data-provider';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
+import { Title as DialogTitle, Description as DialogDescription } from '@radix-ui/react-dialog';
 import type { AdminGroup } from '@librechat/data-schemas';
 import type * as t from '@/types';
 import {
@@ -210,6 +212,10 @@ export function ScopeSelector({
         overlayClassName="cmdk-overlay"
         contentClassName="cmdk-content scope-selector-dialog"
       >
+        <VisuallyHidden>
+          <DialogTitle>{localize('com_scope_delete')}</DialogTitle>
+          <DialogDescription>{localize('com_scope_delete')}</DialogDescription>
+        </VisuallyHidden>
         <div className="flex flex-col gap-4 p-4">
           <p className="text-sm text-(--cui-color-text-default)">
             {localize('com_scope_delete_confirm', { name: deleteTarget.name })}
@@ -263,6 +269,10 @@ export function ScopeSelector({
         overlayClassName="cmdk-overlay"
         contentClassName="cmdk-content scope-selector-dialog"
       >
+        <VisuallyHidden>
+          <DialogTitle>{localize('com_scope_create_new')}</DialogTitle>
+          <DialogDescription>{localize('com_scope_create_new')}</DialogDescription>
+        </VisuallyHidden>
         <div className="flex items-center gap-2 border-b border-(--cui-color-stroke-default) px-4 py-3">
           <button
             type="button"
@@ -377,6 +387,10 @@ export function ScopeSelector({
       overlayClassName="cmdk-overlay"
       contentClassName="cmdk-content scope-selector-dialog"
     >
+      <VisuallyHidden>
+        <DialogTitle>{localize('com_scope_select')}</DialogTitle>
+        <DialogDescription>{localize('com_scope_select')}</DialogDescription>
+      </VisuallyHidden>
       <div className="flex items-center gap-2 border-b border-(--cui-color-stroke-default) px-4">
         <Command.Input
           value={search}

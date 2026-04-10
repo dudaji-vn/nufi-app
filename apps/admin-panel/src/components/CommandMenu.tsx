@@ -2,6 +2,8 @@ import { Command } from 'cmdk';
 import { Icon } from '@clickhouse/click-ui';
 import { useRouter } from '@tanstack/react-router';
 import { useCallback, useRef, useState } from 'react';
+import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
+import { Title as DialogTitle, Description as DialogDescription } from '@radix-ui/react-dialog';
 import type * as t from '@/types';
 import { CONFIG_TABS } from './configuration/configMeta';
 import { useSearchIndex, useLocalize } from '@/hooks';
@@ -49,6 +51,10 @@ export function CommandMenu({ open, onOpenChange }: t.CommandMenuProps) {
       overlayClassName="cmdk-overlay"
       contentClassName="cmdk-content"
     >
+      <VisuallyHidden>
+        <DialogTitle>{localize('com_cmdk_label')}</DialogTitle>
+        <DialogDescription>{localize('com_cmdk_label')}</DialogDescription>
+      </VisuallyHidden>
       <Command.Input
         value={search}
         onValueChange={handleSearchChange}

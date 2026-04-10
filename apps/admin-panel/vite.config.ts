@@ -15,7 +15,7 @@ const config = defineConfig({
   ],
   resolve: {
     tsconfigPaths: true,
-    dedupe: ['react', 'react-dom'],
+    dedupe: ['react', 'react-dom', '@radix-ui/react-dialog'],
     alias: {
       url: path.resolve(__dirname, 'src/shims/url.ts'),
     },

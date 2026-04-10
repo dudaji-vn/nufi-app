@@ -21,7 +21,7 @@
     "format:check": "prettier --check 'src/**/*.{ts,tsx,css,json}'"
   },
   "dependencies": {
-    "@clickhouse/click-ui": "^0.0.252-test.7",
+    "@clickhouse/click-ui": "0.2.0-rc.4",
     "@librechat/data-schemas": "^0.0.48",
     "@tailwindcss/vite": "^4.1.18",
     "@tanstack/react-devtools": "^0.10.0",
@@ -81,5 +81,8 @@
     "vite": "^8.0.3",
     "vite-tsconfig-paths": "^6.1.1",
     "vitest": "^3.0.5"
+  },
+  "overrides": {
+    "@radix-ui/react-dialog": "1.1.15"
   }
 }
