@@ -1,5 +1,6 @@
 import { Glob } from 'bun';
 import { join } from 'node:path';
+import { metricsResponse, httpRequestsTotal, httpRequestDurationSeconds } from './src/server/metrics';
 
 const CLIENT_DIR = join(import.meta.dir, 'dist', 'client');
 const SERVER_ENTRY = new URL('./dist/server/server.js', import.meta.url);
@@ -35,6 +36,10 @@ type Handler = { default: { fetch: (req: Request) => Promise<Response> } };
 
 const { default: handler } = (await import(SERVER_ENTRY.href)) as Handler;
 
+if (!process.env.ADMIN_PANEL_METRICS_SECRET) {
+  console.warn('[metrics] ADMIN_PANEL_METRICS_SECRET is not set — /metrics will return 401 for all requests');
+}
+
 async function buildStaticRoutes(): Promise<Record<string, () => Response>> {
   const routes: Record<string, () => Response> = {};
   for await (const path of new Glob('**/*').scan(CLIENT_DIR)) {
@@ -50,8 +55,14 @@ Bun.serve({
   port: Number(process.env.PORT ?? 3000),
   routes: {
     ...(await buildStaticRoutes()),
+    '/metrics': (req) => metricsResponse(req),
     '/*': async (req) => {
+      const url = new URL(req.url);
+      const end = httpRequestDurationSeconds.startTimer({ method: req.method, path: url.pathname });
       const res = await handler.fetch(req);
+      const statusCode = String(res.status);
+      httpRequestsTotal.inc({ method: req.method, path: url.pathname, status_code: statusCode });
+      end({ status_code: statusCode });
       const patched = new Response(res.body, res);
       for (const [k, v] of Object.entries(NO_CACHE)) {
         patched.headers.set(k, v);
