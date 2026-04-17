@@ -30,6 +30,7 @@ ENV NODE_ENV=production
 
 COPY --from=prod-deps /app/node_modules node_modules
 COPY --from=build /app/dist dist
+COPY --from=build /app/src/server src/server
 COPY server.ts package.json ./
 
 RUN chown -R bun:bun /app
