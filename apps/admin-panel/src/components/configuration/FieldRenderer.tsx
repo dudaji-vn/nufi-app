@@ -360,8 +360,6 @@ export function SingleFieldRenderer({
   if (controlType === 'text') {
     const stringValue = typeof currentValue === 'string' ? currentValue : '';
     const isMultiline = stringValue.includes('\n') || field.key.toLowerCase().includes('content');
-    const isUrl =
-      field.key.toLowerCase().includes('url') || field.key.toLowerCase().includes('endpoint');
 
     if (isMultiline) {
       const control = (
@@ -392,8 +390,7 @@ export function SingleFieldRenderer({
         id={fieldId}
         value={stringValue}
         onChange={(v) => onChange(path, v)}
-        placeholder={isUrl ? localize('com_ui_enter_url') : undefined}
-        type={isUrl ? 'url' : 'text'}
+        type="text"
         disabled={disabled}
       />
     );
