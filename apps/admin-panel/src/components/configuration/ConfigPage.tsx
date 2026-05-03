@@ -35,6 +35,7 @@ import { StickyActionBar } from '@/components/shared';
 import { ConfigTabContent } from './ConfigTabContent';
 import { ImportYamlDialog } from './ImportYamlDialog';
 import { ContentToolbar } from './ContentToolbar';
+import { mergeIndexedArrayEdits } from './utils';
 import { SystemCapabilities } from '@/constants';
 import { ConfigTabBar } from './ConfigTabBar';
 import { InfoBanner } from './InfoBanner';
@@ -276,25 +277,7 @@ export function ConfigPage({ initialTab, highlightField, initialScope }: t.Confi
     if (!baseActiveConfigValues) return baseActiveConfigValues;
     const indexedEdits = Object.entries(editedValues).filter(([k]) => /\.\d+$/.test(k));
     if (indexedEdits.length === 0) return baseActiveConfigValues;
-    const merged = { ...baseActiveConfigValues };
-    for (const [path, value] of indexedEdits) {
-      const segments = path.split('.');
-      const index = Number(segments.pop()!);
-      const arrayPath = segments;
-      let parent: Record<string, t.ConfigValue> = merged;
-      for (let i = 0; i < arrayPath.length - 1; i++) {
-        const seg = arrayPath[i];
-        if (parent[seg] && typeof parent[seg] === 'object' && !Array.isArray(parent[seg])) {
-          parent[seg] = { ...(parent[seg] as Record<string, t.ConfigValue>) };
-          parent = parent[seg] as Record<string, t.ConfigValue>;
-        } else break;
-      }
-      const lastSeg = arrayPath[arrayPath.length - 1];
-      const arr = Array.isArray(parent[lastSeg]) ? [...(parent[lastSeg] as t.ConfigValue[])] : [];
-      arr[index] = value;
-      parent[lastSeg] = arr;
-    }
-    return merged;
+    return mergeIndexedArrayEdits(baseActiveConfigValues, indexedEdits);
   }, [baseActiveConfigValues, editedValues]);
 
   const scopeConfiguredPaths = useMemo(() => {

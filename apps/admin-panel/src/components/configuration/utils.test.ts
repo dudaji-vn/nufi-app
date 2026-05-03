@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { getControlType, getEnumOptions, getArrayItemType, splitUnionTypes } from './utils';
+import {
+  getControlType,
+  getEnumOptions,
+  getArrayItemType,
+  splitUnionTypes,
+  mergeIndexedArrayEdits,
+} from './utils';
 import { createField } from '@/test/fixtures';
 
 describe('getControlType', () => {
@@ -234,5 +240,95 @@ describe('getEnumOptions — union(literal(...)) parsing', () => {
   it('returns empty array for non-enum/non-literal-union input', () => {
     expect(getEnumOptions('string')).toEqual([]);
     expect(getEnumOptions('union(string | number)')).toEqual([]);
+  });
+});
+
+describe('mergeIndexedArrayEdits', () => {
+  it('creates the array under a parent path absent from the baseline', () => {
+    /**
+     * Regression: the merge previously bailed out and wrote the array at the
+     * wrong nesting level when its parent (e.g. modelSpecs) wasn't in
+     * librechat.yaml, causing typed list entries to disappear from view.
+     */
+    const merged = mergeIndexedArrayEdits({}, [
+      ['modelSpecs.list.0', { name: 'test', label: 'Test' }],
+    ]);
+    expect(merged).toEqual({
+      modelSpecs: { list: [{ name: 'test', label: 'Test' }] },
+    });
+  });
+
+  it('preserves baseline siblings when introducing a new section', () => {
+    const merged = mergeIndexedArrayEdits({ interface: { parameters: true } }, [
+      ['modelSpecs.list.0', { name: 'a' }],
+    ]);
+    expect(merged).toEqual({
+      interface: { parameters: true },
+      modelSpecs: { list: [{ name: 'a' }] },
+    });
+  });
+
+  it('merges into an existing parent without clobbering its keys', () => {
+    const merged = mergeIndexedArrayEdits(
+      { modelSpecs: { enforce: true, prioritize: false } },
+      [['modelSpecs.list.0', { name: 'a' }]],
+    );
+    expect(merged.modelSpecs).toEqual({
+      enforce: true,
+      prioritize: false,
+      list: [{ name: 'a' }],
+    });
+  });
+
+  it('places multiple indexed edits at their correct positions', () => {
+    const merged = mergeIndexedArrayEdits({}, [
+      ['modelSpecs.list.0', { name: 'a' }],
+      ['modelSpecs.list.2', { name: 'c' }],
+    ]);
+    const list = (merged.modelSpecs as { list: Array<{ name: string } | undefined> }).list;
+    expect(list[0]).toEqual({ name: 'a' });
+    expect(list[1]).toBeUndefined();
+    expect(list[2]).toEqual({ name: 'c' });
+  });
+
+  it('returns the baseline unchanged when there are no indexed edits', () => {
+    const baseline = { interface: { parameters: true } };
+    expect(mergeIndexedArrayEdits(baseline, [])).toEqual(baseline);
+  });
+
+  it('does not mutate the baseline object', () => {
+    const baseline: Record<string, unknown> = { modelSpecs: { enforce: true } };
+    const before = JSON.parse(JSON.stringify(baseline));
+    mergeIndexedArrayEdits(baseline as Record<string, never>, [
+      ['modelSpecs.list.0', { name: 'a' }],
+    ]);
+    expect(baseline).toEqual(before);
+  });
+
+  it('skips an edit when an intermediate path is a primitive', () => {
+    /**
+     * Defensive: refuse to overwrite a primitive at an intermediate path
+     * because doing so would silently destroy unrelated baseline data.
+     */
+    const merged = mergeIndexedArrayEdits({ modelSpecs: 'not-an-object' }, [
+      ['modelSpecs.list.0', { name: 'a' }],
+    ]);
+    expect(merged).toEqual({ modelSpecs: 'not-an-object' });
+  });
+
+  it('skips an edit when an intermediate path is an array', () => {
+    const merged = mergeIndexedArrayEdits({ modelSpecs: [1, 2, 3] }, [
+      ['modelSpecs.list.0', { name: 'a' }],
+    ]);
+    expect(merged).toEqual({ modelSpecs: [1, 2, 3] });
+  });
+
+  it('walks deep parent chains, creating each missing level', () => {
+    const merged = mergeIndexedArrayEdits({}, [
+      ['endpoints.custom.deep.list.0', { name: 'x' }],
+    ]);
+    expect(merged).toEqual({
+      endpoints: { custom: { deep: { list: [{ name: 'x' }] } } },
+    });
   });
 });

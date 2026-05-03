@@ -222,3 +222,48 @@ export function hasDescendant(path: string, paths?: Set<string>): boolean {
   }
   return false;
 }
+
+/**
+ * Merge indexed-array edits (entries whose flat path ends in `.<digit>`) into
+ * a config tree. Each indexed edit's value replaces the array element at that
+ * index; the array's parent path is auto-created if absent so newly-introduced
+ * sections (e.g. `modelSpecs` not present in `librechat.yaml`) merge in at the
+ * correct nesting level rather than getting written to the wrong parent.
+ *
+ * Skips an edit when an intermediate path holds a primitive or array value,
+ * since overwriting those with a fresh object would silently destroy live
+ * baseline data. Caller is responsible for filtering `editedValues` down to
+ * indexed entries before passing.
+ */
+export function mergeIndexedArrayEdits(
+  baseline: Record<string, t.ConfigValue>,
+  indexedEdits: Array<[string, t.ConfigValue]>,
+): Record<string, t.ConfigValue> {
+  const merged = { ...baseline };
+  for (const [path, value] of indexedEdits) {
+    const segments = path.split('.');
+    const index = Number(segments.pop()!);
+    const arrayPath = segments;
+    let parent: Record<string, t.ConfigValue> = merged;
+    let bailed = false;
+    for (let i = 0; i < arrayPath.length - 1; i++) {
+      const seg = arrayPath[i];
+      const existing = parent[seg];
+      if (existing && typeof existing === 'object' && !Array.isArray(existing)) {
+        parent[seg] = { ...(existing as Record<string, t.ConfigValue>) };
+      } else if (existing == null) {
+        parent[seg] = {};
+      } else {
+        bailed = true;
+        break;
+      }
+      parent = parent[seg] as Record<string, t.ConfigValue>;
+    }
+    if (bailed) continue;
+    const lastSeg = arrayPath[arrayPath.length - 1];
+    const arr = Array.isArray(parent[lastSeg]) ? [...(parent[lastSeg] as t.ConfigValue[])] : [];
+    arr[index] = value;
+    parent[lastSeg] = arr;
+  }
+  return merged;
+}
