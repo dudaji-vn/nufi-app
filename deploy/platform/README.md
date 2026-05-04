@@ -25,39 +25,45 @@ Everything runs in Docker Compose. See `docs/roadmap.md` for the weekly plan.
   (e.g. vLLM, TGI, Ollama). Set `GPU_BACKEND_BASE_URL` in `.env`.
 - ~10 GB free disk for Postgres / MongoDB / Langfuse / LibreChat volumes
 
-## Quick start
+## Quick start (recommended)
 
 ```bash
-# 1. Clone and enter the repo
+# 1. One-time install on your machine:
+#    Docker Desktop  https://www.docker.com  (give it ≥4 GB RAM)
+#    Ollama          brew install ollama && brew services start ollama
+#                    (Linux: curl -fsSL https://ollama.com/install.sh | sh)
+
+# 2. Clone and bootstrap — one command does everything:
 git clone git@github.com:DudajiVN/npuops-platform.git
 cd npuops-platform
+./scripts/bootstrap.sh
+#   → prompts for which Ollama model to use (default qwen2.5:3b)
+#   → fills in random secrets in .env
+#   → docker compose up -d
+#   → runs the smoke test
+#   → prints URLs and the Langfuse admin password
+```
 
-# 2. Create your local env file
+Re-run `./scripts/bootstrap.sh` anytime — it's idempotent. To pick a model
+non-interactively: `./scripts/bootstrap.sh --model llama3.2:3b`.
+
+### Manual quick start (if you want to do it yourself)
+
+```bash
 cp .env.example .env
-# then edit .env and replace every `replace-me` value
+# edit .env: replace every `replace-me` value (see comments in the file for
+# how to generate each one — e.g. `openssl rand -hex 32`)
 
-# 3. Start the stack
+ollama pull qwen2.5:3b            # or any model from https://ollama.com/library
 docker compose up -d
-
-# 4. Tail logs
-docker compose logs -f litellm-proxy
-
-# 5. Smoke test
+docker compose logs -f litellm-proxy   # wait for "Application startup complete"
 ./scripts/smoke-test.sh
 ```
 
-### Local dev backend (free, no GPU server)
+### Local dev backend (Ollama)
 
-For local development on Mac, point `GPU_BACKEND_BASE_URL` at host-installed
-Ollama. It uses Metal acceleration and is fast on any Apple Silicon Mac.
-
-```bash
-brew install ollama
-brew services start ollama        # or: ollama serve
-ollama pull qwen2.5:3b            # ~2 GB; swap for any model you prefer
-```
-
-The defaults in `.env.example` are already set up for this:
+LiteLLM treats Ollama as just another OpenAI-compatible server. The defaults
+in `.env.example` are already set up to point at host-installed Ollama:
 
 ```env
 GPU_MODEL=openai/qwen2.5:3b
