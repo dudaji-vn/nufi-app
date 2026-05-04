@@ -172,7 +172,7 @@
 
 #### Task 2.1 — LibreChat Deploy + LiteLLM Connection
 
-**Status:** 🟡 Implementation done (2026-05-04) — pending live verification (`docker compose up -d` + register/login/chat in browser).
+**Status:** ✅ Done (2026-05-04) — LibreChat live at http://localhost:3080, model dropdown auto-populated from LiteLLM, chat → Ollama → Langfuse trace flow verified.
 
 > **Decision (2026-05-04):** Replaced Open WebUI with LibreChat. Open WebUI's
 > license shifted away from pure open-source in 2025 (commercial-branding
@@ -220,17 +220,17 @@
     - [x] `interface` block scaffolded in `librechat.yaml` (privacy / TOS placeholders ready)
 
 4. **Test the model dropdown**
-    - [ ] Verify LibreChat fetches `/v1/models` from LiteLLM and shows `llama-3-gpu`
-    - [ ] Send a message → response streams back
+    - [x] Verify LibreChat fetches `/v1/models` from LiteLLM and shows `llama-3-gpu`
+    - [x] Send a message → response streams back
 
 5. **Conversation history**
-    - [ ] Built-in; persisted in MongoDB. Verify after a `docker compose restart librechat`.
+    - [x] Built-in; persisted in MongoDB. Verified after `docker compose restart librechat`.
 
 **Acceptance Criteria:**
 
-- [ ] Register → login → select model → chat → response streams
-- [ ] Conversations persist after page reload and container restart
-- [ ] Branding (`APP_TITLE`, logo) displays correctly
+- [x] Register → login → select model → chat → response streams
+- [x] Conversations persist after page reload and container restart
+- [~] Branding — `APP_TITLE` works; logo / favicon swap deferred until brand assets are finalized
 
 **Effort estimate:** 2 days
 
