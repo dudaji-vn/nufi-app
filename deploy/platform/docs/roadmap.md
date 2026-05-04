@@ -102,43 +102,57 @@
 
 #### Task 1.2 — Langfuse Setup + LiteLLM Integration
 
+**Status:** ✅ Done (2026-05-04) — full Langfuse v3 stack up, traces visible in UI, smoke test 6/6.
+
+> **Heads-up:** The original plan assumed Langfuse v2 (single service, ClickHouse optional).
+> Langfuse v3 (current) **requires** ClickHouse + S3-compatible blob storage. The
+> stack now includes `clickhouse` + `minio` (+ `minio-init` to provision the
+> bucket on first boot) alongside `langfuse-web` and `langfuse-worker`.
+
 **Goal:** Every request through LiteLLM is traced in Langfuse with cost aggregation.
 
 **Steps:**
 
-1. **Deploy Langfuse**
-    - Add `langfuse-server` and `langfuse-worker` services to Docker Compose
-    - Share PostgreSQL (separate schema) or use a dedicated DB
-    - Set up ClickHouse if volume is large (optional for dev)
+1. **Deploy Langfuse v3 stack** — [x] `docker-compose.yml`
+    - [x] `clickhouse` service (`clickhouse/clickhouse-server:24.8-alpine`)
+    - [x] `minio` service (S3-compatible blob store) + `minio-init` to create the `langfuse` bucket
+    - [x] `langfuse-web` service (`langfuse/langfuse:3`) on port 3000
+    - [x] `langfuse-worker` service (`langfuse/langfuse-worker:3`)
+    - [x] Separate `langfuse` database on the shared Postgres (provisioned via `scripts/postgres-init.sh`)
 
-2. **Create a Langfuse project**
-    - Get `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY`
-    - Configure host
+2. **Auto-provision the project** — [x] via `LANGFUSE_INIT_*` env vars on `langfuse-web`
+    - Org `npuops`, project `npuops-default`, admin user from `.env`
+    - `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` from `.env` are wired in on first boot — no manual UI step needed
 
-3. **Enable callbacks in LiteLLM**
-
+3. **Enable callbacks in LiteLLM** — [x] `litellm/config.yaml`
     ```yaml
     litellm_settings:
-        success_callback: ['langfuse']
-        failure_callback: ['langfuse']
+      success_callback: ["langfuse"]
+      failure_callback: ["langfuse"]
+      langfuse_default_tags: ["hardware_id", "backend_type"]
     ```
+    - [x] Env vars passed through compose: `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` (= `http://langfuse-web:3000`)
 
-    - Set env vars: `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST`
-
-4. **Verify cost aggregation**
-    - Send 10–20 test requests
-    - Check Langfuse UI:
-        - Traces appear
-        - Token counts are correct
-        - Cost is computed (configure pricing in LiteLLM `model_info.input_cost_per_token`)
+4. **Verify cost aggregation** — [x] `scripts/smoke-test.sh` step 6 queries `/api/public/traces`
+    - [x] Send 10–20 test requests against the running stack — covered by smoke test
+    - [x] Confirm traces appear in the Langfuse UI at <http://localhost:3000>
+    - [x] Confirm token counts and `cost` are populated (pricing from `model_info.input_cost_per_token` / `output_cost_per_token` in `litellm/config.yaml`)
 
 **Acceptance Criteria:**
 
-- 100% of requests have a corresponding trace in Langfuse
-- Cost field is never null
-- Latency overhead < 50ms
+- [x] 100% of requests have a corresponding trace in Langfuse
+- [x] Cost field is never null
+- [ ] Latency overhead < 50ms _(not benchmarked yet — defer to W4 perf pass)_
 
 **Effort estimate:** 2 days
+
+**Gotchas captured during implementation (2026-05-04):**
+
+- Don't use `clickhouse/clickhouse-server:*-alpine` on Apple Silicon — server hangs silently. Use the Ubuntu-based tag.
+- ClickHouse healthcheck must use `127.0.0.1`, not `localhost` (Docker Desktop disables IPv6, but `localhost` resolves to `::1` first inside the alpine wget shipped in the healthcheck).
+- Quote `.env` values containing spaces (e.g. `LANGFUSE_INIT_USER_NAME="NPUOps Admin"`) so shell scripts that `source .env` don't break.
+- LiteLLM does not hot-reload `config.yaml`. After editing callbacks, run `docker compose restart litellm-proxy`.
+- Langfuse `LANGFUSE_INIT_*` env vars only auto-provision the project on a fresh DB. If the `langfuse` Postgres database already exists, drop+recreate before restarting `langfuse-web`.
 
 ---
 

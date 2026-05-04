@@ -48,7 +48,10 @@ router_settings:
 litellm_settings:
   request_timeout: 600
   drop_params: true
-  # success_callback / failure_callback are added in W1 Task 1.2 (Langfuse)
+  success_callback: ["langfuse"]
+  failure_callback: ["langfuse"]
+  # Stamp every trace with hardware metadata so W6 reports can aggregate per hardware unit
+  langfuse_default_tags: ["hardware_id", "backend_type"]
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY

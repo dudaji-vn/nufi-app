@@ -44,7 +44,7 @@ curl -fsSN "${AUTH[@]}" "${JSON[@]}" \
   >/dev/null
 echo "ok"
 
-echo "==> 5/5 Error handling (unknown model should 4xx)"
+echo "==> 5/6 Error handling (unknown model should 4xx)"
 status=$(curl -s -o /dev/null -w '%{http_code}' "${AUTH[@]}" "${JSON[@]}" \
   -X POST "${PROXY_URL}/v1/chat/completions" \
   -d '{"model":"does-not-exist","messages":[{"role":"user","content":"ping"}]}')
@@ -53,6 +53,23 @@ if [ "${status}" -lt 400 ] || [ "${status}" -ge 500 ]; then
   exit 1
 fi
 echo "ok (got ${status})"
+
+echo "==> 6/6 Langfuse trace exists for the chat request"
+LANGFUSE_PUBLIC_HOST="${LANGFUSE_PUBLIC_HOST:-http://localhost:3000}"
+if [ -z "${LANGFUSE_PUBLIC_KEY:-}" ] || [ -z "${LANGFUSE_SECRET_KEY:-}" ]; then
+  echo "skipped (LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY not set)"
+else
+  # LiteLLM ships traces async — give the worker a couple seconds to flush
+  sleep 3
+  count=$(curl -fsS -u "${LANGFUSE_PUBLIC_KEY}:${LANGFUSE_SECRET_KEY}" \
+    "${LANGFUSE_PUBLIC_HOST}/api/public/traces?limit=1" \
+    | python3 -c 'import sys,json; d=json.load(sys.stdin); print(len(d.get("data",[])))')
+  if [ "${count}" -lt 1 ]; then
+    echo "error: no traces visible in Langfuse — check langfuse-worker logs" >&2
+    exit 1
+  fi
+  echo "ok (${count} trace(s) visible)"
+fi
 
 echo
 echo "all checks passed"
