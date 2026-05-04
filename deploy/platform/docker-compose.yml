@@ -9,6 +9,7 @@ volumes:
   redis-data:
   clickhouse-data:
   minio-data:
+  mongodb-data:
 
 services:
   postgres:
@@ -222,4 +223,58 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+    networks: [npuops]
+
+  mongodb:
+    image: mongo:7
+    container_name: npuops-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+    volumes:
+      - mongodb-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand({ping: 1}).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks: [npuops]
+
+  librechat:
+    image: ghcr.io/danny-avila/librechat:v0.7.5
+    container_name: npuops-librechat
+    restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      litellm-proxy:
+        condition: service_healthy
+    ports:
+      - "3080:3080"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3080
+      MONGO_URI: ${MONGO_URI}
+      DOMAIN_CLIENT: http://localhost:3080
+      DOMAIN_SERVER: http://localhost:3080
+      APP_TITLE: ${APP_TITLE}
+      ALLOW_REGISTRATION: ${ALLOW_REGISTRATION}
+      ALLOW_EMAIL_LOGIN: ${ALLOW_EMAIL_LOGIN}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      CREDS_KEY: ${CREDS_KEY}
+      CREDS_IV: ${CREDS_IV}
+      ENDPOINTS: custom
+      # Used by librechat.yaml endpoint config to authenticate against LiteLLM
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+    volumes:
+      - ./librechat/librechat.yaml:/app/librechat.yaml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://127.0.0.1:3080/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
     networks: [npuops]

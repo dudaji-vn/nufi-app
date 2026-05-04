@@ -172,6 +172,8 @@
 
 #### Task 2.1 — LibreChat Deploy + LiteLLM Connection
 
+**Status:** 🟡 Implementation done (2026-05-04) — pending live verification (`docker compose up -d` + register/login/chat in browser).
+
 > **Decision (2026-05-04):** Replaced Open WebUI with LibreChat. Open WebUI's
 > license shifted away from pure open-source in 2025 (commercial-branding
 > restrictions). LibreChat is Apache-2.0 with native support for OpenAI-compatible
@@ -181,9 +183,9 @@
 
 **Steps:**
 
-1. **Deploy LibreChat + MongoDB**
-    - Add `mongodb` service (image `mongo:7`) — LibreChat stores users / convos here
-    - Add `librechat` service (image `ghcr.io/danny-avila/librechat:v0.7.5` — pin a version)
+1. **Deploy LibreChat + MongoDB** — [x] `docker-compose.yml`
+    - [x] `mongodb` service (image `mongo:7`) — LibreChat stores users / convos here
+    - [x] `librechat` service (image `ghcr.io/danny-avila/librechat:v0.7.5` — pinned)
     - Configure env (loaded from root `.env`):
         ```
         APP_TITLE=NPUOps
@@ -196,7 +198,7 @@
         ```
     - Volume-mount `./librechat/librechat.yaml:/app/librechat.yaml:ro` for endpoint config
 
-2. **Wire LiteLLM as the only endpoint** — `librechat/librechat.yaml`
+2. **Wire LiteLLM as the only endpoint** — [x] `librechat/librechat.yaml`
     ```yaml
     version: 1.2.1
     endpoints:
@@ -212,24 +214,23 @@
           modelDisplayLabel: "NPUOps"
     ```
 
-3. **Branding customization**
-    - App name via `APP_TITLE` env var
-    - Logo / favicon: drop into `librechat/assets/` and mount into the container's
-      `client/public/assets/` (LibreChat docs: Configuration → Customization → Branding)
-    - Custom welcome / footer text via `librechat.yaml` `interface` block
+3. **Branding customization** — [~] partial
+    - [x] App name via `APP_TITLE` env var (defaults to `NPUOps`)
+    - [ ] Logo / favicon: drop into `librechat/assets/` and mount into the container's `client/public/assets/`
+    - [x] `interface` block scaffolded in `librechat.yaml` (privacy / TOS placeholders ready)
 
 4. **Test the model dropdown**
-    - Verify LibreChat fetches `/v1/models` from LiteLLM and shows `llama-3-gpu`
-    - Send a message → response streams back
+    - [ ] Verify LibreChat fetches `/v1/models` from LiteLLM and shows `llama-3-gpu`
+    - [ ] Send a message → response streams back
 
 5. **Conversation history**
-    - Built-in; persisted in MongoDB. Verify after a `docker compose restart librechat`.
+    - [ ] Built-in; persisted in MongoDB. Verify after a `docker compose restart librechat`.
 
 **Acceptance Criteria:**
 
-- Register → login → select model → chat → response streams
-- Conversations persist after page reload and container restart
-- Branding (`APP_TITLE`, logo) displays correctly
+- [ ] Register → login → select model → chat → response streams
+- [ ] Conversations persist after page reload and container restart
+- [ ] Branding (`APP_TITLE`, logo) displays correctly
 
 **Effort estimate:** 2 days
 

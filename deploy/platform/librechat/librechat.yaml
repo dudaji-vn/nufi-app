@@ -1,0 +1,36 @@
+# =============================================================================
+# librechat.yaml — LibreChat configuration
+# Reference: https://www.librechat.ai/docs/configuration/librechat_yaml
+# =============================================================================
+
+version: 1.2.1
+
+# Cache parsed config in memory (faster restarts).
+cache: true
+
+# UI / branding overrides. App name, logo and favicon come from env / assets.
+interface:
+  privacyPolicy:
+    externalUrl: ''
+  termsOfService:
+    externalUrl: ''
+
+# Endpoints — only one for W2: route everything through the LiteLLM proxy.
+endpoints:
+  custom:
+    - name: 'NPUOps'
+      # ${LITELLM_MASTER_KEY} is interpolated at runtime from the container env
+      apiKey: '${LITELLM_MASTER_KEY}'
+      # Internal compose hostname; the proxy listens on :4000
+      baseURL: 'http://litellm-proxy:4000/v1'
+      models:
+        # Auto-discover models from LiteLLM's /v1/models endpoint.
+        # `default` is the dropdown's preselect; new models added in
+        # litellm/config.yaml show up automatically.
+        default: ['llama-3-gpu']
+        fetch: true
+      titleConvo: true
+      titleModel: 'llama-3-gpu'
+      modelDisplayLabel: 'NPUOps'
+      forcePrompt: false
+      summarize: false
