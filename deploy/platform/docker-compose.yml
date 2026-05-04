@@ -185,6 +185,10 @@ services:
     image: ghcr.io/berriai/litellm:main-stable
     container_name: npuops-litellm
     restart: unless-stopped
+    extra_hosts:
+      # Lets the proxy reach host-installed Ollama on Linux native Docker.
+      # No-op on Docker Desktop (already provided by default).
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
