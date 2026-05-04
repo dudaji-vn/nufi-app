@@ -158,9 +158,11 @@
 
 #### Task 1.3 — W1 Buffer & Cleanup
 
-- Write a setup README for new team members
-- Push to repo, tag `v0.1.0-alpha`
-- Demo to the team on Friday
+**Status:** 🟢 Tag pushed (2026-05-04) — demo to team still pending.
+
+- [x] Write a setup README for new team members — `README.md` + `scripts/bootstrap.sh` (one-command setup)
+- [x] Push to repo, tag `v0.1.0-alpha` — Git Flow release: `release/0.1.0-alpha` → `main` (commit `14b289b`), tag pushed to `origin`
+- [ ] Demo to the team on Friday (2026-05-08)
 
 **Effort estimate:** 1 day
 
