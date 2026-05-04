@@ -24,13 +24,28 @@ endpoints:
       # Internal compose hostname; the proxy listens on :4000
       baseURL: 'http://litellm-proxy:4000/v1'
       models:
-        # Auto-discover models from LiteLLM's /v1/models endpoint.
-        # `default` is the dropdown's preselect; new models added in
-        # litellm/config.yaml show up automatically.
-        default: ['llama-3-gpu']
+        # Models shown in the LibreChat dropdown.
+        # `default` is the explicit display list (also acts as fallback when
+        # fetch fails or is cached). Add new model_names here when you add
+        # them to litellm/config.yaml.
+        default: ['llama-3-gpu', 'llava-vision']
         fetch: true
       titleConvo: true
       titleModel: 'llama-3-gpu'
       modelDisplayLabel: 'NPUOps'
       forcePrompt: false
       summarize: false
+
+# File uploads. Required for the multimodal flow (drag-drop an image into
+# the chat → goes to llava-vision via LiteLLM as image_url content).
+fileConfig:
+  endpoints:
+    NPUOps:
+      fileLimit: 5
+      fileSizeLimit: 20      # MB per file
+      totalSizeLimit: 50     # MB per request
+      supportedMimeTypes:
+        - 'image/png'
+        - 'image/jpeg'
+        - 'image/webp'
+        - 'image/gif'
