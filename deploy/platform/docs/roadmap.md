@@ -44,13 +44,15 @@
 
 **Steps:**
 
-1. **Initialize Docker Compose** — [x] `docker-compose.yml`
+1. **Initialize Docker Compose**
+    - [x] `docker-compose.yml`
     - [x] `litellm-proxy` service (image `ghcr.io/berriai/litellm:main-stable`)
     - [x] `redis` service (for rate limiting and caching, used from W3)
     - [x] `postgres` service (for LiteLLM virtual key store + Langfuse)
     - [x] Shared network for all services (`npuops`)
 
-2. **Design `config.yaml` to be NPU-extensible** — [x] `litellm/config.yaml`
+2. **Design `config.yaml` to be NPU-extensible**
+    - [x] `litellm/config.yaml`
 
     ```yaml
     model_list:
@@ -82,10 +84,11 @@
 
     - **Important:** keep the `model_info.backend_type` field from Day 1 so W8 does not require a refactor
 
-3. **Verify** — [x] `scripts/smoke-test.sh`
+3. **Verify**
+    - [x] `scripts/smoke-test.sh`
     - [x] `curl http://localhost:4000/v1/models` returns the model list
     - [x] `curl -X POST http://localhost:4000/v1/chat/completions` with a simple prompt returns a valid response
-    - [ ] Test with the Python OpenAI SDK *(bash test covers the same OpenAI-compatible surface; SDK pass is a nice-to-have)*
+    - [ ] Test with the Python OpenAI SDK _(bash test covers the same OpenAI-compatible surface; SDK pass is a nice-to-have)_
 
 **Acceptance Criteria:**
 
