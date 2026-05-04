@@ -45,6 +45,29 @@ docker compose logs -f litellm-proxy
 ./scripts/smoke-test.sh
 ```
 
+### Local dev backend (free, no GPU server)
+
+For local development on Mac, point `GPU_BACKEND_BASE_URL` at host-installed
+Ollama. It uses Metal acceleration and is fast on any Apple Silicon Mac.
+
+```bash
+brew install ollama
+brew services start ollama        # or: ollama serve
+ollama pull qwen2.5:3b            # ~2 GB; swap for any model you prefer
+```
+
+The defaults in `.env.example` are already set up for this:
+
+```env
+GPU_MODEL=openai/qwen2.5:3b
+GPU_BACKEND_BASE_URL=http://host.docker.internal:11434/v1
+GPU_BACKEND_API_KEY=ollama
+GPU_HARDWARE_ID=mac-local
+```
+
+When the real GPU server is provisioned, change those four lines — no
+code edit needed.
+
 ## Service endpoints (local defaults)
 
 | Service        | URL                       |
