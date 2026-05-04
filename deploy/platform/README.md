@@ -9,10 +9,11 @@ Q2 2026 deliverable: complete GPU platform with NPU integration ready.
 | ----------------- | ------------------------------------------ |
 | LiteLLM Proxy     | Gateway, routing, virtual keys             |
 | Langfuse          | Observability, tracing, cost tracking      |
-| Open WebUI        | Chat interface for end users               |
+| LibreChat         | Chat interface for end users (Apache-2.0)  |
 | LLM Guard         | PII / prompt-injection scanner (W5)        |
 | Prometheus + Grafana | Monitoring dashboards (W5)              |
 | PostgreSQL        | State store (LiteLLM keys, Langfuse data)  |
+| MongoDB           | LibreChat app data                         |
 | Redis             | Rate limiting + cache                      |
 
 Everything runs in Docker Compose. See `docs/roadmap.md` for the weekly plan.
@@ -22,7 +23,7 @@ Everything runs in Docker Compose. See `docs/roadmap.md` for the weekly plan.
 - Docker Engine 24+ and Docker Compose v2
 - A reachable GPU inference server exposing an OpenAI-compatible API
   (e.g. vLLM, TGI, Ollama). Set `GPU_BACKEND_BASE_URL` in `.env`.
-- ~10 GB free disk for Postgres / Langfuse / Open WebUI volumes
+- ~10 GB free disk for Postgres / MongoDB / Langfuse / LibreChat volumes
 
 ## Quick start
 
@@ -73,7 +74,7 @@ code edit needed.
 | Service        | URL                       |
 | -------------- | ------------------------- |
 | LiteLLM Proxy  | http://localhost:4000     |
-| Open WebUI     | http://localhost:3001     |
+| LibreChat      | http://localhost:3080     |
 | Langfuse       | http://localhost:3000     |
 | Grafana        | http://localhost:3002     |
 | Prometheus     | http://localhost:9090     |
@@ -94,7 +95,7 @@ npuops-platform/
 ├── docker-compose.yml
 ├── litellm/          # config.yaml + Dockerfile
 ├── langfuse/         # Langfuse setup
-├── open-webui/       # branding + custom pages
+├── librechat/        # librechat.yaml + branding assets
 ├── monitoring/       # Prometheus, Grafana, alert rules
 ├── scripts/          # helper scripts (smoke test, backups)
 └── docs/             # internal documentation (roadmap.md)
@@ -109,4 +110,4 @@ npuops-platform/
 
 - LiteLLM: https://docs.litellm.ai
 - Langfuse: https://langfuse.com/docs
-- Open WebUI: https://docs.openwebui.com
+- LibreChat: https://docs.librechat.ai

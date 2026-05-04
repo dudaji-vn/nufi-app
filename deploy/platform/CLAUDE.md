@@ -12,10 +12,11 @@ Current phase: [update weekly] — e.g. "W1 — LiteLLM Proxy + GPU backend"
 
 - LiteLLM Proxy — gateway, routing, virtual keys
 - Langfuse — observability, tracing, cost tracking
-- Open WebUI — chat interface for end users
+- LibreChat — chat interface for end users (Apache-2.0; replaced Open WebUI in W1 due to license restrictions)
 - LLM Guard — PII / prompt injection scanner
 - Prometheus + Grafana — monitoring
-- PostgreSQL — state store
+- PostgreSQL — state store (LiteLLM keys, Langfuse)
+- MongoDB — LibreChat app data
 - Redis — cache + rate limiting
 - Docker Compose — local orchestration
 
@@ -23,7 +24,7 @@ Current phase: [update weekly] — e.g. "W1 — LiteLLM Proxy + GPU backend"
 
 - `litellm/` — config.yaml and customization
 - `langfuse/` — Langfuse setup
-- `open-webui/` — branding and custom pages
+- `librechat/` — LibreChat config (`librechat.yaml`) + branding assets
 - `monitoring/` — Prometheus, Grafana, alert rules
 - `scripts/` — helper scripts
 - `docs/` — internal documentation
@@ -55,3 +56,4 @@ Current phase: [update weekly] — e.g. "W1 — LiteLLM Proxy + GPU backend"
 
 - LiteLLM: docs.litellm.ai
 - Langfuse: langfuse.com/docs
+- LibreChat: docs.librechat.ai

@@ -12,8 +12,8 @@
     │   ├── config.yaml
     │   └── Dockerfile
     ├── langfuse/
-    ├── open-webui/
-    │   └── custom-pages/
+    ├── librechat/
+    │   └── librechat.yaml
     ├── monitoring/
     │   ├── prometheus.yml
     │   └── grafana/dashboards/
@@ -27,7 +27,7 @@
 ### Dependencies to Confirm with Team
 
 - GPU model used for development (Llama? Qwen? which size?)
-- Domain/subdomain to expose Open WebUI
+- Domain/subdomain to expose LibreChat
 - SSO/Auth provider (if any) — confirm early to avoid refactoring later
 
 ---
@@ -154,40 +154,66 @@
 
 ### W2 (May 5 – May 9)
 
-#### Task 2.1 — Open WebUI Deploy + LiteLLM Connection
+#### Task 2.1 — LibreChat Deploy + LiteLLM Connection
+
+> **Decision (2026-05-04):** Replaced Open WebUI with LibreChat. Open WebUI's
+> license shifted away from pure open-source in 2025 (commercial-branding
+> restrictions). LibreChat is Apache-2.0 with native support for OpenAI-compatible
+> custom endpoints — perfect fit for the LiteLLM proxy.
 
 **Goal:** Users have a chat UI, connected to LiteLLM, with basic branding.
 
 **Steps:**
 
-1. **Deploy Open WebUI**
-    - Add `open-webui` service (image `ghcr.io/open-webui/open-webui:main`)
-    - Configure environment:
+1. **Deploy LibreChat + MongoDB**
+    - Add `mongodb` service (image `mongo:7`) — LibreChat stores users / convos here
+    - Add `librechat` service (image `ghcr.io/danny-avila/librechat:v0.7.5` — pin a version)
+    - Configure env (loaded from root `.env`):
         ```
-        OPENAI_API_BASE_URL=http://litellm-proxy:4000/v1
-        OPENAI_API_KEY=${LITELLM_MASTER_KEY}
-        WEBUI_AUTH=true
+        APP_TITLE=NPUOps
+        MONGO_URI=mongodb://librechat:.../LibreChat?authSource=admin
+        JWT_SECRET=...
+        JWT_REFRESH_SECRET=...
+        CREDS_KEY=...                # 32-byte hex
+        CREDS_IV=...                 # 16-byte hex
+        ENDPOINTS=custom
         ```
-    - Volume mount for data persistence
+    - Volume-mount `./librechat/librechat.yaml:/app/librechat.yaml:ro` for endpoint config
 
-2. **Branding customization**
-    - Logo, favicon, app name (via env var `WEBUI_NAME`)
-    - Custom CSS if theme color changes are needed
-    - Reference: Open WebUI Admin Panel → Settings → Interface
+2. **Wire LiteLLM as the only endpoint** — `librechat/librechat.yaml`
+    ```yaml
+    version: 1.2.1
+    endpoints:
+      custom:
+        - name: "NPUOps"
+          apiKey: "${LITELLM_MASTER_KEY}"
+          baseURL: "http://litellm-proxy:4000/v1"
+          models:
+            default: ["llama-3-gpu"]
+            fetch: true                 # auto-discover from LiteLLM /v1/models
+          titleConvo: true
+          titleModel: "llama-3-gpu"
+          modelDisplayLabel: "NPUOps"
+    ```
 
-3. **Test the model dropdown**
-    - Hit LiteLLM's `/models` endpoint
-    - Verify Open WebUI auto-discovers models from `config.yaml`
-    - Test chat → response streams back to the UI
+3. **Branding customization**
+    - App name via `APP_TITLE` env var
+    - Logo / favicon: drop into `librechat/assets/` and mount into the container's
+      `client/public/assets/` (LibreChat docs: Configuration → Customization → Branding)
+    - Custom welcome / footer text via `librechat.yaml` `interface` block
 
-4. **Conversation history**
-    - Built into Open WebUI; just verify persistence after restart
+4. **Test the model dropdown**
+    - Verify LibreChat fetches `/v1/models` from LiteLLM and shows `llama-3-gpu`
+    - Send a message → response streams back
+
+5. **Conversation history**
+    - Built-in; persisted in MongoDB. Verify after a `docker compose restart librechat`.
 
 **Acceptance Criteria:**
 
-- Login → select model → chat → response streams back
-- Conversations persist after page reload
-- Branding displays correctly
+- Register → login → select model → chat → response streams
+- Conversations persist after page reload and container restart
+- Branding (`APP_TITLE`, logo) displays correctly
 
 **Effort estimate:** 2 days
 
@@ -195,13 +221,13 @@
 
 #### Task 2.2 — End-to-end Smoke Test + W2 Checkpoint
 
-**Goal:** The flow `User → Open WebUI → LiteLLM → GPU → Langfuse trace` works.
+**Goal:** The flow `User → LibreChat → LiteLLM → GPU → Langfuse trace` works.
 
 **Steps:**
 
 1. Write an automated smoke test script (Python) to:
-    - Log into Open WebUI (via API or Selenium)
-    - Send a message
+    - Authenticate against LibreChat (`POST /api/auth/login`) and grab a JWT
+    - Send a message via `POST /api/ask/<endpoint>`
     - Assert a response is returned
     - Query the Langfuse API → assert the trace exists
 
@@ -230,8 +256,10 @@
     - Wrap in an internal API if extra logic for team/project tagging is needed
 
 2. **UI design**
-    - Add a custom page to Open WebUI (via plugin / iframe / sidebar link)
-    - Or build a standalone admin page (Next.js / React) and embed it
+    - LibreChat doesn't have a stable plugin API for custom admin pages, so
+      build a **standalone admin app** (Next.js / React) and link to it from
+      LibreChat's `interface.customWelcome` or as an external link
+    - Authenticate the admin app against LiteLLM's master key (admin role only)
     - Required components:
         - Form fields: `name`, `team`, `project`, `expiry`
         - Generate button
@@ -319,12 +347,12 @@
     - Table: recent requests (last 50 rows)
 
 3. **Recommended tech stack**
-    - React + Recharts (reuse if extending Open WebUI plugin)
-    - Or standalone Next.js
+    - Standalone Next.js + Recharts admin app (same one started in Task 3.1)
 
-4. **Integrate with Open WebUI**
-    - Add a "Usage" sidebar link
-    - Iframe or plugin route
+4. **Integrate with LibreChat**
+    - Add an external "Usage" link in `librechat.yaml` `interface.customLinks`
+      pointing at the standalone admin app
+    - (No iframe/plugin route — LibreChat doesn't expose a stable plugin API)
 
 5. **Refresh logic**
     - 30s polling or manual refresh button
@@ -712,7 +740,7 @@
 | gom delays the cost-saving API in W7     | Blocks Task 8.2          | Mock the endpoint early; agree on the contract by W6                    |
 | gom delays NPU connection in W8          | Blocks Canary UI testing | Build with a mock NPU endpoint; swap in the real one when ready         |
 | LLM Guard latency too high               | Hurts UX                 | Use async patterns; fail-open mode for non-critical guards              |
-| Open WebUI customization is hard         | Delays W2                | Fallback: use iframe / standalone admin page                            |
+| LibreChat branding/customization is hard | Delays W2                | Fallback: minimal `APP_TITLE` + logo only; defer deep theming to W9     |
 | Slow PDF generation at scale             | Delays reports           | Async jobs + email link; do not block the UI                            |
 | Many bugs in hoon's validation reports   | W9 is too short          | 20% buffer per phase; fix bugs early                                    |
 
