@@ -34,3 +34,17 @@ endpoints:
       modelDisplayLabel: 'NPUOps'
       forcePrompt: false
       summarize: false
+
+# File uploads. Required for the multimodal flow (drag-drop an image into
+# the chat → goes to llava-vision via LiteLLM as image_url content).
+fileConfig:
+  endpoints:
+    NPUOps:
+      fileLimit: 5
+      fileSizeLimit: 20      # MB per file
+      totalSizeLimit: 50     # MB per request
+      supportedMimeTypes:
+        - 'image/png'
+        - 'image/jpeg'
+        - 'image/webp'
+        - 'image/gif'

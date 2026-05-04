@@ -23,6 +23,20 @@ model_list:
       backend_type: gpu
       hardware_id: os.environ/GPU_HARDWARE_ID
 
+  # Vision (multimodal) model. Backed by Ollama in dev (e.g. llava:7b).
+  # Pull on host first: `ollama pull llava:7b`
+  - model_name: llava-vision
+    litellm_params:
+      model: os.environ/VISION_MODEL
+      api_base: os.environ/GPU_BACKEND_BASE_URL
+      api_key: os.environ/GPU_BACKEND_API_KEY
+      input_cost_per_token: 0.00000030
+      output_cost_per_token: 0.00000080
+    model_info:
+      backend_type: gpu
+      hardware_id: os.environ/GPU_HARDWARE_ID
+      supports_vision: true
+
   # ---------------------------------------------------------------------------
   # NPU models — placeholder, uncomment in W8 once gom delivers the backend
   # ---------------------------------------------------------------------------
