@@ -1,15 +1,15 @@
 import { ORPCError } from '@orpc/server';
 import { z } from 'zod';
 import { o } from '../orpc.ts';
-import { spendLogsByEndUser } from '../lib/litellm.ts';
+import { spendLogsForUser } from '../lib/litellm.ts';
 
 /**
- * usage.daily — bucket the user's spend by UTC day for the last N days.
- * Powers the "last N days" mini-chart on the profile page.
+ * usage.daily — bucket the current user's spend by UTC day for the last N
+ * days. Powers the "last N days" mini-chart on the profile page.
  *
- * We filter by `end_user_id` because that captures both chat (master key
- * + user field) and issued-key calls that include the user field. It's a
- * superset of `user_id` filtering and matches what users actually see.
+ * Filters logs to ones that belong to *this* user only (matched on either
+ * end_user OR metadata.user_api_key_user_id — the LiteLLM query-param
+ * filters silently no-op on this version, so we filter server-side here).
  */
 export const daily = o
   .input(
@@ -28,7 +28,7 @@ export const daily = o
     start.setUTCHours(0, 0, 0, 0);
 
     const startDateStr = start.toISOString().slice(0, 10);
-    const logs = await spendLogsByEndUser(context.user.id, startDateStr);
+    const logs = await spendLogsForUser(context.user.id, startDateStr);
 
     // Pre-fill every day in range with $0 so the chart has a stable shape.
     const buckets = new Map<string, number>();
