@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Copy, Check } from 'lucide-react';
 import { toast } from 'sonner';
-import { useUi } from '~/stores/ui';
+import { useUi } from '@/stores/ui';
 import { Button } from './ui/button';
 import {
   Dialog,

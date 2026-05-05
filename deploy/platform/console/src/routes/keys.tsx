@@ -2,14 +2,14 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { Plus } from 'lucide-react';
-import { api, isUnauthorized } from '~/lib/orpc';
-import { useUi } from '~/stores/ui';
-import { Button } from '~/components/ui/button';
-import { KeyTable, KeyTableSkeleton } from '~/components/KeyTable';
-import { KeysSummary } from '~/components/KeysSummary';
-import { KeysEmptyState } from '~/components/KeysEmptyState';
-import { KeyGenerateModal } from '~/components/KeyGenerateModal';
-import { KeyRevealOnceModal } from '~/components/KeyRevealOnceModal';
+import { api, isUnauthorized } from '@/lib/orpc';
+import { useUi } from '@/stores/ui';
+import { Button } from '@/components/ui/button';
+import { KeyTable, KeyTableSkeleton } from '@/components/key-table';
+import { KeysSummary } from '@/components/keys-summary';
+import { KeysEmptyState } from '@/components/keys-empty-state';
+import { KeyGenerateModal } from '@/components/key-generate-modal';
+import { KeyRevealOnceModal } from '@/components/key-reveal-once-modal';
 
 export const Route = createFileRoute('/keys')({
   component: KeysPage,

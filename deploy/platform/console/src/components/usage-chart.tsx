@@ -1,4 +1,4 @@
-import { dayLabel, formatRelative, formatUsd } from '~/lib/format';
+import { dayLabel, formatRelative, formatUsd } from '@/lib/format';
 import { Skeleton } from './ui/skeleton';
 
 type Point = { date: string; spend: number };

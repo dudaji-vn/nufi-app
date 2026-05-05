@@ -1,5 +1,5 @@
 import { KeyRound, DollarSign, Clock, ShieldAlert } from 'lucide-react';
-import { compactNumber, formatUsd } from '~/lib/format';
+import { compactNumber, formatUsd } from '@/lib/format';
 
 type Key = {
   spend: number;
