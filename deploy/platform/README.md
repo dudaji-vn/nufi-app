@@ -124,6 +124,17 @@ network. Useful as a regression check after touching any of those services.
 ./scripts/e2e-smoke-test.sh --rebuild   # rebuild the e2e image first
 ```
 
+`./scripts/console-smoke-test.sh` is a faster, host-side regression
+check for the W3 console specifically — drives the full happy path
+(login → JIT-provision → generate key → use vs LiteLLM → 429 on
+rate-limit → revoke → 401 on revoked) in under a second:
+
+```bash
+./scripts/console-smoke-test.sh
+```
+
+Same `E2E_*` env vars; requires the stack to already be running.
+
 Required env (auto-set by `./scripts/bootstrap.sh`, otherwise fill in `.env`
 from the new `E2E_*` block in `.env.example`): `E2E_USER_EMAIL`,
 `E2E_USER_PASSWORD`, `E2E_MODEL`, `E2E_EXPECTED_HARDWARE_ID`.
