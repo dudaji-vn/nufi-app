@@ -94,6 +94,27 @@ export async function getCustomer(endUserId: string): Promise<LiteLLMCustomer | 
   }
 }
 
+// --- Spend logs -------------------------------------------------------------
+
+export type SpendLog = {
+  startTime: string;
+  spend: number;
+  model: string | null;
+  api_key: string | null;
+};
+
+type SpendLogResponse = SpendLog[] | { data: SpendLog[] };
+
+export async function spendLogsByEndUser(
+  endUserId: string,
+  startDate?: string,
+): Promise<SpendLog[]> {
+  const params = new URLSearchParams({ end_user_id: endUserId });
+  if (startDate) params.set('start_date', startDate);
+  const raw = await call<SpendLogResponse>('GET', `/spend/logs?${params}`);
+  return Array.isArray(raw) ? raw : (raw?.data ?? []);
+}
+
 // --- Keys -------------------------------------------------------------------
 
 export type LiteLLMKey = {
