@@ -196,6 +196,13 @@ services:
         condition: service_healthy
       langfuse-web:
         condition: service_started
+    # `env_file` loads the whole .env so any cloud-provider key referenced from
+    # litellm/config.yaml (GEMINI_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY, …)
+    # reaches the proxy without a docker-compose edit per provider. The explicit
+    # `environment` entries below still take precedence — keep them for the vars
+    # that need defaulting (`:-`) or renaming.
+    env_file:
+      - .env
     environment:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
       LITELLM_SALT_KEY: ${LITELLM_SALT_KEY}
@@ -203,8 +210,9 @@ services:
       REDIS_HOST: ${REDIS_HOST}
       REDIS_PORT: ${REDIS_PORT}
       REDIS_PASSWORD: ${REDIS_PASSWORD}
-      # Backend URLs/keys referenced by litellm/config.yaml entries (added via
-      # ./scripts/add-model.sh with --base-url-env / --api-key-env).
+      # Local backend URLs/keys (added via ./scripts/add-model.sh with
+      # --base-url-env / --api-key-env). Defaulted so the proxy boots even when
+      # no local backend is configured yet.
       GPU_BACKEND_BASE_URL: ${GPU_BACKEND_BASE_URL:-}
       GPU_BACKEND_API_KEY: ${GPU_BACKEND_API_KEY:-}
       NPU_BACKEND_BASE_URL: ${NPU_BACKEND_BASE_URL:-}

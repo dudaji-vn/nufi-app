@@ -24,6 +24,16 @@
 #       --api-key-env  GPU_BACKEND_API_KEY \
 #       --backend-type gpu --hardware-id mac-local
 #
+#   # native LiteLLM provider — no --base-url, LiteLLM has the endpoint built
+#   # in. See https://docs.litellm.ai/docs/providers/gemini (and /anthropic,
+#   # /cohere, /deepseek, /xai, /mistral, /groq, /perplexity, /ai21, /replicate).
+#   ./scripts/add-model.sh \
+#       --name gemini-2.0-flash \
+#       --model 'gemini/gemini-2.0-flash' \
+#       --api-key-env GEMINI_API_KEY \
+#       --backend-type cloud \
+#       --hardware-id gemini-cloud
+#
 # WHAT IT DOES
 #   1. Validates inputs and checks the name isn't already taken
 #   2. Appends a new entry to litellm/config.yaml (model_list[])
@@ -167,7 +177,7 @@ while [ $# -gt 0 ]; do
       shift
       ;;
     -h | --help)
-      sed -n '2,52p' "$0"
+      sed -n '2,58p' "$0"
       exit 0
       ;;
     *) die "unknown argument: $1 (try --help)" ;;
@@ -263,6 +273,47 @@ suggest_hardware_id() {
   fi
 }
 
+# Native LiteLLM providers — these have their endpoint built into LiteLLM, so
+# api_base is optional (and usually omitted). When the upstream id starts with
+# one of these prefixes we skip the base-URL prompt and write the YAML entry
+# without an api_base field. https://docs.litellm.ai/docs/providers
+is_native_provider() {
+  case "$1" in
+    gemini/* | anthropic/* | cohere/* | deepseek/* | xai/* | mistral/* | groq/* | perplexity/* | ai21/* | replicate/*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+suggest_api_key_env_from_provider() {
+  case "${1%%/*}" in
+    gemini) echo "GEMINI_API_KEY" ;;
+    anthropic) echo "ANTHROPIC_API_KEY" ;;
+    cohere) echo "COHERE_API_KEY" ;;
+    deepseek) echo "DEEPSEEK_API_KEY" ;;
+    xai) echo "XAI_API_KEY" ;;
+    mistral) echo "MISTRAL_API_KEY" ;;
+    groq) echo "GROQ_API_KEY" ;;
+    perplexity) echo "PERPLEXITYAI_API_KEY" ;;
+    ai21) echo "AI21_API_KEY" ;;
+    replicate) echo "REPLICATE_API_KEY" ;;
+    *) echo "" ;;
+  esac
+}
+suggest_hardware_id_from_provider() {
+  case "${1%%/*}" in
+    gemini) echo "gemini-cloud" ;;
+    anthropic) echo "anthropic-cloud" ;;
+    cohere) echo "cohere-cloud" ;;
+    deepseek) echo "deepseek-cloud" ;;
+    xai) echo "xai-cloud" ;;
+    mistral) echo "mistral-cloud" ;;
+    groq) echo "groq-cloud" ;;
+    perplexity) echo "perplexity-cloud" ;;
+    ai21) echo "ai21-cloud" ;;
+    replicate) echo "replicate-cloud" ;;
+    *) echo "" ;;
+  esac
+}
+
 if [ -t 0 ]; then
   step "Add a new OpenAI-compatible model to NPUOps"
   hint "Press Ctrl-C to abort. Defaults shown in [brackets] — hit enter to accept."
@@ -288,14 +339,19 @@ if [ -t 0 ]; then
 
   if [ -z "$BASE_URL" ] && [ -z "$BASE_URL_ENV" ]; then
     group 3 7 "API base URL"
-    hint "Two options — pick one:"
-    hint "  • env var name (recommended: shared between models, easy to change)"
-    hint "  • inline URL (one-off backends)"
-    hint "Common env vars in .env: GPU_BACKEND_BASE_URL, NPU_BACKEND_BASE_URL"
-    hint "Inline examples: https://api.openai.com/v1, http://host.docker.internal:11434/v1"
-    BASE_URL_ENV=$(ask "env var name (blank to enter URL inline)")
-    if [ -z "$BASE_URL_ENV" ]; then
-      BASE_URL=$(ask_required "base URL")
+    if is_native_provider "$UPSTREAM"; then
+      hint "Skipping — '${UPSTREAM%%/*}/' is a native LiteLLM provider with a"
+      hint "built-in endpoint. (Pass --base-url only if routing through a proxy.)"
+    else
+      hint "Two options — pick one:"
+      hint "  • env var name (recommended: shared between models, easy to change)"
+      hint "  • inline URL (one-off backends)"
+      hint "Common env vars in .env: GPU_BACKEND_BASE_URL, NPU_BACKEND_BASE_URL"
+      hint "Inline examples: https://api.openai.com/v1, http://host.docker.internal:11434/v1"
+      BASE_URL_ENV=$(ask "env var name (blank to enter URL inline)")
+      if [ -z "$BASE_URL_ENV" ]; then
+        BASE_URL=$(ask_required "base URL")
+      fi
     fi
   fi
 
@@ -311,6 +367,7 @@ if [ -t 0 ]; then
     hint "Recommended: store in .env, reference by env var name (no secrets in git)."
     hint "Leave blank to provide an inline key instead (only safe for dummy/dev backends)."
     suggested_env=$(suggest_api_key_env "$url_for_suggestions")
+    [ -z "$suggested_env" ] && suggested_env=$(suggest_api_key_env_from_provider "$UPSTREAM")
     API_KEY_ENV=$(ask "env var name (e.g. OPENAI_API_KEY)" "$suggested_env")
     if [ -z "$API_KEY_ENV" ]; then
       API_KEY_INLINE=$(ask_required "inline API key")
@@ -321,6 +378,7 @@ if [ -t 0 ]; then
     group 5 7 "Backend type"
     hint "gpu = local GPU node, npu = NPU node, cloud = managed provider."
     suggested_bt=$(suggest_backend_type "$url_for_suggestions")
+    is_native_provider "$UPSTREAM" && suggested_bt="cloud"
     BACKEND_TYPE=$(ask_choice "backend type (gpu/npu/cloud)" "gpu npu cloud" "$suggested_bt")
   fi
 
@@ -329,6 +387,7 @@ if [ -t 0 ]; then
     hint "Used by cost / usage reports to aggregate by hardware or cloud."
     hint "Examples: gpu-node-01, npu-node-01, openai-cloud, together-cloud"
     suggested_hw=$(suggest_hardware_id "$BACKEND_TYPE" "$url_for_suggestions")
+    [ -z "$suggested_hw" ] && suggested_hw=$(suggest_hardware_id_from_provider "$UPSTREAM")
     HARDWARE_ID=$(ask_required "hardware ID" "$suggested_hw")
   fi
 
@@ -350,12 +409,16 @@ fi
 # -----------------------------------------------------------------------------
 [ -n "$NAME" ] || die "model name required (--name)"
 [ -n "$UPSTREAM" ] || die "upstream model id required (--model)"
-[ -n "$BASE_URL" ] || [ -n "$BASE_URL_ENV" ] || die "base URL required (--base-url or --base-url-env)"
+if [ -z "$BASE_URL" ] && [ -z "$BASE_URL_ENV" ]; then
+  is_native_provider "$UPSTREAM" || die "base URL required (--base-url or --base-url-env) for OpenAI-compatible backends"
+fi
 [ -n "$HARDWARE_ID" ] || die "hardware ID required (--hardware-id)"
 [ -n "$BACKEND_TYPE" ] || BACKEND_TYPE="gpu"
 [[ "$BACKEND_TYPE" =~ ^(gpu|npu|cloud)$ ]] || die "backend type must be gpu, npu, or cloud (got: $BACKEND_TYPE)"
 
-# Resolve base URL — env-var ref takes precedence over inline.
+# Resolve base URL — env-var ref takes precedence over inline. May be empty
+# for native LiteLLM providers (gemini/, anthropic/, …); the YAML write below
+# strips api_base in that case.
 if [ -n "$BASE_URL_ENV" ]; then
   BASE_URL_VALUE="os.environ/$BASE_URL_ENV"
 else
@@ -400,7 +463,7 @@ step "Summary"
 printf "    %-22s ${BOLD}%s${RESET}\n" \
   "name" "${NAME}" \
   "upstream" "${UPSTREAM}" \
-  "base URL" "${BASE_URL_VALUE}" \
+  "base URL" "${BASE_URL_VALUE:-(none — native provider)}" \
   "api_key" "${API_KEY_VALUE}" \
   "backend_type" "${BACKEND_TYPE}" \
   "hardware_id" "${HARDWARE_ID}" \
@@ -456,6 +519,11 @@ else
       }
     }]
   ' litellm/config.yaml
+  # Native LiteLLM providers (gemini/, anthropic/, …) don't take an api_base —
+  # strip it back out if the user didn't supply one.
+  if [ -z "$BASE_URL_VALUE" ]; then
+    yq eval -i 'del(.model_list[-1].litellm_params.api_base)' litellm/config.yaml
+  fi
   ok "appended '$NAME' to model_list"
 fi
 
@@ -473,17 +541,43 @@ fi
 
 # -----------------------------------------------------------------------------
 # .env reminder
+#
+# Order matters: we MUST resolve missing env vars BEFORE the restart below.
+# litellm-proxy uses `env_file: .env` (see docker-compose.yml), so vars added
+# here flow into the container automatically on the next start. Without this
+# step, the proxy boots with empty values and the smoke test fails — the user
+# then has to edit .env and restart manually, which is exactly the trap the
+# Gemini onboarding hit.
 # -----------------------------------------------------------------------------
-if [ -n "$API_KEY_ENV" ] && ! grep -qE "^${API_KEY_ENV}=" .env 2>/dev/null; then
-  warn "${API_KEY_ENV} is not set in .env yet. Add it before testing:"
-  echo "      echo '${API_KEY_ENV}=<your-real-key>' >> .env"
+prompt_or_warn_missing_env() {
+  # $1 = env var name, $2 = example value (for the manual-fix hint)
+  local var="$1" example="$2" entered=""
+  [ -z "$var" ] && return 0
+  grep -qE "^${var}=" .env 2>/dev/null && return 0
+
+  if [ -t 0 ]; then
+    warn "${var} is not in .env yet — the proxy will start with it empty."
+    printf "    Paste the value now (or press enter to skip): "
+    # -s so secrets don't appear on the terminal; print our own newline since
+    # the user's enter keystroke isn't echoed.
+    read -rs entered
+    echo
+    if [ -n "$entered" ]; then
+      printf "%s=%s\n" "$var" "$entered" >> .env
+      ok "wrote ${var} to .env"
+      return 0
+    fi
+  else
+    warn "${var} is not set in .env."
+  fi
+  warn "skipping restart + test — set it manually, then run:"
+  echo "      echo '${var}=${example}' >> .env"
   echo "      docker compose restart litellm-proxy"
-fi
-if [ -n "$BASE_URL_ENV" ] && ! grep -qE "^${BASE_URL_ENV}=" .env 2>/dev/null; then
-  warn "${BASE_URL_ENV} is not set in .env yet. Add it before testing:"
-  echo "      echo '${BASE_URL_ENV}=https://...' >> .env"
-  echo "      docker compose restart litellm-proxy"
-fi
+  DO_RESTART=0
+  RUN_TEST=0
+}
+prompt_or_warn_missing_env "$API_KEY_ENV" "<your-real-key>"
+prompt_or_warn_missing_env "$BASE_URL_ENV" "https://..."
 
 # -----------------------------------------------------------------------------
 # restart services

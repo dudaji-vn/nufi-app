@@ -15,8 +15,14 @@
 # Reference shape — every entry MUST set backend_type and hardware_id:
 #   - model_name: my-model
 #     litellm_params:
-#       model: openai/<upstream-id>            # provider prefix is required
-#       api_base: os.environ/<URL_VAR>         # or an inline URL
+#       model: openai/<upstream-id>            # provider prefix is required;
+#                                              # use a native one (gemini/,
+#                                              # anthropic/, cohere/, …) to
+#                                              # talk directly to that cloud
+#       api_base: os.environ/<URL_VAR>         # required for OpenAI-compatible
+#                                              # backends; OMIT for native
+#                                              # providers (LiteLLM has the
+#                                              # endpoint built in)
 #       api_key:  os.environ/<KEY_VAR>         # or an inline key
 #       input_cost_per_token:  0.00000020
 #       output_cost_per_token: 0.00000060
@@ -90,6 +96,16 @@ model_list:
     model_info:
       backend_type: gpu
       hardware_id: mac-local
+      supports_vision: false
+  - model_name: gemini
+    litellm_params:
+      model: gemini/gemini-2.0-flash
+      api_key: os.environ/GEMINI_API_KEY
+      input_cost_per_token: 0.00000020
+      output_cost_per_token: 0.00000060
+    model_info:
+      backend_type: cloud
+      hardware_id: gemini-cloud
       supports_vision: false
 router_settings:
   # Simple round-robin across replicas of the same model_name. Switch to
