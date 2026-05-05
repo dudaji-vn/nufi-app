@@ -219,8 +219,8 @@ Changing a default = redeploy. No UI for editing defaults in W3.
 
 ### Day 5 (Fri 2026-05-16) — verification + demo
 
-- [ ] End-to-end script: generate → use vs LiteLLM → exceed `rpm_limit` → revoke
-- [ ] Add e2e to `scripts/` for regression
+- [x] End-to-end script: generate → use vs LiteLLM → exceed `rpm_limit` → revoke — `scripts/console-smoke-test.sh`
+- [x] Add e2e to `scripts/` for regression — Bun TS test in `console/scripts/smoke.ts`, bash wrapper at repo root, runs in <1 s, 9 hard checks
 - [ ] Internal demo
 
 ## Acceptance criteria
