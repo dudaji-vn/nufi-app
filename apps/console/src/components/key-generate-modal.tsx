@@ -1,5 +1,5 @@
-import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import { toast } from 'sonner';
 import { api } from '@/lib/orpc';
 import { useUi } from '@/stores/ui';
@@ -14,13 +14,7 @@ import {
 } from './ui/dialog';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from './ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 
 const BUDGET_DURATIONS = ['24h', '7d', '30d'] as const;
 const KEY_DURATIONS = ['7d', '30d', '90d', '180d', '365d', 'never'] as const;
@@ -40,10 +34,12 @@ export function KeyGenerateModal() {
 
   const [alias, setAlias] = useState('');
   const [maxBudget, setMaxBudget] = useState(DEFAULTS.maxBudget);
-  const [budgetDuration, setBudgetDuration] = useState<typeof BUDGET_DURATIONS[number]>(DEFAULTS.budgetDuration);
+  const [budgetDuration, setBudgetDuration] = useState<(typeof BUDGET_DURATIONS)[number]>(
+    DEFAULTS.budgetDuration,
+  );
   const [tpmLimit, setTpmLimit] = useState(DEFAULTS.tpmLimit);
   const [rpmLimit, setRpmLimit] = useState(DEFAULTS.rpmLimit);
-  const [duration, setDuration] = useState<typeof KEY_DURATIONS[number]>(DEFAULTS.duration);
+  const [duration, setDuration] = useState<(typeof KEY_DURATIONS)[number]>(DEFAULTS.duration);
 
   const qc = useQueryClient();
   const create = useMutation(
@@ -84,7 +80,8 @@ export function KeyGenerateModal() {
           <DialogHeader>
             <DialogTitle>Generate API key</DialogTitle>
             <DialogDescription>
-              Use this key to call the LiteLLM proxy directly. The full value is shown once after creation.
+              Use this key to call the LiteLLM proxy directly. The full value is shown once after
+              creation.
             </DialogDescription>
           </DialogHeader>
 
@@ -115,13 +112,18 @@ export function KeyGenerateModal() {
             </div>
             <div className="space-y-2">
               <Label>Budget period</Label>
-              <Select value={budgetDuration} onValueChange={(v) => setBudgetDuration(v as typeof BUDGET_DURATIONS[number])}>
+              <Select
+                value={budgetDuration}
+                onValueChange={(v) => setBudgetDuration(v as (typeof BUDGET_DURATIONS)[number])}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {BUDGET_DURATIONS.map((d) => (
-                    <SelectItem key={d} value={d}>{d}</SelectItem>
+                    <SelectItem key={d} value={d}>
+                      {d}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -157,13 +159,18 @@ export function KeyGenerateModal() {
 
           <div className="space-y-2">
             <Label>Expires</Label>
-            <Select value={duration} onValueChange={(v) => setDuration(v as typeof KEY_DURATIONS[number])}>
+            <Select
+              value={duration}
+              onValueChange={(v) => setDuration(v as (typeof KEY_DURATIONS)[number])}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {KEY_DURATIONS.map((d) => (
-                  <SelectItem key={d} value={d}>{d === 'never' ? 'Never' : `in ${d}`}</SelectItem>
+                  <SelectItem key={d} value={d}>
+                    {d === 'never' ? 'Never' : `in ${d}`}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>

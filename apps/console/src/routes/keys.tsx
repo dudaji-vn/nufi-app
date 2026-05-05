@@ -1,15 +1,15 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { Plus } from 'lucide-react';
-import { api, isUnauthorized } from '@/lib/orpc';
-import { useUi } from '@/stores/ui';
-import { Button } from '@/components/ui/button';
-import { KeyTable, KeyTableSkeleton } from '@/components/key-table';
-import { KeysSummary } from '@/components/keys-summary';
-import { KeysEmptyState } from '@/components/keys-empty-state';
+import { useEffect } from 'react';
 import { KeyGenerateModal } from '@/components/key-generate-modal';
 import { KeyRevealOnceModal } from '@/components/key-reveal-once-modal';
+import { KeyTable, KeyTableSkeleton } from '@/components/key-table';
+import { KeysEmptyState } from '@/components/keys-empty-state';
+import { KeysSummary } from '@/components/keys-summary';
+import { Button } from '@/components/ui/button';
+import { api, isUnauthorized } from '@/lib/orpc';
+import { useUi } from '@/stores/ui';
 
 export const Route = createFileRoute('/keys')({
   component: KeysPage,
@@ -51,9 +51,7 @@ function KeysPage() {
         <p className="text-sm text-destructive">Error: {keys.error.message}</p>
       )}
 
-      {keys.data && !hasKeys && (
-        <KeysEmptyState onGenerate={() => setGenerateOpen(true)} />
-      )}
+      {keys.data && !hasKeys && <KeysEmptyState onGenerate={() => setGenerateOpen(true)} />}
 
       {keys.data && hasKeys && (
         <>

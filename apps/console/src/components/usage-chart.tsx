@@ -13,7 +13,7 @@ type Props = {
 };
 
 const CHART_HEIGHT_PX = 176; // h-44 — keeps small bars (>=15%) clearly visible
-const MIN_BAR_PCT = 15;       // any non-zero day gets at least this much height
+const MIN_BAR_PCT = 15; // any non-zero day gets at least this much height
 
 /**
  * Square-root scaling so a $0.0001 day is visible next to a $0.012 peak,
@@ -79,7 +79,7 @@ export function UsageChart({ series, total, requests, peak, mostRecent, pending 
                   hasSpend ? (isPeak ? 'bg-primary' : 'bg-primary/55') : 'bg-muted'
                 }`}
                 style={{ height: hasSpend ? `${pct}%` : '4px' }}
-                aria-label={`${d.date}: ${formatUsd(d.spend)}`}
+                title={`${d.date}: ${formatUsd(d.spend)}`}
               />
             </div>
           );

@@ -1,5 +1,5 @@
-import { createUser, getUser, type LiteLLMUserInfo } from './litellm.ts';
 import type { AuthedUser } from '../middleware/auth.ts';
+import { createUser, getUser, type LiteLLMUserInfo } from './litellm.ts';
 
 const DEFAULT_USER_BUDGET = Number(process.env.DEFAULT_USER_BUDGET ?? 10);
 const DEFAULT_BUDGET_DURATION = process.env.DEFAULT_BUDGET_DURATION ?? '30d';

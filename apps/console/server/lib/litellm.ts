@@ -7,7 +7,10 @@ const BASE = process.env.LITELLM_BASE_URL ?? 'http://litellm-proxy:4000';
 const KEY = process.env.LITELLM_MASTER_KEY ?? '';
 
 export class LiteLLMError extends Error {
-  constructor(public status: number, public bodyText: string) {
+  constructor(
+    public status: number,
+    public bodyText: string,
+  ) {
     super(`LiteLLM ${status}: ${bodyText.slice(0, 200)}`);
   }
 }
@@ -72,7 +75,7 @@ export async function createUser(input: {
 // Internal-User row of the same id. So we always need to fetch both.
 
 export type LiteLLMCustomer = {
-  user_id: string;       // = end_user_id (the LibreChat _id)
+  user_id: string; // = end_user_id (the LibreChat _id)
   spend: number;
   blocked?: boolean;
   alias?: string | null;
@@ -101,8 +104,8 @@ export type SpendLog = {
   spend: number;
   model: string | null;
   api_key: string | null;
-  user?: string | null;       // either master-key owner OR a key holder
-  end_user?: string | null;   // OpenAI `user` field from the request body
+  user?: string | null; // either master-key owner OR a key holder
+  end_user?: string | null; // OpenAI `user` field from the request body
   metadata?: {
     user_api_key_user_id?: string | null;
     user_api_key_alias?: string | null;
@@ -123,10 +126,7 @@ type SpendLogResponse = SpendLog[] | { data: SpendLog[] };
  * or per-user materialised view. For W3 scale (low thousands per user) the
  * client-side filter is fine.
  */
-export async function spendLogsForUser(
-  userId: string,
-  startDate?: string,
-): Promise<SpendLog[]> {
+export async function spendLogsForUser(userId: string, startDate?: string): Promise<SpendLog[]> {
   const params = new URLSearchParams();
   if (startDate) params.set('start_date', startDate);
   const url = `/spend/logs${params.toString() ? `?${params}` : ''}`;
@@ -143,7 +143,7 @@ export async function spendLogsForUser(
 
 export type LiteLLMKey = {
   key_alias: string | null;
-  token: string;            // hashed/short identifier — safe to expose
+  token: string; // hashed/short identifier — safe to expose
   user_id: string | null;
   team_id: string | null;
   max_budget: number | null;

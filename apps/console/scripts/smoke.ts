@@ -21,8 +21,12 @@ const MODEL = process.env.E2E_MODEL ?? 'qwen2.5-3b';
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:120.0) Gecko/20100101 Firefox/120.0';
 
 const C = {
-  red: '\x1b[31m', green: '\x1b[32m', gray: '\x1b[90m',
-  yellow: '\x1b[33m', bold: '\x1b[1m', reset: '\x1b[0m',
+  red: '\x1b[31m',
+  green: '\x1b[32m',
+  gray: '\x1b[90m',
+  yellow: '\x1b[33m',
+  bold: '\x1b[1m',
+  reset: '\x1b[0m',
 };
 
 function required(name: string): string {
@@ -50,7 +54,11 @@ async function postJson(url: string, body: unknown, init: RequestInit = {}): Pro
 async function loginOrRegister(): Promise<string> {
   const headers = { 'User-Agent': UA };
 
-  const login = await postJson(`${LIBRECHAT}/api/auth/login`, { email: EMAIL, password: PASSWORD }, { headers });
+  const login = await postJson(
+    `${LIBRECHAT}/api/auth/login`,
+    { email: EMAIL, password: PASSWORD },
+    { headers },
+  );
   if (login.ok) {
     const body = (await login.json()) as { token: string };
     if (!body.token) throw new Error('login response missing token');
@@ -61,19 +69,34 @@ async function loginOrRegister(): Promise<string> {
   }
 
   // 401/422 → user might not exist yet. Try registering.
-  const reg = await postJson(`${LIBRECHAT}/api/auth/register`, {
-    email: EMAIL, password: PASSWORD, confirm_password: PASSWORD, name: NAME, username: NAME,
-  }, { headers });
+  const reg = await postJson(
+    `${LIBRECHAT}/api/auth/register`,
+    {
+      email: EMAIL,
+      password: PASSWORD,
+      confirm_password: PASSWORD,
+      name: NAME,
+      username: NAME,
+    },
+    { headers },
+  );
   if (!reg.ok) throw new Error(`register failed: ${reg.status} ${await reg.text()}`);
 
-  const login2 = await postJson(`${LIBRECHAT}/api/auth/login`, { email: EMAIL, password: PASSWORD }, { headers });
-  if (!login2.ok) throw new Error(`login after register failed: ${login2.status} ${await login2.text()}`);
+  const login2 = await postJson(
+    `${LIBRECHAT}/api/auth/login`,
+    { email: EMAIL, password: PASSWORD },
+    { headers },
+  );
+  if (!login2.ok)
+    throw new Error(`login after register failed: ${login2.status} ${await login2.text()}`);
   const body = (await login2.json()) as { token: string };
   return body.token;
 }
 
 async function rpc(path: string, input: unknown, bearer: string): Promise<Response> {
-  return postJson(`${CONSOLE}/rpc${path}`, input, { headers: { Authorization: `Bearer ${bearer}` } });
+  return postJson(`${CONSOLE}/rpc${path}`, input, {
+    headers: { Authorization: `Bearer ${bearer}` },
+  });
 }
 
 async function rpcOk<T>(path: string, input: unknown, bearer: string): Promise<T> {
@@ -148,16 +171,20 @@ await step('rpc/me/get with auth returns user info (JIT-provisioned)', async () 
 await step('rpc/keys/create returns full sk-… key once', async () => {
   type CreateResult = { key: string; view: { token: string; alias: string | null } };
   const alias = `smoke-${Date.now()}`;
-  const result = await rpcOk<CreateResult>('/keys/create', {
-    json: {
-      alias,
-      maxBudget: 1,
-      budgetDuration: '24h',
-      tpmLimit: 10_000,
-      rpmLimit: 5,
-      duration: '7d',
+  const result = await rpcOk<CreateResult>(
+    '/keys/create',
+    {
+      json: {
+        alias,
+        maxBudget: 1,
+        budgetDuration: '24h',
+        tpmLimit: 10_000,
+        rpmLimit: 5,
+        duration: '7d',
+      },
     },
-  }, bearer);
+    bearer,
+  );
   assert(typeof result.key === 'string' && result.key.startsWith('sk-'), 'expected sk-… key');
   assert(result.view.alias === alias, `expected view.alias=${alias}`);
   createdKey = result.key;
@@ -165,11 +192,15 @@ await step('rpc/keys/create returns full sk-… key once', async () => {
 });
 
 await step('issued key works against LiteLLM /v1/chat/completions', async () => {
-  const res = await postJson(`${LITELLM}/v1/chat/completions`, {
-    model: MODEL,
-    messages: [{ role: 'user', content: 'pong' }],
-    max_tokens: 5,
-  }, { headers: { Authorization: `Bearer ${createdKey}` } });
+  const res = await postJson(
+    `${LITELLM}/v1/chat/completions`,
+    {
+      model: MODEL,
+      messages: [{ role: 'user', content: 'pong' }],
+      max_tokens: 5,
+    },
+    { headers: { Authorization: `Bearer ${createdKey}` } },
+  );
   // Read body once — fetch streams can only be consumed a single time.
   const text = await res.text();
   assert(res.ok, `expected 200, got ${res.status}: ${text.slice(0, 200)}`);
@@ -181,18 +212,25 @@ await step('rpc/keys/list shows the new key', async () => {
   type Key = { token: string; alias: string | null };
   const list = await rpcOk<Key[]>('/keys/list', {}, bearer);
   assert(Array.isArray(list), 'expected an array');
-  assert(list.some((k) => k.token === createdToken), 'expected new key in list');
+  assert(
+    list.some((k) => k.token === createdToken),
+    'expected new key in list',
+  );
 });
 
 await step('hammering past rpm_limit produces a 429', async () => {
   const fanout = 20; // rpm_limit=5; 20 in parallel guarantees a 429
   const responses = await Promise.all(
     Array.from({ length: fanout }, () =>
-      postJson(`${LITELLM}/v1/chat/completions`, {
-        model: MODEL,
-        messages: [{ role: 'user', content: 'x' }],
-        max_tokens: 1,
-      }, { headers: { Authorization: `Bearer ${createdKey}` } }),
+      postJson(
+        `${LITELLM}/v1/chat/completions`,
+        {
+          model: MODEL,
+          messages: [{ role: 'user', content: 'x' }],
+          max_tokens: 1,
+        },
+        { headers: { Authorization: `Bearer ${createdKey}` } },
+      ),
     ),
   );
   const codes = responses.map((r) => r.status);
@@ -200,9 +238,13 @@ await step('hammering past rpm_limit produces a 429', async () => {
 });
 
 await step('rpc/keys/remove revokes the key', async () => {
-  const result = await rpcOk<{ ok: true }>('/keys/remove', {
-    json: { token: createdToken },
-  }, bearer);
+  const result = await rpcOk<{ ok: true }>(
+    '/keys/remove',
+    {
+      json: { token: createdToken },
+    },
+    bearer,
+  );
   assert(result.ok === true, 'expected ok:true');
 });
 
@@ -211,11 +253,15 @@ await step('revoked key is rejected by LiteLLM', async () => {
   // cache. Retry briefly so the assertion is stable.
   let lastStatus = 0;
   for (let i = 0; i < 8; i++) {
-    const res = await postJson(`${LITELLM}/v1/chat/completions`, {
-      model: MODEL,
-      messages: [{ role: 'user', content: 'x' }],
-      max_tokens: 1,
-    }, { headers: { Authorization: `Bearer ${createdKey}` } });
+    const res = await postJson(
+      `${LITELLM}/v1/chat/completions`,
+      {
+        model: MODEL,
+        messages: [{ role: 'user', content: 'x' }],
+        max_tokens: 1,
+      },
+      { headers: { Authorization: `Bearer ${createdKey}` } },
+    );
     lastStatus = res.status;
     if (res.status === 401) return;
     await new Promise((r) => setTimeout(r, 250));

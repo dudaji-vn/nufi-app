@@ -1,7 +1,7 @@
-import { Link, Outlet, createRootRouteWithContext } from '@tanstack/react-router';
 import type { QueryClient } from '@tanstack/react-query';
-import { Toaster } from '@/components/ui/sonner';
+import { createRootRouteWithContext, Link, Outlet } from '@tanstack/react-router';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { Toaster } from '@/components/ui/sonner';
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   component: RootLayout,

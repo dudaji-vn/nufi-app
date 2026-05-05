@@ -1,9 +1,9 @@
+import { RPCHandler } from '@orpc/server/fetch';
 import { Hono } from 'hono';
 import { logger } from 'hono/logger';
-import { RPCHandler } from '@orpc/server/fetch';
-import { router } from './router/index.ts';
-import { auth, type AuthedUser } from './middleware/auth.ts';
 import { servePublic } from './lib/serve-public.ts';
+import { type AuthedUser, auth } from './middleware/auth.ts';
+import { router } from './router/index.ts';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const SERVE_DIST = process.env.SERVE_DIST !== 'false';

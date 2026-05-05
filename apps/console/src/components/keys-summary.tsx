@@ -1,4 +1,4 @@
-import { KeyRound, DollarSign, Clock, ShieldAlert } from 'lucide-react';
+import { Clock, DollarSign, KeyRound, ShieldAlert } from 'lucide-react';
 import { compactNumber, formatUsd } from '@/lib/format';
 
 type Key = {
@@ -24,7 +24,11 @@ export function KeysSummary({ keys }: Props) {
 
   return (
     <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
-      <Stat icon={<KeyRound className="size-4" />} label="Active keys" value={compactNumber(total)} />
+      <Stat
+        icon={<KeyRound className="size-4" />}
+        label="Active keys"
+        value={compactNumber(total)}
+      />
       <Stat
         icon={<DollarSign className="size-4" />}
         label="Used across keys"
@@ -66,9 +70,7 @@ function Stat({
         {icon}
         {label}
       </div>
-      <p className={`mt-2 font-mono text-xl font-semibold tracking-tight ${valueClass}`}>
-        {value}
-      </p>
+      <p className={`mt-2 font-mono text-xl font-semibold tracking-tight ${valueClass}`}>{value}</p>
       {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
     </div>
   );

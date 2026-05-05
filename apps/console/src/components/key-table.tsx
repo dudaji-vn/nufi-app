@@ -1,21 +1,14 @@
-import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Trash2 } from 'lucide-react';
+import { useState } from 'react';
 import { toast } from 'sonner';
-import { api } from '@/lib/orpc';
 import { compactNumber, formatDate, formatUsd, maskKey, pctSpent } from '@/lib/format';
-import { Button } from './ui/button';
-import { Badge } from './ui/badge';
-import { Skeleton } from './ui/skeleton';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from './ui/table';
+import { api } from '@/lib/orpc';
 import { ConfirmDialog } from './confirm-dialog';
+import { Badge } from './ui/badge';
+import { Button } from './ui/button';
+import { Skeleton } from './ui/skeleton';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 
 type KeyRow = {
   alias: string | null;
@@ -61,13 +54,14 @@ export function KeyTable({ rows }: { rows: KeyRow[] }) {
           <TableBody>
             {rows.map((k) => {
               const pct = pctSpent(k.spend, k.maxBudget);
-              const tone =
-                pct >= 90 ? 'bg-destructive' : pct >= 70 ? 'bg-amber-500' : 'bg-primary';
+              const tone = pct >= 90 ? 'bg-destructive' : pct >= 70 ? 'bg-amber-500' : 'bg-primary';
               return (
                 <TableRow key={k.token}>
                   <TableCell>
                     <div className="flex flex-col">
-                      <span className="font-medium">{k.alias ?? <span className="text-muted-foreground">(unnamed)</span>}</span>
+                      <span className="font-medium">
+                        {k.alias ?? <span className="text-muted-foreground">(unnamed)</span>}
+                      </span>
                       <span className="font-mono text-[11px] text-muted-foreground">
                         {maskKey(k.token)}
                       </span>
@@ -79,7 +73,8 @@ export function KeyTable({ rows }: { rows: KeyRow[] }) {
                         <span className="font-mono">{formatUsd(k.spend)}</span>
                         {k.maxBudget !== null && (
                           <span className="text-muted-foreground">
-                            {' '}of <span className="font-mono">{formatUsd(k.maxBudget)}</span>
+                            {' '}
+                            of <span className="font-mono">{formatUsd(k.maxBudget)}</span>
                             {k.budgetDuration && <> · {k.budgetDuration}</>}
                           </span>
                         )}
@@ -94,16 +89,22 @@ export function KeyTable({ rows }: { rows: KeyRow[] }) {
                   <TableCell className="hidden md:table-cell">
                     <div className="flex flex-col gap-0.5 text-xs">
                       <span>
-                        <Badge variant="secondary" className="font-mono">{compactNumber(k.tpmLimit)}</Badge>
+                        <Badge variant="secondary" className="font-mono">
+                          {compactNumber(k.tpmLimit)}
+                        </Badge>
                         <span className="ml-1 text-muted-foreground">tok/min</span>
                       </span>
                       <span>
-                        <Badge variant="secondary" className="font-mono">{compactNumber(k.rpmLimit)}</Badge>
+                        <Badge variant="secondary" className="font-mono">
+                          {compactNumber(k.rpmLimit)}
+                        </Badge>
                         <span className="ml-1 text-muted-foreground">req/min</span>
                       </span>
                     </div>
                   </TableCell>
-                  <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">{formatDate(k.createdAt)}</TableCell>
+                  <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">
+                    {formatDate(k.createdAt)}
+                  </TableCell>
                   <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">
                     {k.expires ? formatDate(k.expires) : <span className="italic">never</span>}
                   </TableCell>
@@ -153,8 +154,8 @@ export function KeyTableSkeleton() {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {Array.from({ length: 3 }).map((_, i) => (
-            <TableRow key={i}>
+          {['skel-1', 'skel-2', 'skel-3'].map((id) => (
+            <TableRow key={id}>
               <TableCell>
                 <Skeleton className="h-4 w-24" />
                 <Skeleton className="mt-1 h-3 w-20" />
@@ -163,10 +164,18 @@ export function KeyTableSkeleton() {
                 <Skeleton className="h-4 w-32" />
                 <Skeleton className="mt-1 h-1 w-32" />
               </TableCell>
-              <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-16" /></TableCell>
-              <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-16" /></TableCell>
-              <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-16" /></TableCell>
-              <TableCell><Skeleton className="size-8 rounded-md" /></TableCell>
+              <TableCell className="hidden md:table-cell">
+                <Skeleton className="h-4 w-16" />
+              </TableCell>
+              <TableCell className="hidden lg:table-cell">
+                <Skeleton className="h-4 w-16" />
+              </TableCell>
+              <TableCell className="hidden lg:table-cell">
+                <Skeleton className="h-4 w-16" />
+              </TableCell>
+              <TableCell>
+                <Skeleton className="size-8 rounded-md" />
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>
