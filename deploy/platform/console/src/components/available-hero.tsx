@@ -17,9 +17,11 @@ export function AvailableHero({ spent, maxBudget, budgetDuration }: Props) {
 
   if (maxBudget === null) {
     return (
-      <div className="rounded-xl border bg-card p-6 text-card-foreground">
-        <p className="text-sm font-medium uppercase tracking-wider text-muted-foreground">You have unlimited usage</p>
-        <p className="mt-2 font-mono text-4xl font-semibold tracking-tight">{formatUsd(spent)}</p>
+      <div className="rounded-xl border bg-card p-5 text-card-foreground sm:p-6">
+        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground sm:text-sm">
+          You have unlimited usage
+        </p>
+        <p className="mt-2 font-mono text-3xl font-semibold tracking-tight sm:text-4xl">{formatUsd(spent)}</p>
         <p className="mt-2 text-sm text-muted-foreground">used so far</p>
       </div>
     );
@@ -31,10 +33,12 @@ export function AvailableHero({ spent, maxBudget, budgetDuration }: Props) {
   const status = pct >= 90 ? "Almost out" : pct >= 70 ? "Running low" : "Healthy";
 
   return (
-    <div className="rounded-xl border bg-card p-6 text-card-foreground">
-      <p className="text-sm font-medium uppercase tracking-wider text-muted-foreground">Available · next {period}</p>
-      <div className="mt-2 flex items-baseline gap-3">
-        <p className="font-mono text-4xl font-semibold tracking-tight">{formatUsd(remaining)}</p>
+    <div className="rounded-xl border bg-card p-5 text-card-foreground sm:p-6">
+      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground sm:text-sm">
+        Available · next {period}
+      </p>
+      <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <p className="font-mono text-3xl font-semibold tracking-tight sm:text-4xl">{formatUsd(remaining)}</p>
         <span className="text-sm text-muted-foreground">of {formatUsd(maxBudget)}</span>
       </div>
 
