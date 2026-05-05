@@ -21,6 +21,7 @@
     "clsx": "^2.1.1",
     "hono": "^4.12.16",
     "lucide-react": "^1.14.0",
+    "radix-ui": "^1.4.3",
     "react": "^19",
     "react-dom": "^19",
     "tailwind-merge": "^3.5.0",
