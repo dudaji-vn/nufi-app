@@ -33,7 +33,6 @@ endpoints:
           - llama3.1-latest
           - gemma4-latest
           - llava-7b
-          - __dedup_test
         fetch: true
       titleConvo: true
       # Use whatever model the user is chatting with to title the conversation,

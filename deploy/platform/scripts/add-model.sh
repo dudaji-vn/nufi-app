@@ -310,9 +310,17 @@ else
   die "API key required (--api-key-env or --api-key)"
 fi
 
-# Uniqueness check
-if yq eval '.model_list[].model_name' litellm/config.yaml 2>/dev/null | grep -Fxq "$NAME"; then
-  die "model_name '$NAME' already exists in litellm/config.yaml"
+# Idempotency check. Re-runs with an existing model_name skip the litellm/config.yaml
+# append silently (the LibreChat sync below already dedupes via `| unique`, and
+# the test/restart still run). To *update* an existing entry, remove it first.
+#
+# IMPORTANT: do NOT pipe yq into `grep -q`. `grep -q` exits early on the first
+# match, sending SIGPIPE to yq, which makes the pipeline exit 141 under
+# `set -o pipefail` — the `if` then evaluates the success case as false. Use
+# yq's own boolean operator instead.
+ALREADY_REGISTERED=0
+if [ "$(NAME="$NAME" yq eval '.model_list | any_c(.model_name == strenv(NAME))' litellm/config.yaml 2>/dev/null)" = "true" ]; then
+  ALREADY_REGISTERED=1
 fi
 
 # -----------------------------------------------------------------------------
@@ -356,26 +364,31 @@ fi
 # -----------------------------------------------------------------------------
 # update litellm/config.yaml
 # -----------------------------------------------------------------------------
-step "Updating litellm/config.yaml"
 export NAME UPSTREAM BASE_URL_VALUE API_KEY_VALUE BACKEND_TYPE HARDWARE_ID SUPPORTS_VISION INPUT_COST OUTPUT_COST
-yq eval -i '
-  .model_list += [{
-    "model_name": strenv(NAME),
-    "litellm_params": {
-      "model": strenv(UPSTREAM),
-      "api_base": strenv(BASE_URL_VALUE),
-      "api_key": strenv(API_KEY_VALUE),
-      "input_cost_per_token": (strenv(INPUT_COST) | from_yaml),
-      "output_cost_per_token": (strenv(OUTPUT_COST) | from_yaml)
-    },
-    "model_info": {
-      "backend_type": strenv(BACKEND_TYPE),
-      "hardware_id": strenv(HARDWARE_ID),
-      "supports_vision": (strenv(SUPPORTS_VISION) | from_yaml)
-    }
-  }]
-' litellm/config.yaml
-ok "appended '$NAME' to model_list"
+if [ "$ALREADY_REGISTERED" -eq 1 ]; then
+  step "Skipping litellm/config.yaml — '$NAME' already registered"
+  warn "to update params for '$NAME', remove it from litellm/config.yaml first, then re-run"
+else
+  step "Updating litellm/config.yaml"
+  yq eval -i '
+    .model_list += [{
+      "model_name": strenv(NAME),
+      "litellm_params": {
+        "model": strenv(UPSTREAM),
+        "api_base": strenv(BASE_URL_VALUE),
+        "api_key": strenv(API_KEY_VALUE),
+        "input_cost_per_token": (strenv(INPUT_COST) | from_yaml),
+        "output_cost_per_token": (strenv(OUTPUT_COST) | from_yaml)
+      },
+      "model_info": {
+        "backend_type": strenv(BACKEND_TYPE),
+        "hardware_id": strenv(HARDWARE_ID),
+        "supports_vision": (strenv(SUPPORTS_VISION) | from_yaml)
+      }
+    }]
+  ' litellm/config.yaml
+  ok "appended '$NAME' to model_list"
+fi
 
 # -----------------------------------------------------------------------------
 # update librechat/librechat.yaml

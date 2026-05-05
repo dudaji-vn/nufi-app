@@ -540,7 +540,10 @@ case "$BACKEND" in
     any_added=0
     for m in "${MODELS_TO_REGISTER[@]}"; do
       mname=$(echo "$m" | tr ':/' '--')   # qwen2.5:3b → qwen2.5-3b
-      if yq eval '.model_list[].model_name' litellm/config.yaml 2>/dev/null | grep -Fxq "$mname"; then
+      # Avoid `yq | grep -q`: under `set -o pipefail`, grep -q closes the pipe
+      # early and yq exits 141 (SIGPIPE), making the `if` evaluate the success
+      # case as false. Use yq's own boolean operator instead.
+      if [ "$(mname="$mname" yq eval '.model_list | any_c(.model_name == strenv(mname))' litellm/config.yaml 2>/dev/null)" = "true" ]; then
         ok "model '${mname}' already registered (skipping)"
       else
         step "Registering '${mname}' with the proxy"
@@ -611,7 +614,8 @@ EOF
     src="$PICK_VALUE"
     mock_name="${src}-mock-npu"
 
-    if yq eval '.model_list[].model_name' litellm/config.yaml | grep -Fxq "$mock_name"; then
+    # See note on the SIGPIPE pitfall above.
+    if [ "$(mock_name="$mock_name" yq eval '.model_list | any_c(.model_name == strenv(mock_name))' litellm/config.yaml)" = "true" ]; then
       ok "mock '${mock_name}' already exists (skipping)"
     else
       step "Cloning '${src}' as '${mock_name}' (backend_type=npu, hardware_id=mock-npu)"
@@ -624,7 +628,9 @@ EOF
           | .model_info.hardware_id  = "mock-npu"
         )]
       ' litellm/config.yaml
-      yq eval -i '.endpoints.custom[0].models.default += [strenv(mock_name)]' librechat/librechat.yaml
+      # Match add-model.sh's dedup posture (`| unique`) so a re-run can't create
+      # a duplicate entry in the LibreChat fallback list.
+      yq eval -i '.endpoints.custom[0].models.default = ((.endpoints.custom[0].models.default + [strenv(mock_name)]) | unique)' librechat/librechat.yaml
       ok "wrote ${mock_name} to litellm/config.yaml + librechat/librechat.yaml"
       restart_stack
     fi
