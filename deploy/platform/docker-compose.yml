@@ -203,11 +203,12 @@ services:
       REDIS_HOST: ${REDIS_HOST}
       REDIS_PORT: ${REDIS_PORT}
       REDIS_PASSWORD: ${REDIS_PASSWORD}
-      GPU_MODEL: ${GPU_MODEL}
-      VISION_MODEL: ${VISION_MODEL}
-      GPU_BACKEND_BASE_URL: ${GPU_BACKEND_BASE_URL}
-      GPU_BACKEND_API_KEY: ${GPU_BACKEND_API_KEY}
-      GPU_HARDWARE_ID: ${GPU_HARDWARE_ID}
+      # Backend URLs/keys referenced by litellm/config.yaml entries (added via
+      # ./scripts/add-model.sh with --base-url-env / --api-key-env).
+      GPU_BACKEND_BASE_URL: ${GPU_BACKEND_BASE_URL:-}
+      GPU_BACKEND_API_KEY: ${GPU_BACKEND_API_KEY:-}
+      NPU_BACKEND_BASE_URL: ${NPU_BACKEND_BASE_URL:-}
+      NPU_BACKEND_API_KEY: ${NPU_BACKEND_API_KEY:-}
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
       LANGFUSE_HOST: ${LANGFUSE_HOST}

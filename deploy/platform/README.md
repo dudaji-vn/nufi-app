@@ -20,20 +20,34 @@ Everything runs in Docker Compose. See `docs/roadmap.md` for the weekly plan.
 
 ## Prerequisites
 
-- Docker Engine 24+ and Docker Compose v2
+- Docker Engine 24+ and Docker Compose v2 (Docker Desktop on macOS / Windows)
 - A reachable GPU inference server exposing an OpenAI-compatible API
   (e.g. vLLM, TGI, Ollama). Set `GPU_BACKEND_BASE_URL` in `.env`.
 - ~10 GB free disk for Postgres / MongoDB / Langfuse / LibreChat volumes
+- A POSIX shell to run the helper scripts:
+  - macOS / Linux — built-in
+  - Windows — Git Bash (ships with Git for Windows) or WSL2. Do **not** run
+    `*.sh` scripts from cmd.exe or PowerShell.
 
 ## Quick start (recommended)
 
-```bash
-# 1. One-time install on your machine:
-#    Docker Desktop  https://www.docker.com  (give it ≥4 GB RAM)
-#    Ollama          brew install ollama && brew services start ollama
-#                    (Linux: curl -fsSL https://ollama.com/install.sh | sh)
+### 1. One-time install on your machine
 
-# 2. Clone and bootstrap — one command does everything:
+| OS      | Docker                                                | Ollama                                                                |
+| ------- | ----------------------------------------------------- | --------------------------------------------------------------------- |
+| macOS   | Docker Desktop — https://www.docker.com (≥4 GB RAM)   | `brew install ollama && brew services start ollama`                   |
+| Linux   | Docker Engine + Compose v2                            | `curl -fsSL https://ollama.com/install.sh \| sh` then `ollama serve &` |
+| Windows | Docker Desktop + WSL2 backend (≥4 GB RAM)             | `winget install Ollama.Ollama` (or installer from https://ollama.com) |
+
+Windows users also need **Git for Windows** (which provides Git Bash) or
+**WSL2** to run the bootstrap and smoke-test scripts.
+
+### 2. Clone and bootstrap
+
+```bash
+# macOS / Linux: open Terminal.
+# Windows:       open Git Bash (right-click → "Git Bash Here") or a WSL2 shell.
+
 git clone git@github.com:DudajiVN/npuops-platform.git
 cd npuops-platform
 ./scripts/bootstrap.sh
@@ -62,18 +76,41 @@ docker compose logs -f litellm-proxy   # wait for "Application startup complete"
 
 ### Local dev backend (Ollama)
 
-LiteLLM treats Ollama as just another OpenAI-compatible server. The defaults
-in `.env.example` are already set up to point at host-installed Ollama:
+LiteLLM treats Ollama as just another OpenAI-compatible server. `.env.example`
+ships with the host-Ollama defaults already set:
 
 ```env
-GPU_MODEL=openai/qwen2.5:3b
 GPU_BACKEND_BASE_URL=http://host.docker.internal:11434/v1
 GPU_BACKEND_API_KEY=ollama
-GPU_HARDWARE_ID=mac-local
 ```
 
-When the real GPU server is provisioned, change those four lines — no
-code edit needed.
+`./scripts/bootstrap.sh` pulls a model and registers it for you. To swap to
+a real GPU server later: change the two lines above, then `add-model.sh`
+again pointing at the same env vars.
+
+## Adding a new model
+
+Use `./scripts/add-model.sh` (interactive or via flags) to register any
+OpenAI-compatible model — Ollama, vLLM, OpenAI, Together, Anthropic, your
+teammate's custom server, etc. The script edits `litellm/config.yaml`
+and `librechat/librechat.yaml`, restarts the proxy + chat UI, and runs a
+test chat completion against the new model.
+
+```bash
+# Interactive — prompts you for each field
+./scripts/add-model.sh
+
+# Or non-interactive (CI / one-liner)
+./scripts/add-model.sh \
+  --name mixtral-8x7b \
+  --model 'openai/mistralai/Mixtral-8x7B-Instruct-v0.1' \
+  --base-url https://api.together.xyz/v1 \
+  --api-key-env TOGETHER_API_KEY \
+  --backend-type cloud \
+  --hardware-id together-cloud
+```
+
+Requires `yq` (mikefarah's: `brew install yq`). Run `./scripts/add-model.sh --help` for all flags.
 
 ## Service endpoints (local defaults)
 
