@@ -1,11 +1,12 @@
 import { os } from '@orpc/server';
+import type { AuthedUser } from './middleware/auth.ts';
 
 /**
- * Per-request context for every procedure. Filled in by Hono middleware
- * (auth, role) on the way in. Empty for now — populated in W3 Day 2.
+ * Per-request context for every procedure. The Hono `auth` middleware
+ * verifies the JWT and puts the user here before oRPC dispatches.
  */
 export type Context = {
-  user?: { id: string; email: string; role: 'USER' | 'ADMIN' };
+  user: AuthedUser;
 };
 
 /** Base builder. All procedures branch off this. */

@@ -2,22 +2,24 @@ import { Hono } from 'hono';
 import { logger } from 'hono/logger';
 import { RPCHandler } from '@orpc/server/fetch';
 import { router } from './router/index.ts';
+import { auth, type AuthedUser } from './middleware/auth.ts';
 import { servePublic } from './lib/serve-public.ts';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const SERVE_DIST = process.env.SERVE_DIST !== 'false';
 
-const app = new Hono();
+type Env = { Variables: { user: AuthedUser } };
+const app = new Hono<Env>();
 app.use('*', logger());
 
 app.get('/_health', (c) => c.json({ ok: true }));
 
 const rpc = new RPCHandler(router);
 
-app.use('/rpc/*', async (c, next) => {
+app.use('/rpc/*', auth(), async (c, next) => {
   const { matched, response } = await rpc.handle(c.req.raw, {
     prefix: '/rpc',
-    context: {},
+    context: { user: c.get('user') },
   });
   if (matched) return response;
   return next();
