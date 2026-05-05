@@ -46,12 +46,13 @@ The browser sees one origin. Frontend and BFF are indistinguishable from outside
 
 - **Vite + React 19** — fast HMR, no SSR overhead
 - **TanStack Router** — type-safe routes + search params (matters for filter-heavy admin pages)
-- **Hono** — TypeScript BFF; ~6 routes; serves static SPA fallback in the same process
+- **Hono** — server runtime; serves the oRPC handler + static SPA fallback in the same process
+- **oRPC** — end-to-end type-safe RPC; defines procedures once on the server, auto-generates typed TanStack Query hooks for the client. Single source of truth per endpoint.
 - **Tailwind + shadcn/ui** — UI primitives
 - **`hono/jwt`** — HS256 verification with shared `JWT_SECRET`
-- **TanStack Query** — server-state cache on the React side (keys, usage data)
+- **TanStack Query** — server-state cache; consumed via oRPC's generated hooks
 - **Zustand** — client-state (modal open/close, toasts, transient UI flags)
-- **Zod** — request/response validation, schemas shared between client and server
+- **Zod** — input/output schemas attached to oRPC procedures; shared automatically between client and server
 
 ### Data ownership (no duplication)
 
@@ -91,39 +92,36 @@ admin-app/
 │   │   └── format.ts            key masking, currency, dates
 │   └── stores/
 │       └── ui.ts                Zustand store: modals, toasts, transient flags
-└── server/                     Hono BFF
-    ├── index.ts                 app entry; static SPA fallback
-    ├── middleware/
-    │   ├── auth.ts              JWT verify; sets c.var.user
-    │   └── role.ts              ADMIN bypass; otherwise filter by user_id
-    ├── lib/
-    │   ├── litellm.ts           thin client around LiteLLM admin API
-    │   └── jit-provision.ts     POST /user/new on first encounter
-    └── routes/
-        ├── me.ts
-        ├── keys.ts
-        └── usage.ts             stub for W4
+└── server/                     Hono + oRPC BFF
+    ├── index.ts                 Hono app; mounts oRPC handler + SPA fallback
+    ├── orpc.ts                  oRPC instance, base middleware (auth, role)
+    ├── router/
+    │   ├── index.ts             root router (composes resource routers)
+    │   ├── me.ts                procedure: me.get
+    │   ├── keys.ts              procedures: keys.list / create / delete / info
+    │   └── usage.ts             procedure: usage.get (W4 stub)
+    └── lib/
+        ├── litellm.ts           thin client around LiteLLM admin API
+        └── jit-provision.ts     POST /user/new on first encounter
 ```
+
+The oRPC router type is exported from `server/router/index.ts` and imported by the React side as `type AppRouter`. All client hooks (`api.keys.list.useQuery()`, `api.keys.create.useMutation()`, …) are inferred from this single type — no hand-written client types.
 
 ## BFF surface (W3 scope)
 
-```
-GET    /api/health         liveness
-GET    /api/me             verify JWT → user info from LiteLLM (auto-provisions)
-GET    /api/keys           list user's keys (filter by user_id)
-                           → /key/list
-POST   /api/keys           generate a new key
-                           → /key/generate with body:
-                             { user_id, key_alias, max_budget,
-                               budget_duration, tpm_limit,
-                               rpm_limit, duration }
-DELETE /api/keys/:id       revoke a key
-                           → /key/delete
-GET    /api/keys/:id/info  detail (remaining budget, last used)
-                           → /key/info?keys=<id>
-```
+Defined as oRPC procedures in `server/router/`; mounted by Hono at `/api/*`.
 
-That is the entire server. Six routes plus an auth middleware.
+| Procedure          | Calls on LiteLLM                | Notes                                      |
+| ------------------ | ------------------------------- | ------------------------------------------ |
+| `me.get`           | `/user/info` (+JIT `/user/new`) | Auto-provisions on first call              |
+| `keys.list`        | `/key/list`                     | Filtered by `user_id` for non-admins       |
+| `keys.create`      | `/key/generate`                 | Body: alias, budget, duration, tpm/rpm     |
+| `keys.delete`      | `/key/delete`                   | Idempotent; returns 200 even if not found  |
+| `keys.info`        | `/key/info?keys=…`              | Remaining budget, last used                |
+| `usage.get`        | (W4 — placeholder)              | Stub returns `{ comingInWeek: 4 }`         |
+| `_health` (Hono)   | —                                | Liveness; bypasses oRPC                    |
+
+Six procedures plus an auth middleware on the oRPC base. The matching client hooks (`api.me.get.useQuery`, `api.keys.create.useMutation`, …) are inferred from the exported router type.
 
 ## UI — pages delivered in W3
 
@@ -182,14 +180,16 @@ Changing a default = redeploy. No UI for editing defaults in W3.
 
 ### Day 1 (Mon 2026-05-12) — scaffolding
 
-- [ ] `admin-app/` skeleton: Vite + React 18 + TS template
+- [ ] `admin-app/` skeleton: Vite + React 19 + TS template
 - [ ] Add Tailwind + shadcn/ui
 - [ ] Add TanStack Router (file-based routes)
-- [ ] Hono server stub with health route
+- [ ] Hono server stub with `_health` route
+- [ ] Add oRPC + Zod; create empty router with one ping procedure
 - [ ] Wire build pipeline: Vite → `dist/`, Hono serves `dist/` as fallback
+- [ ] Wire client: oRPC client + TanStack Query provider, importing `AppRouter` type
 - [ ] Multi-stage `Dockerfile`
 - [ ] `docker-compose.yml` integration
-- [ ] Bring stack up; hit `http://localhost:3001/api/health` → 200
+- [ ] Bring stack up; hit `http://localhost:3001/_health` → 200, `api.ping.useQuery` → "pong"
 
 ### Day 2 (Tue 2026-05-13) — auth & JIT provisioning
 
@@ -201,12 +201,12 @@ Changing a default = redeploy. No UI for editing defaults in W3.
 
 ### Day 3 (Wed 2026-05-14) — key CRUD
 
-- [ ] `GET /api/keys` (filtered by `user_id`)
-- [ ] `POST /api/keys` (with budget + limit fields)
-- [ ] `DELETE /api/keys/:id`
-- [ ] `GET /api/keys/:id/info`
-- [ ] React: KeyTable, KeyGenerateModal, KeyRevealOnceModal
-- [ ] Zod schemas shared client ↔ server
+- [ ] `keys.list` procedure (filtered by `user_id` via role middleware)
+- [ ] `keys.create` procedure with Zod input (budget + limit fields)
+- [ ] `keys.delete` procedure
+- [ ] `keys.info` procedure
+- [ ] Export `AppRouter` type from `server/router/index.ts`
+- [ ] React: KeyTable, KeyGenerateModal, KeyRevealOnceModal — wired via auto-generated `api.keys.*` hooks
 
 ### Day 4 (Thu 2026-05-15) — role filtering + polish
 
