@@ -65,6 +65,35 @@ export async function createUser(input: {
   return await call<LiteLLMUserInfo>('POST', '/user/new', input);
 }
 
+// --- End-user / Customer (tracked separately from Internal User) ------------
+// LibreChat uses the master key for auth and puts each LibreChat user's id
+// in the `user` field of the OpenAI request body. LiteLLM auto-creates a
+// Customer row for that id and accumulates spend there — NOT on the
+// Internal-User row of the same id. So we always need to fetch both.
+
+export type LiteLLMCustomer = {
+  user_id: string;       // = end_user_id (the LibreChat _id)
+  spend: number;
+  blocked?: boolean;
+  alias?: string | null;
+  litellm_budget_table?: { max_budget?: number | null; budget_duration?: string | null } | null;
+};
+
+export async function getCustomer(endUserId: string): Promise<LiteLLMCustomer | null> {
+  try {
+    return await call<LiteLLMCustomer>(
+      'GET',
+      `/customer/info?end_user_id=${encodeURIComponent(endUserId)}`,
+    );
+  } catch (err) {
+    if (err instanceof LiteLLMError && err.status === 404) return null;
+    if (err instanceof LiteLLMError && err.status === 400 && /not found/i.test(err.bodyText)) {
+      return null;
+    }
+    throw err;
+  }
+}
+
 // --- Keys -------------------------------------------------------------------
 
 export type LiteLLMKey = {
