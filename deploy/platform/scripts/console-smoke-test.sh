@@ -13,10 +13,10 @@ cd "$ROOT"
 
 # Load .env so E2E_USER_EMAIL / E2E_USER_PASSWORD are visible to bun.
 if [[ -f .env ]]; then
-    set -a
-    # shellcheck disable=SC1091
-    source .env
-    set +a
+  set -a
+  # shellcheck disable=SC1091
+  source .env
+  set +a
 fi
 
 CONSOLE_URL="${CONSOLE_URL:-http://localhost:3001}"
@@ -30,12 +30,12 @@ LITELLM_URL="${LITELLM_URL:-http://localhost:4000}"
 # Sanity-check the three services are reachable. Fail fast with a helpful
 # message instead of letting the test fail with confusing errors.
 check() {
-    local name="$1" url="$2"
-    if ! curl -fsS --max-time 3 "$url" >/dev/null 2>&1; then
-        echo "✗ $name not reachable at $url" >&2
-        echo "  (run \`docker compose up -d\` first)" >&2
-        return 1
-    fi
+  local name="$1" url="$2"
+  if ! curl -fsS --max-time 3 "$url" >/dev/null 2>&1; then
+    echo "✗ $name not reachable at $url" >&2
+    echo "  (run \`docker compose up -d\` first)" >&2
+    return 1
+  fi
 }
 
 check "Console" "$CONSOLE_URL/_health" || exit 2
