@@ -1,5 +1,6 @@
 import { Link, Outlet, createRootRouteWithContext } from '@tanstack/react-router';
 import type { QueryClient } from '@tanstack/react-query';
+import { Toaster } from '~/components/ui/sonner';
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   component: RootLayout,
@@ -20,6 +21,7 @@ function RootLayout() {
       <main className="mx-auto max-w-5xl px-6 py-8">
         <Outlet />
       </main>
+      <Toaster richColors position="bottom-right" />
     </div>
   );
 }
