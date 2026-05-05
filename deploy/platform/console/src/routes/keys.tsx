@@ -6,6 +6,8 @@ import { api, isUnauthorized } from '~/lib/orpc';
 import { useUi } from '~/stores/ui';
 import { Button } from '~/components/ui/button';
 import { KeyTable, KeyTableSkeleton } from '~/components/KeyTable';
+import { KeysSummary } from '~/components/KeysSummary';
+import { KeysEmptyState } from '~/components/KeysEmptyState';
 import { KeyGenerateModal } from '~/components/KeyGenerateModal';
 import { KeyRevealOnceModal } from '~/components/KeyRevealOnceModal';
 
@@ -24,26 +26,41 @@ function KeysPage() {
     }
   }, [keys.isError, keys.error, navigate]);
 
+  const hasKeys = (keys.data?.length ?? 0) > 0;
+
   return (
     <section className="space-y-6">
-      <div className="flex items-center justify-between">
+      <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">API keys</h1>
-          <p className="text-muted-foreground">
-            Self-issue keys with budgets and rate limits. Use them directly against the LiteLLM proxy.
+          <h1 className="text-3xl font-semibold tracking-tight">API keys</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Each key has its own budget and rate limits. Use them to call the API from your code.
           </p>
         </div>
-        <Button onClick={() => setGenerateOpen(true)} className="gap-2">
-          <Plus className="size-4" />
-          Generate Key
-        </Button>
-      </div>
+        {hasKeys && (
+          <Button onClick={() => setGenerateOpen(true)} className="gap-2">
+            <Plus className="size-4" />
+            Generate Key
+          </Button>
+        )}
+      </header>
 
       {keys.isPending && <KeyTableSkeleton />}
+
       {keys.isError && !isUnauthorized(keys.error) && (
         <p className="text-sm text-destructive">Error: {keys.error.message}</p>
       )}
-      {keys.data && <KeyTable rows={keys.data} />}
+
+      {keys.data && !hasKeys && (
+        <KeysEmptyState onGenerate={() => setGenerateOpen(true)} />
+      )}
+
+      {keys.data && hasKeys && (
+        <>
+          <KeysSummary keys={keys.data} />
+          <KeyTable rows={keys.data} />
+        </>
+      )}
 
       <KeyGenerateModal />
       <KeyRevealOnceModal />
