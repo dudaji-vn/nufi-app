@@ -101,18 +101,42 @@ export type SpendLog = {
   spend: number;
   model: string | null;
   api_key: string | null;
+  user?: string | null;       // either master-key owner OR a key holder
+  end_user?: string | null;   // OpenAI `user` field from the request body
+  metadata?: {
+    user_api_key_user_id?: string | null;
+    user_api_key_alias?: string | null;
+  } | null;
 };
 
 type SpendLogResponse = SpendLog[] | { data: SpendLog[] };
 
-export async function spendLogsByEndUser(
-  endUserId: string,
+/**
+ * Fetch spend logs for a user. LiteLLM's `?end_user_id=` and `?customer_id=`
+ * query params are silently ignored on this version, so we fetch with only
+ * the date filter and match client-side on:
+ *
+ *   - log.end_user === userId             — chat traffic (master key + user field)
+ *   - log.metadata.user_api_key_user_id   — issued-key traffic
+ *
+ * TODO: if log volume grows, switch to a /spend/end_users/info-style endpoint
+ * or per-user materialised view. For W3 scale (low thousands per user) the
+ * client-side filter is fine.
+ */
+export async function spendLogsForUser(
+  userId: string,
   startDate?: string,
 ): Promise<SpendLog[]> {
-  const params = new URLSearchParams({ end_user_id: endUserId });
+  const params = new URLSearchParams();
   if (startDate) params.set('start_date', startDate);
-  const raw = await call<SpendLogResponse>('GET', `/spend/logs?${params}`);
-  return Array.isArray(raw) ? raw : (raw?.data ?? []);
+  const url = `/spend/logs${params.toString() ? `?${params}` : ''}`;
+  const raw = await call<SpendLogResponse>('GET', url);
+  const all = Array.isArray(raw) ? raw : (raw?.data ?? []);
+  return all.filter((log) => {
+    if (log.end_user && log.end_user === userId) return true;
+    if (log.metadata?.user_api_key_user_id === userId) return true;
+    return false;
+  });
 }
 
 // --- Keys -------------------------------------------------------------------
