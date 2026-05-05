@@ -1,7 +1,7 @@
-# W3 — Admin App (API Key Self-Service + Budget / Rate-Limit Management)
+# W3 — Console (API Key Self-Service + Budget / Rate-Limit Management)
 
 **Period:** 2026-05-12 → 2026-05-16 (W3, 5 days)
-**Branch:** `feature/w3-admin-app`
+**Branch:** `feature/w3-console`
 **Covers:** Roadmap Task 3.1 (API Key Issuance UI) + Task 3.2 (Budget & Rate Limit Management)
 
 ## Goal
@@ -18,7 +18,7 @@ Every feature this app delivers — key generation, budget enforcement, rpm/tpm 
 
 ```
 ┌───────────────────────────────────────────────────┐
-│  admin-app  (single Docker container, port 3000)  │
+│  console  (single Docker container, port 3000)  │
 │                                                   │
 │  Hono server:                                     │
 │   ├─ /api/* ─────► BFF handlers (TypeScript)      │
@@ -36,17 +36,18 @@ The browser sees one origin. Frontend and BFF are indistinguishable from outside
 ### Identity flow (SSO via shared JWT)
 
 1. User logs into LibreChat → JWT cookie set with `domain=.npuops.local` (parent domain)
-2. User opens admin app → browser sends the same JWT cookie
+2. User opens console → browser sends the same JWT cookie
 3. Hono `auth` middleware verifies the JWT with the shared `JWT_SECRET`
 4. Extracts `userId`, `email`, `role` from the token
-5. **JIT provisioning:** if this is the user's first admin-app open, BFF calls `POST /user/new` on LiteLLM with the LibreChat `_id`, email, role, default budget — then continues
+5. **JIT provisioning:** if this is the user's first console open, BFF calls `POST /user/new` on LiteLLM with the LibreChat `_id`, email, role, default budget — then continues
 6. Every downstream LiteLLM call is filtered by `user_id` for non-admins (one middleware does it)
 
 ### Stack
 
+- **Bun** — package manager + server runtime. No Node, no tsx; Bun runs TypeScript natively.
 - **Vite + React 19** — fast HMR, no SSR overhead
 - **TanStack Router** — type-safe routes + search params (matters for filter-heavy admin pages)
-- **Hono** — server runtime; serves the oRPC handler + static SPA fallback in the same process
+- **Hono** — HTTP framework on Bun; serves the oRPC handler + static SPA fallback in the same process
 - **oRPC** — end-to-end type-safe RPC; defines procedures once on the server, auto-generates typed TanStack Query hooks for the client. Single source of truth per endpoint.
 - **Tailwind + shadcn/ui** — UI primitives
 - **`hono/jwt`** — HS256 verification with shared `JWT_SECRET`
@@ -62,12 +63,12 @@ The browser sees one origin. Frontend and BFF are indistinguishable from outside
 | LiteLLM (Postgres)  | Virtual keys, key→user mapping, budgets, rpm/tpm, spend |
 | Redis               | Rate-limit counters (TTL-based)                        |
 | Langfuse            | Per-request traces, model costs, latency               |
-| **Admin app**       | **Nothing — stateless**                                |
+| **Console**         | **Nothing — stateless**                                |
 
 ## Repo layout
 
 ```
-admin-app/
+console/
 ├── Dockerfile                  multi-stage; Vite build → Node runtime
 ├── package.json
 ├── vite.config.ts
@@ -150,7 +151,7 @@ After generation: a **reveal-once modal** shows the full `sk-...` value with a C
 
 Card stating "Usage analytics arriving in W4." Wires the route now so the app shape is stable when W4 lands.
 
-## Defaults (`admin-app/.env`)
+## Defaults (`console/.env`)
 
 ```
 DEFAULT_USER_BUDGET=10           # USD per period
@@ -168,9 +169,9 @@ Changing a default = redeploy. No UI for editing defaults in W3.
 
 ## Docker integration
 
-- Add `admin-app` service to `docker-compose.yml`
+- Add `console` service to `docker-compose.yml`
 - Network: shared `npuops`
-- Image: built from `admin-app/Dockerfile` (no public registry yet)
+- Image: built from `console/Dockerfile` (no public registry yet)
 - Port: `3001:3000` (browser hits `http://localhost:3001`)
 - Depends on: `litellm-proxy` (healthy)
 - Mounts: none — fully image-baked, stateless
@@ -180,7 +181,7 @@ Changing a default = redeploy. No UI for editing defaults in W3.
 
 ### Day 1 (Mon 2026-05-12) — scaffolding
 
-- [ ] `admin-app/` skeleton: Vite + React 19 + TS template
+- [ ] `console/` skeleton: Vite + React 19 + TS template
 - [ ] Add Tailwind + shadcn/ui
 - [ ] Add TanStack Router (file-based routes)
 - [ ] Hono server stub with `_health` route
@@ -197,7 +198,7 @@ Changing a default = redeploy. No UI for editing defaults in W3.
 - [ ] `LiteLLMClient` wrapper using master key
 - [ ] `GET /api/me` route + first-call JIT-provisioning to LiteLLM `/user/new`
 - [ ] React: `useMe()` hook, redirect to `/unauthorized` on 401
-- [ ] Verify end-to-end: log into LibreChat → open admin app → see profile data
+- [ ] Verify end-to-end: log into LibreChat → open console → see profile data
 
 ### Day 3 (Wed 2026-05-14) — key CRUD
 
@@ -214,7 +215,7 @@ Changing a default = redeploy. No UI for editing defaults in W3.
 - [ ] Empty / loading / error states
 - [ ] Copy-to-clipboard for full key
 - [ ] Key masking utility (`sk-...{last4}`)
-- [ ] Update root `README.md`: how to access admin app, default URL
+- [ ] Update root `README.md`: how to access console, default URL
 
 ### Day 5 (Fri 2026-05-16) — verification + demo
 
@@ -224,7 +225,7 @@ Changing a default = redeploy. No UI for editing defaults in W3.
 
 ## Acceptance criteria
 
-- [ ] Logged in via LibreChat → open admin app → already authenticated (no second login)
+- [ ] Logged in via LibreChat → open console → already authenticated (no second login)
 - [ ] Generate a key → reveal-once modal shows full `sk-…` → copy to clipboard
 - [ ] Use the key against `POST /v1/chat/completions` on LiteLLM → 200
 - [ ] Spam past `rpm_limit` → 429 with the LiteLLM error message
@@ -232,7 +233,7 @@ Changing a default = redeploy. No UI for editing defaults in W3.
 - [ ] Revoke key from the UI → next request returns 401 within seconds
 - [ ] Key list shows all of the user's keys, never anyone else's
 - [ ] Admin role can list and revoke any user's key
-- [ ] `docker compose up -d` brings up admin-app cleanly with no manual steps
+- [ ] `docker compose up -d` brings up console cleanly with no manual steps
 
 ## Out of scope (W3)
 

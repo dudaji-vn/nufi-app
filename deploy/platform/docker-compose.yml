@@ -315,3 +315,26 @@ services:
       retries: 10
       start_period: 60s
     networks: [npuops]
+
+  console:
+    build:
+      context: ./console
+    container_name: npuops-console
+    restart: unless-stopped
+    depends_on:
+      litellm-proxy:
+        condition: service_healthy
+    ports:
+      - "3001:3000"
+    environment:
+      PORT: 3000
+      LITELLM_BASE_URL: http://litellm-proxy:4000
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://127.0.0.1:3000/_health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks: [npuops]
