@@ -1,5 +1,5 @@
 import { Activity, Gauge } from 'lucide-react';
-import { compactNumber } from '~/lib/format';
+import { compactNumber } from '@/lib/format';
 
 type Props = {
   tpmLimit: number | null;

@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { api } from '~/lib/orpc';
-import { compactNumber, formatDate, formatUsd, maskKey, pctSpent } from '~/lib/format';
+import { api } from '@/lib/orpc';
+import { compactNumber, formatDate, formatUsd, maskKey, pctSpent } from '@/lib/format';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Skeleton } from './ui/skeleton';
@@ -15,7 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from './ui/table';
-import { ConfirmDialog } from './ConfirmDialog';
+import { ConfirmDialog } from './confirm-dialog';
 
 type KeyRow = {
   alias: string | null;

@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { api } from '~/lib/orpc';
-import { useUi } from '~/stores/ui';
+import { api } from '@/lib/orpc';
+import { useUi } from '@/stores/ui';
 import { Button } from './ui/button';
 import {
   Dialog,

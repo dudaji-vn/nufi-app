@@ -1,14 +1,14 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
-import { api, isUnauthorized } from '~/lib/orpc';
-import { Skeleton } from '~/components/ui/skeleton';
-import { Badge } from '~/components/ui/badge';
-import { AvailableHero } from '~/components/AvailableHero';
-import { UsageChart } from '~/components/UsageChart';
-import { SpendBreakdown } from '~/components/SpendBreakdown';
-import { TopKeysCard } from '~/components/TopKeysCard';
-import { LimitsBar } from '~/components/LimitsBar';
+import { api, isUnauthorized } from '@/lib/orpc';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Badge } from '@/components/ui/badge';
+import { AvailableHero } from '@/components/available-hero';
+import { UsageChart } from '@/components/usage-chart';
+import { SpendBreakdown } from '@/components/spend-breakdown';
+import { TopKeysCard } from '@/components/top-keys-card';
+import { LimitsBar } from '@/components/limits-bar';
 
 export const Route = createFileRoute('/')({
   component: HomePage,

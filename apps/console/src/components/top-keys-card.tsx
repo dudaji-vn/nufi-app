@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router';
 import { Button } from './ui/button';
-import { formatUsd, maskKey } from '~/lib/format';
+import { formatUsd, maskKey } from '@/lib/format';
 
 type Key = {
   alias: string | null;

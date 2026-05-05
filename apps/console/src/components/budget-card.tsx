@@ -1,5 +1,5 @@
-import { formatUsd, pctSpent } from '~/lib/format';
-import { StatCard } from './StatCard';
+import { formatUsd, pctSpent } from '@/lib/format';
+import { StatCard } from './stat-card';
 
 type Props = {
   spent: number;
