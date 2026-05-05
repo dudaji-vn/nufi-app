@@ -76,18 +76,17 @@ docker compose logs -f litellm-proxy   # wait for "Application startup complete"
 
 ### Local dev backend (Ollama)
 
-LiteLLM treats Ollama as just another OpenAI-compatible server. The defaults
-in `.env.example` are already set up to point at host-installed Ollama:
+LiteLLM treats Ollama as just another OpenAI-compatible server. `.env.example`
+ships with the host-Ollama defaults already set:
 
 ```env
-GPU_MODEL=openai/qwen2.5:3b
 GPU_BACKEND_BASE_URL=http://host.docker.internal:11434/v1
 GPU_BACKEND_API_KEY=ollama
-GPU_HARDWARE_ID=mac-local
 ```
 
-When the real GPU server is provisioned, change those four lines — no
-code edit needed.
+`./scripts/bootstrap.sh` pulls a model and registers it for you. To swap to
+a real GPU server later: change the two lines above, then `add-model.sh`
+again pointing at the same env vars.
 
 ## Adding a new model
 

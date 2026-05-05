@@ -18,6 +18,12 @@
 #       --input-cost 0.0000003 \
 #       --output-cost 0.0000009
 #
+#   # base URL via env var (recommended when several models share one backend):
+#   ./scripts/add-model.sh --name gemma4 --model gemma4 \
+#       --base-url-env GPU_BACKEND_BASE_URL \
+#       --api-key-env  GPU_BACKEND_API_KEY \
+#       --backend-type gpu --hardware-id mac-local
+#
 # WHAT IT DOES
 #   1. Validates inputs and checks the name isn't already taken
 #   2. Appends a new entry to litellm/config.yaml (model_list[])
@@ -48,15 +54,19 @@ cd "$(dirname "$0")/.."
 # pretty output
 # -----------------------------------------------------------------------------
 if [ -t 1 ]; then
-  BOLD=$'\033[1m'; GREEN=$'\033[32m'; YELLOW=$'\033[33m'
+  BOLD=$'\033[1m'; DIM=$'\033[2m'; GREEN=$'\033[32m'; YELLOW=$'\033[33m'
   RED=$'\033[31m'; CYAN=$'\033[36m'; RESET=$'\033[0m'
 else
-  BOLD=""; GREEN=""; YELLOW=""; RED=""; CYAN=""; RESET=""
+  BOLD=""; DIM=""; GREEN=""; YELLOW=""; RED=""; CYAN=""; RESET=""
 fi
-step() { echo "${CYAN}==>${RESET} ${BOLD}$*${RESET}"; }
-ok()   { echo "    ${GREEN}✓${RESET} $*"; }
-warn() { echo "    ${YELLOW}!${RESET} $*"; }
-die()  { echo "${RED}error:${RESET} $*" >&2; exit 1; }
+step()  { echo "${CYAN}==>${RESET} ${BOLD}$*${RESET}"; }
+ok()    { echo "    ${GREEN}✓${RESET} $*"; }
+warn()  { echo "    ${YELLOW}!${RESET} $*"; }
+die()   { echo "${RED}error:${RESET} $*" >&2; exit 1; }
+# helpers for interactive UI — write to stderr so $(...) doesn't capture them
+hint()  { printf "    ${DIM}%s${RESET}\n" "$*" >&2; }
+group() { printf "\n${BOLD}${CYAN}[%s/%s]${RESET} ${BOLD}%s${RESET}\n" "$1" "$2" "$3" >&2; }
+bad()   { printf "    ${RED}✗${RESET} %s\n" "$*" >&2; }
 
 # -----------------------------------------------------------------------------
 # defaults + flags
@@ -64,15 +74,19 @@ die()  { echo "${RED}error:${RESET} $*" >&2; exit 1; }
 NAME=""
 UPSTREAM=""
 BASE_URL=""
+BASE_URL_ENV=""
 API_KEY_ENV=""
 API_KEY_INLINE=""
 BACKEND_TYPE=""
 HARDWARE_ID=""
 SUPPORTS_VISION="false"
-INPUT_COST="0.00000020"
-OUTPUT_COST="0.00000060"
+DEFAULT_INPUT_COST="0.00000020"
+DEFAULT_OUTPUT_COST="0.00000060"
+INPUT_COST=""
+OUTPUT_COST=""
 ADD_TO_LIBRECHAT=1
 RUN_TEST=1
+DO_RESTART=1
 DRY_RUN=0
 
 while [ $# -gt 0 ]; do
@@ -80,6 +94,7 @@ while [ $# -gt 0 ]; do
     --name)             NAME="$2"; shift 2 ;;
     --model)            UPSTREAM="$2"; shift 2 ;;
     --base-url)         BASE_URL="$2"; shift 2 ;;
+    --base-url-env)     BASE_URL_ENV="$2"; shift 2 ;;
     --api-key-env)      API_KEY_ENV="$2"; shift 2 ;;
     --api-key)          API_KEY_INLINE="$2"; shift 2 ;;
     --backend-type)     BACKEND_TYPE="$2"; shift 2 ;;
@@ -89,8 +104,9 @@ while [ $# -gt 0 ]; do
     --output-cost)      OUTPUT_COST="$2"; shift 2 ;;
     --no-librechat)     ADD_TO_LIBRECHAT=0; shift ;;
     --no-test)          RUN_TEST=0; shift ;;
+    --no-restart)       DO_RESTART=0; RUN_TEST=0; shift ;;   # batch-mode for bootstrap
     --dry-run)          DRY_RUN=1; shift ;;
-    -h|--help)          sed -n '2,45p' "$0"; exit 0 ;;
+    -h|--help)          sed -n '2,52p' "$0"; exit 0 ;;
     *)                  die "unknown argument: $1 (try --help)" ;;
   esac
 done
@@ -104,78 +120,186 @@ command -v curl >/dev/null   || die "curl required"
 
 # -----------------------------------------------------------------------------
 # interactive prompts (only for fields not passed via flags, only if stdin is a TTY)
+#
+# IMPORTANT: prompts must go to stderr, not stdout — otherwise $(ask ...) would
+# capture the prompt text along with the user's answer.
 # -----------------------------------------------------------------------------
 ask() {
   local label="$1"
   local default="${2:-}"
   local value
   if [ -n "$default" ]; then
-    printf "    %s [%s]: " "$label" "$default"
+    printf "    ${BOLD}%s${RESET} ${DIM}[%s]${RESET}: " "$label" "$default" >&2
   else
-    printf "    %s: " "$label"
+    printf "    ${BOLD}%s${RESET}: " "$label" >&2
   fi
   read -r value
   printf "%s" "${value:-$default}"
 }
 
+# Re-prompt until the answer is non-empty.
+ask_required() {
+  local label="$1" default="${2:-}" value
+  while :; do
+    value=$(ask "$label" "$default")
+    [ -n "$value" ] && { printf "%s" "$value"; return; }
+    bad "required"
+  done
+}
+
+# Re-prompt until the answer matches one of the space-separated $2 choices.
+ask_choice() {
+  local label="$1" choices="$2" default="${3:-}" value c
+  while :; do
+    value=$(ask "$label" "$default")
+    for c in $choices; do
+      [ "$value" = "$c" ] && { printf "%s" "$value"; return; }
+    done
+    bad "must be one of: $choices"
+  done
+}
+
+# Suggest backend_type / api_key_env / hardware_id based on the URL.
+suggest_backend_type() {
+  case "$1" in
+    *openai.com*|*anthropic.com*|*together.xyz*|*groq.com*|*deepinfra*|*fireworks.ai*|*mistral.ai*|*googleapis.com*|*x.ai*) echo "cloud" ;;
+    *) echo "gpu" ;;
+  esac
+}
+suggest_api_key_env() {
+  case "$1" in
+    *openai.com*)     echo "OPENAI_API_KEY" ;;
+    *anthropic.com*)  echo "ANTHROPIC_API_KEY" ;;
+    *together.xyz*)   echo "TOGETHER_API_KEY" ;;
+    *groq.com*)       echo "GROQ_API_KEY" ;;
+    *fireworks.ai*)   echo "FIREWORKS_API_KEY" ;;
+    *mistral.ai*)     echo "MISTRAL_API_KEY" ;;
+    *x.ai*)           echo "XAI_API_KEY" ;;
+    *)                echo "" ;;
+  esac
+}
+suggest_hardware_id() {
+  local backend_type="$1" url="$2"
+  if [ "$backend_type" = "cloud" ]; then
+    case "$url" in
+      *openai.com*)    echo "openai-cloud" ;;
+      *anthropic.com*) echo "anthropic-cloud" ;;
+      *together.xyz*) echo "together-cloud" ;;
+      *groq.com*)      echo "groq-cloud" ;;
+      *fireworks.ai*) echo "fireworks-cloud" ;;
+      *mistral.ai*)    echo "mistral-cloud" ;;
+      *x.ai*)          echo "xai-cloud" ;;
+      *)               echo "" ;;
+    esac
+  fi
+}
+
 if [ -t 0 ]; then
   step "Add a new OpenAI-compatible model to NPUOps"
+  hint "Press Ctrl-C to abort. Defaults shown in [brackets] — hit enter to accept."
 
   if [ -z "$NAME" ]; then
-    echo "    Display name (what users see in the LibreChat dropdown)."
-    echo "    Examples: gpt-4o-mini, mixtral-8x7b, claude-3-5-sonnet"
-    NAME=$(ask "  name")
+    group 1 7 "Display name"
+    hint "What users see in the LibreChat dropdown."
+    hint "Examples: gpt-4o-mini, mixtral-8x7b, claude-3-5-sonnet"
+    NAME=$(ask_required "name")
   fi
 
   if [ -z "$UPSTREAM" ]; then
-    echo
-    echo "    Upstream model id (what the backend actually serves; must include"
-    echo "    the LiteLLM provider prefix). Examples:"
-    echo "      openai/gpt-4o-mini"
-    echo "      openai/mistralai/Mixtral-8x7B-Instruct-v0.1"
-    echo "      anthropic/claude-3-5-sonnet-20241022"
-    UPSTREAM=$(ask "  upstream model id")
+    group 2 7 "Upstream model id"
+    hint "What the backend actually serves. LiteLLM needs a provider prefix to pick"
+    hint "the right adapter — if you omit it, we'll add 'openai/' (correct for any"
+    hint "OpenAI-compatible backend: Ollama, vLLM, TGI, Together, …)."
+    hint "Examples:"
+    hint "  gemma4                                          → openai/gemma4"
+    hint "  openai/gpt-4o-mini"
+    hint "  anthropic/claude-3-5-sonnet-20241022"
+    UPSTREAM=$(ask_required "upstream model id")
   fi
 
-  if [ -z "$BASE_URL" ]; then
-    echo
-    echo "    API base URL. Examples:"
-    echo "      https://api.openai.com/v1"
-    echo "      https://api.together.xyz/v1"
-    echo "      https://api.anthropic.com/v1"
-    echo "      http://host.docker.internal:11434/v1     (host Ollama)"
-    BASE_URL=$(ask "  base URL")
+  if [ -z "$BASE_URL" ] && [ -z "$BASE_URL_ENV" ]; then
+    group 3 7 "API base URL"
+    hint "Two options — pick one:"
+    hint "  • env var name (recommended: shared between models, easy to change)"
+    hint "  • inline URL (one-off backends)"
+    hint "Common env vars in .env: GPU_BACKEND_BASE_URL, NPU_BACKEND_BASE_URL"
+    hint "Inline examples: https://api.openai.com/v1, http://host.docker.internal:11434/v1"
+    BASE_URL_ENV=$(ask "env var name (blank to enter URL inline)")
+    if [ -z "$BASE_URL_ENV" ]; then
+      BASE_URL=$(ask_required "base URL")
+    fi
+  fi
+
+  # We need a concrete URL for downstream suggestions (api-key-env, hardware-id);
+  # if the user picked an env var, resolve it from .env so suggest_* still works.
+  url_for_suggestions="$BASE_URL"
+  if [ -z "$url_for_suggestions" ] && [ -n "$BASE_URL_ENV" ] && [ -f .env ]; then
+    url_for_suggestions=$(grep -E "^${BASE_URL_ENV}=" .env | head -1 | cut -d= -f2-)
   fi
 
   if [ -z "$API_KEY_ENV" ] && [ -z "$API_KEY_INLINE" ]; then
-    echo
-    echo "    API key — recommended: store in .env, reference by env var name."
-    echo "    Inline keys end up in git, only safe for dummy/dev backends."
-    API_KEY_ENV=$(ask "  env var name (e.g. OPENAI_API_KEY)")
+    group 4 7 "API key"
+    hint "Recommended: store in .env, reference by env var name (no secrets in git)."
+    hint "Leave blank to provide an inline key instead (only safe for dummy/dev backends)."
+    suggested_env=$(suggest_api_key_env "$url_for_suggestions")
+    API_KEY_ENV=$(ask "env var name (e.g. OPENAI_API_KEY)" "$suggested_env")
+    if [ -z "$API_KEY_ENV" ]; then
+      API_KEY_INLINE=$(ask_required "inline API key")
+    fi
   fi
 
   if [ -z "$BACKEND_TYPE" ]; then
-    echo
-    BACKEND_TYPE=$(ask "  backend type (gpu/npu/cloud)" "gpu")
+    group 5 7 "Backend type"
+    hint "gpu = local GPU node, npu = NPU node, cloud = managed provider."
+    suggested_bt=$(suggest_backend_type "$url_for_suggestions")
+    BACKEND_TYPE=$(ask_choice "backend type (gpu/npu/cloud)" "gpu npu cloud" "$suggested_bt")
   fi
 
   if [ -z "$HARDWARE_ID" ]; then
-    echo
-    echo "    Hardware ID — used by W6 reports to aggregate by hardware/cloud."
-    echo "    Examples: gpu-node-01, npu-node-01, openai-cloud, together-cloud"
-    HARDWARE_ID=$(ask "  hardware ID")
+    group 6 7 "Hardware ID"
+    hint "Used by cost / usage reports to aggregate by hardware or cloud."
+    hint "Examples: gpu-node-01, npu-node-01, openai-cloud, together-cloud"
+    suggested_hw=$(suggest_hardware_id "$BACKEND_TYPE" "$url_for_suggestions")
+    HARDWARE_ID=$(ask_required "hardware ID" "$suggested_hw")
+  fi
+
+  if [ -z "$INPUT_COST" ] || [ -z "$OUTPUT_COST" ]; then
+    group 7 7 "Cost per token (USD)"
+    hint "Shown in Langfuse / cost reports. Defaults are platform-wide guesses;"
+    hint "override per-model when you have real numbers from your provider."
+    [ -z "$INPUT_COST" ]  && INPUT_COST=$(ask  "input  cost / token" "$DEFAULT_INPUT_COST")
+    [ -z "$OUTPUT_COST" ] && OUTPUT_COST=$(ask "output cost / token" "$DEFAULT_OUTPUT_COST")
   fi
 fi
+
+# Apply defaults for non-interactive runs that didn't pass --input-cost/--output-cost.
+[ -n "$INPUT_COST" ]  || INPUT_COST="$DEFAULT_INPUT_COST"
+[ -n "$OUTPUT_COST" ] || OUTPUT_COST="$DEFAULT_OUTPUT_COST"
 
 # -----------------------------------------------------------------------------
 # validate
 # -----------------------------------------------------------------------------
 [ -n "$NAME" ]        || die "model name required (--name)"
 [ -n "$UPSTREAM" ]    || die "upstream model id required (--model)"
-[ -n "$BASE_URL" ]    || die "base URL required (--base-url)"
+[ -n "$BASE_URL" ] || [ -n "$BASE_URL_ENV" ] || die "base URL required (--base-url or --base-url-env)"
 [ -n "$HARDWARE_ID" ] || die "hardware ID required (--hardware-id)"
 [ -n "$BACKEND_TYPE" ] || BACKEND_TYPE="gpu"
 [[ "$BACKEND_TYPE" =~ ^(gpu|npu|cloud)$ ]] || die "backend type must be gpu, npu, or cloud (got: $BACKEND_TYPE)"
+
+# Resolve base URL — env-var ref takes precedence over inline.
+if [ -n "$BASE_URL_ENV" ]; then
+  BASE_URL_VALUE="os.environ/$BASE_URL_ENV"
+else
+  BASE_URL_VALUE="$BASE_URL"
+fi
+
+# LiteLLM needs a provider prefix to pick the right adapter. Bare ids like
+# "gemma4" silently fail with "no healthy deployments" — auto-prefix with
+# "openai/" since every supported backend in this stack is OpenAI-compatible.
+if [[ "$UPSTREAM" != */* ]]; then
+  warn "no provider prefix on '$UPSTREAM' — using 'openai/$UPSTREAM' (OpenAI-compatible adapter)"
+  UPSTREAM="openai/$UPSTREAM"
+fi
 
 if [ -n "$API_KEY_ENV" ]; then
   API_KEY_VALUE="os.environ/$API_KEY_ENV"
@@ -194,19 +318,19 @@ fi
 # -----------------------------------------------------------------------------
 # summary + confirm
 # -----------------------------------------------------------------------------
+echo
 step "Summary"
-cat <<EOF
-    name:                ${NAME}
-    upstream:            ${UPSTREAM}
-    base URL:            ${BASE_URL}
-    api_key:             ${API_KEY_VALUE}
-    backend_type:        ${BACKEND_TYPE}
-    hardware_id:         ${HARDWARE_ID}
-    supports_vision:     ${SUPPORTS_VISION}
-    input cost / token:  ${INPUT_COST}
-    output cost / token: ${OUTPUT_COST}
-    add to LibreChat:    $([ "$ADD_TO_LIBRECHAT" -eq 1 ] && echo yes || echo no)
-EOF
+printf "    %-22s ${BOLD}%s${RESET}\n" \
+  "name"                "${NAME}" \
+  "upstream"            "${UPSTREAM}" \
+  "base URL"            "${BASE_URL_VALUE}" \
+  "api_key"             "${API_KEY_VALUE}" \
+  "backend_type"        "${BACKEND_TYPE}" \
+  "hardware_id"         "${HARDWARE_ID}" \
+  "supports_vision"     "${SUPPORTS_VISION}" \
+  "input cost / token"  "${INPUT_COST}" \
+  "output cost / token" "${OUTPUT_COST}" \
+  "add to LibreChat"    "$([ "$ADD_TO_LIBRECHAT" -eq 1 ] && echo yes || echo no)"
 
 if [ "$DRY_RUN" -eq 1 ]; then
   step "Dry run — no files written"
@@ -214,22 +338,32 @@ if [ "$DRY_RUN" -eq 1 ]; then
 fi
 
 if [ -t 0 ]; then
-  printf "    Proceed? [y/N]: "
-  read -r confirm
-  case "$confirm" in [Yy]*) ;; *) die "aborted" ;; esac
+  echo
+  # Default Y — by this point the user has filled out the whole form, so a
+  # bare enter should accept. Any unrecognized input re-prompts (so a stray
+  # keypress doesn't trash the in-progress registration).
+  while :; do
+    printf "    ${BOLD}Proceed?${RESET} [Y/n]: "
+    read -r confirm
+    case "$confirm" in
+      ""|[Yy]|[Yy][Ee][Ss]) break ;;
+      [Nn]|[Nn][Oo])        die "aborted" ;;
+      *)                    bad "please answer y or n (or Ctrl-C to abort)" ;;
+    esac
+  done
 fi
 
 # -----------------------------------------------------------------------------
 # update litellm/config.yaml
 # -----------------------------------------------------------------------------
 step "Updating litellm/config.yaml"
-export NAME UPSTREAM BASE_URL API_KEY_VALUE BACKEND_TYPE HARDWARE_ID SUPPORTS_VISION INPUT_COST OUTPUT_COST
+export NAME UPSTREAM BASE_URL_VALUE API_KEY_VALUE BACKEND_TYPE HARDWARE_ID SUPPORTS_VISION INPUT_COST OUTPUT_COST
 yq eval -i '
   .model_list += [{
     "model_name": strenv(NAME),
     "litellm_params": {
       "model": strenv(UPSTREAM),
-      "api_base": strenv(BASE_URL),
+      "api_base": strenv(BASE_URL_VALUE),
       "api_key": strenv(API_KEY_VALUE),
       "input_cost_per_token": (strenv(INPUT_COST) | from_yaml),
       "output_cost_per_token": (strenv(OUTPUT_COST) | from_yaml)
@@ -248,7 +382,10 @@ ok "appended '$NAME' to model_list"
 # -----------------------------------------------------------------------------
 if [ "$ADD_TO_LIBRECHAT" -eq 1 ] && [ -f librechat/librechat.yaml ]; then
   step "Updating librechat/librechat.yaml"
-  yq eval -i '.endpoints.custom[0].models.default += [strenv(NAME)]' librechat/librechat.yaml
+  # Append + dedupe in one shot. The dedupe self-heals any duplicates left
+  # behind by earlier runs (the litellm uniqueness check protects model_list
+  # but the dropdown was previously append-only).
+  yq eval -i '.endpoints.custom[0].models.default = ((.endpoints.custom[0].models.default + [strenv(NAME)]) | unique)' librechat/librechat.yaml
   ok "added to LibreChat dropdown"
 fi
 
@@ -260,32 +397,41 @@ if [ -n "$API_KEY_ENV" ] && ! grep -qE "^${API_KEY_ENV}=" .env 2>/dev/null; then
   echo "      echo '${API_KEY_ENV}=<your-real-key>' >> .env"
   echo "      docker compose restart litellm-proxy"
 fi
+if [ -n "$BASE_URL_ENV" ] && ! grep -qE "^${BASE_URL_ENV}=" .env 2>/dev/null; then
+  warn "${BASE_URL_ENV} is not set in .env yet. Add it before testing:"
+  echo "      echo '${BASE_URL_ENV}=https://...' >> .env"
+  echo "      docker compose restart litellm-proxy"
+fi
 
 # -----------------------------------------------------------------------------
 # restart services
 # -----------------------------------------------------------------------------
-step "Restarting services"
-RECREATE_LIST="litellm-proxy"
-[ "$ADD_TO_LIBRECHAT" -eq 1 ] && RECREATE_LIST="$RECREATE_LIST librechat"
-docker compose up -d --force-recreate $RECREATE_LIST >/dev/null
-ok "restarted $RECREATE_LIST"
+if [ "$DO_RESTART" -eq 1 ]; then
+  step "Restarting services"
+  RECREATE_LIST="litellm-proxy"
+  [ "$ADD_TO_LIBRECHAT" -eq 1 ] && RECREATE_LIST="$RECREATE_LIST librechat"
+  docker compose up -d --force-recreate $RECREATE_LIST >/dev/null
+  ok "restarted $RECREATE_LIST"
 
-echo "    waiting for litellm-proxy to be healthy..."
-for i in $(seq 1 24); do
-  state=$(docker inspect --format '{{.State.Health.Status}}' npuops-litellm 2>/dev/null || echo missing)
-  if [ "$state" = "healthy" ]; then
-    echo
-    ok "healthy"
-    break
-  fi
-  printf "."
-  sleep 5
-  if [ "$i" -eq 24 ]; then
-    echo
-    warn "litellm-proxy did not become healthy in 2 minutes"
-    warn "check: docker compose logs litellm-proxy"
-  fi
-done
+  echo "    waiting for litellm-proxy to be healthy..."
+  for i in $(seq 1 24); do
+    state=$(docker inspect --format '{{.State.Health.Status}}' npuops-litellm 2>/dev/null || echo missing)
+    if [ "$state" = "healthy" ]; then
+      echo
+      ok "healthy"
+      break
+    fi
+    printf "."
+    sleep 5
+    if [ "$i" -eq 24 ]; then
+      echo
+      warn "litellm-proxy did not become healthy in 2 minutes"
+      warn "check: docker compose logs litellm-proxy"
+    fi
+  done
+else
+  step "Skipping restart (--no-restart) — caller will batch-restart"
+fi
 
 # -----------------------------------------------------------------------------
 # test

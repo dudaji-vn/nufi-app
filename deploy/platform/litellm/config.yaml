@@ -2,71 +2,186 @@
 # LiteLLM Proxy config — NPUOps Platform
 #
 # Conventions (from CLAUDE.md):
-#   - `model_info.backend_type: gpu | npu` MUST be present from W1 so the
-#     W8 NPU integration is a config edit, not a refactor.
-#   - `model_info.hardware_id` MUST be present so W6 reports can aggregate
-#     per hardware unit.
+#   - `model_info.backend_type: gpu | npu | cloud` MUST be present so the
+#     NPU integration is a config edit, not a refactor.
+#   - `model_info.hardware_id` MUST be present so cost / usage reports can
+#     aggregate per hardware unit.
 # =============================================================================
 
+# Models are registered by `./scripts/add-model.sh` (which appends to this list
+# and restarts the proxy + LibreChat). Edit by hand only if the script can't
+# express what you need.
+#
+# Reference shape — every entry MUST set backend_type and hardware_id:
+#   - model_name: my-model
+#     litellm_params:
+#       model: openai/<upstream-id>            # provider prefix is required
+#       api_base: os.environ/<URL_VAR>         # or an inline URL
+#       api_key:  os.environ/<KEY_VAR>         # or an inline key
+#       input_cost_per_token:  0.00000020
+#       output_cost_per_token: 0.00000060
+#     model_info:
+#       backend_type: gpu                      # gpu | npu | cloud
+#       hardware_id: gpu-node-01               # used by cost / usage reports
+#       supports_vision: false                 # set true for multimodal models
 model_list:
-  # ---------------------------------------------------------------------------
-  # GPU models — active from W1
-  # ---------------------------------------------------------------------------
-  - model_name: llama-3-gpu
+  - model_name: gemma4
     litellm_params:
-      model: os.environ/GPU_MODEL
+      model: openai/gemma4
       api_base: os.environ/GPU_BACKEND_BASE_URL
       api_key: os.environ/GPU_BACKEND_API_KEY
       input_cost_per_token: 0.00000020
       output_cost_per_token: 0.00000060
     model_info:
       backend_type: gpu
-      hardware_id: os.environ/GPU_HARDWARE_ID
-
-  # Vision (multimodal) model. Backed by Ollama in dev (e.g. llava:7b).
-  # Pull on host first: `ollama pull llava:7b`
-  - model_name: llava-vision
+      hardware_id: mac-local
+      supports_vision: false
+  - model_name: qwen2.5-3b
     litellm_params:
-      model: os.environ/VISION_MODEL
+      model: openai/qwen2.5:3b
       api_base: os.environ/GPU_BACKEND_BASE_URL
       api_key: os.environ/GPU_BACKEND_API_KEY
-      input_cost_per_token: 0.00000030
-      output_cost_per_token: 0.00000080
+      input_cost_per_token: 0.00000020
+      output_cost_per_token: 0.00000060
     model_info:
       backend_type: gpu
-      hardware_id: os.environ/GPU_HARDWARE_ID
-      supports_vision: true
-
-  # ---------------------------------------------------------------------------
-  # NPU models — placeholder, uncomment in W8 once gom delivers the backend
-  # ---------------------------------------------------------------------------
-  # - model_name: llama-3-npu
-  #   litellm_params:
-  #     model: openai/llama-3-8b
-  #     api_base: os.environ/NPU_BACKEND_BASE_URL
-  #     api_key: os.environ/NPU_BACKEND_API_KEY
-  #     input_cost_per_token: 0.00000005
-  #     output_cost_per_token: 0.00000015
-  #   model_info:
-  #     backend_type: npu
-  #     hardware_id: os.environ/NPU_HARDWARE_ID
-
+      hardware_id: mac-local
+      supports_vision: false
+  - model_name: gemma4-mock-npu
+    litellm_params:
+      model: openai/gemma4
+      api_base: os.environ/GPU_BACKEND_BASE_URL
+      api_key: os.environ/GPU_BACKEND_API_KEY
+      input_cost_per_token: 0.00000020
+      output_cost_per_token: 0.00000060
+    model_info:
+      backend_type: npu
+      hardware_id: mock-npu
+      supports_vision: false
+  - model_name: llama3.1-latest
+    litellm_params:
+      model: openai/llama3.1:latest
+      api_base: os.environ/GPU_BACKEND_BASE_URL
+      api_key: os.environ/GPU_BACKEND_API_KEY
+      input_cost_per_token: 0.00000020
+      output_cost_per_token: 0.00000060
+    model_info:
+      backend_type: gpu
+      hardware_id: mac-local
+      supports_vision: false
+  - model_name: gemma4-latest
+    litellm_params:
+      model: openai/gemma4:latest
+      api_base: os.environ/GPU_BACKEND_BASE_URL
+      api_key: os.environ/GPU_BACKEND_API_KEY
+      input_cost_per_token: 0.00000020
+      output_cost_per_token: 0.00000060
+    model_info:
+      backend_type: gpu
+      hardware_id: mac-local
+      supports_vision: false
+  - model_name: llava-7b
+    litellm_params:
+      model: openai/llava:7b
+      api_base: os.environ/GPU_BACKEND_BASE_URL
+      api_key: os.environ/GPU_BACKEND_API_KEY
+      input_cost_per_token: 0.00000020
+      output_cost_per_token: 0.00000060
+    model_info:
+      backend_type: gpu
+      hardware_id: mac-local
+      supports_vision: false
+  - model_name: llama3.1-latest
+    litellm_params:
+      model: openai/llama3.1:latest
+      api_base: os.environ/GPU_BACKEND_BASE_URL
+      api_key: os.environ/GPU_BACKEND_API_KEY
+      input_cost_per_token: 0.00000020
+      output_cost_per_token: 0.00000060
+    model_info:
+      backend_type: gpu
+      hardware_id: mac-local
+      supports_vision: false
+  - model_name: qwen2.5-3b
+    litellm_params:
+      model: openai/qwen2.5:3b
+      api_base: os.environ/GPU_BACKEND_BASE_URL
+      api_key: os.environ/GPU_BACKEND_API_KEY
+      input_cost_per_token: 0.00000020
+      output_cost_per_token: 0.00000060
+    model_info:
+      backend_type: gpu
+      hardware_id: mac-local
+      supports_vision: false
+  - model_name: __dedup_test
+    litellm_params:
+      model: openai/qwen2.5:3b
+      api_base: os.environ/GPU_BACKEND_BASE_URL
+      api_key: os.environ/GPU_BACKEND_API_KEY
+      input_cost_per_token: 0.00000020
+      output_cost_per_token: 0.00000060
+    model_info:
+      backend_type: gpu
+      hardware_id: mac-local
+      supports_vision: false
+  - model_name: llama3.1-latest
+    litellm_params:
+      model: openai/llama3.1:latest
+      api_base: os.environ/GPU_BACKEND_BASE_URL
+      api_key: os.environ/GPU_BACKEND_API_KEY
+      input_cost_per_token: 0.00000020
+      output_cost_per_token: 0.00000060
+    model_info:
+      backend_type: gpu
+      hardware_id: mac-local
+      supports_vision: false
+  - model_name: gemma4-latest
+    litellm_params:
+      model: openai/gemma4:latest
+      api_base: os.environ/GPU_BACKEND_BASE_URL
+      api_key: os.environ/GPU_BACKEND_API_KEY
+      input_cost_per_token: 0.00000020
+      output_cost_per_token: 0.00000060
+    model_info:
+      backend_type: gpu
+      hardware_id: mac-local
+      supports_vision: false
+  - model_name: llava-7b
+    litellm_params:
+      model: openai/llava:7b
+      api_base: os.environ/GPU_BACKEND_BASE_URL
+      api_key: os.environ/GPU_BACKEND_API_KEY
+      input_cost_per_token: 0.00000020
+      output_cost_per_token: 0.00000060
+    model_info:
+      backend_type: gpu
+      hardware_id: mac-local
+      supports_vision: false
+  - model_name: qwen2.5-3b
+    litellm_params:
+      model: openai/qwen2.5:3b
+      api_base: os.environ/GPU_BACKEND_BASE_URL
+      api_key: os.environ/GPU_BACKEND_API_KEY
+      input_cost_per_token: 0.00000020
+      output_cost_per_token: 0.00000060
+    model_info:
+      backend_type: gpu
+      hardware_id: mac-local
+      supports_vision: false
 router_settings:
-  # W1: simple round-robin across replicas of the same model_name.
-  # W8: switch to `weighted-pick` so the Canary slider can split GPU/NPU traffic.
+  # Simple round-robin across replicas of the same model_name. Switch to
+  # `weighted-pick` later so the Canary slider can split GPU/NPU traffic.
   routing_strategy: simple-shuffle
   redis_host: os.environ/REDIS_HOST
   redis_port: os.environ/REDIS_PORT
   redis_password: os.environ/REDIS_PASSWORD
-
 litellm_settings:
   request_timeout: 600
   drop_params: true
   success_callback: ["langfuse"]
   failure_callback: ["langfuse"]
-  # Stamp every trace with hardware metadata so W6 reports can aggregate per hardware unit
+  # Stamp every trace with hardware metadata so reports can aggregate per hardware unit
   langfuse_default_tags: ["hardware_id", "backend_type"]
-
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
   database_url: os.environ/DATABASE_URL

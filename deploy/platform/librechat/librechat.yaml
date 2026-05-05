@@ -4,18 +4,15 @@
 # =============================================================================
 
 version: 1.2.1
-
 # Cache parsed config in memory (faster restarts).
 cache: true
-
 # UI / branding overrides. App name, logo and favicon come from env / assets.
 interface:
   privacyPolicy:
     externalUrl: ''
   termsOfService:
     externalUrl: ''
-
-# Endpoints — only one for W2: route everything through the LiteLLM proxy.
+# Endpoints — single custom endpoint that routes everything through LiteLLM.
 endpoints:
   custom:
     - name: 'NPUOps'
@@ -24,26 +21,35 @@ endpoints:
       # Internal compose hostname; the proxy listens on :4000
       baseURL: 'http://litellm-proxy:4000/v1'
       models:
-        # Models shown in the LibreChat dropdown.
-        # `default` is the explicit display list (also acts as fallback when
-        # fetch fails or is cached). Add new model_names here when you add
-        # them to litellm/config.yaml.
-        default: ['llama-3-gpu', 'llava-vision']
+        # `fetch: true` populates the dropdown from LiteLLM's /v1/models, so
+        # the script's only job is to register the model in litellm/config.yaml
+        # and restart the two services. `default` is just a fallback list used
+        # if the fetch fails — keep it empty so we never serve stale entries.
+        # `./scripts/add-model.sh` appends to this list automatically.
+        default:
+          - gemma4
+          - qwen2.5-3b
+          - gemma4-mock-npu
+          - llama3.1-latest
+          - gemma4-latest
+          - llava-7b
+          - __dedup_test
         fetch: true
       titleConvo: true
-      titleModel: 'llama-3-gpu'
+      # Use whatever model the user is chatting with to title the conversation,
+      # so this works regardless of which models are registered.
+      titleModel: 'current_model'
       modelDisplayLabel: 'NPUOps'
       forcePrompt: false
       summarize: false
-
-# File uploads. Required for the multimodal flow (drag-drop an image into
-# the chat → goes to llava-vision via LiteLLM as image_url content).
+# File uploads. Required for the multimodal flow (drag-drop a vision-capable
+# model's image into the chat → forwarded to LiteLLM as image_url content).
 fileConfig:
   endpoints:
     NPUOps:
       fileLimit: 5
-      fileSizeLimit: 20      # MB per file
-      totalSizeLimit: 50     # MB per request
+      fileSizeLimit: 20 # MB per file
+      totalSizeLimit: 50 # MB per request
       supportedMimeTypes:
         - 'image/png'
         - 'image/jpeg'
