@@ -64,3 +64,72 @@ export async function createUser(input: {
 }): Promise<LiteLLMUserInfo> {
   return await call<LiteLLMUserInfo>('POST', '/user/new', input);
 }
+
+// --- Keys -------------------------------------------------------------------
+
+export type LiteLLMKey = {
+  key_alias: string | null;
+  token: string;            // hashed/short identifier — safe to expose
+  user_id: string | null;
+  team_id: string | null;
+  max_budget: number | null;
+  spend: number;
+  budget_duration: string | null;
+  tpm_limit: number | null;
+  rpm_limit: number | null;
+  created_at: string | null;
+  expires: string | null;
+};
+
+export type GeneratedKey = LiteLLMKey & {
+  /** Full `sk-…` value — only returned by /key/generate, shown to user once. */
+  key: string;
+};
+
+type KeyListResponse = { keys: LiteLLMKey[] } | LiteLLMKey[];
+
+export async function listKeysForUser(userId: string): Promise<LiteLLMKey[]> {
+  // LiteLLM /key/list signature varies between versions; some return an array,
+  // others {keys: [...]}. Normalise.
+  const raw = await call<KeyListResponse>(
+    'GET',
+    `/key/list?user_id=${encodeURIComponent(userId)}&return_full_object=true`,
+  );
+  return Array.isArray(raw) ? raw : (raw?.keys ?? []);
+}
+
+export async function listAllKeys(): Promise<LiteLLMKey[]> {
+  const raw = await call<KeyListResponse>('GET', '/key/list?return_full_object=true');
+  return Array.isArray(raw) ? raw : (raw?.keys ?? []);
+}
+
+export async function generateKey(input: {
+  user_id: string;
+  key_alias?: string;
+  team_id?: string;
+  max_budget?: number;
+  budget_duration?: string;
+  tpm_limit?: number;
+  rpm_limit?: number;
+  duration?: string;
+}): Promise<GeneratedKey> {
+  return await call<GeneratedKey>('POST', '/key/generate', input);
+}
+
+export async function deleteKey(token: string): Promise<void> {
+  // POST /key/delete accepts {keys: [...]} of either tokens or full sk-...
+  await call<unknown>('POST', '/key/delete', { keys: [token] });
+}
+
+export async function getKeyInfo(token: string): Promise<LiteLLMKey | null> {
+  try {
+    const res = await call<{ info?: LiteLLMKey } & LiteLLMKey>(
+      'GET',
+      `/key/info?key=${encodeURIComponent(token)}`,
+    );
+    return res.info ?? (res as LiteLLMKey);
+  } catch (err) {
+    if (err instanceof LiteLLMError && err.status === 404) return null;
+    throw err;
+  }
+}
