@@ -315,3 +315,31 @@ services:
       retries: 10
       start_period: 60s
     networks: [npuops]
+
+  console:
+    build:
+      context: ./console
+    container_name: npuops-console
+    restart: unless-stopped
+    depends_on:
+      litellm-proxy:
+        condition: service_healthy
+    ports:
+      - "3001:3000"
+    environment:
+      PORT: 3000
+      LITELLM_BASE_URL: http://litellm-proxy:4000
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      DEFAULT_USER_BUDGET: ${DEFAULT_USER_BUDGET:-10}
+      DEFAULT_BUDGET_DURATION: ${DEFAULT_BUDGET_DURATION:-30d}
+      DEFAULT_TPM_LIMIT: ${DEFAULT_TPM_LIMIT:-10000}
+      DEFAULT_RPM_LIMIT: ${DEFAULT_RPM_LIMIT:-60}
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://127.0.0.1:3000/_health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks: [npuops]

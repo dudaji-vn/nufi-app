@@ -9,7 +9,8 @@ Q2 2026 deliverable: complete GPU platform with NPU integration ready.
 | ----------------- | ------------------------------------------ |
 | LiteLLM Proxy     | Gateway, routing, virtual keys             |
 | Langfuse          | Observability, tracing, cost tracking      |
-| LibreChat         | Chat interface for end users (Apache-2.0)  |
+| LibreChat         | Chat interface for end users               |
+| Console           | Self-service API key + usage UI (W3)       |
 | LLM Guard         | PII / prompt-injection scanner (W5)        |
 | Prometheus + Grafana | Monitoring dashboards (W5)              |
 | PostgreSQL        | State store (LiteLLM keys, Langfuse data)  |
@@ -123,6 +124,17 @@ network. Useful as a regression check after touching any of those services.
 ./scripts/e2e-smoke-test.sh --rebuild   # rebuild the e2e image first
 ```
 
+`./scripts/console-smoke-test.sh` is a faster, host-side regression
+check for the W3 console specifically — drives the full happy path
+(login → JIT-provision → generate key → use vs LiteLLM → 429 on
+rate-limit → revoke → 401 on revoked) in under a second:
+
+```bash
+./scripts/console-smoke-test.sh
+```
+
+Same `E2E_*` env vars; requires the stack to already be running.
+
 Required env (auto-set by `./scripts/bootstrap.sh`, otherwise fill in `.env`
 from the new `E2E_*` block in `.env.example`): `E2E_USER_EMAIL`,
 `E2E_USER_PASSWORD`, `E2E_MODEL`, `E2E_EXPECTED_HARDWARE_ID`.
@@ -136,6 +148,7 @@ e2e user — the test only auto-registers when registration is open.
 | -------------- | ------------------------- |
 | LiteLLM Proxy  | http://localhost:4000     |
 | LibreChat      | http://localhost:3080     |
+| Console        | http://localhost:3001     |
 | Langfuse       | http://localhost:3000     |
 | Grafana        | http://localhost:3002     |
 | Prometheus     | http://localhost:9090     |
@@ -157,10 +170,38 @@ npuops-platform/
 ├── litellm/          # config.yaml + Dockerfile
 ├── langfuse/         # Langfuse setup
 ├── librechat/        # librechat.yaml + branding assets
+├── console/          # self-service UI (Bun + Hono + Vite + React)
 ├── monitoring/       # Prometheus, Grafana, alert rules
 ├── scripts/          # helper scripts (smoke test, backups)
 └── docs/             # internal documentation (roadmap.md)
 ```
+
+## Console (self-service UI)
+
+The console at `http://localhost:3001` is where users self-issue LiteLLM API
+keys and view their own usage. It's a single Bun container — Hono serves
+both the React SPA and the oRPC API at one origin.
+
+**SSO**: the console verifies the LibreChat-issued JWT (shared `JWT_SECRET`)
+out of the cookie jar — sign in once at LibreChat, then open the console in
+the same browser. No second login.
+
+**Pages**:
+
+- `/` — profile + this-period spend (combined chat + issued-key usage)
+- `/keys` — list / generate / revoke API keys with budgets and rpm/tpm limits
+
+**Develop locally** (without rebuilding the image on every change):
+
+```bash
+cd console
+bun install
+bun run dev          # Vite at :5173, Hono at :3000, proxied for you
+```
+
+Set the same `JWT_SECRET` / `JWT_REFRESH_SECRET` / `LITELLM_MASTER_KEY` as
+the running stack so auth and admin calls work in dev. See
+`docs/w3-console-plan.md` for the full implementation plan.
 
 ## Documentation
 

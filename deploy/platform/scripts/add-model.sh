@@ -563,7 +563,7 @@ prompt_or_warn_missing_env() {
     read -rs entered
     echo
     if [ -n "$entered" ]; then
-      printf "%s=%s\n" "$var" "$entered" >> .env
+      printf "%s=%s\n" "$var" "$entered" >>.env
       ok "wrote ${var} to .env"
       return 0
     fi
