@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { api } from '~/lib/orpc';
 import { useUi } from '~/stores/ui';
 import { Button } from './ui/button';
@@ -24,17 +25,25 @@ import {
 const BUDGET_DURATIONS = ['24h', '7d', '30d'] as const;
 const KEY_DURATIONS = ['7d', '30d', '90d', '180d', '365d', 'never'] as const;
 
+const DEFAULTS = {
+  maxBudget: '10',
+  budgetDuration: '30d' as const,
+  tpmLimit: '10000',
+  rpmLimit: '60',
+  duration: '90d' as const,
+};
+
 export function KeyGenerateModal() {
   const open = useUi((s) => s.generateOpen);
   const setOpen = useUi((s) => s.setGenerateOpen);
   const showRevealedKey = useUi((s) => s.showRevealedKey);
 
   const [alias, setAlias] = useState('');
-  const [maxBudget, setMaxBudget] = useState('10');
-  const [budgetDuration, setBudgetDuration] = useState<typeof BUDGET_DURATIONS[number]>('30d');
-  const [tpmLimit, setTpmLimit] = useState('10000');
-  const [rpmLimit, setRpmLimit] = useState('60');
-  const [duration, setDuration] = useState<typeof KEY_DURATIONS[number]>('90d');
+  const [maxBudget, setMaxBudget] = useState(DEFAULTS.maxBudget);
+  const [budgetDuration, setBudgetDuration] = useState<typeof BUDGET_DURATIONS[number]>(DEFAULTS.budgetDuration);
+  const [tpmLimit, setTpmLimit] = useState(DEFAULTS.tpmLimit);
+  const [rpmLimit, setRpmLimit] = useState(DEFAULTS.rpmLimit);
+  const [duration, setDuration] = useState<typeof KEY_DURATIONS[number]>(DEFAULTS.duration);
 
   const qc = useQueryClient();
   const create = useMutation(
@@ -42,13 +51,16 @@ export function KeyGenerateModal() {
       onSuccess: (res) => {
         showRevealedKey({ alias: res.view.alias ?? alias, key: res.key });
         qc.invalidateQueries({ queryKey: api.keys.list.queryKey() });
-        // reset form for next time
+        toast.success(`Key "${res.view.alias ?? alias}" generated`);
         setAlias('');
-        setMaxBudget('10');
-        setBudgetDuration('30d');
-        setTpmLimit('10000');
-        setRpmLimit('60');
-        setDuration('90d');
+        setMaxBudget(DEFAULTS.maxBudget);
+        setBudgetDuration(DEFAULTS.budgetDuration);
+        setTpmLimit(DEFAULTS.tpmLimit);
+        setRpmLimit(DEFAULTS.rpmLimit);
+        setDuration(DEFAULTS.duration);
+      },
+      onError: (err) => {
+        toast.error(`Could not generate key: ${err.message}`);
       },
     }),
   );
@@ -156,10 +168,6 @@ export function KeyGenerateModal() {
               </SelectContent>
             </Select>
           </div>
-
-          {create.isError && (
-            <p className="text-sm text-destructive">Error: {create.error.message}</p>
-          )}
 
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => setOpen(false)}>

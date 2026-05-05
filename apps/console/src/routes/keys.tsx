@@ -5,7 +5,7 @@ import { Plus } from 'lucide-react';
 import { api, isUnauthorized } from '~/lib/orpc';
 import { useUi } from '~/stores/ui';
 import { Button } from '~/components/ui/button';
-import { KeyTable } from '~/components/KeyTable';
+import { KeyTable, KeyTableSkeleton } from '~/components/KeyTable';
 import { KeyGenerateModal } from '~/components/KeyGenerateModal';
 import { KeyRevealOnceModal } from '~/components/KeyRevealOnceModal';
 
@@ -39,7 +39,7 @@ function KeysPage() {
         </Button>
       </div>
 
-      {keys.isPending && <p className="text-sm text-muted-foreground">Loading keys…</p>}
+      {keys.isPending && <KeyTableSkeleton />}
       {keys.isError && !isUnauthorized(keys.error) && (
         <p className="text-sm text-destructive">Error: {keys.error.message}</p>
       )}

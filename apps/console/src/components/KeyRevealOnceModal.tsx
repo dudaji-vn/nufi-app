@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Copy, Check } from 'lucide-react';
+import { toast } from 'sonner';
 import { useUi } from '~/stores/ui';
 import { Button } from './ui/button';
 import {
@@ -20,9 +21,14 @@ export function KeyRevealOnceModal() {
 
   async function copy() {
     if (!revealed) return;
-    await navigator.clipboard.writeText(revealed.key);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2_000);
+    try {
+      await navigator.clipboard.writeText(revealed.key);
+      setCopied(true);
+      toast.success('Key copied to clipboard');
+      setTimeout(() => setCopied(false), 2_000);
+    } catch {
+      toast.error('Clipboard write failed — copy manually');
+    }
   }
 
   return (
