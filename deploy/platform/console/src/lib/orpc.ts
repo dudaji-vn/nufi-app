@@ -1,4 +1,4 @@
-import { createORPCClient } from '@orpc/client';
+import { createORPCClient, ORPCError } from '@orpc/client';
 import { RPCLink } from '@orpc/client/fetch';
 import { createTanstackQueryUtils } from '@orpc/tanstack-query';
 import type { RouterClient } from '@orpc/server';
@@ -11,5 +11,9 @@ const link = new RPCLink({
 
 export const client: RouterClient<AppRouter> = createORPCClient(link);
 
-/** Use as `useQuery(api.ping.queryOptions(...))`, `useMutation(api.keys.create.mutationOptions(...))`. */
+/** Use as `useQuery(api.me.get.queryOptions())`, `useMutation(api.keys.create.mutationOptions())`. */
 export const api = createTanstackQueryUtils(client);
+
+export function isUnauthorized(err: unknown): boolean {
+  return err instanceof ORPCError && err.code === 'UNAUTHORIZED';
+}
