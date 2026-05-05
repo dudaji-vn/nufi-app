@@ -15,9 +15,14 @@ REBUILD=0
 for arg in "$@"; do
   case "$arg" in
     --rebuild) REBUILD=1 ;;
-    -h|--help)
-      sed -n '2,12p' "$0"; exit 0 ;;
-    *) echo "unknown argument: $arg (try --help)" >&2; exit 1 ;;
+    -h | --help)
+      sed -n '2,12p' "$0"
+      exit 0
+      ;;
+    *)
+      echo "unknown argument: $arg (try --help)" >&2
+      exit 1
+      ;;
   esac
 done
 

@@ -68,8 +68,8 @@ else
     exit 1
   fi
   count=$(curl -fsS -u "${LANGFUSE_PUBLIC_KEY}:${LANGFUSE_SECRET_KEY}" \
-    "${LANGFUSE_PUBLIC_HOST}/api/public/traces?limit=1" \
-    | "${PY}" -c 'import sys,json; d=json.load(sys.stdin); print(len(d.get("data",[])))')
+    "${LANGFUSE_PUBLIC_HOST}/api/public/traces?limit=1" |
+    "${PY}" -c 'import sys,json; d=json.load(sys.stdin); print(len(d.get("data",[])))')
   if [ "${count}" -lt 1 ]; then
     echo "error: no traces visible in Langfuse — check langfuse-worker logs" >&2
     exit 1

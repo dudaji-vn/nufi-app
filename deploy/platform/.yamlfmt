@@ -1,0 +1,15 @@
+formatter:
+  type: basic
+  indent: 2
+  include_document_start: false
+  line_ending: lf
+  retain_line_breaks: true
+  scan_folded_as_literal: true
+  trim_trailing_whitespace: true
+  eof_newline: true
+  max_line_length: 140
+exclude:
+  - .git/
+  - node_modules/
+  - .venv/
+  - monitoring/grafana/dashboards/

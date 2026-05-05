@@ -54,19 +54,33 @@ cd "$(dirname "$0")/.."
 # pretty output
 # -----------------------------------------------------------------------------
 if [ -t 1 ]; then
-  BOLD=$'\033[1m'; DIM=$'\033[2m'; GREEN=$'\033[32m'; YELLOW=$'\033[33m'
-  RED=$'\033[31m'; CYAN=$'\033[36m'; RESET=$'\033[0m'
+  BOLD=$'\033[1m'
+  DIM=$'\033[2m'
+  GREEN=$'\033[32m'
+  YELLOW=$'\033[33m'
+  RED=$'\033[31m'
+  CYAN=$'\033[36m'
+  RESET=$'\033[0m'
 else
-  BOLD=""; DIM=""; GREEN=""; YELLOW=""; RED=""; CYAN=""; RESET=""
+  BOLD=""
+  DIM=""
+  GREEN=""
+  YELLOW=""
+  RED=""
+  CYAN=""
+  RESET=""
 fi
-step()  { echo "${CYAN}==>${RESET} ${BOLD}$*${RESET}"; }
-ok()    { echo "    ${GREEN}✓${RESET} $*"; }
-warn()  { echo "    ${YELLOW}!${RESET} $*"; }
-die()   { echo "${RED}error:${RESET} $*" >&2; exit 1; }
+step() { echo "${CYAN}==>${RESET} ${BOLD}$*${RESET}"; }
+ok() { echo "    ${GREEN}✓${RESET} $*"; }
+warn() { echo "    ${YELLOW}!${RESET} $*"; }
+die() {
+  echo "${RED}error:${RESET} $*" >&2
+  exit 1
+}
 # helpers for interactive UI — write to stderr so $(...) doesn't capture them
-hint()  { printf "    ${DIM}%s${RESET}\n" "$*" >&2; }
+hint() { printf "    ${DIM}%s${RESET}\n" "$*" >&2; }
 group() { printf "\n${BOLD}${CYAN}[%s/%s]${RESET} ${BOLD}%s${RESET}\n" "$1" "$2" "$3" >&2; }
-bad()   { printf "    ${RED}✗${RESET} %s\n" "$*" >&2; }
+bad() { printf "    ${RED}✗${RESET} %s\n" "$*" >&2; }
 
 # -----------------------------------------------------------------------------
 # defaults + flags
@@ -91,32 +105,81 @@ DRY_RUN=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --name)             NAME="$2"; shift 2 ;;
-    --model)            UPSTREAM="$2"; shift 2 ;;
-    --base-url)         BASE_URL="$2"; shift 2 ;;
-    --base-url-env)     BASE_URL_ENV="$2"; shift 2 ;;
-    --api-key-env)      API_KEY_ENV="$2"; shift 2 ;;
-    --api-key)          API_KEY_INLINE="$2"; shift 2 ;;
-    --backend-type)     BACKEND_TYPE="$2"; shift 2 ;;
-    --hardware-id)      HARDWARE_ID="$2"; shift 2 ;;
-    --vision)           SUPPORTS_VISION="true"; shift ;;
-    --input-cost)       INPUT_COST="$2"; shift 2 ;;
-    --output-cost)      OUTPUT_COST="$2"; shift 2 ;;
-    --no-librechat)     ADD_TO_LIBRECHAT=0; shift ;;
-    --no-test)          RUN_TEST=0; shift ;;
-    --no-restart)       DO_RESTART=0; RUN_TEST=0; shift ;;   # batch-mode for bootstrap
-    --dry-run)          DRY_RUN=1; shift ;;
-    -h|--help)          sed -n '2,52p' "$0"; exit 0 ;;
-    *)                  die "unknown argument: $1 (try --help)" ;;
+    --name)
+      NAME="$2"
+      shift 2
+      ;;
+    --model)
+      UPSTREAM="$2"
+      shift 2
+      ;;
+    --base-url)
+      BASE_URL="$2"
+      shift 2
+      ;;
+    --base-url-env)
+      BASE_URL_ENV="$2"
+      shift 2
+      ;;
+    --api-key-env)
+      API_KEY_ENV="$2"
+      shift 2
+      ;;
+    --api-key)
+      API_KEY_INLINE="$2"
+      shift 2
+      ;;
+    --backend-type)
+      BACKEND_TYPE="$2"
+      shift 2
+      ;;
+    --hardware-id)
+      HARDWARE_ID="$2"
+      shift 2
+      ;;
+    --vision)
+      SUPPORTS_VISION="true"
+      shift
+      ;;
+    --input-cost)
+      INPUT_COST="$2"
+      shift 2
+      ;;
+    --output-cost)
+      OUTPUT_COST="$2"
+      shift 2
+      ;;
+    --no-librechat)
+      ADD_TO_LIBRECHAT=0
+      shift
+      ;;
+    --no-test)
+      RUN_TEST=0
+      shift
+      ;;
+    --no-restart)
+      DO_RESTART=0
+      RUN_TEST=0
+      shift
+      ;; # batch-mode for bootstrap
+    --dry-run)
+      DRY_RUN=1
+      shift
+      ;;
+    -h | --help)
+      sed -n '2,52p' "$0"
+      exit 0
+      ;;
+    *) die "unknown argument: $1 (try --help)" ;;
   esac
 done
 
 # -----------------------------------------------------------------------------
 # prerequisites
 # -----------------------------------------------------------------------------
-command -v yq >/dev/null     || die "yq required — brew install yq  (https://github.com/mikefarah/yq)"
+command -v yq >/dev/null || die "yq required — brew install yq  (https://github.com/mikefarah/yq)"
 command -v docker >/dev/null || die "docker required"
-command -v curl >/dev/null   || die "curl required"
+command -v curl >/dev/null || die "curl required"
 
 # -----------------------------------------------------------------------------
 # interactive prompts (only for fields not passed via flags, only if stdin is a TTY)
@@ -142,7 +205,10 @@ ask_required() {
   local label="$1" default="${2:-}" value
   while :; do
     value=$(ask "$label" "$default")
-    [ -n "$value" ] && { printf "%s" "$value"; return; }
+    [ -n "$value" ] && {
+      printf "%s" "$value"
+      return
+    }
     bad "required"
   done
 }
@@ -153,7 +219,10 @@ ask_choice() {
   while :; do
     value=$(ask "$label" "$default")
     for c in $choices; do
-      [ "$value" = "$c" ] && { printf "%s" "$value"; return; }
+      [ "$value" = "$c" ] && {
+        printf "%s" "$value"
+        return
+      }
     done
     bad "must be one of: $choices"
   done
@@ -162,34 +231,34 @@ ask_choice() {
 # Suggest backend_type / api_key_env / hardware_id based on the URL.
 suggest_backend_type() {
   case "$1" in
-    *openai.com*|*anthropic.com*|*together.xyz*|*groq.com*|*deepinfra*|*fireworks.ai*|*mistral.ai*|*googleapis.com*|*x.ai*) echo "cloud" ;;
+    *openai.com* | *anthropic.com* | *together.xyz* | *groq.com* | *deepinfra* | *fireworks.ai* | *mistral.ai* | *googleapis.com* | *x.ai*) echo "cloud" ;;
     *) echo "gpu" ;;
   esac
 }
 suggest_api_key_env() {
   case "$1" in
-    *openai.com*)     echo "OPENAI_API_KEY" ;;
-    *anthropic.com*)  echo "ANTHROPIC_API_KEY" ;;
-    *together.xyz*)   echo "TOGETHER_API_KEY" ;;
-    *groq.com*)       echo "GROQ_API_KEY" ;;
-    *fireworks.ai*)   echo "FIREWORKS_API_KEY" ;;
-    *mistral.ai*)     echo "MISTRAL_API_KEY" ;;
-    *x.ai*)           echo "XAI_API_KEY" ;;
-    *)                echo "" ;;
+    *openai.com*) echo "OPENAI_API_KEY" ;;
+    *anthropic.com*) echo "ANTHROPIC_API_KEY" ;;
+    *together.xyz*) echo "TOGETHER_API_KEY" ;;
+    *groq.com*) echo "GROQ_API_KEY" ;;
+    *fireworks.ai*) echo "FIREWORKS_API_KEY" ;;
+    *mistral.ai*) echo "MISTRAL_API_KEY" ;;
+    *x.ai*) echo "XAI_API_KEY" ;;
+    *) echo "" ;;
   esac
 }
 suggest_hardware_id() {
   local backend_type="$1" url="$2"
   if [ "$backend_type" = "cloud" ]; then
     case "$url" in
-      *openai.com*)    echo "openai-cloud" ;;
+      *openai.com*) echo "openai-cloud" ;;
       *anthropic.com*) echo "anthropic-cloud" ;;
       *together.xyz*) echo "together-cloud" ;;
-      *groq.com*)      echo "groq-cloud" ;;
+      *groq.com*) echo "groq-cloud" ;;
       *fireworks.ai*) echo "fireworks-cloud" ;;
-      *mistral.ai*)    echo "mistral-cloud" ;;
-      *x.ai*)          echo "xai-cloud" ;;
-      *)               echo "" ;;
+      *mistral.ai*) echo "mistral-cloud" ;;
+      *x.ai*) echo "xai-cloud" ;;
+      *) echo "" ;;
     esac
   fi
 }
@@ -267,20 +336,20 @@ if [ -t 0 ]; then
     group 7 7 "Cost per token (USD)"
     hint "Shown in Langfuse / cost reports. Defaults are platform-wide guesses;"
     hint "override per-model when you have real numbers from your provider."
-    [ -z "$INPUT_COST" ]  && INPUT_COST=$(ask  "input  cost / token" "$DEFAULT_INPUT_COST")
+    [ -z "$INPUT_COST" ] && INPUT_COST=$(ask "input  cost / token" "$DEFAULT_INPUT_COST")
     [ -z "$OUTPUT_COST" ] && OUTPUT_COST=$(ask "output cost / token" "$DEFAULT_OUTPUT_COST")
   fi
 fi
 
 # Apply defaults for non-interactive runs that didn't pass --input-cost/--output-cost.
-[ -n "$INPUT_COST" ]  || INPUT_COST="$DEFAULT_INPUT_COST"
+[ -n "$INPUT_COST" ] || INPUT_COST="$DEFAULT_INPUT_COST"
 [ -n "$OUTPUT_COST" ] || OUTPUT_COST="$DEFAULT_OUTPUT_COST"
 
 # -----------------------------------------------------------------------------
 # validate
 # -----------------------------------------------------------------------------
-[ -n "$NAME" ]        || die "model name required (--name)"
-[ -n "$UPSTREAM" ]    || die "upstream model id required (--model)"
+[ -n "$NAME" ] || die "model name required (--name)"
+[ -n "$UPSTREAM" ] || die "upstream model id required (--model)"
 [ -n "$BASE_URL" ] || [ -n "$BASE_URL_ENV" ] || die "base URL required (--base-url or --base-url-env)"
 [ -n "$HARDWARE_ID" ] || die "hardware ID required (--hardware-id)"
 [ -n "$BACKEND_TYPE" ] || BACKEND_TYPE="gpu"
@@ -329,16 +398,16 @@ fi
 echo
 step "Summary"
 printf "    %-22s ${BOLD}%s${RESET}\n" \
-  "name"                "${NAME}" \
-  "upstream"            "${UPSTREAM}" \
-  "base URL"            "${BASE_URL_VALUE}" \
-  "api_key"             "${API_KEY_VALUE}" \
-  "backend_type"        "${BACKEND_TYPE}" \
-  "hardware_id"         "${HARDWARE_ID}" \
-  "supports_vision"     "${SUPPORTS_VISION}" \
-  "input cost / token"  "${INPUT_COST}" \
+  "name" "${NAME}" \
+  "upstream" "${UPSTREAM}" \
+  "base URL" "${BASE_URL_VALUE}" \
+  "api_key" "${API_KEY_VALUE}" \
+  "backend_type" "${BACKEND_TYPE}" \
+  "hardware_id" "${HARDWARE_ID}" \
+  "supports_vision" "${SUPPORTS_VISION}" \
+  "input cost / token" "${INPUT_COST}" \
   "output cost / token" "${OUTPUT_COST}" \
-  "add to LibreChat"    "$([ "$ADD_TO_LIBRECHAT" -eq 1 ] && echo yes || echo no)"
+  "add to LibreChat" "$([ "$ADD_TO_LIBRECHAT" -eq 1 ] && echo yes || echo no)"
 
 if [ "$DRY_RUN" -eq 1 ]; then
   step "Dry run — no files written"
@@ -351,12 +420,12 @@ if [ -t 0 ]; then
   # bare enter should accept. Any unrecognized input re-prompts (so a stray
   # keypress doesn't trash the in-progress registration).
   while :; do
-    printf "    ${BOLD}Proceed?${RESET} [Y/n]: "
+    printf "    %sProceed?%s [Y/n]: " "$BOLD" "$RESET"
     read -r confirm
     case "$confirm" in
-      ""|[Yy]|[Yy][Ee][Ss]) break ;;
-      [Nn]|[Nn][Oo])        die "aborted" ;;
-      *)                    bad "please answer y or n (or Ctrl-C to abort)" ;;
+      "" | [Yy] | [Yy][Ee][Ss]) break ;;
+      [Nn] | [Nn][Oo]) die "aborted" ;;
+      *) bad "please answer y or n (or Ctrl-C to abort)" ;;
     esac
   done
 fi
@@ -421,10 +490,10 @@ fi
 # -----------------------------------------------------------------------------
 if [ "$DO_RESTART" -eq 1 ]; then
   step "Restarting services"
-  RECREATE_LIST="litellm-proxy"
-  [ "$ADD_TO_LIBRECHAT" -eq 1 ] && RECREATE_LIST="$RECREATE_LIST librechat"
-  docker compose up -d --force-recreate $RECREATE_LIST >/dev/null
-  ok "restarted $RECREATE_LIST"
+  RECREATE_LIST=("litellm-proxy")
+  [ "$ADD_TO_LIBRECHAT" -eq 1 ] && RECREATE_LIST+=("librechat")
+  docker compose up -d --force-recreate "${RECREATE_LIST[@]}" >/dev/null
+  ok "restarted ${RECREATE_LIST[*]}"
 
   echo "    waiting for litellm-proxy to be healthy..."
   for i in $(seq 1 24); do
