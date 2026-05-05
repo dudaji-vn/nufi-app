@@ -1,3 +1,7 @@
+# NPUOps 2Q Roadmap — Platform Track (sun)
+
+Q2 2026 (2026-04-28 → 2026-06-27, 9 weeks). GPU platform end-to-end with NPU integration ready.
+
 ## Pre-W1 Setup (Week of Apr 27)
 
 ### Environment Setup
@@ -377,6 +381,13 @@ fix and config dedup that came along ate another half day).
 #### Task 4.1 — Self-Service Usage Dashboard
 
 **Goal:** Users can view their token usage and cost over time.
+
+> **Open question (2026-05-05):** Where to host the dashboard — (a) **standalone
+> Next.js admin app** linked from LibreChat's `interface.customLinks` (simpler,
+> isolated from upstream LibreChat releases — current proposal below), or
+> (b) **fork LibreChat** and add the dashboard as a first-class in-chat page
+> (better UX, but we pay a rebase tax on every LibreChat release). Lock before
+> W3 starts (2026-05-12).
 
 **Steps:**
 
