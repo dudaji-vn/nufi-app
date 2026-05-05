@@ -44,12 +44,13 @@ The browser sees one origin. Frontend and BFF are indistinguishable from outside
 
 ### Stack
 
-- **Vite + React 18** — fast HMR, no SSR overhead
+- **Vite + React 19** — fast HMR, no SSR overhead
 - **TanStack Router** — type-safe routes + search params (matters for filter-heavy admin pages)
 - **Hono** — TypeScript BFF; ~6 routes; serves static SPA fallback in the same process
 - **Tailwind + shadcn/ui** — UI primitives
 - **`hono/jwt`** — HS256 verification with shared `JWT_SECRET`
-- **TanStack Query** — server-state hooks on the React side
+- **TanStack Query** — server-state cache on the React side (keys, usage data)
+- **Zustand** — client-state (modal open/close, toasts, transient UI flags)
 - **Zod** — request/response validation, schemas shared between client and server
 
 ### Data ownership (no duplication)
@@ -85,9 +86,11 @@ admin-app/
 │   │   ├── KeyGenerateModal.tsx
 │   │   ├── KeyRevealOnceModal.tsx
 │   │   └── ui/                  shadcn primitives
-│   └── lib/
-│       ├── api.ts               TanStack Query hooks → /api/*
-│       └── format.ts            key masking, currency, dates
+│   ├── lib/
+│   │   ├── api.ts               TanStack Query hooks → /api/*
+│   │   └── format.ts            key masking, currency, dates
+│   └── stores/
+│       └── ui.ts                Zustand store: modals, toasts, transient flags
 └── server/                     Hono BFF
     ├── index.ts                 app entry; static SPA fallback
     ├── middleware/
