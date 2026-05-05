@@ -1,8 +1,15 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
+import { Activity, Gauge, KeyRound } from 'lucide-react';
 import { api, isUnauthorized } from '~/lib/orpc';
 import { formatUsd } from '~/lib/format';
+import { Skeleton } from '~/components/ui/skeleton';
+import { Badge } from '~/components/ui/badge';
+import { StatCard } from '~/components/StatCard';
+import { BudgetCard } from '~/components/BudgetCard';
+import { SpendBreakdown } from '~/components/SpendBreakdown';
+import { TopKeysCard } from '~/components/TopKeysCard';
 
 export const Route = createFileRoute('/')({
   component: HomePage,
@@ -18,54 +25,93 @@ function HomePage() {
     }
   }, [me.isError, me.error, navigate]);
 
-  if (me.isPending) return <p className="text-muted-foreground">Loading…</p>;
+  if (me.isPending) return <ProfileSkeleton />;
   if (me.isError && !isUnauthorized(me.error)) {
     return <p className="text-destructive">Error: {me.error.message}</p>;
   }
   if (!me.data) return null;
 
-  const { spend, limits } = me.data;
+  const { spend, limits, keysCount, topKeys } = me.data;
+  const identity = me.data.email ?? me.data.id;
 
   return (
-    <section className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Welcome</h1>
-        <p className="text-muted-foreground">
-          Signed in as <span className="font-mono">{me.data.email ?? me.data.id}</span> ·{' '}
-          <span className="rounded bg-muted px-2 py-0.5 text-xs">{me.data.role}</span>
-        </p>
+    <section className="space-y-8">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight">Welcome</h1>
+          <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
+            <span className="font-mono">{identity}</span>
+            <Badge variant="secondary">{me.data.role}</Badge>
+          </p>
+        </div>
+      </header>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <StatCard
+          label="Total spend"
+          value={formatUsd(spend.total)}
+          hint={
+            <span className="inline-flex items-center gap-1">
+              <Activity className="size-3" /> this period
+            </span>
+          }
+        />
+        <BudgetCard
+          spent={spend.total}
+          maxBudget={limits.maxBudget}
+          budgetDuration={limits.budgetDuration}
+        />
+        <StatCard
+          label="Rate limits"
+          value={
+            <span className="text-base">
+              <span className="font-semibold">{limits.tpmLimit?.toLocaleString() ?? '∞'}</span>
+              <span className="ml-1 text-xs text-muted-foreground">tpm</span>
+              <span className="mx-2 text-muted-foreground">·</span>
+              <span className="font-semibold">{limits.rpmLimit?.toLocaleString() ?? '∞'}</span>
+              <span className="ml-1 text-xs text-muted-foreground">rpm</span>
+            </span>
+          }
+          hint={
+            <span className="inline-flex items-center gap-1">
+              <Gauge className="size-3" /> per-account caps
+            </span>
+          }
+        />
       </div>
 
-      <div className="rounded-lg border bg-card p-4 text-card-foreground">
-        <h2 className="mb-3 text-sm font-medium text-muted-foreground">This period</h2>
-        <dl className="grid grid-cols-2 gap-y-2 text-sm">
-          <dt className="text-muted-foreground">Total spend</dt>
-          <dd className="font-mono">{formatUsd(spend.total)}</dd>
+      <div className="grid gap-4 md:grid-cols-2">
+        <SpendBreakdown chat={spend.chat} issuedKeys={spend.issuedKeys} />
+        <TopKeysCard keys={topKeys} totalKeys={keysCount} />
+      </div>
 
-          <dt className="pl-3 text-xs text-muted-foreground">— Chat (LibreChat)</dt>
-          <dd className="font-mono text-xs text-muted-foreground">{formatUsd(spend.chat)}</dd>
+      <p className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
+        <KeyRound className="mr-1 inline size-3" />
+        Chat traffic flows through the master key with your id as <code>end_user</code>;
+        issued-key traffic is attributed directly. The LiteLLM admin <em>Users</em> tab only
+        sums issued-key spend that LiteLLM tracks against the user record — this card
+        sums spend across all your keys plus end-user (chat) spend, so it can be higher
+        than what that tab shows.
+      </p>
+    </section>
+  );
+}
 
-          <dt className="pl-3 text-xs text-muted-foreground">— Issued API keys</dt>
-          <dd className="font-mono text-xs text-muted-foreground">{formatUsd(spend.issuedKeys)}</dd>
-
-          <dt className="text-muted-foreground">Budget</dt>
-          <dd className="font-mono">
-            {limits.maxBudget === null
-              ? '—'
-              : `${formatUsd(limits.maxBudget)} / ${limits.budgetDuration ?? '∞'}`}
-          </dd>
-
-          <dt className="text-muted-foreground">TPM limit</dt>
-          <dd className="font-mono">{limits.tpmLimit ?? '—'}</dd>
-
-          <dt className="text-muted-foreground">RPM limit</dt>
-          <dd className="font-mono">{limits.rpmLimit ?? '—'}</dd>
-        </dl>
-        <p className="mt-4 text-xs text-muted-foreground">
-          Chat usage flows through the master key with your id as <code>end_user</code>. Issued-key
-          usage is attributed directly. The LiteLLM admin "Users" tab only shows the latter; this
-          card sums both.
-        </p>
+function ProfileSkeleton() {
+  return (
+    <section className="space-y-8">
+      <div>
+        <Skeleton className="h-9 w-48" />
+        <Skeleton className="mt-2 h-4 w-64" />
+      </div>
+      <div className="grid gap-4 md:grid-cols-3">
+        {[0, 1, 2].map((i) => (
+          <Skeleton key={i} className="h-28 w-full" />
+        ))}
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <Skeleton className="h-40 w-full" />
+        <Skeleton className="h-40 w-full" />
       </div>
     </section>
   );
