@@ -13,9 +13,14 @@
 # PREREQUISITES (install these first, one-time per machine)
 #   • Docker Desktop  ≥ 4.0  — https://www.docker.com   (give it ≥4 GB RAM)
 #   • Ollama                 — https://ollama.com
-#       macOS:  brew install ollama && brew services start ollama
-#       Linux:  curl -fsSL https://ollama.com/install.sh | sh
-#                ollama serve &     # if not already a service
+#       macOS:    brew install ollama && brew services start ollama
+#       Linux:    curl -fsSL https://ollama.com/install.sh | sh
+#                  ollama serve &     # if not already a service
+#       Windows:  winget install Ollama.Ollama   (or installer from ollama.com)
+#                  — Ollama runs as a background service after install
+#
+#   On Windows, run this script from Git Bash or WSL2 — not from cmd.exe
+#   or PowerShell. (Git Bash ships with bash, openssl, curl, awk, sed.)
 #
 # WHAT THIS SCRIPT DOES (idempotent — safe to re-run any time)
 #   1. Verifies Docker + Ollama are installed and running
@@ -32,7 +37,10 @@
 #
 # TROUBLESHOOTING (most common issues)
 #   • "Docker daemon not running"     — start Docker Desktop
-#   • "ollama daemon not reachable"   — `brew services start ollama` (mac)
+#   • "ollama daemon not reachable"   — start Ollama:
+#                                         macOS:    brew services start ollama
+#                                         Linux:    ollama serve &
+#                                         Windows:  launch Ollama from Start menu
 #   • clickhouse stuck unhealthy      — see docs/roadmap.md Task 1.2 gotchas
 #   • smoke test step 6 fails         — `docker compose restart litellm-proxy`
 # =============================================================================
@@ -66,7 +74,7 @@ while [ $# -gt 0 ]; do
     --model=*)           MODEL="${1#*=}"; shift ;;
     --skip-pull)         SKIP_PULL=1; shift ;;
     --skip-smoke-test)   SKIP_SMOKE=1; shift ;;
-    -h|--help)           sed -n '2,40p' "$0"; exit 0 ;;
+    -h|--help)           sed -n '2,46p' "$0"; exit 0 ;;
     *)                   die "unknown argument: $1 (try --help)" ;;
   esac
 done
@@ -91,9 +99,11 @@ if ! command -v ollama >/dev/null; then
 
   Ollama is needed to serve a model locally for development.
   Install with:
-    macOS:  brew install ollama && brew services start ollama
-    Linux:  curl -fsSL https://ollama.com/install.sh | sh
-            ollama serve &
+    macOS:    brew install ollama && brew services start ollama
+    Linux:    curl -fsSL https://ollama.com/install.sh | sh
+              ollama serve &
+    Windows:  winget install Ollama.Ollama
+              (or download the installer from https://ollama.com)
   Or download from https://ollama.com
 
 EOF
@@ -105,8 +115,9 @@ if ! curl -sSf http://localhost:11434/api/tags >/dev/null 2>&1; then
 
   Ollama is installed but the daemon isn't reachable on :11434.
   Start it:
-    macOS:  brew services start ollama
-    Linux:  ollama serve &
+    macOS:    brew services start ollama
+    Linux:    ollama serve &
+    Windows:  launch Ollama from the Start menu (it runs as a tray app)
 
 EOF
   die "Start Ollama and re-run."

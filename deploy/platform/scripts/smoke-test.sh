@@ -61,9 +61,15 @@ if [ -z "${LANGFUSE_PUBLIC_KEY:-}" ] || [ -z "${LANGFUSE_SECRET_KEY:-}" ]; then
 else
   # LiteLLM ships traces async — give the worker a couple seconds to flush
   sleep 3
+  # `python3` on macOS/Linux, `python` on Windows Git Bash — pick whichever exists.
+  PY=$(command -v python3 || command -v python || true)
+  if [ -z "${PY}" ]; then
+    echo "error: neither python3 nor python found in PATH" >&2
+    exit 1
+  fi
   count=$(curl -fsS -u "${LANGFUSE_PUBLIC_KEY}:${LANGFUSE_SECRET_KEY}" \
     "${LANGFUSE_PUBLIC_HOST}/api/public/traces?limit=1" \
-    | python3 -c 'import sys,json; d=json.load(sys.stdin); print(len(d.get("data",[])))')
+    | "${PY}" -c 'import sys,json; d=json.load(sys.stdin); print(len(d.get("data",[])))')
   if [ "${count}" -lt 1 ]; then
     echo "error: no traces visible in Langfuse — check langfuse-worker logs" >&2
     exit 1
