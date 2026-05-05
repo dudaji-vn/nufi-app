@@ -1,14 +1,14 @@
 import { ORPCError } from '@orpc/server';
 import { z } from 'zod';
-import { o } from '../orpc.ts';
 import {
-  deleteKey as litellmDeleteKey,
   generateKey,
   getKeyInfo,
+  type LiteLLMKey,
   listAllKeys,
   listKeysForUser,
-  type LiteLLMKey,
+  deleteKey as litellmDeleteKey,
 } from '../lib/litellm.ts';
+import { o } from '../orpc.ts';
 
 // --- Shared shapes ----------------------------------------------------------
 

@@ -1,6 +1,6 @@
-import type { MiddlewareHandler } from 'hono';
-import { file } from 'bun';
 import path from 'node:path';
+import { file } from 'bun';
+import type { MiddlewareHandler } from 'hono';
 
 const DIST = path.resolve(import.meta.dir, '../../dist');
 

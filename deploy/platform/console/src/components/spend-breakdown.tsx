@@ -27,7 +27,12 @@ export function SpendBreakdown({ chat, issuedKeys }: Props) {
 
           <div className="space-y-2 text-sm">
             <Row colorClass="bg-primary" label="Chat conversations" value={chat} pct={chatPct} />
-            <Row colorClass="bg-blue-500" label="Direct API calls" value={issuedKeys} pct={keysPct} />
+            <Row
+              colorClass="bg-blue-500"
+              label="Direct API calls"
+              value={issuedKeys}
+              pct={keysPct}
+            />
           </div>
         </>
       )}

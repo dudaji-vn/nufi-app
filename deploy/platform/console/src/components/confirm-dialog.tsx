@@ -1,5 +1,12 @@
-import { Button } from "./ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
+import { Button } from './ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from './ui/dialog';
 
 type Props = {
   open: boolean;
@@ -17,7 +24,7 @@ export function ConfirmDialog({
   onOpenChange,
   title,
   description,
-  confirmLabel = "Confirm",
+  confirmLabel = 'Confirm',
   destructive,
   onConfirm,
   pending,
@@ -33,8 +40,12 @@ export function ConfirmDialog({
           <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={pending}>
             Cancel
           </Button>
-          <Button variant={destructive ? "destructive" : "default"} onClick={onConfirm} disabled={pending}>
-            {pending ? "Working…" : confirmLabel}
+          <Button
+            variant={destructive ? 'destructive' : 'default'}
+            onClick={onConfirm}
+            disabled={pending}
+          >
+            {pending ? 'Working…' : confirmLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

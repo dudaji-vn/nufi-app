@@ -1,4 +1,4 @@
-import { KeyRound, Plus, Wallet, Activity } from 'lucide-react';
+import { Activity, KeyRound, Plus, Wallet } from 'lucide-react';
 import { Button } from './ui/button';
 
 export function KeysEmptyState({ onGenerate }: { onGenerate: () => void }) {
@@ -12,8 +12,8 @@ export function KeysEmptyState({ onGenerate }: { onGenerate: () => void }) {
           Welcome — let’s create your first key
         </h3>
         <p className="mt-2 text-sm text-muted-foreground">
-          API keys let your code call the platform directly. Each key has its own budget and limits, so
-          you can hand one to a script or service without worrying about runaway cost.
+          API keys let your code call the platform directly. Each key has its own budget and limits,
+          so you can hand one to a script or service without worrying about runaway cost.
         </p>
       </div>
 
@@ -43,7 +43,7 @@ export function KeysEmptyState({ onGenerate }: { onGenerate: () => void }) {
           What a call looks like
         </p>
         <pre className="overflow-x-auto text-[11px] font-mono leading-relaxed text-muted-foreground sm:text-xs">
-{`curl http://localhost:4000/v1/chat/completions \\
+          {`curl http://localhost:4000/v1/chat/completions \\
   -H "Authorization: Bearer sk-..." \\
   -H "Content-Type: application/json" \\
   -d '{"model":"qwen2.5-3b","messages":[

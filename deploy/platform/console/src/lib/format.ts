@@ -46,5 +46,7 @@ export function pctSpent(spend: number, max: number | null): number {
 /** Prettier number formatting for limits (10000 → "10K", 100000 → "100K"). */
 export function compactNumber(n: number | null | undefined): string {
   if (n === null || n === undefined) return '∞';
-  return new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(n);
+  return new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(
+    n,
+  );
 }

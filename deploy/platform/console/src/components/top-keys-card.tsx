@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router';
-import { Button } from './ui/button';
 import { formatUsd, maskKey } from '@/lib/format';
+import { Button } from './ui/button';
 
 type Key = {
   alias: string | null;
@@ -31,7 +31,10 @@ export function TopKeysCard({ keys, totalKeys }: Props) {
       {keys.length === 0 ? (
         <div className="py-4 text-center text-sm text-muted-foreground">
           You don’t have any API keys yet.{' '}
-          <Link to="/keys" className="font-medium text-foreground underline-offset-4 hover:underline">
+          <Link
+            to="/keys"
+            className="font-medium text-foreground underline-offset-4 hover:underline"
+          >
             Generate one
           </Link>
           .
@@ -46,7 +49,9 @@ export function TopKeysCard({ keys, totalKeys }: Props) {
                   <span className="truncate text-sm font-medium">
                     {k.alias ?? <span className="text-muted-foreground">unnamed</span>}
                   </span>
-                  <span className="font-mono text-xs text-muted-foreground">{maskKey(k.token)}</span>
+                  <span className="font-mono text-xs text-muted-foreground">
+                    {maskKey(k.token)}
+                  </span>
                   <span className="font-mono text-sm tabular-nums">{formatUsd(k.spend)}</span>
                 </div>
                 <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
