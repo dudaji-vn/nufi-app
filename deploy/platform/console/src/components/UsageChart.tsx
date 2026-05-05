@@ -12,16 +12,18 @@ type Props = {
   pending?: boolean;
 };
 
+const CHART_HEIGHT_PX = 176; // h-44 — keeps small bars (>=15%) clearly visible
+const MIN_BAR_PCT = 15;       // any non-zero day gets at least this much height
+
 /**
- * Square-root scaling so that days with $0.0001 are still clearly visible
- * next to a $0.012 peak, instead of being crushed to a 0.8 % sliver.
- * Linear:  $0.0001 / $0.012 → 0.8% bar (invisible)
- * sqrt:    sqrt(0.008) / sqrt(1) → 9% bar (clearly there)
+ * Square-root scaling so a $0.0001 day is visible next to a $0.012 peak,
+ * floored at 15% so even the smallest non-zero day reads as "yes, there
+ * was activity here", clearly different from a $0 day.
  */
-function scaledHeight(value: number, max: number): number {
+function barHeightPct(value: number, max: number): number {
   if (max <= 0 || value <= 0) return 0;
   const norm = Math.sqrt(value / max);
-  return Math.max(8, norm * 100); // floor at 8% so any non-zero day is unambiguous
+  return Math.max(MIN_BAR_PCT, Math.round(norm * 100));
 }
 
 export function UsageChart({ series, total, requests, peak, mostRecent, pending }: Props) {
@@ -29,7 +31,7 @@ export function UsageChart({ series, total, requests, peak, mostRecent, pending 
     return (
       <div className="rounded-lg border bg-card p-5">
         <Skeleton className="h-4 w-32" />
-        <Skeleton className="mt-4 h-32 w-full" />
+        <Skeleton className="mt-4 h-44 w-full" />
         <Skeleton className="mt-3 h-3 w-48" />
       </div>
     );
@@ -37,6 +39,7 @@ export function UsageChart({ series, total, requests, peak, mostRecent, pending 
 
   const max = Math.max(...series.map((d) => d.spend), 0);
   const days = series.length;
+  const gridStyle = { gridTemplateColumns: `repeat(${days}, minmax(0, 1fr))` };
 
   return (
     <div className="rounded-lg border bg-card p-5 text-card-foreground">
@@ -47,17 +50,21 @@ export function UsageChart({ series, total, requests, peak, mostRecent, pending 
         </span>
       </div>
 
-      <div className="flex h-36 items-end gap-2">
+      {/* Chart area — explicit pixel height so % bar heights resolve correctly */}
+      <div
+        className="grid gap-2 border-b border-border/50"
+        style={{ height: `${CHART_HEIGHT_PX}px`, ...gridStyle }}
+      >
         {series.map((d) => {
-          const heightPct = scaledHeight(d.spend, max);
+          const pct = barHeightPct(d.spend, max);
           const isPeak = peak !== null && d.date === peak.date && d.spend > 0;
           const hasSpend = d.spend > 0;
 
           return (
-            <div key={d.date} className="group relative flex flex-1 flex-col items-center justify-end">
-              {/* Always-visible value label above each bar */}
+            <div key={d.date} className="relative flex h-full flex-col items-center justify-end">
+              {/* Value label — sits right above the bar */}
               <span
-                className={`mb-1 font-mono text-[10px] tabular-nums ${
+                className={`mb-1 font-mono text-[10px] tabular-nums leading-none ${
                   hasSpend
                     ? isPeak
                       ? 'font-semibold text-foreground'
@@ -69,9 +76,9 @@ export function UsageChart({ series, total, requests, peak, mostRecent, pending 
               </span>
               <div
                 className={`w-full rounded-t-sm transition-all ${
-                  isPeak ? 'bg-primary' : hasSpend ? 'bg-primary/50' : 'bg-muted'
+                  hasSpend ? (isPeak ? 'bg-primary' : 'bg-primary/55') : 'bg-muted'
                 }`}
-                style={{ height: `${Math.max(heightPct, 2)}%` }}
+                style={{ height: hasSpend ? `${pct}%` : '4px' }}
                 aria-label={`${d.date}: ${formatUsd(d.spend)}`}
               />
             </div>
@@ -79,9 +86,10 @@ export function UsageChart({ series, total, requests, peak, mostRecent, pending 
         })}
       </div>
 
-      <div className="mt-2 flex justify-between text-[11px] text-muted-foreground">
+      {/* Day labels */}
+      <div className="mt-2 grid gap-2" style={gridStyle}>
         {series.map((d) => (
-          <span key={d.date} className="flex-1 text-center">
+          <span key={d.date} className="text-center text-[11px] text-muted-foreground">
             {dayLabel(d.date)}
           </span>
         ))}
