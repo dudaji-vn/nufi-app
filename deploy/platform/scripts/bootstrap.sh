@@ -65,16 +65,30 @@ cd "$(dirname "$0")/.."
 # pretty output helpers
 # -----------------------------------------------------------------------------
 if [ -t 1 ]; then
-  BOLD=$'\033[1m'; DIM=$'\033[2m'; GREEN=$'\033[32m'; YELLOW=$'\033[33m'
-  RED=$'\033[31m'; CYAN=$'\033[36m'; RESET=$'\033[0m'
+  BOLD=$'\033[1m'
+  DIM=$'\033[2m'
+  GREEN=$'\033[32m'
+  YELLOW=$'\033[33m'
+  RED=$'\033[31m'
+  CYAN=$'\033[36m'
+  RESET=$'\033[0m'
 else
-  BOLD=""; DIM=""; GREEN=""; YELLOW=""; RED=""; CYAN=""; RESET=""
+  BOLD=""
+  DIM=""
+  GREEN=""
+  YELLOW=""
+  RED=""
+  CYAN=""
+  RESET=""
 fi
 step() { echo "${CYAN}==>${RESET} ${BOLD}$*${RESET}"; }
-ok()   { echo "    ${GREEN}✓${RESET} $*"; }
+ok() { echo "    ${GREEN}✓${RESET} $*"; }
 warn() { echo "    ${YELLOW}!${RESET} $*"; }
-bad()  { echo "    ${RED}✗${RESET} $*" >&2; }
-die()  { echo "${RED}error:${RESET} $*" >&2; exit 1; }
+bad() { echo "    ${RED}✗${RESET} $*" >&2; }
+die() {
+  echo "${RED}error:${RESET} $*" >&2
+  exit 1
+}
 
 # Recreate litellm + librechat and wait for litellm to be healthy.
 # Used after batched config changes (multi-model registration, mock-NPU clone)
@@ -85,8 +99,13 @@ restart_stack() {
   echo "    waiting for litellm-proxy to be healthy..."
   for i in $(seq 1 24); do
     s=$(docker inspect --format '{{.State.Health.Status}}' npuops-litellm 2>/dev/null || echo missing)
-    if [ "$s" = "healthy" ]; then echo; ok "healthy"; return 0; fi
-    printf "."; sleep 5
+    if [ "$s" = "healthy" ]; then
+      echo
+      ok "healthy"
+      return 0
+    fi
+    printf "."
+    sleep 5
   done
   echo
   warn "litellm-proxy did not become healthy in 2 minutes — check: docker compose logs litellm-proxy"
@@ -108,13 +127,13 @@ restart_stack() {
 _pick_saved_tty=""
 _pick_restore_tty() {
   [ -n "$_pick_saved_tty" ] && stty "$_pick_saved_tty" 2>/dev/null
-  printf "\033[?25h" >&2   # show cursor
+  printf "\033[?25h" >&2 # show cursor
   _pick_saved_tty=""
 }
 _pick_setup_tty() {
   _pick_saved_tty=$(stty -g)
   stty -echo -icanon
-  printf "\033[?25l" >&2   # hide cursor
+  printf "\033[?25l" >&2 # hide cursor
   trap '_pick_restore_tty' EXIT INT TERM
 }
 
@@ -129,17 +148,17 @@ _pick_read_key() {
       rest=""
       IFS= read -rsn2 -t 1 rest 2>/dev/null || true
       case "$rest" in
-        '[A') KEY=up   ;;
+        '[A') KEY=up ;;
         '[B') KEY=down ;;
-        *)    KEY=esc  ;;
+        *) KEY=esc ;;
       esac
       ;;
-    "")    KEY=enter ;;
-    " ")   KEY=space ;;
-    k|K)   KEY=up    ;;
-    j|J)   KEY=down  ;;
-    q|Q)   KEY=q     ;;
-    *)     KEY=other ;;
+    "") KEY=enter ;;
+    " ") KEY=space ;;
+    k | K) KEY=up ;;
+    j | J) KEY=down ;;
+    q | Q) KEY=q ;;
+    *) KEY=other ;;
   esac
 }
 
@@ -153,8 +172,10 @@ _pick_clear_lines() {
 }
 
 pick() {
-  local title="$1"; shift
-  local opts=("$@") n=${#opts[@]} cur=0 i
+  local title="$1"
+  shift
+  local opts=("$@")
+  local n=${#opts[@]} cur=0 i
 
   # Non-TTY fallback — autoselect first option. Lets `--backend skip` etc.
   # work when stdin is closed.
@@ -164,7 +185,7 @@ pick() {
     return 0
   fi
 
-  printf "    %s\n"   "$title"                                                    >&2
+  printf "    %s\n" "$title" >&2
   printf "    %s↑/↓ navigate · enter to select · q to quit%s\n\n" "$DIM" "$RESET" >&2
 
   _pick_setup_tty
@@ -181,10 +202,13 @@ pick() {
   while :; do
     _pick_read_key
     case "$KEY" in
-      up)    cur=$(( (cur - 1 + n) % n )) ;;
-      down)  cur=$(( (cur + 1) % n ))     ;;
+      up) cur=$(((cur - 1 + n) % n)) ;;
+      down) cur=$(((cur + 1) % n)) ;;
       enter) break ;;
-      q|esc) _pick_restore_tty; die "aborted" ;;
+      q | esc)
+        _pick_restore_tty
+        die "aborted"
+        ;;
     esac
     _pick_clear_lines "$n"
     _pick_draw_single
@@ -196,10 +220,12 @@ pick() {
 }
 
 pick_multi() {
-  local title="$1"; shift
-  local opts=("$@") n=${#opts[@]} cur=0 i any sel
+  local title="$1"
+  shift
+  local opts=("$@")
+  local n=${#opts[@]} cur=0 i any sel
   declare -a selected
-  for i in $(seq 0 $((n - 1))); do selected[$i]=0; done
+  for i in $(seq 0 $((n - 1))); do selected[i]=0; done
 
   if [ ! -t 0 ] || [ ! -t 2 ]; then
     PICK_INDICES_ARR=(1)
@@ -207,7 +233,7 @@ pick_multi() {
     return 0
   fi
 
-  printf "    %s\n"   "$title" >&2
+  printf "    %s\n" "$title" >&2
   printf "    %s↑/↓ navigate · space toggle · enter to confirm · q to quit%s\n\n" "$DIM" "$RESET" >&2
 
   _pick_setup_tty
@@ -229,9 +255,9 @@ pick_multi() {
   while :; do
     _pick_read_key
     case "$KEY" in
-      up)    cur=$(( (cur - 1 + n) % n )) ;;
-      down)  cur=$(( (cur + 1) % n ))     ;;
-      space) selected[$cur]=$(( 1 - selected[$cur] )) ;;
+      up) cur=$(((cur - 1 + n) % n)) ;;
+      down) cur=$(((cur + 1) % n)) ;;
+      space) selected[cur]=$((1 - selected[cur])) ;;
       enter)
         any=0
         for i in $(seq 0 $((n - 1))); do
@@ -239,7 +265,10 @@ pick_multi() {
         done
         [ "$any" -eq 1 ] && break
         ;;
-      q|esc) _pick_restore_tty; die "aborted" ;;
+      q | esc)
+        _pick_restore_tty
+        die "aborted"
+        ;;
     esac
     _pick_clear_lines "$n"
     _pick_draw_multi
@@ -265,21 +294,42 @@ SKIP_PULL=0
 SKIP_SMOKE=0
 while [ $# -gt 0 ]; do
   case "$1" in
-    --backend)           BACKEND="$2"; shift 2 ;;
-    --backend=*)         BACKEND="${1#*=}"; shift ;;
-    --model)             MODEL="$2"; shift 2 ;;
-    --model=*)           MODEL="${1#*=}"; shift ;;
-    --skip-pull)         SKIP_PULL=1; shift ;;
-    --skip-smoke-test)   SKIP_SMOKE=1; shift ;;
-    -h|--help)           sed -n '2,59p' "$0"; exit 0 ;;
-    *)                   die "unknown argument: $1 (try --help)" ;;
+    --backend)
+      BACKEND="$2"
+      shift 2
+      ;;
+    --backend=*)
+      BACKEND="${1#*=}"
+      shift
+      ;;
+    --model)
+      MODEL="$2"
+      shift 2
+      ;;
+    --model=*)
+      MODEL="${1#*=}"
+      shift
+      ;;
+    --skip-pull)
+      SKIP_PULL=1
+      shift
+      ;;
+    --skip-smoke-test)
+      SKIP_SMOKE=1
+      shift
+      ;;
+    -h | --help)
+      sed -n '2,59p' "$0"
+      exit 0
+      ;;
+    *) die "unknown argument: $1 (try --help)" ;;
   esac
 done
 
 # --model implies Ollama (preserves the old single-flag UX).
 [ -n "$MODEL" ] && [ -z "$BACKEND" ] && BACKEND=ollama
 case "$BACKEND" in
-  ""|ollama|remote|cloud|mock-npu|skip) ;;
+  "" | ollama | remote | cloud | mock-npu | skip) ;;
   *) die "--backend must be one of: ollama, remote, cloud, mock-npu, skip (got: $BACKEND)" ;;
 esac
 
@@ -287,12 +337,12 @@ esac
 # 1. prerequisites
 # -----------------------------------------------------------------------------
 step "1/6 Checking prerequisites"
-command -v docker  >/dev/null || die "docker not installed — https://www.docker.com"
+command -v docker >/dev/null || die "docker not installed — https://www.docker.com"
 docker compose version >/dev/null 2>&1 || die "docker compose plugin missing"
 command -v openssl >/dev/null || die "openssl not installed"
-command -v curl    >/dev/null || die "curl not installed"
-command -v yq      >/dev/null || die "yq not installed (used by add-model.sh) — brew install yq"
-docker info >/dev/null 2>&1   || die "Docker daemon not running — start Docker Desktop"
+command -v curl >/dev/null || die "curl not installed"
+command -v yq >/dev/null || die "yq not installed (used by add-model.sh) — brew install yq"
+docker info >/dev/null 2>&1 || die "Docker daemon not running — start Docker Desktop"
 ok "docker, openssl, curl, yq ok"
 
 # -----------------------------------------------------------------------------
@@ -307,11 +357,11 @@ if [ -z "$BACKEND" ]; then
     "Mock NPU           — clone an existing model, tag as backend_type=npu (dev helper)" \
     "Skip               — bring the stack up only, register models later"
   case "$PICK_INDEX" in
-    1) BACKEND=ollama   ;;
-    2) BACKEND=remote   ;;
-    3) BACKEND=cloud    ;;
+    1) BACKEND=ollama ;;
+    2) BACKEND=remote ;;
+    3) BACKEND=cloud ;;
     4) BACKEND=mock-npu ;;
-    5) BACKEND=skip     ;;
+    5) BACKEND=skip ;;
   esac
 fi
 ok "backend: ${BACKEND}"
@@ -349,10 +399,8 @@ EOF
     ok "ollama daemon reachable on http://localhost:11434"
 
     # 3b. Build the list of models to register (multi-select supported).
-    # MODELS_TO_REGISTER  → registered with add-model.sh in step 5b
-    # MODELS_TO_PULL      → fetched via `ollama pull` in step 3c
+    # Pulled via `ollama pull` in step 3c, then registered with add-model.sh in step 5b.
     MODELS_TO_REGISTER=()
-    MODELS_TO_PULL=()
 
     if [ -n "$MODEL" ]; then
       # --model flag: legacy single-model path
@@ -410,7 +458,7 @@ EOF
     fi
     ;;
 
-  remote|cloud)
+  remote | cloud)
     ok "deferred — you'll be prompted by add-model.sh after the stack starts"
     ;;
 
@@ -456,11 +504,11 @@ GRAFANA_ADMIN_PASSWORD,hex12
 gen() {
   case "$1" in
     sk_hex32) printf "sk-%s" "$(openssl rand -hex 32)" ;;
-    hex32)    openssl rand -hex 32 ;;
-    hex16)    openssl rand -hex 16 ;;
-    hex12)    openssl rand -hex 12 ;;
-    b64_32)   openssl rand -base64 32 ;;
-    *)        die "unknown generator: $1" ;;
+    hex32) openssl rand -hex 32 ;;
+    hex16) openssl rand -hex 16 ;;
+    hex12) openssl rand -hex 12 ;;
+    b64_32) openssl rand -base64 32 ;;
+    *) die "unknown generator: $1" ;;
   esac
 }
 
@@ -480,8 +528,8 @@ echo "$SECRETS_DEF" | while IFS=, read -r KEY GENERATOR; do
   if grep -qE "^${KEY}=replace-me$" "$TMPFILE"; then
     NEWVAL=$(gen "$GENERATOR")
     awk -v k="$KEY" -v v="$NEWVAL" \
-        '$0 ~ "^" k "=replace-me$" { print k"="v; next } { print }' \
-        "$TMPFILE" > "${TMPFILE}.new" && mv "${TMPFILE}.new" "$TMPFILE"
+      '$0 ~ "^" k "=replace-me$" { print k"="v; next } { print }' \
+      "$TMPFILE" >"${TMPFILE}.new" && mv "${TMPFILE}.new" "$TMPFILE"
   fi
 done
 
@@ -495,7 +543,7 @@ awk \
   /^DATABASE_URL=/ { print "DATABASE_URL=postgresql://npuops:" pg "@postgres:5432/npuops"; next }
   /^MONGO_URI=/    { print "MONGO_URI=mongodb://librechat:" mg "@mongodb:27017/LibreChat?authSource=admin"; next }
   { print }
-' "$TMPFILE" > "${TMPFILE}.new" && mv "${TMPFILE}.new" "$TMPFILE"
+' "$TMPFILE" >"${TMPFILE}.new" && mv "${TMPFILE}.new" "$TMPFILE"
 
 mv "$TMPFILE" .env
 ok "secrets populated"
@@ -539,22 +587,25 @@ case "$BACKEND" in
     # actually added (skipped if every model was already registered).
     any_added=0
     for m in "${MODELS_TO_REGISTER[@]}"; do
-      mname=$(echo "$m" | tr ':/' '--')   # qwen2.5:3b → qwen2.5-3b
-      if yq eval '.model_list[].model_name' litellm/config.yaml 2>/dev/null | grep -Fxq "$mname"; then
+      mname=$(echo "$m" | tr ':/' '--') # qwen2.5:3b → qwen2.5-3b
+      # Avoid `yq | grep -q`: under `set -o pipefail`, grep -q closes the pipe
+      # early and yq exits 141 (SIGPIPE), making the `if` evaluate the success
+      # case as false. Use yq's own boolean operator instead.
+      if [ "$(mname="$mname" yq eval '.model_list | any_c(.model_name == strenv(mname))' litellm/config.yaml 2>/dev/null)" = "true" ]; then
         ok "model '${mname}' already registered (skipping)"
       else
         step "Registering '${mname}' with the proxy"
         ./scripts/add-model.sh \
-          --name           "$mname" \
-          --model          "openai/${m}" \
-          --base-url-env   GPU_BACKEND_BASE_URL \
-          --api-key-env    GPU_BACKEND_API_KEY \
-          --backend-type   gpu \
-          --hardware-id    "${GPU_HARDWARE_ID:-mac-local}" \
+          --name "$mname" \
+          --model "openai/${m}" \
+          --base-url-env GPU_BACKEND_BASE_URL \
+          --api-key-env GPU_BACKEND_API_KEY \
+          --backend-type gpu \
+          --hardware-id "${GPU_HARDWARE_ID:-mac-local}" \
           --no-test --no-restart
         any_added=1
       fi
-      MODEL_NAME="$mname"   # smoke test runs against the last picked model
+      MODEL_NAME="$mname" # smoke test runs against the last picked model
     done
 
     [ "$any_added" -eq 1 ] && restart_stack
@@ -611,7 +662,8 @@ EOF
     src="$PICK_VALUE"
     mock_name="${src}-mock-npu"
 
-    if yq eval '.model_list[].model_name' litellm/config.yaml | grep -Fxq "$mock_name"; then
+    # See note on the SIGPIPE pitfall above.
+    if [ "$(mock_name="$mock_name" yq eval '.model_list | any_c(.model_name == strenv(mock_name))' litellm/config.yaml)" = "true" ]; then
       ok "mock '${mock_name}' already exists (skipping)"
     else
       step "Cloning '${src}' as '${mock_name}' (backend_type=npu, hardware_id=mock-npu)"
@@ -624,7 +676,9 @@ EOF
           | .model_info.hardware_id  = "mock-npu"
         )]
       ' litellm/config.yaml
-      yq eval -i '.endpoints.custom[0].models.default += [strenv(mock_name)]' librechat/librechat.yaml
+      # Match add-model.sh's dedup posture (`| unique`) so a re-run can't create
+      # a duplicate entry in the LibreChat fallback list.
+      yq eval -i '.endpoints.custom[0].models.default = ((.endpoints.custom[0].models.default + [strenv(mock_name)]) | unique)' librechat/librechat.yaml
       ok "wrote ${mock_name} to litellm/config.yaml + librechat/librechat.yaml"
       restart_stack
     fi

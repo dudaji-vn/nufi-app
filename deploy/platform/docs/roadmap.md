@@ -238,21 +238,44 @@
 
 #### Task 2.2 — End-to-end Smoke Test + W2 Checkpoint
 
+**Status:** ✅ Done (2026-05-05) — `./scripts/e2e-smoke-test.sh` runs
+containerised; 6/7 hard checks green, 1 soft warning surfaces a `hardware_id`
+propagation gap (see follow-ups below). Demo deck at `docs/demos/w2-checkpoint.md`.
+
 **Goal:** The flow `User → LibreChat → LiteLLM → GPU → Langfuse trace` works.
 
 **Steps:**
 
-1. Write an automated smoke test script (Python) to:
-    - Authenticate against LibreChat (`POST /api/auth/login`) and grab a JWT
-    - Send a message via `POST /api/ask/<endpoint>`
-    - Assert a response is returned
-    - Query the Langfuse API → assert the trace exists
+1. [x] Write an automated smoke test script (Python) to:
+    - [x] Authenticate against LibreChat (register-or-login → JWT)
+    - [x] Send a message via `POST /api/ask/custom` (the endpoint name is in
+      the body; the URL path is the endpoint *type*, not the name — see
+      `validateEndpoint` middleware in LibreChat 0.7.5)
+    - [x] Assert the response stream returns non-empty text
+    - [x] Query the Langfuse API → assert the trace exists, has cost, and
+      records the right model
+2. [x] Prepare W2 checkpoint demo: `docs/demos/w2-checkpoint.md` (5 slides),
+   live demo for gom and hoon on Friday 2026-05-08
 
-2. Prepare W2 checkpoint demo:
-    - Short 5-minute slide deck
-    - Live demo for gom and hoon
+**Effort estimate:** 2 days (delivered in 0.5 day; the `add-model.sh` SIGPIPE
+fix and config dedup that came along ate another half day).
 
-**Effort estimate:** 2 days
+**Findings during implementation (2026-05-05):**
+
+- **`uaParser` middleware** in LibreChat 0.7.5 rejects any request whose
+  User-Agent isn't a recognised browser — the e2e client must spoof a Firefox
+  UA. Documented in `scripts/e2e/e2e_smoke_test.py`.
+- **`hardware_id` propagation gap.** `langfuse_default_tags: ["hardware_id"]`
+  in `litellm/config.yaml` is silently ignored — LiteLLM only resolves
+  `cache_hit`/`cache_key` natively (see
+  `litellm/integrations/langfuse/langfuse.py::add_default_langfuse_tags`).
+  Tracked as a W2.5 follow-up so W6 reports can aggregate by hardware.
+- **SIGPIPE bug in `add-model.sh:314` and `bootstrap.sh:543/614`** — the
+  uniqueness check used `yq | grep -Fxq "$NAME"`, which under `set -o pipefail`
+  returns 141 (SIGPIPE on yq) when grep matches early, so the `if` evaluated
+  the success case as false. That's why duplicates accumulated. Fixed by
+  switching to `yq … any_c(.model_name == strenv(NAME))` and treating
+  re-registration as idempotent (skip silently).
 
 > 🏁 **W2 Checkpoint:** GPU platform flow works end-to-end
 
