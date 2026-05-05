@@ -9,6 +9,7 @@
     "dev:server": "bun --hot run server/index.ts",
     "build": "vite build",
     "start": "bun run server/index.ts",
+    "smoke": "bun run scripts/smoke.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
