@@ -244,6 +244,33 @@ services:
       start_period: 20s
     networks: [npuops]
 
+  # End-to-end smoke test for W2 Task 2.2. Runs python in-network so it can
+  # address librechat / langfuse-web by service name. Lives behind the `e2e`
+  # profile so it never starts on a default `docker compose up -d` — invoke via
+  # `./scripts/e2e-smoke-test.sh` instead.
+  e2e-test:
+    profiles: ["e2e"]
+    build:
+      context: ./scripts/e2e
+    container_name: npuops-e2e-test
+    depends_on:
+      librechat:
+        condition: service_healthy
+      langfuse-web:
+        condition: service_started
+    environment:
+      LIBRECHAT_URL: http://librechat:3080
+      LANGFUSE_URL: http://langfuse-web:3000
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      E2E_USER_EMAIL: ${E2E_USER_EMAIL:-e2e@npuops.local}
+      E2E_USER_PASSWORD: ${E2E_USER_PASSWORD:-}
+      E2E_USER_NAME: ${E2E_USER_NAME:-E2E Bot}
+      E2E_MODEL: ${E2E_MODEL:-qwen2.5-3b}
+      E2E_EXPECTED_HARDWARE_ID: ${E2E_EXPECTED_HARDWARE_ID:-mac-local}
+      E2E_ENDPOINT_NAME: ${E2E_ENDPOINT_NAME:-NPUOps}
+    networks: [npuops]
+
   librechat:
     image: ghcr.io/danny-avila/librechat:v0.7.5
     container_name: npuops-librechat

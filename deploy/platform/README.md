@@ -112,6 +112,24 @@ test chat completion against the new model.
 
 Requires `yq` (mikefarah's: `brew install yq`). Run `./scripts/add-model.sh --help` for all flags.
 
+## End-to-end smoke test
+
+`./scripts/e2e-smoke-test.sh` drives the full user flow
+(LibreChat → LiteLLM → GPU backend → Langfuse trace) inside the compose
+network. Useful as a regression check after touching any of those services.
+
+```bash
+./scripts/e2e-smoke-test.sh             # ~10s after the image is built
+./scripts/e2e-smoke-test.sh --rebuild   # rebuild the e2e image first
+```
+
+Required env (auto-set by `./scripts/bootstrap.sh`, otherwise fill in `.env`
+from the new `E2E_*` block in `.env.example`): `E2E_USER_EMAIL`,
+`E2E_USER_PASSWORD`, `E2E_MODEL`, `E2E_EXPECTED_HARDWARE_ID`.
+
+Production deployments that disable `ALLOW_REGISTRATION` must pre-create the
+e2e user — the test only auto-registers when registration is open.
+
 ## Service endpoints (local defaults)
 
 | Service        | URL                       |
