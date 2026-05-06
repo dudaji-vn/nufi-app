@@ -112,3 +112,20 @@ jobs:
           tags: npuops/litellm:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Check out LibreChat submodule
+        if: hashFiles('librechat/Dockerfile') != ''
+        run: git submodule update --init --depth 1 librechat/source
+
+      - name: Build LibreChat image (verifies patches still apply)
+        if: hashFiles('librechat/Dockerfile') != ''
+        uses: docker/build-push-action@v5
+        with:
+          context: ./librechat
+          push: false
+          load: true
+          tags: npuops/librechat:ci
+          build-args: |
+            CONSOLE_URL=http://localhost:3001
+          cache-from: type=gha,scope=librechat
+          cache-to: type=gha,mode=max,scope=librechat
