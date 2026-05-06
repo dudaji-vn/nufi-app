@@ -24,24 +24,20 @@
 #                                              # providers (LiteLLM has the
 #                                              # endpoint built in)
 #       api_key:  os.environ/<KEY_VAR>         # or an inline key
-#       input_cost_per_token:  0.00000020
-#       output_cost_per_token: 0.00000060
+#       input_cost_per_token:  0.00000020      # required for OpenAI-compatible
+#       output_cost_per_token: 0.00000060      # backends (LiteLLM can't know
+#                                              # what your local Ollama costs).
+#                                              # OMIT for native providers —
+#                                              # LiteLLM ships a model-cost map
+#                                              # and a manual override here will
+#                                              # silently mis-report Langfuse
+#                                              # cost. Override only if your
+#                                              # contract pricing differs.
 #     model_info:
 #       backend_type: gpu                      # gpu | npu | cloud
 #       hardware_id: gpu-node-01               # used by cost / usage reports
 #       supports_vision: false                 # set true for multimodal models
 model_list:
-  - model_name: gemma4
-    litellm_params:
-      model: openai/gemma4
-      api_base: os.environ/GPU_BACKEND_BASE_URL
-      api_key: os.environ/GPU_BACKEND_API_KEY
-      input_cost_per_token: 0.00000020
-      output_cost_per_token: 0.00000060
-    model_info:
-      backend_type: gpu
-      hardware_id: mac-local
-      supports_vision: false
   - model_name: qwen2.5-3b
     litellm_params:
       model: openai/qwen2.5:3b
@@ -52,17 +48,6 @@ model_list:
     model_info:
       backend_type: gpu
       hardware_id: mac-local
-      supports_vision: false
-  - model_name: gemma4-mock-npu
-    litellm_params:
-      model: openai/gemma4
-      api_base: os.environ/GPU_BACKEND_BASE_URL
-      api_key: os.environ/GPU_BACKEND_API_KEY
-      input_cost_per_token: 0.00000020
-      output_cost_per_token: 0.00000060
-    model_info:
-      backend_type: npu
-      hardware_id: mock-npu
       supports_vision: false
   - model_name: llama3.1-latest
     litellm_params:
@@ -101,8 +86,6 @@ model_list:
     litellm_params:
       model: gemini/gemini-2.0-flash
       api_key: os.environ/GEMINI_API_KEY
-      input_cost_per_token: 0.00000020
-      output_cost_per_token: 0.00000060
     model_info:
       backend_type: cloud
       hardware_id: gemini-cloud

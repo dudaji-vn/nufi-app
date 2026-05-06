@@ -8,10 +8,25 @@ version: 1.2.1
 cache: true
 # UI / branding overrides. App name, logo and favicon come from env / assets.
 interface:
+  customWelcome: 'Welcome to NPUOps — chat routes through LiteLLM to GPU/NPU backends.'
+  # One endpoint (LiteLLM); the dropdown is noise. Keep model select.
+  endpointsMenu: false
+  modelSelect: true
+  parameters: true
+  sidePanel: true
+  presets: true
+  prompts: true
+  bookmarks: true
+  multiConvo: true
+  temporaryChat: true
+  # Key/budget/team management lives in the console app.
+  agents: false
   privacyPolicy:
-    externalUrl: ''
+    externalUrl: ${PRIVACY_POLICY_URL}
+    openNewTab: true
   termsOfService:
-    externalUrl: ''
+    externalUrl: ${TERMS_OF_SERVICE_URL}
+    openNewTab: true
 # Endpoints — single custom endpoint that routes everything through LiteLLM.
 endpoints:
   custom:

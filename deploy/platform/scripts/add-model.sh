@@ -24,9 +24,11 @@
 #       --api-key-env  GPU_BACKEND_API_KEY \
 #       --backend-type gpu --hardware-id mac-local
 #
-#   # native LiteLLM provider — no --base-url, LiteLLM has the endpoint built
-#   # in. See https://docs.litellm.ai/docs/providers/gemini (and /anthropic,
-#   # /cohere, /deepseek, /xai, /mistral, /groq, /perplexity, /ai21, /replicate).
+#   # native LiteLLM provider — no --base-url AND no cost fields. LiteLLM has
+#   # both the endpoint and the list-price for known models built in (see
+#   # https://docs.litellm.ai/docs/providers/gemini and /anthropic, /cohere,
+#   # /deepseek, /xai, /mistral, /groq, /perplexity, /ai21, /replicate). Pass
+#   # --input-cost / --output-cost only if your contract pricing differs.
 #   ./scripts/add-model.sh \
 #       --name gemini-2.0-flash \
 #       --model 'gemini/gemini-2.0-flash' \
@@ -393,16 +395,26 @@ if [ -t 0 ]; then
 
   if [ -z "$INPUT_COST" ] || [ -z "$OUTPUT_COST" ]; then
     group 7 7 "Cost per token (USD)"
-    hint "Shown in Langfuse / cost reports. Defaults are platform-wide guesses;"
-    hint "override per-model when you have real numbers from your provider."
-    [ -z "$INPUT_COST" ] && INPUT_COST=$(ask "input  cost / token" "$DEFAULT_INPUT_COST")
-    [ -z "$OUTPUT_COST" ] && OUTPUT_COST=$(ask "output cost / token" "$DEFAULT_OUTPUT_COST")
+    if is_native_provider "$UPSTREAM"; then
+      hint "Skipping — '${UPSTREAM%%/*}/' is a native LiteLLM provider; cost is read"
+      hint "from LiteLLM's built-in price map. Override with --input-cost/--output-cost"
+      hint "only if your contract pricing differs from list pricing."
+    else
+      hint "Shown in Langfuse / cost reports. Defaults are platform-wide guesses;"
+      hint "override per-model when you have real numbers from your provider."
+      [ -z "$INPUT_COST" ] && INPUT_COST=$(ask "input  cost / token" "$DEFAULT_INPUT_COST")
+      [ -z "$OUTPUT_COST" ] && OUTPUT_COST=$(ask "output cost / token" "$DEFAULT_OUTPUT_COST")
+    fi
   fi
 fi
 
 # Apply defaults for non-interactive runs that didn't pass --input-cost/--output-cost.
-[ -n "$INPUT_COST" ] || INPUT_COST="$DEFAULT_INPUT_COST"
-[ -n "$OUTPUT_COST" ] || OUTPUT_COST="$DEFAULT_OUTPUT_COST"
+# Skip native providers — LiteLLM's built-in price map is more accurate than
+# our platform-wide guess, and a manual override would silently win over it.
+if ! is_native_provider "$UPSTREAM"; then
+  [ -n "$INPUT_COST" ] || INPUT_COST="$DEFAULT_INPUT_COST"
+  [ -n "$OUTPUT_COST" ] || OUTPUT_COST="$DEFAULT_OUTPUT_COST"
+fi
 
 # -----------------------------------------------------------------------------
 # validate
@@ -468,8 +480,8 @@ printf "    %-22s ${BOLD}%s${RESET}\n" \
   "backend_type" "${BACKEND_TYPE}" \
   "hardware_id" "${HARDWARE_ID}" \
   "supports_vision" "${SUPPORTS_VISION}" \
-  "input cost / token" "${INPUT_COST}" \
-  "output cost / token" "${OUTPUT_COST}" \
+  "input cost / token" "${INPUT_COST:-(LiteLLM built-in)}" \
+  "output cost / token" "${OUTPUT_COST:-(LiteLLM built-in)}" \
   "add to LibreChat" "$([ "$ADD_TO_LIBRECHAT" -eq 1 ] && echo yes || echo no)"
 
 if [ "$DRY_RUN" -eq 1 ]; then
@@ -502,15 +514,17 @@ if [ "$ALREADY_REGISTERED" -eq 1 ]; then
   warn "to update params for '$NAME', remove it from litellm/config.yaml first, then re-run"
 else
   step "Updating litellm/config.yaml"
+  # Build the base entry, then layer optional fields on top. We don't write
+  # api_base or input/output cost into the literal above because they're
+  # conditional: native LiteLLM providers omit api_base, and any provider with a
+  # built-in price entry should omit the cost overrides (else the override wins
+  # over LiteLLM's price map and Langfuse cost is silently wrong).
   yq eval -i '
     .model_list += [{
       "model_name": strenv(NAME),
       "litellm_params": {
         "model": strenv(UPSTREAM),
-        "api_base": strenv(BASE_URL_VALUE),
-        "api_key": strenv(API_KEY_VALUE),
-        "input_cost_per_token": (strenv(INPUT_COST) | from_yaml),
-        "output_cost_per_token": (strenv(OUTPUT_COST) | from_yaml)
+        "api_key": strenv(API_KEY_VALUE)
       },
       "model_info": {
         "backend_type": strenv(BACKEND_TYPE),
@@ -519,10 +533,14 @@ else
       }
     }]
   ' litellm/config.yaml
-  # Native LiteLLM providers (gemini/, anthropic/, …) don't take an api_base —
-  # strip it back out if the user didn't supply one.
-  if [ -z "$BASE_URL_VALUE" ]; then
-    yq eval -i 'del(.model_list[-1].litellm_params.api_base)' litellm/config.yaml
+  if [ -n "$BASE_URL_VALUE" ]; then
+    yq eval -i '.model_list[-1].litellm_params.api_base = strenv(BASE_URL_VALUE)' litellm/config.yaml
+  fi
+  if [ -n "$INPUT_COST" ]; then
+    yq eval -i '.model_list[-1].litellm_params.input_cost_per_token = (strenv(INPUT_COST) | from_yaml)' litellm/config.yaml
+  fi
+  if [ -n "$OUTPUT_COST" ]; then
+    yq eval -i '.model_list[-1].litellm_params.output_cost_per_token = (strenv(OUTPUT_COST) | from_yaml)' litellm/config.yaml
   fi
   ok "appended '$NAME' to model_list"
 fi
