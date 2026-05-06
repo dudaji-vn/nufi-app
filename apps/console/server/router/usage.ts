@@ -1,5 +1,6 @@
 import { ORPCError } from '@orpc/server';
 import { z } from 'zod';
+import { tagValue, tracesForUser } from '../lib/langfuse.ts';
 import { spendLogsForUser } from '../lib/litellm.ts';
 import { o } from '../orpc.ts';
 
@@ -132,7 +133,51 @@ export const recent = o
         keyAlias: log.metadata?.user_api_key_alias ?? null,
         // `via` distinguishes "chat traffic" (no key, end_user matches us)
         // from "issued-key traffic" (a key we created was used).
-        via: log.metadata?.user_api_key_user_id === context.user.id ? 'key' : 'chat',
+        via: (log.metadata?.user_api_key_user_id === context.user.id ? 'key' : 'chat') as
+          | 'key'
+          | 'chat',
       })),
     };
   });
+
+/**
+ * usage.byHardware — per-`hardware_id` spend + request count over the last
+ * N days, sourced from Langfuse traces (LiteLLM /spend/logs doesn't carry
+ * hardware metadata). Reads the `hardware_id:` tag stamped by the W2.5
+ * pre-call hook in litellm/callbacks/hardware_metadata.py.
+ *
+ * This is the API surface the W6 NPU utilisation report will aggregate
+ * over; the dashboard shows it now to make the GPU→NPU migration story
+ * visible the moment NPU traffic appears.
+ */
+export const byHardware = o.input(PeriodInput).handler(async ({ context, input }) => {
+  if (!context.user) throw new ORPCError('UNAUTHORIZED');
+
+  const fromIso = `${periodStartDate(input.days)}T00:00:00Z`;
+  const { traces, truncated } = await tracesForUser(context.user.id, fromIso);
+
+  const buckets = new Map<
+    string,
+    { spend: number; requests: number; backendType: string | null }
+  >();
+  for (const trace of traces) {
+    const hw = tagValue(trace, 'hardware_id') ?? 'unknown';
+    const backend = tagValue(trace, 'backend_type');
+    const b = buckets.get(hw) ?? { spend: 0, requests: 0, backendType: backend };
+    b.spend += trace.totalCost ?? 0;
+    b.requests += 1;
+    if (!b.backendType && backend) b.backendType = backend;
+    buckets.set(hw, b);
+  }
+
+  const breakdown = Array.from(buckets.entries())
+    .map(([hardwareId, b]) => ({
+      hardwareId,
+      backendType: b.backendType,
+      spend: b.spend,
+      requests: b.requests,
+    }))
+    .sort((a, b) => b.spend - a.spend);
+
+  return { days: input.days, breakdown, truncated };
+});

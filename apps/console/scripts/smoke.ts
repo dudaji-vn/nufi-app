@@ -310,6 +310,29 @@ await step('rpc/usage/recent returns rows newest-first', async () => {
   }
 });
 
+await step('rpc/usage/byHardware aggregates Langfuse traces by hardware_id', async () => {
+  type ByHardware = {
+    breakdown: Array<{
+      hardwareId: string;
+      backendType: string | null;
+      spend: number;
+      requests: number;
+    }>;
+    truncated: boolean;
+  };
+  const r = await rpcOk<ByHardware>('/usage/byHardware', { json: { days: 7 } }, bearer);
+  assert(r.breakdown.length > 0, 'expected at least one hardware bucket');
+  // Every bucket should be from the W2.5 callback, so backendType is set
+  // and hardwareId is not the 'unknown' fallback.
+  const macLocal = r.breakdown.find((b) => b.hardwareId === 'mac-local');
+  assert(
+    macLocal,
+    `expected mac-local in breakdown, got ${r.breakdown.map((b) => b.hardwareId).join(', ')}`,
+  );
+  assert(macLocal.backendType === 'gpu', `expected backendType=gpu, got ${macLocal.backendType}`);
+  assert(macLocal.requests > 0, 'expected requests>0 for mac-local');
+});
+
 console.log(
   `\n${C.bold}Result:${C.reset} ${C.green}${passed} passed${C.reset} · ` +
     `${failed === 0 ? C.gray : C.red}${failed} failed${C.reset}\n`,
