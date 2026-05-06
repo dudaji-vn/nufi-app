@@ -63,7 +63,7 @@ Windows users also need **Git for Windows** (which provides Git Bash) or
 # macOS / Linux: open Terminal.
 # Windows:       open Git Bash (right-click → "Git Bash Here") or a WSL2 shell.
 
-git clone --recurse-submodules git@github.com:DudajiVN/npuops-platform.git
+git clone --recurse-submodules  git@github.com:dudaji-vn/npuops-platform.git
 cd npuops-platform
 ./scripts/bootstrap.sh
 #   → initializes the LibreChat submodule if you forgot --recurse-submodules
