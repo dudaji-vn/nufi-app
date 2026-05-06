@@ -563,7 +563,7 @@ echo "$SECRETS_DEF" | while IFS=, read -r KEY GENERATOR; do
   [ -z "$KEY" ] && continue
   LINE=$(grep -E "^${KEY}=.*replace-me$" "$TMPFILE" || true)
   [ -z "$LINE" ] && continue
-  CURRENT="${LINE#${KEY}=}"
+  CURRENT="${LINE#"${KEY}"=}"
   PREFIX="${CURRENT%replace-me}"
   NEWVAL="${PREFIX}$(gen "$GENERATOR")"
   awk -v k="$KEY" -v v="$NEWVAL" \
