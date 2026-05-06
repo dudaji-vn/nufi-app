@@ -69,7 +69,7 @@ else
   # may still be warming its ClickhouseWriter when the chat request lands —
   # poll for up to 30s instead of a one-shot query after a fixed sleep.
   count=0
-  for i in $(seq 1 15); do
+  for _ in $(seq 1 15); do
     count=$(curl -fsS -u "${LANGFUSE_PUBLIC_KEY}:${LANGFUSE_SECRET_KEY}" \
       "${LANGFUSE_PUBLIC_HOST}/api/public/traces?limit=1" |
       "${PY}" -c 'import sys,json; d=json.load(sys.stdin); print(len(d.get("data",[])))')
