@@ -15,6 +15,7 @@ function RootLayout() {
           <span className="font-semibold tracking-tight">NPUOps Console</span>
           <nav className="flex flex-1 items-center gap-3 text-sm sm:gap-4">
             <NavLink to="/">Profile</NavLink>
+            <NavLink to="/usage">Usage</NavLink>
             <NavLink to="/keys">API keys</NavLink>
           </nav>
           <ThemeToggle />

@@ -269,6 +269,92 @@ await step('revoked key is rejected by LiteLLM', async () => {
   throw new Error(`expected 401 after revoke, last seen ${lastStatus}`);
 });
 
+await step('rpc/usage/daily returns a stable 7-day series', async () => {
+  type Daily = {
+    days: number;
+    total: number;
+    series: Array<{ date: string; spend: number }>;
+    requests: number;
+  };
+  const daily = await rpcOk<Daily>('/usage/daily', { json: { days: 7 } }, bearer);
+  assert(daily.days === 7, `expected days=7, got ${daily.days}`);
+  assert(daily.series.length === 7, `expected 7 series points, got ${daily.series.length}`);
+  assert(typeof daily.total === 'number', 'expected total to be a number');
+  assert(
+    daily.requests > 0,
+    `expected requests>0 (smoke test ran chat traffic), got ${daily.requests}`,
+  );
+});
+
+await step('rpc/usage/byModel collapses provider prefix', async () => {
+  type ByModel = { breakdown: Array<{ model: string; spend: number; requests: number }> };
+  const r = await rpcOk<ByModel>('/usage/byModel', { json: { days: 30 } }, bearer);
+  assert(r.breakdown.length > 0, 'expected at least one model in the breakdown');
+  assert(
+    !r.breakdown.some((b) => b.model.startsWith('openai/')),
+    `unexpected openai/ prefix in breakdown: ${r.breakdown.map((b) => b.model).join(', ')}`,
+  );
+});
+
+await step('rpc/usage/recent returns rows newest-first', async () => {
+  type Recent = {
+    rows: Array<{ startTime: string; model: string | null; via: 'chat' | 'key' }>;
+  };
+  const r = await rpcOk<Recent>('/usage/recent', { json: { limit: 10 } }, bearer);
+  assert(r.rows.length > 0, 'expected at least one recent row');
+  for (let i = 1; i < r.rows.length; i++) {
+    assert(
+      r.rows[i - 1].startTime >= r.rows[i].startTime,
+      `rows not sorted desc at index ${i}: ${r.rows[i - 1].startTime} < ${r.rows[i].startTime}`,
+    );
+  }
+});
+
+await step('rpc/usage/summary returns joined LiteLLM + Langfuse stats', async () => {
+  type Summary = {
+    days: number;
+    totalSpend: number;
+    totalRequests: number;
+    modelsUsed: number;
+    primaryHardware: { hardwareId: string; backendType: string | null } | null;
+  };
+  const r = await rpcOk<Summary>('/usage/summary', { json: { days: 7 } }, bearer);
+  assert(r.days === 7, `expected days=7, got ${r.days}`);
+  assert(r.totalRequests > 0, `expected requests>0, got ${r.totalRequests}`);
+  assert(r.modelsUsed > 0, `expected modelsUsed>0, got ${r.modelsUsed}`);
+  // primaryHardware should be set after the W2.5 hook is in place; the
+  // procedure deliberately ignores the `unknown` bucket so freshly hooked
+  // stacks don't show "primary hardware: unknown".
+  assert(r.primaryHardware, 'expected primaryHardware to be populated');
+  assert(
+    r.primaryHardware.hardwareId === 'mac-local',
+    `expected primaryHardware=mac-local, got ${r.primaryHardware.hardwareId}`,
+  );
+});
+
+await step('rpc/usage/byHardware aggregates Langfuse traces by hardware_id', async () => {
+  type ByHardware = {
+    breakdown: Array<{
+      hardwareId: string;
+      backendType: string | null;
+      spend: number;
+      requests: number;
+    }>;
+    truncated: boolean;
+  };
+  const r = await rpcOk<ByHardware>('/usage/byHardware', { json: { days: 7 } }, bearer);
+  assert(r.breakdown.length > 0, 'expected at least one hardware bucket');
+  // Every bucket should be from the W2.5 callback, so backendType is set
+  // and hardwareId is not the 'unknown' fallback.
+  const macLocal = r.breakdown.find((b) => b.hardwareId === 'mac-local');
+  assert(
+    macLocal,
+    `expected mac-local in breakdown, got ${r.breakdown.map((b) => b.hardwareId).join(', ')}`,
+  );
+  assert(macLocal.backendType === 'gpu', `expected backendType=gpu, got ${macLocal.backendType}`);
+  assert(macLocal.requests > 0, 'expected requests>0 for mac-local');
+});
+
 console.log(
   `\n${C.bold}Result:${C.reset} ${C.green}${passed} passed${C.reset} · ` +
     `${failed === 0 ? C.gray : C.red}${failed} failed${C.reset}\n`,

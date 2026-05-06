@@ -1,63 +1,235 @@
 import { ORPCError } from '@orpc/server';
 import { z } from 'zod';
+import { tagValue, tracesForUser } from '../lib/langfuse.ts';
 import { spendLogsForUser } from '../lib/litellm.ts';
 import { o } from '../orpc.ts';
 
+const PeriodInput = z.object({
+  days: z.number().int().min(1).max(90).default(7),
+});
+
+function periodStartDate(days: number): string {
+  const today = new Date();
+  today.setUTCHours(23, 59, 59, 999);
+  const start = new Date(today);
+  start.setUTCDate(today.getUTCDate() - (days - 1));
+  start.setUTCHours(0, 0, 0, 0);
+  return start.toISOString().slice(0, 10);
+}
+
+/**
+ * LiteLLM logs the same model under two names depending on path:
+ * the configured alias (`qwen2.5-3b`) for direct admin-API traffic and the
+ * upstream id with provider prefix (`openai/qwen2.5:3b`) for chat traffic.
+ * Strip the provider prefix so the two collapse visually; the alias-vs-id
+ * shape difference (`-` vs `:`) is harder to fix without round-tripping
+ * through /model/info, so leave it for a future Langfuse-backed view.
+ */
+function normalizeModel(model: string | null | undefined): string {
+  if (!model) return 'unknown';
+  return model.replace(/^openai\//, '');
+}
+
 /**
  * usage.daily — bucket the current user's spend by UTC day for the last N
- * days. Powers the "last N days" mini-chart on the profile page.
+ * days. Powers the "last N days" chart on the profile page and `/usage`.
  *
  * Filters logs to ones that belong to *this* user only (matched on either
  * end_user OR metadata.user_api_key_user_id — the LiteLLM query-param
  * filters silently no-op on this version, so we filter server-side here).
  */
-export const daily = o
+export const daily = o.input(PeriodInput).handler(async ({ context, input }) => {
+  if (!context.user) throw new ORPCError('UNAUTHORIZED');
+
+  const startDateStr = periodStartDate(input.days);
+  const logs = await spendLogsForUser(context.user.id, startDateStr);
+
+  // Pre-fill every day in range with $0 so the chart has a stable shape.
+  const buckets = new Map<string, number>();
+  const start = new Date(`${startDateStr}T00:00:00Z`);
+  for (let i = 0; i < input.days; i++) {
+    const d = new Date(start);
+    d.setUTCDate(start.getUTCDate() + i);
+    buckets.set(d.toISOString().slice(0, 10), 0);
+  }
+
+  let total = 0;
+  let mostRecent: string | null = null;
+  for (const log of logs) {
+    const day = log.startTime.slice(0, 10);
+    if (buckets.has(day)) {
+      buckets.set(day, (buckets.get(day) ?? 0) + (log.spend ?? 0));
+    }
+    total += log.spend ?? 0;
+    if (!mostRecent || log.startTime > mostRecent) mostRecent = log.startTime;
+  }
+
+  const series = Array.from(buckets.entries()).map(([date, spend]) => ({ date, spend }));
+  const peak = series.reduce((p, d) => (d.spend > p.spend ? d : p), { date: '', spend: 0 });
+
+  return {
+    days: input.days,
+    total,
+    series,
+    peak: peak.spend > 0 ? peak : null,
+    mostRecent,
+    requests: logs.length,
+  };
+});
+
+/**
+ * usage.byModel — per-model spend + request count over the last N days.
+ * Re-aggregates the same `spendLogsForUser` data the `daily` procedure
+ * uses; no extra LiteLLM round-trip needed.
+ */
+export const byModel = o.input(PeriodInput).handler(async ({ context, input }) => {
+  if (!context.user) throw new ORPCError('UNAUTHORIZED');
+
+  const logs = await spendLogsForUser(context.user.id, periodStartDate(input.days));
+
+  const buckets = new Map<string, { spend: number; requests: number }>();
+  for (const log of logs) {
+    const model = normalizeModel(log.model);
+    const b = buckets.get(model) ?? { spend: 0, requests: 0 };
+    b.spend += log.spend ?? 0;
+    b.requests += 1;
+    buckets.set(model, b);
+  }
+
+  const breakdown = Array.from(buckets.entries())
+    .map(([model, b]) => ({ model, spend: b.spend, requests: b.requests }))
+    .sort((a, b) => b.spend - a.spend);
+
+  return { days: input.days, breakdown };
+});
+
+/**
+ * usage.recent — last N spend logs for the current user, newest first.
+ * The shape is deliberately narrow: only the columns the table needs.
+ */
+export const recent = o
   .input(
     z.object({
-      days: z.number().int().min(1).max(90).default(7),
+      limit: z.number().int().min(1).max(200).default(50),
     }),
   )
   .handler(async ({ context, input }) => {
     if (!context.user) throw new ORPCError('UNAUTHORIZED');
 
-    const today = new Date();
-    today.setUTCHours(23, 59, 59, 999);
-
-    const start = new Date(today);
-    start.setUTCDate(today.getUTCDate() - (input.days - 1));
-    start.setUTCHours(0, 0, 0, 0);
-
-    const startDateStr = start.toISOString().slice(0, 10);
-    const logs = await spendLogsForUser(context.user.id, startDateStr);
-
-    // Pre-fill every day in range with $0 so the chart has a stable shape.
-    const buckets = new Map<string, number>();
-    for (let i = 0; i < input.days; i++) {
-      const d = new Date(start);
-      d.setUTCDate(start.getUTCDate() + i);
-      buckets.set(d.toISOString().slice(0, 10), 0);
-    }
-
-    let total = 0;
-    let mostRecent: string | null = null;
-    for (const log of logs) {
-      const day = log.startTime.slice(0, 10);
-      if (buckets.has(day)) {
-        buckets.set(day, (buckets.get(day) ?? 0) + (log.spend ?? 0));
-      }
-      total += log.spend ?? 0;
-      if (!mostRecent || log.startTime > mostRecent) mostRecent = log.startTime;
-    }
-
-    const series = Array.from(buckets.entries()).map(([date, spend]) => ({ date, spend }));
-    const peak = series.reduce((p, d) => (d.spend > p.spend ? d : p), { date: '', spend: 0 });
+    // 30 days back is enough for the recent-requests view; if a user has
+    // not used the platform in a month the table will be empty, which is
+    // the right signal.
+    const logs = await spendLogsForUser(context.user.id, periodStartDate(30));
+    const sorted = logs
+      .slice()
+      .sort((a, b) => (a.startTime < b.startTime ? 1 : a.startTime > b.startTime ? -1 : 0))
+      .slice(0, input.limit);
 
     return {
-      days: input.days,
-      total,
-      series,
-      peak: peak.spend > 0 ? peak : null,
-      mostRecent,
-      requests: logs.length,
+      rows: sorted.map((log) => ({
+        startTime: log.startTime,
+        model: normalizeModel(log.model),
+        spend: log.spend ?? 0,
+        keyAlias: log.metadata?.user_api_key_alias ?? null,
+        // `via` distinguishes "chat traffic" (no key, end_user matches us)
+        // from "issued-key traffic" (a key we created was used).
+        via: (log.metadata?.user_api_key_user_id === context.user.id ? 'key' : 'chat') as
+          | 'key'
+          | 'chat',
+      })),
     };
   });
+
+/**
+ * usage.summary — cards for the top of /usage: total cost, total requests,
+ * primary hardware, model count over the period. Joins LiteLLM /spend/logs
+ * (cost + request count, authoritative for spend) with Langfuse traces
+ * (hardware_id, which LiteLLM doesn't carry). The cached `tracesForUser`
+ * means this and `byHardware` share one Langfuse round-trip per tick.
+ */
+export const summary = o.input(PeriodInput).handler(async ({ context, input }) => {
+  if (!context.user) throw new ORPCError('UNAUTHORIZED');
+
+  const startDate = periodStartDate(input.days);
+  const fromIso = `${startDate}T00:00:00Z`;
+  const [logs, { traces }] = await Promise.all([
+    spendLogsForUser(context.user.id, startDate),
+    tracesForUser(context.user.id, fromIso),
+  ]);
+
+  let totalSpend = 0;
+  const models = new Set<string>();
+  for (const log of logs) {
+    totalSpend += log.spend ?? 0;
+    if (log.model) models.add(normalizeModel(log.model));
+  }
+
+  // Pick the hardware with the most requests in the window — "where most
+  // of your traffic landed". Ignore the `unknown` bucket so a freshly
+  // deployed stack doesn't show "primary hardware: unknown".
+  const hwRequests = new Map<string, { requests: number; backendType: string | null }>();
+  for (const trace of traces) {
+    const hw = tagValue(trace, 'hardware_id');
+    if (!hw) continue;
+    const b = hwRequests.get(hw) ?? {
+      requests: 0,
+      backendType: tagValue(trace, 'backend_type'),
+    };
+    b.requests += 1;
+    hwRequests.set(hw, b);
+  }
+  const primaryHardware =
+    Array.from(hwRequests.entries())
+      .sort((a, b) => b[1].requests - a[1].requests)
+      .map(([hardwareId, b]) => ({ hardwareId, backendType: b.backendType }))[0] ?? null;
+
+  return {
+    days: input.days,
+    totalSpend,
+    totalRequests: logs.length,
+    modelsUsed: models.size,
+    primaryHardware,
+  };
+});
+
+/**
+ * usage.byHardware — per-`hardware_id` spend + request count over the last
+ * N days, sourced from Langfuse traces (LiteLLM /spend/logs doesn't carry
+ * hardware metadata). Reads the `hardware_id:` tag stamped by the W2.5
+ * pre-call hook in litellm/callbacks/hardware_metadata.py.
+ *
+ * This is the API surface the W6 NPU utilisation report will aggregate
+ * over; the dashboard shows it now to make the GPU→NPU migration story
+ * visible the moment NPU traffic appears.
+ */
+export const byHardware = o.input(PeriodInput).handler(async ({ context, input }) => {
+  if (!context.user) throw new ORPCError('UNAUTHORIZED');
+
+  const fromIso = `${periodStartDate(input.days)}T00:00:00Z`;
+  const { traces, truncated } = await tracesForUser(context.user.id, fromIso);
+
+  const buckets = new Map<
+    string,
+    { spend: number; requests: number; backendType: string | null }
+  >();
+  for (const trace of traces) {
+    const hw = tagValue(trace, 'hardware_id') ?? 'unknown';
+    const backend = tagValue(trace, 'backend_type');
+    const b = buckets.get(hw) ?? { spend: 0, requests: 0, backendType: backend };
+    b.spend += trace.totalCost ?? 0;
+    b.requests += 1;
+    if (!b.backendType && backend) b.backendType = backend;
+    buckets.set(hw, b);
+  }
+
+  const breakdown = Array.from(buckets.entries())
+    .map(([hardwareId, b]) => ({
+      hardwareId,
+      backendType: b.backendType,
+      spend: b.spend,
+      requests: b.requests,
+    }))
+    .sort((a, b) => b.spend - a.spend);
+
+  return { days: input.days, breakdown, truncated };
+});
