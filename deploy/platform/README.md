@@ -148,6 +148,32 @@ test chat completion against the new model.
 
 Requires `yq` (Mike Farah's — see [Prerequisites](#prerequisites) for cross-platform install). Run `./scripts/add-model.sh --help` for all flags.
 
+### Adding a model from the LiteLLM admin UI
+
+LiteLLM also lets you add models from its admin dashboard at
+`http://localhost:4000/ui`. Those entries are persisted in Postgres
+(`store_model_in_db: true` in `litellm/config.yaml`) and are served from
+`/v1/models` immediately — no LiteLLM restart needed.
+
+**But the new model won't appear in the LibreChat dropdown until you bounce
+LibreChat.** LibreChat fetches `/v1/models` once at startup and caches the
+list (`fetch: true` + `cache: true` in `librechat/librechat.yaml`):
+
+```bash
+docker compose restart librechat   # flushes the cached model list
+```
+
+Two caveats with this path:
+
+- **Not in version control.** UI-added models live only in the DB, so they
+  survive a LiteLLM restart but won't be reproducible on a fresh checkout
+  and `./scripts/add-model.sh` won't know about them. Prefer the script for
+  anything that needs to ship.
+- **You still owe `backend_type` + `hardware_id`.** The admin UI lets you
+  skip those, but W6 reports aggregate by `hardware_id` and W8 routing keys
+  off `backend_type` — fill them in under "Model Info" or the entry is
+  effectively invisible to reporting.
+
 ## End-to-end smoke test
 
 `./scripts/e2e-smoke-test.sh` drives the full user flow
