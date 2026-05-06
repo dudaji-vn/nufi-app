@@ -54,15 +54,31 @@ async function call<T>(path: string): Promise<T> {
   return text ? (JSON.parse(text) as T) : (undefined as T);
 }
 
+// 60s TTL keeps the dashboard's 30s polling tick cheap without pinning
+// stale data for long. Sized for one entry per (userId, fromIso) — fine for
+// W4 scale; if a single console grows past a few thousand active users this
+// turns into an LRU.
+const TRACE_CACHE_TTL_MS = 60_000;
+const traceCache = new Map<
+  string,
+  { at: number; value: { traces: LangfuseTrace[]; truncated: boolean } }
+>();
+
 /**
  * Fetch up to MAX_PAGES × PAGE_LIMIT traces for a user since `fromIso`,
  * newest first. Returns whatever's available — the `truncated` flag tells
- * the caller whether the cap was hit.
+ * the caller whether the cap was hit. Result is cached per (userId, fromIso)
+ * for TRACE_CACHE_TTL_MS so concurrent procedures (byHardware + future
+ * summary card) share one Langfuse round-trip.
  */
 export async function tracesForUser(
   userId: string,
   fromIso: string,
 ): Promise<{ traces: LangfuseTrace[]; truncated: boolean }> {
+  const key = `${userId}\0${fromIso}`;
+  const hit = traceCache.get(key);
+  if (hit && Date.now() - hit.at < TRACE_CACHE_TTL_MS) return hit.value;
+
   const traces: LangfuseTrace[] = [];
   let truncated = false;
 
@@ -80,7 +96,9 @@ export async function tracesForUser(
     if (page === MAX_PAGES) truncated = true;
   }
 
-  return { traces, truncated };
+  const value = { traces, truncated };
+  traceCache.set(key, { at: Date.now(), value });
+  return value;
 }
 
 /**
