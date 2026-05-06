@@ -386,45 +386,98 @@ fix and config dedup that came along ate another half day).
 
 **Goal:** Users can view their token usage and cost over time.
 
-> **Open question (2026-05-05):** Where to host the dashboard — (a) **standalone
-> Next.js admin app** linked from LibreChat's `interface.customLinks` (simpler,
-> isolated from upstream LibreChat releases — current proposal below), or
-> (b) **fork LibreChat** and add the dashboard as a first-class in-chat page
-> (better UX, but we pay a rebase tax on every LibreChat release). Lock before
-> W3 starts (2026-05-12).
+> **Hosting decision (locked 2026-05-06):** Extend the standalone console
+> shipped in W3 (Bun + Hono + oRPC + React 19, container `npuops-console` on
+> port 3001). The `/usage` route already exists as a placeholder. No
+> LibreChat fork. Integration point is the LibreChat footer link
+> (`CUSTOM_FOOTER` env, set in `9535386`); LibreChat 0.7.5 doesn't expose
+> `interface.customLinks` — pre-W3 verification confirmed this.
+
+**Stack (inherited from W3 console):**
+
+- BFF: Bun + Hono + oRPC, master-key auth to LiteLLM, JWT-cookie SSO
+- Frontend: React 19 + Vite + TanStack Router + TanStack Query + Zustand
+- UI: Tailwind + shadcn/ui (no new component library)
+- Charts: shadcn/ui Chart primitive (Recharts under the hood — already aligned
+  with shadcn styling we use everywhere else; no Tremor/visx dependency)
+
+**Data sources (hybrid):**
+
+- **Langfuse `/api/public/traces`** for per-request facts: cost, tokens,
+  model, latency, and `hardware_id` (newly stamped by the W2.5 callback in
+  `litellm/callbacks/hardware_metadata.py`, commit `77dfa1b`). Pulls the
+  richer surface for charts and the recent-requests table.
+- **LiteLLM `/key/info`** + `/user/info` for live budget remaining and
+  rate-limit windows (the console's existing `LiteLLMClient` already wraps
+  these — re-use, don't fork).
+
+**What's already in place from W3** (don't rebuild):
+
+- `usage.daily` procedure — buckets `spendLogsForUser` by UTC day, returns
+  series + total + peak + most-recent + request count
+- `UsageChart`, `AvailableHero`, `SpendBreakdown`, `TopKeysCard`,
+  `LimitsBar`, `StatCard`, `BudgetCard` — already shipped on the profile
+  route (`/`)
+- Profile route shows the 7-day mini-dashboard. So W4 isn't building from
+  scratch — it's adding the dedicated, deeper `/usage` route.
 
 **Steps:**
 
-1. **Data source**
-   - LiteLLM `/spend/logs` and `/spend/users` endpoints
-   - Or query the Langfuse API directly (richer data)
+1. **BFF — extend `console/server/router/usage.ts`**:
+   - keep `usage.daily` as-is (backs both profile mini-chart and `/usage`
+     when period=7/30)
+   - `usage.byModel` → per-model spend + request count (re-aggregate
+     `spendLogsForUser` server-side; no new client needed)
+   - `usage.recent` → last 50 spend logs formatted for a table
+   - `usage.byHardware` → per-`hardware_id` totals (uses Langfuse —
+     LiteLLM spend logs don't carry hardware_id; this exercises the W2.5
+     fix and prepares the API surface W6 will consume)
 
-2. **UI components**
-   - Card: tokens remaining (% budget remaining)
-   - Card: total requests this month
-   - Line chart: token usage by day (7/30 days)
-   - Bar chart: usage by model
-   - Table: recent requests (last 50 rows)
+2. **Langfuse client** in `console/server/lib/langfuse.ts`:
+   - Thin wrapper around `/api/public/traces` with paging
+   - 60s in-memory cache (per `userId` + period) to absorb dashboard polling
+   - All non-admin queries filter by `userId` (LibreChat's Mongo `_id` —
+     LiteLLM `user` field is already populated per pre-W3 verification)
 
-3. **Recommended tech stack**
-   - Standalone Next.js + Recharts admin app (same one started in Task 3.1)
+3. **Frontend — `/usage` route**:
+   - Summary cards (4): budget remaining %, requests this period, total cost,
+     primary `hardware_id`
+   - Line chart: tokens/day with model overlay (7/30-day toggle)
+   - Bar chart: cost by model
+   - Bar chart: cost by hardware (hidden if user only ever hit one — common
+     case until W8 NPU lands)
+   - Table: last 50 requests, paginated, with model + hardware_id columns
+   - 30s TanStack Query refetch interval; manual refresh button
 
-4. **Integrate with LibreChat**
-   - Add an external "Usage" link in `librechat.yaml` `interface.customLinks`
-     pointing at the standalone admin app
-   - (No iframe/plugin route — LibreChat doesn't expose a stable plugin API)
+4. **Role filtering** (re-use the W3 `role` middleware): USER sees their own
+   `userId` only; ADMIN can pick a user from a dropdown or see "all".
 
-5. **Refresh logic**
-   - 30s polling or manual refresh button
-   - 1-minute backend cache to reduce load
+5. **Smoke test** — extend `console/scripts/smoke.ts` with a hard check that
+   `/usage` returns non-empty data after the chat smoke test runs.
+
+**Out of scope (W4):**
+
+- Cost projection / forecasting → revisit if useful in W8 cost-saving page
+- CSV export → defer; users can hit the BFF directly if needed
 
 **Acceptance Criteria:**
 
-- Dashboard loads in < 2s
-- Numbers match Langfuse (< 1% drift)
-- Shows only the user's own data, no leakage across users
+- Dashboard loads in < 2s on a populated database
+- Totals match Langfuse UI within 1% drift
+- USER role sees only their own data (verified by smoke test)
+- ADMIN role can select any user
+- `/usage` link in LibreChat footer → already-authenticated dashboard
 
-**Effort estimate:** 4 days
+**Effort estimate:** ~3 days (W3 infra + components carry most of it):
+
+- **Day 1** — `/usage` route + period selector (7/30/90d), wire nav,
+  re-use `usage.daily` + `UsageChart`. Add `usage.byModel` and
+  `usage.recent` procedures (LiteLLM-only, server-side re-aggregation of
+  `spendLogsForUser`). Render bar chart + recent-requests table.
+- **Day 2** — Langfuse BFF client + `usage.byHardware` procedure. Add
+  by-hardware bar chart (hidden when only one hardware seen). Smoke
+  test extension. Polish.
+- **Day 3** — buffer for charts/UI polish, demo script, W4.2 checkpoint.
 
 ---
 
