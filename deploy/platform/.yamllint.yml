@@ -19,3 +19,4 @@ ignore: |-
   .venv/
   .git/
   monitoring/grafana/dashboards/
+  librechat/source/

@@ -20,6 +20,13 @@
 
 FROM node:20-alpine
 
+# Use sh's pipefail in RUN steps below so a failure inside a pipeline
+# (e.g. `grep | while read`) breaks the build instead of being swallowed.
+SHELL ["/bin/sh", "-o", "pipefail", "-c"]
+
+# Mirrors upstream Dockerfile: no apk version pin (the alpine package
+# index moves on every base-image refresh; we follow upstream's convention).
+# hadolint ignore=DL3018
 RUN apk --no-cache add curl git
 
 RUN mkdir -p /app && chown node:node /app
@@ -35,9 +42,25 @@ USER node
 
 # Apply every patch in lexicographic order. Fail fast if any patch doesn't
 # apply cleanly — that's the signal to rebase against a new upstream tag.
+#
+# Before applying, strip CRLF on each file the patch is about to touch
+# (parsed from the `+++ b/...` headers). Windows clones with default
+# `core.autocrlf=true` check out submodule files with CRLF, which makes
+# `git apply` reject patches against LF context. This auto-scales to any
+# number of patches without listing files explicitly.
+#
+# DL4006: the embedded `set -eu` re-invokes /bin/sh, so the global SHELL
+# pipefail above doesn't propagate. The pipeline below would lose its exit
+# code on a `grep` failure — but `grep` here ignores its exit code by
+# design (a patch with no `+++ b/` lines is a no-op header check, not an
+# error). Suppressing the warning is correct, not just convenient.
+# hadolint ignore=DL4006
 RUN set -eu; \
     for p in /patches/*.patch; do \
         [ -e "$p" ] || { echo "No patches to apply (zero-patch parity build)"; break; }; \
+        grep -E '^\+\+\+ b/' "$p" | sed 's|^+++ b/||' | while IFS= read -r f; do \
+            [ -f "/app/$f" ] && sed -i 's/\r$//' "/app/$f"; \
+        done; \
         echo "Applying $p"; \
         git apply --verbose "$p"; \
     done

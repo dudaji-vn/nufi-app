@@ -22,6 +22,15 @@ Everything runs in Docker Compose. See `docs/roadmap.md` for the weekly plan.
 ## Prerequisites
 
 - Docker Engine 24+ and Docker Compose v2 (Docker Desktop on macOS / Windows)
+- `git` (with the LibreChat submodule fetched — `--recurse-submodules` on
+  clone, or `git submodule update --init` inside an existing checkout)
+- `yq` (Mike Farah's Go-based one — bootstrap and `add-model.sh` use it):
+  - macOS — `brew install yq`
+  - Linux — `sudo snap install yq` or download the binary from
+    https://github.com/mikefarah/yq/releases
+  - Windows (Git Bash / WSL2) — `winget install MikeFarah.yq` or the
+    Linux binary above
+  - **Not** Ubuntu's `apt install yq` — that's a different Python tool
 - A reachable GPU inference server exposing an OpenAI-compatible API
   (e.g. vLLM, TGI, Ollama). Set `GPU_BACKEND_BASE_URL` in `.env`.
 - ~10 GB free disk for Postgres / MongoDB / Langfuse / LibreChat volumes
@@ -34,11 +43,16 @@ Everything runs in Docker Compose. See `docs/roadmap.md` for the weekly plan.
 
 ### 1. One-time install on your machine
 
-| OS      | Docker                                                | Ollama                                                                |
-| ------- | ----------------------------------------------------- | --------------------------------------------------------------------- |
-| macOS   | Docker Desktop — https://www.docker.com (≥4 GB RAM)   | `brew install ollama && brew services start ollama`                   |
-| Linux   | Docker Engine + Compose v2                            | `curl -fsSL https://ollama.com/install.sh \| sh` then `ollama serve &` |
-| Windows | Docker Desktop + WSL2 backend (≥4 GB RAM)             | `winget install Ollama.Ollama` (or installer from https://ollama.com) |
+Docker is required. Ollama is **optional** — only install it if you want to
+run models locally on your laptop. If you'll point the stack at a remote
+GPU/NPU box (vLLM, TGI, custom OpenAI-compatible server) or a cloud
+provider (OpenAI, Anthropic, Together, …), skip Ollama entirely.
+
+| OS      | Docker (required)                                      | Ollama (optional, local backend)                                        |
+| ------- | ------------------------------------------------------ | ----------------------------------------------------------------------- |
+| macOS   | Docker Desktop — https://www.docker.com (≥4 GB RAM)    | `brew install ollama && brew services start ollama`                    |
+| Linux   | Docker Engine + Compose v2                             | `curl -fsSL https://ollama.com/install.sh \| sh` then `ollama serve &`  |
+| Windows | Docker Desktop + WSL2 backend (≥4 GB RAM)              | `winget install Ollama.Ollama` (or installer from https://ollama.com)   |
 
 Windows users also need **Git for Windows** (which provides Git Bash) or
 **WSL2** to run the bootstrap and smoke-test scripts.
@@ -49,29 +63,49 @@ Windows users also need **Git for Windows** (which provides Git Bash) or
 # macOS / Linux: open Terminal.
 # Windows:       open Git Bash (right-click → "Git Bash Here") or a WSL2 shell.
 
-git clone git@github.com:DudajiVN/npuops-platform.git
+git clone --recurse-submodules git@github.com:DudajiVN/npuops-platform.git
 cd npuops-platform
 ./scripts/bootstrap.sh
-#   → prompts for which Ollama model to use (default qwen2.5:3b)
+#   → initializes the LibreChat submodule if you forgot --recurse-submodules
+#   → asks which backend to use:
+#       • ollama     — local Ollama on this machine (auto-pulls + registers)
+#       • remote     — vLLM / TGI / custom OpenAI-compatible server on the network
+#       • cloud      — OpenAI / Anthropic / Together / Groq / etc. (needs an API key)
+#       • mock-npu   — clone an existing model entry, tag as backend_type=npu
+#       • skip       — bring the stack up only, register models later
 #   → fills in random secrets in .env
+#   → builds the LibreChat custom image (~5-10 min first run, cached after)
 #   → docker compose up -d
-#   → runs the smoke test
+#   → runs the smoke test (skipped if no model was registered)
 #   → prints URLs and the Langfuse admin password
 ```
 
-Re-run `./scripts/bootstrap.sh` anytime — it's idempotent. To pick a model
-non-interactively: `./scripts/bootstrap.sh --model llama3.2:3b`.
+Re-run `./scripts/bootstrap.sh` anytime — it's idempotent. Non-interactive flags:
+
+```bash
+./scripts/bootstrap.sh --backend ollama --model qwen2.5:3b   # CI / one-liner
+./scripts/bootstrap.sh --backend remote                       # → add-model.sh prompts
+./scripts/bootstrap.sh --backend skip                         # stack only, no model
+```
 
 ### Manual quick start (if you want to do it yourself)
 
 ```bash
+git submodule update --init      # populate librechat/source (LibreChat soft fork)
 cp .env.example .env
 # edit .env: replace every `replace-me` value (see comments in the file for
 # how to generate each one — e.g. `openssl rand -hex 32`)
 
-ollama pull qwen2.5:3b            # or any model from https://ollama.com/library
+docker compose build librechat   # ~5-10 min first time, cached after
 docker compose up -d
 docker compose logs -f litellm-proxy   # wait for "Application startup complete"
+
+# Register a model (pick one path):
+./scripts/add-model.sh           # interactive — works for Ollama, vLLM, TGI,
+                                 # OpenAI, Anthropic, Together, custom servers
+# (or, if you'll use local Ollama: `ollama pull qwen2.5:3b` first, then run
+#  add-model.sh and point it at http://host.docker.internal:11434/v1)
+
 ./scripts/smoke-test.sh
 ```
 
@@ -111,7 +145,7 @@ test chat completion against the new model.
   --hardware-id together-cloud
 ```
 
-Requires `yq` (mikefarah's: `brew install yq`). Run `./scripts/add-model.sh --help` for all flags.
+Requires `yq` (Mike Farah's — see [Prerequisites](#prerequisites) for cross-platform install). Run `./scripts/add-model.sh --help` for all flags.
 
 ## End-to-end smoke test
 
@@ -169,7 +203,11 @@ npuops-platform/
 ├── docker-compose.yml
 ├── litellm/          # config.yaml + Dockerfile
 ├── langfuse/         # Langfuse setup
-├── librechat/        # librechat.yaml + branding assets
+├── librechat/        # soft fork of LibreChat — see "LibreChat customization"
+│   ├── librechat.yaml  # runtime config (mounted into the container)
+│   ├── Dockerfile      # builds npuops/librechat:v0.7.5-custom
+│   ├── source/         # git submodule, pinned to upstream v0.7.5
+│   └── patches/        # *.patch files applied before npm install
 ├── console/          # self-service UI (Bun + Hono + Vite + React)
 ├── monitoring/       # Prometheus, Grafana, alert rules
 ├── scripts/          # helper scripts (smoke test, backups)
@@ -202,6 +240,59 @@ bun run dev          # Vite at :5173, Hono at :3000, proxied for you
 Set the same `JWT_SECRET` / `JWT_REFRESH_SECRET` / `LITELLM_MASTER_KEY` as
 the running stack so auth and admin calls work in dev. See
 `docs/w3-console-plan.md` for the full implementation plan.
+
+## LibreChat customization (soft fork)
+
+LibreChat ships as a custom image (`npuops/librechat:v0.7.5-custom`) built
+from upstream v0.7.5 with a stack of small patches in `librechat/patches/`.
+Each patch is one reviewable diff against upstream — the source itself
+lives in the `librechat/source/` submodule, which we never edit directly.
+
+**Add a new patch:**
+
+```bash
+cd librechat/source
+
+# 1. Edit the upstream files locally (e.g. add a menu item).
+$EDITOR client/src/components/Nav/AccountSettings.tsx
+
+# 2. Capture the diff into a numbered patch file.
+git diff > ../patches/0002-something-descriptive.patch
+
+# 3. Revert the submodule so it stays clean against upstream.
+git checkout -- .
+
+# 4. Build to verify the patch applies cleanly.
+cd ../..
+docker compose build librechat
+docker compose up -d librechat
+```
+
+Patches are applied in lexicographic order during the Docker build. Names
+should start with a zero-padded number — `0001-`, `0002-`, etc.
+
+**Upgrade the upstream LibreChat version:**
+
+```bash
+cd librechat/source
+git fetch --tags
+git checkout v0.7.6   # or whatever the new tag is
+
+# Dry-run every patch; any "REBASE" line means manual fix-up needed.
+cd ..
+for p in patches/*.patch; do
+  git -C source apply --check "../$p" || echo "REBASE: $p"
+done
+
+# After fixing conflicts (re-do the edit against the new source, regenerate
+# the patch), rebuild and commit the new submodule SHA.
+docker compose build librechat
+git add source patches/
+git commit -m "chore(librechat): bump to v0.7.6"
+```
+
+CI (`.github/workflows/ci.yml`) rebuilds the image on every PR — if a patch
+stops applying after an upstream bump, CI fails before it bites locally.
 
 ## Documentation
 
