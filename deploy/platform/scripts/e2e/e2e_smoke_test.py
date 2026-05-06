@@ -51,13 +51,6 @@ def ok(msg: str) -> None:
     print(f"    {GREEN}✓{RESET} {msg}", flush=True)
 
 
-YELLOW = "\033[33m" if _TTY else ""
-
-
-def warn(msg: str) -> None:
-    print(f"    {YELLOW}!{RESET} {msg}", flush=True)
-
-
 def fail(msg: str) -> None:
     print(f"{RED}error:{RESET} {msg}", file=sys.stderr, flush=True)
     sys.exit(1)
@@ -293,38 +286,29 @@ def assert_trace_model(trace: dict[str, Any]) -> None:
     ok(f"observation.model = {gen_models[0]!r}")
 
 
-# ---- 7/7 hardware_id propagation (soft check — known gap) ------------------
-def soft_check_hardware_id(trace: dict[str, Any]) -> bool:
-    step(f"7/7 hardware_id propagates (soft check, expecting {EXPECTED_HARDWARE_ID!r})")
-    # KNOWN GAP discovered during W2.2: LiteLLM's `langfuse_default_tags` only
-    # natively resolves `cache_hit` / `cache_key` — custom strings like
-    # `hardware_id` and `backend_type` are silently ignored
-    # (litellm/integrations/langfuse/langfuse.py::add_default_langfuse_tags).
-    # Surfacing model_info.hardware_id on every trace requires a small custom
-    # callback (or a `pre_call_hook` that injects metadata). Tracked as a W2.5
-    # follow-up so the W6 NPU utilisation report can aggregate by hardware.
-    #
-    # We still check both tags and metadata so this assertion auto-promotes
-    # to "passing" once the follow-up lands.
+# ---- 7/7 hardware_id propagation -------------------------------------------
+def assert_hardware_id(trace: dict[str, Any]) -> None:
+    step(f"7/7 hardware_id propagates (expecting {EXPECTED_HARDWARE_ID!r})")
+    # Injected by the `callbacks.hardware_metadata` pre-call hook
+    # (litellm/callbacks/hardware_metadata.py). LiteLLM's built-in
+    # `langfuse_default_tags` only resolves cache_hit / cache_key, so custom
+    # keys are silently dropped without the hook.
     tags = trace.get("tags") or []
     metadata = trace.get("metadata") or {}
-    hw_in_tags = EXPECTED_HARDWARE_ID in tags or any(
-        EXPECTED_HARDWARE_ID in str(t) for t in tags
+    hw_in_tags = any(
+        f"hardware_id:{EXPECTED_HARDWARE_ID}" == str(t) for t in tags
     )
     hw_in_meta = (
-        metadata.get("hardware_id") == EXPECTED_HARDWARE_ID
-        if isinstance(metadata, dict)
-        else False
+        isinstance(metadata, dict)
+        and metadata.get("hardware_id") == EXPECTED_HARDWARE_ID
     )
-    if hw_in_tags or hw_in_meta:
-        ok(f"hardware_id present in {'tags' if hw_in_tags else 'metadata'}")
-        return True
-    warn(
+    require(
+        hw_in_tags and hw_in_meta,
         f"hardware_id={EXPECTED_HARDWARE_ID!r} not propagated — "
-        f"tags={tags}, metadata.hardware_id={metadata.get('hardware_id') if isinstance(metadata, dict) else None!r}. "
-        "Known gap, see scripts/e2e/e2e_smoke_test.py docstring."
+        f"tags={tags}, metadata.hardware_id="
+        f"{metadata.get('hardware_id') if isinstance(metadata, dict) else None!r}",
     )
-    return False
+    ok(f"hardware_id present in tags + metadata = {EXPECTED_HARDWARE_ID!r}")
 
 
 def main() -> None:
@@ -347,13 +331,10 @@ def main() -> None:
     trace = find_trace(request_started_ms)
     assert_cost(trace)
     assert_trace_model(trace)
-    hw_ok = soft_check_hardware_id(trace)
+    assert_hardware_id(trace)
 
     print()
-    if hw_ok:
-        print(f"{GREEN}all checks passed{RESET}")
-    else:
-        print(f"{GREEN}all hard checks passed{RESET} ({YELLOW}1 soft warning above{RESET})")
+    print(f"{GREEN}all checks passed{RESET}")
 
 
 if __name__ == "__main__":

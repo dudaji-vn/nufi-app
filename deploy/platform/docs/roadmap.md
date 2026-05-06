@@ -278,7 +278,11 @@ fix and config dedup that came along ate another half day).
   in `litellm/config.yaml` is silently ignored — LiteLLM only resolves
   `cache_hit`/`cache_key` natively (see
   `litellm/integrations/langfuse/langfuse.py::add_default_langfuse_tags`).
-  Tracked as a W2.5 follow-up so W6 reports can aggregate by hardware.
+  **Resolved 2026-05-06** by a custom pre-call hook
+  (`litellm/callbacks/hardware_metadata.py`) that reads `model_info` from
+  `config.yaml` and stamps `hardware_id` + `backend_type` onto every trace
+  as both Langfuse tags (queryable) and `trace_metadata` (structured).
+  E2E section 7/7 now hard-asserts the propagation.
 - **SIGPIPE bug in `add-model.sh:314` and `bootstrap.sh:543/614`** — the
   uniqueness check used `yq | grep -Fxq "$NAME"`, which under `set -o pipefail`
   returns 141 (SIGPIPE on yq) when grep matches early, so the `if` evaluated
