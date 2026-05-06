@@ -22,6 +22,15 @@ Everything runs in Docker Compose. See `docs/roadmap.md` for the weekly plan.
 ## Prerequisites
 
 - Docker Engine 24+ and Docker Compose v2 (Docker Desktop on macOS / Windows)
+- `git` (with the LibreChat submodule fetched — `--recurse-submodules` on
+  clone, or `git submodule update --init` inside an existing checkout)
+- `yq` (Mike Farah's Go-based one — bootstrap and `add-model.sh` use it):
+  - macOS — `brew install yq`
+  - Linux — `sudo snap install yq` or download the binary from
+    https://github.com/mikefarah/yq/releases
+  - Windows (Git Bash / WSL2) — `winget install MikeFarah.yq` or the
+    Linux binary above
+  - **Not** Ubuntu's `apt install yq` — that's a different Python tool
 - A reachable GPU inference server exposing an OpenAI-compatible API
   (e.g. vLLM, TGI, Ollama). Set `GPU_BACKEND_BASE_URL` in `.env`.
 - ~10 GB free disk for Postgres / MongoDB / Langfuse / LibreChat volumes
@@ -115,7 +124,7 @@ test chat completion against the new model.
   --hardware-id together-cloud
 ```
 
-Requires `yq` (mikefarah's: `brew install yq`). Run `./scripts/add-model.sh --help` for all flags.
+Requires `yq` (Mike Farah's — see [Prerequisites](#prerequisites) for cross-platform install). Run `./scripts/add-model.sh --help` for all flags.
 
 ## End-to-end smoke test
 
