@@ -17,7 +17,10 @@
 # PREREQUISITES (install these first, one-time per machine)
 #   • Docker Desktop  ≥ 4.0  — https://www.docker.com   (give it ≥4 GB RAM)
 #   • git                    — needed to fetch the LibreChat submodule
-#   • yq (mikefarah)         — `brew install yq` / Linux: GitHub releases
+#   • yq (Mike Farah's, NOT Ubuntu's apt python-yq) —
+#       macOS:    brew install yq
+#       Linux:    sudo snap install yq  (or binary from github.com/mikefarah/yq/releases)
+#       Windows:  winget install MikeFarah.yq  (or the Linux binary above)
 #   • Ollama (only if you'll use --backend ollama) — https://ollama.com
 #       macOS:    brew install ollama && brew services start ollama
 #       Linux:    curl -fsSL https://ollama.com/install.sh | sh && ollama serve &
@@ -347,7 +350,18 @@ docker compose version >/dev/null 2>&1 || die "docker compose plugin missing"
 command -v openssl >/dev/null || die "openssl not installed"
 command -v curl >/dev/null || die "curl not installed"
 command -v git >/dev/null || die "git not installed (needed for the LibreChat submodule)"
-command -v yq >/dev/null || die "yq not installed (used by add-model.sh) — brew install yq"
+if ! command -v yq >/dev/null; then
+  cat >&2 <<'EOF'
+
+  yq (Mike Farah's, used by add-model.sh) is missing. Install with:
+    macOS:    brew install yq
+    Linux:    sudo snap install yq   (or binary from github.com/mikefarah/yq/releases)
+    Windows:  winget install MikeFarah.yq
+  Note: Ubuntu's "apt install yq" is a different Python tool — don't use it.
+
+EOF
+  die "yq not installed."
+fi
 docker info >/dev/null 2>&1 || die "Docker daemon not running — start Docker Desktop"
 ok "docker, openssl, curl, git, yq ok"
 
