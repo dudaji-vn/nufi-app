@@ -249,7 +249,9 @@ Q2 2026 (2026-04-28 → 2026-06-27, 9 weeks). GPU platform end-to-end with NPU i
 
 **Status:** ✅ Done (2026-05-05) — `./scripts/e2e-smoke-test.sh` runs
 containerised; 6/7 hard checks green, 1 soft warning surfaces a `hardware_id`
-propagation gap (see follow-ups below). Demo deck at `docs/demos/w2-checkpoint.md`.
+propagation gap (see follow-ups below). Earlier checkpoint deck removed in
+`daa4ca2` — re-create before the team demo (now paired with W4 demo on
+2026-05-08).
 
 **Goal:** The flow `User → LibreChat → LiteLLM → GPU → Langfuse trace` works.
 
@@ -300,6 +302,8 @@ fix and config dedup that came along ate another half day).
 
 #### Task 3.1 — API Key Issuance UI
 
+**Status:** ✅ Done (2026-05-05) — shipped in `console/` (PR #8). Backend wraps LiteLLM `/key/{generate,delete,list,info}` in `console/server/router/keys.ts`; UI at `console/src/routes/keys.tsx` with name / team / project / expiry, reveal-once modal on creation, masked list (`sk-...abc123`), copy + delete actions. Footer link from LibreChat lands the user already authenticated (PR #10 soft-fork submodule + patches).
+
 **Goal:** Users can self-serve API keys via a UI without admin intervention.
 
 **Steps:**
@@ -339,6 +343,8 @@ fix and config dedup that came along ate another half day).
 ---
 
 #### Task 3.2 — Budget & Rate Limit Management
+
+**Status:** ✅ Done (2026-05-05) — `max_budget`, `budget_duration`, `tpm_limit`, `rpm_limit` are real passthrough fields on key create (defaults in `keys.ts`); live remaining-budget + rate-limit windows shown on the keys table via `/key/info`. Redis already wired since W1; no extra config needed. (PR #8)
 
 **Goal:** Each key has a budget and rate limits; requests over the limits are rejected.
 
@@ -383,6 +389,8 @@ fix and config dedup that came along ate another half day).
 ### W4 (May 19 – May 23)
 
 #### Task 4.1 — Self-Service Usage Dashboard
+
+**Status:** ✅ Done (2026-05-06) — `/usage` route shipped end-to-end (PR #9, three Day-1/2/3 commits `fc73156` → `37cae56`). Procedures live in `console/server/router/usage.ts`: `usage.daily`, `usage.byModel`, `usage.recent`, `usage.byHardware`. Frontend renders summary cards, daily line chart with 7/30/90-day toggle, by-model bar chart, by-hardware bar chart (auto-hidden when only one hardware seen), and a recent-requests table. Langfuse client + 60s in-memory trace cache in `console/server/lib/langfuse.ts`. USER/ADMIN role filtering reuses the W3 middleware.
 
 **Goal:** Users can view their token usage and cost over time.
 
@@ -483,9 +491,11 @@ fix and config dedup that came along ate another half day).
 
 #### Task 4.2 — W4 Checkpoint Demo
 
+**Status:** 🟢 Code done (2026-05-06); team demo still pending (target Friday 2026-05-08, paired with the W2 demo that slipped). Earlier draft `docs/demos/w4-checkpoint.md` was deleted in `daa4ca2` — replace with a fresh deck before the demo.
+
 **Effort estimate:** 1 day
 
-> 🏁 **W4 Checkpoint:** Self-service Key / Budget / Usage complete
+> 🏁 **W4 Checkpoint:** Self-service Key / Budget / Usage complete — reached 2026-05-06, ~2 weeks ahead of the nominal W4 window (May 19–23).
 
 ---
 
