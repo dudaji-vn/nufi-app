@@ -41,12 +41,6 @@ endpoints:
         # and restart the two services. `default` is just a fallback list used
         # if the fetch fails — keep it empty so we never serve stale entries.
         # `./scripts/add-model.sh` appends to this list automatically.
-        default:
-          - qwen2.5-3b
-          - llama3.1-latest
-          - gemma4-latest
-          - llava-7b
-          - gemini
         fetch: true
       titleConvo: true
       # Use whatever model the user is chatting with to title the conversation,
