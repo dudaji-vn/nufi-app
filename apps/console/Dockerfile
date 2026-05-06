@@ -11,7 +11,6 @@ RUN bun install --frozen-lockfile
 COPY tsconfig.json vite.config.ts components.json index.html ./
 COPY src ./src
 COPY server ./server
-COPY public ./public
 
 RUN bunx @tanstack/router-cli generate \
  && bun run build
