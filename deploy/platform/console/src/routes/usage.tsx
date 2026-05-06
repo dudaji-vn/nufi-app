@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
+import { ByHardwareCard } from '@/components/by-hardware-card';
 import { ByModelCard } from '@/components/by-model-card';
 import { RecentRequestsTable } from '@/components/recent-requests-table';
 import { Button } from '@/components/ui/button';
@@ -24,14 +25,15 @@ function UsagePage() {
 
   const daily = useQuery(api.usage.daily.queryOptions({ input: { days } }));
   const byModel = useQuery(api.usage.byModel.queryOptions({ input: { days } }));
+  const byHardware = useQuery(api.usage.byHardware.queryOptions({ input: { days } }));
   const recent = useQuery(api.usage.recent.queryOptions({ input: { limit: 50 } }));
 
   useEffect(() => {
-    const err = daily.error ?? byModel.error ?? recent.error;
+    const err = daily.error ?? byModel.error ?? byHardware.error ?? recent.error;
     if (err && isUnauthorized(err)) {
       navigate({ to: '/unauthorized' });
     }
-  }, [daily.error, byModel.error, recent.error, navigate]);
+  }, [daily.error, byModel.error, byHardware.error, recent.error, navigate]);
 
   return (
     <section className="space-y-6">
@@ -54,7 +56,14 @@ function UsagePage() {
         pending={daily.isPending}
       />
 
-      <ByModelCard breakdown={byModel.data?.breakdown ?? []} pending={byModel.isPending} />
+      <div className="grid gap-4 md:grid-cols-2">
+        <ByModelCard breakdown={byModel.data?.breakdown ?? []} pending={byModel.isPending} />
+        <ByHardwareCard
+          breakdown={byHardware.data?.breakdown ?? []}
+          truncated={byHardware.data?.truncated ?? false}
+          pending={byHardware.isPending}
+        />
+      </div>
 
       <RecentRequestsTable rows={recent.data?.rows ?? []} pending={recent.isPending} />
     </section>
