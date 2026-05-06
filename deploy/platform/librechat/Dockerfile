@@ -35,9 +35,18 @@ USER node
 
 # Apply every patch in lexicographic order. Fail fast if any patch doesn't
 # apply cleanly — that's the signal to rebase against a new upstream tag.
+#
+# Before applying, strip CRLF on each file the patch is about to touch
+# (parsed from the `+++ b/...` headers). Windows clones with default
+# `core.autocrlf=true` check out submodule files with CRLF, which makes
+# `git apply` reject patches against LF context. This auto-scales to any
+# number of patches without listing files explicitly.
 RUN set -eu; \
     for p in /patches/*.patch; do \
         [ -e "$p" ] || { echo "No patches to apply (zero-patch parity build)"; break; }; \
+        for f in $(grep -E '^\+\+\+ b/' "$p" | sed 's|^+++ b/||'); do \
+            [ -f "/app/$f" ] && sed -i 's/\r$//' "/app/$f" || true; \
+        done; \
         echo "Applying $p"; \
         git apply --verbose "$p"; \
     done
