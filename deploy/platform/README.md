@@ -43,11 +43,16 @@ Everything runs in Docker Compose. See `docs/roadmap.md` for the weekly plan.
 
 ### 1. One-time install on your machine
 
-| OS      | Docker                                                | Ollama                                                                |
-| ------- | ----------------------------------------------------- | --------------------------------------------------------------------- |
-| macOS   | Docker Desktop — https://www.docker.com (≥4 GB RAM)   | `brew install ollama && brew services start ollama`                   |
-| Linux   | Docker Engine + Compose v2                            | `curl -fsSL https://ollama.com/install.sh \| sh` then `ollama serve &` |
-| Windows | Docker Desktop + WSL2 backend (≥4 GB RAM)             | `winget install Ollama.Ollama` (or installer from https://ollama.com) |
+Docker is required. Ollama is **optional** — only install it if you want to
+run models locally on your laptop. If you'll point the stack at a remote
+GPU/NPU box (vLLM, TGI, custom OpenAI-compatible server) or a cloud
+provider (OpenAI, Anthropic, Together, …), skip Ollama entirely.
+
+| OS      | Docker (required)                                      | Ollama (optional, local backend)                                        |
+| ------- | ------------------------------------------------------ | ----------------------------------------------------------------------- |
+| macOS   | Docker Desktop — https://www.docker.com (≥4 GB RAM)    | `brew install ollama && brew services start ollama`                    |
+| Linux   | Docker Engine + Compose v2                             | `curl -fsSL https://ollama.com/install.sh \| sh` then `ollama serve &`  |
+| Windows | Docker Desktop + WSL2 backend (≥4 GB RAM)              | `winget install Ollama.Ollama` (or installer from https://ollama.com)   |
 
 Windows users also need **Git for Windows** (which provides Git Bash) or
 **WSL2** to run the bootstrap and smoke-test scripts.
@@ -62,16 +67,26 @@ git clone --recurse-submodules git@github.com:DudajiVN/npuops-platform.git
 cd npuops-platform
 ./scripts/bootstrap.sh
 #   → initializes the LibreChat submodule if you forgot --recurse-submodules
-#   → prompts for which Ollama model to use (default qwen2.5:3b)
+#   → asks which backend to use:
+#       • ollama     — local Ollama on this machine (auto-pulls + registers)
+#       • remote     — vLLM / TGI / custom OpenAI-compatible server on the network
+#       • cloud      — OpenAI / Anthropic / Together / Groq / etc. (needs an API key)
+#       • mock-npu   — clone an existing model entry, tag as backend_type=npu
+#       • skip       — bring the stack up only, register models later
 #   → fills in random secrets in .env
 #   → builds the LibreChat custom image (~5-10 min first run, cached after)
 #   → docker compose up -d
-#   → runs the smoke test
+#   → runs the smoke test (skipped if no model was registered)
 #   → prints URLs and the Langfuse admin password
 ```
 
-Re-run `./scripts/bootstrap.sh` anytime — it's idempotent. To pick a model
-non-interactively: `./scripts/bootstrap.sh --model llama3.2:3b`.
+Re-run `./scripts/bootstrap.sh` anytime — it's idempotent. Non-interactive flags:
+
+```bash
+./scripts/bootstrap.sh --backend ollama --model qwen2.5:3b   # CI / one-liner
+./scripts/bootstrap.sh --backend remote                       # → add-model.sh prompts
+./scripts/bootstrap.sh --backend skip                         # stack only, no model
+```
 
 ### Manual quick start (if you want to do it yourself)
 
@@ -81,10 +96,16 @@ cp .env.example .env
 # edit .env: replace every `replace-me` value (see comments in the file for
 # how to generate each one — e.g. `openssl rand -hex 32`)
 
-ollama pull qwen2.5:3b            # or any model from https://ollama.com/library
-docker compose build librechat    # ~5-10 min first time, cached after
+docker compose build librechat   # ~5-10 min first time, cached after
 docker compose up -d
 docker compose logs -f litellm-proxy   # wait for "Application startup complete"
+
+# Register a model (pick one path):
+./scripts/add-model.sh           # interactive — works for Ollama, vLLM, TGI,
+                                 # OpenAI, Anthropic, Together, custom servers
+# (or, if you'll use local Ollama: `ollama pull qwen2.5:3b` first, then run
+#  add-model.sh and point it at http://host.docker.internal:11434/v1)
+
 ./scripts/smoke-test.sh
 ```
 
