@@ -510,10 +510,12 @@ esac
 step "4/6 Configuring .env"
 
 # Each line: KEY,GENERATOR
-# Generators: sk_hex32, hex32, hex16, hex12, b64_32
-# A secret is only generated if the value in .env is currently `replace-me`.
+# Generators: hex32, hex16, hex12, b64_32
+# A secret is only generated if the value in .env currently ends in `replace-me`
+# (e.g. `replace-me`, `sk-replace-me`, `pk-lf-replace-me`). The leading prefix
+# from .env.example is preserved — the generator only fills the random tail.
 SECRETS_DEF='
-LITELLM_MASTER_KEY,sk_hex32
+LITELLM_MASTER_KEY,hex32
 LITELLM_SALT_KEY,hex32
 POSTGRES_PASSWORD,hex16
 JWT_SECRET,hex32
@@ -521,6 +523,8 @@ JWT_REFRESH_SECRET,hex32
 CREDS_KEY,hex32
 CREDS_IV,hex16
 MONGO_INITDB_ROOT_PASSWORD,hex16
+LANGFUSE_PUBLIC_KEY,hex16
+LANGFUSE_SECRET_KEY,hex16
 LANGFUSE_NEXTAUTH_SECRET,b64_32
 LANGFUSE_SALT,b64_32
 LANGFUSE_ENCRYPTION_KEY,hex32
@@ -528,11 +532,11 @@ LANGFUSE_INIT_USER_PASSWORD,hex12
 CLICKHOUSE_PASSWORD,hex16
 MINIO_ROOT_PASSWORD,hex16
 GRAFANA_ADMIN_PASSWORD,hex12
+E2E_USER_PASSWORD,hex16
 '
 
 gen() {
   case "$1" in
-    sk_hex32) printf "sk-%s" "$(openssl rand -hex 32)" ;;
     hex32) openssl rand -hex 32 ;;
     hex16) openssl rand -hex 16 ;;
     hex12) openssl rand -hex 12 ;;
@@ -551,15 +555,20 @@ fi
 TMPFILE=$(mktemp)
 cp .env "$TMPFILE"
 
-# Replace any KEY=replace-me with a freshly generated value of the right kind.
+# Replace any KEY=<prefix>replace-me with <prefix> + a freshly generated value.
+# The prefix (e.g. `sk-`, `pk-lf-`, `sk-lf-`) is preserved from .env.example so
+# provider-specific key shapes survive secret generation. Prefix-extraction is
+# done in shell to stay portable across BSD awk (macOS) and gawk.
 echo "$SECRETS_DEF" | while IFS=, read -r KEY GENERATOR; do
   [ -z "$KEY" ] && continue
-  if grep -qE "^${KEY}=replace-me$" "$TMPFILE"; then
-    NEWVAL=$(gen "$GENERATOR")
-    awk -v k="$KEY" -v v="$NEWVAL" \
-      '$0 ~ "^" k "=replace-me$" { print k"="v; next } { print }' \
-      "$TMPFILE" >"${TMPFILE}.new" && mv "${TMPFILE}.new" "$TMPFILE"
-  fi
+  LINE=$(grep -E "^${KEY}=.*replace-me$" "$TMPFILE" || true)
+  [ -z "$LINE" ] && continue
+  CURRENT="${LINE#${KEY}=}"
+  PREFIX="${CURRENT%replace-me}"
+  NEWVAL="${PREFIX}$(gen "$GENERATOR")"
+  awk -v k="$KEY" -v v="$NEWVAL" \
+    '$0 ~ "^" k "=.*replace-me$" { print k"="v; next } { print }' \
+    "$TMPFILE" >"${TMPFILE}.new" && mv "${TMPFILE}.new" "$TMPFILE"
 done
 
 # Sync derived values that depend on the generated secrets.
