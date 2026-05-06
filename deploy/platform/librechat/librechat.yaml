@@ -42,6 +42,10 @@ endpoints:
         # if the fetch fails — keep it empty so we never serve stale entries.
         # `./scripts/add-model.sh` appends to this list automatically.
         fetch: true
+        default:
+          - llama3.1-latest
+          - gemma4-latest
+          - llava-7b
       titleConvo: true
       # Use whatever model the user is chatting with to title the conversation,
       # so this works regardless of which models are registered.
