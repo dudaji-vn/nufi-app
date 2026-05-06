@@ -19,20 +19,16 @@ jobs:
           file_or_dir: .
           config_file: .yamllint.yml
 
-      - name: Detect Dockerfiles
-        id: dockerfiles
-        run: |
-          if [ -n "$(find . -name Dockerfile -not -path './.git/*' -print -quit)" ]; then
-            echo "found=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "found=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Lint Dockerfiles
-        if: steps.dockerfiles.outputs.found == 'true'
-        uses: hadolint/hadolint-action@v3.1.0
-        with:
-          recursive: true
+        # Explicit list — `recursive: true` would also walk into
+        # librechat/source/ (the LibreChat submodule), which is upstream
+        # code we don't own. Add new Dockerfiles here and in scripts/lint.sh.
+        run: |
+          for f in litellm/Dockerfile librechat/Dockerfile; do
+            [ -f "$f" ] || continue
+            echo "==> hadolint $f"
+            docker run --rm -i hadolint/hadolint:latest < "$f"
+          done
 
       - name: Detect shell scripts
         id: scripts
