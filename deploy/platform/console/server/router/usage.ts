@@ -141,6 +141,58 @@ export const recent = o
   });
 
 /**
+ * usage.summary — cards for the top of /usage: total cost, total requests,
+ * primary hardware, model count over the period. Joins LiteLLM /spend/logs
+ * (cost + request count, authoritative for spend) with Langfuse traces
+ * (hardware_id, which LiteLLM doesn't carry). The cached `tracesForUser`
+ * means this and `byHardware` share one Langfuse round-trip per tick.
+ */
+export const summary = o.input(PeriodInput).handler(async ({ context, input }) => {
+  if (!context.user) throw new ORPCError('UNAUTHORIZED');
+
+  const startDate = periodStartDate(input.days);
+  const fromIso = `${startDate}T00:00:00Z`;
+  const [logs, { traces }] = await Promise.all([
+    spendLogsForUser(context.user.id, startDate),
+    tracesForUser(context.user.id, fromIso),
+  ]);
+
+  let totalSpend = 0;
+  const models = new Set<string>();
+  for (const log of logs) {
+    totalSpend += log.spend ?? 0;
+    if (log.model) models.add(normalizeModel(log.model));
+  }
+
+  // Pick the hardware with the most requests in the window — "where most
+  // of your traffic landed". Ignore the `unknown` bucket so a freshly
+  // deployed stack doesn't show "primary hardware: unknown".
+  const hwRequests = new Map<string, { requests: number; backendType: string | null }>();
+  for (const trace of traces) {
+    const hw = tagValue(trace, 'hardware_id');
+    if (!hw) continue;
+    const b = hwRequests.get(hw) ?? {
+      requests: 0,
+      backendType: tagValue(trace, 'backend_type'),
+    };
+    b.requests += 1;
+    hwRequests.set(hw, b);
+  }
+  const primaryHardware =
+    Array.from(hwRequests.entries())
+      .sort((a, b) => b[1].requests - a[1].requests)
+      .map(([hardwareId, b]) => ({ hardwareId, backendType: b.backendType }))[0] ?? null;
+
+  return {
+    days: input.days,
+    totalSpend,
+    totalRequests: logs.length,
+    modelsUsed: models.size,
+    primaryHardware,
+  };
+});
+
+/**
  * usage.byHardware — per-`hardware_id` spend + request count over the last
  * N days, sourced from Langfuse traces (LiteLLM /spend/logs doesn't carry
  * hardware metadata). Reads the `hardware_id:` tag stamped by the W2.5

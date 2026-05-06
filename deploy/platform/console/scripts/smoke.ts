@@ -310,6 +310,28 @@ await step('rpc/usage/recent returns rows newest-first', async () => {
   }
 });
 
+await step('rpc/usage/summary returns joined LiteLLM + Langfuse stats', async () => {
+  type Summary = {
+    days: number;
+    totalSpend: number;
+    totalRequests: number;
+    modelsUsed: number;
+    primaryHardware: { hardwareId: string; backendType: string | null } | null;
+  };
+  const r = await rpcOk<Summary>('/usage/summary', { json: { days: 7 } }, bearer);
+  assert(r.days === 7, `expected days=7, got ${r.days}`);
+  assert(r.totalRequests > 0, `expected requests>0, got ${r.totalRequests}`);
+  assert(r.modelsUsed > 0, `expected modelsUsed>0, got ${r.modelsUsed}`);
+  // primaryHardware should be set after the W2.5 hook is in place; the
+  // procedure deliberately ignores the `unknown` bucket so freshly hooked
+  // stacks don't show "primary hardware: unknown".
+  assert(r.primaryHardware, 'expected primaryHardware to be populated');
+  assert(
+    r.primaryHardware.hardwareId === 'mac-local',
+    `expected primaryHardware=mac-local, got ${r.primaryHardware.hardwareId}`,
+  );
+});
+
 await step('rpc/usage/byHardware aggregates Langfuse traces by hardware_id', async () => {
   type ByHardware = {
     breakdown: Array<{
