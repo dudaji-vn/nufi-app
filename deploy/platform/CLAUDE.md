@@ -4,7 +4,6 @@
 
 Build a self-hosted AI platform to migrate LLM workloads from GPU to NPU.
 Q2 2026 deliverable: complete GPU platform with NPU integration ready.
-Current phase: W5 — LLM Guard inline + Prometheus/Grafana (W1–W4 complete; standalone `console/` ships keys + budget/rate-limit + `/usage` dashboard)
 
 ## WHAT (Stack & Structure)
 
