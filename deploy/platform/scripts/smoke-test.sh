@@ -22,29 +22,29 @@ fi
 AUTH=(-H "Authorization: Bearer ${LITELLM_MASTER_KEY}")
 JSON=(-H "Content-Type: application/json")
 
-echo "==> 1/6 Liveness"
+echo "==> 1/7 Liveness"
 curl -fsS "${PROXY_URL}/health/liveliness"
 echo
 
-echo "==> 2/6 Model list"
+echo "==> 2/7 Model list"
 curl -fsS "${AUTH[@]}" "${PROXY_URL}/v1/models" >/dev/null
 echo "ok"
 
-echo "==> 3/6 Chat completion"
+echo "==> 3/7 Chat completion"
 curl -fsS "${AUTH[@]}" "${JSON[@]}" \
   -X POST "${PROXY_URL}/v1/chat/completions" \
   -d "{\"model\":\"${MODEL}\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}],\"max_tokens\":10}" \
   >/dev/null
 echo "ok"
 
-echo "==> 4/6 Streaming"
+echo "==> 4/7 Streaming"
 curl -fsSN "${AUTH[@]}" "${JSON[@]}" \
   -X POST "${PROXY_URL}/v1/chat/completions" \
   -d "{\"model\":\"${MODEL}\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}],\"max_tokens\":10,\"stream\":true}" \
   >/dev/null
 echo "ok"
 
-echo "==> 5/6 Error handling (unknown model should 4xx)"
+echo "==> 5/7 Error handling (unknown model should 4xx)"
 status=$(curl -s -o /dev/null -w '%{http_code}' "${AUTH[@]}" "${JSON[@]}" \
   -X POST "${PROXY_URL}/v1/chat/completions" \
   -d '{"model":"does-not-exist","messages":[{"role":"user","content":"ping"}]}')
@@ -54,7 +54,7 @@ if [ "${status}" -lt 400 ] || [ "${status}" -ge 500 ]; then
 fi
 echo "ok (got ${status})"
 
-echo "==> 6/6 Langfuse trace exists for the chat request"
+echo "==> 6/7 Langfuse trace exists for the chat request"
 LANGFUSE_PUBLIC_HOST="${LANGFUSE_PUBLIC_HOST:-http://localhost:3000}"
 if [ -z "${LANGFUSE_PUBLIC_KEY:-}" ] || [ -z "${LANGFUSE_SECRET_KEY:-}" ]; then
   echo "skipped (LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY not set)"
@@ -82,6 +82,28 @@ else
   fi
   echo "ok (${count} trace(s) visible)"
 fi
+
+echo "==> 7/7 Prometheus has scraped the LiteLLM request counter"
+PROMETHEUS_URL="${PROMETHEUS_URL:-http://localhost:9090}"
+# Wait one full scrape interval (15s) plus a small buffer so the chat
+# request from step 3 lands in a scrape window before we query.
+sleep 18
+PY=$(command -v python3 || command -v python || true)
+if [ -z "${PY}" ]; then
+  echo "error: neither python3 nor python found in PATH" >&2
+  exit 1
+fi
+count=$(curl -fsSG "${PROMETHEUS_URL}/api/v1/query" \
+  --data-urlencode 'query=sum(litellm_proxy_total_requests_metric_total)' |
+  "${PY}" -c 'import sys,json
+d=json.load(sys.stdin)
+r=d.get("data",{}).get("result",[])
+print(int(float(r[0]["value"][1])) if r else 0)')
+if [ "${count}" -lt 1 ]; then
+  echo "error: prometheus has no litellm_proxy_total_requests_metric_total data — check the scrape config and litellm /metrics" >&2
+  exit 1
+fi
+echo "ok (cumulative request count = ${count})"
 
 echo
 echo "all checks passed"

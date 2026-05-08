@@ -422,6 +422,11 @@ services:
       - "9093:9093"
     volumes:
       - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      # Slack webhook URL lives in monitoring/secrets/slack-webhook (gitignored).
+      # The directory is always mounted so the path is stable; if the file is
+      # absent, alertmanager only fails when an alert actually tries to fire,
+      # which is fine while route.receiver is still `noop`.
+      - ./monitoring/secrets:/etc/alertmanager/secrets:ro
     command:
       - "--config.file=/etc/alertmanager/alertmanager.yml"
     healthcheck:
