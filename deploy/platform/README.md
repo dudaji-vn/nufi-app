@@ -212,8 +212,41 @@ e2e user — the test only auto-registers when registration is open.
 | LibreChat      | http://localhost:3080     |
 | Console        | http://localhost:3001     |
 | Langfuse       | http://localhost:3000     |
-| Grafana        | http://localhost:3002     |
+| Grafana        | http://localhost:3030     |
 | Prometheus     | http://localhost:9090     |
+| Alertmanager   | http://localhost:9093     |
+
+## Monitoring
+
+Prometheus scrapes the LiteLLM `/metrics` endpoint plus Postgres and
+Redis exporters every 15 seconds. Grafana auto-loads the LiteLLM
+Overview dashboard from `monitoring/grafana/dashboards/`.
+
+```bash
+open http://localhost:3030/d/litellm-overview
+# user/pass come from GRAFANA_ADMIN_USER / GRAFANA_ADMIN_PASSWORD in .env
+```
+
+**Alert rules** live in `monitoring/rules/litellm.rules.yml` —
+LiteLLMDown (critical, 1m), LiteLLMHighErrorRate (>5% for 5m),
+LiteLLMHighLatencyP95 (>10s for 5m). Iterate without restarting:
+
+```bash
+$EDITOR monitoring/rules/litellm.rules.yml
+curl -X POST http://localhost:9090/-/reload
+```
+
+**Slack alerts** are scaffolded but disabled by default — alerts route
+to a `noop` receiver until a webhook is in place. To enable:
+
+```bash
+cp monitoring/secrets/slack-webhook.example monitoring/secrets/slack-webhook
+$EDITOR monitoring/secrets/slack-webhook   # paste the real URL, no quotes
+$EDITOR monitoring/alertmanager.yml        # change route.receiver: noop → slack
+docker compose restart alertmanager
+```
+
+The real `slack-webhook` file is gitignored.
 
 ## Project conventions
 
