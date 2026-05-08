@@ -855,6 +855,33 @@ fix and config dedup that came along ate another half day).
 
 ---
 
+## License Debt (deferred 2026-05-08, must resolve before external SaaS)
+
+A license audit on 2026-05-08 surfaced three SaaS-blocking components.
+Decision: park them and proceed with W5 (no SaaS deadline yet, ~2 weeks
+of schedule buffer better spent on W5 risk). **Re-open before any
+hosted-tier / customer-pilot commitment.**
+
+| Component        | Current license                             | Risk                                                                                  | Replacement                  | Swap risk |
+| ---------------- | ------------------------------------------- | ------------------------------------------------------------------------------------- | ---------------------------- | --------- |
+| MongoDB (`mongo:7`) | SSPL v1 (since 2018)                     | SSPL §13 arguably forces open-sourcing the whole platform when hosted externally      | **FerretDB 2.x** (Apache-2.0) | Medium — LibreChat is Mongoose-coupled, needs validation |
+| MinIO            | AGPLv3 (since 2021), maintenance mode 2025  | Network copyleft on patches; upstream is decaying — features being moved to AIStor    | **SeaweedFS** (Apache-2.0)   | Low — Langfuse supports any S3-compatible store |
+| Redis 7.4+       | RSALv2 / SSPLv1 / AGPLv3 (since Mar 2024)   | RSALv2 forbids "competing managed services"; pinning to 7.2 BSD only delays the risk  | **Valkey 8.1** (BSD-3)       | Trivial — same RESP, same `redis://` URL |
+
+**Plus commercial-license budget at SaaS launch:** Langfuse EE (SCIM,
+audit, retention, RBAC) and LiteLLM Enterprise (SSO, SCIM, JWT, audit).
+OSS suffices today.
+
+**Trigger to act:** any of — sales pitch with external prospect,
+customer pilot scoping, hosted-tier roadmap decision, public beta
+announcement. Do NOT let "we already use it" become the argument for
+keeping it; switching IS the project.
+
+**Owner / target window:** sun, W9 buffer (Jun 23 – Jun 27) at the
+latest, earlier if SaaS conversation accelerates.
+
+---
+
 ## Risks & Mitigation
 
 | Risk                                     | Impact                   | Mitigation                                                              |
