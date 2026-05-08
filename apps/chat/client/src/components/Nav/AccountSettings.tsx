@@ -1,7 +1,7 @@
 import { useRecoilState } from 'recoil';
 import * as Select from '@ariakit/react/select';
 import { Fragment, useState, memo } from 'react';
-import { FileText, LogOut } from 'lucide-react';
+import { FileText, LayoutDashboard, LogOut } from 'lucide-react';
 import { useGetUserBalance, useGetStartupConfig } from 'librechat-data-provider/react-query';
 import { LinkIcon, GearIcon, DropdownMenuSeparator } from '~/components';
 import FilesView from '~/components/Chat/Input/Files/FilesView';
@@ -101,6 +101,16 @@ function AccountSettings() {
           >
             <LinkIcon aria-hidden="true" />
             {localize('com_nav_help_faq')}
+          </Select.SelectItem>
+        )}
+        {import.meta.env.VITE_CONSOLE_URL && (
+          <Select.SelectItem
+            value=""
+            onClick={() => window.open(import.meta.env.VITE_CONSOLE_URL, '_blank')}
+            className="select-item text-sm"
+          >
+            <LayoutDashboard className="icon-md" aria-hidden="true" />
+            Console
           </Select.SelectItem>
         )}
         <Select.SelectItem
