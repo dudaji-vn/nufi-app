@@ -23,7 +23,8 @@ Q2 2026 deliverable: complete GPU platform with NPU integration ready.
 
 - `litellm/` — config.yaml and customization
 - `langfuse/` — Langfuse setup
-- `librechat/` — LibreChat config (`librechat.yaml`) + branding assets
+- `librechat/` — LibreChat runtime config (`librechat.yaml`) only; the image
+  ships from a separate fork repo (`dudaji-vn/LibreChat`, branch `npuops/main`)
 - `monitoring/` — Prometheus, Grafana, alert rules
 - `scripts/` — helper scripts
 - `docs/` — internal documentation

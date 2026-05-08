@@ -26,7 +26,7 @@ run() {
 
 run "yamllint" yamllint -c .yamllint.yml .
 
-dockerfiles=$(find . -name Dockerfile -not -path './.git/*' -not -path './librechat/source/*')
+dockerfiles=$(find . -name Dockerfile -not -path './.git/*')
 if [ -n "${dockerfiles}" ]; then
   # shellcheck disable=SC2086
   run "hadolint" hadolint ${dockerfiles}

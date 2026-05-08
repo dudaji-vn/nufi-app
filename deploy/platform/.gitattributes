@@ -1,8 +1,6 @@
 # Force LF endings on text we ship into Linux containers or interpret as
 # scripts. Windows users with the default `core.autocrlf=true` would otherwise
-# get CRLF on these, breaking `git apply` inside the LibreChat build and
-# every shell script.
-*.patch     text eol=lf
+# get CRLF, breaking shell scripts and YAML parsers.
 *.sh        text eol=lf
 Dockerfile  text eol=lf
 *.yaml      text eol=lf

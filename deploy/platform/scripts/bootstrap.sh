@@ -16,7 +16,10 @@
 #
 # PREREQUISITES (install these first, one-time per machine)
 #   • Docker Desktop  ≥ 4.0  — https://www.docker.com   (give it ≥4 GB RAM)
-#   • git                    — needed to fetch the LibreChat submodule
+#   • git
+#   • A `docker login ghcr.io` session with a PAT scoped read:packages —
+#     LibreChat ships from ghcr.io/dudaji-vn/librechat (private). See
+#     README.md → "LibreChat customization" for the one-time login.
 #   • yq (Mike Farah's, NOT Ubuntu's apt python-yq) —
 #       macOS:    brew install yq
 #       Linux:    sudo snap install yq  (or binary from github.com/mikefarah/yq/releases)
@@ -28,10 +31,9 @@
 #
 #   On Windows, run this script from Git Bash or WSL2 — not from cmd.exe
 #   or PowerShell. (Git Bash ships with bash, openssl, curl, awk, sed.)
-#   Recommended on Windows: `git config --global core.autocrlf input` before
-#   cloning, so the LibreChat submodule and the patch files stay LF — the
-#   .gitattributes at the repo root pins .patch / .sh / Dockerfile to LF
-#   regardless, but the submodule's text files follow your global config.
+#   Recommended on Windows: `git config --global core.autocrlf input` so
+#   shell scripts stay LF — the .gitattributes at the repo root pins
+#   .sh / Dockerfile to LF regardless.
 #
 # WHAT THIS SCRIPT DOES (idempotent — safe to re-run any time)
 #   1. Verifies Docker, openssl, curl, yq
@@ -349,7 +351,7 @@ command -v docker >/dev/null || die "docker not installed — https://www.docker
 docker compose version >/dev/null 2>&1 || die "docker compose plugin missing"
 command -v openssl >/dev/null || die "openssl not installed"
 command -v curl >/dev/null || die "curl not installed"
-command -v git >/dev/null || die "git not installed (needed for the LibreChat submodule)"
+command -v git >/dev/null || die "git not installed"
 if ! command -v yq >/dev/null; then
   cat >&2 <<'EOF'
 
@@ -364,15 +366,6 @@ EOF
 fi
 docker info >/dev/null 2>&1 || die "Docker daemon not running — start Docker Desktop"
 ok "docker, openssl, curl, git, yq ok"
-
-# LibreChat is a git submodule (librechat/source, pinned to v0.7.5). On a
-# fresh clone the directory is empty until we sync — do that now so the
-# build later doesn't fail with a missing package.json.
-if [ -f .gitmodules ] && [ ! -f librechat/source/package.json ]; then
-  step "Initializing git submodules (one-time, ~10s)"
-  git submodule update --init
-  ok "submodules ready"
-fi
 
 # -----------------------------------------------------------------------------
 # 2. backend choice — local Ollama vs cloud provider vs skip
@@ -591,14 +584,11 @@ ok "secrets populated"
 # -----------------------------------------------------------------------------
 step "5/6 Starting Docker stack"
 
-# LibreChat is a custom-built image (soft fork — see librechat/Dockerfile).
-# Build it explicitly first so the ~5-10 min first-run build shows progress
-# instead of disappearing inside `docker compose up -d`. On re-runs Docker's
-# layer cache makes this a no-op (a few seconds).
-if ! docker image inspect npuops/librechat:v0.7.5-custom >/dev/null 2>&1; then
-  warn "first run: building LibreChat custom image (~5-10 min, cached after)"
-fi
-docker compose build librechat
+# LibreChat ships from the fork repo at ghcr.io/dudaji-vn/librechat. Pull it
+# explicitly first so the ~150 MB download shows progress instead of
+# disappearing inside `docker compose up -d`. Requires `docker login ghcr.io`
+# beforehand — see README.md "LibreChat customization" for the one-time auth.
+docker compose pull librechat
 ok "librechat image ready"
 
 docker compose up -d
