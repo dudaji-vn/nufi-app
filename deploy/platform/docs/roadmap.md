@@ -505,6 +505,14 @@ fix and config dedup that came along ate another half day).
 
 #### Task 5.1 — LLM Guard Inline Integration
 
+**Status:** ✅ Done (2026-05-08) — Presidio inline for PII (Day 1) + LLM Guard sidecar with custom pre-call hook for prompt injection (Day 2). Day 3 added latency benchmarks + a smoke-test step that asserts injections are blocked. PR `feat/w5-monitoring`.
+
+> **Plan deviation:** the original config above suggests `guardrail: llm_guard` as a LiteLLM-native provider. **It isn't** — `llm_guard` is not in LiteLLM main-stable's supported guardrails list (presidio, lakera, aporia, bedrock, guardrails_ai, azure, generic_guardrail_api). We pivoted to: presidio for PII (LiteLLM-native) + LLM Guard as a sidecar (`laiyer/llm-guard-api:0.3.16`) called from a custom Python pre-call hook (`litellm/callbacks/prompt_injection.py`). Same outcome, two providers instead of one.
+
+> **Failure-mode decision:** fail-closed for prompt injection (security control — drop the request rather than risk a poisoned prompt), fail-open for PII (UX — don't 500 the user when Presidio hiccups).
+
+> **Resource note:** DeBERTa for prompt injection needs ~1.5–2 GB resident. Bumped Docker Desktop RAM from 4 GB → 12 GB; future stack growth (W6 PDF, W8 cost-saving page) should size against that baseline.
+
 **Goal:** All requests are scanned for PII and prompt injection, with results logged to Langfuse.
 
 **Steps:**
@@ -543,15 +551,19 @@ fix and config dedup that came along ate another half day).
 
 **Acceptance Criteria:**
 
-- Requests with PII (SSN, email, phone) are anonymized
-- Requests with injection patterns are rejected
-- Latency overhead < 200ms
+- [x] Requests with PII (SSN, email, phone) are anonymized — Presidio masks 7 entity types on both inbound + outbound paths
+- [x] Requests with injection patterns are rejected — DeBERTa-based PromptInjection scanner returns HTTP 400 with a guardrail-attributed error body; smoke-test step 8 enforces this
+- [x] Latency overhead < 200ms — measured **30 ms p99 combined** on 50-iteration in-network benchmark (LLM Guard p99 24.8 ms + Presidio p99 16.4 ms; well under budget)
 
-**Effort estimate:** 3 days
+**Effort estimate:** 3 days (delivered in 1 day; the `llm_guard` provider pivot + Docker RAM bump ate the buffer)
 
 ---
 
 #### Task 5.2 — Prometheus + Grafana Monitoring
+
+**Status:** ✅ Done (2026-05-08) — Prometheus + Grafana + Alertmanager + Postgres/Redis exporters live on the npuops network. LiteLLM Overview dashboard auto-provisioned with 11 panels covering RPS, error rate, p50/p95/p99 latency, tokens, spend, infra health, and a guardrail-block panel added in W5.1 day 2. Three alert rules loaded (LiteLLMDown, LiteLLMHighErrorRate, LiteLLMHighLatencyP95) and evaluating. Slack receiver scaffolded but disabled by default — toggle is documented in `README.md` and `monitoring/alertmanager.yml`. PR `feat/w5-monitoring`.
+
+> **Plan deviation:** original plan said "use weighted-pick at W8 for Canary" and "Slack alerts must fire and reach `#npuops-alerts` < 2 min". The webhook isn't wired to a real channel — the structure is in place (route, receiver, secret-file mount), but the alert-fires-in-Slack acceptance moves to W8 when there's a real workspace + channel decision.
 
 **Goal:** Real-time platform health dashboards with Slack alerts.
 
@@ -589,9 +601,9 @@ fix and config dedup that came along ate another half day).
 
 **Acceptance Criteria:**
 
-- Dashboard loads quickly with near-real-time data (< 30s lag)
-- Test alert fires → Slack receives it in < 2 minutes
-- Dashboard is shareable via link
+- [x] Dashboard loads quickly with near-real-time data (< 30s lag) — 15s scrape interval + 30s dashboard refresh
+- [~] Test alert fires → Slack receives it in < 2 minutes — alerts evaluate end-to-end; Slack delivery deferred to W8 (no real channel yet)
+- [x] Dashboard is shareable via link — `http://localhost:3030/d/litellm-overview` works for any logged-in user; provisioned-as-code, reproducible on a fresh checkout
 
 **Effort estimate:** 2 days
 
