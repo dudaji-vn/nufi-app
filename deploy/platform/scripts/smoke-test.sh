@@ -4,7 +4,8 @@
 set -euo pipefail
 
 PROXY_URL="${PROXY_URL:-http://localhost:4000}"
-MODEL="${MODEL:-llama-3-gpu}"
+# MODEL is auto-discovered from /v1/models in step 2 unless caller overrides.
+MODEL="${MODEL:-}"
 
 # Source .env if LITELLM_MASTER_KEY isn't already in the environment.
 if [ -z "${LITELLM_MASTER_KEY:-}" ] && [ -f .env ]; then
@@ -27,8 +28,26 @@ curl -fsS "${PROXY_URL}/health/liveliness"
 echo
 
 echo "==> 2/7 Model list"
-curl -fsS "${AUTH[@]}" "${PROXY_URL}/v1/models" >/dev/null
-echo "ok"
+PY=$(command -v python3 || command -v python || true)
+if [ -z "${PY}" ]; then
+  echo "error: neither python3 nor python found in PATH" >&2
+  exit 1
+fi
+MODELS_JSON=$(curl -fsS "${AUTH[@]}" "${PROXY_URL}/v1/models")
+# Pick the first registered model unless MODEL was explicitly set in the env.
+if [ -z "${MODEL}" ]; then
+  MODEL=$(printf '%s' "${MODELS_JSON}" | "${PY}" -c '
+import sys,json
+d=json.load(sys.stdin).get("data",[]) or []
+print(d[0]["id"] if d else "")
+')
+fi
+if [ -z "${MODEL}" ]; then
+  echo "error: no models registered in LiteLLM. Run ./scripts/add-model.sh first," >&2
+  echo "       or pass MODEL=<name> to override the auto-discovery." >&2
+  exit 1
+fi
+echo "ok (using model: ${MODEL})"
 
 echo "==> 3/7 Chat completion"
 curl -fsS "${AUTH[@]}" "${JSON[@]}" \
@@ -59,12 +78,6 @@ LANGFUSE_PUBLIC_HOST="${LANGFUSE_PUBLIC_HOST:-http://localhost:3000}"
 if [ -z "${LANGFUSE_PUBLIC_KEY:-}" ] || [ -z "${LANGFUSE_SECRET_KEY:-}" ]; then
   echo "skipped (LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY not set)"
 else
-  # `python3` on macOS/Linux, `python` on Windows Git Bash — pick whichever exists.
-  PY=$(command -v python3 || command -v python || true)
-  if [ -z "${PY}" ]; then
-    echo "error: neither python3 nor python found in PATH" >&2
-    exit 1
-  fi
   # LiteLLM ships traces async, and on a fresh `bootstrap` the langfuse-worker
   # may still be warming its ClickhouseWriter when the chat request lands —
   # poll for up to 30s instead of a one-shot query after a fixed sleep.
@@ -88,11 +101,6 @@ PROMETHEUS_URL="${PROMETHEUS_URL:-http://localhost:9090}"
 # Wait one full scrape interval (15s) plus a small buffer so the chat
 # request from step 3 lands in a scrape window before we query.
 sleep 18
-PY=$(command -v python3 || command -v python || true)
-if [ -z "${PY}" ]; then
-  echo "error: neither python3 nor python found in PATH" >&2
-  exit 1
-fi
 count=$(curl -fsSG "${PROMETHEUS_URL}/api/v1/query" \
   --data-urlencode 'query=sum(litellm_proxy_total_requests_metric_total)' |
   "${PY}" -c 'import sys,json
