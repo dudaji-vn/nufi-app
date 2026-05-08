@@ -202,6 +202,8 @@ services:
         condition: service_healthy
       presidio-anonymizer:
         condition: service_healthy
+      llm-guard-api:
+        condition: service_healthy
     # `env_file` loads the whole .env so any cloud-provider key referenced from
     # litellm/config.yaml (GEMINI_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY, …)
     # reaches the proxy without a docker-compose edit per provider. The explicit
@@ -229,6 +231,10 @@ services:
       # Presidio guardrail (W5.1) — both services live on the npuops network.
       PRESIDIO_ANALYZER_API_BASE: http://presidio-analyzer:3000
       PRESIDIO_ANONYMIZER_API_BASE: http://presidio-anonymizer:3000
+      # LLM Guard sidecar — read by callbacks/prompt_injection.py.
+      LLM_GUARD_API_BASE: http://llm-guard-api:8000
+      LLM_GUARD_AUTH_TOKEN: ${LLM_GUARD_AUTH_TOKEN}
+      LLM_GUARD_TIMEOUT_S: "5.0"
     ports:
       - "4000:4000"
     volumes:
@@ -493,4 +499,29 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+    networks: [npuops]
+
+  # Prompt-injection scanner — sidecar API server from Protect AI / Laiyer.
+  # CPU variant; first boot loads a DeBERTa classifier (~400 MB), so the
+  # start_period is generous. Custom pre-call hook in
+  # litellm/callbacks/prompt_injection.py POSTs each user prompt to
+  # /scan/prompt and fails-closed when is_valid is false.
+  llm-guard-api:
+    image: laiyer/llm-guard-api:0.3.16
+    container_name: npuops-llm-guard-api
+    restart: unless-stopped
+    environment:
+      AUTH_TOKEN: ${LLM_GUARD_AUTH_TOKEN}
+      # The default config ships with too many aggressive scanners
+      # (BanSubstrings on "test", competitor blocklist, etc.). We mount our
+      # own minimal one — see llm-guard/scanners.yml for rationale.
+      CONFIG_FILE: /home/user/app/config/scanners.yml
+    volumes:
+      - ./llm-guard/scanners.yml:/home/user/app/config/scanners.yml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/healthz\")' || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 180s
     networks: [npuops]

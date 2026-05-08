@@ -415,6 +415,44 @@
       ],
       "title": "Redis memory",
       "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "4xx rate is a proxy for guardrail blocks (PII / prompt injection). Other 4xx causes — model-not-found, malformed body — also show up here; cross-check the recent-requests panel before declaring an attack.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisLabel": "blocks/s",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 25,
+            "lineWidth": 2,
+            "pointSize": 4,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" }
+          },
+          "unit": "reqps"
+        }
+      },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 26 },
+      "id": 11,
+      "options": {
+        "legend": { "calcs": ["mean", "lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "pluginVersion": "11.4.0",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (requested_model) (rate(litellm_proxy_total_requests_metric_total{status_code=\"400\"}[5m]))",
+          "legendFormat": "{{requested_model}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Guardrail blocks (4xx rate by model)",
+      "type": "timeseries"
     }
   ],
   "refresh": "30s",

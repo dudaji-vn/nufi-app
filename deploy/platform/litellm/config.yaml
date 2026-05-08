@@ -57,9 +57,13 @@ litellm_settings:
   #   - hardware_metadata: pre-call hook that stamps hardware_id +
   #     backend_type onto every Langfuse trace. Needed because LiteLLM's
   #     `langfuse_default_tags` resolver silently drops custom keys.
+  #   - prompt_injection: pre-call hook that POSTs each user prompt to
+  #     llm-guard-api and fails-closed on detected injection. Stamps
+  #     scanner scores onto trace metadata for dashboarding.
   callbacks:
     - prometheus
     - callbacks.hardware_metadata.proxy_handler_instance
+    - callbacks.prompt_injection.proxy_handler_instance
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
   database_url: os.environ/DATABASE_URL
