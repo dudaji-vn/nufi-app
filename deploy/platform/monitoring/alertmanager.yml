@@ -1,0 +1,15 @@
+# Alertmanager config — Day 1 stub.
+#
+# Day 2 replaces the `noop` receiver with a Slack webhook routing to
+# #npuops-alerts (URL stored in .env as SLACK_ALERT_WEBHOOK_URL, mounted
+# as a file via `api_url_file`, never inlined here).
+
+route:
+  receiver: noop
+  group_by: [alertname]
+  group_wait: 10s
+  group_interval: 5m
+  repeat_interval: 12h
+
+receivers:
+  - name: noop
