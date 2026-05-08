@@ -5,6 +5,11 @@ on:
     branches: [npuops/main]
     tags: ['npuops-v*']
   workflow_dispatch:
+    inputs:
+      console_url:
+        description: 'CONSOLE_URL baked into the bundle (Vite env var)'
+        required: false
+        default: 'http://localhost:3001'
 
 permissions:
   contents: read
@@ -49,5 +54,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            CONSOLE_URL=${{ inputs.console_url || 'http://localhost:3001' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

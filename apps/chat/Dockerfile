@@ -12,6 +12,12 @@ USER node
 
 COPY --chown=node:node . .
 
+# NPUOps: console URL is inlined into the Vite bundle at build time so
+# the AccountSettings nav link knows where to send users. Empty default
+# hides the menu item (see client/src/components/Nav/AccountSettings.tsx).
+ARG CONSOLE_URL=
+ENV VITE_CONSOLE_URL=$CONSOLE_URL
+
 RUN \
     # Allow mounting of these files, which have no default
     touch .env ; \
