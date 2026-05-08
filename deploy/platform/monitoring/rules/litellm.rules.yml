@@ -45,4 +45,7 @@ groups:
           service: litellm
         annotations:
           summary: "LiteLLM p95 latency above 10s for 5 minutes"
-          description: "Current p95: {{ $value | humanizeDuration }}. Likely culprits: backend saturation, network to upstream, or a slow model added recently."
+          description: >-
+            Current p95: {{ $value | humanizeDuration }}.
+            Likely culprits: backend saturation, network to upstream,
+            or a slow model added recently.
