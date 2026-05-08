@@ -281,11 +281,7 @@ services:
     networks: [npuops]
 
   librechat:
-    build:
-      context: ./librechat
-      args:
-        CONSOLE_URL: ${CONSOLE_URL:-}
-    image: npuops/librechat:v0.7.5-custom
+    image: ghcr.io/dudaji-vn/librechat:npuops-v0.7.5-3
     container_name: npuops-librechat
     restart: unless-stopped
     depends_on:

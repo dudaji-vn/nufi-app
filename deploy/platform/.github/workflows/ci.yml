@@ -20,11 +20,11 @@ jobs:
           config_file: .yamllint.yml
 
       - name: Lint Dockerfiles
-        # Explicit list — `recursive: true` would also walk into
-        # librechat/source/ (the LibreChat submodule), which is upstream
-        # code we don't own. Add new Dockerfiles here and in scripts/lint.sh.
+        # Explicit list — add new Dockerfiles here and in scripts/lint.sh.
+        # LibreChat is consumed as a pre-built image from a separate fork
+        # repo (dudaji-vn/LibreChat), so its Dockerfile lives there, not here.
         run: |
-          for f in litellm/Dockerfile librechat/Dockerfile; do
+          for f in litellm/Dockerfile; do
             [ -f "$f" ] || continue
             echo "==> hadolint $f"
             docker run --rm -i hadolint/hadolint:latest < "$f"
@@ -109,19 +109,3 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Check out LibreChat submodule
-        if: hashFiles('librechat/Dockerfile') != ''
-        run: git submodule update --init --depth 1 librechat/source
-
-      - name: Build LibreChat image (verifies patches still apply)
-        if: hashFiles('librechat/Dockerfile') != ''
-        uses: docker/build-push-action@v5
-        with:
-          context: ./librechat
-          push: false
-          load: true
-          tags: npuops/librechat:ci
-          build-args: |
-            CONSOLE_URL=http://localhost:3001
-          cache-from: type=gha,scope=librechat
-          cache-to: type=gha,mode=max,scope=librechat

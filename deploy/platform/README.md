@@ -22,8 +22,11 @@ Everything runs in Docker Compose. See `docs/roadmap.md` for the weekly plan.
 ## Prerequisites
 
 - Docker Engine 24+ and Docker Compose v2 (Docker Desktop on macOS / Windows)
-- `git` (with the LibreChat submodule fetched — `--recurse-submodules` on
-  clone, or `git submodule update --init` inside an existing checkout)
+- `git`
+- A GitHub Personal Access Token with `read:packages` scope, then
+  `docker login ghcr.io` once — the LibreChat image is pulled from
+  `ghcr.io/dudaji-vn/librechat` (private until the org loosens GHCR access).
+  See "LibreChat customization" below for the one-time login command.
 - `yq` (Mike Farah's Go-based one — bootstrap and `add-model.sh` use it):
   - macOS — `brew install yq`
   - Linux — `sudo snap install yq` or download the binary from
@@ -63,11 +66,10 @@ Windows users also need **Git for Windows** (which provides Git Bash) or
 # macOS / Linux: open Terminal.
 # Windows:       open Git Bash (right-click → "Git Bash Here") or a WSL2 shell.
 
-git clone --recurse-submodules  git@github.com:dudaji-vn/npuops-platform.git
-or git clone --recurse-submodules  https://github.com/dudaji-vn/npuops-platform.git
+git clone git@github.com:dudaji-vn/npuops-platform.git
+# or: git clone https://github.com/dudaji-vn/npuops-platform.git
 cd npuops-platform
 ./scripts/bootstrap.sh
-#   → initializes the LibreChat submodule if you forgot --recurse-submodules
 #   → asks which backend to use:
 #       • ollama     — local Ollama on this machine (auto-pulls + registers)
 #       • remote     — vLLM / TGI / custom OpenAI-compatible server on the network
@@ -75,7 +77,7 @@ cd npuops-platform
 #       • mock-npu   — clone an existing model entry, tag as backend_type=npu
 #       • skip       — bring the stack up only, register models later
 #   → fills in random secrets in .env
-#   → builds the LibreChat custom image (~5-10 min first run, cached after)
+#   → pulls the LibreChat image from ghcr.io (~150 MB)
 #   → docker compose up -d
 #   → runs the smoke test (skipped if no model was registered)
 #   → prints URLs and the Langfuse admin password
@@ -92,12 +94,11 @@ Re-run `./scripts/bootstrap.sh` anytime — it's idempotent. Non-interactive fla
 ### Manual quick start (if you want to do it yourself)
 
 ```bash
-git submodule update --init      # populate librechat/source (LibreChat soft fork)
 cp .env.example .env
 # edit .env: replace every `replace-me` value (see comments in the file for
 # how to generate each one — e.g. `openssl rand -hex 32`)
 
-docker compose build librechat   # ~5-10 min first time, cached after
+docker compose pull librechat    # ~150 MB from ghcr.io (one-time)
 docker compose up -d
 docker compose logs -f litellm-proxy   # wait for "Application startup complete"
 
@@ -230,11 +231,8 @@ npuops-platform/
 ├── docker-compose.yml
 ├── litellm/          # config.yaml + Dockerfile
 ├── langfuse/         # Langfuse setup
-├── librechat/        # soft fork of LibreChat — see "LibreChat customization"
-│   ├── librechat.yaml  # runtime config (mounted into the container)
-│   ├── Dockerfile      # builds npuops/librechat:v0.7.5-custom
-│   ├── source/         # git submodule, pinned to upstream v0.7.5
-│   └── patches/        # *.patch files applied before npm install
+├── librechat/        # runtime config only — see "LibreChat customization"
+│   └── librechat.yaml  # mounted into the container; image lives in the fork
 ├── console/          # self-service UI (Bun + Hono + Vite + React)
 ├── monitoring/       # Prometheus, Grafana, alert rules
 ├── scripts/          # helper scripts (smoke test, backups)
@@ -268,58 +266,73 @@ Set the same `JWT_SECRET` / `JWT_REFRESH_SECRET` / `LITELLM_MASTER_KEY` as
 the running stack so auth and admin calls work in dev. See
 `docs/w3-console-plan.md` for the full implementation plan.
 
-## LibreChat customization (soft fork)
+## LibreChat customization
 
-LibreChat ships as a custom image (`npuops/librechat:v0.7.5-custom`) built
-from upstream v0.7.5 with a stack of small patches in `librechat/patches/`.
-Each patch is one reviewable diff against upstream — the source itself
-lives in the `librechat/source/` submodule, which we never edit directly.
+LibreChat is forked at https://github.com/dudaji-vn/LibreChat
+(branch `npuops/main`, pinned to upstream `v0.7.5`). The fork's CI builds and
+publishes a multi-arch image to `ghcr.io/dudaji-vn/librechat:npuops-v0.7.5-N`,
+which this repo pulls via the `image:` line in `docker-compose.yml`. There
+is no local LibreChat source in this repo — only `librechat/librechat.yaml`
+runtime config, mounted into the container.
 
-**Add a new patch:**
+**One-time auth (every contributor + every deploy host):**
 
 ```bash
-cd librechat/source
+# 1. Create a Personal Access Token at https://github.com/settings/tokens/new
+#    Scope: read:packages only. Note: e.g. "npuops-ghcr-read".
+# 2. Login (replace ghp_... with your token, <username> with your GH login):
+echo ghp_xxxxxxxxxxxxxxxxxxxx | docker login ghcr.io -u <username> --password-stdin
+```
 
-# 1. Edit the upstream files locally (e.g. add a menu item).
+Credentials persist in your Docker config — you don't need to do this again
+unless you rotate the token.
+
+**Customize LibreChat (add a feature, tweak the UI):**
+
+Work in the fork repo, not here:
+
+```bash
+git clone git@github.com:dudaji-vn/LibreChat.git
+cd LibreChat
+git checkout npuops/main
+
+# Edit normally — IDE, hot reload, all of it works.
 $EDITOR client/src/components/Nav/AccountSettings.tsx
+git commit -am "feat(nav): add Foo link"
+git push
 
-# 2. Capture the diff into a numbered patch file.
-git diff > ../patches/0002-something-descriptive.patch
-
-# 3. Revert the submodule so it stays clean against upstream.
-git checkout -- .
-
-# 4. Build to verify the patch applies cleanly.
-cd ../..
-docker compose build librechat
-docker compose up -d librechat
+# Tag the next NPUOps release (CI builds + publishes the image).
+git tag npuops-v0.7.5-4    # bump the trailing number per release
+git push origin npuops-v0.7.5-4
 ```
 
-Patches are applied in lexicographic order during the Docker build. Names
-should start with a zero-padded number — `0001-`, `0002-`, etc.
+Then, in this repo, bump the tag in `docker-compose.yml`:
 
-**Upgrade the upstream LibreChat version:**
+```yaml
+librechat:
+  image: ghcr.io/dudaji-vn/librechat:npuops-v0.7.5-4
+```
+
+`docker compose pull librechat && docker compose up -d librechat`.
+
+**Upgrade upstream LibreChat:**
+
+In the fork:
 
 ```bash
-cd librechat/source
-git fetch --tags
-git checkout v0.7.6   # or whatever the new tag is
-
-# Dry-run every patch; any "REBASE" line means manual fix-up needed.
-cd ..
-for p in patches/*.patch; do
-  git -C source apply --check "../$p" || echo "REBASE: $p"
-done
-
-# After fixing conflicts (re-do the edit against the new source, regenerate
-# the patch), rebuild and commit the new submodule SHA.
-docker compose build librechat
-git add source patches/
-git commit -m "chore(librechat): bump to v0.7.6"
+cd LibreChat
+git remote add upstream https://github.com/danny-avila/LibreChat.git  # one-time
+git fetch upstream --tags
+git checkout npuops/main
+git merge v0.7.6        # resolve any conflicts in npuops customization commits
+git push
+git tag npuops-v0.7.6-1
+git push origin npuops-v0.7.6-1
 ```
 
-CI (`.github/workflows/ci.yml`) rebuilds the image on every PR — if a patch
-stops applying after an upstream bump, CI fails before it bites locally.
+Then bump the image tag here. The fork keeps a clear `git log upstream/v0.7.5..npuops/main`
+diff for "what did NPUOps actually change?" — useful for security audits and
+upstream conflict triage.
 
 ## Documentation
 
