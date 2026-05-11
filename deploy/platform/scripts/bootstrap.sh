@@ -10,6 +10,7 @@
 #   ./scripts/bootstrap.sh --backend cloud       # hands off to add-model.sh (OpenAI/etc.)
 #   ./scripts/bootstrap.sh --backend mock-npu    # clone a registered model as backend_type=npu
 #   ./scripts/bootstrap.sh --backend skip        # bring up stack only
+#   ./scripts/bootstrap.sh --domain codechi.me   # rewrite public URLs after secrets are set
 #   ./scripts/bootstrap.sh --skip-pull           # don't `ollama pull`
 #   ./scripts/bootstrap.sh --skip-smoke-test     # don't run smoke test at the end
 #   ./scripts/bootstrap.sh --help
@@ -300,6 +301,7 @@ pick_multi() {
 # -----------------------------------------------------------------------------
 BACKEND=""
 MODEL=""
+DOMAIN=""
 SKIP_PULL=0
 SKIP_SMOKE=0
 while [ $# -gt 0 ]; do
@@ -318,6 +320,14 @@ while [ $# -gt 0 ]; do
       ;;
     --model=*)
       MODEL="${1#*=}"
+      shift
+      ;;
+    --domain)
+      DOMAIN="$2"
+      shift 2
+      ;;
+    --domain=*)
+      DOMAIN="${1#*=}"
       shift
       ;;
     --skip-pull)
@@ -578,6 +588,13 @@ awk \
 
 mv "$TMPFILE" .env
 ok "secrets populated"
+
+# 4b. Rewrite public URLs for the given domain (Cloudflare Tunnel deploys).
+# Skipped on local dev runs (no --domain).
+if [ -n "$DOMAIN" ]; then
+  ./scripts/update-domain.sh "$DOMAIN" --yes
+  ok "public URLs pointed at ${DOMAIN}"
+fi
 
 # -----------------------------------------------------------------------------
 # 5. docker compose up + wait for healthy
