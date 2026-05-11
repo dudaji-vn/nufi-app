@@ -304,7 +304,7 @@ services:
     networks: [npuops]
 
   librechat:
-    image: ghcr.io/dudaji-vn/librechat:npuops-v0.7.5-3
+    image: ghcr.io/dudaji-vn/librechat:npuops-main
     container_name: npuops-librechat
     restart: unless-stopped
     depends_on:
