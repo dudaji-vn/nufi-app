@@ -3,9 +3,19 @@ const {
   Permissions,
   PermissionTypes,
   removeNullishValues,
+  extractEnvVariable,
 } = require('librechat-data-provider');
 const { updateAccessPermissions } = require('~/models/Role');
 const { logger } = require('~/config');
+
+// LibreChat only env-interpolates `${VAR}` in endpoint fields. Apply the same
+// treatment to interface URLs so librechat.yaml can reference env vars without
+// requiring a rebuild. `removeNullishValues` higher up filters this when no
+// config block is set.
+const resolveExternalUrl = (obj) => {
+  if (!obj || typeof obj.externalUrl !== 'string') return obj;
+  return { ...obj, externalUrl: extractEnvVariable(obj.externalUrl) };
+};
 
 /**
  * Loads the default interface object.
@@ -27,9 +37,9 @@ async function loadDefaultInterface(config, configDefaults, roleName = SystemRol
     parameters: interfaceConfig?.parameters ?? (hasModelSpecs ? false : defaults.parameters),
     presets: interfaceConfig?.presets ?? (hasModelSpecs ? false : defaults.presets),
     sidePanel: interfaceConfig?.sidePanel ?? defaults.sidePanel,
-    privacyPolicy: interfaceConfig?.privacyPolicy ?? defaults.privacyPolicy,
-    termsOfService: interfaceConfig?.termsOfService ?? defaults.termsOfService,
-    customConsole: interfaceConfig?.customConsole,
+    privacyPolicy: resolveExternalUrl(interfaceConfig?.privacyPolicy) ?? defaults.privacyPolicy,
+    termsOfService: resolveExternalUrl(interfaceConfig?.termsOfService) ?? defaults.termsOfService,
+    customConsole: resolveExternalUrl(interfaceConfig?.customConsole),
     bookmarks: interfaceConfig?.bookmarks ?? defaults.bookmarks,
     prompts: interfaceConfig?.prompts ?? defaults.prompts,
     multiConvo: interfaceConfig?.multiConvo ?? defaults.multiConvo,
