@@ -467,6 +467,12 @@ export const configSchema = z.object({
           modalContent: z.string().or(z.array(z.string())).optional(),
         })
         .optional(),
+      customConsole: z
+        .object({
+          externalUrl: z.string().optional(),
+          openNewTab: z.boolean().optional(),
+        })
+        .optional(),
       endpointsMenu: z.boolean().optional(),
       modelSelect: z.boolean().optional(),
       parameters: z.boolean().optional(),

@@ -313,6 +313,10 @@ export type TInterfaceConfig = {
     modalTitle?: string;
     modalContent?: string;
   };
+  customConsole?: {
+    externalUrl?: string;
+    openNewTab?: boolean;
+  };
   endpointsMenu: boolean;
   modelSelect: boolean;
   parameters: boolean;

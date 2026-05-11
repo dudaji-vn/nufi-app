@@ -103,10 +103,15 @@ function AccountSettings() {
             {localize('com_nav_help_faq')}
           </Select.SelectItem>
         )}
-        {import.meta.env.VITE_CONSOLE_URL && (
+        {startupConfig?.interface?.customConsole?.externalUrl && (
           <Select.SelectItem
             value=""
-            onClick={() => window.open(import.meta.env.VITE_CONSOLE_URL, '_blank')}
+            onClick={() =>
+              window.open(
+                startupConfig.interface!.customConsole!.externalUrl,
+                startupConfig.interface!.customConsole!.openNewTab === false ? '_self' : '_blank',
+              )
+            }
             className="select-item text-sm"
           >
             <LayoutDashboard className="icon-md" aria-hidden="true" />
