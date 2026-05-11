@@ -27,6 +27,9 @@ interface:
   termsOfService:
     externalUrl: ${TERMS_OF_SERVICE_URL}
     openNewTab: true
+  customConsole:
+    externalUrl: ${CONSOLE_URL}
+    openNewTab: true
 # Endpoints — single custom endpoint that routes everything through LiteLLM.
 endpoints:
   custom:
