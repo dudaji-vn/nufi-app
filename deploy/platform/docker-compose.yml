@@ -352,6 +352,8 @@ services:
   console:
     build:
       context: ./console
+      args:
+        LIBRECHAT_URL: ${LIBRECHAT_URL:-http://localhost:3080}
     container_name: npuops-console
     restart: unless-stopped
     depends_on:

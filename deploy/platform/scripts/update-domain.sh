@@ -21,8 +21,11 @@
 #
 # Mapping (edit here when adding a new public surface):
 #   chat.<domain>      -> DOMAIN_CLIENT, DOMAIN_SERVER   (LibreChat OAuth + emails)
+#                         LIBRECHAT_URL                  (Console -> Chat link;
+#                                                         baked into console SPA
+#                                                         at build time)
 #   langfuse.<domain>  -> LANGFUSE_NEXTAUTH_URL          (Langfuse OAuth callback)
-#   console.<domain>   -> CONSOLE_URL                    (LibreChat -> Console link)
+#   console.<domain>   -> CONSOLE_URL                    (Chat -> Console link)
 #
 # NOTE: LANGFUSE_HOST stays at http://langfuse-web:3000 (Docker service name) —
 # Console reads it server-side, so the public URL would just slow it down.
@@ -43,6 +46,7 @@ ASSUME_YES=0
 declare -a VARS=(
   "DOMAIN_CLIENT:chat"
   "DOMAIN_SERVER:chat"
+  "LIBRECHAT_URL:chat"
   "LANGFUSE_NEXTAUTH_URL:langfuse"
   "CONSOLE_URL:console"
 )
@@ -115,7 +119,8 @@ done
 
 echo "done."
 echo
-echo "next: recreate the services that read .env at startup:"
+echo "next: rebuild the console (LIBRECHAT_URL is baked into its Vite bundle)"
+echo "      and recreate the services that read .env at startup:"
 echo
-echo "  docker compose up -d --force-recreate librechat console langfuse-web"
+echo "  docker compose up -d --force-recreate --build librechat console langfuse-web"
 echo
