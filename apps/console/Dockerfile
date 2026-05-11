@@ -12,6 +12,12 @@ COPY tsconfig.json vite.config.ts components.json index.html ./
 COPY src ./src
 COPY server ./server
 
+# Where the chat UI lives. Inlined into the Vite bundle so the unauthorized
+# page can deep-link users back to sign in. Override via `build.args` in
+# docker-compose.yml.
+ARG LIBRECHAT_URL=http://localhost:3080
+ENV VITE_LIBRECHAT_URL=$LIBRECHAT_URL
+
 RUN bunx @tanstack/router-cli generate \
  && bun run build
 
