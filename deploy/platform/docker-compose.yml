@@ -266,12 +266,14 @@ services:
     volumes:
       - mongodb-data:/data/db
     healthcheck:
+      # mongo 4.4 ships the legacy `mongo` shell (no `mongosh`); needed because
+      # the target VM lacks AVX, so we can't run mongo 5+.
       test:
-        ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand({ping: 1}).ok"]
+        ["CMD", "mongo", "--quiet", "--eval", "db.adminCommand({ping: 1}).ok"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 20s
+      start_period: 30s
     networks: [npuops]
 
   # End-to-end smoke test for W2 Task 2.2. Runs python in-network so it can
