@@ -3,6 +3,7 @@ import type * as t from '@/types';
 
 const DEV_SECRET = 'dev-only-session-secret-minimum-32-chars!';
 
+const MIN_SESSION_SECRET_LENGTH = 32;
 const REVALIDATION_INTERVAL_MS = 60_000;
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 
@@ -25,6 +26,12 @@ const sessionSecret =
 
 if (!sessionSecret) {
   throw new Error('SESSION_SECRET environment variable must be set for admin session encryption.');
+}
+
+if (sessionSecret.length < MIN_SESSION_SECRET_LENGTH) {
+  throw new Error(
+    `SESSION_SECRET must be at least ${MIN_SESSION_SECRET_LENGTH} characters for admin session encryption.`,
+  );
 }
 
 if (!process.env.SESSION_SECRET && process.env.NODE_ENV === 'development') {
