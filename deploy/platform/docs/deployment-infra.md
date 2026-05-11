@@ -7,13 +7,31 @@ LLM backend (GPU host) is provisioned separately and is **out of scope for this 
 
 Runs all platform services via Docker Compose.
 
-| Resource | Spec | Notes |
+| Resource | Allocated | Notes |
 |---|---|---|
-| CPU | 16 vCPU | 13 services; ML guardrails (Presidio, LLM Guard) are CPU-heavy |
+| CPU | 12 vCPU | Tight vs. 13 baseline — per-service `cpus:` limits applied in compose |
 | RAM | 32 GB | ClickHouse + guardrail models dominate |
-| Disk | 250 GB SSD (NVMe preferred) | Sized for alpha (10–50 users); expand when ClickHouse + MinIO approach 60% |
+| Disk | 256 GB SSD | Sized for alpha (10–50 users); expand when usage > 60% |
 | OS | Ubuntu 22.04 LTS | Docker 24+, Docker Compose v2 |
 | Network | 1 Gbps | |
+
+### Per-service resource caps (in `docker-compose.yml`)
+
+| Service | CPU cap | Mem cap |
+|---|---|---|
+| ClickHouse | 2 | 4 GB |
+| LLM Guard sidecar | 1 | 2 GB |
+| Presidio | 0.5 | 1 GB |
+| Postgres | 1 | 2 GB |
+| MongoDB | 1 | 2 GB |
+| LiteLLM | 1 | 2 GB |
+| LibreChat | 1 | 2 GB |
+| Langfuse web + worker | 1 each | 2 GB each |
+| Console | 0.5 | 512 MB |
+| Prometheus | 1 | 2 GB |
+| Everything else (Redis, MinIO, Grafana, Alertmanager, exporters) | defaults | defaults |
+
+Leaves ~3 vCPU headroom for OS + bursts.
 
 ## 2. Storage breakdown
 
@@ -25,9 +43,9 @@ Sized for alpha (~10–50 users, first 2–3 months):
 | MongoDB (LibreChat conversations) | 20 GB | medium |
 | ClickHouse (Langfuse traces) | 50 GB | fast — main grower |
 | MinIO (Langfuse blobs: prompts/completions) | 30 GB | medium |
-| Prometheus (metrics, 15d retention) | 30 GB | bounded |
+| Prometheus (metrics, 10d retention) | 20 GB | bounded |
 | Docker images + logs + buffer | 50 GB | |
-| **Allocated** | **~190 GB** | ~60 GB headroom on 250 GB disk |
+| **Allocated** | **~180 GB** | ~75 GB headroom on 256 GB disk |
 
 ### Scale-up plan
 
