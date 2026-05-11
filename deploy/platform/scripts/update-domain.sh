@@ -20,10 +20,14 @@
 #   - Prints the docker compose command to apply the change
 #
 # Mapping (edit here when adding a new public surface):
-#   chat.<domain>      -> DOMAIN_CLIENT, DOMAIN_SERVER
-#   langfuse.<domain>  -> NEXTAUTH_URL, LANGFUSE_HOST_PUBLIC
-#   console.<domain>   -> CONSOLE_PUBLIC_URL
-#   api.<domain>       -> LITELLM_PUBLIC_URL
+#   chat.<domain>      -> DOMAIN_CLIENT, DOMAIN_SERVER   (LibreChat OAuth + emails)
+#   langfuse.<domain>  -> LANGFUSE_NEXTAUTH_URL          (Langfuse OAuth callback)
+#   console.<domain>   -> CONSOLE_URL                    (LibreChat -> Console link)
+#
+# NOTE: LANGFUSE_HOST stays at http://langfuse-web:3000 (Docker service name) —
+# Console reads it server-side, so the public URL would just slow it down.
+# LiteLLM also has no public-URL env var; SDK clients hit api.<domain>/v1
+# directly via Cloudflare.
 # =============================================================================
 
 set -euo pipefail
@@ -39,10 +43,8 @@ ASSUME_YES=0
 declare -a VARS=(
   "DOMAIN_CLIENT:chat"
   "DOMAIN_SERVER:chat"
-  "NEXTAUTH_URL:langfuse"
-  "LANGFUSE_HOST_PUBLIC:langfuse"
-  "CONSOLE_PUBLIC_URL:console"
-  "LITELLM_PUBLIC_URL:api"
+  "LANGFUSE_NEXTAUTH_URL:langfuse"
+  "CONSOLE_URL:console"
 )
 
 # --- Pre-flight --------------------------------------------------------------
