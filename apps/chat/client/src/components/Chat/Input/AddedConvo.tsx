@@ -37,11 +37,11 @@ export default function AddedConvo({
           />
         </div>
       </span>
-      <span className="text-token-text-secondary line-clamp-3 flex-1 py-0.5 font-semibold">
+      <span className="line-clamp-3 flex-1 py-0.5 font-semibold text-text-secondary">
         {title}
       </span>
       <button
-        className="text-token-text-secondary flex-shrink-0"
+        className="flex-shrink-0 rounded-md p-1 text-text-secondary transition-colors hover:bg-accent hover:text-text-primary"
         type="button"
         aria-label="Close added conversation"
         onClick={() => setAddedConvo(null)}

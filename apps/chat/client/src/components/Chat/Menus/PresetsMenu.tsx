@@ -51,7 +51,7 @@ const PresetsMenu: FC = () => {
           <Content
             side="bottom"
             align="center"
-            className="mt-2 max-h-[495px] overflow-x-hidden rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-700 dark:text-white md:min-w-[400px]"
+            className="mt-2 max-h-[495px] overflow-x-hidden rounded-lg border border-gray-200 bg-white p-1 shadow-xl dark:border-border dark:bg-popover dark:text-text-primary md:min-w-[400px]"
           >
             <PresetItems
               presets={presets}

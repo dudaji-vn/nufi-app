@@ -2,11 +2,11 @@
 <html lang="en-US">
   <head>
     <meta charset="utf-8" />
-    <meta name="theme-color" content="#171717" />
+    <meta name="theme-color" content="#080810" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <title>LibreChat</title>
+    <title>NUFI</title>
     <link rel="shortcut icon" href="#" />
     <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32x32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon-16x16.png" />
@@ -26,14 +26,14 @@
       let backgroundColor;
 
       if (theme === 'dark') {
-        backgroundColor = '#0d0d0d';
+        backgroundColor = '#080810';
       } else if (theme === 'light') {
         backgroundColor = '#ffffff';
       } else if (theme === 'system') {
         const prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        backgroundColor = prefersDarkScheme ? '#0d0d0d' : '#ffffff';
+        backgroundColor = prefersDarkScheme ? '#080810' : '#ffffff';
       } else {
-        backgroundColor = '#ffffff';
+        backgroundColor = '#080810';
       }
 
       loadingContainerStyle.innerHTML = `

@@ -25,22 +25,22 @@ export default function MultiSearch({
   return (
     <div
       className={cn(
-        'group sticky left-0 top-0 z-10 flex h-12 items-center gap-2 bg-gradient-to-b from-white from-65% to-transparent px-3 py-2 text-black transition-colors duration-300 focus:bg-gradient-to-b focus:from-white focus:to-white/50 dark:from-gray-700 dark:to-transparent dark:text-white dark:focus:from-white/10 dark:focus:to-white/20',
+        'group sticky left-0 top-0 z-10 mb-1 flex h-10 items-center gap-2 border-b border-border bg-popover px-3 text-text-primary',
         className,
       )}
     >
-      <Search className="h-4 w-4 text-gray-500 transition-colors duration-300 dark:group-focus-within:text-gray-300 dark:group-hover:text-gray-300" />
+      <Search className="h-4 w-4 text-text-secondary transition-colors duration-200 group-focus-within:text-text-primary" />
       <input
         type="text"
         value={value ?? ''}
         onChange={onChangeHandler}
         placeholder={placeholder ?? localize('com_ui_select_search_model')}
-        className="flex-1 rounded-md border-none bg-transparent px-2.5 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-700/10 dark:focus:ring-gray-200/10"
+        className="flex-1 border-none bg-transparent px-1 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-0"
       />
-      <div className="relative flex h-5 w-5 items-center justify-end text-gray-500">
+      <div className="relative flex h-5 w-5 items-center justify-end">
         <X
           className={cn(
-            'text-gray-500 dark:text-gray-300',
+            'h-4 w-4 text-text-secondary hover:text-text-primary',
             value?.length ?? 0 ? 'cursor-pointer opacity-100' : 'opacity-0',
           )}
           onClick={() => onChange('')}
