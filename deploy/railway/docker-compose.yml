@@ -1,0 +1,59 @@
+name: nufi-chat
+
+networks:
+  # Network của stack npuops (codechi). Bằng cách join external network này,
+  # service `api` ở dưới có thể gọi thẳng `litellm-proxy:4000` của stack npuops
+  # mà không phải đi vòng qua Cloudflare → api.codechi.me.
+  npuops_npuops:
+    external: true
+
+volumes:
+  mongo-data:
+
+services:
+  api:
+    image: ghcr.io/dudaji-vn/librechat:npuops-main
+    container_name: nufi-chat-api
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    ports:
+      - "3081:3081"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3081
+      MONGO_URI: mongodb://mongo:27017/LibreChat
+      DOMAIN_CLIENT: ${DOMAIN_CLIENT}
+      DOMAIN_SERVER: ${DOMAIN_SERVER}
+      APP_TITLE: ${APP_TITLE:-Nufi Chat}
+      ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-true}
+      ALLOW_EMAIL_LOGIN: ${ALLOW_EMAIL_LOGIN:-true}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      CREDS_KEY: ${CREDS_KEY}
+      CREDS_IV: ${CREDS_IV}
+      ENDPOINTS: custom
+      # Read by librechat.yaml via ${LITELLM_MASTER_KEY} interpolation.
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+    volumes:
+      - ./librechat.yaml:/app/librechat.yaml:ro
+    networks:
+      - default
+      - npuops_npuops
+
+  mongo:
+    # 4.4 is the last release that runs on CPUs without AVX (matches the VM
+    # constraint used by the prod npuops stack).
+    image: mongo:4.4
+    container_name: nufi-chat-mongo
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongo", "--quiet", "--eval", "db.adminCommand({ping: 1}).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks: [default]

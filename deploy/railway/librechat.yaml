@@ -1,0 +1,45 @@
+version: 1.2.1
+cache: true
+
+interface:
+  customWelcome: "Nufi Chat — routes through codechi LiteLLM via the npuops Docker network."
+  endpointsMenu: false
+  modelSelect: true
+  parameters: true
+  sidePanel: true
+  presets: true
+  prompts: true
+  bookmarks: true
+  multiConvo: true
+  temporaryChat: true
+  agents: false
+
+endpoints:
+  custom:
+    - name: "Nufi"
+      # Interpolated at runtime from the api container's env.
+      apiKey: "${LITELLM_MASTER_KEY}"
+      # Resolves on the external npuops_npuops network. If DNS for the service
+      # name fails on your Docker version, swap to the container_name:
+      #   baseURL: "http://npuops-litellm:4000/v1"
+      baseURL: "http://litellm-proxy:4000/v1"
+      models:
+        fetch: true
+        default: []
+      titleConvo: true
+      titleModel: "current_model"
+      modelDisplayLabel: "Nufi"
+      forcePrompt: false
+      summarize: false
+
+fileConfig:
+  endpoints:
+    Nufi:
+      fileLimit: 5
+      fileSizeLimit: 20
+      totalSizeLimit: 50
+      supportedMimeTypes:
+        - "image/png"
+        - "image/jpeg"
+        - "image/webp"
+        - "image/gif"
