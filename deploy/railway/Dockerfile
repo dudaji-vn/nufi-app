@@ -2,11 +2,14 @@
 # bind-mount librechat.yaml at runtime. Local docker-compose still uses the
 # base image directly with a volume mount.
 #
+# Override BASE at build time to upgrade (Railway: set as a service variable):
+#   BASE=ghcr.io/dudaji-vn/librechat:v0.0.2
+#
 # Pin BASE to a sha256 digest in production:
-#   docker pull ghcr.io/dudaji-vn/librechat:npuops-main
-#   docker inspect --format='{{index .RepoDigests 0}}' ghcr.io/dudaji-vn/librechat:npuops-main
+#   docker pull ghcr.io/dudaji-vn/librechat:v0.0.1
+#   docker inspect --format='{{index .RepoDigests 0}}' ghcr.io/dudaji-vn/librechat:v0.0.1
 #   → ghcr.io/dudaji-vn/librechat@sha256:<digest>
-ARG BASE=ghcr.io/dudaji-vn/librechat:npuops-main
+ARG BASE=ghcr.io/dudaji-vn/librechat:v0.0.1
 FROM ${BASE}
 
 COPY librechat.yaml /app/librechat.yaml

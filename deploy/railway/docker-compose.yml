@@ -5,7 +5,7 @@ volumes:
 
 services:
   api:
-    image: ghcr.io/dudaji-vn/librechat:npuops-main
+    image: ghcr.io/dudaji-vn/librechat:v0.0.1
     container_name: nufi-chat-api
     restart: unless-stopped
     depends_on:
