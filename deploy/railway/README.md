@@ -1,31 +1,19 @@
 # nufi-chat
 
-Standalone LibreChat deploy that runs **alongside** the production `chat.codechi.me` instance on the same VM. Pulls a pre-built image from the fork (`ghcr.io/dudaji-vn/librechat:npuops-main`), uses its own MongoDB, and talks to the codechi LiteLLM proxy over the shared Docker network — no source code, no Cloudflare round-trip.
-
-Intended as the frontend-development stack while the Korean team finishes the AI gateway.
-
-## Architecture
-
-```
-VM
-├── npuops-platform stack (running, untouched)
-│   ├── npuops-librechat    → chat.codechi.me   (port 3080)
-│   ├── npuops-litellm       (port 4000, network `npuops_npuops`)
-│   └── ...
-└── nufi-chat stack (this repo)
-    ├── nufi-chat-api       → chat.nufi.me      (port 3081)
-    │     └── joins npuops_npuops to reach litellm-proxy:4000
-    └── nufi-chat-mongo     (own data, no overlap with prod)
-```
+Self-hosted LibreChat deployment that talks to an external LiteLLM proxy over a shared Docker network.
 
 ## Prerequisites
 
-On the VM:
-- `npuops-platform` already running (`docker compose ps` shows containers healthy)
-- Docker network `npuops_npuops` exists (`docker network ls | grep npuops`)
-- Image `ghcr.io/dudaji-vn/librechat:npuops-main` pullable (run `docker login ghcr.io` first if the package is private)
+- Docker Engine + Compose plugin
+- `openssl`
+- An existing LiteLLM proxy reachable on a Docker network. By default this repo expects:
+  - Network name: `npuops_npuops`
+  - Service hostname: `litellm-proxy` on port `4000`
+  - A master key for that proxy
 
-## Deploy
+Change these in `docker-compose.yml` and `librechat.yaml` if your setup differs.
+
+## Quick start
 
 ```bash
 git clone https://github.com/dudaji-vn/nufi-chat.git
@@ -33,18 +21,26 @@ cd nufi-chat
 ./bootstrap.sh
 ```
 
-The script creates `.env` from `.env.example`, generates the JWT / CREDS secrets, auto-detects `LITELLM_MASTER_KEY` from a sibling `npuops-platform/.env` (with confirmation), prompts for the rest, then runs `docker compose pull && docker compose up -d`.
+The script:
 
-Re-running it is safe — already-set values are kept; only missing ones are filled.
+1. Verifies prerequisites and that the LiteLLM network exists
+2. Creates `.env` from `.env.example`
+3. Generates `JWT_SECRET`, `JWT_REFRESH_SECRET`, `CREDS_KEY`, `CREDS_IV`
+4. Auto-detects `LITELLM_MASTER_KEY` from a sibling `npuops-platform/.env` if present, otherwise prompts
+5. Prompts for `DOMAIN_CLIENT`, `DOMAIN_SERVER`, `APP_TITLE`
+6. Runs `docker compose pull` and `docker compose up -d`
 
-### Non-interactive variant
+Re-running is safe — values already in `.env` are kept; only missing ones are filled.
+
+### Flags
 
 ```bash
-./bootstrap.sh --yes        # accept all defaults / auto-detect, no prompts
-./bootstrap.sh --no-up      # configure .env only, don't start the stack
+./bootstrap.sh --yes      # no prompts; use defaults and auto-detected values
+./bootstrap.sh --no-up    # configure .env only, don't start containers
+./bootstrap.sh --help
 ```
 
-### Manual variant (if you prefer)
+### Manual setup
 
 ```bash
 cp .env.example .env
@@ -54,52 +50,63 @@ cp .env.example .env
   echo "CREDS_KEY=$(openssl rand -hex 32)"
   echo "CREDS_IV=$(openssl rand -hex 16)"
 } >> .env
-grep '^LITELLM_MASTER_KEY=' ~/npuops-platform/.env >> .env
+# Set LITELLM_MASTER_KEY in .env to your proxy's master key
 docker compose pull
 docker compose up -d
 ```
 
-Open `http://<VM_IP>:3081`, register an account, pick a model, send a message. The model list is fetched from `litellm-proxy:4000/v1/models` — same as the prod chat — so all models registered on codechi appear here too.
+## Configuration
+
+`.env` controls runtime values:
+
+| Variable | Purpose |
+|---|---|
+| `DOMAIN_CLIENT` | Public URL clients connect to |
+| `DOMAIN_SERVER` | Public URL used for emails / OAuth callbacks |
+| `APP_TITLE` | Brand title shown in the UI |
+| `ALLOW_REGISTRATION` | Allow new user signup (`true` / `false`) |
+| `ALLOW_EMAIL_LOGIN` | Allow email/password login |
+| `JWT_SECRET`, `JWT_REFRESH_SECRET` | Session signing keys |
+| `CREDS_KEY`, `CREDS_IV` | Credential encryption |
+| `LITELLM_MASTER_KEY` | Auth header sent to the LiteLLM proxy |
+
+Endpoint and model behaviour lives in `librechat.yaml`. The `baseURL` there points at the LiteLLM proxy and is the value to change when your proxy moves.
 
 ## Verify
 
 ```bash
-# Both containers healthy
 docker compose ps
-
-# Health endpoint
 curl http://localhost:3081/api/health
-
-# Internal DNS reaches the codechi LiteLLM proxy
 docker compose exec api wget -qO- http://litellm-proxy:4000/health/liveliness
 ```
 
-If the last command fails with `bad address`, fall back to the container name: edit `librechat.yaml` and change `baseURL` to `http://npuops-litellm:4000/v1`.
+If the last command returns `bad address`, change `baseURL` in `librechat.yaml` to use the proxy's container name instead of its service name.
 
-## Update after fork code changes
+Open `http://<host>:3081`, register an account, pick a model from the dropdown (fetched live from the proxy), and send a message.
 
-When `dudaji-vn/LibreChat` (`npuops/main`) is pushed and the CI build finishes:
-
-```bash
-docker compose pull
-docker compose up -d
-```
-
-## Update config (this repo)
+## Common commands
 
 ```bash
-git pull
-docker compose up -d --force-recreate
+docker compose logs -f api          # tail application logs
+docker compose pull && docker compose up -d   # apply image updates
+git pull && docker compose up -d --force-recreate   # apply config updates
+docker compose down                 # stop containers, keep data
+docker compose down -v              # stop and drop mongo data
 ```
 
-## Teardown
+## Troubleshooting
 
-```bash
-docker compose down -v   # -v drops the mongo-data volume
-```
+**`network npuops_npuops not found`** — start the LiteLLM proxy stack first, or change the network name in `docker-compose.yml`.
 
-## Future work
+**`Server listening` never appears in logs** — check `docker compose logs api` for missing `.env` values; re-run `./bootstrap.sh`.
 
-- Cloudflare Tunnel route `chat.nufi.me` → `nufi-chat-api:3081`
-- Swap `LITELLM_MASTER_KEY` for a virtual key with its own budget (created via `console.codechi.me`)
-- Once the Korean AI gateway lands, change the `baseURL` in `librechat.yaml` to the new endpoint
+**Model dropdown is empty** — the proxy isn't reachable. Verify with `docker compose exec api wget -qO- http://litellm-proxy:4000/health/liveliness`. If that works but `/v1/models` is empty, check that the LiteLLM proxy has models registered.
+
+**Cannot pull image** — run `docker login ghcr.io` with a personal access token that has `read:packages`.
+
+## Ports
+
+| Port | Container | Purpose |
+|---|---|---|
+| 3081 | `nufi-chat-api` | HTTP, exposed on host |
+| 27017 | `nufi-chat-mongo` | MongoDB, internal only |
