@@ -2,7 +2,7 @@ version: 1.2.1
 cache: true
 
 interface:
-  customWelcome: "Nufi Chat — routes through codechi LiteLLM via the npuops Docker network."
+  customWelcome: "Welcome to Nufi Chat."
   endpointsMenu: false
   modelSelect: true
   parameters: true
@@ -16,13 +16,13 @@ interface:
 
 endpoints:
   custom:
+    # Single OpenAI-compatible endpoint. Works with any backend that speaks the
+    # OpenAI Chat Completions API: LiteLLM, vLLM, TGI, OpenAI itself, OpenRouter,
+    # Together, Groq, Anthropic via a proxy, etc. Both values are interpolated
+    # from the api container's env at runtime.
     - name: "Nufi"
-      # Interpolated at runtime from the api container's env.
-      apiKey: "${LITELLM_MASTER_KEY}"
-      # Resolves on the external npuops_npuops network. If DNS for the service
-      # name fails on your Docker version, swap to the container_name:
-      #   baseURL: "http://npuops-litellm:4000/v1"
-      baseURL: "http://litellm-proxy:4000/v1"
+      apiKey: "${BACKEND_API_KEY}"
+      baseURL: "${BACKEND_BASE_URL}"
       models:
         fetch: true
         default: []

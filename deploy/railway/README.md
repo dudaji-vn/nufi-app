@@ -1,17 +1,17 @@
 # nufi-chat
 
-Self-hosted LibreChat deployment that talks to an external LiteLLM proxy over a shared Docker network.
+Self-hosted LibreChat deployment that talks to any OpenAI-compatible LLM endpoint.
 
 ## Prerequisites
 
 - Docker Engine + Compose plugin
 - `openssl`
-- An existing LiteLLM proxy reachable on a Docker network. By default this repo expects:
-  - Network name: `npuops_npuops`
-  - Service hostname: `litellm-proxy` on port `4000`
-  - A master key for that proxy
+- A reachable OpenAI-compatible API endpoint and its bearer key. Anything that speaks the OpenAI Chat Completions API works — OpenAI itself, OpenRouter, Together, Groq, LiteLLM, vLLM, TGI, etc.
 
-Change these in `docker-compose.yml` and `librechat.yaml` if your setup differs.
+The endpoint can be:
+- A public URL — `https://api.openai.com/v1`
+- A LAN address — `http://192.168.1.10:4000/v1`
+- A service on another Compose stack on the same host, reachable by Docker service name — `http://litellm-proxy:4000/v1` (requires shared-network mode, see below)
 
 ## Quick start
 
@@ -23,12 +23,13 @@ cd nufi-chat
 
 The script:
 
-1. Verifies prerequisites and that the LiteLLM network exists
+1. Verifies prerequisites
 2. Creates `.env` from `.env.example`
 3. Generates `JWT_SECRET`, `JWT_REFRESH_SECRET`, `CREDS_KEY`, `CREDS_IV`
-4. Auto-detects `LITELLM_MASTER_KEY` from a sibling `npuops-platform/.env` if present, otherwise prompts
-5. Prompts for `DOMAIN_CLIENT`, `DOMAIN_SERVER`, `APP_TITLE`
-6. Runs `docker compose pull` and `docker compose up -d`
+4. Prompts for `DOMAIN_CLIENT`, `DOMAIN_SERVER`, `APP_TITLE`, `BACKEND_BASE_URL`
+5. Auto-detects `BACKEND_API_KEY` from a sibling stack's `.env` if present, otherwise prompts
+6. Asks whether to enable shared-network mode (needed only when `BACKEND_BASE_URL` uses a Docker service name)
+7. Runs `docker compose pull` and `docker compose up -d`
 
 Re-running is safe — values already in `.env` are kept; only missing ones are filled.
 
@@ -50,7 +51,7 @@ cp .env.example .env
   echo "CREDS_KEY=$(openssl rand -hex 32)"
   echo "CREDS_IV=$(openssl rand -hex 16)"
 } >> .env
-# Set LITELLM_MASTER_KEY in .env to your proxy's master key
+# Set BACKEND_BASE_URL and BACKEND_API_KEY in .env
 docker compose pull
 docker compose up -d
 ```
@@ -68,9 +69,28 @@ docker compose up -d
 | `ALLOW_EMAIL_LOGIN` | Allow email/password login |
 | `JWT_SECRET`, `JWT_REFRESH_SECRET` | Session signing keys |
 | `CREDS_KEY`, `CREDS_IV` | Credential encryption |
-| `LITELLM_MASTER_KEY` | Auth header sent to the LiteLLM proxy |
+| `BACKEND_BASE_URL` | OpenAI-compatible endpoint URL |
+| `BACKEND_API_KEY` | Bearer key sent to that endpoint |
+| `SHARED_DOCKER_NETWORK` | Name of the external network when shared-network mode is on |
 
-Endpoint and model behaviour lives in `librechat.yaml`. The `baseURL` there points at the LiteLLM proxy and is the value to change when your proxy moves.
+Endpoint behaviour lives in `librechat.yaml`. `baseURL` and `apiKey` are interpolated from `BACKEND_BASE_URL` and `BACKEND_API_KEY`, so you usually don't touch this file.
+
+### Shared-network mode
+
+Activate when the gateway runs as a service on another Compose stack on the same host. Bootstrap does this for you on the prompt, or manually:
+
+```bash
+ln -sf docker-compose.shared-network.yml docker-compose.override.yml
+# Make sure SHARED_DOCKER_NETWORK in .env matches an existing external network
+docker compose up -d
+```
+
+Deactivate:
+
+```bash
+rm docker-compose.override.yml
+docker compose up -d --force-recreate
+```
 
 ## Verify
 
@@ -96,7 +116,7 @@ docker compose down -v              # stop and drop mongo data
 
 ## Troubleshooting
 
-**`network npuops_npuops not found`** — start the LiteLLM proxy stack first, or change the network name in `docker-compose.yml`.
+**`network <name> not found`** — shared-network mode is on but the named external network doesn't exist. Either create it (or its owning stack), change `SHARED_DOCKER_NETWORK` in `.env`, or disable shared-network mode (`rm docker-compose.override.yml`).
 
 **`Server listening` never appears in logs** — check `docker compose logs api` for missing `.env` values; re-run `./bootstrap.sh`.
 

@@ -113,13 +113,21 @@ command -v openssl >/dev/null || die "openssl not installed"
 docker info >/dev/null 2>&1 || die "Docker daemon not running"
 ok "docker + openssl ok"
 
-if docker network ls --format '{{.Name}}' | grep -qx npuops_npuops; then
-  ok "npuops_npuops network found"
-else
-  warn "Docker network 'npuops_npuops' not found"
-  warn "Bring up the npuops-platform stack first:"
-  warn "  cd ~/npuops-platform && docker compose up -d"
-  warn "nufi-chat will fail to start until that network exists"
+# Shared-network mode is opt-in via the override symlink. Only check that the
+# referenced external network actually exists when the override is active —
+# teammates who reach the backend by URL never need it.
+shared_mode=0
+if [ -L docker-compose.override.yml ] && \
+   [ "$(readlink docker-compose.override.yml)" = "docker-compose.shared-network.yml" ]; then
+  shared_mode=1
+  net_name=$(grep -E "^SHARED_DOCKER_NETWORK=" .env 2>/dev/null | head -1 | cut -d= -f2-)
+  net_name="${net_name:-npuops_npuops}"
+  if docker network ls --format '{{.Name}}' | grep -qx "$net_name"; then
+    ok "shared docker network '$net_name' found"
+  else
+    warn "shared-network mode is on but '$net_name' does not exist yet"
+    warn "create that network (or the upstream stack) before bringing nufi-chat up"
+  fi
 fi
 
 # --- 2. .env scaffold --------------------------------------------------------
@@ -142,50 +150,98 @@ step "3/4 Configuration values"
 echo "    (Press enter at any prompt to keep the current value)"
 echo
 
-prompt_var DOMAIN_CLIENT "Public URL clients connect to (e.g. https://chat.nufi.me)"
-prompt_var DOMAIN_SERVER "Public URL the server uses for emails / OAuth callbacks"
-prompt_var APP_TITLE     "Brand title shown in the UI"
+prompt_var DOMAIN_CLIENT     "Public URL clients connect to (e.g. https://chat.nufi.me)"
+prompt_var DOMAIN_SERVER     "Public URL the server uses for emails / OAuth callbacks"
+prompt_var APP_TITLE         "Brand title shown in the UI"
+prompt_var BACKEND_BASE_URL  "Backend OpenAI-compatible endpoint (e.g. https://api.openai.com/v1)"
 
-# LITELLM_MASTER_KEY: try auto-detecting from sibling npuops-platform/.env.
-# Both repos usually live next to each other under ~/Workspace/DudajiVN/ on
-# dev machines and under ~/ on the VM, so we check both spots.
+# BACKEND_API_KEY: try auto-detecting from sibling stacks. The npuops-platform
+# repo stores its bearer key as LITELLM_MASTER_KEY, so we read that name from
+# the source and write it under our generic name.
 candidates=(
   "${HOME}/npuops-platform/.env"
   "$(cd .. 2>/dev/null && pwd)/npuops-platform/.env"
 )
 detected=""
+detected_from=""
 for c in "${candidates[@]}"; do
   if [ -f "$c" ]; then
     v=$(grep -E "^LITELLM_MASTER_KEY=" "$c" | head -1 | cut -d= -f2-)
-    if [ -n "$v" ]; then detected="$v"; ok "found LITELLM_MASTER_KEY in $c"; break; fi
+    if [ -n "$v" ]; then detected="$v"; detected_from="$c"; ok "found a bearer key in $c"; break; fi
   fi
 done
 
-if [ -z "$(get_env_var LITELLM_MASTER_KEY)" ] && [ -n "$detected" ]; then
+if [ -z "$(get_env_var BACKEND_API_KEY)" ] && [ -n "$detected" ]; then
   if [ "$ASSUME_YES" -eq 1 ]; then
     ans=Y
   else
-    printf "    Copy that value into nufi-chat .env? [Y/n] "
+    printf "    Use that as BACKEND_API_KEY? [Y/n] "
     read -r ans
   fi
   if [[ ! "$ans" =~ ^[Nn]$ ]]; then
-    set_env_var LITELLM_MASTER_KEY "$detected"
-    ok "LITELLM_MASTER_KEY copied from npuops-platform"
+    set_env_var BACKEND_API_KEY "$detected"
+    ok "BACKEND_API_KEY copied from ${detected_from}"
   fi
   echo
-elif [ -z "$(get_env_var LITELLM_MASTER_KEY)" ]; then
-  warn "could not auto-detect LITELLM_MASTER_KEY (no sibling npuops-platform/.env) — paste it manually below"
+elif [ -z "$(get_env_var BACKEND_API_KEY)" ]; then
+  warn "could not auto-detect a bearer key from a sibling stack — paste it manually below"
   echo
 fi
 
-prompt_var LITELLM_MASTER_KEY "Master key for codechi LiteLLM (paste manually if not detected)"
+prompt_var BACKEND_API_KEY "Bearer key sent to the endpoint above"
+
+# --- 3b. shared Docker network (optional) -----------------------------------
+# Enable this when BACKEND_BASE_URL uses a Docker service name (e.g.
+# http://litellm-proxy:4000/v1) — the api container then joins an existing
+# external network so Docker DNS can resolve that hostname.
+echo
+step "Shared Docker network (optional)"
+echo "    Enable only if the backend URL above uses a Docker service name."
+echo
+
+if [ "$ASSUME_YES" -ne 1 ]; then
+  if [ "$shared_mode" -eq 1 ]; then
+    current_net=$(get_env_var SHARED_DOCKER_NETWORK)
+    ok "currently ON (network: ${current_net:-npuops_npuops})"
+    printf "    keep / change name / disable [K/c/d]: "
+    read -r ans
+    case "${ans:-K}" in
+      d|D)
+        rm -f docker-compose.override.yml
+        ok "disabled"
+        ;;
+      c|C)
+        printf "    new network name: "; read -r net
+        if [ -n "$net" ]; then
+          set_env_var SHARED_DOCKER_NETWORK "$net"
+          ok "network set to '$net'"
+        fi
+        ;;
+      *) ok "kept" ;;
+    esac
+  else
+    printf "    Enable shared-network mode? [y/N] "
+    read -r ans
+    if [[ "${ans:-N}" =~ ^[Yy]$ ]]; then
+      default_net=$(get_env_var SHARED_DOCKER_NETWORK)
+      default_net="${default_net:-npuops_npuops}"
+      printf "    Network name [%s]: " "$default_net"
+      read -r net
+      net="${net:-$default_net}"
+      set_env_var SHARED_DOCKER_NETWORK "$net"
+      ln -sf docker-compose.shared-network.yml docker-compose.override.yml
+      ok "enabled (network: $net)"
+    fi
+  fi
+fi
+echo
 
 # --- 4. up -------------------------------------------------------------------
 step "4/4 Stack"
 
 # Bail loudly if anything required is still empty after prompts.
 missing=()
-for k in JWT_SECRET JWT_REFRESH_SECRET CREDS_KEY CREDS_IV LITELLM_MASTER_KEY; do
+for k in JWT_SECRET JWT_REFRESH_SECRET CREDS_KEY CREDS_IV BACKEND_BASE_URL BACKEND_API_KEY; do
   [ -z "$(get_env_var "$k")" ] && missing+=("$k")
 done
 if [ "${#missing[@]}" -gt 0 ]; then

@@ -1,0 +1,22 @@
+# Override that joins the api container to an existing Docker network. Use
+# when the backend gateway lives on a separate Compose stack on the same host
+# and you want to reach it by service name (e.g. http://litellm-proxy:4000/v1).
+#
+# Activate by symlinking this file to docker-compose.override.yml — bootstrap.sh
+# does this when you opt into "shared network mode":
+#
+#   ln -sf docker-compose.shared-network.yml docker-compose.override.yml
+#
+# Set SHARED_DOCKER_NETWORK in .env to the network's name (must already exist;
+# Compose will NOT create an external network).
+
+services:
+  api:
+    networks:
+      - default
+      - shared
+
+networks:
+  shared:
+    name: ${SHARED_DOCKER_NETWORK:-npuops_npuops}
+    external: true
