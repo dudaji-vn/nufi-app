@@ -173,6 +173,9 @@ if [ -z "$(get_env_var LITELLM_MASTER_KEY)" ] && [ -n "$detected" ]; then
     ok "LITELLM_MASTER_KEY copied from npuops-platform"
   fi
   echo
+elif [ -z "$(get_env_var LITELLM_MASTER_KEY)" ]; then
+  warn "could not auto-detect LITELLM_MASTER_KEY (no sibling npuops-platform/.env) — paste it manually below"
+  echo
 fi
 
 prompt_var LITELLM_MASTER_KEY "Master key for codechi LiteLLM (paste manually if not detected)"
