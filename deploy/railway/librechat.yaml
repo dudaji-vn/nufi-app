@@ -25,7 +25,11 @@ endpoints:
       baseURL: "${BACKEND_BASE_URL}"
       models:
         fetch: true
-        default: []
+        # Schema requires at least one entry (Zod min(1)) — a placeholder is
+        # enough. When `fetch: true` returns a non-empty list, it overrides
+        # this default (see loadConfigModels.js). The placeholder only shows
+        # in the dropdown if the upstream models endpoint is unreachable.
+        default: ["loading..."]
       titleConvo: true
       titleModel: "current_model"
       modelDisplayLabel: "Nufi"
