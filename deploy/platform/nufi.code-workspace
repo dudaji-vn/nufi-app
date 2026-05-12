@@ -1,10 +1,13 @@
 {
-	"folders": [
-		{
-			"path": "."
-		},
-		{
-			"path": "../LibreChat"
-		}
-	]
+  "folders": [
+    {
+      "path": ".",
+    },
+    {
+      "path": "../LibreChat",
+    },
+    {
+      "path": "../nufi-chat",
+    },
+  ],
 }
