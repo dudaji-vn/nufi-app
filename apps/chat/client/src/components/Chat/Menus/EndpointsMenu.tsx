@@ -51,7 +51,7 @@ const EndpointsMenu: FC = () => {
           <Content
             side="bottom"
             align="start"
-            className="mt-2 max-h-[65vh] min-w-[340px] overflow-y-auto rounded-lg border border-border-light bg-header-primary text-text-primary shadow-lg lg:max-h-[75vh]"
+            className="mt-2 max-h-[65vh] min-w-[340px] overflow-y-auto rounded-lg border border-border bg-popover p-1 text-text-primary shadow-xl lg:max-h-[75vh]"
           >
             <EndpointItems endpoints={endpoints} selected={endpoint} />
           </Content>

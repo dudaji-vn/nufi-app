@@ -14,7 +14,7 @@ import { useToastContext } from '~/Providers';
 import { ConvoOptions } from './ConvoOptions';
 import { cn } from '~/utils';
 import store from '~/store';
-import { useLocalize } from '~/hooks'
+import { useLocalize } from '~/hooks';
 
 type KeyEvent = KeyboardEvent<HTMLInputElement>;
 
@@ -134,15 +134,15 @@ export default function Conversation({
   return (
     <div
       className={cn(
-        'group relative mt-2 flex h-9 w-full items-center rounded-lg transition-colors',
+        'group relative mt-2 flex h-9 w-full items-center rounded-md transition-colors',
         isActiveConvo
-          ? 'bg-accent hover:bg-primary/20 before:absolute before:left-0 before:top-1.5 before:h-[calc(100%-0.75rem)] before:w-[3px] before:rounded-r before:bg-primary'
+          ? 'rounded-l-none bg-accent before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:bg-primary hover:bg-primary/20'
           : 'hover:bg-accent/60',
         isSmallScreen ? 'h-12' : '',
       )}
     >
       {renaming ? (
-        <div className="absolute inset-0 z-20 flex w-full items-center rounded-lg bg-accent p-1.5">
+        <div className="absolute inset-0 z-20 flex w-full items-center rounded-md bg-accent p-1.5">
           <input
             ref={inputRef}
             type="text"
@@ -153,11 +153,23 @@ export default function Conversation({
             aria-label={`${localize('com_ui_rename')} ${localize('com_ui_chat')}`}
           />
           <div className="flex gap-1">
-            <button onClick={cancelRename} aria-label={`${localize('com_ui_cancel')} ${localize('com_ui_rename')}`}>
-              <X aria-hidden={true} className="transition-colors h-4 w-4 duration-200 ease-in-out hover:opacity-70" />
+            <button
+              onClick={cancelRename}
+              aria-label={`${localize('com_ui_cancel')} ${localize('com_ui_rename')}`}
+            >
+              <X
+                aria-hidden={true}
+                className="h-4 w-4 transition-colors duration-200 ease-in-out hover:opacity-70"
+              />
             </button>
-            <button onClick={onRename} aria-label={`${localize('com_ui_submit')} ${localize('com_ui_rename')}`}>
-              <Check aria-hidden={true} className="transition-colors h-4 w-4 duration-200 ease-in-out hover:opacity-70" />
+            <button
+              onClick={onRename}
+              aria-label={`${localize('com_ui_submit')} ${localize('com_ui_rename')}`}
+            >
+              <Check
+                aria-hidden={true}
+                className="h-4 w-4 transition-colors duration-200 ease-in-out hover:opacity-70"
+              />
             </button>
           </div>
         </div>
@@ -167,7 +179,7 @@ export default function Conversation({
           data-testid="convo-item"
           onClick={clickHandler}
           className={cn(
-            'flex grow cursor-pointer items-center gap-2 overflow-hidden whitespace-nowrap break-all rounded-lg px-2 py-2',
+            'flex grow cursor-pointer items-center gap-2 overflow-hidden whitespace-nowrap break-all rounded-md px-2 py-2',
             isActiveConvo ? 'text-primary' : '',
           )}
           title={title ?? ''}

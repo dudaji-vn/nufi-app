@@ -48,6 +48,7 @@ function SelectDropDownPop({
   // reset once the component is unmounted (as per a normal search)
   const [filteredValues, searchRender] = useMultiSearch<string[] | Option[]>({
     availableOptions: availableValues,
+    className: '-mx-1 mb-1',
   });
   const hasSearchRender = Boolean(searchRender);
   const options = hasSearchRender ? filteredValues : availableValues;
@@ -108,7 +109,7 @@ function SelectDropDownPop({
               side="bottom"
               align="start"
               className={cn(
-                'mt-2 max-h-[52vh] min-w-full overflow-hidden overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-700 dark:text-white lg:max-h-[52vh]',
+                'mt-2 max-h-[52vh] min-w-full overflow-hidden overflow-y-auto rounded-lg border border-gray-200 bg-white px-1 pb-1 shadow-xl dark:border-border dark:bg-popover dark:text-text-primary lg:max-h-[52vh]',
                 hasSearchRender && 'relative',
               )}
             >

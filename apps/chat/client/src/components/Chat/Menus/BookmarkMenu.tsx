@@ -109,7 +109,7 @@ const BookmarkMenu: FC = () => {
             </MenuButton>
             <MenuItems
               anchor="bottom start"
-              className="overflow-hidden rounded-lg bg-header-primary p-1.5 shadow-lg outline-none"
+              className="overflow-hidden rounded-lg border border-border bg-popover p-1.5 shadow-xl outline-none"
             >
               <BookmarkContext.Provider value={{ bookmarks: data || [] }}>
                 <BookmarkMenuItems
