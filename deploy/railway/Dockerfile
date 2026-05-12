@@ -11,7 +11,8 @@ FROM ${BASE}
 
 COPY librechat.yaml /app/librechat.yaml
 
-# Bypass LibreChat's 500MB startup disk-space floor — Railway ephemeral disk
-# is tighter than that after the image + node_modules + cache.
-RUN echo 'module.exports = { default: async () => ({ diskPath: "/", free: 1e12, size: 1e12 }) };' \
-    > /app/node_modules/check-disk-space/dist/index.js
+# Railway's ephemeral disk (~230MB free) is below LibreChat's 500MB startup
+# floor. The check source is bundled deep; patch the uncaughtException
+# handler so the process doesn't exit(1) on disk-space errors.
+RUN sed -i 's|process.exit(1);|if (err \&\& err.message \&\& err.message.includes("disk space")) { return; } process.exit(1);|' \
+    /app/api/server/index.js
