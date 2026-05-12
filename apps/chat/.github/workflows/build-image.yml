@@ -3,7 +3,7 @@ name: build-image
 on:
   push:
     branches: [npuops/main]
-    tags: ['npuops-v*']
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
@@ -37,7 +37,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=ref,event=branch
+            type=raw,value=main,enable=${{ github.ref == 'refs/heads/npuops/main' }}
             type=ref,event=tag
             type=sha,prefix=sha-,format=short
 
