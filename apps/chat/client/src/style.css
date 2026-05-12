@@ -32,6 +32,16 @@
   --gizmo-gray-500: #999;
   --gizmo-gray-600: #666;
   --gizmo-gray-950: #0f0f0f;
+  /* NUFI brand — values mirror super-llm dashboard globals.css */
+  --brand-primary: #7b82f0;
+  --brand-primary-hover: #6970e0;
+  --brand-primary-soft: rgba(123, 130, 240, 0.12);
+  --brand-secondary: #e8967f;
+  --brand-navy-900: #080810; /* main bg (dashboard --background 240 22% 5%) */
+  --brand-navy-800: #0d1020; /* sidebar (dashboard --sidebar-background 230 28% 9%) */
+  --brand-navy-700: #111620; /* card/dialog (dashboard --card 230 22% 10%) */
+  --brand-navy-600: #151823; /* muted (dashboard --muted 235 18% 13%) */
+  --brand-navy-500: #1a1e2a; /* accent/hover (dashboard --accent 235 16% 17%) */
   --font-size-xs: 0.75rem;
   --font-size-sm: 0.875rem;
   --font-size-base: 1rem;
@@ -43,7 +53,7 @@ html {
   --text-secondary: var(--gray-600);
   --text-secondary-alt: var(--gray-500);
   --text-tertiary: var(--gray-500);
-  --ring-primary: var(--gray-500);
+  --ring-primary: var(--brand-primary);
   --header-primary: var(--white);
   --header-hover: var(--gray-50);
   --header-button-hover: var(--gray-50);
@@ -57,87 +67,122 @@ html {
   --surface-tertiary: var(--gray-100);
   --surface-tertiary-alt: var(--white);
   --surface-dialog: var(--white);
-  --surface-submit: var(--green-500);
+  --surface-submit: var(--brand-primary);
   --border-light: var(--gray-200);
   --border-medium-alt: var(--gray-300);
   --border-medium: var(--gray-300);
   --border-heavy: var(--gray-400);
   --border-xheavy: var(--gray-500);
-  /* These are test styles */
-
+  /* shadcn-style tokens — NUFI Cyber-Grid (light) */
   --background: 0 0% 100%;
-  --foreground: 0 0% 3.9%;
+  --foreground: 224 71.4% 4.1%;
   --card: 0 0% 100%;
-  --card-foreground: 0 0% 3.9%;
-  --primary: 0 0% 9%;
-  --primary-foreground: 0 0% 98%;
-  --secondary: 0 0% 96.1%;
-  --secondary-foreground: 0 0% 9%;
-  --muted: 0 0% 96.1%;
-  --muted-foreground: 0 0% 45.1%;
-  --accent: 0 0% 96.1%;
-  --accent-foreground: 0 0% 9%;
+  --card-foreground: 224 71.4% 4.1%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 224 71.4% 4.1%;
+  --primary: 262.1 83.3% 57.8%;
+  --primary-foreground: 210 20% 98%;
+  --secondary: 220 14.3% 95.9%;
+  --secondary-foreground: 220.9 39.3% 11%;
+  --muted: 220 14.3% 95.9%;
+  --muted-foreground: 220 8.9% 46.1%;
+  --accent: 220 14.3% 95.9%;
+  --accent-foreground: 220.9 39.3% 11%;
   --destructive: 0 84.2% 60.2%;
-  --destructive-foreground: 0 0% 98%;
-  --border: 0 0% 89.8%;
-  --input: 0 0% 89.8%;
-  --ring: 0 0% 3.9%;
-  --radius: 0.5rem;
+  --destructive-foreground: 210 20% 98%;
+  --border: 220 13% 91%;
+  --input: 220 13% 91%;
+  --ring: 262.1 83.3% 57.8%;
+  --radius: 0.75rem;
   --chart-1: 12 76% 61%;
   --chart-2: 173 58% 39%;
   --chart-3: 197 37% 24%;
   --chart-4: 43 74% 66%;
   --chart-5: 27 87% 67%;
+  --sidebar-background: 0 0% 98%;
+  --sidebar-foreground: 240 5.3% 26.1%;
+  --sidebar-primary: 240 5.9% 10%;
+  --sidebar-primary-foreground: 0 0% 98%;
+  --sidebar-accent: 240 4.8% 95.9%;
+  --sidebar-accent-foreground: 240 5.9% 10%;
+  --sidebar-border: 220 13% 91%;
+  --sidebar-ring: 217.2 91.2% 59.8%;
   --switch-unchecked: 0 0% 58%;
 }
 .dark {
-  --text-primary: var(--gray-100);
-  --text-secondary: var(--gray-300);
-  --text-secondary-alt: var(--gray-400);
-  --text-tertiary: var(--gray-500);
-  --header-primary: var(--gray-700);
-  --header-hover: var(--gray-600);
-  --header-button-hover: var(--gray-700);
-  --surface-active: var(--gray-500);
-  --surface-hover: var(--gray-600);
-  --surface-primary: var(--gray-900);
-  --surface-primary-alt: var(--gray-850);
-  --surface-primary-contrast: var(--gray-850);
-  --surface-secondary: var(--gray-800);
-  --surface-secondary-alt: var(--gray-800);
-  --surface-tertiary: var(--gray-700);
-  --surface-tertiary-alt: var(--gray-700);
-  --surface-dialog: var(--gray-850);
-  --surface-submit: var(--green-600);
-  --border-light: var(--gray-700);
-  --border-medium-alt: var(--gray-600);
-  --border-medium: var(--gray-600);
-  --border-heavy: var(--gray-500);
-  --border-xheavy: var(--gray-400);
-  /* These are test styles */
-
-  --background: 0 0% 7%;
-  --foreground: 0 0% 98%;
-  --card: 0 0% 3.9%;
-  --card-foreground: 0 0% 98%;
-  --primary: 0 0% 98%;
-  --primary-foreground: 0 0% 9%;
-  --secondary: 0 0% 14.9%;
-  --secondary-foreground: 0 0% 98%;
-  --muted: 0 0% 14.9%;
-  --muted-foreground: 0 0% 63.9%;
-  --accent: 0 0% 14.9%;
-  --accent-foreground: 0 0% 98%;
-  --destructive: 0 62.8% 40.6%;
-  --destructive-foreground: 0 0% 98%;
-  --border: 0 0% 14.9%;
-  --input: 0 0% 14.9%;
-  --ring: 0 0% 83.1%;
+  /* Dashboard HSL tokens (Cyber-Grid Deep Void) — single source of truth */
+  --background: 240 22% 5%;
+  --foreground: 240 20% 92%;
+  --card: 230 22% 10%;
+  --card-foreground: 240 20% 92%;
+  --popover: 230 22% 9%;
+  --popover-foreground: 240 20% 92%;
+  --primary: 236 80% 75%;
+  --primary-foreground: 236 42% 12%;
+  --secondary: 10 75% 70%;
+  --secondary-foreground: 10 30% 18%;
+  --muted: 235 18% 13%;
+  --muted-foreground: 240 8% 52%;
+  --accent: 235 16% 17%;
+  --accent-foreground: 240 20% 92%;
+  --destructive: 3 85% 68%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 235 16% 16%;
+  --input: 230 22% 10%;
+  --ring: 236 80% 75%;
+  /* Legacy LibreChat tokens — point at dashboard HSL above */
+  --text-primary: hsl(var(--foreground));
+  --text-secondary: hsl(var(--muted-foreground));
+  --text-secondary-alt: hsl(var(--muted-foreground));
+  --text-tertiary: hsl(var(--muted-foreground));
+  --ring-primary: hsl(var(--ring));
+  --header-primary: hsl(var(--sidebar-background));
+  --header-hover: hsl(var(--sidebar-accent));
+  --header-button-hover: hsl(var(--accent));
+  --surface-active: hsl(var(--accent));
+  --surface-hover: hsl(var(--accent));
+  --surface-primary: hsl(var(--background));
+  --surface-primary-alt: hsl(var(--sidebar-background));
+  --surface-primary-contrast: hsl(var(--card));
+  --surface-secondary: hsl(var(--card));
+  --surface-secondary-alt: hsl(var(--muted));
+  --surface-tertiary: hsl(var(--muted));
+  --surface-tertiary-alt: hsl(var(--accent));
+  --surface-dialog: hsl(var(--popover));
+  --surface-submit: hsl(var(--primary));
+  --border-light: hsl(var(--border));
+  --border-medium: hsl(var(--border));
+  --border-medium-alt: hsl(var(--border));
+  --border-heavy: hsl(var(--sidebar-border));
+  --border-xheavy: hsl(var(--sidebar-border));
   --chart-1: 220 70% 50%;
   --chart-2: 160 60% 45%;
   --chart-3: 30 80% 55%;
   --chart-4: 280 65% 60%;
   --chart-5: 340 75% 55%;
+  --chart-6: 50 80% 55%;
+  --chart-7: 190 70% 50%;
+  --chart-8: 10 85% 60%;
+  --chart-9: 130 60% 45%;
+  --chart-10: 260 75% 55%;
+  --chart-11: 300 80% 50%;
+  --chart-12: 360 65% 60%;
+  --chart-13: 120 55% 50%;
+  --chart-14: 80 75% 55%;
+  --chart-15: 200 65% 45%;
+  --chart-16: 170 80% 50%;
+  --chart-17: 40 70% 50%;
+  --chart-18: 290 70% 55%;
+  --chart-19: 350 60% 45%;
+  --chart-20: 25 85% 60%;
+  --sidebar-background: 230 28% 9%;
+  --sidebar-foreground: 230 15% 68%;
+  --sidebar-primary: 236 80% 75%;
+  --sidebar-primary-foreground: 230 28% 9%;
+  --sidebar-accent: 230 22% 13%;
+  --sidebar-accent-foreground: 240 20% 92%;
+  --sidebar-border: 230 20% 13%;
+  --sidebar-ring: 236 80% 75%;
   --switch-unchecked: 0 0% 40%;
 }
 .gizmo {
@@ -1187,14 +1232,12 @@ button {
   opacity: 0.5;
 }
 .btn-primary {
-  --tw-bg-opacity: 1;
   --tw-text-opacity: 1;
-  background-color: rgba(16, 163, 127, var(--tw-bg-opacity));
-  color: rgba(255, 255, 255, var(--tw-text-opacity));
+  background-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
 }
 .btn-primary:hover {
-  --tw-bg-opacity: 1;
-  background-color: rgba(26, 127, 100, var(--tw-bg-opacity));
+  background-color: hsl(var(--primary) / 0.85);
 }
 .btn-primary:focus {
   --tw-ring-offset-shadow: var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width)
@@ -1206,16 +1249,13 @@ button {
   box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 transparent);
 }
 .btn-primary.focus-visible {
-  --tw-ring-opacity: 1;
-  --tw-ring-color: rgba(25, 195, 125, var(--tw-ring-opacity));
+  --tw-ring-color: hsl(var(--ring));
 }
 .btn-primary:focus-visible {
-  --tw-ring-opacity: 1;
-  --tw-ring-color: rgba(25, 195, 125, var(--tw-ring-opacity));
+  --tw-ring-color: hsl(var(--ring));
 }
 .btn-primary:disabled:hover {
-  --tw-bg-opacity: 1;
-  background-color: rgba(16, 163, 127, var(--tw-bg-opacity));
+  background-color: hsl(var(--primary));
 }
 .btn-secondary {
   --tw-border-opacity: 1;
@@ -1585,8 +1625,7 @@ html {
 }
 .dark body,
 .dark html {
-  --tw-bg-opacity: 1;
-  background-color: rgba(33, 33, 33, var(--tw-bg-opacity));
+  background-color: hsl(var(--background));
 }
 #__next,
 #root {

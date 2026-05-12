@@ -108,3 +108,10 @@ uploads/
 release/
 
 super-llm
+
+# local tooling
+.claude/
+.playwright-cli/
+
+# test screenshots
+nufi-*.png

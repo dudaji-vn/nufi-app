@@ -64,12 +64,12 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
       },
       manifest: {
-        name: 'LibreChat',
-        short_name: 'LibreChat',
+        name: 'NUFI',
+        short_name: 'NUFI',
         start_url: '/',
         display: 'standalone',
-        background_color: '#000000',
-        theme_color: '#009688',
+        background_color: '#080810',
+        theme_color: '#7b82f0',
         icons: [
           {
             src: '/assets/favicon-32x32.png',
