@@ -1,5 +1,5 @@
 import { useLocalize } from '~/hooks';
-import { OGDialog, OGDialogTrigger } from '~/components/ui';
+import { Button, OGDialog, OGDialogTrigger } from '~/components/ui';
 import OGDialogTemplate from '~/components/ui/OGDialogTemplate';
 
 import ShareLinkTable from './SharedLinkTable';
@@ -13,9 +13,9 @@ export default function SharedLinks() {
 
       <OGDialog>
         <OGDialogTrigger asChild>
-          <button className="btn btn-neutral relative ">
+          <Button variant="outline" size="sm">
             {localize('com_nav_shared_links_manage')}
-          </button>
+          </Button>
         </OGDialogTrigger>
         <OGDialogTemplate
           title={localize('com_nav_shared_links')}

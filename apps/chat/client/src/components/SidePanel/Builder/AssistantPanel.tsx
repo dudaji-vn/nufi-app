@@ -412,7 +412,7 @@ export default function AssistantPanel({
                   <button
                     type="button"
                     onClick={() => setShowToolDialog(true)}
-                    className="btn btn-neutral border-token-border-light relative h-8 w-full rounded-lg font-medium"
+                    className="btn btn-neutral border-token-border-light relative h-8 w-full font-medium"
                   >
                     <div className="flex w-full items-center justify-center gap-2">
                       {localize('com_assistants_add_tools')}
@@ -432,7 +432,7 @@ export default function AssistantPanel({
                       }
                       setActivePanel(Panel.actions);
                     }}
-                    className="btn btn-neutral border-token-border-light relative h-8 w-full rounded-lg font-medium"
+                    className="btn btn-neutral border-token-border-light relative h-8 w-full font-medium"
                   >
                     <div className="flex w-full items-center justify-center gap-2">
                       {localize('com_assistants_add_actions')}

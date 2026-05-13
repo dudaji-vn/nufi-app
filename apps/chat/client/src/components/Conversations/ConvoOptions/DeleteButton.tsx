@@ -67,7 +67,7 @@ export function DeleteConversationDialog({
       selection={{
         selectHandler: confirmDelete,
         selectClasses:
-          'bg-red-700 dark:bg-red-600 hover:bg-red-800 dark:hover:bg-red-800 text-white',
+          'bg-destructive text-white transition-all duration-200 hover:bg-destructive/80',
         selectText: localize('com_ui_delete'),
       }}
     />

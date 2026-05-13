@@ -4,6 +4,7 @@ import type { TError } from 'librechat-data-provider';
 import { useUploadConversationsMutation } from '~/data-provider';
 import { useLocalize, useConversations } from '~/hooks';
 import { useToastContext } from '~/Providers';
+import { Button } from '~/components/ui';
 import { Spinner } from '~/components/svg';
 import { cn } from '~/utils';
 
@@ -80,20 +81,21 @@ function ImportConversations() {
   return (
     <div className="flex items-center justify-between">
       <div>{localize('com_ui_import_conversation_info')}</div>
-      <button
+      <Button
+        variant="outline"
+        size="sm"
         onClick={handleImportClick}
         onKeyDown={handleKeyDown}
         disabled={!allowImport}
         aria-label={localize('com_ui_import_conversation')}
-        className="btn btn-neutral relative"
       >
         {allowImport ? (
-          <Import className="mr-1 flex h-4 w-4 items-center stroke-1" />
+          <Import className="mr-1 h-4 w-4 stroke-1" />
         ) : (
           <Spinner className="mr-1 w-4" />
         )}
         <span>{localize('com_ui_import_conversation')}</span>
-      </button>
+      </Button>
       <input
         ref={fileInputRef}
         type="file"
