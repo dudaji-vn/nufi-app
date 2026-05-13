@@ -131,7 +131,9 @@ export default function Artifacts() {
           {/* Content */}
           <Tabs.Content
             value="code"
-            className={cn('flex-grow overflow-x-auto overflow-y-scroll bg-gray-900 p-4')}
+            className={cn(
+              'flex-grow overflow-x-auto overflow-y-scroll border-t border-border bg-card p-4',
+            )}
           >
             <CodeMarkdown
               content={`\`\`\`${getFileExtension(currentArtifact.type)}\n${
