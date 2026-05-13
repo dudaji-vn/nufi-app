@@ -71,7 +71,11 @@ function AccountSettings() {
           translate: '0px',
         }}
       >
-        <div className="text-token-text-secondary ml-3 mr-2 py-2 text-sm" role="note">
+        <div
+          className="text-token-text-secondary ml-3 mr-2 truncate py-2 text-sm"
+          role="note"
+          title={user?.email ?? ''}
+        >
           {user?.email ?? localize('com_nav_user')}
         </div>
         <DropdownMenuSeparator />

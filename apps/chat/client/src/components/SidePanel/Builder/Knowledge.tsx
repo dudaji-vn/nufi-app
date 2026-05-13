@@ -108,7 +108,7 @@ export default function Knowledge({
           <button
             type="button"
             disabled={!assistant_id}
-            className="btn btn-neutral border-token-border-light relative h-8 rounded-lg font-medium"
+            className="btn btn-neutral border-token-border-light relative h-8 font-medium"
             onClick={handleButtonClick}
           >
             <div className="flex w-full items-center justify-center gap-2">

@@ -21,14 +21,13 @@ import {
   DecibelSelector,
 } from './STT';
 import ConversationModeSwitch from './ConversationModeSwitch';
-import { useOnClickOutside, useMediaQuery } from '~/hooks';
+import { useOnClickOutside } from '~/hooks';
 import { cn, logger } from '~/utils';
 import store from '~/store';
 
 function Speech() {
   const [confirmClear, setConfirmClear] = useState(false);
   const { data } = useGetCustomConfigSpeechQuery();
-  const isSmallScreen = useMediaQuery('(max-width: 767px)');
 
   const [sttExternal, setSttExternal] = useState(false);
   const [ttsExternal, setTtsExternal] = useState(false);
@@ -145,14 +144,12 @@ function Speech() {
       orientation="horizontal"
       value={advancedMode ? 'advanced' : 'simple'}
     >
-      <div className="sticky -top-1 z-50 mb-4 bg-white dark:bg-gray-700">
-        <Tabs.List className="flex justify-center bg-background">
+      <div className="sticky -top-1 z-50 mb-4">
+        <Tabs.List className="flex rounded-xl bg-surface-secondary p-1">
           <Tabs.Trigger
             onClick={() => setAdvancedMode(false)}
             className={cn(
-              'group m-1 flex items-center justify-center gap-2 bg-transparent px-4 py-2 text-sm text-text-secondary transition-all duration-200 ease-in-out radix-state-active:bg-secondary radix-state-active:text-foreground radix-state-active:shadow-lg',
-              isSmallScreen ? 'flex-row rounded-lg' : 'rounded-xl',
-              'w-full',
+              'group flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm text-text-secondary transition-all duration-200 ease-in-out radix-state-active:bg-surface-hover radix-state-active:text-text-primary',
             )}
             value="simple"
             style={{ userSelect: 'none' }}
@@ -163,9 +160,7 @@ function Speech() {
           <Tabs.Trigger
             onClick={() => setAdvancedMode(true)}
             className={cn(
-              'group m-1 flex items-center justify-center gap-2 bg-transparent px-4 py-2 text-sm text-text-secondary transition-all duration-200 ease-in-out radix-state-active:bg-secondary radix-state-active:text-foreground radix-state-active:shadow-lg',
-              isSmallScreen ? 'flex-row rounded-lg' : 'rounded-xl',
-              'w-full',
+              'group flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm text-text-secondary transition-all duration-200 ease-in-out radix-state-active:bg-surface-hover radix-state-active:text-text-primary',
             )}
             value="advanced"
             style={{ userSelect: 'none' }}

@@ -54,7 +54,7 @@ const DialogTemplate = forwardRef((props: DialogTemplateProps, ref: Ref<HTMLDivE
     <DialogContent
       showCloseButton={showCloseButton}
       ref={ref}
-      className={cn('shadow-2xl dark:bg-gray-700', className || '')}
+      className={cn('shadow-2xl', className || '')}
       onClick={(e) => e.stopPropagation()}
     >
       <DialogHeader className={cn(headerClassName ?? '')}>
@@ -72,7 +72,7 @@ const DialogTemplate = forwardRef((props: DialogTemplateProps, ref: Ref<HTMLDivE
         <div>{leftButtons ? leftButtons : null}</div>
         <div className="flex h-auto gap-3">
           {showCancelButton && (
-            <DialogClose className="border-gray-100 hover:bg-gray-100 dark:border-gray-600 dark:hover:bg-gray-600">
+            <DialogClose className="btn relative border-border-medium bg-transparent text-sm text-text-primary transition-colors hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-0">
               {Cancel}
             </DialogClose>
           )}
@@ -82,7 +82,7 @@ const DialogTemplate = forwardRef((props: DialogTemplateProps, ref: Ref<HTMLDivE
               onClick={selectHandler}
               className={`${
                 selectClasses || defaultSelect
-              } inline-flex h-10 items-center justify-center rounded-lg border-none px-4 py-2 text-sm`}
+              } inline-flex h-9 items-center justify-center rounded-md border-none px-3 py-2 text-sm`}
             >
               {selectText}
             </DialogClose>

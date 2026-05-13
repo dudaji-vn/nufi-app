@@ -284,7 +284,7 @@ export default function AgentConfig({
           <button
             type="button"
             onClick={() => setActivePanel(Panel.model)}
-            className="btn btn-neutral border-token-border-light relative h-10 w-full rounded-lg font-medium"
+            className="btn btn-neutral border-token-border-light relative h-10 w-full font-medium"
             aria-haspopup="true"
             aria-expanded="false"
           >
@@ -343,7 +343,7 @@ export default function AgentConfig({
                 <button
                   type="button"
                   onClick={() => setShowToolDialog(true)}
-                  className="btn btn-neutral border-token-border-light relative h-8 w-full rounded-lg font-medium"
+                  className="btn btn-neutral border-token-border-light relative h-8 w-full font-medium"
                   aria-haspopup="dialog"
                 >
                   <div className="flex w-full items-center justify-center gap-2">
@@ -356,7 +356,7 @@ export default function AgentConfig({
                   type="button"
                   disabled={!agent_id}
                   onClick={handleAddActions}
-                  className="btn btn-neutral border-token-border-light relative h-8 w-full rounded-lg font-medium"
+                  className="btn btn-neutral border-token-border-light relative h-8 w-full font-medium"
                   aria-haspopup="dialog"
                 >
                   <div className="flex w-full items-center justify-center gap-2">

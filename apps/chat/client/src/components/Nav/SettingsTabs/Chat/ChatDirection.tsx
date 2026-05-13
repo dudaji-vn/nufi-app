@@ -22,6 +22,7 @@ const ChatDirection = () => {
         aria-label="Toggle chat direction"
         onClick={toggleChatDirection}
         data-testid="chatDirection"
+        size="sm"
       >
         <span aria-hidden="true">{direction.toLowerCase()}</span>
         <span id="chat-direction-status" className="sr-only">

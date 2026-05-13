@@ -97,12 +97,12 @@ export default function ExportModal({
                       id="includeOptions"
                       disabled={!exportOptionsSupport}
                       checked={includeOptions}
-                      className="focus:ring-opacity-20 dark:border-gray-500 dark:bg-gray-700 dark:text-gray-50 dark:focus:ring-gray-600 dark:focus:ring-opacity-50 dark:focus:ring-offset-0"
+                      className="border-border-medium focus:ring-ring focus:ring-offset-0"
                       onCheckedChange={setIncludeOptions}
                     />
                     <label
                       htmlFor="includeOptions"
-                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 dark:text-gray-50"
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                     >
                       {exportOptionsSupport
                         ? localize('com_nav_enabled')
@@ -120,12 +120,12 @@ export default function ExportModal({
                     id="exportBranches"
                     disabled={!exportBranchesSupport}
                     checked={exportBranches}
-                    className="focus:ring-opacity-20 dark:border-gray-500 dark:bg-gray-700 dark:text-gray-50 dark:focus:ring-gray-600 dark:focus:ring-opacity-50 dark:focus:ring-offset-0"
+                    className="border-border-medium focus:ring-ring focus:ring-offset-0"
                     onCheckedChange={setExportBranches}
                   />
                   <label
                     htmlFor="exportBranches"
-                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 dark:text-gray-50"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                   >
                     {exportBranchesSupport
                       ? localize('com_nav_enabled')
@@ -142,12 +142,12 @@ export default function ExportModal({
                     <Checkbox
                       id="recursive"
                       checked={recursive}
-                      className="focus:ring-opacity-20 dark:border-gray-500 dark:bg-gray-700 dark:text-gray-50 dark:focus:ring-gray-600 dark:focus:ring-opacity-50 dark:focus:ring-offset-0"
+                      className="border-border-medium focus:ring-ring focus:ring-offset-0"
                       onCheckedChange={setRecursive}
                     />
                     <label
                       htmlFor="recursive"
-                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 dark:text-gray-50"
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                     >
                       {localize('com_nav_export_recursive')}
                     </label>
