@@ -150,6 +150,7 @@ step "3/4 Configuration values"
 echo "    (Press enter at any prompt to keep the current value)"
 echo
 
+prompt_var IMAGE_TAG         "Image tag of ghcr.io/dudaji-vn/librechat — empty = pinned default (v0.0.1), 'latest' = newest build"
 prompt_var DOMAIN_CLIENT     "Public URL clients connect to (e.g. https://chat.nufi.me)"
 prompt_var DOMAIN_SERVER     "Public URL the server uses for emails / OAuth callbacks"
 prompt_var APP_TITLE         "Brand title shown in the UI"
