@@ -71,7 +71,7 @@ const OGDialogTemplate = forwardRef((props: DialogTemplateProps, ref: Ref<HTMLDi
         <div>{leftButtons != null ? leftButtons : null}</div>
         <div className="flex h-auto gap-3">
           {showCancelButton && (
-            <OGDialogClose className="btn relative rounded-lg border-border-medium bg-transparent text-sm text-text-primary transition-colors hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-0">
+            <OGDialogClose className="btn relative border-border-medium bg-transparent text-sm text-text-primary transition-colors hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-0">
               {Cancel}
             </OGDialogClose>
           )}
@@ -81,7 +81,7 @@ const OGDialogTemplate = forwardRef((props: DialogTemplateProps, ref: Ref<HTMLDi
               onClick={selectHandler}
               className={`${
                 selectClasses ?? defaultSelect
-              } flex h-10 items-center justify-center rounded-lg border-none px-4 py-2 text-sm`}
+              } flex h-9 items-center justify-center rounded-md border-none px-3 py-2 text-sm`}
             >
               {selectText}
             </OGDialogClose>

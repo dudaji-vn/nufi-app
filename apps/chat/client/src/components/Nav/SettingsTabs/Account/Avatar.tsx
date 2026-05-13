@@ -125,9 +125,11 @@ function Avatar() {
     >
       <div className="flex items-center justify-between">
         <span>{localize('com_nav_profile_picture')}</span>
-        <OGDialogTrigger ref={openButtonRef} className="btn btn-neutral relative">
-          <FileImage className="mr-2 flex w-[22px] items-center stroke-1" />
-          <span>{localize('com_nav_change_picture')}</span>
+        <OGDialogTrigger ref={openButtonRef} asChild>
+          <Button variant="outline" size="sm">
+            <FileImage className="mr-2 w-[22px] stroke-1" />
+            <span>{localize('com_nav_change_picture')}</span>
+          </Button>
         </OGDialogTrigger>
       </div>
 

@@ -84,7 +84,7 @@ export default function ContextButton({
       <DialogTrigger asChild>
         <button
           className={cn(
-            'btn btn-neutral border-token-border-light relative h-9 rounded-lg font-medium',
+            'btn btn-neutral border-token-border-light relative h-9 font-medium',
             removeFocusOutlines,
           )}
           type="button"

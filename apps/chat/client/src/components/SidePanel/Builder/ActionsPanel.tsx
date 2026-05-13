@@ -115,7 +115,7 @@ export default function ActionsPanel({
                     <button
                       type="button"
                       disabled={!(assistant_id ?? '') || !action.action_id}
-                      className="btn btn-neutral border-token-border-light relative h-9 rounded-lg font-medium"
+                      className="btn btn-neutral border-token-border-light relative h-9 font-medium"
                     >
                       <TrashIcon className="text-red-500" />
                     </button>
