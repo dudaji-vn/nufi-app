@@ -30,7 +30,10 @@ export const code: React.ElementType = memo(({ className, children }: TCodeProps
     return children;
   } else if (typeof children === 'string' && children.split('\n').length === 1) {
     return (
-      <code onDoubleClick={handleDoubleClick} className={className}>
+      <code
+        onDoubleClick={handleDoubleClick}
+        className={`rounded bg-surface-tertiary px-1.5 py-0.5 ${className ?? ''}`}
+      >
         {children}
       </code>
     );
