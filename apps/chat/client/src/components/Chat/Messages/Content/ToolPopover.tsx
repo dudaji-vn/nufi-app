@@ -28,7 +28,7 @@ export default function ToolPopover({
         align="start"
         sideOffset={12}
         alignOffset={-5}
-        className="w-18 min-w-[180px]  max-w-sm rounded-lg bg-white dark:bg-gray-900"
+        className="w-18 min-w-[180px] max-w-sm rounded-lg border border-border bg-popover shadow-xl"
       >
         <div tabIndex={-1}>
           <div className="bg-token-surface-primary max-w-sm rounded-md p-2 shadow-[0_0_24px_0_rgba(0,0,0,0.05),inset_0_0.5px_0_0_rgba(0,0,0,0.05),0_2px_8px_0_rgba(0,0,0,0.05)]">

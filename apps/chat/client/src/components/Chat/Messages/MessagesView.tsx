@@ -47,7 +47,7 @@ export default function MessagesView({
             {(_messagesTree && _messagesTree.length == 0) || _messagesTree === null ? (
               <div
                 className={cn(
-                  'flex w-full items-center justify-center gap-1 bg-gray-50 p-3 text-gray-500 dark:border-gray-800/50 dark:bg-gray-800 dark:text-gray-300',
+                  'flex w-full items-center justify-center gap-1 rounded-md border border-border bg-muted p-3 text-muted-foreground',
                   fontSize,
                 )}
               >

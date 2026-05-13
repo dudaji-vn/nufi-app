@@ -74,7 +74,7 @@ const CodeBlock: React.FC<CodeBlockProps> = ({
   const language = isNonCode ? 'json' : lang;
 
   return (
-    <div className="w-full rounded-md bg-gray-900 text-xs text-white/80">
+    <div className="w-full overflow-hidden rounded-md border border-border bg-card text-xs text-foreground/90 shadow-sm">
       <CodeBar lang={lang} codeRef={codeRef} plugin={plugin === true} error={error} />
       <div className={cn(classProp, 'overflow-y-auto p-4')}>
         <code

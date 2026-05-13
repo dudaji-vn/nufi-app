@@ -8,6 +8,21 @@ import { ErrorMessage } from './ErrorMessage';
 import { Spinner } from '~/components/svg';
 import { useLocalize } from '~/hooks';
 
+const inputClass = `
+  webkit-dark-styles peer w-full rounded-xl border border-border bg-card/60 px-3.5 pb-2.5 pt-3
+  text-foreground shadow-sm outline-none transition-colors duration-200
+  placeholder:text-transparent focus:border-brand-purple focus:ring-2 focus:ring-brand-purple/30
+  aria-[invalid=true]:border-destructive aria-[invalid=true]:focus:ring-destructive/30
+`;
+
+const labelClass = `
+  pointer-events-none absolute start-3 top-1.5 z-10 origin-[0] -translate-y-4 scale-75
+  bg-background px-2 text-sm text-muted-foreground transition-all duration-200
+  peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:scale-100
+  peer-focus:top-1.5 peer-focus:-translate-y-4 peer-focus:scale-75 peer-focus:px-2 peer-focus:text-brand-purple
+  rtl:peer-focus:left-auto rtl:peer-focus:translate-x-1/4
+`;
+
 const Registration: React.FC = () => {
   const navigate = useNavigate();
   const localize = useLocalize();
@@ -57,7 +72,7 @@ const Registration: React.FC = () => {
   });
 
   const renderInput = (id: string, label: string, type: string, validation: object) => (
-    <div className="mb-4">
+    <div>
       <div className="relative">
         <input
           id={id}
@@ -69,27 +84,16 @@ const Registration: React.FC = () => {
             validation,
           )}
           aria-invalid={!!errors[id]}
-          className="
-            webkit-dark-styles transition-color peer w-full rounded-2xl border border-border-light
-            bg-surface-primary px-3.5 pb-2.5 pt-3 text-text-primary duration-200 focus:border-green-500 focus:outline-none
-          "
+          className={inputClass}
           placeholder=" "
           data-testid={id}
         />
-        <label
-          htmlFor={id}
-          className="
-            absolute start-3 top-1.5 z-10 origin-[0] -translate-y-4 scale-75 transform bg-surface-primary px-2 text-sm text-text-secondary-alt duration-200
-            peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:scale-100
-            peer-focus:top-1.5 peer-focus:-translate-y-4 peer-focus:scale-75 peer-focus:px-2 peer-focus:text-green-500
-            rtl:peer-focus:left-auto rtl:peer-focus:translate-x-1/4
-          "
-        >
+        <label htmlFor={id} className={labelClass}>
           {localize(label)}
         </label>
       </div>
       {errors[id] && (
-        <span role="alert" className="mt-1 text-sm text-red-500">
+        <span role="alert" className="mt-1 block text-xs text-destructive">
           {String(errors[id]?.message) ?? ''}
         </span>
       )}
@@ -105,7 +109,7 @@ const Registration: React.FC = () => {
       )}
       {registerUser.isSuccess && countdown > 0 && (
         <div
-          className="rounded-md border border-green-500 bg-green-500/10 px-3 py-2 text-sm text-gray-600 dark:text-gray-200"
+          className="rounded-lg border border-brand-purple/40 bg-brand-purple/10 px-3 py-2 text-sm text-foreground"
           role="alert"
         >
           {localize(
@@ -118,85 +122,74 @@ const Registration: React.FC = () => {
         </div>
       )}
       {!startupConfigError && !isFetching && (
-        <>
-          <form
-            className="mt-6"
-            aria-label="Registration form"
-            method="POST"
-            onSubmit={handleSubmit((data: TRegisterUser) =>
-              registerUser.mutate({ ...data, token: token ?? undefined }),
-            )}
+        <form
+          className="mt-2 space-y-4"
+          aria-label="Registration form"
+          method="POST"
+          onSubmit={handleSubmit((data: TRegisterUser) =>
+            registerUser.mutate({ ...data, token: token ?? undefined }),
+          )}
+        >
+          {renderInput('name', 'com_auth_full_name', 'text', {
+            required: localize('com_auth_name_required'),
+            minLength: {
+              value: 3,
+              message: localize('com_auth_name_min_length'),
+            },
+            maxLength: {
+              value: 80,
+              message: localize('com_auth_name_max_length'),
+            },
+          })}
+          {renderInput('username', 'com_auth_username', 'text', {
+            minLength: {
+              value: 2,
+              message: localize('com_auth_username_min_length'),
+            },
+            maxLength: {
+              value: 80,
+              message: localize('com_auth_username_max_length'),
+            },
+          })}
+          {renderInput('email', 'com_auth_email', 'email', {
+            required: localize('com_auth_email_required'),
+            minLength: {
+              value: 1,
+              message: localize('com_auth_email_min_length'),
+            },
+            maxLength: {
+              value: 120,
+              message: localize('com_auth_email_max_length'),
+            },
+            pattern: {
+              value: /\S+@\S+\.\S+/,
+              message: localize('com_auth_email_pattern'),
+            },
+          })}
+          {renderInput('password', 'com_auth_password', 'password', {
+            required: localize('com_auth_password_required'),
+            minLength: {
+              value: 8,
+              message: localize('com_auth_password_min_length'),
+            },
+            maxLength: {
+              value: 128,
+              message: localize('com_auth_password_max_length'),
+            },
+          })}
+          {renderInput('confirm_password', 'com_auth_password_confirm', 'password', {
+            validate: (value: string) =>
+              value === password || localize('com_auth_password_not_match'),
+          })}
+          <button
+            disabled={Object.keys(errors).length > 0 || isSubmitting}
+            type="submit"
+            aria-label="Submit registration"
+            className="btn-primary w-full rounded-xl px-4 py-3 text-sm font-semibold tracking-wide shadow-sm transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-brand-purple/40 focus:ring-offset-2 focus:ring-offset-background disabled:opacity-60"
           >
-            {renderInput('name', 'com_auth_full_name', 'text', {
-              required: localize('com_auth_name_required'),
-              minLength: {
-                value: 3,
-                message: localize('com_auth_name_min_length'),
-              },
-              maxLength: {
-                value: 80,
-                message: localize('com_auth_name_max_length'),
-              },
-            })}
-            {renderInput('username', 'com_auth_username', 'text', {
-              minLength: {
-                value: 2,
-                message: localize('com_auth_username_min_length'),
-              },
-              maxLength: {
-                value: 80,
-                message: localize('com_auth_username_max_length'),
-              },
-            })}
-            {renderInput('email', 'com_auth_email', 'email', {
-              required: localize('com_auth_email_required'),
-              minLength: {
-                value: 1,
-                message: localize('com_auth_email_min_length'),
-              },
-              maxLength: {
-                value: 120,
-                message: localize('com_auth_email_max_length'),
-              },
-              pattern: {
-                value: /\S+@\S+\.\S+/,
-                message: localize('com_auth_email_pattern'),
-              },
-            })}
-            {renderInput('password', 'com_auth_password', 'password', {
-              required: localize('com_auth_password_required'),
-              minLength: {
-                value: 8,
-                message: localize('com_auth_password_min_length'),
-              },
-              maxLength: {
-                value: 128,
-                message: localize('com_auth_password_max_length'),
-              },
-            })}
-            {renderInput('confirm_password', 'com_auth_password_confirm', 'password', {
-              validate: (value: string) =>
-                value === password || localize('com_auth_password_not_match'),
-            })}
-            <div className="mt-6">
-              <button
-                disabled={Object.keys(errors).length > 0}
-                type="submit"
-                aria-label="Submit registration"
-                className="btn-primary w-full transform rounded-2xl px-4 py-3 tracking-wide transition-colors duration-200"
-              >
-                {isSubmitting ? <Spinner /> : localize('com_auth_continue')}
-              </button>
-            </div>
-          </form>
-
-          <p className="my-4 text-center text-sm font-light text-gray-700 dark:text-white">
-            {localize('com_auth_already_have_account')}{' '}
-            <a href="/login" aria-label="Login" className="p-1 text-green-500">
-              {localize('com_auth_login')}
-            </a>
-          </p>
-        </>
+            {isSubmitting ? <Spinner /> : localize('com_auth_continue')}
+          </button>
+        </form>
       )}
     </>
   );

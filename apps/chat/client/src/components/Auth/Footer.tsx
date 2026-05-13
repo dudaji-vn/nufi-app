@@ -11,7 +11,7 @@ function Footer({ startupConfig }: { startupConfig: TStartupConfig | null | unde
 
   const privacyPolicyRender = privacyPolicy?.externalUrl && (
     <a
-      className="text-sm text-green-500"
+      className="text-xs text-muted-foreground hover:text-brand-purple"
       href={privacyPolicy.externalUrl}
       target={privacyPolicy.openNewTab ? '_blank' : undefined}
       rel="noreferrer"
@@ -22,7 +22,7 @@ function Footer({ startupConfig }: { startupConfig: TStartupConfig | null | unde
 
   const termsOfServiceRender = termsOfService?.externalUrl && (
     <a
-      className="text-sm text-green-500"
+      className="text-xs text-muted-foreground hover:text-brand-purple"
       href={termsOfService.externalUrl}
       target={termsOfService.openNewTab ? '_blank' : undefined}
       rel="noreferrer"
@@ -31,11 +31,15 @@ function Footer({ startupConfig }: { startupConfig: TStartupConfig | null | unde
     </a>
   );
 
+  if (!privacyPolicyRender && !termsOfServiceRender) {
+    return null;
+  }
+
   return (
-    <div className="align-end m-4 flex justify-center gap-2" role="contentinfo">
+    <div className="flex items-center justify-center gap-3 px-4 py-6" role="contentinfo">
       {privacyPolicyRender}
       {privacyPolicyRender && termsOfServiceRender && (
-        <div className="border-r-[1px] border-gray-300 dark:border-gray-600" />
+        <span className="h-3 w-px bg-border" />
       )}
       {termsOfServiceRender}
     </div>
