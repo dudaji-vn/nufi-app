@@ -111,7 +111,8 @@ export default function ContextButton({
         selection={{
           selectHandler: () =>
             deleteAssistant.mutate({ assistant_id, model: activeModel, endpoint }),
-          selectClasses: 'bg-red-600 hover:bg-red-700 dark:hover:bg-red-800 text-white',
+          selectClasses:
+            'bg-destructive text-white transition-all duration-200 hover:bg-destructive/80',
           selectText: localize('com_ui_delete'),
         }}
       />

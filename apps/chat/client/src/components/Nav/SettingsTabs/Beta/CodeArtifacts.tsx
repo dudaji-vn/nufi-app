@@ -79,7 +79,7 @@ function SwitchItem({
   return (
     <div className="flex items-center justify-between">
       <div className="flex items-center space-x-2">
-        <div className={disabled ? 'text-gray-400' : ''}>{label}</div>
+        <div className={disabled ? 'text-text-secondary' : ''}>{label}</div>
         <HoverCardSettings side="bottom" text={hoverCardText} />
       </div>
       <Switch

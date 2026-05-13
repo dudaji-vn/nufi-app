@@ -39,12 +39,12 @@ const Dropdown: React.FC<DropdownProps> = ({
       <Select.Select
         store={selectProps}
         className={cn(
-          'focus:ring-offset-ring-offset relative inline-flex w-auto items-center justify-between rounded-lg border border-input bg-background py-2 pl-3 pr-8 text-text-primary transition-all duration-200 ease-in-out hover:bg-accent hover:text-accent-foreground focus:ring-ring-primary',
+          'focus:ring-offset-ring-offset relative inline-flex w-auto items-center justify-between rounded-lg border border-input bg-surface-tertiary px-3 py-2 text-text-primary transition-all duration-200 ease-in-out hover:bg-accent hover:text-accent-foreground focus:ring-ring-primary',
           className,
         )}
         data-testid={testId}
       >
-        <div className="flex w-full items-center justify-between">
+        <div className="flex w-full items-center justify-between gap-2">
           <span className="block truncate">
             {label}
             {options

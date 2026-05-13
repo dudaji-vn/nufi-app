@@ -167,14 +167,14 @@ function Avatar() {
                 </div>
                 <button
                   onClick={handleRotate}
-                  className="rounded-full bg-gray-200 p-2 transition-colors hover:bg-gray-300 dark:bg-gray-600 dark:hover:bg-gray-500"
+                  className="rounded-full bg-surface-tertiary p-2 transition-colors hover:bg-surface-hover"
                 >
                   <RotateCw className="h-5 w-5" />
                 </button>
               </div>
               <Button
                 className={cn(
-                  'btn btn-primary mt-4 flex w-full hover:bg-green-600',
+                  'btn btn-primary mt-4 flex w-full hover:bg-primary/90',
                   isUploading ? 'cursor-not-allowed opacity-90' : '',
                 )}
                 onClick={handleUpload}
@@ -190,12 +190,12 @@ function Avatar() {
             </>
           ) : (
             <div
-              className="flex h-64 w-11/12 flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-transparent dark:border-gray-600"
+              className="flex h-64 w-11/12 flex-col items-center justify-center rounded-lg border-2 border-dashed border-border-medium bg-transparent"
               onDrop={handleDrop}
               onDragOver={handleDragOver}
             >
-              <FileImage className="mb-4 size-12 text-gray-400" />
-              <p className="mb-2 text-center text-sm text-gray-500 dark:text-gray-400">
+              <FileImage className="mb-4 size-12 text-text-secondary" />
+              <p className="mb-2 text-center text-sm text-text-secondary">
                 {localize('com_ui_drag_drop')}
               </p>
               <Button variant="secondary" onClick={openFileDialog}>

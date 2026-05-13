@@ -1300,17 +1300,14 @@ button {
 }
 
 .dark .btn-neutral {
-  --tw-border-opacity: 1;
-  --tw-bg-opacity: 1;
   --tw-text-opacity: 1;
-  background-color: transparent;
-  border-color: rgba(66, 66, 66, var(--tw-border-opacity));
+  background-color: var(--surface-tertiary);
+  border-color: var(--border-medium);
   color: rgba(255, 255, 240, var(--tw-text-opacity));
 }
 
 .dark .btn-neutral:hover {
-  --tw-bg-opacity: 1;
-  background-color: rgba(66, 66, 66, var(--tw-bg-opacity));
+  background-color: var(--surface-hover);
 }
 
 .dark .btn-neutral:focus {

@@ -40,7 +40,7 @@ export default function AutoSendTextSelector() {
             defaultTextProps,
             cn(
               optionText,
-              'reset-rc-number-input reset-rc-number-input-text-right h-auto w-12 border-0 group-hover/temp:border-gray-200',
+              'reset-rc-number-input reset-rc-number-input-text-right h-auto w-12 border-0 group-hover/temp:border-border-medium',
             ),
           )}
         />

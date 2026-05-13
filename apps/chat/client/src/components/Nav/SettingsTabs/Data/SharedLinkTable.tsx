@@ -107,7 +107,7 @@ function ShareLinkRow({ sharedLink }: { sharedLink: TSharedLink }) {
               selection={{
                 selectHandler: () => confirmDelete(sharedLink.shareId),
                 selectClasses:
-                  'bg-red-700 dark:bg-red-600 hover:bg-red-800 dark:hover:bg-red-800 text-white',
+                  'bg-destructive text-white transition-all duration-200 hover:bg-destructive/80',
                 selectText: localize('com_ui_delete'),
               }}
             />
@@ -155,19 +155,19 @@ export default function ShareLinkTable({ className }) {
   });
 
   if (isLoading) {
-    return <div className="text-gray-300">{skeletons}</div>;
+    return <div className="text-text-secondary">{skeletons}</div>;
   }
 
   if (isError) {
     return (
-      <div className="rounded-md border border-red-500 bg-red-500/10 px-3 py-2 text-sm text-gray-600 dark:text-gray-200">
+      <div className="rounded-md border border-destructive bg-destructive/10 px-3 py-2 text-sm text-text-primary">
         {localize('com_ui_share_retrieve_error')}
       </div>
     );
   }
 
   if (sharedLinks.length === 0) {
-    return <div className="text-gray-300">{localize('com_nav_shared_links_empty')}</div>;
+    return <div className="text-text-secondary">{localize('com_nav_shared_links_empty')}</div>;
   }
 
   return (
