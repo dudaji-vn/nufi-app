@@ -190,7 +190,11 @@ export function Sidebar({ user, collapsed, onToggle }: t.SidebarProps) {
                   </div>
                 )}
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
+                <DropdownMenuItem
+                  onSelect={() => {
+                    setTimeout(() => setSettingsOpen(true), 0);
+                  }}
+                >
                   <Settings className="h-4 w-4" />
                   {localize('com_ui_settings')}
                 </DropdownMenuItem>
