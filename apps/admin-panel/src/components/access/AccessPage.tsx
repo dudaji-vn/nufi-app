@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Tabs } from '@clickhouse/click-ui';
 import type * as t from '@/types';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui';
 import { CreateGroupDialog } from './CreateGroupDialog';
 import { CreateRoleDialog } from './CreateRoleDialog';
 import { GroupsTab } from './GroupsTab';
@@ -21,20 +21,18 @@ export function AccessPage({
     <div
       role="region"
       aria-label={localize('com_nav_access')}
-      className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 pt-2"
+      className="flex min-h-0 flex-1 flex-col gap-6 overflow-hidden px-6 pt-6"
     >
       {canReadRoles && canReadGroups && (
-        <Tabs value={activeTab} onValueChange={onTabChange} ariaLabel={localize('com_nav_access')}>
-          <Tabs.TriggersList>
-            <Tabs.Trigger value="roles">{localize('com_access_tab_roles')}</Tabs.Trigger>
-            <Tabs.Trigger value="groups">{localize('com_access_tab_groups')}</Tabs.Trigger>
-          </Tabs.TriggersList>
-          <Tabs.Content value="roles" tabIndex={-1} />
-          <Tabs.Content value="groups" tabIndex={-1} />
+        <Tabs value={activeTab} onValueChange={onTabChange} aria-label={localize('com_nav_access')}>
+          <TabsList>
+            <TabsTrigger value="roles">{localize('com_access_tab_roles')}</TabsTrigger>
+            <TabsTrigger value="groups">{localize('com_access_tab_groups')}</TabsTrigger>
+          </TabsList>
         </Tabs>
       )}
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden pt-3">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {activeTab === 'groups' && canReadGroups && (
           <GroupsTab onCreateGroup={() => setCreateGroupOpen(true)} />
         )}

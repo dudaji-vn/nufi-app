@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { Button, Dialog, Tabs } from '@clickhouse/click-ui';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { AdminUserSearchResult } from '@librechat/data-schemas';
 import type * as t from '@/types';
-import { SelectedMemberList, UserSearchInline } from '@/components/shared';
+import { Input, Label, Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui';
+import { FormDialog, SelectedMemberList, UserSearchInline } from '@/components/shared';
 import { addGroupMemberFn, createGroupFn } from '@/server';
 import { useLocalize } from '@/hooks';
 import { cn } from '@/utils';
@@ -53,11 +53,6 @@ export function CreateGroupDialog({ open, onClose }: t.CreateGroupDialogProps) {
     mutation.mutate();
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    doSubmit();
-  };
-
   const addUser = (user: AdminUserSearchResult) => {
     setSelectedUsers((prev) => {
       if (prev.some((u) => u.id === user.id)) return prev;
@@ -70,106 +65,79 @@ export function CreateGroupDialog({ open, onClose }: t.CreateGroupDialogProps) {
   };
 
   return (
-    <Dialog
+    <FormDialog
       open={open}
-      onOpenChange={(isOpen) => {
-        if (!isOpen) resetAndClose();
-      }}
+      title={localize('com_access_create_group')}
+      submitLabel={localize('com_access_create_group')}
+      submitDisabled={!name.trim()}
+      saving={mutation.isPending}
+      error={error}
+      size="lg"
+      onSubmit={doSubmit}
+      onClose={resetAndClose}
     >
-      <Dialog.Content
-        title={localize('com_access_create_group')}
-        showClose
-        onClose={resetAndClose}
-        className="modal-frost max-w-2xl!"
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => setActiveTab(v as t.CreateGroupTab)}
+        aria-label={localize('com_access_create_group')}
       >
-        <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-          <Tabs
-            value={activeTab}
-            onValueChange={(v) => setActiveTab(v as t.CreateGroupTab)}
-            ariaLabel={localize('com_access_create_group')}
-          >
-            <Tabs.TriggersList>
-              <Tabs.Trigger value="details">
-                {localize('com_access_tab_details')}
-              </Tabs.Trigger>
-              <Tabs.Trigger value="members">
-                {localize('com_access_tab_members')}
-              </Tabs.Trigger>
-            </Tabs.TriggersList>
-            <Tabs.Content value="details" forceMount tabIndex={-1} className={cn(activeTab !== 'details' && 'hidden')}>
-              <div className="flex flex-col gap-5 pt-5">
-                <div className="flex flex-col gap-1.5">
-                  <label
-                    htmlFor="create-group-name"
-                    className="text-sm font-medium text-(--cui-color-text-default)"
-                  >
-                    {localize('com_access_col_name')}
-                  </label>
-                  <input
-                    id="create-group-name"
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder={localize('com_access_group_name_placeholder')}
-                    autoFocus
-                    className="rounded-lg border border-(--cui-color-stroke-default) bg-(--cui-color-background-default) px-3 py-2 text-sm text-(--cui-color-text-default) placeholder:text-(--cui-color-text-disabled)"
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label
-                    htmlFor="create-group-description"
-                    className="text-sm font-medium text-(--cui-color-text-default)"
-                  >
-                    {localize('com_config_field_description')}
-                  </label>
-                  <input
-                    id="create-group-description"
-                    type="text"
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder={localize('com_access_group_desc_placeholder')}
-                    className="rounded-lg border border-(--cui-color-stroke-default) bg-(--cui-color-background-default) px-3 py-2 text-sm text-(--cui-color-text-default) placeholder:text-(--cui-color-text-disabled)"
-                  />
-                </div>
-              </div>
-            </Tabs.Content>
-            <Tabs.Content value="members" forceMount tabIndex={-1} className={cn(activeTab !== 'members' && 'hidden')}>
-              <div className="flex flex-col gap-4 pt-5">
-                <UserSearchInline
-                  existingIds={selectedUsers.map((u) => u.id)}
-                  onAdd={addUser}
-                  listboxId="create-group-member-results"
-                  disabled={mutation.isPending}
-                />
-                <SelectedMemberList
-                  users={selectedUsers}
-                  onRemove={removeUser}
-                  disabled={mutation.isPending}
-                />
-              </div>
-            </Tabs.Content>
-          </Tabs>
-
-          {error && (
-            <p role="alert" className="text-sm text-(--cui-color-text-danger)">
-              {error}
-            </p>
-          )}
-          <div className="flex items-center justify-end gap-2">
-            <Button
-              type="secondary"
-              label={localize('com_ui_cancel')}
-              onClick={resetAndClose}
+        <TabsList>
+          <TabsTrigger value="details">{localize('com_access_tab_details')}</TabsTrigger>
+          <TabsTrigger value="members">{localize('com_access_tab_members')}</TabsTrigger>
+        </TabsList>
+        <TabsContent
+          value="details"
+          forceMount
+          tabIndex={-1}
+          className={cn(activeTab !== 'details' && 'hidden')}
+        >
+          <div className="flex flex-col gap-5 pt-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="create-group-name">{localize('com_access_col_name')}</Label>
+              <Input
+                id="create-group-name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={localize('com_access_group_name_placeholder')}
+                autoFocus
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="create-group-description">
+                {localize('com_config_field_description')}
+              </Label>
+              <Input
+                id="create-group-description"
+                type="text"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder={localize('com_access_group_desc_placeholder')}
+              />
+            </div>
+          </div>
+        </TabsContent>
+        <TabsContent
+          value="members"
+          forceMount
+          tabIndex={-1}
+          className={cn(activeTab !== 'members' && 'hidden')}
+        >
+          <div className="flex flex-col gap-4 pt-3">
+            <UserSearchInline
+              existingIds={selectedUsers.map((u) => u.id)}
+              onAdd={addUser}
+              listboxId="create-group-member-results"
               disabled={mutation.isPending}
             />
-            <Button
-              type="primary"
-              label={localize('com_access_create_group')}
-              disabled={!name.trim() || mutation.isPending}
+            <SelectedMemberList
+              users={selectedUsers}
+              onRemove={removeUser}
+              disabled={mutation.isPending}
             />
           </div>
-        </form>
-      </Dialog.Content>
-    </Dialog>
+        </TabsContent>
+      </Tabs>
+    </FormDialog>
   );
 }

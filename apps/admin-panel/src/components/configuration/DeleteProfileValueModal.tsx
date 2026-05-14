@@ -1,5 +1,12 @@
-import { Icon, Button, Dialog } from '@clickhouse/click-ui';
 import type * as t from '@/types';
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui';
 import { getScopeTypeConfig } from '@/constants';
 import { useLocalize } from '@/hooks';
 
@@ -12,6 +19,7 @@ export function DeleteProfileValueModal({
 }: t.DeleteProfileValueModalProps) {
   const localize = useLocalize();
   const scopeConfig = scope ? getScopeTypeConfig(scope.principalType) : null;
+  const ScopeIcon = scopeConfig?.icon;
 
   return (
     <Dialog
@@ -20,40 +28,39 @@ export function DeleteProfileValueModal({
         if (!isOpen) onCancel();
       }}
     >
-      <Dialog.Content
-        title={localize('com_scope_confirm_remove')}
-        showClose
-        onClose={onCancel}
-        className="modal-frost"
-      >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{localize('com_scope_confirm_remove')}</DialogTitle>
+        </DialogHeader>
         {scope && (
-          <div className="flex flex-col gap-4">
+          <>
             <div className="flex items-center gap-2">
-              {scopeConfig && (
-                <span aria-hidden="true" style={{ color: scopeConfig.color }}>
-                  <Icon name={scopeConfig.icon} size="sm" />
-                </span>
+              {ScopeIcon && scopeConfig && (
+                <ScopeIcon
+                  aria-hidden="true"
+                  className="h-4 w-4"
+                  style={{ color: scopeConfig.color }}
+                />
               )}
               <span className="text-sm text-foreground">{fieldLabel}</span>
               <span className="text-xs text-muted-foreground">{scope.name}</span>
             </div>
-            <div className="flex items-center justify-end gap-2">
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={onCancel} disabled={saving}>
+                {localize('com_ui_cancel')}
+              </Button>
               <Button
-                type="secondary"
-                label={localize('com_ui_cancel')}
-                onClick={onCancel}
-                disabled={saving}
-              />
-              <Button
-                type="danger"
-                label={localize('com_scope_confirm_yes')}
+                type="button"
+                variant="destructive"
                 onClick={() => onConfirm(scope)}
                 disabled={saving}
-              />
-            </div>
-          </div>
+              >
+                {localize('com_scope_confirm_yes')}
+              </Button>
+            </DialogFooter>
+          </>
         )}
-      </Dialog.Content>
+      </DialogContent>
     </Dialog>
   );
 }

@@ -127,8 +127,8 @@ export function UsersPage() {
                 className={cn(
                   'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
                   roleFilter === role
-                    ? 'bg-(--cui-color-background-active) text-(--cui-color-text-default)'
-                    : 'text-(--cui-color-text-muted) hover:bg-(--cui-color-background-hover) hover:text-(--cui-color-text-default)',
+                    ? 'bg-accent text-foreground'
+                    : 'text-muted-foreground hover:bg-accent hover:text-foreground',
                 )}
               >
                 {localize(ROLE_FILTER_LABELS[role])}
@@ -146,27 +146,27 @@ export function UsersPage() {
                 ? localize('com_cap_no_permission', { cap: SystemCapabilities.MANAGE_USERS })
                 : undefined
             }
-            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-(--cui-color-stroke-default) bg-transparent px-3 py-1.5 text-sm text-(--cui-color-text-default) transition-colors hover:bg-(--cui-color-background-hover) disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-transparent px-3 py-1.5 text-sm text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Plus aria-hidden="true" className="h-3.5 w-3.5" />
             {localize('com_users_add')}
           </button>
         </div>
 
-        <div className="overflow-x-auto rounded-lg border border-(--cui-color-stroke-default)">
+        <div className="overflow-x-auto rounded-lg border border-border">
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-(--cui-color-stroke-default) bg-(--cui-color-background-muted)">
-                <th scope="col" className="px-4 py-2.5 font-medium text-(--cui-color-text-muted)">
+              <tr className="border-b border-border bg-muted">
+                <th scope="col" className="px-4 py-2.5 font-medium text-muted-foreground">
                   {localize('com_users_col_user')}
                 </th>
-                <th scope="col" className="px-4 py-2.5 font-medium text-(--cui-color-text-muted)">
+                <th scope="col" className="px-4 py-2.5 font-medium text-muted-foreground">
                   {localize('com_users_col_role')}
                 </th>
-                <th scope="col" className="px-4 py-2.5 font-medium text-(--cui-color-text-muted)">
+                <th scope="col" className="px-4 py-2.5 font-medium text-muted-foreground">
                   {localize('com_users_col_joined')}
                 </th>
-                <th scope="col" className="px-4 py-2.5 font-medium text-(--cui-color-text-muted)">
+                <th scope="col" className="px-4 py-2.5 font-medium text-muted-foreground">
                   <span className="sr-only">{localize('com_ui_actions')}</span>
                 </th>
               </tr>
@@ -196,7 +196,7 @@ export function UsersPage() {
           </table>
         </div>
 
-        <p className="mt-2 text-xs text-(--cui-color-text-muted)">
+        <p className="mt-2 text-xs text-muted-foreground">
           {localize('com_users_showing')} {filtered.length} {localize('com_ui_of')} {users.length}{' '}
           {localize('com_nav_users').toLowerCase()}
         </p>
@@ -258,8 +258,8 @@ function UserRow({
   return (
     <tr
       className={cn(
-        'cursor-pointer bg-(--cui-color-background-panel) transition-colors hover:bg-(--cui-color-background-hover)',
-        !isLast && 'border-b border-(--cui-color-stroke-default)',
+        'cursor-pointer bg-card transition-colors hover:bg-accent',
+        !isLast && 'border-b border-border',
       )}
       onClick={onViewDetails}
     >
@@ -268,8 +268,8 @@ function UserRow({
           <Avatar name={user.name} />
           <div className="flex flex-col gap-1">
             <div className="flex flex-col">
-              <span className="font-medium text-(--cui-color-text-default)">{user.name}</span>
-              <span className="text-xs text-(--cui-color-text-muted)">{user.email}</span>
+              <span className="font-medium text-foreground">{user.name}</span>
+              <span className="text-xs text-muted-foreground">{user.email}</span>
             </div>
             {/* Role/group pills are user data returned by the API -- not gated by
                 READ_ROLES/READ_GROUPS. The backend controls what data is included
@@ -312,13 +312,13 @@ function UserRow({
             'inline-block rounded-full px-2 py-0.5 text-xs font-medium',
             user.role === SystemRoles.ADMIN
               ? 'badge-admin'
-              : 'bg-(--cui-color-background-secondary) text-(--cui-color-text-muted)',
+              : 'bg-muted text-muted-foreground',
           )}
         >
           {user.role}
         </span>
       </td>
-      <td className="px-4 py-3 text-(--cui-color-text-muted)">
+      <td className="px-4 py-3 text-muted-foreground">
         {new Date(user.createdAt).toLocaleDateString()}
       </td>
       <td className="px-4 py-3">

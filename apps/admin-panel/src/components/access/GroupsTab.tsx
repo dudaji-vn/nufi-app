@@ -1,8 +1,9 @@
-import { Button } from '@clickhouse/click-ui';
+import { Plus } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import type { AdminGroup } from '@librechat/data-schemas';
 import type * as t from '@/types';
+import { Button } from '@/components/ui';
 import {
   LoadingState,
   SearchInput,
@@ -71,14 +72,14 @@ export function GroupsTab({ onCreateGroup }: t.GroupsTabProps) {
 
   if (isError && !data) {
     return (
-      <div className="px-4 py-8 text-center text-sm text-(--cui-color-foreground-danger)">
+      <div className="px-4 py-8 text-center text-sm text-destructive">
         {localize('com_error_load_groups')}
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto py-2 pr-1">
+    <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-1 py-2">
       <div className="flex items-center justify-between gap-3">
         <SearchInput
           value={search}
@@ -86,9 +87,8 @@ export function GroupsTab({ onCreateGroup }: t.GroupsTabProps) {
           placeholder={localize('com_access_search_groups')}
         />
         <Button
-          type="secondary"
-          iconLeft="plus"
-          label={localize('com_access_create_group')}
+          type="button"
+          variant="outline"
           onClick={onCreateGroup}
           disabled={!canManage}
           aria-disabled={!canManage || undefined}
@@ -97,7 +97,10 @@ export function GroupsTab({ onCreateGroup }: t.GroupsTabProps) {
               ? localize('com_cap_no_permission', { cap: SystemCapabilities.MANAGE_GROUPS })
               : undefined
           }
-        />
+        >
+          <Plus />
+          {localize('com_access_create_group')}
+        </Button>
       </div>
 
       {groups.length === 0 ? (
@@ -107,18 +110,18 @@ export function GroupsTab({ onCreateGroup }: t.GroupsTabProps) {
           {groups.map((group) => (
             <div
               key={group.id}
-              className="mb-2 flex items-center gap-3 rounded-lg border border-(--cui-color-stroke-default) bg-(--cui-color-background-panel) px-3 py-3"
+              className="mb-2 flex items-center gap-3 rounded-lg border border-border bg-card px-3 py-3"
             >
               <button
                 type="button"
                 onClick={() => setEditTarget(group)}
-                className="-my-2 -ml-2 min-w-0 flex-1 cursor-pointer rounded py-3 pl-3 text-left outline-none focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-(--cui-color-outline)"
+                className="-my-2 -ml-2 min-w-0 flex-1 cursor-pointer rounded py-3 pl-3 text-left outline-none focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-ring"
               >
-                <div className="text-sm font-medium text-(--cui-color-text-default) hover:underline">
+                <div className="text-sm font-medium text-foreground hover:underline">
                   {group.name}
                 </div>
                 {group.description && (
-                  <div className="truncate text-xs text-(--cui-color-text-muted)">
+                  <div className="truncate text-xs text-muted-foreground">
                     {group.description}
                   </div>
                 )}

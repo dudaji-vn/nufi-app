@@ -38,7 +38,7 @@ export function HelpPage() {
       className="flex flex-1 flex-col gap-6 overflow-auto p-6"
     >
       <section aria-label={localize('com_help_resources')}>
-        <h3 className="mb-3 text-sm font-medium text-(--cui-color-title-muted)">
+        <h3 className="mb-3 text-sm font-medium text-muted-foreground">
           {localize('com_help_resources')}
         </h3>
         <div className="flex flex-col gap-3">
@@ -48,22 +48,22 @@ export function HelpPage() {
               href={resource.href}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-start gap-3 rounded-lg border border-(--cui-color-stroke-default) bg-(--cui-color-background-panel) p-4 no-underline transition-colors hover:bg-(--cui-color-background-hover)"
+              className="flex items-start gap-3 rounded-lg border border-border bg-card p-4 no-underline transition-colors hover:bg-accent"
             >
-              <span aria-hidden="true" className="mt-0.5 text-(--cui-color-text-muted)">
+              <span aria-hidden="true" className="mt-0.5 text-muted-foreground">
                 <Icon name={resource.icon} size="sm" />
               </span>
               <div className="flex flex-col gap-0.5">
-                <span className="text-sm font-medium text-(--cui-color-text-default)">
+                <span className="text-sm font-medium text-foreground">
                   {localize(resource.titleKey)}
                   <span
                     aria-hidden="true"
-                    className="ml-1.5 inline-block text-(--cui-color-text-muted)"
+                    className="ml-1.5 inline-block text-muted-foreground"
                   >
                     ↗
                   </span>
                 </span>
-                <span className="text-xs text-(--cui-color-text-muted)">
+                <span className="text-xs text-muted-foreground">
                   {localize(resource.descKey)}
                 </span>
               </div>
@@ -73,8 +73,8 @@ export function HelpPage() {
       </section>
 
       <section aria-label={localize('com_help_support')}>
-        <div className="rounded-lg border border-(--cui-color-stroke-default) bg-(--cui-color-background-muted) px-4 py-3">
-          <span className="text-sm text-(--cui-color-text-muted)">
+        <div className="rounded-lg border border-border bg-muted px-4 py-3">
+          <span className="text-sm text-muted-foreground">
             <span aria-hidden="true" className="mr-1.5 inline-block align-middle">
               <Icon name="question" size="xs" />
             </span>

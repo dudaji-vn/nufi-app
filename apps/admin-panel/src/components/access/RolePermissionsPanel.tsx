@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Icon, Switch } from '@clickhouse/click-ui';
+import { ChevronRight } from 'lucide-react';
 import { PermissionTypes } from 'librechat-data-provider';
 import type * as t from '@/types';
+import { Switch } from '@/components/ui';
 import { PERMISSION_TYPE_SCHEMA } from '@/constants';
 import { useLocalize } from '@/hooks';
 import { cn } from '@/utils';
@@ -75,7 +76,7 @@ export function RolePermissionsPanel({
           const hasDescription = description !== descKey(type);
 
           return (
-            <div key={type} className="rounded-lg border border-(--cui-color-stroke-default)">
+            <div key={type} className="rounded-lg border border-border">
               <div
                 role="button"
                 tabIndex={0}
@@ -88,30 +89,29 @@ export function RolePermissionsPanel({
                   }
                 }}
                 className={cn(
-                  'flex w-full cursor-pointer items-center justify-between px-4 py-3 transition-colors hover:bg-(--cui-color-background-hover) focus-visible:bg-(--cui-color-background-hover) focus-visible:outline-1 focus-visible:outline-(--cui-color-outline)',
+                  'flex w-full cursor-pointer items-center justify-between px-4 py-3 transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-1 focus-visible:outline-ring',
                   isOpen ? 'rounded-t-lg' : 'rounded-lg',
                 )}
               >
                 <div className="flex flex-1 items-center gap-2">
-                  <Icon
-                    name="chevron-right"
-                    size="sm"
+                  <ChevronRight
+                    aria-hidden="true"
                     className={cn(
-                      'text-(--cui-color-text-muted) transition-transform',
+                      'h-4 w-4 text-muted-foreground transition-transform',
                       isOpen && 'rotate-90',
                     )}
                   />
                   <div className="flex flex-col">
-                    <span className="text-sm font-medium text-(--cui-color-text-default)">
+                    <span className="text-sm font-medium text-foreground">
                       {localize(`com_perm_type_${type}`)}
                     </span>
                     {hasDescription && (
-                      <span className="text-xs text-(--cui-color-text-muted)">{description}</span>
+                      <span className="text-xs text-muted-foreground">{description}</span>
                     )}
                   </div>
                 </div>
                 <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
-                  <span className="text-xs text-(--cui-color-text-muted)">
+                  <span className="text-xs text-muted-foreground">
                     {allEnabled
                       ? localize('com_ui_all')
                       : `${perms.filter((p) => section[p]).length}/${perms.length}`}
@@ -126,7 +126,7 @@ export function RolePermissionsPanel({
                 </div>
               </div>
               {isOpen && (
-                <div className="border-t border-(--cui-color-stroke-default) px-4 py-2">
+                <div className="border-t border-border px-4 py-2">
                   <div className="flex flex-col gap-1 pl-6">
                     {perms.map((perm) => (
                       <label
@@ -137,7 +137,7 @@ export function RolePermissionsPanel({
                           disabled ? 'cursor-default' : 'cursor-pointer',
                         )}
                       >
-                        <span className="text-sm text-(--cui-color-text-muted)">
+                        <span className="text-sm text-muted-foreground">
                           {localize(`com_perm_${perm}`)}
                         </span>
                         <Switch
@@ -160,7 +160,7 @@ export function RolePermissionsPanel({
       {/* Clustered single-permission toggles */}
       {singlePermTypes.length > 0 && (
         <div className="flex flex-col gap-2">
-          <span className="text-xs font-medium text-(--cui-color-text-muted)">
+          <span className="text-xs font-medium text-muted-foreground">
             {localize('com_perm_features')}
           </span>
           <div
@@ -179,7 +179,7 @@ export function RolePermissionsPanel({
                   key={type}
                   htmlFor={disabled ? undefined : switchId}
                   className={cn(
-                    'flex w-fit items-center gap-2 rounded-md px-2 py-1 text-sm text-(--cui-color-text-default)',
+                    'flex w-fit items-center gap-2 rounded-md px-2 py-1 text-sm text-foreground',
                     disabled ? 'cursor-default' : 'cursor-pointer',
                   )}
                 >

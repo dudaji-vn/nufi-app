@@ -39,16 +39,16 @@ function OpenIdCallback() {
       : (loaderData.message ?? localize('com_auth_sso_exchange_failed'));
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-(--cui-color-background-default) px-4">
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="flex max-w-md flex-col items-center gap-4 text-center">
-        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-(--cui-color-background-secondary)">
+        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted">
           <svg
             aria-hidden="true"
             width="28"
             height="28"
             viewBox="0 0 24 24"
             fill="none"
-            stroke="var(--cui-color-text-danger)"
+            stroke="hsl(var(--destructive))"
             strokeWidth="2"
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -58,13 +58,13 @@ function OpenIdCallback() {
             <line x1="12" y1="16" x2="12.01" y2="16" />
           </svg>
         </div>
-        <h1 className="text-xl font-semibold text-(--cui-color-title-default)">
+        <h1 className="text-xl font-semibold text-foreground">
           {localize('com_auth_sso_error_title')}
         </h1>
-        <p className="text-sm text-(--cui-color-text-muted)">{errorMessage}</p>
+        <p className="text-sm text-muted-foreground">{errorMessage}</p>
         <a
           href="/login"
-          className="mt-2 rounded-lg border border-(--cui-color-stroke-default) bg-transparent px-4 py-2 text-sm font-medium text-(--cui-color-text-default) no-underline transition-colors hover:bg-(--cui-color-background-hover)"
+          className="mt-2 rounded-lg border border-border bg-transparent px-4 py-2 text-sm font-medium text-foreground no-underline transition-colors hover:bg-accent"
         >
           {localize('com_auth_sso_back_to_login')}
         </a>

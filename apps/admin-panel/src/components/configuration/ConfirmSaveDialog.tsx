@@ -1,7 +1,15 @@
 import yaml from 'js-yaml';
-import { Badge, Button, Dialog } from '@clickhouse/click-ui';
 import type { ReactNode } from 'react';
 import type * as t from '@/types';
+import {
+  Badge,
+  Button,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui';
 import { useLocalize } from '@/hooks';
 
 export function ConfirmSaveDialog({
@@ -28,40 +36,31 @@ export function ConfirmSaveDialog({
         if (!isOpen) onCancel();
       }}
     >
-      <Dialog.Content
-        title={localize('com_config_confirm_save_title')}
-        showClose
-        onClose={onCancel}
-        className="modal-frost"
-      >
-        <div className="flex flex-col gap-4">
-          <p className="text-sm text-muted-foreground">{countLabel}</p>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{localize('com_config_confirm_save_title')}</DialogTitle>
+        </DialogHeader>
 
-          <div className="flex max-h-80 flex-col gap-3 overflow-y-auto pr-1">
-            {entries.map(([path, newValue]) => {
-              const oldValue = originalValues?.[path];
-              return <ChangeCard key={path} path={path} oldValue={oldValue} newValue={newValue} />;
-            })}
-          </div>
+        <p className="text-sm text-muted-foreground">{countLabel}</p>
 
-          {error && <p className="text-sm text-destructive">{error}</p>}
-
-          <div className="flex items-center justify-end gap-2">
-            <Button
-              type="secondary"
-              label={localize('com_ui_cancel')}
-              onClick={onCancel}
-              disabled={saving}
-            />
-            <Button
-              type="primary"
-              label={saving ? localize('com_ui_loading') : localize('com_config_save')}
-              onClick={onConfirm}
-              disabled={saving}
-            />
-          </div>
+        <div className="flex max-h-80 flex-col gap-3 overflow-y-auto pr-1">
+          {entries.map(([path, newValue]) => {
+            const oldValue = originalValues?.[path];
+            return <ChangeCard key={path} path={path} oldValue={oldValue} newValue={newValue} />;
+          })}
         </div>
-      </Dialog.Content>
+
+        {error && <p className="text-sm text-destructive">{error}</p>}
+
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onCancel} disabled={saving}>
+            {localize('com_ui_cancel')}
+          </Button>
+          <Button type="button" onClick={onConfirm} disabled={saving}>
+            {saving ? localize('com_ui_loading') : localize('com_config_save')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
     </Dialog>
   );
 }
@@ -98,10 +97,14 @@ function ChangeCard({
           {displayPath}
         </span>
         {isAddition && (
-          <Badge text={localize('com_config_field_added')} state="success" size="sm" />
+          <Badge className="border-emerald-500/30 bg-emerald-500/15 px-2 py-0 text-[10px] font-semibold text-emerald-400">
+            {localize('com_config_field_added')}
+          </Badge>
         )}
         {isRemoval && (
-          <Badge text={localize('com_config_field_removed')} state="danger" size="sm" />
+          <Badge variant="destructive" className="px-2 py-0 text-[10px] font-semibold">
+            {localize('com_config_field_removed')}
+          </Badge>
         )}
       </div>
 

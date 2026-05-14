@@ -1,7 +1,15 @@
 import { useState } from 'react';
+import { Plus } from 'lucide-react';
 import { PrincipalType } from 'librechat-data-provider';
-import { Icon, Button, Dialog } from '@clickhouse/click-ui';
 import type * as t from '@/types';
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui';
 import { getEnumOptions, getArrayItemType, toKVPair } from './utils';
 import { KeyValueField } from './fields/KeyValueField';
 import { TrashButton } from '@/components/shared';
@@ -24,6 +32,7 @@ export function ProfileValueModal({
 }: t.ProfileValueModalProps) {
   const localize = useLocalize();
   const scopeConfig = getScopeTypeConfig(scopeType as PrincipalType | 'BASE');
+  const ScopeIcon = scopeConfig?.icon;
 
   const title =
     mode === 'edit'
@@ -37,41 +46,39 @@ export function ProfileValueModal({
         if (!isOpen) onCancel();
       }}
     >
-      <Dialog.Content title={title} showClose onClose={onCancel} className="modal-frost">
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center gap-2">
-            {scopeConfig && (
-              <span aria-hidden="true" style={{ color: scopeConfig.color }}>
-                <Icon name={scopeConfig.icon} size="sm" />
-              </span>
-            )}
-            <span className="text-xs text-muted-foreground">{scopeName}</span>
-          </div>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
 
-          <ModalValueControl
-            fieldSchema={fieldSchema}
-            controlType={controlType}
-            value={value}
-            onChange={onChange}
-            onSubmit={onSave}
-          />
-
-          <div className="flex items-center justify-end gap-2">
-            <Button
-              type="secondary"
-              label={localize('com_ui_cancel')}
-              onClick={onCancel}
-              disabled={saving}
+        <div className="flex items-center gap-2">
+          {ScopeIcon && (
+            <ScopeIcon
+              aria-hidden="true"
+              className="h-4 w-4"
+              style={{ color: scopeConfig.color }}
             />
-            <Button
-              type="primary"
-              label={localize('com_ui_save')}
-              onClick={onSave}
-              disabled={saving}
-            />
-          </div>
+          )}
+          <span className="text-xs text-muted-foreground">{scopeName}</span>
         </div>
-      </Dialog.Content>
+
+        <ModalValueControl
+          fieldSchema={fieldSchema}
+          controlType={controlType}
+          value={value}
+          onChange={onChange}
+          onSubmit={onSave}
+        />
+
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onCancel} disabled={saving}>
+            {localize('com_ui_cancel')}
+          </Button>
+          <Button type="button" onClick={onSave} disabled={saving}>
+            {localize('com_ui_save')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
     </Dialog>
   );
 }
@@ -183,11 +190,14 @@ function ModalValueControl({
             </div>
           ))}
           <Button
-            type="secondary"
-            label={localize('com_ui_add_item', { item: localize('com_ui_item') })}
-            iconLeft="plus"
+            type="button"
+            variant="outline"
+            size="sm"
             onClick={() => onChange([...listValue, ''])}
-          />
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {localize('com_ui_add_item', { item: localize('com_ui_item') })}
+          </Button>
         </div>
       );
     }

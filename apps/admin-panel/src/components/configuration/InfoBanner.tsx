@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Icon } from '@clickhouse/click-ui';
+import { Info, X } from 'lucide-react';
 import type * as t from '@/types';
 import { getScopeTypeConfig } from '@/constants';
 import { useLocalize } from '@/hooks';
@@ -29,6 +29,7 @@ export function InfoBanner({
   ) {
     const scope = scopeSelection.scope;
     const config = getScopeTypeConfig(scope.principalType);
+    const ScopeIcon = config.icon;
 
     return (
       <div
@@ -36,9 +37,7 @@ export function InfoBanner({
         role="status"
         aria-live="polite"
       >
-        <span aria-hidden="true" style={{ color: config.color }}>
-          <Icon name={config.icon} size="sm" />
-        </span>
+        <ScopeIcon aria-hidden="true" className="h-4 w-4" style={{ color: config.color }} />
         <span className="flex-1 text-foreground">
           {localize('com_scope_editing', {
             type: localize(config.labelKey),
@@ -59,11 +58,22 @@ export function InfoBanner({
   }
 
   return (
-    <Alert
-      text={text}
-      state="info"
-      dismissible={dismissible}
-      onDismiss={() => setDismissed(true)}
-    />
+    <div
+      className="flex items-start gap-2 rounded-md border border-primary/30 bg-primary/10 px-3 py-2 text-sm"
+      role="status"
+    >
+      <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+      <span className="flex-1 text-foreground">{text}</span>
+      {dismissible && (
+        <button
+          type="button"
+          onClick={() => setDismissed(true)}
+          className="shrink-0 cursor-pointer rounded-md p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          aria-label={localize('com_ui_dismiss')}
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      )}
+    </div>
   );
 }

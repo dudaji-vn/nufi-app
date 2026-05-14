@@ -46,7 +46,7 @@ export function FormDialog({
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col gap-5">
-          <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto pr-1">
+          <div className="-m-1 flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-1">
             {children}
             {error && (
               <p role="alert" className="text-sm text-destructive">

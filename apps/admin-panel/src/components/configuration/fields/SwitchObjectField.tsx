@@ -1,6 +1,6 @@
 import { useRef, useCallback } from 'react';
-import { Switch } from '@clickhouse/click-ui';
 import type * as t from '@/types';
+import { Switch } from '@/components/ui';
 
 export function SwitchObjectField({
   id,
@@ -34,9 +34,7 @@ export function SwitchObjectField({
         disabled={disabled}
         aria-label={ariaLabel}
       />
-      {isEnabled && (
-        <div className="mt-3 border-l-2 border-[--click-control-border-color] pl-4">{children}</div>
-      )}
+      {isEnabled && <div className="mt-3 border-l-2 border-border pl-4">{children}</div>}
     </div>
   );
 }

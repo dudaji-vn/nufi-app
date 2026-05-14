@@ -1,9 +1,16 @@
 import { PrincipalType } from 'librechat-data-provider';
 import { useCallback, useEffect, useState } from 'react';
-import { Button, Dialog, Icon } from '@clickhouse/click-ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AdminSystemGrant } from '@librechat/data-schemas';
 import type * as t from '@/types';
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui';
 import { grantCapabilityFn, principalGrantsQueryOptions, revokeCapabilityFn } from '@/server';
 import { getScopeTypeConfig, SystemCapabilities } from '@/constants';
 import { CapabilityPanel } from './CapabilityPanel';
@@ -87,6 +94,7 @@ export function EditCapabilitiesDialog({
     ? `${localize('com_cap_edit_title', { name: principalName })}`
     : '';
   const principalConfig = principalType ? getScopeTypeConfig(principalType) : null;
+  const PrincipalIcon = principalConfig?.icon;
 
   return (
     <Dialog
@@ -95,17 +103,15 @@ export function EditCapabilitiesDialog({
         if (!isOpen) onClose();
       }}
     >
-      <Dialog.Content
-        title={dialogTitle}
-        showClose
-        onClose={onClose}
-        className="modal-frost max-w-2xl!"
-      >
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{dialogTitle}</DialogTitle>
+        </DialogHeader>
         {isLoading ? (
           <LoadingState />
         ) : (
-          <div className="flex flex-col gap-4">
-            {principalConfig && (
+          <>
+            {principalConfig && PrincipalIcon && (
               <div className="flex items-center gap-2">
                 <span
                   className={cn(
@@ -113,12 +119,10 @@ export function EditCapabilitiesDialog({
                     principalConfig.badgeClass,
                   )}
                 >
-                  <Icon name={principalConfig.icon} size="xs" />
+                  <PrincipalIcon className="h-3 w-3" />
                   {localize(principalConfig.labelKey)}
                 </span>
-                <span className="text-sm font-medium text-(--cui-color-text-default)">
-                  {principalName}
-                </span>
+                <span className="text-sm font-medium text-foreground">{principalName}</span>
               </div>
             )}
             <CapabilityPanel
@@ -127,29 +131,30 @@ export function EditCapabilitiesDialog({
               disabled={saveMutation.isPending}
             />
             {error && (
-              <p role="alert" className="text-sm text-(--cui-color-text-danger)">
+              <p role="alert" className="text-sm text-destructive">
                 {error}
               </p>
             )}
-            <div className="flex items-center justify-end gap-2">
+            <DialogFooter>
               <Button
-                type="secondary"
-                label={localize('com_ui_cancel')}
+                type="button"
+                variant="outline"
                 onClick={onClose}
                 disabled={saveMutation.isPending}
-              />
+              >
+                {localize('com_ui_cancel')}
+              </Button>
               <Button
-                type="primary"
-                label={
-                  saveMutation.isPending ? localize('com_ui_loading') : localize('com_ui_save')
-                }
+                type="button"
                 onClick={handleSave}
                 disabled={!hasChanges || saveMutation.isPending}
-              />
-            </div>
-          </div>
+              >
+                {saveMutation.isPending ? localize('com_ui_loading') : localize('com_ui_save')}
+              </Button>
+            </DialogFooter>
+          </>
         )}
-      </Dialog.Content>
+      </DialogContent>
     </Dialog>
   );
 }

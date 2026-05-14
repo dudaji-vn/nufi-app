@@ -71,7 +71,7 @@ export function CapabilityPanel({ capabilities, onChange, disabled }: t.Capabili
         const isOpen = !collapsed.has(category.key);
 
         return (
-          <div key={category.key} className="rounded-lg border border-(--cui-color-stroke-default)">
+          <div key={category.key} className="rounded-lg border border-border">
             <div
               role="button"
               tabIndex={0}
@@ -84,7 +84,7 @@ export function CapabilityPanel({ capabilities, onChange, disabled }: t.Capabili
                 }
               }}
               className={cn(
-                'flex w-full cursor-pointer items-center justify-between px-4 py-3 transition-colors hover:bg-(--cui-color-background-hover) focus-visible:bg-(--cui-color-background-hover) focus-visible:outline-1 focus-visible:outline-(--cui-color-outline)',
+                'flex w-full cursor-pointer items-center justify-between px-4 py-3 transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-1 focus-visible:outline-ring',
                 isOpen ? 'rounded-t-lg' : 'rounded-lg',
               )}
             >
@@ -93,16 +93,16 @@ export function CapabilityPanel({ capabilities, onChange, disabled }: t.Capabili
                   name="chevron-right"
                   size="sm"
                   className={cn(
-                    'text-(--cui-color-text-muted) transition-transform',
+                    'text-muted-foreground transition-transform',
                     isOpen && 'rotate-90',
                   )}
                 />
-                <span className="text-sm font-medium text-(--cui-color-text-default)">
+                <span className="text-sm font-medium text-foreground">
                   {localize(category.labelKey)}
                 </span>
               </div>
               <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
-                <span className="text-xs text-(--cui-color-text-muted)">
+                <span className="text-xs text-muted-foreground">
                   {allEnabled ? localize('com_ui_all') : `${enabledCount}/${caps.length}`}
                 </span>
                 <Switch
@@ -115,7 +115,7 @@ export function CapabilityPanel({ capabilities, onChange, disabled }: t.Capabili
               </div>
             </div>
             {isOpen && (
-              <div className="border-t border-(--cui-color-stroke-default) px-4 py-2">
+              <div className="border-t border-border px-4 py-2">
                 <div className="flex flex-col gap-1 pl-6">
                   {caps.map((cap: string) => {
                     const isImplied = impliedSet.has(cap) && !capabilities[cap];
@@ -137,14 +137,14 @@ export function CapabilityPanel({ capabilities, onChange, disabled }: t.Capabili
                             className={cn(
                               'text-sm',
                               isImplied
-                                ? 'text-(--cui-color-text-disabled)'
-                                : 'text-(--cui-color-text-muted)',
+                                ? 'text-muted-foreground/60'
+                                : 'text-muted-foreground',
                             )}
                           >
                             {capLabel}
                           </span>
                           {isImplied && (
-                            <span className="flex items-center gap-1 text-xs text-(--cui-color-text-link)">
+                            <span className="flex items-center gap-1 text-xs text-primary">
                               <Icon name="information" size="xs" />
                               {localize('com_cap_implied_by', {
                                 cap: localize(

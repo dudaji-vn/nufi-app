@@ -3,6 +3,7 @@ import { PrincipalType } from 'librechat-data-provider';
 
 import type { ComponentProps } from 'react';
 import type { ConfigValue } from './config';
+import type { LucideIconComponent } from './layout';
 
 export type IconName = ComponentProps<typeof Icon>['name'];
 export type MenuIconName = ComponentProps<typeof Dropdown.Item>['icon'];
@@ -37,7 +38,7 @@ export interface ScopePermissions {
 export type ScopePrincipalType = PrincipalType.ROLE | PrincipalType.GROUP | PrincipalType.USER;
 
 export interface ScopeTypeConfigEntry {
-  icon: IconName;
+  icon: LucideIconComponent;
   color: string;
   labelKey: string;
   badgeClass: string;

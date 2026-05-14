@@ -1,4 +1,4 @@
-import { Icon } from '@clickhouse/click-ui';
+import { Plus } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useMemo, useState } from 'react';
 import type * as t from '@/types';
@@ -196,6 +196,7 @@ export function FieldProfilePopover({
               <div className="flex flex-col gap-0.5">
                 {availableScopes.map((scope) => {
                   const config = getScopeTypeConfig(scope.principalType);
+                  const ScopeIcon = config.icon;
                   const isSelected =
                     selectedAddScope?.principalType === scope.principalType &&
                     selectedAddScope?.principalId === scope.principalId;
@@ -208,15 +209,17 @@ export function FieldProfilePopover({
                         openAddModal(scope);
                       }}
                       className={cn(
-                        'flex items-center gap-2 rounded-(--cui-radii-sm) px-2 py-1.5 text-left text-xs transition-colors',
+                        'flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors',
                         isSelected
                           ? 'bg-accent'
                           : 'hover:bg-accent',
                       )}
                     >
-                      <span aria-hidden="true" style={{ color: config.color }}>
-                        <Icon name={config.icon} size="sm" />
-                      </span>
+                      <ScopeIcon
+                        aria-hidden="true"
+                        className="h-4 w-4"
+                        style={{ color: config.color }}
+                      />
                       <span className="text-foreground">{scope.name}</span>
                     </button>
                   );
@@ -230,12 +233,10 @@ export function FieldProfilePopover({
             <button
               type="button"
               onClick={handleStartAdd}
-              className="flex w-full items-center gap-2 rounded-(--cui-radii-sm) px-2 py-1 text-xs text-primary transition-colors hover:bg-accent"
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-xs text-primary transition-colors hover:bg-accent"
               disabled={saving}
             >
-              <span aria-hidden="true">
-                <Icon name="plus" size="sm" />
-              </span>
+              <Plus aria-hidden="true" className="h-4 w-4" />
               {localize('com_scope_add_profile_value')}
             </button>
           </div>
@@ -272,12 +273,10 @@ export function FieldProfilePopover({
 
 /* ---------- Helpers ---------- */
 
-function CascadeItem({ label, icon, color, sublabel }: t.CascadeItemProps) {
+function CascadeItem({ label, icon: ItemIcon, color, sublabel }: t.CascadeItemProps) {
   return (
     <div className="flex items-center gap-2 px-2.5 py-1.5">
-      <span aria-hidden="true" className="scope-icon" style={{ color }}>
-        <Icon name={icon} size="sm" />
-      </span>
+      <ItemIcon aria-hidden="true" className="scope-icon h-4 w-4" style={{ color }} />
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="flex items-center gap-1.5 text-xs font-medium text-foreground">
           {label}

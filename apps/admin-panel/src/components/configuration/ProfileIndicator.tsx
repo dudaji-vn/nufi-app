@@ -1,8 +1,9 @@
+import { Plus } from 'lucide-react';
 import { useCallback, useState } from 'react';
-import { Icon, Dialog } from '@clickhouse/click-ui';
 import { PrincipalType } from 'librechat-data-provider';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type * as t from '@/types';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui';
 import { FieldProfilePopover } from './FieldProfilePopover';
 import { fieldProfileValuesOptions } from '@/server';
 import { getScopeTypeConfig } from '@/constants';
@@ -55,6 +56,7 @@ export function ProfileIndicator({
         {uniqueTypes.length > 0 ? (
           uniqueTypes.map((type) => {
             const config = getScopeTypeConfig(type as PrincipalType);
+            const TypeIcon = config.icon;
             return (
               <span
                 key={type}
@@ -63,7 +65,7 @@ export function ProfileIndicator({
                 style={{ color: config.color, width: 18, height: 18 }}
                 title={localize(config.labelKey)}
               >
-                <Icon name={config.icon} size="sm" />
+                <TypeIcon className="h-4 w-4" />
               </span>
             );
           })
@@ -74,7 +76,7 @@ export function ProfileIndicator({
             style={{ width: 18, height: 18 }}
             title={localize('com_scope_add_profile_value')}
           >
-            <Icon name="plus" size="sm" />
+            <Plus className="h-4 w-4" />
           </span>
         )}
       </button>
@@ -85,12 +87,10 @@ export function ProfileIndicator({
           if (!isOpen) handleClose();
         }}
       >
-        <Dialog.Content
-          title={localize('com_scope_cascade_title')}
-          showClose
-          onClose={handleClose}
-          className="modal-frost"
-        >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{localize('com_scope_cascade_title')}</DialogTitle>
+          </DialogHeader>
           <FieldProfilePopover
             fieldPath={fieldPath}
             fieldLabel={fieldLabel}
@@ -101,7 +101,7 @@ export function ProfileIndicator({
             baseValue={baseValue}
             onBaseValueChange={onBaseValueChange}
           />
-        </Dialog.Content>
+        </DialogContent>
       </Dialog>
     </>
   );

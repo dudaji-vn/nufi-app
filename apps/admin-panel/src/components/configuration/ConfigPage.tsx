@@ -765,8 +765,8 @@ export function ConfigPage({ initialTab, highlightField, initialScope }: t.Confi
   const banner = renderBanner();
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden pt-2">
-      <div className="shrink-0 px-4">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden pt-6">
+      <div className="shrink-0 px-6">
         {banner && <div className="pt-4 pb-2">{banner}</div>}
         <HeaderActions
           showImport
@@ -802,7 +802,7 @@ export function ConfigPage({ initialTab, highlightField, initialScope }: t.Confi
             </div>
           )}
           <div
-            className="h-full overflow-auto pl-4 [scrollbar-gutter:stable]"
+            className="h-full overflow-auto pl-6 [scrollbar-gutter:stable]"
             ref={scrollCallbackRef}
           >
             <ConfigTabContent
