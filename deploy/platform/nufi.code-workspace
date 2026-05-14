@@ -9,5 +9,8 @@
     {
       "path": "../nufi-chat",
     },
+    {
+      "path": "../nufichat-admin-panel",
+    },
   ],
 }
