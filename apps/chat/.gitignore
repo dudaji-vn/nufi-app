@@ -141,7 +141,8 @@ helm/**/.values.yaml
 *.cert
 
 # AI Assistants
-/.claude/
+# .claude/ is committed for shared team config (settings.json, skills, commands).
+# Personal overrides live in .claude/settings.local.json (ignored below).
 /.codex/
 /.cursor/
 /.copilot/
@@ -179,5 +180,4 @@ claude-flow.config.json
 *.sqlite-wal
 claude-flow
 .playwright-mcp/*
-CLAUDE.md
 .gsd
