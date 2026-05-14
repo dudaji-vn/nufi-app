@@ -3,13 +3,13 @@
 # base image directly with a volume mount.
 #
 # Override BASE at build time to upgrade (Railway: set as a service variable):
-#   BASE=ghcr.io/dudaji-vn/librechat:v0.0.2
+#   BASE=ghcr.io/dudaji-vn/nufichat:nufi-v0.8.6
 #
 # Pin BASE to a sha256 digest in production:
-#   docker pull ghcr.io/dudaji-vn/librechat:v0.0.1
-#   docker inspect --format='{{index .RepoDigests 0}}' ghcr.io/dudaji-vn/librechat:v0.0.1
-#   → ghcr.io/dudaji-vn/librechat@sha256:<digest>
-ARG BASE=ghcr.io/dudaji-vn/librechat:v0.0.1
+#   docker pull ghcr.io/dudaji-vn/nufichat:main
+#   docker inspect --format='{{index .RepoDigests 0}}' ghcr.io/dudaji-vn/nufichat:main
+#   → ghcr.io/dudaji-vn/nufichat@sha256:<digest>
+ARG BASE=ghcr.io/dudaji-vn/nufichat:main
 FROM ${BASE}
 
 COPY librechat.yaml /app/librechat.yaml
