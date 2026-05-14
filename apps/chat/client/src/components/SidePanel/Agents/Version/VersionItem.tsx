@@ -43,7 +43,7 @@ export default function VersionItem({
           {localize('com_ui_agent_version_title', { versionNumber: versionsLength - index })}
         </span>
         {isActive && (
-          <span className="rounded-full border border-green-600 bg-green-600/20 px-2 py-0.5 text-xs font-medium text-green-700 dark:border-green-500 dark:bg-green-500/30 dark:text-green-300">
+          <span className="rounded-full border border-status-ok bg-status-ok/20 px-2 py-0.5 text-xs font-medium text-status-ok">
             {localize('com_ui_agent_version_active')}
           </span>
         )}
@@ -51,7 +51,7 @@ export default function VersionItem({
       <div className="text-sm text-text-secondary">{getVersionTimestamp(version)}</div>
       {!isActive && (
         <button
-          className="mt-2 text-sm text-blue-500 hover:text-blue-600"
+          className="mt-2 text-sm text-status-info hover:text-status-info/80"
           onClick={() => {
             if (window.confirm(localize('com_ui_agent_version_restore_confirm'))) {
               onRestore(index);

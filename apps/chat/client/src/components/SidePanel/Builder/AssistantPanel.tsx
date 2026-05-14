@@ -237,7 +237,7 @@ export default function AssistantPanel({
           {/* Select Button */}
           {assistant_id && (
             <button
-              className="btn btn-primary focus:shadow-outline mx-2 mt-1 h-[40px] rounded bg-green-500 px-4 py-2 font-semibold text-white hover:bg-green-400 focus:border-green-500 focus:outline-none focus:ring-0"
+              className="btn btn-primary focus:shadow-outline mx-2 mt-1 h-[40px] rounded bg-surface-submit px-4 py-2 font-semibold text-white hover:bg-surface-submit-hover focus:outline-none focus:ring-0"
               type="button"
               disabled={!assistant_id}
               onClick={(e) => {
@@ -370,10 +370,10 @@ export default function AssistantPanel({
                       cardStyle,
                       'flex h-[40px] w-full flex-none items-center justify-center px-4 hover:cursor-pointer',
                     )}
-                    containerClassName={cn('rounded-md', error ? 'border-red-500 border-2' : '')}
+                    containerClassName={cn('rounded-md', error ? 'border-status-error border-2' : '')}
                   />
                   {error && (
-                    <span className="text-sm text-red-500 transition duration-300 ease-in-out">
+                    <span className="text-sm text-status-error transition duration-300 ease-in-out">
                       {localize('com_ui_field_required')}
                     </span>
                   )}
@@ -460,7 +460,7 @@ export default function AssistantPanel({
             />
             {/* Submit Button */}
             <button
-              className="btn btn-primary focus:shadow-outline flex w-full items-center justify-center px-4 py-2 font-semibold text-white hover:bg-green-600 focus:border-green-500"
+              className="btn btn-primary focus:shadow-outline flex w-full items-center justify-center px-4 py-2 font-semibold text-white hover:bg-surface-submit-hover"
               type="submit"
             >
               {submitContext}

@@ -39,13 +39,13 @@ const FileUpload: React.FC<FileUploadProps> = ({
       const jsonData = JSON.parse(e.target?.result as string);
       if (validator && !validator(jsonData)) {
         setStatus('invalid');
-        setStatusColor('text-red-600');
+        setStatusColor('text-status-error');
         return;
       }
 
       if (validator) {
         setStatus('success');
-        setStatusColor('text-green-500 dark:text-green-500');
+        setStatusColor('text-text-success');
       }
 
       onFileSelected(jsonData);

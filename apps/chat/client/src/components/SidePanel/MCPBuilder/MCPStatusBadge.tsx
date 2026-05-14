@@ -40,7 +40,7 @@ export default function MCPStatusBadge({
         aria-live="polite"
         className={cn(
           badgeBaseClass,
-          'bg-blue-50 text-blue-600 dark:bg-blue-950 dark:text-blue-400',
+          'bg-status-info/10 text-status-info',
         )}
       >
         <Spinner className="size-3" />
@@ -63,7 +63,7 @@ export default function MCPStatusBadge({
         aria-live="polite"
         className={cn(
           badgeBaseClass,
-          'bg-blue-50 text-blue-600 dark:bg-blue-950 dark:text-blue-400',
+          'bg-status-info/10 text-status-info',
         )}
       >
         <Spinner className="size-3" />
@@ -81,7 +81,7 @@ export default function MCPStatusBadge({
           role="status"
           className={cn(
             badgeBaseClass,
-            'bg-amber-50 text-amber-600 dark:bg-amber-950 dark:text-amber-400',
+            'bg-status-warning/10 text-status-warning',
           )}
         >
           <PlugZap className="size-3" aria-hidden="true" />
@@ -108,7 +108,7 @@ export default function MCPStatusBadge({
     return (
       <div
         role="status"
-        className={cn(badgeBaseClass, 'bg-red-50 text-red-600 dark:bg-red-950 dark:text-red-400')}
+        className={cn(badgeBaseClass, 'bg-status-error/10 text-status-error')}
       >
         <span>{localize('com_nav_mcp_status_error')}</span>
       </div>
@@ -122,7 +122,7 @@ export default function MCPStatusBadge({
         role="status"
         className={cn(
           badgeBaseClass,
-          'bg-green-50 text-green-600 dark:bg-green-950 dark:text-green-400',
+          'bg-status-ok/10 text-status-ok',
         )}
       >
         <Check className="size-3" aria-hidden="true" />
@@ -149,31 +149,30 @@ export function getStatusDotColor(
   isInitializing?: boolean,
 ): string {
   if (isInitializing) {
-    return 'bg-blue-500';
+    return 'bg-status-info';
   }
 
   if (!serverStatus) {
-    return 'bg-gray-400';
+    return 'bg-border-medium';
   }
 
   const { connectionState, requiresOAuth } = serverStatus;
 
   if (connectionState === 'connecting') {
-    return 'bg-blue-500';
+    return 'bg-status-info';
   }
 
   if (connectionState === 'connected') {
-    return 'bg-green-500';
+    return 'bg-status-ok';
   }
 
   if (connectionState === 'error') {
-    return 'bg-red-500';
+    return 'bg-status-error';
   }
 
   if (connectionState === 'disconnected') {
-    // Needs OAuth = amber, otherwise gray
-    return requiresOAuth ? 'bg-amber-500' : 'bg-gray-400';
+    return requiresOAuth ? 'bg-status-warning' : 'bg-border-medium';
   }
 
-  return 'bg-gray-400';
+  return 'bg-border-medium';
 }

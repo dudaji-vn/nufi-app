@@ -30,7 +30,7 @@ export default function UnconfiguredMCPTool({ serverName }: { serverName?: strin
       >
         <div className="flex items-center">
           <div className="flex h-6 w-6 items-center justify-center rounded p-1">
-            <CircleX className="h-4 w-4 text-red-500" />
+            <CircleX className="h-4 w-4 text-status-error" />
           </div>
         </div>
 
@@ -75,7 +75,7 @@ export default function UnconfiguredMCPTool({ serverName }: { serverName?: strin
         selection={{
           selectHandler: () => removeTool(serverName || ''),
           selectClasses:
-            'bg-red-700 dark:bg-red-600 hover:bg-red-800 dark:hover:bg-red-800 transition-color duration-200 text-white',
+            'bg-destructive text-destructive-foreground transition-color duration-200 hover:bg-destructive/80',
           selectText: localize('com_ui_delete'),
         }}
       />

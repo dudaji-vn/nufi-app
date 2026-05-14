@@ -117,7 +117,7 @@ export default function DataTableFile<TData, TValue>({
               {isDeleting ? (
                 <Spinner className="h-4 w-4" />
               ) : (
-                <TrashIcon className="h-4 w-4 text-red-400" />
+                <TrashIcon className="h-4 w-4 text-destructive" />
               )}
               {localize('com_ui_delete')}
             </Button>

@@ -187,7 +187,7 @@ function AssistantToolsDialog({
           </div>
           {error && (
             <div
-              className="relative m-4 rounded border border-red-400 bg-red-100 px-4 py-3 text-red-700"
+              className="relative m-4 rounded border border-destructive/40 bg-destructive/10 px-4 py-3 text-destructive"
               role="alert"
             >
               {localize('com_nav_plugin_auth_error')} {errorMessage}

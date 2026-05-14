@@ -46,7 +46,7 @@ function Balance() {
             refillIntervalValue={refillIntervalValue}
           />
         ) : (
-          <div className="text-sm text-red-600">
+          <div className="text-sm text-status-error">
             {localize('com_nav_balance_auto_refill_error')}
           </div>
         )

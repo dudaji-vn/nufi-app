@@ -39,7 +39,7 @@ export default function VersionContent({
 
   if (error) {
     return (
-      <div className="py-8 text-center text-red-500">{localize('com_ui_agent_version_error')}</div>
+      <div className="py-8 text-center text-status-error">{localize('com_ui_agent_version_error')}</div>
     );
   }
 

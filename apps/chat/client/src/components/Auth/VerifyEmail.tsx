@@ -90,7 +90,7 @@ function RequestPasswordReset() {
         <p className="text-center text-lg text-gray-600 dark:text-gray-400">
           {localize('com_auth_email_verification_resend_prompt')}
           <button
-            className="ml-2 text-blue-600 hover:underline"
+            className="ml-2 text-status-info hover:underline"
             onClick={handleResendEmail}
             disabled={resendEmailMutation.isLoading}
           >
@@ -107,7 +107,7 @@ function RequestPasswordReset() {
         {localize('com_auth_email_verification_in_progress')}
       </h1>
       <div className="mt-4 flex justify-center">
-        <Spinner className="h-8 w-8 text-green-500" />
+        <Spinner className="h-8 w-8 text-text-success" />
       </div>
     </div>
   );

@@ -63,7 +63,7 @@ const PresetItems: FC<{
             <DialogTrigger asChild>
               <button
                 type="button"
-                className="mr-1 flex h-[32px] cursor-pointer items-center rounded bg-transparent px-2 py-1 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-red-700 focus:ring-ring dark:bg-transparent dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-red-700"
+                className="mr-1 flex h-[32px] cursor-pointer items-center rounded bg-transparent px-2 py-1 text-xs font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-destructive focus:ring-ring"
                 aria-label={localize('com_ui_clear_all')}
               >
                 <svg

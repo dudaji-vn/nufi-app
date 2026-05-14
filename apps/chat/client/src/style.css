@@ -112,6 +112,16 @@ html {
   --border-heavy: var(--gray-400);
   --border-xheavy: var(--gray-500);
   --border-destructive: var(--red-600);
+  /* NUFI extended semantic tokens — success uses brand-primary; warning uses amber; status is semantic */
+  --surface-success: var(--brand-primary-soft);
+  --text-success: var(--brand-primary);
+  --border-success: rgba(123, 130, 240, 0.4);
+  --surface-warning: rgba(245, 158, 11, 0.1);
+  --border-warning: rgba(245, 158, 11, 0.4);
+  --status-ok: 150 65% 45%;
+  --status-error: 0 84.2% 60.2%;
+  --status-warning: 43 96% 56%;
+  --status-info: 262.1 83.3% 57.8%;
   /* shadcn-style tokens — NUFI Cyber-Grid (light) */
   --background: 0 0% 100%;
   --foreground: 224 71.4% 4.1%;
@@ -204,6 +214,16 @@ html {
   --border-heavy: hsl(var(--sidebar-border));
   --border-xheavy: hsl(var(--sidebar-border));
   --border-destructive: var(--red-500);
+  /* NUFI extended semantic tokens (dark) */
+  --surface-success: var(--brand-primary-soft);
+  --text-success: var(--brand-primary);
+  --border-success: rgba(123, 130, 240, 0.4);
+  --surface-warning: hsl(43 96% 56% / 0.12);
+  --border-warning: hsl(43 96% 56% / 0.4);
+  --status-ok: 150 65% 50%;
+  --status-error: 3 85% 68%;
+  --status-warning: 43 96% 56%;
+  --status-info: 236 80% 75%;
   --chart-1: 220 70% 50%;
   --chart-2: 160 60% 45%;
   --chart-3: 30 80% 55%;
