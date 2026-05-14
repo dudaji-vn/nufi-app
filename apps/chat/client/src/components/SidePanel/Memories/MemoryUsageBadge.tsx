@@ -14,12 +14,12 @@ interface MemoryUsageBadgeProps {
 
 const getStatusColor = (pct: number): string => {
   if (pct > 90) {
-    return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
+    return 'bg-status-error/10 text-status-error';
   }
   if (pct > 75) {
-    return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400';
+    return 'bg-status-warning/10 text-status-warning';
   }
-  return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
+  return 'bg-status-ok/10 text-status-ok';
 };
 
 export default function MemoryUsageBadge({

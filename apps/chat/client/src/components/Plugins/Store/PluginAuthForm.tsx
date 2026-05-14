@@ -81,7 +81,7 @@ function PluginAuthForm({ plugin, onSubmit, isEntityTool }: TPluginAuthFormProps
                   <PluginTooltip content={config.description} position="right" />
                 </HoverCard>
                 {errors[authField] && (
-                  <span role="alert" className="mt-1 text-sm text-red-400">
+                  <span role="alert" className="mt-1 text-sm text-status-error">
                     {String(errors?.[authField]?.message ?? '')}
                   </span>
                 )}

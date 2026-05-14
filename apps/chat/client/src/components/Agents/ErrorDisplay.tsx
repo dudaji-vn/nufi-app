@@ -181,11 +181,11 @@ export const ErrorDisplay: React.FC<ErrorDisplayProps> = ({ error, onRetry, cont
           <div
             className={cn(
               'flex h-12 w-12 items-center justify-center rounded-full',
-              'bg-red-100 dark:bg-red-900/20',
+              'bg-status-error/15',
             )}
           >
             <svg
-              className="h-6 w-6 text-red-600 dark:text-red-400"
+              className="h-6 w-6 text-status-error"
               fill="none"
               viewBox="0 0 24 24"
               strokeWidth={2}
@@ -233,8 +233,7 @@ export const ErrorDisplay: React.FC<ErrorDisplayProps> = ({ error, onRetry, cont
               variant="outline"
               size="sm"
               className={cn(
-                'border-red-300 text-red-700 hover:bg-red-50 focus:ring-2 focus:ring-red-500',
-                'dark:border-red-600 dark:text-red-400 dark:hover:bg-red-900/20 dark:focus:ring-red-400',
+                'border-status-error/40 text-status-error hover:bg-status-error/10 focus:ring-2 focus:ring-status-error/40',
               )}
               aria-describedby="error-message error-suggestion"
               aria-label={`Retry action. ${message}`}

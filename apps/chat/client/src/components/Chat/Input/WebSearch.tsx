@@ -30,7 +30,7 @@ function WebSearch() {
         checked={webSearch}
         setValue={debouncedChange}
         label={localize('com_ui_search')}
-        isCheckedClassName="border-blue-600/40 bg-blue-500/10 hover:bg-blue-700/10"
+        isCheckedClassName="border-status-info/40 bg-status-info/10 hover:bg-status-info/15"
         icon={<Globe className="icon-md" aria-hidden="true" />}
       />
     )

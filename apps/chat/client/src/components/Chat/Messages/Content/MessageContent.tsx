@@ -49,7 +49,7 @@ const ErrorBox = ({
     role="alert"
     aria-live="assertive"
     className={cn(
-      'rounded-xl border border-red-500/20 bg-red-500/5 px-3 py-2 text-sm text-gray-600 dark:text-gray-200',
+      'rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-text-primary',
       className,
     )}
   >
@@ -64,7 +64,7 @@ const ConnectionError = ({ message }: { message?: TMessage }) => {
     <Suspense fallback={<LoadingFallback />}>
       <DelayedRender delay={DELAYED_ERROR_TIMEOUT}>
         <Container message={message}>
-          <div className="mt-2 rounded-xl border border-red-500/20 bg-red-50/50 px-4 py-3 text-sm text-red-700 shadow-sm transition-all dark:bg-red-950/30 dark:text-red-100">
+          <div className="mt-2 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive shadow-sm transition-all">
             {localize('com_ui_error_connection')}
           </div>
         </Container>

@@ -187,7 +187,7 @@ export default function CreateSkillForm({
                   <div
                     id="skill-name-error"
                     className={cn(
-                      'mt-1 w-56 text-sm text-red-500',
+                      'mt-1 w-56 text-sm text-status-error',
                       errors.name ? 'visible h-auto' : 'invisible h-0',
                     )}
                     role={errors.name ? 'alert' : undefined}
@@ -223,7 +223,7 @@ export default function CreateSkillForm({
                   className="mb-1 text-sm font-medium text-text-secondary"
                 >
                   {localize('com_ui_description')}
-                  <span className="ml-0.5 text-red-500">*</span>
+                  <span className="ml-0.5 text-status-error">*</span>
                 </label>
                 <TextareaAutosize
                   {...field}
@@ -242,7 +242,7 @@ export default function CreateSkillForm({
                 {errors.description && (
                   <p
                     id="skill-description-error"
-                    className="mt-1 text-sm text-red-500"
+                    className="mt-1 text-sm text-status-error"
                     role="alert"
                   >
                     {errors.description.message}
@@ -261,7 +261,7 @@ export default function CreateSkillForm({
           {createSkill.error != null && (
             <div
               role="alert"
-              className="flex items-start gap-2 rounded-md border border-red-500/40 bg-red-500/5 p-3 text-sm text-red-500"
+              className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
             >
               <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
               <span>{localize('com_ui_skill_create_error')}</span>

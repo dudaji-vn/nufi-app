@@ -89,14 +89,14 @@ export default function MemoryInfo({ memoryArtifacts }: { memoryArtifacts: Memor
 
       {errorMessages.length > 0 && (
         <div>
-          <h4 className="mb-2 text-sm font-semibold text-red-500">
+          <h4 className="mb-2 text-sm font-semibold text-destructive">
             {localize('com_ui_memory_storage_full')}
           </h4>
           <div className="space-y-2">
             {errorMessages.map((errorMessage) => (
               <div
                 key={errorMessage}
-                className="rounded-md bg-red-50 p-3 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-400"
+                className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
               >
                 {errorMessage}
               </div>

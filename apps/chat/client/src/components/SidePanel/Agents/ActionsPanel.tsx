@@ -113,7 +113,7 @@ export default function ActionsPanel() {
                           disabled={isEphemeralAgent(agent_id) || !action.action_id}
                           className="btn btn-neutral border-token-border-light relative h-9 rounded-lg font-medium"
                         >
-                          <TrashIcon className="text-red-500" />
+                          <TrashIcon className="text-destructive" />
                         </button>
                       </div>
                     </OGDialogTrigger>
@@ -140,7 +140,7 @@ export default function ActionsPanel() {
                           });
                         },
                         selectClasses:
-                          'bg-red-700 dark:bg-red-600 hover:bg-red-800 dark:hover:bg-red-800 transition-color duration-200 text-white',
+                          'bg-destructive text-destructive-foreground transition-color duration-200 hover:bg-destructive/80',
                         selectText: localize('com_ui_delete'),
                       }}
                     />

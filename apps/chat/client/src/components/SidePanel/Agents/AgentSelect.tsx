@@ -51,7 +51,7 @@ function AgentSelect({
         provider: createProviderOption(fullAgent.provider),
         label: fullAgent.name ?? '',
         value: fullAgent.id || '',
-        icon: isGlobal ? <EarthIcon className={'icon-lg text-green-400'} /> : null,
+        icon: isGlobal ? <EarthIcon className={'icon-lg text-status-ok'} /> : null,
       };
 
       const capabilities: TAgentCapabilities = {

@@ -79,7 +79,7 @@ export default function SharePointPickerDialog({
               <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-black/30 backdrop-blur-sm">
                 <div className="mx-4 w-full max-w-sm rounded-lg bg-surface-primary p-6 shadow-lg">
                   <div className="text-center">
-                    <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600"></div>
+                    <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-b-2 border-ring"></div>
                     <h3 className="mb-2 text-lg font-semibold text-text-primary">
                       {localize('com_files_downloading')}
                     </h3>
@@ -98,7 +98,7 @@ export default function SharePointPickerDialog({
                         )}
                         <div className="h-2 w-full rounded-full bg-surface-tertiary">
                           <div
-                            className="h-2 rounded-full bg-blue-600 transition-all duration-300"
+                            className="h-2 rounded-full bg-ring transition-all duration-300"
                             style={{
                               width: `${Math.round((downloadProgress.completed / downloadProgress.total) * 100)}%`,
                             }}
@@ -112,7 +112,7 @@ export default function SharePointPickerDialog({
                           })}
                         </p>
                         {downloadProgress.failed.length > 0 && (
-                          <p className="text-xs text-red-500">
+                          <p className="text-xs text-status-error">
                             {localize('com_files_download_failed', {
                               0: downloadProgress.failed.length,
                             })}
