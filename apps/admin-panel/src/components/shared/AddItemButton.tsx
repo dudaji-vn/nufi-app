@@ -1,4 +1,5 @@
-import { Button } from '@clickhouse/click-ui';
+import { Plus } from 'lucide-react';
+import { Button } from '@/components/ui';
 
 export function AddItemButton({
   label,
@@ -10,12 +11,9 @@ export function AddItemButton({
   disabled?: boolean;
 }) {
   return (
-    <Button
-      type="secondary"
-      iconLeft="plus"
-      label={label}
-      onClick={onClick}
-      disabled={disabled}
-    />
+    <Button variant="outline" size="sm" onClick={onClick} disabled={disabled}>
+      <Plus />
+      {label}
+    </Button>
   );
 }

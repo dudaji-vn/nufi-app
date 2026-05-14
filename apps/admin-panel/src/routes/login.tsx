@@ -1,6 +1,5 @@
-import { Container } from '@clickhouse/click-ui';
 import { createFileRoute } from '@tanstack/react-router';
-import ThemeSelector from '@/components/ThemeSelector';
+import { ThemeSelector } from '@/components/ThemeSelector';
 import { AuthCard } from '@/components/AuthCard';
 import { checkOpenIdFn } from '@/server';
 
@@ -23,16 +22,11 @@ function LoginPage() {
   const { ssoAvailable, ssoOnly } = Route.useLoaderData();
 
   return (
-    <Container
-      orientation="vertical"
-      alignItems="center"
-      justifyContent="center"
-      style={{ minHeight: '100vh', padding: '1rem', gap: '1rem' }}
-    >
+    <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background p-4 text-foreground">
       <AuthCard redirectTo={redirect} autoRedirectSso={ssoOnly} ssoAvailable={ssoAvailable} />
-      <div className="sm:absolute sm:bottom-0 sm:left-0 sm:m-4">
+      <div className="absolute bottom-0 left-0 m-4">
         <ThemeSelector returnThemeOnly />
       </div>
-    </Container>
+    </div>
   );
 }

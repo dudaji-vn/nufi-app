@@ -1,4 +1,6 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 @import 'tailwindcss';
+@import 'tw-animate-css';
 
 @theme {
   --z-sticky: 10; /* sticky table/section headers (in-tree) */
@@ -19,44 +21,127 @@
   }
 }
 
+/* ──────────────────────────────────────────────────────────────────
+ * NUFI design tokens — Cyber-Grid Deep Void palette
+ * (mirrors super-llm/dashboard globals.css)
+ * Two parallel surfaces:
+ *   1. HSL triplet vars (--background, --primary, etc.) — for shadcn utils
+ *   2. --cui-color-* literal values — for legacy click-ui surfaces and
+ *      Tailwind v4 arbitrary syntax bg-(--cui-color-*)
+ * ────────────────────────────────────────────────────────────────── */
+
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-sidebar: hsl(var(--sidebar-background));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-sidebar-primary: hsl(var(--sidebar-primary));
+  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
+  --color-sidebar-accent: hsl(var(--sidebar-accent));
+  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
+  --color-sidebar-border: hsl(var(--sidebar-border));
+  --color-sidebar-ring: hsl(var(--sidebar-ring));
+  --color-brand-primary: var(--brand-primary);
+  --color-brand-primary-hover: var(--brand-primary-hover);
+  --color-brand-secondary: var(--brand-secondary);
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Helvetica Neue', sans-serif;
+}
+
 @layer theme {
   :root {
-    --cui-color-stroke-default: #e3e5e8;
-    --cui-color-stroke-muted: #e3e5e8;
-    --cui-color-stroke-intense: #c9ccd1;
+    /* NUFI brand */
+    --brand-primary: #7b82f0;
+    --brand-primary-hover: #6970e0;
+    --brand-secondary: #e8967f;
+    --radius: 0.75rem;
+
+    /* shadcn HSL tokens (light) */
+    --background: 0 0% 100%;
+    --foreground: 224 71.4% 4.1%;
+    --card: 0 0% 100%;
+    --card-foreground: 224 71.4% 4.1%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 71.4% 4.1%;
+    --primary: 236 80% 65%;
+    --primary-foreground: 210 20% 98%;
+    --secondary: 220 14.3% 95.9%;
+    --secondary-foreground: 220.9 39.3% 11%;
+    --muted: 220 14.3% 95.9%;
+    --muted-foreground: 220 8.9% 46.1%;
+    --accent: 220 14.3% 95.9%;
+    --accent-foreground: 220.9 39.3% 11%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 20% 98%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 236 80% 65%;
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 236 80% 65%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 236 80% 65%;
+
+    /* Legacy --cui-color-* (light) — literal NUFI-toned values */
+    --cui-color-stroke-default: #e2e8f0;
+    --cui-color-stroke-muted: #e2e8f0;
+    --cui-color-stroke-intense: #cbd5e1;
     --cui-color-background-default: #ffffff;
-    --cui-color-background-muted: #f5f6f7;
+    --cui-color-background-muted: #f1f5f9;
     --cui-color-background-panel: #ffffff;
-    --cui-color-background-hover: #f5f6f7;
-    --cui-color-background-active: #e3e5e8;
-    --cui-color-background-secondary: #f0f1f3;
-    --cui-color-text-default: #161517;
-    --cui-color-text-muted: #6c6f77;
-    --cui-color-text-disabled: #9a9ea7;
-    --cui-color-text-primary: #437eef;
-    --cui-color-text-link: #437eef;
-    --cui-color-text-danger: #e20a0a;
-    --cui-color-title-default: #161517;
-    --cui-color-title-muted: #6c6f77;
-    --cui-color-accent: #437eef;
-    --cui-color-outline: #437eef;
-    --cui-color-shadow: rgb(0% 0% 0% / 0.1);
+    --cui-color-background-hover: #f1f5f9;
+    --cui-color-background-active: #e2e8f0;
+    --cui-color-background-secondary: #f1f5f9;
+    --cui-color-text-default: #0f172a;
+    --cui-color-text-muted: #64748b;
+    --cui-color-text-disabled: #94a3b8;
+    --cui-color-text-primary: #7b82f0;
+    --cui-color-text-link: #7b82f0;
+    --cui-color-text-danger: #dc2626;
+    --cui-color-title-default: #0f172a;
+    --cui-color-title-muted: #64748b;
+    --cui-color-accent: #7b82f0;
+    --cui-color-outline: #7b82f0;
+    --cui-color-shadow: rgb(0 0 0 / 0.1);
     --cui-color-accent-success: #16a34a;
     --cui-color-accent-warning: #d97706;
-    --cui-color-accent-info: #2563eb;
+    --cui-color-accent-info: #7b82f0;
     --cui-color-accent-danger: #dc2626;
-    --cui-color-accent-user: #7c3aed;
-    --cui-radii-sm: 0.375rem;
-    --cui-color-feedback-info-bg: #e7effd;
-    --cui-color-feedback-info-fg: #437eef;
+    --cui-color-accent-user: #e8967f;
+    --cui-radii-sm: 0.5rem;
+    --cui-color-feedback-info-bg: rgba(123, 130, 240, 0.12);
+    --cui-color-feedback-info-fg: #7b82f0;
     --cui-color-feedback-success-bg: #e5ffe8;
     --cui-color-feedback-success-fg: #008a0b;
     --cui-color-feedback-warning-bg: #ffe2d1;
     --cui-color-feedback-warning-fg: #a33c00;
     --cui-color-feedback-danger-bg: #ffdddd;
     --cui-color-feedback-danger-fg: #c10000;
-    --cui-color-feedback-user-bg: #f3e8ff;
-    --cui-color-feedback-user-fg: #6b21a8;
+    --cui-color-feedback-user-bg: rgba(232, 150, 127, 0.18);
+    --cui-color-feedback-user-fg: #b85a3f;
     --cui-color-text-on-accent: #ffffff;
     --avatar-color-1: #1d4ed8;
     --avatar-color-2: #b45309;
@@ -66,94 +151,152 @@
   }
 
   .dark {
-    --cui-color-stroke-default: #323232;
-    --cui-color-stroke-muted: #323232;
-    --cui-color-stroke-intense: #414141;
-    --cui-color-background-default: #1f1f1c;
-    --cui-color-background-muted: #282828;
-    --cui-color-background-panel: #1f1f1c;
-    --cui-color-background-hover: #282828;
-    --cui-color-background-active: #323232;
-    --cui-color-background-secondary: #282828;
-    --cui-color-text-default: #ffffff;
-    --cui-color-text-muted: #b3b6bd;
-    --cui-color-text-disabled: #808080;
-    --cui-color-text-primary: #faff69;
-    --cui-color-text-link: #faff69;
-    --cui-color-text-danger: #ffbaba;
-    --cui-color-title-default: rgb(97.5% 97.5% 97.5%);
-    --cui-color-title-muted: #b3b6bd;
-    --cui-color-accent: #faff69;
-    --cui-color-outline: #faff69;
-    --cui-color-shadow: rgb(8.2353% 8.2353% 8.2353% / 0.6);
+    /* shadcn HSL tokens (dark — Cyber-Grid Deep Void) */
+    --background: 240 22% 5%;
+    --foreground: 240 20% 92%;
+    --card: 230 22% 10%;
+    --card-foreground: 240 20% 92%;
+    --popover: 230 22% 9%;
+    --popover-foreground: 240 20% 92%;
+    --primary: 236 80% 75%;
+    --primary-foreground: 236 42% 12%;
+    --secondary: 10 75% 70%;
+    --secondary-foreground: 10 30% 18%;
+    --muted: 235 18% 13%;
+    --muted-foreground: 240 8% 52%;
+    --accent: 235 16% 17%;
+    --accent-foreground: 240 20% 92%;
+    --destructive: 3 85% 68%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 235 16% 16%;
+    --input: 230 22% 10%;
+    --ring: 236 80% 75%;
+    --sidebar-background: 230 28% 9%;
+    --sidebar-foreground: 230 15% 68%;
+    --sidebar-primary: 236 80% 75%;
+    --sidebar-primary-foreground: 230 28% 9%;
+    --sidebar-accent: 230 22% 13%;
+    --sidebar-accent-foreground: 240 20% 92%;
+    --sidebar-border: 230 20% 13%;
+    --sidebar-ring: 236 80% 75%;
+
+    /* Legacy --cui-color-* (dark — literal NUFI navy values) */
+    --cui-color-stroke-default: #181d28;
+    --cui-color-stroke-muted: #181d28;
+    --cui-color-stroke-intense: #2a2f3e;
+    --cui-color-background-default: #080810;
+    --cui-color-background-muted: #151823;
+    --cui-color-background-panel: #111620;
+    --cui-color-background-hover: #1a1e2a;
+    --cui-color-background-active: #1e2230;
+    --cui-color-background-secondary: #151823;
+    --cui-color-text-default: #e8e8f0;
+    --cui-color-text-muted: #7d7d8a;
+    --cui-color-text-disabled: #525366;
+    --cui-color-text-primary: #7b82f0;
+    --cui-color-text-link: #7b82f0;
+    --cui-color-text-danger: #f87171;
+    --cui-color-title-default: #e8e8f0;
+    --cui-color-title-muted: #a2a8c0;
+    --cui-color-accent: #7b82f0;
+    --cui-color-outline: #7b82f0;
+    --cui-color-shadow: rgb(0 0 0 / 0.5);
     --cui-color-accent-success: #4ade80;
     --cui-color-accent-warning: #fbbf24;
-    --cui-color-accent-info: #60a5fa;
+    --cui-color-accent-info: #7b82f0;
     --cui-color-accent-danger: #f87171;
-    --cui-color-accent-user: #a78bfa;
-    --cui-radii-sm: 0.375rem;
-    --cui-color-feedback-info-bg: #0d3e9b;
-    --cui-color-feedback-info-fg: #d0dffb;
-    --cui-color-feedback-success-bg: #004206;
-    --cui-color-feedback-success-fg: #ccffd0;
-    --cui-color-feedback-warning-bg: #7a2d00;
-    --cui-color-feedback-warning-fg: #ffb88f;
-    --cui-color-feedback-danger-bg: #610000;
-    --cui-color-feedback-danger-fg: #ffbaba;
-    --cui-color-feedback-user-bg: rgb(107 33 168 / 0.3);
-    --cui-color-feedback-user-fg: #d8b4fe;
+    --cui-color-accent-user: #e8967f;
+    --cui-radii-sm: 0.5rem;
+    --cui-color-feedback-info-bg: rgba(123, 130, 240, 0.16);
+    --cui-color-feedback-info-fg: #a4a9f5;
+    --cui-color-feedback-success-bg: rgba(74, 222, 128, 0.14);
+    --cui-color-feedback-success-fg: #6ee7b7;
+    --cui-color-feedback-warning-bg: rgba(251, 191, 36, 0.14);
+    --cui-color-feedback-warning-fg: #fcd34d;
+    --cui-color-feedback-danger-bg: rgba(248, 113, 113, 0.14);
+    --cui-color-feedback-danger-fg: #fca5a5;
+    --cui-color-feedback-user-bg: rgba(232, 150, 127, 0.16);
+    --cui-color-feedback-user-fg: #f0b29f;
     --cui-color-text-on-accent: #ffffff;
-    --avatar-color-1: #1d4ed8;
-    --avatar-color-2: #b45309;
-    --avatar-color-3: #15803d;
-    --avatar-color-4: #be123c;
-    --avatar-color-5: #6d28d9;
+    --avatar-color-1: #6366f1;
+    --avatar-color-2: #f59e0b;
+    --avatar-color-3: #22c55e;
+    --avatar-color-4: #ec4899;
+    --avatar-color-5: #a855f7;
   }
 
   @media (prefers-color-scheme: dark) {
     :root:not(.light) {
-      --cui-color-stroke-default: #323232;
-      --cui-color-stroke-muted: #323232;
-      --cui-color-stroke-intense: #414141;
-      --cui-color-background-default: #1f1f1c;
-      --cui-color-background-muted: #282828;
-      --cui-color-background-panel: #1f1f1c;
-      --cui-color-background-hover: #282828;
-      --cui-color-background-active: #323232;
-      --cui-color-background-secondary: #282828;
-      --cui-color-text-default: #ffffff;
-      --cui-color-text-muted: #b3b6bd;
-      --cui-color-text-disabled: #808080;
-      --cui-color-text-primary: #faff69;
-      --cui-color-text-link: #faff69;
-      --cui-color-text-danger: #ffbaba;
-      --cui-color-title-default: rgb(97.5% 97.5% 97.5%);
-      --cui-color-title-muted: #b3b6bd;
-      --cui-color-accent: #faff69;
-      --cui-color-outline: #faff69;
-      --cui-color-shadow: rgb(8.2353% 8.2353% 8.2353% / 0.6);
+      --background: 240 22% 5%;
+      --foreground: 240 20% 92%;
+      --card: 230 22% 10%;
+      --card-foreground: 240 20% 92%;
+      --popover: 230 22% 9%;
+      --popover-foreground: 240 20% 92%;
+      --primary: 236 80% 75%;
+      --primary-foreground: 236 42% 12%;
+      --secondary: 10 75% 70%;
+      --secondary-foreground: 10 30% 18%;
+      --muted: 235 18% 13%;
+      --muted-foreground: 240 8% 52%;
+      --accent: 235 16% 17%;
+      --accent-foreground: 240 20% 92%;
+      --destructive: 3 85% 68%;
+      --destructive-foreground: 0 0% 100%;
+      --border: 235 16% 16%;
+      --input: 230 22% 10%;
+      --ring: 236 80% 75%;
+      --sidebar-background: 230 28% 9%;
+      --sidebar-foreground: 230 15% 68%;
+      --sidebar-primary: 236 80% 75%;
+      --sidebar-primary-foreground: 230 28% 9%;
+      --sidebar-accent: 230 22% 13%;
+      --sidebar-accent-foreground: 240 20% 92%;
+      --sidebar-border: 230 20% 13%;
+      --sidebar-ring: 236 80% 75%;
+
+      --cui-color-stroke-default: #181d28;
+      --cui-color-stroke-muted: #181d28;
+      --cui-color-stroke-intense: #2a2f3e;
+      --cui-color-background-default: #080810;
+      --cui-color-background-muted: #151823;
+      --cui-color-background-panel: #111620;
+      --cui-color-background-hover: #1a1e2a;
+      --cui-color-background-active: #1e2230;
+      --cui-color-background-secondary: #151823;
+      --cui-color-text-default: #e8e8f0;
+      --cui-color-text-muted: #7d7d8a;
+      --cui-color-text-disabled: #525366;
+      --cui-color-text-primary: #7b82f0;
+      --cui-color-text-link: #7b82f0;
+      --cui-color-text-danger: #f87171;
+      --cui-color-title-default: #e8e8f0;
+      --cui-color-title-muted: #a2a8c0;
+      --cui-color-accent: #7b82f0;
+      --cui-color-outline: #7b82f0;
+      --cui-color-shadow: rgb(0 0 0 / 0.5);
       --cui-color-accent-success: #4ade80;
       --cui-color-accent-warning: #fbbf24;
-      --cui-color-accent-info: #60a5fa;
+      --cui-color-accent-info: #7b82f0;
       --cui-color-accent-danger: #f87171;
-      --cui-color-accent-user: #a78bfa;
-      --cui-radii-sm: 0.375rem;
-      --cui-color-feedback-info-bg: #0d3e9b;
-      --cui-color-feedback-info-fg: #d0dffb;
-      --cui-color-feedback-success-bg: #004206;
-      --cui-color-feedback-success-fg: #ccffd0;
-      --cui-color-feedback-warning-bg: #7a2d00;
-      --cui-color-feedback-warning-fg: #ffb88f;
-      --cui-color-feedback-danger-bg: #610000;
-      --cui-color-feedback-danger-fg: #ffbaba;
-      --cui-color-feedback-user-bg: rgb(107 33 168 / 0.3);
-      --cui-color-feedback-user-fg: #d8b4fe;
+      --cui-color-accent-user: #e8967f;
+      --cui-radii-sm: 0.5rem;
+      --cui-color-feedback-info-bg: rgba(123, 130, 240, 0.16);
+      --cui-color-feedback-info-fg: #a4a9f5;
+      --cui-color-feedback-success-bg: rgba(74, 222, 128, 0.14);
+      --cui-color-feedback-success-fg: #6ee7b7;
+      --cui-color-feedback-warning-bg: rgba(251, 191, 36, 0.14);
+      --cui-color-feedback-warning-fg: #fcd34d;
+      --cui-color-feedback-danger-bg: rgba(248, 113, 113, 0.14);
+      --cui-color-feedback-danger-fg: #fca5a5;
+      --cui-color-feedback-user-bg: rgba(232, 150, 127, 0.16);
+      --cui-color-feedback-user-fg: #f0b29f;
       --cui-color-text-on-accent: #ffffff;
-      --avatar-color-1: #1d4ed8;
-      --avatar-color-2: #b45309;
-      --avatar-color-3: #15803d;
-      --avatar-color-4: #be123c;
-      --avatar-color-5: #6d28d9;
+      --avatar-color-1: #6366f1;
+      --avatar-color-2: #f59e0b;
+      --avatar-color-3: #22c55e;
+      --avatar-color-4: #ec4899;
+      --avatar-color-5: #a855f7;
     }
   }
 }
@@ -186,21 +329,7 @@ html {
 }
 
 body {
-  @apply m-0;
-  font-family:
-    'Inter',
-    'SF Pro Display',
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    'Roboto',
-    'Oxygen',
-    'Ubuntu',
-    'Cantarell',
-    'Fira Sans',
-    'Droid Sans',
-    'Helvetica Neue',
-    sans-serif;
+  @apply m-0 font-sans;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -215,10 +344,42 @@ code {
   margin: 0;
 }
 
+/* click-ui Tabs underline (styled-components theme leak): force NUFI primary */
+[role='tablist'] [role='tab'][aria-selected='true'] {
+  border-bottom-color: var(--cui-color-accent) !important;
+  color: var(--cui-color-text-default) !important;
+}
+
+[role='tablist'] [role='tab']:not([aria-selected='true']) {
+  border-bottom-color: transparent !important;
+}
+
+[role='tablist'] [role='tab']:not([aria-selected='true']):hover {
+  color: var(--cui-color-text-default) !important;
+}
+
+/* click-ui Switch (styled-components): force NUFI primary when checked */
+[role='switch'][aria-checked='true'] {
+  background-color: var(--cui-color-accent) !important;
+  border-color: var(--cui-color-accent) !important;
+}
+
+/* click-ui Button (styled-components): ensure primary buttons use NUFI primary */
+button[data-cui-button-type='primary'] {
+  background-color: var(--cui-color-accent) !important;
+  color: var(--cui-color-text-on-accent) !important;
+  border-color: var(--cui-color-accent) !important;
+}
+
+button[data-cui-button-type='primary']:hover {
+  filter: brightness(1.1);
+}
+
 .cmdk-overlay {
   position: fixed;
   inset: 0;
-  background: rgb(0 0 0 / 0.5);
+  background: rgb(0 0 0 / 0.55);
+  backdrop-filter: blur(4px);
   z-index: var(--z-command-overlay);
   animation: cmdk-fade-in 150ms ease;
 }
@@ -229,16 +390,17 @@ code {
   left: 50%;
   transform: translateX(-50%);
   width: min(640px, calc(100vw - 2rem));
-  background: var(--cui-color-background-default);
+  background: var(--cui-color-background-panel);
   border: 1px solid var(--cui-color-stroke-default);
-  border-radius: 12px;
+  border-radius: var(--radius);
   box-shadow: 0 16px 70px var(--cui-color-shadow);
   z-index: var(--z-command);
   overflow: hidden;
   animation: cmdk-scale-in 150ms ease;
 }
 
-.cmdk-group [cmdk-group-heading] {
+.cmdk-group [cmdk-group-heading],
+.cmdk-group-heading {
   padding: 0.5rem 0.75rem 0.25rem;
   font-size: 0.7rem;
   font-weight: 600;
@@ -288,6 +450,28 @@ code {
 
 .cmdk-highlight {
   animation: cmdk-flash 3s ease forwards;
+}
+
+.auth-card {
+  box-sizing: border-box;
+}
+
+@media (max-width: 400px) {
+  .auth-card {
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+  }
+}
+
+.auth-card :has(> input:focus-visible),
+.auth-card :has(> textarea:focus-visible) {
+  border-color: var(--cui-color-outline) !important;
+}
+
+.auth-card input:focus-visible,
+.auth-card textarea:focus-visible,
+.password-field-a11y input:focus-visible {
+  outline: none !important;
 }
 
 @keyframes slideUp {
@@ -340,28 +524,6 @@ textarea:focus-visible {
   outline: none !important;
 }
 
-.auth-card {
-  box-sizing: border-box;
-}
-
-@media (max-width: 400px) {
-  .auth-card {
-    padding-left: 0.75rem !important;
-    padding-right: 0.75rem !important;
-  }
-}
-
-.auth-card :has(> input:focus-visible),
-.auth-card :has(> textarea:focus-visible) {
-  border-color: var(--cui-color-outline) !important;
-}
-
-.auth-card input:focus-visible,
-.auth-card textarea:focus-visible,
-.password-field-a11y input:focus-visible {
-  outline: none !important;
-}
-
 .password-field-a11y button {
   padding-inline: 4px;
 }
@@ -406,15 +568,15 @@ textarea:focus-visible {
 
 .info-banner {
   background: var(--cui-color-accent-info);
-  color: var(--cui-color-background-default);
+  color: var(--cui-color-text-on-accent);
 }
 
 .info-banner-dismiss {
-  color: var(--cui-color-background-default);
+  color: var(--cui-color-text-on-accent);
 }
 
 .info-banner-dismiss:hover {
-  color: var(--cui-color-background-panel);
+  opacity: 0.85;
 }
 
 .scope-preview-banner {
@@ -455,7 +617,7 @@ textarea:focus-visible {
 
 .boolean-chip-true {
   background-color: var(--cui-color-accent);
-  color: var(--cui-color-background-default);
+  color: var(--cui-color-text-on-accent);
 }
 
 .boolean-chip-false {
@@ -864,17 +1026,17 @@ input[type='number'].config-input::-webkit-outer-spin-button {
 }
 
 body > div:has(+ .modal-frost) {
-  background: rgba(0, 0, 0, 0.35) !important;
+  background: rgba(0, 0, 0, 0.45) !important;
   backdrop-filter: blur(4px) !important;
 }
 
 .dark body > div:has(+ .modal-frost) {
-  background: rgba(0, 0, 0, 0.55) !important;
+  background: rgba(0, 0, 0, 0.65) !important;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not(.light) body > div:has(+ .modal-frost) {
-    background: rgba(0, 0, 0, 0.55) !important;
+    background: rgba(0, 0, 0, 0.65) !important;
   }
 }
 

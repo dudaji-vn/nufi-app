@@ -18,10 +18,12 @@ import { useLocalize } from '@/hooks';
 
 const themeScript = `(function(){
   try {
-    var t = localStorage.getItem('theme') || 'system';
+    var t = localStorage.getItem('theme') || 'dark';
     if (t === 'dark') document.documentElement.classList.add('dark');
     else if (t === 'light') document.documentElement.classList.add('light');
-  } catch(e) {}
+  } catch(e) {
+    document.documentElement.classList.add('dark');
+  }
 })();`;
 
 export const Route = createRootRoute({
@@ -79,8 +81,8 @@ function ThemedApp() {
 function RootPending() {
   const localize = useLocalize();
   return (
-    <div className="flex min-h-screen items-center justify-center bg-(--cui-color-background-default)">
-      <div className="animate-pulse text-lg text-(--cui-color-text-muted)">
+    <div className="flex min-h-screen items-center justify-center bg-background">
+      <div className="animate-pulse text-lg text-muted-foreground">
         {localize('com_ui_loading')}
       </div>
     </div>

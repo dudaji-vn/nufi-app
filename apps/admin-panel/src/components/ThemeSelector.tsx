@@ -1,13 +1,13 @@
-import { Icon } from '@clickhouse/click-ui';
+import { Monitor, Moon, Sun } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import type * as t from '@/types';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLocalize } from '@/hooks';
 
-const themeIcons: Record<t.ThemeOption, 'display' | 'light-bulb-on' | 'moon'> = {
-  system: 'display',
-  light: 'light-bulb-on',
-  dark: 'moon',
+const themeIcons: Record<t.ThemeOption, typeof Sun> = {
+  system: Monitor,
+  light: Sun,
+  dark: Moon,
 };
 
 const themeLabels: Record<t.ThemeOption, string> = {
@@ -58,11 +58,13 @@ function ThemeButton({ theme, onChange }: { theme: string; onChange: (value: str
   }, [nextTheme, handleChange]);
 
   const currentLabel = localize(themeLabels[theme as t.ThemeOption] ?? themeLabels.system);
+  const Icon = themeIcons[theme as t.ThemeOption] ?? Monitor;
 
   return (
     <>
       <button
-        className="flex items-center gap-2 rounded-lg p-3 hover:bg-(--cui-color-background-hover)"
+        type="button"
+        className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         aria-label={`${localize('com_ui_toggle_theme')}, ${currentLabel}`}
         aria-keyshortcuts="Ctrl+Shift+T"
         onClick={(e) => {
@@ -75,9 +77,8 @@ function ThemeButton({ theme, onChange }: { theme: string; onChange: (value: str
             handleChange(nextTheme);
           }
         }}
-        style={{ color: 'var(--cui-color-text-default)' }}
       >
-        <Icon name={themeIcons[theme as t.ThemeOption] ?? 'display'} size="md" aria-hidden="true" />
+        <Icon className="h-5 w-5" aria-hidden="true" />
       </button>
       <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
         {announcement}
@@ -86,7 +87,7 @@ function ThemeButton({ theme, onChange }: { theme: string; onChange: (value: str
   );
 }
 
-export default function ThemeSelector({ returnThemeOnly }: { returnThemeOnly?: boolean }) {
+export function ThemeSelector({ returnThemeOnly }: { returnThemeOnly?: boolean }) {
   const { theme, setTheme } = useTheme();
 
   const changeTheme = useCallback(

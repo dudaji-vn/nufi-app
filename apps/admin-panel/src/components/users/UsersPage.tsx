@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Icon } from '@clickhouse/click-ui';
+import { Lock, Plus, Trash2, User as UserIcon, Users as UsersGroupIcon } from 'lucide-react';
 import { PrincipalType, SystemRoles } from 'librechat-data-provider';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { TUser } from 'librechat-data-provider';
@@ -148,9 +148,7 @@ export function UsersPage() {
             }
             className="flex shrink-0 items-center gap-1.5 rounded-lg border border-(--cui-color-stroke-default) bg-transparent px-3 py-1.5 text-sm text-(--cui-color-text-default) transition-colors hover:bg-(--cui-color-background-hover) disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <span aria-hidden="true">
-              <Icon name="plus" size="xs" />
-            </span>
+            <Plus aria-hidden="true" className="h-3.5 w-3.5" />
             {localize('com_users_add')}
           </button>
         </div>
@@ -244,12 +242,12 @@ function UserRow({
   const localize = useLocalize();
 
   const kebabItems: t.KebabMenuItem[] = [
-    { label: localize('com_users_view_details'), icon: 'user', onClick: onViewDetails },
+    { label: localize('com_users_view_details'), icon: UserIcon, onClick: onViewDetails },
     ...(canManage
       ? [
           {
             label: localize('com_ui_delete'),
-            icon: 'trash',
+            icon: Trash2,
             danger: true,
             onClick: onDelete,
           } as t.KebabMenuItem,
@@ -282,9 +280,7 @@ function UserRow({
                   key={r.id}
                   className="badge-role inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
                 >
-                  <span aria-hidden="true">
-                    <Icon name="lock" size="xs" />
-                  </span>
+                  <Lock aria-hidden="true" className="h-3 w-3" />
                   {r.name}
                 </span>
               ))}
@@ -293,9 +289,7 @@ function UserRow({
                   key={g.id}
                   className="badge-group inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
                 >
-                  <span aria-hidden="true">
-                    <Icon name="users" size="xs" />
-                  </span>
+                  <UsersGroupIcon aria-hidden="true" className="h-3 w-3" />
                   {g.name}
                 </span>
               ))}
@@ -305,7 +299,7 @@ function UserRow({
                   title={localize('com_users_user_profile', { name: user.name })}
                   aria-label={localize('com_users_user_profile', { name: user.name })}
                 >
-                  <Icon name="user" size="xs" />
+                  <UserIcon aria-hidden="true" className="h-3 w-3" />
                 </span>
               )}
             </div>

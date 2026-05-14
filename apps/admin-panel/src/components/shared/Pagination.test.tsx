@@ -2,19 +2,6 @@ import { render } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { getPageNumbers, Pagination } from './Pagination';
 
-vi.mock('@clickhouse/click-ui', () => ({
-  Pagination: ({ currentPage, totalPages, onChange }: {
-    currentPage: number;
-    totalPages: number;
-    onChange: (page: number) => void;
-  }) => (
-    <nav data-testid="cui-pagination" data-current={currentPage} data-total={totalPages}>
-      <button onClick={() => onChange(currentPage - 1)}>prev</button>
-      <button onClick={() => onChange(currentPage + 1)}>next</button>
-    </nav>
-  ),
-}));
-
 const TRANSLATIONS: Record<string, string> = {
   com_a11y_pagination: 'Pagination',
   com_a11y_previous_page: 'Previous page',
@@ -77,12 +64,36 @@ describe('Pagination', () => {
     expect(container.innerHTML).toBe('');
   });
 
-  it('renders CUI Pagination when totalPages > 1', () => {
-    const { getByTestId } = render(
+  it('renders pagination nav with current page marked', () => {
+    const { getByRole, getByLabelText } = render(
       <Pagination currentPage={2} totalPages={5} onPageChange={() => {}} />,
     );
-    const nav = getByTestId('cui-pagination');
-    expect(nav).toHaveAttribute('data-current', '2');
-    expect(nav).toHaveAttribute('data-total', '5');
+    const nav = getByRole('navigation', { name: 'Pagination' });
+    expect(nav).toBeInTheDocument();
+    const currentBtn = getByLabelText('Page 2');
+    expect(currentBtn).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('calls onPageChange with next page when next button clicked', () => {
+    const onPageChange = vi.fn();
+    const { getByLabelText } = render(
+      <Pagination currentPage={2} totalPages={5} onPageChange={onPageChange} />,
+    );
+    getByLabelText('Next page').click();
+    expect(onPageChange).toHaveBeenCalledWith(3);
+  });
+
+  it('disables previous button on first page', () => {
+    const { getByLabelText } = render(
+      <Pagination currentPage={1} totalPages={5} onPageChange={() => {}} />,
+    );
+    expect(getByLabelText('Previous page')).toBeDisabled();
+  });
+
+  it('disables next button on last page', () => {
+    const { getByLabelText } = render(
+      <Pagination currentPage={5} totalPages={5} onPageChange={() => {}} />,
+    );
+    expect(getByLabelText('Next page')).toBeDisabled();
   });
 });

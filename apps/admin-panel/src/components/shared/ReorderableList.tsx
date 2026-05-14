@@ -95,7 +95,7 @@ export function ReorderableList<T extends { id: string }>({
       </div>
 
       {!isSearching && !reorderDisabled && filtered.length > 1 && (
-        <p className="text-xs text-(--cui-color-text-muted)">{reorderHint}</p>
+        <p className="text-xs text-muted-foreground">{reorderHint}</p>
       )}
 
       {filtered.length === 0 ? (
@@ -118,10 +118,9 @@ export function ReorderableList<T extends { id: string }>({
               key={item.id}
               data-item-id={item.id}
               className={cn(
-                'mb-2 flex items-center gap-3 rounded-lg border border-(--cui-color-stroke-default) bg-(--cui-color-background-panel) px-3 py-3 outline-none focus-visible:ring-2 focus-visible:ring-(--cui-color-outline) focus-visible:ring-inset',
+                'mb-2 flex items-center gap-3 rounded-md border border-border bg-card px-3 py-3 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
                 isDragged && 'z-10',
-                isSelected &&
-                  'bg-(--cui-color-background-active) ring-2 ring-(--cui-color-outline) ring-inset',
+                isSelected && 'bg-accent ring-2 ring-ring ring-inset',
               )}
             >
               <button
@@ -129,7 +128,7 @@ export function ReorderableList<T extends { id: string }>({
                 tabIndex={-1}
                 aria-hidden="true"
                 className={cn(
-                  '-my-3 -mr-1.5 -ml-3 flex shrink-0 cursor-grab touch-none items-center self-stretch rounded-l-lg pr-3 pl-3 text-(--cui-color-text-disabled)',
+                  '-my-3 -mr-1.5 -ml-3 flex shrink-0 cursor-grab touch-none items-center self-stretch rounded-l-md pr-3 pl-3 text-muted-foreground/60',
                   isDragged && 'cursor-grabbing',
                   (isSearching || reorderDisabled) && 'invisible',
                 )}
