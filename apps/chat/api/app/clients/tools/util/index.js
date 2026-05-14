@@ -1,9 +1,6 @@
-const { validateTools, loadTools, loadAuthValues } = require('./handleTools');
-const handleOpenAIErrors = require('./handleOpenAIErrors');
+const { validateTools, loadTools } = require('./handleTools');
 
 module.exports = {
-  handleOpenAIErrors,
-  loadAuthValues,
   validateTools,
   loadTools,
 };

@@ -1,31 +1,37 @@
-import React from 'react';
+import { forwardRef } from 'react';
+import { useRecoilValue } from 'recoil';
+import { ChevronDown } from 'lucide-react';
+import { useLocalize } from '~/hooks';
+import { cn } from '~/utils';
+import store from '~/store';
 
 type Props = {
   scrollHandler: React.MouseEventHandler<HTMLButtonElement>;
 };
 
-export default function ScrollToBottom({ scrollHandler }: Props) {
+const ScrollToBottom = forwardRef<HTMLDivElement, Props>(({ scrollHandler }, ref) => {
+  const localize = useLocalize();
+  const maximizeChatSpace = useRecoilValue(store.maximizeChatSpace);
+
   return (
-    <button
-      onClick={scrollHandler}
-      className="absolute bottom-5 right-1/2 cursor-pointer rounded-full border border-gray-200 bg-white bg-clip-padding text-gray-600 dark:border-white/10 dark:bg-gray-850/90 dark:text-gray-200"
-      aria-label="Scroll to bottom"
+    <div
+      ref={ref}
+      className={cn(
+        'pointer-events-none absolute bottom-5 left-0 right-0 mx-auto flex justify-end',
+        maximizeChatSpace ? 'max-w-full' : 'md:max-w-3xl xl:max-w-4xl',
+      )}
     >
-      <svg
-        width="24"
-        height="24"
-        viewBox="0 0 24 24"
-        fill="none"
-        className="m-1 text-black dark:text-white"
+      <button
+        onClick={scrollHandler}
+        className="premium-scroll-button pointer-events-auto cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-xheavy"
+        aria-label={localize('com_ui_scroll_to_bottom')}
       >
-        <path
-          d="M17 13L12 18L7 13M12 6L12 17"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        ></path>
-      </svg>
-    </button>
+        <ChevronDown className="h-4 w-4 text-text-secondary" />
+      </button>
+    </div>
   );
-}
+});
+
+ScrollToBottom.displayName = 'ScrollToBottom';
+
+export default ScrollToBottom;

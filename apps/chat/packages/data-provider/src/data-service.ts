@@ -2,21 +2,17 @@ import type { AxiosResponse } from 'axios';
 import type * as t from './types';
 import * as endpoints from './api-endpoints';
 import * as a from './types/assistants';
+import * as ag from './types/agents';
 import * as m from './types/mutations';
 import * as q from './types/queries';
 import * as f from './types/files';
+import * as sk from './types/skills';
+import * as mcp from './types/mcpServers';
 import * as config from './config';
 import request from './request';
 import * as s from './schemas';
 import * as r from './roles';
-
-export function abortRequestWithMessage(
-  endpoint: string,
-  abortKey: string,
-  message: string,
-): Promise<void> {
-  return request.post(endpoints.abortRequest(endpoint), { arg: { abortKey, message } });
-}
+import * as permissions from './accessPermissions';
 
 export function revokeUserKey(name: string): Promise<unknown> {
   return request.delete(endpoints.revokeUserKey(name));
@@ -26,61 +22,73 @@ export function revokeAllUserKeys(): Promise<unknown> {
   return request.delete(endpoints.revokeAllUserKeys());
 }
 
-export function deleteUser(): Promise<s.TPreset> {
-  return request.delete(endpoints.deleteUser());
+export function deleteUser(payload?: t.TDeleteUserRequest): Promise<unknown> {
+  return request.deleteWithOptions(endpoints.deleteUser(), { data: payload });
 }
 
-export function getMessagesByConvoId(conversationId: string): Promise<s.TMessage[]> {
-  if (conversationId === 'new') {
-    return Promise.resolve([]);
-  }
-  return request.get(endpoints.messages(conversationId));
+export function getFavorites(): Promise<q.TUserFavorite[]> {
+  return request.get(`${endpoints.apiBaseUrl()}/api/user/settings/favorites`);
+}
+
+export function updateFavorites(favorites: q.TUserFavorite[]): Promise<q.TUserFavorite[]> {
+  return request.post(`${endpoints.apiBaseUrl()}/api/user/settings/favorites`, { favorites });
+}
+
+/**
+ * Skill favorites (star-a-skill). The backend route is phase 2 — see the
+ * original UI PR for the client surface. Until then, these resolve with
+ * an empty list so the UI hooks compile and the Star button is a no-op.
+ */
+export function getSkillFavorites(): Promise<string[]> {
+  return Promise.resolve([] as string[]);
+}
+
+export function updateSkillFavorites(skillFavorites: string[]): Promise<string[]> {
+  return Promise.resolve(skillFavorites);
+}
+
+/** Per-user skill active/inactive overrides. */
+export function getSkillStates(): Promise<sk.TSkillStatesResponse> {
+  return request.get(endpoints.skillStates());
+}
+
+export function updateSkillStates(
+  skillStates: sk.TSkillStatesResponse,
+): Promise<sk.TSkillStatesResponse> {
+  return request.post(endpoints.skillStates(), { skillStates });
 }
 
 export function getSharedMessages(shareId: string): Promise<t.TSharedMessagesResponse> {
   return request.get(endpoints.shareMessages(shareId));
 }
 
-export const listSharedLinks = (
-  params?: q.SharedLinkListParams,
+export const listSharedLinks = async (
+  params: q.SharedLinksListParams,
 ): Promise<q.SharedLinksResponse> => {
-  const pageNumber = (params?.pageNumber ?? '1') || '1'; // Default to page 1 if not provided
-  const isPublic = params?.isPublic ?? true; // Default to true if not provided
-  return request.get(endpoints.getSharedLinks(pageNumber, isPublic));
+  const { pageSize, isPublic, sortBy, sortDirection, search, cursor } = params;
+
+  return request.get(
+    endpoints.getSharedLinks(pageSize, isPublic, sortBy, sortDirection, search, cursor),
+  );
 };
 
-export function getSharedLink(shareId: string): Promise<t.TSharedLinkResponse> {
-  return request.get(endpoints.shareMessages(shareId));
+export function getSharedLink(conversationId: string): Promise<t.TSharedLinkGetResponse> {
+  return request.get(endpoints.getSharedLink(conversationId));
 }
 
-export function createSharedLink(payload: t.TSharedLinkRequest): Promise<t.TSharedLinkResponse> {
-  return request.post(endpoints.createSharedLink, payload);
+export function createSharedLink(
+  conversationId: string,
+  targetMessageId?: string,
+): Promise<t.TSharedLinkResponse> {
+  return request.post(endpoints.createSharedLink(conversationId), { targetMessageId });
 }
 
-export function updateSharedLink(payload: t.TSharedLinkRequest): Promise<t.TSharedLinkResponse> {
-  return request.patch(endpoints.updateSharedLink, payload);
+export function updateSharedLink(shareId: string): Promise<t.TSharedLinkResponse> {
+  return request.patch(endpoints.updateSharedLink(shareId));
 }
 
-export function deleteSharedLink(shareId: string): Promise<t.TDeleteSharedLinkResponse> {
+export function deleteSharedLink(shareId: string): Promise<m.TDeleteSharedLinkResponse> {
   return request.delete(endpoints.shareMessages(shareId));
-}
-
-export function updateMessage(payload: t.TUpdateMessageRequest): Promise<unknown> {
-  const { conversationId, messageId, text } = payload;
-  if (!conversationId) {
-    throw new Error('conversationId is required');
-  }
-
-  return request.put(endpoints.messages(conversationId, messageId), { text });
-}
-
-export function updateMessageContent(payload: t.TUpdateMessageContent): Promise<unknown> {
-  const { conversationId, messageId, index, text } = payload;
-  if (!conversationId) {
-    throw new Error('conversationId is required');
-  }
-
-  return request.put(endpoints.messages(conversationId, messageId), { text, index });
 }
 
 export function updateUserKey(payload: t.TUpdateUserKeyRequest) {
@@ -90,6 +98,20 @@ export function updateUserKey(payload: t.TUpdateUserKeyRequest) {
   }
 
   return request.put(endpoints.keys(), payload);
+}
+
+export function getAgentApiKeys(): Promise<t.TAgentApiKeyListResponse> {
+  return request.get(endpoints.apiKeys());
+}
+
+export function createAgentApiKey(
+  payload: t.TAgentApiKeyCreateRequest,
+): Promise<t.TAgentApiKeyCreateResponse> {
+  return request.post(endpoints.apiKeys(), payload);
+}
+
+export function deleteAgentApiKey(id: string): Promise<void> {
+  return request.delete(endpoints.apiKeyById(id));
 }
 
 export function getPresets(): Promise<s.TPreset[]> {
@@ -116,7 +138,7 @@ export function getUser(): Promise<t.TUser> {
   return request.get(endpoints.user());
 }
 
-export function getUserBalance(): Promise<string> {
+export function getUserBalance(): Promise<t.TBalanceResponse> {
   return request.get(endpoints.balance());
 }
 
@@ -124,11 +146,11 @@ export const updateTokenCount = (text: string) => {
   return request.post(endpoints.tokenizer(), { arg: text });
 };
 
-export const login = (payload: t.TLoginUser) => {
+export const login = (payload: t.TLoginUser): Promise<t.TLoginResponse> => {
   return request.post(endpoints.login(), payload);
 };
 
-export const logout = () => {
+export const logout = (): Promise<m.TLogoutResponse> => {
   return request.post(endpoints.logout());
 };
 
@@ -171,9 +193,43 @@ export const updateUserPlugins = (payload: t.TUpdateUserPlugins) => {
   return request.post(endpoints.userPlugins(), payload);
 };
 
+export const reinitializeMCPServer = (serverName: string) => {
+  return request.post(endpoints.mcpReinitialize(serverName));
+};
+
+export const bindMCPOAuth = (serverName: string): Promise<{ success: boolean }> => {
+  return request.post(endpoints.mcpOAuthBind(serverName));
+};
+
+export const bindActionOAuth = (actionId: string): Promise<{ success: boolean }> => {
+  return request.post(endpoints.actionOAuthBind(actionId));
+};
+
+export const getMCPConnectionStatus = (): Promise<q.MCPConnectionStatusResponse> => {
+  return request.get(endpoints.mcpConnectionStatus());
+};
+
+export const getMCPServerConnectionStatus = (
+  serverName: string,
+): Promise<q.MCPServerConnectionStatusResponse> => {
+  return request.get(endpoints.mcpServerConnectionStatus(serverName));
+};
+
+export const getMCPAuthValues = (serverName: string): Promise<q.MCPAuthValuesResponse> => {
+  return request.get(endpoints.mcpAuthValues(serverName));
+};
+
+export function cancelMCPOAuth(serverName: string): Promise<m.CancelMCPOAuthResponse> {
+  return request.post(endpoints.cancelMCPOAuth(serverName), {});
+}
+
 /* Config */
 
-export const getStartupConfig = (): Promise<t.TStartupConfig> => {
+export const getStartupConfig = (): Promise<
+  config.TStartupConfig & {
+    mcpCustomUserVars?: Record<string, { title: string; description: string }>;
+  }
+> => {
   return request.get(endpoints.config());
 };
 
@@ -183,10 +239,6 @@ export const getAIEndpoints = (): Promise<t.TEndpointsConfig> => {
 
 export const getModels = async (): Promise<t.TModelsConfig> => {
   return request.get(endpoints.models());
-};
-
-export const getEndpointsConfigOverride = (): Promise<unknown | boolean> => {
-  return request.get(endpoints.endpointsConfigOverride());
 };
 
 /* Assistants */
@@ -304,10 +356,70 @@ export const getAvailableTools = (
   return request.get(path);
 };
 
+/* MCP Tools - Decoupled from regular tools */
+
+export const getMCPTools = (): Promise<q.MCPServersResponse> => {
+  return request.get(endpoints.mcp.tools);
+};
+
+export const getVerifyAgentToolAuth = (
+  params: q.VerifyToolAuthParams,
+): Promise<q.VerifyToolAuthResponse> => {
+  return request.get(
+    endpoints.agents({
+      path: `tools/${params.toolId}/auth`,
+    }),
+  );
+};
+
+export const callTool = <T extends m.ToolId>({
+  toolId,
+  toolParams,
+}: {
+  toolId: T;
+  toolParams: m.ToolParams<T>;
+}): Promise<m.ToolCallResponse> => {
+  return request.post(
+    endpoints.agents({
+      path: `tools/${toolId}/call`,
+    }),
+    toolParams,
+  );
+};
+
+export const getToolCalls = (params: q.GetToolCallParams): Promise<q.ToolCallResults> => {
+  return request.get(
+    endpoints.agents({
+      path: 'tools/calls',
+      options: params,
+    }),
+  );
+};
+
 /* Files */
 
 export const getFiles = (): Promise<f.TFile[]> => {
   return request.get(endpoints.files());
+};
+
+/**
+ * Poll the lifecycle of an inline file preview. Returns the smallest
+ * shape needed to drive the UI:
+ *   - `status` always present (defaults to `'ready'` server-side for
+ *     legacy records that pre-date the field).
+ *   - `text` and `textFormat` only when `status === 'ready'` and text
+ *     was extracted (preserves the HTML-or-null security contract).
+ *   - `previewError` only when `status === 'failed'`.
+ *
+ * Called from `useFilePreview`; React Query's `refetchInterval`
+ * polls while `status === 'pending'` and stops on terminal status.
+ */
+export const getFilePreview = (fileId: string): Promise<f.TFilePreview> => {
+  return request.get(endpoints.filePreview(fileId));
+};
+
+export const getAgentFiles = (agentId: string): Promise<f.TFile[]> => {
+  return request.get(endpoints.agentFiles(agentId));
 };
 
 export const getFileConfig = (): Promise<f.FileConfig> => {
@@ -340,7 +452,7 @@ export const updateAction = (data: m.UpdateActionVariables): Promise<m.UpdateAct
   );
 };
 
-export function getActions(): Promise<a.Action[]> {
+export function getActions(): Promise<ag.Action[]> {
   return request.get(
     endpoints.agents({
       path: 'actions',
@@ -379,6 +491,14 @@ export const getAgentById = ({ agent_id }: { agent_id: string }): Promise<a.Agen
   );
 };
 
+export const getExpandedAgentById = ({ agent_id }: { agent_id: string }): Promise<a.Agent> => {
+  return request.get(
+    endpoints.agents({
+      path: `${agent_id}/expanded`,
+    }),
+  );
+};
+
 export const updateAgent = ({
   agent_id,
   data,
@@ -394,6 +514,16 @@ export const updateAgent = ({
   );
 };
 
+export const duplicateAgent = ({
+  agent_id,
+}: m.DuplicateAgentBody): Promise<{ agent: a.Agent; actions: ag.Action[] }> => {
+  return request.post(
+    endpoints.agents({
+      path: `${agent_id}/duplicate`,
+    }),
+  );
+};
+
 export const deleteAgent = ({ agent_id }: m.DeleteAgentBody): Promise<void> => {
   return request.delete(
     endpoints.agents({
@@ -405,6 +535,42 @@ export const deleteAgent = ({ agent_id }: m.DeleteAgentBody): Promise<void> => {
 export const listAgents = (params: a.AgentListParams): Promise<a.AgentListResponse> => {
   return request.get(
     endpoints.agents({
+      options: params,
+    }),
+  );
+};
+
+export const revertAgentVersion = ({
+  agent_id,
+  version_index,
+}: {
+  agent_id: string;
+  version_index: number;
+}): Promise<a.Agent> => request.post(endpoints.revertAgentVersion(agent_id), { version_index });
+
+/* Marketplace */
+
+/**
+ * Get agent categories with counts for marketplace tabs
+ */
+export const getAgentCategories = (): Promise<t.TMarketplaceCategory[]> => {
+  return request.get(endpoints.agents({ path: 'categories' }));
+};
+
+/**
+ * Unified marketplace agents endpoint with query string controls
+ */
+export const getMarketplaceAgents = (params: {
+  requiredPermission: number;
+  category?: string;
+  search?: string;
+  limit?: number;
+  cursor?: string;
+  promoted?: 0 | 1;
+}): Promise<a.AgentListResponse> => {
+  return request.get(
+    endpoints.agents({
+      // path: 'marketplace',
       options: params,
     }),
   );
@@ -445,6 +611,51 @@ export const deleteAgentAction = async ({
   );
 
 /**
+ * MCP Servers
+ */
+
+/**
+ *
+ * Ensure and List loaded mcp server configs from the cache Enriched with effective permissions.
+ */
+export const getMCPServers = async (): Promise<mcp.MCPServersListResponse> => {
+  return request.get(endpoints.mcp.servers);
+};
+
+/**
+ * Get a single MCP server by ID
+ */
+export const getMCPServer = async (serverName: string): Promise<mcp.MCPServerDBObjectResponse> => {
+  return request.get(endpoints.mcpServer(serverName));
+};
+
+/**
+ * Create a new MCP server
+ */
+export const createMCPServer = async (
+  data: mcp.MCPServerCreateParams,
+): Promise<mcp.MCPServerDBObjectResponse> => {
+  return request.post(endpoints.mcp.servers, data);
+};
+
+/**
+ * Update an existing MCP server
+ */
+export const updateMCPServer = async (
+  serverName: string,
+  data: mcp.MCPServerUpdateParams,
+): Promise<mcp.MCPServerDBObjectResponse> => {
+  return request.patch(endpoints.mcpServer(serverName), data);
+};
+
+/**
+ * Delete an MCP server
+ */
+export const deleteMCPServer = async (serverName: string): Promise<{ success: boolean }> => {
+  return request.delete(endpoints.mcpServer(serverName));
+};
+
+/**
  * Imports a conversations file.
  *
  * @param data - The FormData containing the file to import.
@@ -461,7 +672,8 @@ export const uploadAvatar = (data: FormData): Promise<f.AvatarUploadResponse> =>
 export const uploadAssistantAvatar = (data: m.AssistantAvatarVariables): Promise<a.Assistant> => {
   return request.postMultiPart(
     endpoints.assistants({
-      path: `avatar/${data.assistant_id}`,
+      isAvatar: true,
+      path: `${data.assistant_id}/avatar`,
       options: { model: data.model, endpoint: data.endpoint },
       version: data.version,
     }),
@@ -471,9 +683,7 @@ export const uploadAssistantAvatar = (data: m.AssistantAvatarVariables): Promise
 
 export const uploadAgentAvatar = (data: m.AgentAvatarVariables): Promise<a.Agent> => {
   return request.postMultiPart(
-    endpoints.agents({
-      path: `avatar/${data.agent_id}`,
-    }),
+    `${endpoints.images()}/agents/${data.agent_id}/avatar`,
     data.formData,
   );
 };
@@ -485,6 +695,13 @@ export const getFileDownload = async (userId: string, file_id: string): Promise<
       Accept: 'application/octet-stream',
     },
   });
+};
+
+export const getFileDownloadURL = async (
+  userId: string,
+  file_id: string,
+): Promise<f.FileDownloadURLResponse> => {
+  return request.get(`${endpoints.files()}/download-url/${userId}/${file_id}`);
 };
 
 export const getCodeOutputDownload = async (url: string): Promise<AxiosResponse> => {
@@ -526,51 +743,32 @@ export const getCustomConfigSpeech = (): Promise<t.TCustomConfigSpeechResponse> 
 
 /* conversations */
 
+export function duplicateConversation(
+  payload: t.TDuplicateConvoRequest,
+): Promise<t.TDuplicateConvoResponse> {
+  return request.post(endpoints.duplicateConversation(), payload);
+}
+
 export function forkConversation(payload: t.TForkConvoRequest): Promise<t.TForkConvoResponse> {
   return request.post(endpoints.forkConversation(), payload);
 }
 
 export function deleteConversation(payload: t.TDeleteConversationRequest) {
-  //todo: this should be a DELETE request
-  return request.post(endpoints.deleteConversation(), { arg: payload });
+  return request.deleteWithOptions(endpoints.deleteConversation(), { data: { arg: payload } });
 }
 
 export function clearAllConversations(): Promise<unknown> {
-  return request.post(endpoints.deleteConversation(), { arg: {} });
+  return request.delete(endpoints.deleteAllConversation());
 }
 
 export const listConversations = (
   params?: q.ConversationListParams,
 ): Promise<q.ConversationListResponse> => {
-  // Assuming params has a pageNumber property
-  const pageNumber = (params?.pageNumber ?? '1') || '1'; // Default to page 1 if not provided
-  const isArchived = params?.isArchived ?? false; // Default to false if not provided
-  const tags = params?.tags || []; // Default to an empty array if not provided
-  return request.get(endpoints.conversations(pageNumber, isArchived, tags));
+  return request.get(endpoints.conversations(params ?? {}));
 };
 
-export const listConversationsByQuery = (
-  params?: q.ConversationListParams & { searchQuery?: string },
-): Promise<q.ConversationListResponse> => {
-  const pageNumber = (params?.pageNumber ?? '1') || '1'; // Default to page 1 if not provided
-  const searchQuery = params?.searchQuery ?? ''; // If no search query is provided, default to an empty string
-  // Update the endpoint to handle a search query
-  if (searchQuery !== '') {
-    return request.get(endpoints.search(searchQuery, pageNumber));
-  } else {
-    return request.get(endpoints.conversations(pageNumber));
-  }
-};
-
-export const searchConversations = async (
-  q: string,
-  pageNumber: string,
-): Promise<t.TSearchResults> => {
-  return request.get(endpoints.search(q, pageNumber));
-};
-
-export function getConversations(pageNumber: string): Promise<t.TGetConversationsResponse> {
-  return request.get(endpoints.conversations(pageNumber));
+export function getConversations(cursor: string): Promise<t.TGetConversationsResponse> {
+  return request.get(endpoints.conversations({ cursor }));
 }
 
 export function getConversationById(id: string): Promise<s.TConversation> {
@@ -586,11 +784,56 @@ export function updateConversation(
 export function archiveConversation(
   payload: t.TArchiveConversationRequest,
 ): Promise<t.TArchiveConversationResponse> {
-  return request.post(endpoints.updateConversation(), { arg: payload });
+  return request.post(endpoints.archiveConversation(), { arg: payload });
 }
 
 export function genTitle(payload: m.TGenTitleRequest): Promise<m.TGenTitleResponse> {
-  return request.post(endpoints.genTitle(), payload);
+  return request.get(endpoints.genTitle(payload.conversationId));
+}
+
+export const listMessages = (params?: q.MessagesListParams): Promise<q.MessagesListResponse> => {
+  return request.get(endpoints.messages(params ?? {}));
+};
+
+export function updateMessage(payload: t.TUpdateMessageRequest): Promise<unknown> {
+  const { conversationId, messageId, text } = payload;
+  if (!conversationId) {
+    throw new Error('conversationId is required');
+  }
+
+  return request.put(endpoints.messages({ conversationId, messageId }), { text });
+}
+
+export function updateMessageContent(payload: t.TUpdateMessageContent): Promise<unknown> {
+  const { conversationId, messageId, index, text } = payload;
+  if (!conversationId) {
+    throw new Error('conversationId is required');
+  }
+
+  return request.put(endpoints.messages({ conversationId, messageId }), { text, index });
+}
+
+export const editArtifact = async ({
+  messageId,
+  ...params
+}: m.TEditArtifactRequest): Promise<m.TEditArtifactResponse> => {
+  return request.post(endpoints.messagesArtifacts(messageId), params);
+};
+
+export const branchMessage = async (
+  payload: m.TBranchMessageRequest,
+): Promise<m.TBranchMessageResponse> => {
+  return request.post(endpoints.messagesBranch(), payload);
+};
+
+export function getMessagesByConvoId(conversationId: string): Promise<s.TMessage[]> {
+  if (
+    conversationId === config.Constants.NEW_CONVO ||
+    conversationId === config.Constants.PENDING_CONVO
+  ) {
+    return Promise.resolve([]);
+  }
+  return request.get(endpoints.messages({ conversationId }));
 }
 
 export function getPrompt(id: string): Promise<{ prompt: t.TPrompt }> {
@@ -619,10 +862,21 @@ export function createPrompt(payload: t.TCreatePrompt): Promise<t.TCreatePromptR
   return request.post(endpoints.postPrompt(), payload);
 }
 
+export function addPromptToGroup(
+  groupId: string,
+  payload: t.TCreatePrompt,
+): Promise<t.TCreatePromptResponse> {
+  return request.post(endpoints.addPromptToGroup(groupId), payload);
+}
+
 export function updatePromptGroup(
   variables: t.TUpdatePromptGroupVariables,
 ): Promise<t.TUpdatePromptGroupResponse> {
   return request.patch(endpoints.updatePromptGroup(variables.id), variables.payload);
+}
+
+export function recordPromptGroupUsage(groupId: string): Promise<{ numberOfGenerations: number }> {
+  return request.post(endpoints.recordPromptGroupUsage(groupId));
 }
 
 export function deletePrompt(payload: t.TDeletePromptVariables): Promise<t.TDeletePromptResponse> {
@@ -653,15 +907,204 @@ export function getRandomPrompts(
   return request.get(endpoints.getRandomPrompts(variables.limit, variables.skip));
 }
 
+/* Skills */
+
+export function listSkills(params?: sk.TSkillListRequest): Promise<sk.TSkillListResponse> {
+  return request.get(endpoints.listSkillsWithFilters(params ?? {}));
+}
+
+export function getSkill(id: string): Promise<sk.TSkill> {
+  return request.get(endpoints.getSkill(id));
+}
+
+export function createSkill(payload: sk.TCreateSkill): Promise<sk.TSkill> {
+  return request.post(endpoints.skills(), payload);
+}
+
+export function updateSkill(variables: sk.TUpdateSkillVariables): Promise<sk.TUpdateSkillResponse> {
+  return request.patch(endpoints.getSkill(variables.id), {
+    expectedVersion: variables.expectedVersion,
+    ...variables.payload,
+  });
+}
+
+export function deleteSkill(id: string): Promise<sk.TDeleteSkillResponse> {
+  return request.delete(endpoints.getSkill(id));
+}
+
+export function listSkillFiles(skillId: string): Promise<sk.TListSkillFilesResponse> {
+  return request.get(endpoints.skillFiles(skillId));
+}
+
+export function uploadSkillFile(skillId: string, formData: FormData): Promise<sk.TSkillFile> {
+  return request.postMultiPart(endpoints.skillFiles(skillId), formData);
+}
+
+/**
+ * Import a skill from a .md, .zip, or .skill file. The backend extracts the
+ * archive, creates the skill from SKILL.md, and persists all additional files.
+ * Single HTTP request — no client-side zip processing needed.
+ */
+export function importSkill(formData: FormData): Promise<sk.TSkill> {
+  return request.postMultiPart(endpoints.importSkill(), formData);
+}
+
+export function getSkillFileContent(
+  skillId: string,
+  relativePath: string,
+): Promise<sk.TSkillFileContentResponse> {
+  return request.get(endpoints.skillFile(skillId, relativePath));
+}
+
+export function deleteSkillFile(
+  skillId: string,
+  relativePath: string,
+): Promise<sk.TDeleteSkillFileResponse> {
+  return request.delete(endpoints.skillFile(skillId, relativePath));
+}
+
+/* -------------------------------------------------------------------------- */
+/* Skill Tree (nodes) — phase 2 backend                                       */
+/* -------------------------------------------------------------------------- */
+/* These were introduced by the original UI PR and are shipped as stubs in    */
+/* phase 1 so the tree UI compiles. Each resolves with empty/no-op data until */
+/* the backend persists a folder hierarchy. The call surface matches what the */
+/* tree hooks expect so wiring real endpoints later is a one-line swap.       */
+
+export const getSkillTree = (_skillId: string): Promise<t.TSkillTreeResponse> => {
+  return Promise.resolve({ nodes: [] });
+};
+
+export const createSkillNode = (
+  skillId: string,
+  data: FormData | t.TCreateSkillNodeRequest,
+): Promise<t.TSkillNode> => {
+  const name = data instanceof FormData ? (data.get('name') as string) || 'untitled' : data.name;
+  const type = data instanceof FormData ? 'file' : data.type;
+  const now = new Date().toISOString();
+  return Promise.resolve({
+    _id: `pending-${now}`,
+    skillId,
+    parentId: null,
+    type,
+    name,
+    order: 0,
+    author: '',
+    createdAt: now,
+    updatedAt: now,
+  });
+};
+
+export const updateSkillNode = (variables: {
+  skillId: string;
+  nodeId: string;
+  data: t.TUpdateSkillNodeRequest;
+}): Promise<t.TSkillNode> => {
+  const now = new Date().toISOString();
+  return Promise.resolve({
+    _id: variables.nodeId,
+    skillId: variables.skillId,
+    parentId: variables.data.parentId ?? null,
+    type: 'file',
+    name: variables.data.name ?? '',
+    order: variables.data.order ?? 0,
+    author: '',
+    createdAt: now,
+    updatedAt: now,
+  });
+};
+
+export const deleteSkillNode = (_variables: { skillId: string; nodeId: string }): Promise<void> => {
+  return Promise.resolve();
+};
+
+export const getSkillNodeContent = (_variables: {
+  skillId: string;
+  nodeId: string;
+}): Promise<{ content: string; mimeType: string }> => {
+  return Promise.resolve({ content: '', mimeType: 'text/plain' });
+};
+
+export const updateSkillNodeContent = (variables: {
+  skillId: string;
+  nodeId: string;
+  content: string;
+}): Promise<t.TSkillNode> => {
+  const now = new Date().toISOString();
+  return Promise.resolve({
+    _id: variables.nodeId,
+    skillId: variables.skillId,
+    parentId: null,
+    type: 'file',
+    name: '',
+    order: 0,
+    author: '',
+    createdAt: now,
+    updatedAt: now,
+  });
+};
+
 /* Roles */
+export function listRoles(): Promise<q.ListRolesResponse> {
+  return request.get(`${endpoints.adminRoles()}?limit=200`);
+}
+
 export function getRole(roleName: string): Promise<r.TRole> {
   return request.get(endpoints.getRole(roleName));
 }
 
 export function updatePromptPermissions(
   variables: m.UpdatePromptPermVars,
-): Promise<m.UpdatePromptPermResponse> {
+): Promise<m.UpdatePermResponse> {
   return request.put(endpoints.updatePromptPermissions(variables.roleName), variables.updates);
+}
+
+export function updateAgentPermissions(
+  variables: m.UpdateAgentPermVars,
+): Promise<m.UpdatePermResponse> {
+  return request.put(endpoints.updateAgentPermissions(variables.roleName), variables.updates);
+}
+
+export function updateMemoryPermissions(
+  variables: m.UpdateMemoryPermVars,
+): Promise<m.UpdatePermResponse> {
+  return request.put(endpoints.updateMemoryPermissions(variables.roleName), variables.updates);
+}
+
+export function updatePeoplePickerPermissions(
+  variables: m.UpdatePeoplePickerPermVars,
+): Promise<m.UpdatePermResponse> {
+  return request.put(
+    endpoints.updatePeoplePickerPermissions(variables.roleName),
+    variables.updates,
+  );
+}
+
+export function updateMCPServersPermissions(
+  variables: m.UpdateMCPServersPermVars,
+): Promise<m.UpdatePermResponse> {
+  return request.put(endpoints.updateMCPServersPermissions(variables.roleName), variables.updates);
+}
+
+export function updateRemoteAgentsPermissions(
+  variables: m.UpdateRemoteAgentsPermVars,
+): Promise<m.UpdatePermResponse> {
+  return request.put(
+    endpoints.updateRemoteAgentsPermissions(variables.roleName),
+    variables.updates,
+  );
+}
+
+export function updateMarketplacePermissions(
+  variables: m.UpdateMarketplacePermVars,
+): Promise<m.UpdatePermResponse> {
+  return request.put(endpoints.updateMarketplacePermissions(variables.roleName), variables.updates);
+}
+
+export function updateSkillPermissions(
+  variables: m.UpdateSkillPermVars,
+): Promise<m.UpdatePermResponse> {
+  return request.put(endpoints.updateSkillPermissions(variables.roleName), variables.updates);
 }
 
 /* Tags */
@@ -710,3 +1153,128 @@ export function acceptTerms(): Promise<t.TAcceptTermsResponse> {
 export function getBanner(): Promise<t.TBannerResponse> {
   return request.get(endpoints.banner());
 }
+
+export function updateFeedback(
+  conversationId: string,
+  messageId: string,
+  payload: t.TUpdateFeedbackRequest,
+): Promise<t.TUpdateFeedbackResponse> {
+  return request.put(endpoints.feedback(conversationId, messageId), payload);
+}
+
+// 2FA
+export function enableTwoFactor(payload?: t.TEnable2FARequest): Promise<t.TEnable2FAResponse> {
+  return request.post(endpoints.enableTwoFactor(), payload);
+}
+
+export function verifyTwoFactor(payload: t.TVerify2FARequest): Promise<t.TVerify2FAResponse> {
+  return request.post(endpoints.verifyTwoFactor(), payload);
+}
+
+export function confirmTwoFactor(payload: t.TVerify2FARequest): Promise<t.TVerify2FAResponse> {
+  return request.post(endpoints.confirmTwoFactor(), payload);
+}
+
+export function disableTwoFactor(payload?: t.TDisable2FARequest): Promise<t.TDisable2FAResponse> {
+  return request.post(endpoints.disableTwoFactor(), payload);
+}
+
+export function regenerateBackupCodes(
+  payload?: t.TRegenerateBackupCodesRequest,
+): Promise<t.TRegenerateBackupCodesResponse> {
+  return request.post(endpoints.regenerateBackupCodes(), payload);
+}
+
+export function verifyTwoFactorTemp(
+  payload: t.TVerify2FATempRequest,
+): Promise<t.TVerify2FATempResponse> {
+  return request.post(endpoints.verifyTwoFactorTemp(), payload);
+}
+
+/* Memories */
+export const getMemories = (): Promise<q.MemoriesResponse> => {
+  return request.get(endpoints.memories());
+};
+
+export const deleteMemory = (key: string): Promise<void> => {
+  return request.delete(endpoints.memory(key));
+};
+
+export const updateMemory = (
+  key: string,
+  value: string,
+  originalKey?: string,
+): Promise<q.TUserMemory> => {
+  return request.patch(endpoints.memory(originalKey || key), { key, value });
+};
+
+export const updateMemoryPreferences = (preferences: {
+  memories: boolean;
+}): Promise<{ updated: boolean; preferences: { memories: boolean } }> => {
+  return request.patch(endpoints.memoryPreferences(), preferences);
+};
+
+export const createMemory = (data: {
+  key: string;
+  value: string;
+}): Promise<{ created: boolean; memory: q.TUserMemory }> => {
+  return request.post(endpoints.memories(), data);
+};
+
+export function searchPrincipals(
+  params: q.PrincipalSearchParams,
+): Promise<q.PrincipalSearchResponse> {
+  return request.get(endpoints.searchPrincipals(params));
+}
+
+export function getAccessRoles(
+  resourceType: permissions.ResourceType,
+): Promise<q.AccessRolesResponse> {
+  return request.get(endpoints.getAccessRoles(resourceType));
+}
+
+export function getResourcePermissions(
+  resourceType: permissions.ResourceType,
+  resourceId: string,
+): Promise<permissions.TGetResourcePermissionsResponse> {
+  return request.get(endpoints.getResourcePermissions(resourceType, resourceId));
+}
+
+export function updateResourcePermissions(
+  resourceType: permissions.ResourceType,
+  resourceId: string,
+  data: permissions.TUpdateResourcePermissionsRequest,
+): Promise<permissions.TUpdateResourcePermissionsResponse> {
+  return request.put(endpoints.updateResourcePermissions(resourceType, resourceId), data);
+}
+
+export function getEffectivePermissions(
+  resourceType: permissions.ResourceType,
+  resourceId: string,
+): Promise<permissions.TEffectivePermissionsResponse> {
+  return request.get(endpoints.getEffectivePermissions(resourceType, resourceId));
+}
+
+export function getAllEffectivePermissions(
+  resourceType: permissions.ResourceType,
+): Promise<permissions.TAllEffectivePermissionsResponse> {
+  return request.get(endpoints.getAllEffectivePermissions(resourceType));
+}
+
+// SharePoint Graph API Token
+export function getGraphApiToken(params: q.GraphTokenParams): Promise<q.GraphTokenResponse> {
+  return request.get(endpoints.graphToken(params.scopes));
+}
+
+export function getDomainServerBaseUrl(): string {
+  return `${endpoints.apiBaseUrl()}/api`;
+}
+
+/* Active Jobs */
+export interface ActiveJobsResponse {
+  activeJobIds: string[];
+}
+
+export const getActiveJobs = (): Promise<ActiveJobsResponse> => {
+  return request.get(endpoints.activeJobs());
+};

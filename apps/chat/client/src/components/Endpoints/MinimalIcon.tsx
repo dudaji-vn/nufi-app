@@ -1,18 +1,15 @@
 import { Feather } from 'lucide-react';
 import { EModelEndpoint, alternateName } from 'librechat-data-provider';
 import {
+  Sparkles,
+  BedrockIcon,
+  AnthropicIcon,
   AzureMinimalIcon,
   OpenAIMinimalIcon,
-  LightningIcon,
-  MinimalPlugin,
-  BingAIMinimalIcon,
   GoogleMinimalIcon,
   CustomMinimalIcon,
-  AnthropicIcon,
-  BedrockIcon,
-  Sparkles,
-} from '~/components/svg';
-import UnknownIcon from '~/components/Chat/Menus/Endpoints/UnknownIcon';
+} from '@librechat/client';
+import UnknownIcon from '~/hooks/Endpoint/UnknownIcon';
 import { IconProps } from '~/common';
 import { cn } from '~/utils';
 
@@ -34,7 +31,6 @@ const MinimalIcon: React.FC<IconProps> = (props) => {
       icon: <OpenAIMinimalIcon className={iconClassName} />,
       name: props.chatGptLabel ?? 'ChatGPT',
     },
-    [EModelEndpoint.gptPlugins]: { icon: <MinimalPlugin />, name: 'Plugins' },
     [EModelEndpoint.google]: { icon: <GoogleMinimalIcon />, name: props.modelLabel ?? 'Google' },
     [EModelEndpoint.anthropic]: {
       icon: <AnthropicIcon className="icon-md shrink-0 dark:text-white" />,
@@ -44,12 +40,10 @@ const MinimalIcon: React.FC<IconProps> = (props) => {
       icon: <CustomMinimalIcon />,
       name: 'Custom',
     },
-    [EModelEndpoint.bingAI]: { icon: <BingAIMinimalIcon />, name: 'BingAI' },
-    [EModelEndpoint.chatGPTBrowser]: { icon: <LightningIcon />, name: 'ChatGPT' },
     [EModelEndpoint.assistants]: { icon: <Sparkles className="icon-sm" />, name: 'Assistant' },
     [EModelEndpoint.azureAssistants]: { icon: <Sparkles className="icon-sm" />, name: 'Assistant' },
     [EModelEndpoint.agents]: {
-      icon: <Feather className="icon-sm" />,
+      icon: <Feather className="icon-sm" aria-hidden="true" />,
       name: props.modelLabel ?? alternateName[EModelEndpoint.agents],
     },
     [EModelEndpoint.bedrock]: {
@@ -71,6 +65,7 @@ const MinimalIcon: React.FC<IconProps> = (props) => {
     <div
       data-testid="convo-icon"
       title={name}
+      aria-hidden="true"
       style={{
         width: size,
         height: size,

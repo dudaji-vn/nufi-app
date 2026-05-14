@@ -1,14 +1,44 @@
-const { z } = require('zod');
 const path = require('path');
 const OpenAI = require('openai');
 const { v4: uuidv4 } = require('uuid');
-const { Tool } = require('@langchain/core/tools');
-const { HttpsProxyAgent } = require('https-proxy-agent');
-const { FileContext } = require('librechat-data-provider');
-const { getImageBasename } = require('~/server/services/Files/images');
-const extractBaseURL = require('~/utils/extractBaseURL');
-const { logger } = require('~/config');
+const { ProxyAgent, fetch } = require('undici');
+const { logger } = require('@librechat/data-schemas');
+const { Tool } = require('@librechat/agents/langchain/tools');
+const { getImageBasename, extractBaseURL } = require('@librechat/api');
+const { FileContext, ContentTypes } = require('librechat-data-provider');
 
+const dalle3JsonSchema = {
+  type: 'object',
+  properties: {
+    prompt: {
+      type: 'string',
+      maxLength: 4000,
+      description:
+        'A text description of the desired image, following the rules, up to 4000 characters.',
+    },
+    style: {
+      type: 'string',
+      enum: ['vivid', 'natural'],
+      description:
+        'Must be one of `vivid` or `natural`. `vivid` generates hyper-real and dramatic images, `natural` produces more natural, less hyper-real looking images',
+    },
+    quality: {
+      type: 'string',
+      enum: ['hd', 'standard'],
+      description: 'The quality of the generated image. Only `hd` and `standard` are supported.',
+    },
+    size: {
+      type: 'string',
+      enum: ['1024x1024', '1792x1024', '1024x1792'],
+      description:
+        'The size of the requested image. Use 1024x1024 (square) as the default, 1792x1024 if the user requests a wide image, and 1024x1792 for full-body portraits. Always include this parameter in the request.',
+    },
+  },
+  required: ['prompt', 'style', 'quality', 'size'],
+};
+
+const displayMessage =
+  "DALL-E displayed an image. All generated images are already plainly visible, so don't repeat the descriptions in detail. Do not list download links as they are available in the UI already. The user may download the images by clicking on them, but do not mention anything about downloading to the user.";
 class DALLE3 extends Tool {
   constructor(fields = {}) {
     super();
@@ -18,7 +48,14 @@ class DALLE3 extends Tool {
     this.returnMetadata = fields.returnMetadata ?? false;
 
     this.userId = fields.userId;
+    this.tenantId = fields.req?.user?.tenantId;
     this.fileStrategy = fields.fileStrategy;
+    /** @type {boolean} */
+    this.isAgent = fields.isAgent;
+    if (this.isAgent) {
+      /** Ensures LangChain maps [content, artifact] tuple to ToolMessage fields instead of serializing it into content. */
+      this.responseFormat = 'content_and_artifact';
+    }
     if (fields.processFileURL) {
       /** @type {processFileURL} Necessary for output to contain all image metadata. */
       this.processFileURL = fields.processFileURL.bind(this);
@@ -41,7 +78,10 @@ class DALLE3 extends Tool {
     }
 
     if (process.env.PROXY) {
-      config.httpAgent = new HttpsProxyAgent(process.env.PROXY);
+      const proxyAgent = new ProxyAgent(process.env.PROXY);
+      config.fetchOptions = {
+        dispatcher: proxyAgent,
+      };
     }
 
     /** @type {OpenAI} */
@@ -66,27 +106,11 @@ class DALLE3 extends Tool {
     // The prompt must intricately describe every part of the image in concrete, objective detail. THINK about what the end goal of the description is, and extrapolate that to what would make satisfying images.
     // All descriptions sent to dalle should be a paragraph of text that is extremely descriptive and detailed. Each should be more than 3 sentences long.
     // - The "vivid" style is HIGHLY preferred, but "natural" is also supported.`;
-    this.schema = z.object({
-      prompt: z
-        .string()
-        .max(4000)
-        .describe(
-          'A text description of the desired image, following the rules, up to 4000 characters.',
-        ),
-      style: z
-        .enum(['vivid', 'natural'])
-        .describe(
-          'Must be one of `vivid` or `natural`. `vivid` generates hyper-real and dramatic images, `natural` produces more natural, less hyper-real looking images',
-        ),
-      quality: z
-        .enum(['hd', 'standard'])
-        .describe('The quality of the generated image. Only `hd` and `standard` are supported.'),
-      size: z
-        .enum(['1024x1024', '1792x1024', '1024x1792'])
-        .describe(
-          'The size of the requested image. Use 1024x1024 (square) as the default, 1792x1024 if the user requests a wide image, and 1024x1792 for full-body portraits. Always include this parameter in the request.',
-        ),
-    });
+    this.schema = dalle3JsonSchema;
+  }
+
+  static get jsonSchema() {
+    return dalle3JsonSchema;
   }
 
   getApiKey() {
@@ -108,6 +132,16 @@ class DALLE3 extends Tool {
     return `![generated image](${imageUrl})`;
   }
 
+  returnValue(value) {
+    if (this.isAgent === true && typeof value === 'string') {
+      return [value, {}];
+    } else if (this.isAgent === true && typeof value === 'object') {
+      return [displayMessage, value];
+    }
+
+    return value;
+  }
+
   async _call(data) {
     const { prompt, quality = 'standard', size = '1024x1024', style = 'vivid' } = data;
     if (!prompt) {
@@ -126,18 +160,50 @@ class DALLE3 extends Tool {
       });
     } catch (error) {
       logger.error('[DALL-E-3] Problem generating the image:', error);
-      return `Something went wrong when trying to generate the image. The DALL-E API may be unavailable:
-Error Message: ${error.message}`;
+      return this
+        .returnValue(`Something went wrong when trying to generate the image. The DALL-E API may be unavailable:
+Error Message: ${error.message}`);
     }
 
     if (!resp) {
-      return 'Something went wrong when trying to generate the image. The DALL-E API may be unavailable';
+      return this.returnValue(
+        'Something went wrong when trying to generate the image. The DALL-E API may be unavailable',
+      );
     }
 
     const theImageUrl = resp.data[0].url;
 
     if (!theImageUrl) {
-      return 'No image URL returned from OpenAI API. There may be a problem with the API or your configuration.';
+      return this.returnValue(
+        'No image URL returned from OpenAI API. There may be a problem with the API or your configuration.',
+      );
+    }
+
+    if (this.isAgent) {
+      let fetchOptions = {};
+      if (process.env.PROXY) {
+        const proxyAgent = new ProxyAgent(process.env.PROXY);
+        fetchOptions.dispatcher = proxyAgent;
+      }
+      const imageResponse = await fetch(theImageUrl, fetchOptions);
+      const arrayBuffer = await imageResponse.arrayBuffer();
+      const base64 = Buffer.from(arrayBuffer).toString('base64');
+      const content = [
+        {
+          type: ContentTypes.IMAGE_URL,
+          image_url: {
+            url: `data:image/png;base64,${base64}`,
+          },
+        },
+      ];
+
+      const response = [
+        {
+          type: ContentTypes.TEXT,
+          text: displayMessage,
+        },
+      ];
+      return [response, { content }];
     }
 
     const imageBasename = getImageBasename(theImageUrl);
@@ -157,12 +223,13 @@ Error Message: ${error.message}`;
 
     try {
       const result = await this.processFileURL({
-        fileStrategy: this.fileStrategy,
-        userId: this.userId,
         URL: theImageUrl,
-        fileName: imageName,
         basePath: 'images',
+        userId: this.userId,
+        fileName: imageName,
+        fileStrategy: this.fileStrategy,
         context: FileContext.image_generation,
+        tenantId: this.tenantId,
       });
 
       if (this.returnMetadata) {
@@ -175,7 +242,7 @@ Error Message: ${error.message}`;
       this.result = `Failed to save the image locally. ${error.message}`;
     }
 
-    return this.result;
+    return this.returnValue(this.result);
   }
 }
 

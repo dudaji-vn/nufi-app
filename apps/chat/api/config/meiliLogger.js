@@ -1,10 +1,41 @@
 const path = require('path');
+const fs = require('fs');
 const winston = require('winston');
 require('winston-daily-rotate-file');
 
-const logDir = path.join(__dirname, '..', 'logs');
+/**
+ * Determine the log directory.
+ * Priority:
+ * 1. LIBRECHAT_LOG_DIR environment variable (allows user override)
+ * 2. /app/logs if running in Docker (bind-mounted with correct permissions)
+ * 3. api/logs relative to this file (local development)
+ */
+const getLogDir = () => {
+  if (process.env.LIBRECHAT_LOG_DIR) {
+    return process.env.LIBRECHAT_LOG_DIR;
+  }
 
-const { NODE_ENV } = process.env;
+  // Check if running in Docker container (cwd is /app)
+  if (process.cwd() === '/app') {
+    const dockerLogDir = '/app/logs';
+    // Ensure the directory exists
+    if (!fs.existsSync(dockerLogDir)) {
+      fs.mkdirSync(dockerLogDir, { recursive: true });
+    }
+    return dockerLogDir;
+  }
+
+  // Local development: use api/logs relative to this file
+  return path.join(__dirname, '..', 'logs');
+};
+
+const logDir = getLogDir();
+
+const { NODE_ENV, DEBUG_LOGGING = false } = process.env;
+
+const useDebugLogging =
+  (typeof DEBUG_LOGGING === 'string' && DEBUG_LOGGING?.toLowerCase() === 'true') ||
+  DEBUG_LOGGING === true;
 
 const levels = {
   error: 0,
@@ -36,9 +67,10 @@ const fileFormat = winston.format.combine(
   winston.format.splat(),
 );
 
+const logLevel = useDebugLogging ? 'debug' : 'error';
 const transports = [
   new winston.transports.DailyRotateFile({
-    level: 'debug',
+    level: logLevel,
     filename: `${logDir}/meiliSync-%DATE%.log`,
     datePattern: 'YYYY-MM-DD',
     zippedArchive: true,
@@ -47,14 +79,6 @@ const transports = [
     format: fileFormat,
   }),
 ];
-
-// if (NODE_ENV !== 'production') {
-//   transports.push(
-//     new winston.transports.Console({
-//       format: winston.format.combine(winston.format.colorize(), winston.format.simple()),
-//     }),
-//   );
-// }
 
 const consoleFormat = winston.format.combine(
   winston.format.colorize({ all: true }),

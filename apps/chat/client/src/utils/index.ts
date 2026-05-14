@@ -1,27 +1,46 @@
+import React from 'react';
+import type { UIActionResult } from '@mcp-ui/client';
+import { TAskFunction } from '~/common';
+import logger from './logger';
+
 export * from './map';
 export * from './json';
+export * from './email';
+export * from './share';
 export * from './files';
 export * from './latex';
-export * from './theme';
 export * from './forms';
+export * from './roles';
+export * from './errors';
+export * from './agents';
+export * from './drafts';
 export * from './convos';
+export * from './routes';
 export * from './presets';
 export * from './prompts';
 export * from './textarea';
 export * from './messages';
+export * from './redirect';
 export * from './languages';
 export * from './endpoints';
-export * from './sharedLink';
+export * from './resources';
+export * from './downloadFile';
+export * from './scaleImage';
+export * from './timestamps';
+export * from './localStorage';
 export * from './promptGroups';
+export * from './previewCache';
+export * from './groupToolCalls';
+export * from './toolLabels';
+export * from './favoritesError';
 export { default as cn } from './cn';
 export { default as logger } from './logger';
-export { default as buildTree } from './buildTree';
 export { default as getLoginError } from './getLoginError';
 export { default as cleanupPreset } from './cleanupPreset';
-export { default as validateIframe } from './validateIframe';
 export { default as buildDefaultConvo } from './buildDefaultConvo';
 export { default as getDefaultEndpoint } from './getDefaultEndpoint';
-export { default as getLocalStorageItems } from './getLocalStorageItems';
+export { default as createChatSearchParams, processValidSettings } from './createChatSearchParams';
+export { getThemeFromEnv } from './getThemeFromEnv';
 
 export const languages = [
   'java',
@@ -82,4 +101,70 @@ export const handleDoubleClick: React.MouseEventHandler<HTMLElement> = (event) =
   }
   selection.removeAllRanges();
   selection.addRange(range);
+};
+
+export const extractContent = (
+  children: React.ReactNode | { props: { children: React.ReactNode } } | string,
+): string => {
+  if (typeof children === 'string') {
+    return children;
+  }
+  if (React.isValidElement(children)) {
+    return extractContent((children.props as { children?: React.ReactNode }).children);
+  }
+  if (Array.isArray(children)) {
+    return children.map(extractContent).join('');
+  }
+  return '';
+};
+
+export const handleUIAction = async (result: UIActionResult, ask: TAskFunction) => {
+  const supportedTypes = ['intent', 'tool', 'prompt'];
+
+  const { type, payload } = result;
+
+  if (!supportedTypes.includes(type)) {
+    return;
+  }
+
+  let messageText = '';
+
+  if (type === 'intent') {
+    const { intent, params } = payload;
+    messageText = `The user clicked a button in an embedded UI Resource, and we got a message of type \`intent\`.
+The intent is \`${intent}\` and the params are:
+
+\`\`\`json
+${JSON.stringify(params, null, 2)}
+\`\`\`
+
+Execute the intent that is mentioned in the message using the tools available to you.
+    `;
+  } else if (type === 'tool') {
+    const { toolName, params } = payload;
+    messageText = `The user clicked a button in an embedded UI Resource, and we got a message of type \`tool\`.
+The tool name is \`${toolName}\` and the params are:
+
+\`\`\`json
+${JSON.stringify(params, null, 2)}
+\`\`\`
+
+Execute the tool that is mentioned in the message using the tools available to you.
+    `;
+  } else if (type === 'prompt') {
+    const { prompt } = payload;
+    messageText = `The user clicked a button in an embedded UI Resource, and we got a message of type \`prompt\`.
+The prompt is:
+
+\`\`\`
+${prompt}
+\`\`\`
+
+Execute the intention of the prompt that is mentioned in the message using the tools available to you.
+    `;
+  }
+
+  logger.debug('MCP-UI', 'About to submit message:', messageText);
+  ask({ text: messageText });
+  logger.debug('MCP-UI', 'Message submitted successfully');
 };

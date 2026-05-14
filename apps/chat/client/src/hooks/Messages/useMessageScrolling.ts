@@ -2,8 +2,8 @@ import { useRecoilValue } from 'recoil';
 import { Constants } from 'librechat-data-provider';
 import { useState, useRef, useCallback, useEffect } from 'react';
 import type { TMessage } from 'librechat-data-provider';
+import { useMessagesConversation, useMessagesSubmission } from '~/Providers';
 import useScrollToRef from '~/hooks/useScrollToRef';
-import { useChatContext } from '~/Providers';
 import store from '~/store';
 
 const threshold = 0.85;
@@ -15,8 +15,8 @@ export default function useMessageScrolling(messagesTree?: TMessage[] | null) {
   const scrollableRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
-  const { conversation, setAbortScroll, isSubmitting, abortScroll } = useChatContext();
-  const { conversationId } = conversation ?? {};
+  const { conversation, conversationId } = useMessagesConversation();
+  const { setAbortScroll, isSubmitting, abortScroll } = useMessagesSubmission();
 
   const timeoutIdRef = useRef<NodeJS.Timeout>();
 
@@ -72,22 +72,30 @@ export default function useMessageScrolling(messagesTree?: TMessage[] | null) {
   });
 
   useEffect(() => {
-    if (!messagesTree) {
+    if (!messagesTree || messagesTree.length === 0) {
       return;
     }
 
-    if (isSubmitting && scrollToBottom && !abortScroll) {
+    if (!messagesEndRef.current || !scrollableRef.current) {
+      return;
+    }
+
+    if (isSubmitting && scrollToBottom && abortScroll !== true) {
       scrollToBottom();
     }
 
     return () => {
-      if (abortScroll) {
+      if (abortScroll === true) {
         scrollToBottom && scrollToBottom.cancel();
       }
     };
   }, [isSubmitting, messagesTree, scrollToBottom, abortScroll]);
 
   useEffect(() => {
+    if (!messagesEndRef.current || !scrollableRef.current) {
+      return;
+    }
+
     if (scrollToBottom && autoScroll && conversationId !== Constants.NEW_CONVO) {
       scrollToBottom();
     }

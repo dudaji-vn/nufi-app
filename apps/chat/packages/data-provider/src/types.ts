@@ -1,69 +1,160 @@
-import OpenAI from 'openai';
 import type { InfiniteData } from '@tanstack/react-query';
 import type {
-  TMessage,
-  TResPlugin,
-  ImageDetail,
-  TSharedLink,
-  TConversation,
-  EModelEndpoint,
   TConversationTag,
+  EModelEndpoint,
+  TConversation,
+  TSharedLink,
+  TAttachment,
+  TMessage,
   TBanner,
 } from './schemas';
-import type { TSpecsConfig } from './models';
-export type TOpenAIMessage = OpenAI.Chat.ChatCompletionMessageParam;
-export type TOpenAIFunction = OpenAI.Chat.ChatCompletionCreateParams.Function;
-export type TOpenAIFunctionCall = OpenAI.Chat.ChatCompletionCreateParams.FunctionCallOption;
+import type { RefillIntervalUnit } from './balance';
+import type { SettingDefinition } from './generate';
+import type { TMinimalFeedback } from './feedback';
+import type { ContentTypes } from './types/runs';
+import type { Agent } from './types/assistants';
 
 export * from './schemas';
 
 export type TMessages = TMessage[];
 
-export type TMessagesAtom = TMessages | null;
-
 /* TODO: Cleanup EndpointOption types */
-export type TEndpointOption = {
-  endpoint: EModelEndpoint;
-  endpointType?: EModelEndpoint;
+export type TEndpointOption = Pick<
+  TConversation,
+  // Core conversation fields
+  | 'endpoint'
+  | 'endpointType'
+  | 'model'
+  | 'modelLabel'
+  | 'chatGptLabel'
+  | 'promptPrefix'
+  | 'temperature'
+  | 'topP'
+  | 'topK'
+  | 'top_p'
+  | 'frequency_penalty'
+  | 'presence_penalty'
+  | 'maxOutputTokens'
+  | 'maxContextTokens'
+  | 'max_tokens'
+  | 'maxTokens'
+  | 'resendFiles'
+  | 'imageDetail'
+  | 'reasoning_effort'
+  | 'verbosity'
+  | 'instructions'
+  | 'additional_instructions'
+  | 'append_current_datetime'
+  | 'tools'
+  | 'stop'
+  | 'region'
+  | 'additionalModelRequestFields'
+  // Anthropic-specific
+  | 'promptCache'
+  | 'thinking'
+  | 'thinkingBudget'
+  | 'thinkingLevel'
+  | 'effort'
+  | 'thinkingDisplay'
+  // Assistant/Agent fields
+  | 'assistant_id'
+  | 'agent_id'
+  // UI/Display fields
+  | 'iconURL'
+  | 'greeting'
+  | 'spec'
+  // Artifacts
+  | 'artifacts'
+  // Files
+  | 'file_ids'
+  // System field
+  | 'system'
+  // Google examples
+  | 'examples'
+  // Context
+  | 'context'
+> & {
+  // Fields specific to endpoint options that don't exist on TConversation
   modelDisplayLabel?: string;
-  resendFiles?: boolean;
-  promptCache?: boolean;
-  maxContextTokens?: number;
-  imageDetail?: ImageDetail;
-  model?: string | null;
-  promptPrefix?: string;
-  temperature?: number;
-  chatGptLabel?: string | null;
-  modelLabel?: string | null;
-  jailbreak?: boolean;
   key?: string | null;
-  /* assistant */
+  /** @deprecated Assistants API */
   thread_id?: string;
-  /* multi-response stream */
+  // Conversation identifiers for multi-response streams
   overrideConvoId?: string;
   overrideUserMessageId?: string;
+  // Model parameters (used by different endpoints)
+  modelOptions?: Record<string, unknown>;
+  model_parameters?: Record<string, unknown>;
+  // Configuration data (added by middleware)
+  modelsConfig?: TModelsConfig;
+  // File attachments (processed by middleware)
+  attachments?: TAttachment[];
+  // Generated prompts
+  artifactsPrompt?: string;
+  // Agent-specific fields
+  agent?: Promise<Agent>;
+  // Client-specific options
+  clientOptions?: Record<string, unknown>;
+};
+
+export type TEphemeralAgent = {
+  mcp?: string[];
+  web_search?: boolean;
+  file_search?: boolean;
+  execute_code?: boolean;
+  artifacts?: string;
+  skills?: boolean;
 };
 
 export type TPayload = Partial<TMessage> &
   Partial<TEndpointOption> & {
     isContinued: boolean;
+    isRegenerate?: boolean;
     conversationId: string | null;
     messages?: TMessages;
+    isTemporary: boolean;
+    ephemeralAgent?: TEphemeralAgent | null;
+    editedContent?: TEditedContent | null;
+    /** Added conversation for multi-convo feature */
+    addedConvo?: TConversation;
+    /**
+     * Skills the user selected via the `$` popover for this turn. Names, not IDs
+     * — the backend resolves them against the user's ACL-accessible skill set,
+     * loads each SKILL.md body, and prepends one meta user message per skill
+     * before the LLM turn runs.
+     */
+    manualSkills?: string[];
   };
 
+export type TEditedContent =
+  | {
+      index: number;
+      type: ContentTypes.THINK;
+      [ContentTypes.THINK]: string;
+    }
+  | {
+      index: number;
+      type: ContentTypes.TEXT;
+      [ContentTypes.TEXT]: string;
+    };
+
 export type TSubmission = {
-  artifacts?: string;
-  plugin?: TResPlugin;
-  plugins?: TResPlugin[];
   userMessage: TMessage;
   isEdited?: boolean;
   isContinued?: boolean;
+  isTemporary: boolean;
   messages: TMessage[];
   isRegenerate?: boolean;
-  conversationId?: string;
   initialResponse?: TMessage;
   conversation: Partial<TConversation>;
   endpointOption: TEndpointOption;
+  clientTimestamp?: string;
+  ephemeralAgent?: TEphemeralAgent | null;
+  editedContent?: TEditedContent | null;
+  /** Added conversation for multi-convo feature */
+  addedConvo?: TConversation;
+  /** Skills the user invoked via the `$` popover for this submission. */
+  manualSkills?: string[];
 };
 
 export type EventSubmission = Omit<TSubmission, 'initialResponse'> & { initialResponse: TMessage };
@@ -71,24 +162,30 @@ export type EventSubmission = Omit<TSubmission, 'initialResponse'> & { initialRe
 export type TPluginAction = {
   pluginKey: string;
   action: 'install' | 'uninstall';
-  auth?: unknown;
-  isAssistantTool?: boolean;
+  auth?: Partial<Record<string, string>> | null;
+  isEntityTool?: boolean;
 };
 
 export type GroupedConversations = [key: string, TConversation[]][];
 
 export type TUpdateUserPlugins = {
-  isAssistantTool?: boolean;
-  isAgentTool?: boolean;
+  isEntityTool?: boolean;
   pluginKey: string;
   action: string;
-  auth?: unknown;
+  auth?: Partial<Record<string, string | null>> | null;
 };
 
+// TODO `label` needs to be changed to the proper `TranslationKeys`
 export type TCategory = {
   id?: string;
   value: string;
   label: string;
+  description?: string;
+  custom?: boolean;
+};
+
+export type TMarketplaceCategory = TCategory & {
+  count: number;
 };
 
 export type TError = {
@@ -102,6 +199,12 @@ export type TError = {
   };
 };
 
+export type TBackupCode = {
+  codeHash: string;
+  used: boolean;
+  usedAt: Date | null;
+};
+
 export type TUser = {
   id: string;
   username: string;
@@ -110,7 +213,12 @@ export type TUser = {
   avatar: string;
   role: string;
   provider: string;
-  plugins: string[];
+  plugins?: string[];
+  twoFactorEnabled?: boolean;
+  backupCodes?: TBackupCode[];
+  personalization?: {
+    memories?: boolean;
+  };
   createdAt: string;
   updatedAt: string;
 };
@@ -142,6 +250,33 @@ export type TUpdateUserKeyRequest = {
   expiresAt: string;
 };
 
+export type TAgentApiKeyCreateRequest = {
+  name: string;
+  expiresAt?: string | null;
+};
+
+export type TAgentApiKeyCreateResponse = {
+  id: string;
+  name: string;
+  key: string;
+  keyPrefix: string;
+  createdAt: string;
+  expiresAt?: string;
+};
+
+export type TAgentApiKeyListItem = {
+  id: string;
+  name: string;
+  keyPrefix: string;
+  lastUsedAt?: string;
+  expiresAt?: string;
+  createdAt: string;
+};
+
+export type TAgentApiKeyListResponse = {
+  keys: TAgentApiKeyListItem[];
+};
+
 export type TUpdateConversationRequest = {
   conversationId: string;
   title: string;
@@ -152,6 +287,7 @@ export type TUpdateConversationResponse = TConversation;
 export type TDeleteConversationRequest = {
   conversationId?: string;
   thread_id?: string;
+  endpoint?: string;
   source?: string;
 };
 
@@ -174,15 +310,17 @@ export type TArchiveConversationResponse = TConversation;
 export type TSharedMessagesResponse = Omit<TSharedLink, 'messages'> & {
   messages: TMessage[];
 };
-export type TSharedLinkRequest = Partial<
-  Omit<TSharedLink, 'messages' | 'createdAt' | 'updatedAt'>
-> & {
-  conversationId: string;
-};
 
-export type TSharedLinkResponse = TSharedLink;
-export type TSharedLinksResponse = TSharedLink[];
-export type TDeleteSharedLinkResponse = TSharedLink;
+export type TCreateShareLinkRequest = Pick<TConversation, 'conversationId'>;
+
+export type TUpdateShareLinkRequest = Pick<TSharedLink, 'shareId'>;
+
+export type TSharedLinkResponse = Pick<TSharedLink, 'shareId'> &
+  Pick<TConversation, 'conversationId'>;
+
+export type TSharedLinkGetResponse = TSharedLinkResponse & {
+  success: boolean;
+};
 
 // type for getting conversation tags
 export type TConversationTagsResponse = TConversationTag[];
@@ -196,11 +334,21 @@ export type TConversationTagRequest = Partial<
 
 export type TConversationTagResponse = TConversationTag;
 
-// type for tagging conversation
 export type TTagConversationRequest = {
   tags: string[];
+  tag: string;
 };
+
 export type TTagConversationResponse = string[];
+
+export type TDuplicateConvoRequest = {
+  conversationId?: string;
+};
+
+export type TDuplicateConvoResponse = {
+  conversation: TConversation;
+  messages: TMessage[];
+};
 
 export type TForkConvoRequest = {
   messageId: string;
@@ -230,6 +378,7 @@ export type TConfig = {
   azure?: boolean;
   availableTools?: [];
   availableRegions?: string[];
+  allowedProviders?: (string | EModelEndpoint)[];
   plugins?: Record<string, string>;
   name?: string;
   iconURL?: string;
@@ -240,6 +389,10 @@ export type TConfig = {
   disableBuilder?: boolean;
   retrievalModels?: string[];
   capabilities?: string[];
+  customParams?: {
+    defaultParamsEndpoint?: string;
+    paramDefinitions?: Partial<SettingDefinition>[];
+  };
 };
 
 export type TEndpointsConfig =
@@ -274,12 +427,63 @@ export type TRegisterUser = {
 export type TLoginUser = {
   email: string;
   password: string;
+  token?: string;
+  backupCode?: string;
 };
 
 export type TLoginResponse = {
-  token: string;
-  user: TUser;
+  token?: string;
+  user?: TUser;
+  twoFAPending?: boolean;
+  tempToken?: string;
 };
+
+/** Shared payload for any operation that requires OTP or backup-code verification. */
+export type TOTPVerificationPayload = {
+  token?: string;
+  backupCode?: string;
+};
+
+export type TEnable2FARequest = TOTPVerificationPayload;
+
+export type TEnable2FAResponse = {
+  otpauthUrl: string;
+  backupCodes: string[];
+  message?: string;
+};
+
+export type TVerify2FARequest = TOTPVerificationPayload;
+
+export type TVerify2FAResponse = {
+  message: string;
+};
+
+/** For verifying 2FA during login with a temporary token. */
+export type TVerify2FATempRequest = TOTPVerificationPayload & {
+  tempToken: string;
+};
+
+export type TVerify2FATempResponse = {
+  token?: string;
+  user?: TUser;
+  message?: string;
+};
+
+export type TDisable2FARequest = TOTPVerificationPayload;
+
+export type TDisable2FAResponse = {
+  message: string;
+};
+
+export type TRegenerateBackupCodesRequest = TOTPVerificationPayload;
+
+export type TRegenerateBackupCodesResponse = {
+  message?: string;
+  backupCodes: string[];
+  backupCodesHash: TBackupCode[];
+};
+
+export type TDeleteUserRequest = TOTPVerificationPayload;
 
 export type TRequestPasswordReset = {
   email: string;
@@ -300,67 +504,6 @@ export type TVerifyEmail = {
 };
 
 export type TResendVerificationEmail = Omit<TVerifyEmail, 'token'>;
-
-export type TInterfaceConfig = {
-  privacyPolicy?: {
-    externalUrl?: string;
-    openNewTab?: boolean;
-  };
-  termsOfService?: {
-    externalUrl?: string;
-    openNewTab?: boolean;
-    modalAcceptance?: boolean;
-    modalTitle?: string;
-    modalContent?: string;
-  };
-  customConsole?: {
-    externalUrl?: string;
-    openNewTab?: boolean;
-  };
-  endpointsMenu: boolean;
-  modelSelect: boolean;
-  parameters: boolean;
-  sidePanel: boolean;
-  presets: boolean;
-  multiConvo: boolean;
-  bookmarks: boolean;
-  prompts: boolean;
-};
-
-export type TStartupConfig = {
-  appTitle: string;
-  socialLogins?: string[];
-  interface?: TInterfaceConfig;
-  discordLoginEnabled: boolean;
-  facebookLoginEnabled: boolean;
-  githubLoginEnabled: boolean;
-  googleLoginEnabled: boolean;
-  openidLoginEnabled: boolean;
-  openidLabel: string;
-  openidImageUrl: string;
-  /** LDAP Auth Configuration */
-  ldap?: {
-    /** LDAP enabled */
-    enabled: boolean;
-    /** Whether LDAP uses username vs. email */
-    username?: boolean;
-  };
-  serverDomain: string;
-  emailLoginEnabled: boolean;
-  registrationEnabled: boolean;
-  socialLoginEnabled: boolean;
-  passwordResetEnabled: boolean;
-  emailEnabled: boolean;
-  checkBalance: boolean;
-  showBirthdayIcon: boolean;
-  helpAndFaqURL: string;
-  customFooter?: string;
-  modelSpecs?: TSpecsConfig;
-  sharedLinksEnabled: boolean;
-  publicSharedLinksEnabled: boolean;
-  analyticsGtmId?: string;
-  instanceProjectId: string;
-};
 
 export type TRefreshTokenResponse = {
   token: string;
@@ -404,11 +547,11 @@ export type TPromptGroup = {
   command?: string;
   oneliner?: string;
   category?: string;
-  projectIds?: string[];
   productionId?: string | null;
   productionPrompt?: Pick<TPrompt, 'prompt'> | null;
   author: string;
   authorName: string;
+  isPublic?: boolean;
   createdAt?: Date;
   updatedAt?: Date;
   _id?: string;
@@ -430,8 +573,10 @@ export type TPromptsWithFilterRequest = {
 
 export type TPromptGroupsWithFilterRequest = {
   category: string;
-  pageNumber: string;
-  pageSize: string | number;
+  pageNumber?: string; // Made optional for cursor-based pagination
+  pageSize?: string | number;
+  limit?: string | number; // For cursor-based pagination
+  cursor?: string; // For cursor-based pagination
   before?: string | null;
   after?: string | null;
   order?: 'asc' | 'desc';
@@ -444,6 +589,8 @@ export type PromptGroupListResponse = {
   pageNumber: string;
   pageSize: string | number;
   pages: string | number;
+  has_more: boolean; // Added for cursor-based pagination
+  after: string | null; // Added for cursor-based pagination
 };
 
 export type PromptGroupListData = InfiniteData<PromptGroupListResponse>;
@@ -453,9 +600,7 @@ export type TCreatePromptResponse = {
   group?: TPromptGroup;
 };
 
-export type TUpdatePromptGroupPayload = Partial<TPromptGroup> & {
-  removeProjectIds?: string[];
-};
+export type TUpdatePromptGroupPayload = Partial<TPromptGroup>;
 
 export type TUpdatePromptGroupVariables = {
   id: string;
@@ -495,9 +640,7 @@ export type TUpdatePromptLabelsResponse = {
   message: string;
 };
 
-export type TDeletePromptGroupResponse = {
-  promptGroup: string;
-};
+export type TDeletePromptGroupResponse = TUpdatePromptLabelsResponse;
 
 export type TDeletePromptGroupRequest = {
   id: string;
@@ -525,3 +668,75 @@ export type TAcceptTermsResponse = {
 };
 
 export type TBannerResponse = TBanner | null;
+
+export type TUpdateFeedbackRequest = {
+  feedback?: TMinimalFeedback;
+};
+
+export type TUpdateFeedbackResponse = {
+  messageId: string;
+  conversationId: string;
+  feedback?: TMinimalFeedback;
+};
+
+export type TBalanceResponse = {
+  tokenCredits: number;
+  // Automatic refill settings
+  autoRefillEnabled: boolean;
+  refillIntervalValue?: number;
+  refillIntervalUnit?: RefillIntervalUnit;
+  lastRefill?: Date | string;
+  refillAmount?: number;
+};
+
+/* -------------------------------------------------------------------------- */
+/* Skill UI extensions (not yet persisted — phase 2 backend will fill these)  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * @deprecated Superseded by the persisted `userInvocable` /
+ * `disableModelInvocation` pair derived from frontmatter. Retained for the
+ * transition window so older UI forms and tests still type-check; the
+ * backend no longer reads or writes it.
+ */
+export enum InvocationMode {
+  auto = 'auto',
+  manual = 'manual',
+  both = 'both',
+}
+
+/**
+ * Node in the filesystem-style skill tree view. Phase 1 derives these from
+ * the flat `TSkillFile[]` list; phase 2 will have the backend serve them
+ * directly from a persisted folder hierarchy. Kept in the shared types so
+ * tree UI helpers can be imported from both client and server.
+ */
+export type TSkillNode = {
+  _id: string;
+  skillId: string;
+  parentId: string | null;
+  type: 'file' | 'folder';
+  name: string;
+  fileId?: string;
+  order: number;
+  author: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type TSkillTreeResponse = {
+  nodes: TSkillNode[];
+};
+
+export type TCreateSkillNodeRequest = {
+  type: 'file' | 'folder';
+  name: string;
+  parentId?: string | null;
+  order?: number;
+};
+
+export type TUpdateSkillNodeRequest = {
+  name?: string;
+  parentId?: string | null;
+  order?: number;
+};

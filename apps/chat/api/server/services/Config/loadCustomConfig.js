@@ -1,15 +1,64 @@
 const path = require('path');
-const { CacheKeys, configSchema, EImageOutputType } = require('librechat-data-provider');
-const getLogStores = require('~/cache/getLogStores');
-const loadYaml = require('~/utils/loadYaml');
-const { logger } = require('~/config');
 const axios = require('axios');
 const yaml = require('js-yaml');
+const keyBy = require('lodash/keyBy');
+const { loadYaml } = require('@librechat/api');
+const { Providers } = require('@librechat/agents');
+const { logger } = require('@librechat/data-schemas');
+const {
+  configSchema,
+  paramSettings,
+  EImageOutputType,
+  agentParamSettings,
+  validateSettingDefinitions,
+} = require('librechat-data-provider');
 
 const projectRoot = path.resolve(__dirname, '..', '..', '..', '..');
 const defaultConfigPath = path.resolve(projectRoot, 'librechat.yaml');
 
 let i = 0;
+
+const OPENROUTER_PROMPT_CACHE_DEFAULT = {
+  key: 'promptCache',
+  default: true,
+};
+
+function includesOpenRouter(value) {
+  return typeof value === 'string' && value.toLowerCase().includes(Providers.OPENROUTER);
+}
+
+function isOpenRouterEndpoint(endpoint) {
+  return includesOpenRouter(endpoint.name) || includesOpenRouter(endpoint.baseURL);
+}
+
+function shouldPreserveCustomParams(customParams) {
+  const defaultEndpoint = customParams?.defaultParamsEndpoint;
+  return (
+    defaultEndpoint && defaultEndpoint !== 'custom' && defaultEndpoint !== Providers.OPENROUTER
+  );
+}
+
+function addOpenRouterDefaults(endpoint) {
+  if (!isOpenRouterEndpoint(endpoint)) {
+    return;
+  }
+
+  if (shouldPreserveCustomParams(endpoint.customParams)) {
+    return;
+  }
+
+  const customParams = endpoint.customParams ?? {};
+  const paramDefinitions = customParams.paramDefinitions ?? [];
+  const hasPromptCache = paramDefinitions.some((param) => param.key === 'promptCache');
+
+  endpoint.customParams = {
+    ...customParams,
+    defaultParamsEndpoint: Providers.OPENROUTER,
+    paramDefinitions: hasPromptCache
+      ? paramDefinitions
+      : [...paramDefinitions, OPENROUTER_PROMPT_CACHE_DEFAULT],
+  };
+}
 
 /**
  * Load custom configuration files and caches the object if the `cache` field at root is true.
@@ -17,7 +66,7 @@ let i = 0;
  * @function loadCustomConfig
  * @returns {Promise<TCustomConfig | null>} A promise that resolves to null or the custom config object.
  * */
-async function loadCustomConfig() {
+async function loadCustomConfig(printConfig = true) {
   // Use CONFIG_PATH if set, otherwise fallback to defaultConfigPath
   const configPath = process.env.CONFIG_PATH || defaultConfigPath;
 
@@ -79,42 +128,99 @@ Please specify a correct \`imageOutputType\` value (case-sensitive).
     let errorMessage = `Invalid custom config file at ${configPath}:
 ${JSON.stringify(result.error, null, 2)}`;
 
-    if (i === 0) {
-      logger.error(errorMessage);
-      const speechError = result.error.errors.find(
-        (err) =>
-          err.code === 'unrecognized_keys' &&
-          (err.message?.includes('stt') || err.message?.includes('tts')),
-      );
+    logger.error(errorMessage);
+    const speechError = result.error.errors.find(
+      (err) =>
+        err.code === 'unrecognized_keys' &&
+        (err.message?.includes('stt') || err.message?.includes('tts')),
+    );
 
-      if (speechError) {
-        logger.warn(`
+    if (speechError) {
+      logger.warn(`
 The Speech-to-text and Text-to-speech configuration format has recently changed.
 If you're getting this error, please refer to the latest documentation:
 
 https://www.librechat.ai/docs/configuration/stt_tts`);
-      }
-
-      i++;
     }
 
-    return null;
+    if (process.env.CONFIG_BYPASS_VALIDATION === 'true') {
+      logger.warn(
+        'CONFIG_BYPASS_VALIDATION is enabled. Continuing with default configuration despite validation errors.',
+      );
+      return null;
+    }
+
+    logger.error(
+      'Exiting due to invalid configuration. Set CONFIG_BYPASS_VALIDATION=true to bypass this check.',
+    );
+    process.exit(1);
   } else {
-    logger.info('Custom config file loaded:');
-    logger.info(JSON.stringify(customConfig, null, 2));
-    logger.debug('Custom config:', customConfig);
+    if (printConfig) {
+      logger.info('Custom config file loaded:');
+      logger.info(JSON.stringify(customConfig, null, 2));
+      logger.debug('Custom config:', customConfig);
+    }
   }
 
-  if (customConfig.cache) {
-    const cache = getLogStores(CacheKeys.CONFIG_STORE);
-    await cache.set(CacheKeys.CUSTOM_CONFIG, customConfig);
-  }
+  (customConfig.endpoints?.custom ?? []).forEach(addOpenRouterDefaults);
+
+  (customConfig.endpoints?.custom ?? [])
+    .filter((endpoint) => endpoint.customParams)
+    .forEach((endpoint) => parseCustomParams(endpoint.name, endpoint.customParams));
 
   if (result.data.modelSpecs) {
     customConfig.modelSpecs = result.data.modelSpecs;
   }
 
   return customConfig;
+}
+
+// Validate and fill out missing values for custom parameters
+function parseCustomParams(endpointName, customParams) {
+  const paramEndpoint = customParams.defaultParamsEndpoint;
+  customParams.paramDefinitions = customParams.paramDefinitions || [];
+
+  // Checks if `defaultParamsEndpoint` is a key in `paramSettings`.
+  const validEndpoints = new Set([
+    ...Object.keys(paramSettings),
+    ...Object.keys(agentParamSettings),
+  ]);
+  if (!validEndpoints.has(paramEndpoint)) {
+    throw new Error(
+      `defaultParamsEndpoint of "${endpointName}" endpoint is invalid. ` +
+        `Valid options are ${Array.from(validEndpoints).join(', ')}`,
+    );
+  }
+
+  // creates default param maps
+  const regularParams = paramSettings[paramEndpoint] ?? [];
+  const agentParams = agentParamSettings[paramEndpoint] ?? [];
+  const defaultParams = regularParams.concat(agentParams);
+  const defaultParamsMap = keyBy(defaultParams, 'key');
+
+  // TODO: Remove this check once we support new parameters not part of default parameters.
+  // Checks if every key in `paramDefinitions` is valid.
+  const validKeys = new Set(Object.keys(defaultParamsMap));
+  const paramKeys = customParams.paramDefinitions.map((param) => param.key);
+  if (paramKeys.some((key) => !validKeys.has(key))) {
+    throw new Error(
+      `paramDefinitions of "${endpointName}" endpoint contains invalid key(s). ` +
+        `Valid parameter keys are ${Array.from(validKeys).join(', ')}`,
+    );
+  }
+
+  // Fill out missing values for custom param definitions
+  customParams.paramDefinitions = customParams.paramDefinitions.map((param) => {
+    return { ...defaultParamsMap[param.key], ...param, optionType: 'custom' };
+  });
+
+  try {
+    validateSettingDefinitions(customParams.paramDefinitions);
+  } catch (e) {
+    throw new Error(
+      `Custom parameter definitions for "${endpointName}" endpoint is malformed: ${e.message}`,
+    );
+  }
 }
 
 module.exports = loadCustomConfig;

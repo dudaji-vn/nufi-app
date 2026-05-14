@@ -1,21 +1,22 @@
+import { memo } from 'react';
 import { AgentCapabilities } from 'librechat-data-provider';
 import { useFormContext, Controller } from 'react-hook-form';
-import type { AgentForm } from '~/common';
 import {
   Checkbox,
   HoverCard,
   HoverCardContent,
   HoverCardPortal,
   HoverCardTrigger,
-} from '~/components/ui';
-import { CircleHelpIcon } from '~/components/svg';
+  CircleHelpIcon,
+} from '@librechat/client';
+import type { AgentForm } from '~/common';
 import { useLocalize } from '~/hooks';
 import { ESide } from '~/common';
 
-export default function FileSearchCheckbox() {
+function FileSearchCheckbox() {
   const localize = useLocalize();
   const methods = useFormContext<AgentForm>();
-  const { control, setValue, getValues } = methods;
+  const { control } = methods;
 
   return (
     <>
@@ -27,33 +28,31 @@ export default function FileSearchCheckbox() {
             render={({ field }) => (
               <Checkbox
                 {...field}
+                id="file-search-checkbox"
                 checked={field.value}
                 onCheckedChange={field.onChange}
-                className="relative float-left  mr-2 inline-flex h-4 w-4 cursor-pointer"
+                className="relative float-left mr-2 inline-flex h-4 w-4 cursor-pointer"
                 value={field.value.toString()}
+                aria-labelledby="file-search-label"
               />
             )}
           />
-          <button
-            type="button"
-            className="flex items-center space-x-2"
-            onClick={() =>
-              // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions
-              setValue(AgentCapabilities.file_search, !getValues(AgentCapabilities.file_search), {
-                shouldDirty: true,
-              })
-            }
+          <label
+            id="file-search-label"
+            htmlFor="file-search-checkbox"
+            className="form-check-label text-token-text-primary cursor-pointer text-sm"
           >
-            <label
-              className="form-check-label text-token-text-primary w-full cursor-pointer"
-              htmlFor={AgentCapabilities.file_search}
+            {localize('com_agents_enable_file_search')}
+          </label>
+          <HoverCardTrigger asChild className="ml-2">
+            <button
+              type="button"
+              className="inline-flex items-center"
+              aria-label={localize('com_agents_file_search_info')}
             >
-              {localize('com_agents_enable_file_search')}
-            </label>
-            <HoverCardTrigger>
-              <CircleHelpIcon className="h-5 w-5 text-gray-500" />
-            </HoverCardTrigger>
-          </button>
+              <CircleHelpIcon className="h-4 w-4 text-text-tertiary" />
+            </button>
+          </HoverCardTrigger>
           <HoverCardPortal>
             <HoverCardContent side={ESide.Top} className="w-80">
               <div className="space-y-2">
@@ -68,3 +67,5 @@ export default function FileSearchCheckbox() {
     </>
   );
 }
+
+export default memo(FileSearchCheckbox);

@@ -2,10 +2,10 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const fetch = require('node-fetch');
-const { ref, uploadBytes, getDownloadURL, getStream, deleteObject } = require('firebase/storage');
+const { logger } = require('@librechat/data-schemas');
+const { getFirebaseStorage, deleteRagFile } = require('@librechat/api');
+const { ref, uploadBytes, getDownloadURL, deleteObject } = require('firebase/storage');
 const { getBufferMetadata } = require('~/server/utils');
-const { getFirebaseStorage } = require('./initialize');
-const { logger } = require('~/config');
 
 /**
  * Deletes a file from Firebase Storage.
@@ -145,7 +145,10 @@ function extractFirebaseFilePath(urlString) {
     }
 
     return '';
-  } catch (error) {
+  } catch {
+    logger.debug(
+      '[extractFirebaseFilePath] Failed to extract Firebase file path from URL, returning empty string',
+    );
     // If URL parsing fails, return an empty string
     return '';
   }
@@ -155,7 +158,7 @@ function extractFirebaseFilePath(urlString) {
  * Deletes a file from Firebase storage. This function determines the filepath from the
  * Firebase storage URL via regex for deletion. Validated by the user's ID.
  *
- * @param {Express.Request} req - The request object from Express.
+ * @param {ServerRequest} req - The request object from Express.
  * It should contain a `user` object with an `id` property.
  * @param {MongoFile} file - The file object to be deleted.
  *
@@ -164,17 +167,7 @@ function extractFirebaseFilePath(urlString) {
  *          Throws an error if there is an issue with deletion.
  */
 const deleteFirebaseFile = async (req, file) => {
-  if (file.embedded && process.env.RAG_API_URL) {
-    const jwtToken = req.headers.authorization.split(' ')[1];
-    axios.delete(`${process.env.RAG_API_URL}/documents`, {
-      headers: {
-        Authorization: `Bearer ${jwtToken}`,
-        'Content-Type': 'application/json',
-        accept: 'application/json',
-      },
-      data: [file.file_id],
-    });
-  }
+  await deleteRagFile({ userId: req.user.id, file });
 
   const fileName = extractFirebaseFilePath(file.filepath);
   if (!fileName.includes(req.user.id)) {
@@ -195,7 +188,7 @@ const deleteFirebaseFile = async (req, file) => {
  * Uploads a file to Firebase Storage.
  *
  * @param {Object} params - The params object.
- * @param {Express.Request} params.req - The request object from Express. It should have a `user` property with an `id`
+ * @param {ServerRequest} params.req - The request object from Express. It should have a `user` property with an `id`
  *                       representing the user.
  * @param {Express.Multer.File} params.file - The file object, which is part of the request. The file object should
  *                                     have a `path` property that points to the location of the uploaded file.
@@ -211,30 +204,47 @@ async function uploadFileToFirebase({ req, file, file_id }) {
   const inputBuffer = await fs.promises.readFile(inputFilePath);
   const bytes = Buffer.byteLength(inputBuffer);
   const userId = req.user.id;
-
   const fileName = `${file_id}__${path.basename(inputFilePath)}`;
-
-  const downloadURL = await saveBufferToFirebase({ userId, buffer: inputBuffer, fileName });
-
-  await fs.promises.unlink(inputFilePath);
-
-  return { filepath: downloadURL, bytes };
+  try {
+    const downloadURL = await saveBufferToFirebase({ userId, buffer: inputBuffer, fileName });
+    return { filepath: downloadURL, bytes };
+  } catch (err) {
+    logger.error('[uploadFileToFirebase] Error saving file buffer to Firebase:', err);
+    try {
+      if (file && file.path) {
+        await fs.promises.unlink(file.path);
+      }
+    } catch (unlinkError) {
+      logger.error(
+        '[uploadFileToFirebase] Error deleting temporary file, likely already deleted:',
+        unlinkError.message,
+      );
+    }
+    throw err;
+  }
 }
 
 /**
  * Retrieves a readable stream for a file from Firebase storage.
  *
+ * @param {ServerRequest} _req
  * @param {string} filepath - The filepath.
- * @returns {ReadableStream} A readable stream of the file.
+ * @returns {Promise<ReadableStream>} A readable stream of the file.
  */
-function getFirebaseFileStream(filepath) {
+async function getFirebaseFileStream(_req, filepath) {
   try {
     const storage = getFirebaseStorage();
     if (!storage) {
       throw new Error('Firebase is not initialized');
     }
-    const fileRef = ref(storage, filepath);
-    return getStream(fileRef);
+
+    const response = await axios({
+      method: 'get',
+      url: filepath,
+      responseType: 'stream',
+    });
+
+    return response.data;
   } catch (error) {
     logger.error('Error getting Firebase file stream:', error);
     throw error;

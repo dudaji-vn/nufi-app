@@ -1,5 +1,6 @@
+const { isUserProvided, isEnabled } = require('@librechat/api');
 const { EModelEndpoint } = require('librechat-data-provider');
-const { isUserProvided, generateConfig } = require('~/server/utils');
+const { generateConfig } = require('~/server/utils/handleText');
 
 const {
   OPENAI_API_KEY: openAIApiKey,
@@ -7,9 +8,6 @@ const {
   ASSISTANTS_API_KEY: assistantsApiKey,
   AZURE_API_KEY: azureOpenAIApiKey,
   ANTHROPIC_API_KEY: anthropicApiKey,
-  CHATGPT_TOKEN: chatGPTToken,
-  BINGAI_TOKEN: bingToken,
-  PLUGINS_USE_AZURE,
   GOOGLE_KEY: googleKey,
   OPENAI_REVERSE_PROXY,
   AZURE_OPENAI_BASEURL,
@@ -17,22 +15,16 @@ const {
   AZURE_ASSISTANTS_BASE_URL,
 } = process.env ?? {};
 
-const useAzurePlugins = !!PLUGINS_USE_AZURE;
-
-const userProvidedOpenAI = useAzurePlugins
-  ? isUserProvided(azureOpenAIApiKey)
-  : isUserProvided(openAIApiKey);
+const userProvidedOpenAI = isUserProvided(openAIApiKey);
+const anthropicUsesVertex = isEnabled(process.env.ANTHROPIC_USE_VERTEX);
 
 module.exports = {
   config: {
+    googleKey,
     openAIApiKey,
     azureOpenAIApiKey,
-    useAzurePlugins,
     userProvidedOpenAI,
-    googleKey,
-    [EModelEndpoint.bingAI]: generateConfig(bingToken),
-    [EModelEndpoint.anthropic]: generateConfig(anthropicApiKey),
-    [EModelEndpoint.chatGPTBrowser]: generateConfig(chatGPTToken),
+    [EModelEndpoint.anthropic]: generateConfig(anthropicUsesVertex ? 'true' : anthropicApiKey),
     [EModelEndpoint.openAI]: generateConfig(openAIApiKey, OPENAI_REVERSE_PROXY),
     [EModelEndpoint.azureOpenAI]: generateConfig(azureOpenAIApiKey, AZURE_OPENAI_BASEURL),
     [EModelEndpoint.assistants]: generateConfig(
@@ -49,10 +41,6 @@ module.exports = {
       process.env.BEDROCK_AWS_SECRET_ACCESS_KEY ?? process.env.BEDROCK_AWS_DEFAULT_REGION,
     ),
     /* key will be part of separate config */
-    [EModelEndpoint.agents]: generateConfig(
-      process.env.EXPERIMENTAL_AGENTS,
-      undefined,
-      EModelEndpoint.agents,
-    ),
+    [EModelEndpoint.agents]: generateConfig('true', undefined, EModelEndpoint.agents),
   },
 };

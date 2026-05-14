@@ -1,8 +1,7 @@
-import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { Spinner, ThemeSelector } from '@librechat/client';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useVerifyEmailMutation, useResendVerificationEmail } from '~/data-provider';
-import { ThemeSelector } from '~/components/ui';
-import { Spinner } from '~/components/svg';
 import { useLocalize } from '~/hooks';
 
 function RequestPasswordReset() {
@@ -14,7 +13,6 @@ function RequestPasswordReset() {
   const [headerText, setHeaderText] = useState<string>('');
   const [showResendLink, setShowResendLink] = useState<boolean>(false);
   const [verificationStatus, setVerificationStatus] = useState<boolean>(false);
-
   const token = useMemo(() => params.get('token') || '', [params]);
   const email = useMemo(() => params.get('email') || '', [params]);
 
@@ -26,9 +24,8 @@ function RequestPasswordReset() {
           clearInterval(timer);
           navigate('/c/new', { replace: true });
           return 0;
-        } else {
-          return prevCountdown - 1;
         }
+        return prevCountdown - 1;
       });
     }, 1000);
   }, [navigate]);
@@ -39,11 +36,10 @@ function RequestPasswordReset() {
       setVerificationStatus(true);
       countdownRedirect();
     },
-    onError: () => {
+    onError: (error: unknown) => {
+      setHeaderText(localize('com_auth_email_verification_failed') + ' 😢');
       setShowResendLink(true);
       setVerificationStatus(true);
-      setHeaderText(localize('com_auth_email_verification_failed') + ' 😢');
-      setCountdown(0);
     },
   });
 
@@ -54,7 +50,6 @@ function RequestPasswordReset() {
     },
     onError: () => {
       setHeaderText(localize('com_auth_email_resent_failed') + ' 😢');
-      countdownRedirect();
     },
     onMutate: () => setShowResendLink(false),
   });
@@ -64,26 +59,22 @@ function RequestPasswordReset() {
   };
 
   useEffect(() => {
-    if (verifyEmailMutation.isLoading || verificationStatus) {
+    if (verificationStatus || verifyEmailMutation.isLoading) {
       return;
     }
 
     if (token && email) {
-      verifyEmailMutation.mutate({
-        email,
-        token,
-      });
-      return;
-    } else if (email) {
-      setHeaderText(localize('com_auth_email_verification_failed_token_missing') + ' 😢');
+      verifyEmailMutation.mutate({ email, token });
     } else {
-      setHeaderText(localize('com_auth_email_verification_invalid') + ' 🤨');
+      if (email) {
+        setHeaderText(localize('com_auth_email_verification_failed_token_missing') + ' 😢');
+      } else {
+        setHeaderText(localize('com_auth_email_verification_invalid') + ' 🤨');
+      }
+      setShowResendLink(true);
+      setVerificationStatus(true);
     }
-
-    setShowResendLink(true);
-    setVerificationStatus(true);
-    setCountdown(0);
-  }, [localize, token, email, verificationStatus, verifyEmailMutation]);
+  }, [token, email, verificationStatus, verifyEmailMutation]);
 
   const VerificationSuccess = () => (
     <div className="flex flex-col items-center justify-center">
@@ -92,7 +83,7 @@ function RequestPasswordReset() {
       </h1>
       {countdown > 0 && (
         <p className="text-center text-lg text-gray-600 dark:text-gray-400">
-          {localize('com_auth_email_verification_redirecting', countdown.toString())}
+          {localize('com_auth_email_verification_redirecting', { 0: countdown.toString() })}
         </p>
       )}
       {showResendLink && countdown === 0 && (

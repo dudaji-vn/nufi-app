@@ -1,12 +1,13 @@
 import { useForm } from 'react-hook-form';
-import React, { useState } from 'react';
+import React, { useContext, useState } from 'react';
+import { Turnstile } from '@marsidev/react-turnstile';
+import { ThemeContext, Spinner, Button, isDark } from '@librechat/client';
 import { useNavigate, useOutletContext, useLocation } from 'react-router-dom';
 import { useRegisterUserMutation } from 'librechat-data-provider/react-query';
 import type { TRegisterUser, TError } from 'librechat-data-provider';
 import type { TLoginLayoutContext } from '~/common';
+import { useLocalize, TranslationKeys } from '~/hooks';
 import { ErrorMessage } from './ErrorMessage';
-import { Spinner } from '~/components/svg';
-import { useLocalize } from '~/hooks';
 
 const inputClass = `
   webkit-dark-styles peer w-full rounded-xl border border-border bg-card/60 px-3.5 pb-2.5 pt-3
@@ -26,6 +27,7 @@ const labelClass = `
 const Registration: React.FC = () => {
   const navigate = useNavigate();
   const localize = useLocalize();
+  const { theme } = useContext(ThemeContext);
   const { startupConfig, startupConfigError, isFetching } = useOutletContext<TLoginLayoutContext>();
 
   const {
@@ -39,10 +41,15 @@ const Registration: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [countdown, setCountdown] = useState<number>(3);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
 
   const location = useLocation();
   const queryParams = new URLSearchParams(location.search);
   const token = queryParams.get('token');
+  const validTheme = isDark(theme) ? 'dark' : 'light';
+
+  // only require captcha if we have a siteKey
+  const requireCaptcha = Boolean(startupConfig?.turnstile?.siteKey);
 
   const registerUser = useRegisterUserMutation({
     onMutate: () => {
@@ -71,7 +78,7 @@ const Registration: React.FC = () => {
     },
   });
 
-  const renderInput = (id: string, label: string, type: string, validation: object) => (
+  const renderInput = (id: string, label: TranslationKeys, type: string, validation: object) => (
     <div>
       <div className="relative">
         <input
@@ -118,7 +125,7 @@ const Registration: React.FC = () => {
               : 'com_auth_registration_success_insecure',
           ) +
             ' ' +
-            localize('com_auth_email_verification_redirecting', countdown.toString())}
+            localize('com_auth_email_verification_redirecting', { 0: countdown.toString() })}
         </div>
       )}
       {!startupConfigError && !isFetching && (
@@ -169,7 +176,7 @@ const Registration: React.FC = () => {
           {renderInput('password', 'com_auth_password', 'password', {
             required: localize('com_auth_password_required'),
             minLength: {
-              value: 8,
+              value: startupConfig?.minPasswordLength || 8,
               message: localize('com_auth_password_min_length'),
             },
             maxLength: {
@@ -181,14 +188,35 @@ const Registration: React.FC = () => {
             validate: (value: string) =>
               value === password || localize('com_auth_password_not_match'),
           })}
-          <button
-            disabled={Object.keys(errors).length > 0 || isSubmitting}
+
+          {startupConfig?.turnstile?.siteKey && (
+            <div className="my-4 flex justify-center">
+              <Turnstile
+                siteKey={startupConfig.turnstile.siteKey}
+                options={{
+                  ...startupConfig.turnstile.options,
+                  theme: validTheme,
+                }}
+                onSuccess={(token) => setTurnstileToken(token)}
+                onError={() => setTurnstileToken(null)}
+                onExpire={() => setTurnstileToken(null)}
+              />
+            </div>
+          )}
+
+          <Button
+            disabled={
+              Object.keys(errors).length > 0 ||
+              isSubmitting ||
+              (requireCaptcha && !turnstileToken)
+            }
             type="submit"
             aria-label="Submit registration"
-            className="btn-primary w-full rounded-xl px-4 py-3 text-sm font-semibold tracking-wide shadow-sm transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-brand-purple/40 focus:ring-offset-2 focus:ring-offset-background disabled:opacity-60"
+            variant="submit"
+            className="h-12 w-full rounded-xl"
           >
             {isSubmitting ? <Spinner /> : localize('com_auth_continue')}
-          </button>
+          </Button>
         </form>
       )}
     </>

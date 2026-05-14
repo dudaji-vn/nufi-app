@@ -1,16 +1,15 @@
 const path = require('path');
 const { v4 } = require('uuid');
+const { countTokens } = require('@librechat/api');
+const { escapeRegExp } = require('@librechat/data-schemas');
 const {
   Constants,
   ContentTypes,
   AnnotationTypes,
   defaultOrderQuery,
 } = require('librechat-data-provider');
+const { recordMessage, getMessages, spendTokens, saveConvo } = require('~/models');
 const { retrieveAndProcessFile } = require('~/server/services/Files/process');
-const { recordMessage, getMessages } = require('~/models/Message');
-const { countTokens, escapeRegExp } = require('~/server/utils');
-const { spendTokens } = require('~/models/spendTokens');
-const { saveConvo } = require('~/models/Conversation');
 
 /**
  * Initializes a new thread or adds messages to an existing thread.
@@ -33,7 +32,7 @@ async function initThread({ openai, body, thread_id: _thread_id }) {
     thread = await openai.beta.threads.create(body);
   }
 
-  const thread_id = _thread_id ?? thread.id;
+  const thread_id = _thread_id || thread.id;
   return { messages, thread_id, ...thread };
 }
 
@@ -61,24 +60,6 @@ async function initThread({ openai, body, thread_id: _thread_id }) {
  */
 async function saveUserMessage(req, params) {
   const tokenCount = await countTokens(params.text);
-
-  // todo: do this on the frontend
-  // const { file_ids = [] } = params;
-  // let content;
-  // if (file_ids.length) {
-  //   content = [
-  //     {
-  //       value: params.text,
-  //     },
-  //     ...(
-  //       file_ids
-  //         .filter(f => f)
-  //         .map((file_id) => ({
-  //           file_id,
-  //         }))
-  //     ),
-  //   ];
-  // }
 
   const userMessage = {
     user: params.user,
@@ -110,9 +91,15 @@ async function saveUserMessage(req, params) {
   }
 
   const message = await recordMessage(userMessage);
-  await saveConvo(req, convo, {
-    context: 'api/server/services/Threads/manage.js #saveUserMessage',
-  });
+  await saveConvo(
+    {
+      userId: req?.user?.id,
+      isTemporary: req?.body?.isTemporary,
+      interfaceConfig: req?.config?.interfaceConfig,
+    },
+    convo,
+    { context: 'api/server/services/Threads/manage.js #saveUserMessage' },
+  );
   return message;
 }
 
@@ -132,6 +119,8 @@ async function saveUserMessage(req, params) {
  * @param {string} params.endpoint - The conversation endpoint
  * @param {string} params.parentMessageId - The latest user message that triggered this response.
  * @param {string} [params.instructions] - Optional: from preset for `instructions` field.
+ * @param {string} [params.spec] - Optional: Model spec identifier.
+ * @param {string} [params.iconURL]
  * Overrides the instructions of the assistant.
  * @param {string} [params.promptPrefix] - Optional: from preset for `additional_instructions` field.
  * @return {Promise<Run>} A promise that resolves to the created run object.
@@ -154,10 +143,16 @@ async function saveAssistantMessage(req, params) {
     text: params.text,
     unfinished: false,
     // tokenCount,
+    iconURL: params.iconURL,
+    spec: params.spec,
   });
 
   await saveConvo(
-    req,
+    {
+      userId: req?.user?.id,
+      isTemporary: req?.body?.isTemporary,
+      interfaceConfig: req?.config?.interfaceConfig,
+    },
     {
       endpoint: params.endpoint,
       conversationId: params.conversationId,
@@ -165,6 +160,8 @@ async function saveAssistantMessage(req, params) {
       instructions: params.instructions,
       assistant_id: params.assistant_id,
       model: params.model,
+      iconURL: params.iconURL,
+      spec: params.spec,
     },
     { context: 'api/server/services/Threads/manage.js #saveAssistantMessage' },
   );
@@ -186,7 +183,8 @@ async function addThreadMetadata({ openai, thread_id, messageId, messages }) {
   const promises = [];
   for (const message of messages) {
     promises.push(
-      openai.beta.threads.messages.update(thread_id, message.id, {
+      openai.beta.threads.messages.update(message.id, {
+        thread_id,
         metadata: {
           messageId,
         },
@@ -257,7 +255,8 @@ async function syncMessages({
     }
 
     modifyPromises.push(
-      openai.beta.threads.messages.update(thread_id, apiMessage.id, {
+      openai.beta.threads.messages.update(apiMessage.id, {
+        thread_id,
         metadata: {
           messageId: dbMessage.messageId,
         },
@@ -345,7 +344,11 @@ async function syncMessages({
   await Promise.all(recordPromises);
 
   await saveConvo(
-    openai.req,
+    {
+      userId: openai.req?.user?.id,
+      isTemporary: openai.req?.body?.isTemporary,
+      interfaceConfig: openai.req?.config?.interfaceConfig,
+    },
     {
       conversationId,
       file_ids: attached_file_ids,
@@ -407,7 +410,7 @@ async function checkMessageGaps({
 }) {
   const promises = [];
   promises.push(openai.beta.threads.messages.list(thread_id, defaultOrderQuery));
-  promises.push(openai.beta.threads.runs.steps.list(thread_id, run_id));
+  promises.push(openai.beta.threads.runs.steps.list(run_id, { thread_id }));
   /** @type {[{ data: ThreadMessage[] }, { data: RunStep[] }]} */
   const [response, stepsResponse] = await Promise.all(promises);
 

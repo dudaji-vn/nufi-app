@@ -1,6 +1,7 @@
-import debounce from 'lodash/debounce';
 import { useState, useEffect } from 'react';
+import debounce from 'lodash/debounce';
 import { useFormContext } from 'react-hook-form';
+import { Spinner, useToastContext } from '@librechat/client';
 import {
   validateAndParseOpenAPISpec,
   openapiToFunction,
@@ -14,12 +15,11 @@ import type {
 } from 'librechat-data-provider';
 import type { ActionAuthForm } from '~/common';
 import type { Spec } from './ActionsTable';
+import ActionCallback from '~/components/SidePanel/Builder/ActionCallback';
 import { ActionsTable, columns } from './ActionsTable';
 import { useUpdateAgentAction } from '~/data-provider';
-import { cn, removeFocusOutlines } from '~/utils';
-import { useToastContext } from '~/Providers';
-import useLocalize from '~/hooks/useLocalize';
-import { Spinner } from '~/components/svg';
+import { useLocalize } from '~/hooks';
+import { logger } from '~/utils';
 
 const debouncedValidation = debounce(
   (input: string, callback: (result: ValidationResult) => void) => {
@@ -56,12 +56,13 @@ export default function ActionsInput({
   const [functions, setFunctions] = useState<FunctionTool[] | null>(null);
 
   useEffect(() => {
-    if (!action?.metadata?.raw_spec) {
+    const rawSpec = action?.metadata.raw_spec ?? '';
+    if (!rawSpec) {
       return;
     }
-    setInputValue(action.metadata.raw_spec);
-    debouncedValidation(action.metadata.raw_spec, handleResult);
-  }, [action?.metadata?.raw_spec]);
+    setInputValue(rawSpec);
+    debouncedValidation(rawSpec, handleResult);
+  }, [action?.metadata.raw_spec]);
 
   useEffect(() => {
     if (!validationResult || !validationResult.status || !validationResult.spec) {
@@ -94,15 +95,16 @@ export default function ActionsInput({
     },
     onError(error) {
       showToast({
-        message: (error as Error)?.message ?? localize('com_assistants_update_actions_error'),
+        message: (error as Error).message || localize('com_assistants_update_actions_error'),
         status: 'error',
       });
     },
   });
 
   const saveAction = handleSubmit((authFormData) => {
-    console.log('authFormData', authFormData);
-    if (!agent_id) {
+    logger.log('actions', 'saving action', authFormData);
+    const currentAgentId = agent_id ?? '';
+    if (!currentAgentId) {
       // alert user?
       return;
     }
@@ -119,12 +121,12 @@ export default function ActionsInput({
     const action_id = action?.action_id;
     metadata.raw_spec = inputValue;
     const parsedUrl = new URL(data[0].domain);
-    const domain = parsedUrl.hostname;
-    if (!domain) {
+    if (!parsedUrl.hostname) {
       // alert user?
       return;
     }
-    metadata.domain = domain;
+    // Send protocol + hostname for proper SSRF validation (e.g., "http://192.168.1.1")
+    metadata.domain = `${parsedUrl.protocol}//${parsedUrl.hostname}`;
 
     const { type, saved_auth_fields } = authFormData;
 
@@ -171,7 +173,7 @@ export default function ActionsInput({
       action_id,
       metadata,
       functions,
-      agent_id,
+      agent_id: currentAgentId,
     });
   });
 
@@ -186,40 +188,39 @@ export default function ActionsInput({
     debouncedValidation(newValue, handleResult);
   };
 
+  const getButtonContent = () => {
+    if (updateAgentAction.isLoading) {
+      return <Spinner className="icon-md" />;
+    }
+
+    if (action?.action_id != null && action.action_id) {
+      return localize('com_ui_update');
+    }
+
+    return localize('com_ui_create');
+  };
+
   return (
     <>
-      <div className="">
+      <div className="flex min-h-0 flex-1 flex-col">
         <div className="mb-1 flex flex-wrap items-center justify-between gap-4">
-          <label className="text-token-text-primary whitespace-nowrap font-medium">Schema</label>
-          <div className="flex items-center gap-2">
-            {/* <button className="btn btn-neutral border-token-border-light relative h-8 min-w-[100px] rounded-lg font-medium">
-              <div className="flex w-full items-center justify-center text-xs">Import from URL</div>
-            </button> */}
-            <select
-              onChange={(e) => console.log(e.target.value)}
-              className="border-token-border-medium h-8 min-w-[100px] rounded-lg border bg-transparent px-2 py-0 text-sm"
-            >
-              <option value="label">{localize('com_ui_examples')}</option>
-              {/* TODO: make these appear and function correctly */}
-              <option value="0">Weather (JSON)</option>
-              <option value="1">Pet Store (YAML)</option>
-              <option value="2">Blank Template</option>
-            </select>
-          </div>
+          <label
+            htmlFor="schemaInput"
+            className="text-token-text-primary whitespace-nowrap text-sm font-medium"
+          >
+            {localize('com_ui_schema')}
+          </label>
         </div>
-        <div className="border-token-border-light mb-4 overflow-hidden rounded-lg border">
-          <div className="relative">
+        <div className="border-token-border-medium bg-token-surface-primary hover:border-token-border-hover mb-4 flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border ring-0">
+          <div className="relative flex min-h-0 flex-1 flex-col">
             <textarea
+              id="schemaInput"
               value={inputValue}
               onChange={handleInputChange}
               spellCheck="false"
-              placeholder="Enter your OpenAPI schema here"
-              className={cn(
-                'text-token-text-primary block h-96 w-full border-none bg-transparent p-2 font-mono text-xs',
-                removeFocusOutlines,
-              )}
+              placeholder={localize('com_ui_enter_openapi_schema')}
+              className="text-token-text-primary block min-h-[12rem] flex-1 resize-y bg-transparent p-2 font-mono text-xs outline-none focus:ring-1 focus:ring-border-light"
             />
-            {/* TODO: format input button */}
           </div>
           {validationResult && validationResult.message !== 'OpenAPI spec is valid.' && (
             <div className="border-token-border-light border-t p-2 text-red-500">
@@ -231,53 +232,38 @@ export default function ActionsInput({
         </div>
       </div>
       {!!data && (
-        <div>
-          <div className="mb-1.5 flex items-center">
-            <label className="text-token-text-primary block font-medium">
+        <div className="my-2">
+          <div className="flex items-center">
+            <label className="text-token-text-primary block text-sm font-medium">
               {localize('com_assistants_available_actions')}
             </label>
           </div>
           <ActionsTable columns={columns} data={data} />
         </div>
       )}
-      <div className="mt-4">
+      <div className="relative my-1">
+        <ActionCallback action_id={action?.action_id} />
         <div className="mb-1.5 flex items-center">
-          <span className="" data-state="closed">
-            <label className="text-token-text-primary block font-medium">
-              {localize('com_ui_privacy_policy')}
-            </label>
-          </span>
+          <label className="text-token-text-primary block text-sm font-medium">
+            {localize('com_ui_privacy_policy_url')}
+          </label>
         </div>
-        <div className="rounded-md border border-gray-300 px-3 py-2 shadow-none focus-within:border-gray-800 focus-within:ring-1 focus-within:ring-gray-800 dark:border-gray-700 dark:bg-gray-700 dark:focus-within:border-gray-500 dark:focus-within:ring-gray-500">
-          <label
-            htmlFor="privacyPolicyUrl"
-            className="block text-xs font-medium text-gray-900 dark:text-gray-100"
+        <div className="border-token-border-medium bg-token-surface-primary hover:border-token-border-hover flex h-9 w-full rounded-lg border">
+          <input
+            type="text"
+            placeholder="https://api.example-weather-app.com/privacy"
+            className="flex-1 rounded-lg bg-transparent px-3 py-1.5 text-sm outline-none placeholder:text-text-secondary-alt focus:ring-1 focus:ring-border-light"
           />
-          <div className="relative">
-            <input
-              name="privacyPolicyUrl"
-              id="privacyPolicyUrl"
-              className="block w-full border-0 p-0 text-gray-900 placeholder-gray-500 shadow-none outline-none focus-within:shadow-none focus-within:outline-none focus-within:ring-0 focus:border-none focus:ring-0 dark:bg-gray-700 dark:text-gray-100 sm:text-sm"
-              placeholder="https://api.example-weather-app.com/privacy"
-              // value=""
-            />
-          </div>
         </div>
       </div>
-      <div className="flex items-center justify-end">
+      <div className="mt-auto flex items-center justify-end pt-2">
         <button
           disabled={!functions || !functions.length}
           onClick={saveAction}
-          className="focus:shadow-outline mt-1 flex min-w-[100px] items-center justify-center rounded bg-green-500 px-4 py-2 font-semibold text-white hover:bg-green-400 focus:border-green-500 focus:outline-none focus:ring-0 disabled:bg-green-400"
+          className="focus:shadow-outline flex min-w-[100px] items-center justify-center rounded bg-green-500 px-4 py-2 font-semibold text-white hover:bg-green-400 focus:border-green-500 focus:outline-none focus:ring-0 disabled:bg-green-400"
           type="button"
         >
-          {updateAgentAction.isLoading ? (
-            <Spinner className="icon-md" />
-          ) : action?.action_id ? (
-            localize('com_ui_update')
-          ) : (
-            localize('com_ui_create')
-          )}
+          {getButtonContent()}
         </button>
       </div>
     </>

@@ -1,15 +1,16 @@
 import { useState, useRef, useEffect, useMemo, memo, useCallback } from 'react';
+import { AutoSizer, List } from 'react-virtualized';
+import { Spinner, useCombobox } from '@librechat/client';
 import { useSetRecoilState, useRecoilValue } from 'recoil';
-import { PermissionTypes, Permissions } from 'librechat-data-provider';
 import type { TPromptGroup } from 'librechat-data-provider';
 import type { PromptOption } from '~/common';
-import { removeCharIfLast, mapPromptGroups, detectVariables } from '~/utils';
-import VariableDialog from '~/components/Prompts/Groups/VariableDialog';
-import CategoryIcon from '~/components/Prompts/Groups/CategoryIcon';
-import { useLocalize, useCombobox, useHasAccess } from '~/hooks';
-import { useGetAllPromptGroups } from '~/data-provider';
-import { Spinner } from '~/components/svg';
+import useInitPopoverInput from '~/hooks/Input/useInitPopoverInput';
+import { removeCharIfLast, detectVariables } from '~/utils';
+import { useRecordPromptUsage } from '~/data-provider';
+import { VariableDialog } from '~/components/Prompts';
+import { usePromptGroupsContext } from '~/Providers';
 import MentionItem from './MentionItem';
+import { useLocalize } from '~/hooks';
 import store from '~/store';
 
 const commandChar = '/';
@@ -21,12 +22,14 @@ const PopoverContainer = memo(
     isVariableDialogOpen,
     variableGroup,
     setVariableDialogOpen,
+    textAreaRef,
   }: {
     index: number;
     children: React.ReactNode;
     isVariableDialogOpen: boolean;
     variableGroup: TPromptGroup | null;
     setVariableDialogOpen: (isOpen: boolean) => void;
+    textAreaRef: React.MutableRefObject<HTMLTextAreaElement | null>;
   }) => {
     const showPromptsPopover = useRecoilValue(store.showPromptsPopoverFamily(index));
     return (
@@ -34,13 +37,20 @@ const PopoverContainer = memo(
         {showPromptsPopover ? children : null}
         <VariableDialog
           open={isVariableDialogOpen}
-          onClose={() => setVariableDialogOpen(false)}
+          onClose={() => {
+            setVariableDialogOpen(false);
+            requestAnimationFrame(() => {
+              textAreaRef.current?.focus();
+            });
+          }}
           group={variableGroup}
         />
       </>
     );
   },
 );
+
+const ROW_HEIGHT = 44;
 
 function PromptsCommand({
   index,
@@ -52,31 +62,10 @@ function PromptsCommand({
   submitPrompt: (textPrompt: string) => void;
 }) {
   const localize = useLocalize();
-  const hasAccess = useHasAccess({
-    permissionType: PermissionTypes.PROMPTS,
-    permission: Permissions.USE,
-  });
-
-  const { data, isLoading } = useGetAllPromptGroups(undefined, {
-    enabled: hasAccess,
-    select: (data) => {
-      const mappedArray = data.map((group) => ({
-        id: group._id,
-        value: group.command ?? group.name,
-        label: `${group.command ? `/${group.command} - ` : ''}${group.name}: ${
-          group.oneliner?.length ? group.oneliner : group.productionPrompt?.prompt ?? ''
-        }`,
-        icon: <CategoryIcon category={group.category ?? ''} className="h-5 w-5" />,
-      }));
-
-      const promptsMap = mapPromptGroups(data);
-
-      return {
-        promptsMap,
-        promptGroups: mappedArray,
-      };
-    },
-  });
+  const { mutate: recordUsage } = useRecordPromptUsage();
+  const promptGroupsContext = usePromptGroupsContext();
+  const { allPromptGroups, hasAccess } = promptGroupsContext ?? {};
+  const { data, isLoading } = allPromptGroups ?? {};
 
   const [activeIndex, setActiveIndex] = useState(0);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -85,12 +74,20 @@ function PromptsCommand({
   const [variableGroup, setVariableGroup] = useState<TPromptGroup | null>(null);
   const setShowPromptsPopover = useSetRecoilState(store.showPromptsPopoverFamily(index));
 
-  const prompts = useMemo(() => data?.promptGroups ?? [], [data]);
-  const promptsMap = useMemo(() => data?.promptsMap ?? {}, [data]);
+  const prompts = useMemo(() => data?.promptGroups, [data]);
+  const promptsMap = useMemo(() => data?.promptsMap, [data]);
 
   const { open, setOpen, searchValue, setSearchValue, matches } = useCombobox({
     value: '',
-    options: prompts,
+    options: prompts ?? [],
+  });
+
+  const initInputRef = useInitPopoverInput({
+    inputRef,
+    textAreaRef,
+    commandChar,
+    setSearchValue,
+    setOpen,
   });
 
   const handleSelect = useCallback(
@@ -107,26 +104,35 @@ function PromptsCommand({
         removeCharIfLast(textAreaRef.current, commandChar);
       }
 
-      const isValidPrompt = mention && promptsMap && promptsMap[mention.id];
-
-      if (!isValidPrompt) {
+      const group = promptsMap?.[mention.id];
+      if (!group) {
         return;
       }
 
-      const group = promptsMap[mention.id];
       const hasVariables = detectVariables(group.productionPrompt?.prompt ?? '');
-      if (group && hasVariables) {
+      if (hasVariables) {
         if (e && e.key === 'Tab') {
           e.preventDefault();
         }
         setVariableGroup(group);
         setVariableDialogOpen(true);
         return;
-      } else if (group) {
+      } else {
         submitPrompt(group.productionPrompt?.prompt ?? '');
+        if (group._id) {
+          recordUsage(group._id);
+        }
       }
     },
-    [setSearchValue, setOpen, setShowPromptsPopover, textAreaRef, promptsMap, submitPrompt],
+    [
+      setSearchValue,
+      setOpen,
+      setShowPromptsPopover,
+      textAreaRef,
+      promptsMap,
+      submitPrompt,
+      recordUsage,
+    ],
   );
 
   useEffect(() => {
@@ -154,20 +160,49 @@ function PromptsCommand({
     return null;
   }
 
+  const rowRenderer = ({
+    index,
+    key,
+    style,
+  }: {
+    index: number;
+    key: string;
+    style: React.CSSProperties;
+  }) => {
+    const mention = matches[index] as PromptOption;
+    return (
+      <MentionItem
+        index={index}
+        type="prompt"
+        key={key}
+        style={style}
+        onClick={() => {
+          if (timeoutRef.current) {
+            clearTimeout(timeoutRef.current);
+          }
+          timeoutRef.current = null;
+          handleSelect(mention);
+        }}
+        name={mention.label ?? ''}
+        icon={mention.icon}
+        description={mention.description}
+        isActive={index === activeIndex}
+      />
+    );
+  };
+
   return (
     <PopoverContainer
       index={index}
       isVariableDialogOpen={isVariableDialogOpen}
       variableGroup={variableGroup}
       setVariableDialogOpen={setVariableDialogOpen}
+      textAreaRef={textAreaRef}
     >
-      <div className="absolute bottom-16 z-10 w-full space-y-2">
+      <div className="absolute bottom-28 z-10 w-full space-y-2">
         <div className="popover border-token-border-light rounded-2xl border bg-surface-tertiary-alt p-2 shadow-lg">
           <input
-            // The user expects focus to transition to the input field when the popover is opened
-            // eslint-disable-next-line jsx-a11y/no-autofocus
-            autoFocus
-            ref={inputRef}
+            ref={initInputRef}
             placeholder={localize('com_ui_command_usage_placeholder')}
             className="mb-1 w-full border-0 bg-surface-tertiary-alt p-2 text-sm focus:outline-none dark:text-gray-200"
             autoComplete="off"
@@ -202,39 +237,28 @@ function PromptsCommand({
               }, 150);
             }}
           />
-          <div className="max-h-40 overflow-y-auto">
-            {(() => {
-              if (isLoading && open) {
-                return (
-                  <div className="flex h-32 items-center justify-center text-text-primary">
-                    <Spinner />
-                  </div>
-                );
-              }
-
-              if (!isLoading && open) {
-                return (matches as PromptOption[]).map((mention, index) => (
-                  <MentionItem
-                    index={index}
-                    type="prompt"
-                    key={`${mention.value}-${index}`}
-                    onClick={() => {
-                      if (timeoutRef.current) {
-                        clearTimeout(timeoutRef.current);
-                      }
-                      timeoutRef.current = null;
-                      handleSelect(mention);
-                    }}
-                    name={mention.label ?? ''}
-                    icon={mention.icon}
-                    description={mention.description}
-                    isActive={index === activeIndex}
+          {open && isLoading && matches.length === 0 && (
+            <div className="flex h-32 items-center justify-center text-text-primary">
+              <Spinner />
+            </div>
+          )}
+          {open && matches.length > 0 && (
+            <div className="max-h-40">
+              <AutoSizer disableHeight>
+                {({ width }) => (
+                  <List
+                    width={width}
+                    overscanRowCount={5}
+                    rowHeight={ROW_HEIGHT}
+                    rowCount={matches.length}
+                    rowRenderer={rowRenderer}
+                    scrollToIndex={activeIndex}
+                    height={Math.min(matches.length * ROW_HEIGHT, 160)}
                   />
-                ));
-              }
-              return null;
-            })()}
-          </div>
+                )}
+              </AutoSizer>
+            </div>
+          )}
         </div>
       </div>
     </PopoverContainer>

@@ -1,30 +1,32 @@
 import { useState, useMemo } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-import { useForm, FormProvider, Controller, useWatch } from 'react-hook-form';
 import { useGetModelsQuery } from 'librechat-data-provider/react-query';
+import { Spinner, useToastContext, SelectDropDown } from '@librechat/client';
+import { useForm, FormProvider, Controller, useWatch } from 'react-hook-form';
 import {
   Tools,
-  QueryKeys,
   Capabilities,
-  actionDelimiter,
+  isActionTool,
   ImageVisionTool,
   defaultAssistantFormValues,
 } from 'librechat-data-provider';
-import type { FunctionTool, TConfig, TPlugin } from 'librechat-data-provider';
+import type { FunctionTool, TConfig } from 'librechat-data-provider';
 import type { AssistantForm, AssistantPanelProps } from '~/common';
-import { useCreateAssistantMutation, useUpdateAssistantMutation } from '~/data-provider';
+import {
+  useCreateAssistantMutation,
+  useUpdateAssistantMutation,
+  useAvailableAgentToolsQuery,
+} from '~/data-provider';
 import { cn, cardStyle, defaultTextProps, removeFocusOutlines } from '~/utils';
 import AssistantConversationStarters from './AssistantConversationStarters';
-import { useAssistantsMapContext, useToastContext } from '~/Providers';
+import AssistantToolsDialog from '~/components/Tools/AssistantToolsDialog';
 import { useSelectAssistant, useLocalize } from '~/hooks';
-import { ToolSelectDialog } from '~/components/Tools';
+import { useAssistantsMapContext } from '~/Providers';
+import AppendDateCheckbox from './AppendDateCheckbox';
 import CapabilitiesForm from './CapabilitiesForm';
-import { SelectDropDown } from '~/components/ui';
 import AssistantAvatar from './AssistantAvatar';
 import AssistantSelect from './AssistantSelect';
 import ContextButton from './ContextButton';
 import AssistantTool from './AssistantTool';
-import { Spinner } from '~/components/svg';
 import Knowledge from './Knowledge';
 import { Panel } from '~/common';
 import Action from './Action';
@@ -48,11 +50,10 @@ export default function AssistantPanel({
   assistantsConfig,
   version,
 }: AssistantPanelProps & { assistantsConfig?: TConfig | null }) {
-  const queryClient = useQueryClient();
   const modelsQuery = useGetModelsQuery();
   const assistantMap = useAssistantsMapContext();
 
-  const allTools = queryClient.getQueryData<TPlugin[]>([QueryKeys.tools]) ?? [];
+  const { data: allTools = [] } = useAvailableAgentToolsQuery();
   const { onSelect: onSelectAssistant } = useSelectAssistant(endpoint);
   const { showToast } = useToastContext();
   const localize = useLocalize();
@@ -63,7 +64,7 @@ export default function AssistantPanel({
 
   const [showToolDialog, setShowToolDialog] = useState(false);
 
-  const { control, handleSubmit, reset } = methods;
+  const { control, handleSubmit, reset, setValue, getValues } = methods;
   const assistant = useWatch({ control, name: 'assistant' });
   const functions = useWatch({ control, name: 'functions' });
   const assistant_id = useWatch({ control, name: 'id' });
@@ -138,7 +139,7 @@ export default function AssistantPanel({
 
   const onSubmit = (data: AssistantForm) => {
     const tools: Array<FunctionTool | string> = [...functions].map((functionName) => {
-      if (!functionName.includes(actionDelimiter)) {
+      if (!isActionTool(functionName)) {
         return functionName;
       } else {
         const assistant = assistantMap?.[endpoint]?.[assistant_id];
@@ -167,7 +168,7 @@ export default function AssistantPanel({
       instructions,
       conversation_starters: starters,
       model,
-      // file_ids, // TODO: add file handling here
+      append_current_datetime,
     } = data;
 
     if (assistant_id) {
@@ -181,6 +182,7 @@ export default function AssistantPanel({
           model,
           tools,
           endpoint,
+          append_current_datetime,
         },
       });
       return;
@@ -195,6 +197,7 @@ export default function AssistantPanel({
       tools,
       endpoint,
       version,
+      append_current_datetime,
     });
   };
 
@@ -212,7 +215,7 @@ export default function AssistantPanel({
     <FormProvider {...methods}>
       <form
         onSubmit={handleSubmit(onSubmit)}
-        className="h-auto w-full flex-shrink-0 overflow-x-hidden"
+        className="h-auto w-full flex-shrink-0 overflow-x-hidden pt-2"
       >
         <div className="flex w-full flex-wrap">
           <Controller
@@ -224,6 +227,7 @@ export default function AssistantPanel({
                 value={field.value}
                 endpoint={endpoint}
                 documentsMap={documentsMap}
+                allTools={allTools}
                 setCurrentAssistantId={setCurrentAssistantId}
                 selectedAssistant={current_assistant_id ?? null}
                 createMutation={create}
@@ -324,6 +328,9 @@ export default function AssistantPanel({
               )}
             />
           </div>
+
+          {/* Append Today's Date */}
+          <AppendDateCheckbox control={control} setValue={setValue} getValues={getValues} />
 
           {/* Conversation Starters */}
           <div className="relative mb-6">
@@ -460,11 +467,10 @@ export default function AssistantPanel({
             </button>
           </div>
         </div>
-        <ToolSelectDialog
+        <AssistantToolsDialog
+          endpoint={endpoint}
           isOpen={showToolDialog}
           setIsOpen={setShowToolDialog}
-          toolsFormKey="functions"
-          endpoint={endpoint}
         />
       </form>
     </FormProvider>

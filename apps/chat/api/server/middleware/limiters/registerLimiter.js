@@ -1,5 +1,6 @@
 const rateLimit = require('express-rate-limit');
-const { removePorts } = require('~/server/utils');
+const { ViolationTypes } = require('librechat-data-provider');
+const { limiterCache, removePorts } = require('@librechat/api');
 const { logViolation } = require('~/cache');
 
 const { REGISTER_WINDOW = 60, REGISTER_MAX = 5, REGISTRATION_VIOLATION_SCORE: score } = process.env;
@@ -9,7 +10,7 @@ const windowInMinutes = windowMs / 60000;
 const message = `Too many accounts created, please try again after ${windowInMinutes} minutes`;
 
 const handler = async (req, res) => {
-  const type = 'registrations';
+  const type = ViolationTypes.REGISTRATIONS;
   const errorMessage = {
     type,
     max,
@@ -20,11 +21,14 @@ const handler = async (req, res) => {
   return res.status(429).json({ message });
 };
 
-const registerLimiter = rateLimit({
+const limiterOptions = {
   windowMs,
   max,
   handler,
   keyGenerator: removePorts,
-});
+  store: limiterCache('register_limiter'),
+};
+
+const registerLimiter = rateLimit(limiterOptions);
 
 module.exports = registerLimiter;

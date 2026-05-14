@@ -1,21 +1,24 @@
+const partialRight = require('lodash/partialRight');
 const {
   Capabilities,
   EModelEndpoint,
   isAgentsEndpoint,
-  AgentCapabilities,
   isAssistantsEndpoint,
   defaultRetrievalModels,
   defaultAssistantsVersion,
+  defaultAgentCapabilities,
 } = require('librechat-data-provider');
-const { getCitations, citeText } = require('./citations');
-const partialRight = require('lodash/partialRight');
-const { sendMessage } = require('./streamResponse');
-const citationRegex = /\[\^\d+?\^]/g;
+const { sendEvent, isUserProvided } = require('@librechat/api');
 
 const addSpaceIfNeeded = (text) => (text.length > 0 && !text.endsWith(' ') ? text + ' ' : text);
 
 const base = { message: true, initial: true };
-const createOnProgress = ({ generation = '', onProgress: _onProgress }) => {
+const createOnProgress = (
+  { generation = '', onProgress: _onProgress } = {
+    generation: '',
+    onProgress: null,
+  },
+) => {
   let i = 0;
   let tokens = addSpaceIfNeeded(generation);
 
@@ -25,7 +28,7 @@ const createOnProgress = ({ generation = '', onProgress: _onProgress }) => {
     basePayload.text = basePayload.text + chunk;
 
     const payload = Object.assign({}, basePayload, rest);
-    sendMessage(res, payload);
+    sendEvent(res, payload);
     if (_onProgress) {
       _onProgress(payload);
     }
@@ -38,7 +41,7 @@ const createOnProgress = ({ generation = '', onProgress: _onProgress }) => {
   const sendIntermediateMessage = (res, payload, extraTokens = '') => {
     basePayload.text = basePayload.text + extraTokens;
     const message = Object.assign({}, basePayload, payload);
-    sendMessage(res, message);
+    sendEvent(res, message);
     if (i === 0) {
       basePayload.initial = false;
     }
@@ -56,18 +59,9 @@ const createOnProgress = ({ generation = '', onProgress: _onProgress }) => {
   return { onProgress, getPartialText, sendIntermediateMessage };
 };
 
-const handleText = async (response, bing = false) => {
+const handleText = async (response) => {
   let { text } = response;
   response.text = text;
-
-  if (bing) {
-    const links = getCitations(response);
-    if (response.text.match(citationRegex)?.length > 0) {
-      text = citeText(response);
-    }
-    text += links?.length > 0 ? `\n- ${links}` : '';
-  }
-
   return text;
 };
 
@@ -124,42 +118,6 @@ function formatAction(action) {
 }
 
 /**
- * Checks if the given value is truthy by being either the boolean `true` or a string
- * that case-insensitively matches 'true'.
- *
- * @function
- * @param {string|boolean|null|undefined} value - The value to check.
- * @returns {boolean} Returns `true` if the value is the boolean `true` or a case-insensitive
- *                    match for the string 'true', otherwise returns `false`.
- * @example
- *
- * isEnabled("True");  // returns true
- * isEnabled("TRUE");  // returns true
- * isEnabled(true);    // returns true
- * isEnabled("false"); // returns false
- * isEnabled(false);   // returns false
- * isEnabled(null);    // returns false
- * isEnabled();        // returns false
- */
-function isEnabled(value) {
-  if (typeof value === 'boolean') {
-    return value;
-  }
-  if (typeof value === 'string') {
-    return value.toLowerCase().trim() === 'true';
-  }
-  return false;
-}
-
-/**
- * Checks if the provided value is 'user_provided'.
- *
- * @param {string} value - The value to check.
- * @returns {boolean} - Returns true if the value is 'user_provided', otherwise false.
- */
-const isUserProvided = (value) => value === 'user_provided';
-
-/**
  * Generate the configuration for a given key and base URL.
  * @param {string} key
  * @param {string} [baseURL]
@@ -192,15 +150,7 @@ function generateConfig(key, baseURL, endpoint) {
   }
 
   if (agents) {
-    config.capabilities = [
-      AgentCapabilities.file_search,
-      AgentCapabilities.actions,
-      AgentCapabilities.tools,
-    ];
-
-    if (key === 'EXPERIMENTAL_RUN_CODE') {
-      config.capabilities.push(AgentCapabilities.execute_code);
-    }
+    config.capabilities = defaultAgentCapabilities;
   }
 
   if (assistants && endpoint === EModelEndpoint.azureAssistants) {
@@ -213,12 +163,10 @@ function generateConfig(key, baseURL, endpoint) {
 }
 
 module.exports = {
-  createOnProgress,
-  isEnabled,
   handleText,
   formatSteps,
   formatAction,
-  addSpaceIfNeeded,
-  isUserProvided,
   generateConfig,
+  addSpaceIfNeeded,
+  createOnProgress,
 };

@@ -1,3 +1,5 @@
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-nocheck
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
@@ -9,6 +11,8 @@ const rootDir = path.resolve(__dirname, '..');
 const directories = [
   rootDir,
   path.resolve(rootDir, 'packages', 'data-provider'),
+  path.resolve(rootDir, 'packages', 'data-schemas'),
+  path.resolve(rootDir, 'packages', 'api'),
   path.resolve(rootDir, 'client'),
   path.resolve(rootDir, 'api'),
 ];

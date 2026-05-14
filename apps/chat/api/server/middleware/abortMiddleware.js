@@ -1,52 +1,175 @@
+const { logger } = require('@librechat/data-schemas');
 const { isAssistantsEndpoint, ErrorTypes } = require('librechat-data-provider');
-const { sendMessage, sendError, countTokens, isEnabled } = require('~/server/utils');
+const {
+  isEnabled,
+  sendEvent,
+  countTokens,
+  GenerationJobManager,
+  recordCollectedUsage,
+  sanitizeMessageForTransmit,
+} = require('@librechat/api');
 const { truncateText, smartTruncateText } = require('~/app/clients/prompts');
 const clearPendingReq = require('~/cache/clearPendingReq');
-const { spendTokens } = require('~/models/spendTokens');
-const abortControllers = require('./abortControllers');
-const { saveMessage, getConvo } = require('~/models');
+const { sendError } = require('~/server/middleware/error');
 const { abortRun } = require('./abortRun');
-const { logger } = require('~/config');
+const db = require('~/models');
 
+/**
+ * Spend tokens for all models from collected usage.
+ * This handles both sequential and parallel agent execution.
+ *
+ * IMPORTANT: After spending, this function clears the collectedUsage array
+ * to prevent double-spending. The array is shared with AgentClient.collectedUsage,
+ * so clearing it here prevents the finally block from also spending tokens.
+ *
+ * @param {Object} params
+ * @param {string} params.userId - User ID
+ * @param {string} params.conversationId - Conversation ID
+ * @param {Array<Object>} params.collectedUsage - Usage metadata from all models
+ * @param {string} [params.fallbackModel] - Fallback model name if not in usage
+ * @param {string} [params.messageId] - The response message ID for transaction correlation
+ */
+async function spendCollectedUsage({
+  userId,
+  conversationId,
+  collectedUsage,
+  fallbackModel,
+  messageId,
+}) {
+  if (!collectedUsage || collectedUsage.length === 0) {
+    return;
+  }
+
+  await recordCollectedUsage(
+    {
+      spendTokens: db.spendTokens,
+      spendStructuredTokens: db.spendStructuredTokens,
+      pricing: { getMultiplier: db.getMultiplier, getCacheMultiplier: db.getCacheMultiplier },
+      bulkWriteOps: { insertMany: db.bulkInsertTransactions, updateBalance: db.updateBalance },
+    },
+    {
+      user: userId,
+      conversationId,
+      collectedUsage,
+      context: 'abort',
+      messageId,
+      model: fallbackModel,
+    },
+  );
+
+  // Clear the array to prevent double-spending from the AgentClient finally block.
+  // The collectedUsage array is shared by reference with AgentClient.collectedUsage,
+  // so clearing it here ensures recordCollectedUsage() sees an empty array and returns early.
+  collectedUsage.length = 0;
+}
+
+/**
+ * Abort an active message generation.
+ * Uses GenerationJobManager for all agent requests.
+ * Since streamId === conversationId, we can directly abort by conversationId.
+ */
 async function abortMessage(req, res) {
-  let { abortKey, endpoint } = req.body;
+  const { abortKey, endpoint } = req.body;
 
   if (isAssistantsEndpoint(endpoint)) {
     return await abortRun(req, res);
   }
 
   const conversationId = abortKey?.split(':')?.[0] ?? req.user.id;
+  const userId = req.user.id;
 
-  if (!abortControllers.has(abortKey) && abortControllers.has(conversationId)) {
-    abortKey = conversationId;
+  // Use GenerationJobManager to abort the job (streamId === conversationId)
+  const abortResult = await GenerationJobManager.abortJob(conversationId);
+
+  if (!abortResult.success) {
+    if (!res.headersSent) {
+      return res.status(204).send({ message: 'Request not found' });
+    }
+    return;
   }
 
-  if (!abortControllers.has(abortKey) && !res.headersSent) {
-    return res.status(204).send({ message: 'Request not found' });
+  const { jobData, content, text, collectedUsage } = abortResult;
+
+  const completionTokens = await countTokens(text);
+  const promptTokens = jobData?.promptTokens ?? 0;
+
+  const responseMessage = {
+    messageId: jobData?.responseMessageId,
+    parentMessageId: jobData?.userMessage?.messageId,
+    conversationId: jobData?.conversationId,
+    content,
+    text,
+    sender: jobData?.sender ?? 'AI',
+    finish_reason: 'incomplete',
+    endpoint: jobData?.endpoint,
+    iconURL: jobData?.iconURL,
+    model: jobData?.model,
+    unfinished: false,
+    error: false,
+    isCreatedByUser: false,
+    tokenCount: completionTokens,
+  };
+
+  // Spend tokens for ALL models from collectedUsage (handles parallel agents/addedConvo)
+  if (collectedUsage && collectedUsage.length > 0) {
+    await spendCollectedUsage({
+      userId,
+      conversationId: jobData?.conversationId,
+      collectedUsage,
+      fallbackModel: jobData?.model,
+      messageId: jobData?.responseMessageId,
+    });
+  } else {
+    // Fallback: no collected usage, use text-based token counting for primary model only
+    await db.spendTokens(
+      { ...responseMessage, context: 'incomplete', user: userId },
+      { promptTokens, completionTokens },
+    );
   }
 
-  const { abortController } = abortControllers.get(abortKey) ?? {};
-  if (!abortController) {
-    return res.status(204).send({ message: 'Request not found' });
-  }
-  const finalEvent = await abortController.abortCompletion();
-  logger.debug(
-    `[abortMessage] ID: ${req.user.id} | ${req.user.email} | Aborted request: ` +
-      JSON.stringify({ abortKey }),
+  await db.saveMessage(
+    {
+      userId: req?.user?.id,
+      isTemporary: req?.body?.isTemporary,
+      interfaceConfig: req?.config?.interfaceConfig,
+    },
+    { ...responseMessage, user: userId },
+    { context: 'api/server/middleware/abortMiddleware.js' },
   );
-  abortControllers.delete(abortKey);
 
-  if (res.headersSent && finalEvent) {
-    return sendMessage(res, finalEvent);
+  // Get conversation for title
+  const conversation = await db.getConvo(userId, conversationId);
+
+  const finalEvent = {
+    title: conversation && !conversation.title ? null : conversation?.title || 'New Chat',
+    final: true,
+    conversation,
+    requestMessage: jobData?.userMessage
+      ? sanitizeMessageForTransmit({
+          messageId: jobData.userMessage.messageId,
+          parentMessageId: jobData.userMessage.parentMessageId,
+          conversationId: jobData.userMessage.conversationId,
+          text: jobData.userMessage.text,
+          isCreatedByUser: true,
+        })
+      : null,
+    responseMessage,
+  };
+
+  logger.debug(
+    `[abortMessage] ID: ${userId} | ${req.user.email} | Aborted request: ${conversationId}`,
+  );
+
+  if (res.headersSent) {
+    return sendEvent(res, finalEvent);
   }
 
   res.setHeader('Content-Type', 'application/json');
-
   res.send(JSON.stringify(finalEvent));
 }
 
-const handleAbort = () => {
-  return async (req, res) => {
+const handleAbort = function () {
+  return async function (req, res) {
     try {
       if (isEnabled(process.env.LIMIT_CONCURRENT_MESSAGES)) {
         await clearPendingReq({ userId: req.user.id });
@@ -58,95 +181,14 @@ const handleAbort = () => {
   };
 };
 
-const createAbortController = (req, res, getAbortData, getReqData) => {
-  const abortController = new AbortController();
-  const { endpointOption } = req.body;
-
-  abortController.getAbortData = function () {
-    return getAbortData();
-  };
-
-  /**
-   * @param {TMessage} userMessage
-   * @param {string} responseMessageId
-   */
-  const onStart = (userMessage, responseMessageId) => {
-    sendMessage(res, { message: userMessage, created: true });
-
-    const abortKey = userMessage?.conversationId ?? req.user.id;
-    const prevRequest = abortControllers.get(abortKey);
-
-    if (prevRequest && prevRequest?.abortController) {
-      const data = prevRequest.abortController.getAbortData();
-      getReqData({ userMessage: data?.userMessage });
-      const addedAbortKey = `${abortKey}:${responseMessageId}`;
-      abortControllers.set(addedAbortKey, { abortController, ...endpointOption });
-      res.on('finish', function () {
-        abortControllers.delete(addedAbortKey);
-      });
-      return;
-    }
-
-    abortControllers.set(abortKey, { abortController, ...endpointOption });
-
-    res.on('finish', function () {
-      abortControllers.delete(abortKey);
-    });
-  };
-
-  abortController.abortCompletion = async function () {
-    abortController.abort();
-    const { conversationId, userMessage, userMessagePromise, promptTokens, ...responseData } =
-      getAbortData();
-    const completionTokens = await countTokens(responseData?.text ?? '');
-    const user = req.user.id;
-
-    const responseMessage = {
-      ...responseData,
-      conversationId,
-      finish_reason: 'incomplete',
-      endpoint: endpointOption.endpoint,
-      iconURL: endpointOption.iconURL,
-      model: endpointOption.modelOptions?.model ?? endpointOption.model_parameters?.model,
-      unfinished: false,
-      error: false,
-      isCreatedByUser: false,
-      tokenCount: completionTokens,
-    };
-
-    await spendTokens(
-      { ...responseMessage, context: 'incomplete', user },
-      { promptTokens, completionTokens },
-    );
-
-    saveMessage(
-      req,
-      { ...responseMessage, user },
-      { context: 'api/server/middleware/abortMiddleware.js' },
-    );
-
-    let conversation;
-    if (userMessagePromise) {
-      const resolved = await userMessagePromise;
-      conversation = resolved?.conversation;
-    }
-
-    if (!conversation) {
-      conversation = await getConvo(req.user.id, conversationId);
-    }
-
-    return {
-      title: conversation && !conversation.title ? null : conversation?.title || 'New Chat',
-      final: true,
-      conversation,
-      requestMessage: userMessage,
-      responseMessage: responseMessage,
-    };
-  };
-
-  return { abortController, onStart };
-};
-
+/**
+ * Handle abort errors during generation.
+ * @param {ServerResponse} res
+ * @param {ServerRequest} req
+ * @param {Error | unknown} error
+ * @param {Partial<TMessage> & { partialText?: string }} data
+ * @returns {Promise<void>}
+ */
 const handleAbortError = async (res, req, error, data) => {
   if (error?.message?.includes('base64')) {
     logger.error('[handleAbortError] Error in base64 encoding', {
@@ -157,7 +199,7 @@ const handleAbortError = async (res, req, error, data) => {
   } else {
     logger.error('[handleAbortError] AI response error; aborting request:', error);
   }
-  const { sender, conversationId, messageId, parentMessageId, partialText } = data;
+  const { sender, conversationId, messageId, parentMessageId, userMessageId, partialText } = data;
 
   if (error.stack && error.stack.includes('google')) {
     logger.warn(
@@ -173,20 +215,33 @@ const handleAbortError = async (res, req, error, data) => {
     errorText = `{"type":"${ErrorTypes.INVALID_REQUEST}"}`;
   }
 
-  if (error?.message?.includes('does not support \'system\'')) {
+  if (error?.message?.includes("does not support 'system'")) {
     errorText = `{"type":"${ErrorTypes.NO_SYSTEM_MESSAGES}"}`;
   }
 
+  /**
+   * @param {string} partialText
+   * @returns {Promise<void>}
+   */
   const respondWithError = async (partialText) => {
+    const endpointOption = req.body?.endpointOption;
     let options = {
       sender,
       messageId,
       conversationId,
       parentMessageId,
       text: errorText,
-      shouldSaveMessage: true,
       user: req.user.id,
+      spec: endpointOption?.spec,
+      iconURL: endpointOption?.iconURL,
+      modelLabel: endpointOption?.modelLabel,
+      shouldSaveMessage: userMessageId != null,
+      model: endpointOption?.modelOptions?.model || req.body?.model,
     };
+
+    if (req.body?.agent_id) {
+      options.agent_id = req.body.agent_id;
+    }
 
     if (partialText) {
       options = {
@@ -197,15 +252,7 @@ const handleAbortError = async (res, req, error, data) => {
       };
     }
 
-    const callback = async () => {
-      if (abortControllers.has(conversationId)) {
-        const { abortController } = abortControllers.get(conversationId);
-        abortController.abort();
-        abortControllers.delete(conversationId);
-      }
-    };
-
-    await sendError(req, res, options, callback);
+    await sendError(req, res, options);
   };
 
   if (partialText && partialText.length > 5) {
@@ -222,6 +269,6 @@ const handleAbortError = async (res, req, error, data) => {
 
 module.exports = {
   handleAbort,
-  createAbortController,
   handleAbortError,
+  spendCollectedUsage,
 };
