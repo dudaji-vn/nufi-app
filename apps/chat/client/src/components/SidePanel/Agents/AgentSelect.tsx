@@ -1,28 +1,23 @@
-import { Plus, EarthIcon } from 'lucide-react';
-import { useCallback, useEffect, useRef } from 'react';
-import { useGetStartupConfig } from 'librechat-data-provider/react-query';
+import { EarthIcon } from 'lucide-react';
+import { ControlCombobox } from '@librechat/client';
+import { memo, useCallback, useEffect, useRef } from 'react';
+import { useFormContext, Controller } from 'react-hook-form';
 import { AgentCapabilities, defaultAgentFormValues } from 'librechat-data-provider';
 import type { UseMutationResult, QueryObserverResult } from '@tanstack/react-query';
 import type { Agent, AgentCreateParams } from 'librechat-data-provider';
-import type { UseFormReset } from 'react-hook-form';
-import type { TAgentCapabilities, AgentForm, TAgentOption } from '~/common';
-import { cn, createDropdownSetter, createProviderOption, processAgentOption } from '~/utils';
-import SelectDropDown from '~/components/ui/SelectDropDown';
+import type { TAgentCapabilities, AgentForm } from '~/common';
+import { cn, createProviderOption, processAgentOption, getDefaultAgentFormValues } from '~/utils';
+import { useLocalize, useAgentDefaultPermissionLevel } from '~/hooks';
 import { useListAgentsQuery } from '~/data-provider';
-import { useLocalize } from '~/hooks';
 
 const keys = new Set(Object.keys(defaultAgentFormValues));
 
-export default function AgentSelect({
-  reset,
+function AgentSelect({
   agentQuery,
-  value: currentAgentValue,
   selectedAgentId = null,
   setCurrentAgentId,
   createMutation,
 }: {
-  reset: UseFormReset<AgentForm>;
-  value?: TAgentOption;
   selectedAgentId: string | null;
   agentQuery: QueryObserverResult<Agent>;
   setCurrentAgentId: React.Dispatch<React.SetStateAction<string | undefined>>;
@@ -30,23 +25,27 @@ export default function AgentSelect({
 }) {
   const localize = useLocalize();
   const lastSelectedAgent = useRef<string | null>(null);
+  const { control, reset } = useFormContext();
+  const permissionLevel = useAgentDefaultPermissionLevel();
 
-  const { data: startupConfig } = useGetStartupConfig();
-  const { data: agents = null } = useListAgentsQuery(undefined, {
-    select: (res) =>
-      res.data.map((agent) =>
-        processAgentOption({
-          agent,
-          instanceProjectId: startupConfig?.instanceProjectId,
-        }),
-      ),
-  });
+  const { data: agents = null } = useListAgentsQuery(
+    { requiredPermission: permissionLevel },
+    {
+      select: (res) =>
+        res.data.map((agent) =>
+          processAgentOption({
+            agent: {
+              ...agent,
+              name: agent.name || agent.id,
+            },
+          }),
+        ),
+    },
+  );
 
   const resetAgentForm = useCallback(
     (fullAgent: Agent) => {
-      const { instanceProjectId } = startupConfig ?? {};
-      const isGlobal =
-        (instanceProjectId != null && fullAgent.projectIds?.includes(instanceProjectId)) ?? false;
+      const isGlobal = fullAgent.isPublic ?? false;
       const update = {
         ...fullAgent,
         provider: createProviderOption(fullAgent.provider),
@@ -56,8 +55,11 @@ export default function AgentSelect({
       };
 
       const capabilities: TAgentCapabilities = {
-        [AgentCapabilities.execute_code]: false,
+        [AgentCapabilities.web_search]: false,
         [AgentCapabilities.file_search]: false,
+        [AgentCapabilities.execute_code]: false,
+        [AgentCapabilities.end_after_tools]: false,
+        [AgentCapabilities.hide_sequential_outputs]: false,
       };
 
       const agentTools: string[] = [];
@@ -75,6 +77,13 @@ export default function AgentSelect({
         agent: update,
         model: update.model,
         tools: agentTools,
+        // Ensure the category is properly set for the form
+        category: fullAgent.category || 'general',
+        // Make sure support_contact is properly loaded
+        support_contact: fullAgent.support_contact,
+        avatar_file: null,
+        avatar_preview: fullAgent.avatar?.filepath ?? '',
+        avatar_action: null,
       };
 
       Object.entries(fullAgent).forEach(([name, value]) => {
@@ -83,7 +92,55 @@ export default function AgentSelect({
           return;
         }
 
+        if (capabilities[name] !== undefined) {
+          formValues[name] = value;
+          return;
+        }
+
+        if (
+          name === 'agent_ids' &&
+          Array.isArray(value) &&
+          value.every((item) => typeof item === 'string')
+        ) {
+          formValues[name] = value;
+          return;
+        }
+
+        if (
+          name === 'skills' &&
+          Array.isArray(value) &&
+          value.every((item) => typeof item === 'string')
+        ) {
+          formValues[name] = value;
+          return;
+        }
+
+        if (name === 'skills_enabled' && typeof value === 'boolean') {
+          formValues[name] = value;
+          return;
+        }
+
+        if (name === 'edges' && Array.isArray(value)) {
+          formValues[name] = value;
+          return;
+        }
+
+        if (name === 'subagents' && typeof value === 'object' && value !== null) {
+          formValues[name] = value;
+          return;
+        }
+
+        if (name === 'tool_options' && typeof value === 'object' && value !== null) {
+          formValues[name] = value;
+          return;
+        }
+
         if (!keys.has(name)) {
+          return;
+        }
+
+        if (name === 'recursion_limit' && typeof value === 'number') {
+          formValues[name] = value;
           return;
         }
 
@@ -94,7 +151,7 @@ export default function AgentSelect({
 
       reset(formValues);
     },
-    [reset, startupConfig],
+    [reset],
   );
 
   const onSelect = useCallback(
@@ -106,9 +163,7 @@ export default function AgentSelect({
       createMutation.reset();
       if (!agentExists) {
         setCurrentAgentId(undefined);
-        return reset({
-          ...defaultAgentFormValues,
-        });
+        return reset(getDefaultAgentFormValues());
       }
 
       setCurrentAgentId(selectedId);
@@ -150,52 +205,55 @@ export default function AgentSelect({
     };
   }, [selectedAgentId, agents, onSelect]);
 
-  const createAgent = localize('com_ui_create') + ' ' + localize('com_ui_agent');
-  const hasAgentValue = !!(typeof currentAgentValue === 'object'
-    ? currentAgentValue.value != null && currentAgentValue.value !== ''
-    : typeof currentAgentValue !== 'undefined');
+  const createAgent = localize('com_ui_create_new_agent');
 
   return (
-    <SelectDropDown
-      value={!hasAgentValue ? createAgent : (currentAgentValue as TAgentOption)}
-      setValue={createDropdownSetter(onSelect)}
-      availableValues={
-        agents ?? [
-          {
-            label: 'Loading...',
-            value: '',
-          },
-        ]
-      }
-      iconSide="left"
-      optionIconSide="right"
-      showAbove={false}
-      showLabel={false}
-      emptyTitle={true}
-      showOptionIcon={true}
-      containerClassName="flex-grow"
-      searchClassName="dark:from-gray-850"
-      searchPlaceholder={localize('com_agents_search_name')}
-      optionsClass="hover:bg-gray-20/50 dark:border-gray-700"
-      optionsListClass="rounded-lg shadow-lg dark:bg-gray-850 dark:border-gray-700 dark:last:border"
-      currentValueClass={cn(
-        'text-md font-semibold text-gray-900 dark:text-white',
-        hasAgentValue ? 'text-gray-500' : '',
-      )}
-      className={cn(
-        'mt-1 rounded-md dark:border-gray-700 dark:bg-gray-850',
-        'z-50 flex h-[40px] w-full flex-none items-center justify-center px-4 hover:cursor-pointer hover:border-green-500 focus:border-gray-400',
-      )}
-      renderOption={() => (
-        <span className="flex items-center gap-1.5 truncate">
-          <span className="absolute inset-y-0 left-0 flex items-center pl-2 text-gray-800 dark:text-gray-100">
-            <Plus className="w-[16px]" />
-          </span>
-          <span className={cn('ml-4 flex h-6 items-center gap-1 text-gray-800 dark:text-gray-100')}>
-            {createAgent}
-          </span>
-        </span>
+    <Controller
+      name="agent"
+      control={control}
+      render={({ field }) => (
+        <ControlCombobox
+          containerClassName="px-0"
+          selectedValue={(field?.value?.value ?? '') + ''}
+          displayValue={field?.value?.label ?? ''}
+          selectPlaceholder={field?.value?.value ?? createAgent}
+          iconSide="right"
+          searchPlaceholder={localize('com_agents_search_name')}
+          SelectIcon={field?.value?.icon}
+          setValue={onSelect}
+          items={
+            agents?.map((agent) => ({
+              label: agent.name ?? '',
+              value: agent.id ?? '',
+              icon: agent.icon,
+            })) ?? [
+              {
+                label: 'Loading...',
+                value: '',
+              },
+            ]
+          }
+          className={cn(
+            'z-50 flex h-9 w-full flex-none items-center justify-center truncate rounded-md bg-transparent font-bold',
+          )}
+          ariaLabel={localize('com_ui_agent')}
+          isCollapsed={false}
+          showCarat={true}
+        />
       )}
     />
   );
 }
+
+const MemoizedAgentSelect = memo(
+  AgentSelect,
+  (prevProps, nextProps) =>
+    prevProps.selectedAgentId === nextProps.selectedAgentId &&
+    prevProps.agentQuery.data === nextProps.agentQuery.data &&
+    prevProps.agentQuery.isSuccess === nextProps.agentQuery.isSuccess &&
+    prevProps.createMutation.data?.id === nextProps.createMutation.data?.id &&
+    prevProps.createMutation.isLoading === nextProps.createMutation.isLoading,
+);
+MemoizedAgentSelect.displayName = 'AgentSelect';
+
+export default MemoizedAgentSelect;

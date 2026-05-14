@@ -1,214 +1,285 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useRecoilValue } from 'recoil';
-import { Check, X } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import { Constants } from 'librechat-data-provider';
-import { useGetEndpointsQuery } from 'librechat-data-provider/react-query';
-import type { MouseEvent, FocusEvent, KeyboardEvent } from 'react';
+import { useToastContext, useMediaQuery } from '@librechat/client';
 import type { TConversation } from 'librechat-data-provider';
-import { useConversations, useNavigateToConvo, useMediaQuery } from '~/hooks';
 import { useUpdateConversationMutation } from '~/data-provider';
 import EndpointIcon from '~/components/Endpoints/EndpointIcon';
+import { useNavigateToConvo, useLocalize, useShiftKey } from '~/hooks';
+import { useGetEndpointsQuery } from '~/data-provider';
 import { NotificationSeverity } from '~/common';
-import { useToastContext } from '~/Providers';
 import { ConvoOptions } from './ConvoOptions';
-import { cn } from '~/utils';
+import RenameForm from './RenameForm';
+import { cn, logger } from '~/utils';
+import ConvoLink from './ConvoLink';
 import store from '~/store';
-import { useLocalize } from '~/hooks';
 
-type KeyEvent = KeyboardEvent<HTMLInputElement>;
-
-type ConversationProps = {
+interface ConversationProps {
   conversation: TConversation;
   retainView: () => void;
   toggleNav: () => void;
-  isLatestConvo: boolean;
-};
+  isGenerating?: boolean;
+}
 
 export default function Conversation({
   conversation,
   retainView,
   toggleNav,
-  isLatestConvo,
+  isGenerating = false,
 }: ConversationProps) {
   const params = useParams();
+  const localize = useLocalize();
+  const { showToast } = useToastContext();
+  const { navigateToConvo } = useNavigateToConvo();
+  const { data: endpointsConfig } = useGetEndpointsQuery();
   const currentConvoId = useMemo(() => params.conversationId, [params.conversationId]);
   const updateConvoMutation = useUpdateConversationMutation(currentConvoId ?? '');
   const activeConvos = useRecoilValue(store.allConversationsSelector);
-  const { data: endpointsConfig } = useGetEndpointsQuery();
-  const { navigateWithLastTools } = useNavigateToConvo();
-  const { refreshConversations } = useConversations();
-  const { showToast } = useToastContext();
-  const { conversationId, title } = conversation;
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const [titleInput, setTitleInput] = useState(title);
+  const isSmallScreen = useMediaQuery('(max-width: 768px)');
+  const isShiftHeld = useShiftKey();
+  const { conversationId, title = '' } = conversation;
+
+  const [titleInput, setTitleInput] = useState(title || '');
   const [renaming, setRenaming] = useState(false);
   const [isPopoverActive, setIsPopoverActive] = useState(false);
-  const isSmallScreen = useMediaQuery('(max-width: 768px)');
-  const localize = useLocalize();
+  // Lazy-load ConvoOptions to avoid running heavy hooks for all conversations
+  const [hasInteracted, setHasInteracted] = useState(false);
 
-  const clickHandler = async (event: MouseEvent<HTMLAnchorElement>) => {
-    if (event.button === 0 && (event.ctrlKey || event.metaKey)) {
-      toggleNav();
+  const previousTitle = useRef(title);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (title !== previousTitle.current) {
+      setTitleInput(title as string);
+      previousTitle.current = title;
+    }
+  }, [title]);
+
+  const isActiveConvo = useMemo(() => {
+    if (conversationId === Constants.NEW_CONVO) {
+      return currentConvoId === Constants.NEW_CONVO;
+    }
+
+    if (currentConvoId !== Constants.NEW_CONVO) {
+      return currentConvoId === conversationId;
+    } else {
+      const latestConvo = activeConvos?.[0];
+      return latestConvo === conversationId;
+    }
+  }, [currentConvoId, conversationId, activeConvos]);
+
+  const handleRename = () => {
+    setIsPopoverActive(false);
+    setTitleInput(title as string);
+    setRenaming(true);
+  };
+
+  const handleRenameSubmit = async (newTitle: string) => {
+    if (!conversationId || newTitle === title) {
+      setRenaming(false);
       return;
     }
 
-    event.preventDefault();
+    try {
+      await updateConvoMutation.mutateAsync({
+        conversationId,
+        title: newTitle.trim() || localize('com_ui_untitled'),
+      });
+      setRenaming(false);
+    } catch (error) {
+      logger.error('Error renaming conversation', error);
+      setTitleInput(title as string);
+      showToast({
+        message: localize('com_ui_rename_failed'),
+        severity: NotificationSeverity.ERROR,
+        showIcon: true,
+      });
+      setRenaming(false);
+    }
+  };
+
+  const handleCancelRename = () => {
+    setTitleInput(title as string);
+    setRenaming(false);
+  };
+
+  const handleMouseEnter = useCallback(() => {
+    if (!hasInteracted) {
+      setHasInteracted(true);
+    }
+  }, [hasInteracted]);
+
+  const handleMouseLeave = useCallback(() => {
+    if (!isPopoverActive) {
+      setHasInteracted(false);
+    }
+  }, [isPopoverActive]);
+
+  const handleBlur = useCallback(
+    (e: React.FocusEvent<HTMLDivElement>) => {
+      // Don't reset if focus is moving to a child element within this container
+      if (e.currentTarget.contains(e.relatedTarget as Node)) {
+        return;
+      }
+      if (!isPopoverActive) {
+        setHasInteracted(false);
+      }
+    },
+    [isPopoverActive],
+  );
+
+  const handlePopoverOpenChange = useCallback((open: boolean) => {
+    setIsPopoverActive(open);
+    if (!open) {
+      requestAnimationFrame(() => {
+        const container = containerRef.current;
+        if (container && !container.contains(document.activeElement)) {
+          setHasInteracted(false);
+        }
+      });
+    }
+  }, []);
+
+  const handleNavigation = (ctrlOrMetaKey: boolean) => {
+    if (ctrlOrMetaKey) {
+      toggleNav();
+      const baseUrl = window.location.origin;
+      const path = `/c/${conversationId}`;
+      window.open(baseUrl + path, '_blank');
+      return;
+    }
+
     if (currentConvoId === conversationId || isPopoverActive) {
       return;
     }
 
     toggleNav();
 
-    // set document title
     if (typeof title === 'string' && title.length > 0) {
       document.title = title;
     }
-    /* Note: Latest Message should not be reset if existing convo */
-    navigateWithLastTools(
-      conversation,
-      !(conversationId ?? '') || conversationId === Constants.NEW_CONVO,
-    );
+
+    navigateToConvo(conversation, {
+      currentConvoId,
+      resetLatestMessage: !(conversationId ?? '') || conversationId === Constants.NEW_CONVO,
+    });
   };
 
-  const renameHandler: (e: MouseEvent<HTMLButtonElement>) => void = () => {
-    setIsPopoverActive(false);
-    setTitleInput(title);
-    setRenaming(true);
+  const convoOptionsProps = {
+    title,
+    retainView,
+    renameHandler: handleRename,
+    isActiveConvo,
+    conversationId,
+    isPopoverActive,
+    setIsPopoverActive: handlePopoverOpenChange,
+    isShiftHeld: isActiveConvo ? isShiftHeld : false,
   };
-
-  useEffect(() => {
-    if (renaming && inputRef.current) {
-      inputRef.current.focus();
-    }
-  }, [renaming]);
-
-  const onRename = (e: MouseEvent<HTMLButtonElement> | FocusEvent<HTMLInputElement> | KeyEvent) => {
-    e.preventDefault();
-    setRenaming(false);
-    if (titleInput === title) {
-      return;
-    }
-    if (typeof conversationId !== 'string' || conversationId === '') {
-      return;
-    }
-
-    updateConvoMutation.mutate(
-      { conversationId, title: titleInput ?? '' },
-      {
-        onSuccess: () => refreshConversations(),
-        onError: () => {
-          setTitleInput(title);
-          showToast({
-            message: 'Failed to rename conversation',
-            severity: NotificationSeverity.ERROR,
-            showIcon: true,
-          });
-        },
-      },
-    );
-  };
-
-  const handleKeyDown = (e: KeyEvent) => {
-    if (e.key === 'Escape') {
-      setTitleInput(title);
-      setRenaming(false);
-    } else if (e.key === 'Enter') {
-      onRename(e);
-    }
-  };
-
-  const cancelRename = (e: MouseEvent<HTMLButtonElement>) => {
-    e.preventDefault();
-    setTitleInput(title);
-    setRenaming(false);
-  };
-
-  const isActiveConvo: boolean =
-    currentConvoId === conversationId ||
-    (isLatestConvo &&
-      currentConvoId === 'new' &&
-      activeConvos[0] != null &&
-      activeConvos[0] !== 'new');
 
   return (
     <div
+      ref={containerRef}
       className={cn(
-        'group relative mt-2 flex h-9 w-full items-center rounded-md transition-colors',
-        isActiveConvo
-          ? 'rounded-l-none bg-accent before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:bg-primary hover:bg-primary/20'
-          : 'hover:bg-accent/60',
-        isSmallScreen ? 'h-12' : '',
+        'group relative flex h-12 w-full items-center rounded-lg outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-black dark:focus-visible:ring-white md:h-9',
+        isActiveConvo || isPopoverActive
+          ? 'bg-surface-active-alt before:absolute before:bottom-1 before:left-0 before:top-1 before:w-0.5 before:rounded-full before:bg-black dark:before:bg-white'
+          : 'hover:bg-surface-active-alt',
       )}
+      role="button"
+      tabIndex={renaming ? -1 : 0}
+      aria-label={localize('com_ui_conversation_label', {
+        title: title || localize('com_ui_untitled'),
+      })}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      onFocus={handleMouseEnter}
+      onBlur={handleBlur}
+      onClick={(e) => {
+        if (renaming) {
+          return;
+        }
+        if (e.button === 0) {
+          handleNavigation(e.ctrlKey || e.metaKey);
+        }
+      }}
+      onKeyDown={(e) => {
+        if (renaming) {
+          return;
+        }
+        if (e.target !== e.currentTarget) {
+          return;
+        }
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleNavigation(false);
+        }
+      }}
+      style={{ cursor: renaming ? 'default' : 'pointer' }}
+      data-testid="convo-item"
     >
       {renaming ? (
-        <div className="absolute inset-0 z-20 flex w-full items-center rounded-md bg-accent p-1.5">
-          <input
-            ref={inputRef}
-            type="text"
-            className="w-full rounded bg-transparent p-0.5 text-sm leading-tight outline-none"
-            value={titleInput ?? ''}
-            onChange={(e) => setTitleInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            aria-label={`${localize('com_ui_rename')} ${localize('com_ui_chat')}`}
-          />
-          <div className="flex gap-1">
-            <button
-              onClick={cancelRename}
-              aria-label={`${localize('com_ui_cancel')} ${localize('com_ui_rename')}`}
-            >
-              <X
-                aria-hidden={true}
-                className="h-4 w-4 transition-colors duration-200 ease-in-out hover:opacity-70"
-              />
-            </button>
-            <button
-              onClick={onRename}
-              aria-label={`${localize('com_ui_submit')} ${localize('com_ui_rename')}`}
-            >
-              <Check
-                aria-hidden={true}
-                className="h-4 w-4 transition-colors duration-200 ease-in-out hover:opacity-70"
-              />
-            </button>
-          </div>
-        </div>
+        <RenameForm
+          titleInput={titleInput}
+          setTitleInput={setTitleInput}
+          onSubmit={handleRenameSubmit}
+          onCancel={handleCancelRename}
+          localize={localize}
+        />
       ) : (
-        <a
-          href={`/c/${conversationId}`}
-          data-testid="convo-item"
-          onClick={clickHandler}
-          className={cn(
-            'flex grow cursor-pointer items-center gap-2 overflow-hidden whitespace-nowrap break-all rounded-md px-2 py-2',
-            isActiveConvo ? 'text-primary' : '',
-          )}
-          title={title ?? ''}
+        <ConvoLink
+          isActiveConvo={isActiveConvo}
+          isPopoverActive={isPopoverActive}
+          title={title}
+          onRename={handleRename}
+          isSmallScreen={isSmallScreen}
+          localize={localize}
         >
-          <EndpointIcon
-            conversation={conversation}
-            endpointsConfig={endpointsConfig}
-            size={20}
-            context="menu-item"
-          />
-          <div className="relative line-clamp-1 flex-1 grow overflow-hidden">{title}</div>
-        </a>
+          {isGenerating ? (
+            <svg
+              className="h-5 w-5 flex-shrink-0 animate-spin text-text-primary"
+              viewBox="0 0 24 24"
+              fill="none"
+              aria-label={localize('com_ui_generating')}
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="3"
+              />
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              />
+            </svg>
+          ) : (
+            <EndpointIcon
+              conversation={conversation}
+              endpointsConfig={endpointsConfig}
+              size={20}
+              context="menu-item"
+            />
+          )}
+        </ConvoLink>
       )}
       <div
         className={cn(
-          'mr-2',
+          'mr-2 flex origin-left',
           isPopoverActive || isActiveConvo
-            ? 'flex'
-            : 'hidden group-focus-within:flex group-hover:flex',
+            ? 'pointer-events-auto scale-x-100 opacity-100'
+            : 'pointer-events-none max-w-0 scale-x-0 opacity-0 group-focus-within:pointer-events-auto group-focus-within:max-w-[60px] group-focus-within:scale-x-100 group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:max-w-[60px] group-hover:scale-x-100 group-hover:opacity-100',
+          !isPopoverActive && isActiveConvo && isShiftHeld ? 'max-w-[60px]' : 'max-w-[28px]',
         )}
+        // Removing aria-hidden to fix accessibility issue: ARIA hidden element must not be focusable or contain focusable elements
+        // but not sure what its original purpose was, so leaving the property commented out until it can be cleared safe to delete.
+        // aria-hidden={!(isPopoverActive || isActiveConvo)}
       >
-        <ConvoOptions
-          conversation={conversation}
-          retainView={retainView}
-          renameHandler={renameHandler}
-          isPopoverActive={isPopoverActive}
-          setIsPopoverActive={setIsPopoverActive}
-          isActiveConvo={isActiveConvo}
-        />
+        {/* Only render ConvoOptions when user interacts (hover/focus) or for active conversation */}
+        {!renaming && (hasInteracted || isActiveConvo) && <ConvoOptions {...convoOptionsProps} />}
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
-import { useGetEndpointsQuery } from 'librechat-data-provider/react-query';
+import { getEndpointField } from 'librechat-data-provider';
 import { useChatContext } from '~/Providers/ChatContext';
-import { getEndpointField } from '~/utils';
+import { useGetEndpointsQuery } from '~/data-provider';
 import useUserKey from './useUserKey';
 
 export default function useRequiresKey() {

@@ -1,22 +1,12 @@
 import { Link } from 'react-router-dom';
-import { useLocalize } from '~/hooks';
-import { BlinkAnimation } from './BlinkAnimation';
+import { ThemeSelector } from '@librechat/client';
 import { TStartupConfig } from 'librechat-data-provider';
+import { ErrorMessage } from '~/components/Auth/ErrorMessage';
+import { TranslationKeys, useLocalize } from '~/hooks';
 import SocialLoginRender from './SocialLoginRender';
-import { ThemeSelector } from '~/components/ui';
+import { BlinkAnimation } from './BlinkAnimation';
 import { Banner } from '../Banners';
 import Footer from './Footer';
-
-const ErrorRender = ({ children }: { children: React.ReactNode }) => (
-  <div className="mb-4 flex justify-center">
-    <div
-      className="w-full rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-300"
-      role="alert"
-    >
-      {children}
-    </div>
-  </div>
-);
 
 function AuthLayout({
   children,
@@ -33,28 +23,36 @@ function AuthLayout({
   startupConfig: TStartupConfig | null | undefined;
   startupConfigError: unknown | null | undefined;
   pathname: string;
-  error: string | null;
+  error: TranslationKeys | null;
 }) {
   const localize = useLocalize();
 
+  const hasStartupConfigError = startupConfigError !== null && startupConfigError !== undefined;
   const DisplayError = () => {
-    if (startupConfigError !== null && startupConfigError !== undefined) {
-      return <ErrorRender>{localize('com_auth_error_login_server')}</ErrorRender>;
+    if (hasStartupConfigError) {
+      return (
+        <div className="mx-auto sm:max-w-sm">
+          <ErrorMessage>{localize('com_auth_error_login_server')}</ErrorMessage>
+        </div>
+      );
     } else if (error === 'com_auth_error_invalid_reset_token') {
       return (
-        <ErrorRender>
-          {localize('com_auth_error_invalid_reset_token')}{' '}
-          <Link
-            className="font-semibold text-brand-purple hover:underline"
-            to="/forgot-password"
-          >
-            {localize('com_auth_click_here')}
-          </Link>{' '}
-          {localize('com_auth_to_try_again')}
-        </ErrorRender>
+        <div className="mx-auto sm:max-w-sm">
+          <ErrorMessage>
+            {localize('com_auth_error_invalid_reset_token')}{' '}
+            <Link className="font-semibold text-brand-purple hover:underline" to="/forgot-password">
+              {localize('com_auth_click_here')}
+            </Link>{' '}
+            {localize('com_auth_to_try_again')}
+          </ErrorMessage>
+        </div>
       );
-    } else if (error) {
-      return <ErrorRender>{localize(error)}</ErrorRender>;
+    } else if (error != null && error) {
+      return (
+        <div className="mx-auto sm:max-w-sm">
+          <ErrorMessage>{localize(error)}</ErrorMessage>
+        </div>
+      );
     }
     return null;
   };
@@ -78,10 +76,8 @@ function AuthLayout({
               backgroundImage:
                 'linear-gradient(hsl(var(--border)) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--border)) 1px, transparent 1px)',
               backgroundSize: '48px 48px',
-              maskImage:
-                'radial-gradient(ellipse at center, black 40%, transparent 75%)',
-              WebkitMaskImage:
-                'radial-gradient(ellipse at center, black 40%, transparent 75%)',
+              maskImage: 'radial-gradient(ellipse at center, black 40%, transparent 75%)',
+              WebkitMaskImage: 'radial-gradient(ellipse at center, black 40%, transparent 75%)',
             }}
           />
           {/* Glow accents */}
@@ -105,8 +101,8 @@ function AuthLayout({
               Think it. Ask it. Done.
             </h2>
             <p className="mt-4 text-base leading-relaxed text-muted-foreground">
-              Your everyday AI for writing, learning, and getting things done —
-              ready whenever you are.
+              Your everyday AI for writing, learning, and getting things done — ready whenever you
+              are.
             </p>
           </div>
 
@@ -130,7 +126,7 @@ function AuthLayout({
 
               <DisplayError />
 
-              {!startupConfigError && !isFetching && (
+              {!hasStartupConfigError && !isFetching && (
                 <div className="mb-8 text-center lg:text-left">
                   <h1
                     className="text-3xl font-semibold tracking-tight text-foreground"
@@ -140,26 +136,27 @@ function AuthLayout({
                   </h1>
                   {(pathname.includes('login') || pathname.includes('register')) &&
                     startupConfig?.registrationEnabled !== false && (
-                      <p className="mt-2 text-sm text-muted-foreground">
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      {pathname.includes('register')
+                        ? localize('com_auth_already_have_account') + ' '
+                        : localize('com_auth_no_account') + ' '}
+                      <Link
+                        to={pathname.includes('register') ? '/login' : '/register'}
+                        className="font-medium text-brand-purple hover:underline"
+                      >
                         {pathname.includes('register')
-                          ? localize('com_auth_already_have_account') + ' '
-                          : localize('com_auth_no_account') + ' '}
-                        <Link
-                          to={pathname.includes('register') ? '/login' : '/register'}
-                          className="font-medium text-brand-purple hover:underline"
-                        >
-                          {pathname.includes('register')
-                            ? localize('com_auth_login')
-                            : localize('com_auth_sign_up')}
-                        </Link>
-                      </p>
-                    )}
+                          ? localize('com_auth_login')
+                          : localize('com_auth_sign_up')}
+                      </Link>
+                    </p>
+                  )}
                 </div>
               )}
 
               <div>
                 {children}
-                {(pathname.includes('login') || pathname.includes('register')) && (
+                {!pathname.includes('2fa') &&
+                  (pathname.includes('login') || pathname.includes('register')) && (
                   <SocialLoginRender startupConfig={startupConfig} />
                 )}
               </div>

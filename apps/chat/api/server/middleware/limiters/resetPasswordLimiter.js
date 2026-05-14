@@ -1,6 +1,6 @@
 const rateLimit = require('express-rate-limit');
 const { ViolationTypes } = require('librechat-data-provider');
-const { removePorts } = require('~/server/utils');
+const { limiterCache, removePorts } = require('@librechat/api');
 const { logViolation } = require('~/cache');
 
 const {
@@ -25,11 +25,14 @@ const handler = async (req, res) => {
   return res.status(429).json({ message });
 };
 
-const resetPasswordLimiter = rateLimit({
+const limiterOptions = {
   windowMs,
   max,
   handler,
   keyGenerator: removePorts,
-});
+  store: limiterCache('reset_password_limiter'),
+};
+
+const resetPasswordLimiter = rateLimit(limiterOptions);
 
 module.exports = resetPasswordLimiter;

@@ -1,10 +1,7 @@
 import { useMemo, useCallback } from 'react';
 import { EModelEndpoint } from 'librechat-data-provider';
-import {
-  useUserKeyQuery,
-  useGetEndpointsQuery,
-  useUpdateUserKeysMutation,
-} from 'librechat-data-provider/react-query';
+import { useUserKeyQuery, useUpdateUserKeysMutation } from 'librechat-data-provider/react-query';
+import { useGetEndpointsQuery } from '~/data-provider';
 
 const useUserKey = (endpoint: string) => {
   const { data: endpointsConfig } = useGetEndpointsQuery();
@@ -15,8 +12,6 @@ const useUserKey = (endpoint: string) => {
 
   if (azure) {
     keyName = EModelEndpoint.azureOpenAI;
-  } else if (keyName === EModelEndpoint.gptPlugins) {
-    keyName = EModelEndpoint.openAI;
   }
 
   const updateKey = useUpdateUserKeysMutation();
@@ -24,7 +19,7 @@ const useUserKey = (endpoint: string) => {
 
   const getExpiry = useCallback(() => {
     if (checkUserKey.data) {
-      return checkUserKey.data?.expiresAt || 'never';
+      return checkUserKey.data.expiresAt || 'never';
     }
   }, [checkUserKey.data]);
 

@@ -1,55 +1,71 @@
 import React, { useRef } from 'react';
-import { FileUpload, TooltipAnchor } from '~/components/ui';
-import { AttachmentIcon } from '~/components/svg';
-import { useLocalize } from '~/hooks';
+import { FileUpload, TooltipAnchor, AttachmentIcon } from '@librechat/client';
+import type { TConversation } from 'librechat-data-provider';
+import type { ExtendedFile, FileSetter } from '~/common';
+import { useFileHandlingNoChatContext, useLocalize } from '~/hooks';
 import { cn } from '~/utils';
 
 const AttachFile = ({
-  isRTL,
   disabled,
-  handleFileChange,
+  files,
+  setFiles,
+  setFilesLoading,
+  conversation,
 }: {
-  isRTL: boolean;
   disabled?: boolean | null;
-  handleFileChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  files: Map<string, ExtendedFile>;
+  setFiles: FileSetter;
+  setFilesLoading: React.Dispatch<React.SetStateAction<boolean>>;
+  conversation: TConversation | null;
 }) => {
   const localize = useLocalize();
   const inputRef = useRef<HTMLInputElement>(null);
   const isUploadDisabled = disabled ?? false;
 
+  const { handleFileChange } = useFileHandlingNoChatContext(undefined, {
+    files,
+    setFiles,
+    setFilesLoading,
+    conversation,
+  });
+
   return (
     <FileUpload ref={inputRef} handleFileChange={handleFileChange}>
       <TooltipAnchor
-        role="button"
-        id="attach-file"
-        aria-label={localize('com_sidepanel_attach_files')}
-        disabled={isUploadDisabled}
-        className={cn(
-          'absolute flex size-[35px] items-center justify-center rounded-full p-1 transition-colors hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-50',
-          isRTL ? 'bottom-2 right-2' : 'bottom-2 left-1 md:left-2',
-        )}
         description={localize('com_sidepanel_attach_files')}
-        onKeyDownCapture={(e) => {
-          if (!inputRef.current) {
-            return;
-          }
-          if (e.key === 'Enter' || e.key === ' ') {
-            inputRef.current.value = '';
-            inputRef.current.click();
-          }
-        }}
-        onClick={() => {
-          if (!inputRef.current) {
-            return;
-          }
-          inputRef.current.value = '';
-          inputRef.current.click();
-        }}
-      >
-        <div className="flex w-full items-center justify-center gap-2">
-          <AttachmentIcon />
-        </div>
-      </TooltipAnchor>
+        id="attach-file"
+        disabled={isUploadDisabled}
+        render={
+          <button
+            type="button"
+            aria-label={localize('com_sidepanel_attach_files')}
+            disabled={isUploadDisabled}
+            className={cn(
+              'flex size-9 items-center justify-center rounded-full p-1 transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-opacity-50',
+            )}
+            onKeyDownCapture={(e) => {
+              if (!inputRef.current) {
+                return;
+              }
+              if (e.key === 'Enter' || e.key === ' ') {
+                inputRef.current.value = '';
+                inputRef.current.click();
+              }
+            }}
+            onClick={() => {
+              if (!inputRef.current) {
+                return;
+              }
+              inputRef.current.value = '';
+              inputRef.current.click();
+            }}
+          >
+            <div className="flex w-full items-center justify-center gap-2">
+              <AttachmentIcon />
+            </div>
+          </button>
+        }
+      />
     </FileUpload>
   );
 };

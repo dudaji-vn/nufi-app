@@ -1,29 +1,38 @@
 import { v4 } from 'uuid';
+import { cloneDeep } from 'lodash';
+import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
+import { useSetRecoilState, useResetRecoilState, useRecoilValue, useRecoilCallback } from 'recoil';
 import {
   Constants,
   QueryKeys,
   ContentTypes,
-  parseCompactConvo,
-  isAssistantsEndpoint,
   EModelEndpoint,
+  getEndpointField,
+  isAgentsEndpoint,
+  parseCompactConvo,
+  replaceSpecialVars,
+  isAssistantsEndpoint,
+  getDefaultParamsEndpoint,
 } from 'librechat-data-provider';
-import { useSetRecoilState, useResetRecoilState, useRecoilValue } from 'recoil';
 import type {
   TMessage,
   TSubmission,
   TConversation,
+  TStartupConfig,
   TEndpointOption,
   TEndpointsConfig,
+  EndpointSchemaKey,
 } from 'librechat-data-provider';
 import type { SetterOrUpdater } from 'recoil';
 import type { TAskFunction, ExtendedFile } from '~/common';
 import useSetFilesToDelete from '~/hooks/Files/useSetFilesToDelete';
 import useGetSender from '~/hooks/Conversations/useGetSender';
-import { getArtifactsMode } from '~/utils/artifacts';
-import { getEndpointField, logger } from '~/utils';
+import { logger, createDualMessageContent } from '~/utils';
+import store, { useGetEphemeralAgent } from '~/store';
+import { startupConfigKey } from '~/data-provider';
 import useUserKey from '~/hooks/Input/useUserKey';
-import store from '~/store';
+import { useAuthContext } from '~/hooks';
 
 const logChatRequest = (request: Record<string, unknown>) => {
   logger.log('=====================================\nAsk function called with:');
@@ -38,10 +47,10 @@ export default function useChatFunctions({
   getMessages,
   setMessages,
   isSubmitting,
-  conversation,
   latestMessage,
   setSubmission,
   setLatestMessage,
+  conversation: immutableConversation,
 }: {
   index?: number;
   isSubmitting: boolean;
@@ -55,16 +64,41 @@ export default function useChatFunctions({
   setSubmission: SetterOrUpdater<TSubmission | null>;
   setLatestMessage?: SetterOrUpdater<TMessage | null>;
 }) {
-  const codeArtifacts = useRecoilValue(store.codeArtifacts);
-  const includeShadcnui = useRecoilValue(store.includeShadcnui);
-  const customPromptMode = useRecoilValue(store.customPromptMode);
-  const resetLatestMultiMessage = useResetRecoilState(store.latestMessageFamily(index + 1));
-  const setShowStopButton = useSetRecoilState(store.showStopButtonByIndex(index));
-  const setFilesToDelete = useSetFilesToDelete();
+  const navigate = useNavigate();
   const getSender = useGetSender();
-
+  const { user } = useAuthContext();
   const queryClient = useQueryClient();
-  const { getExpiry } = useUserKey(conversation?.endpoint ?? '');
+  const setFilesToDelete = useSetFilesToDelete();
+  const getEphemeralAgent = useGetEphemeralAgent();
+  const isTemporary = useRecoilValue(store.isTemporary);
+  const { getExpiry } = useUserKey(immutableConversation?.endpoint ?? '');
+  const setIsSubmitting = useSetRecoilState(store.isSubmittingFamily(index));
+  const setShowStopButton = useSetRecoilState(store.showStopButtonByIndex(index));
+  const resetLatestMultiMessage = useResetRecoilState(store.latestMessageFamily(index + 1));
+
+  /**
+   * Atomically read + reset the per-conversation queue of manually-invoked
+   * skills from the `$` popover. Reading and resetting in a single Recoil
+   * snapshot guarantees that if the user selects more skills between here and
+   * the next submission, their picks are never silently lost into a reset atom.
+   *
+   * The `hasValue` guard is defensive: this atom has a synchronous default of
+   * `[]` so `.contents` is always the resolved value in practice, but reading
+   * `.contents` on a loading/errored loadable yields a Promise/Error, which
+   * would make the `string[]` cast unsound.
+   */
+  const drainPendingManualSkills = useRecoilCallback(
+    ({ snapshot, reset }) =>
+      (convoId: string): string[] => {
+        const loadable = snapshot.getLoadable(store.pendingManualSkillsByConvoId(convoId));
+        const skills = loadable.state === 'hasValue' ? (loadable.contents as string[]) : [];
+        if (skills.length > 0) {
+          reset(store.pendingManualSkillsByConvoId(convoId));
+        }
+        return skills;
+      },
+    [],
+  );
 
   const ask: TAskFunction = (
     {
@@ -76,20 +110,26 @@ export default function useChatFunctions({
       messageId = null,
     },
     {
-      editedText = null,
+      editedContent = null,
       editedMessageId = null,
-      resubmitFiles = false,
       isRegenerate = false,
       isContinued = false,
       isEdited = false,
       overrideMessages,
+      overrideFiles,
+      overrideManualSkills,
+      addedConvo,
     } = {},
   ) => {
     setShowStopButton(false);
     resetLatestMultiMessage();
+
+    text = text.trim();
     if (!!isSubmitting || text === '') {
       return;
     }
+
+    const conversation = cloneDeep(immutableConversation);
 
     const endpoint = conversation?.endpoint;
     if (endpoint === null) {
@@ -108,13 +148,37 @@ export default function useChatFunctions({
       return;
     }
 
+    const ephemeralAgent = getEphemeralAgent(conversationId ?? Constants.NEW_CONVO);
+    /**
+     * Manual skill selection resolution:
+     *  - Explicit `overrideManualSkills` wins (regenerate / save-and-submit
+     *    pass the original user message's persisted `manualSkills` so the
+     *    resubmitted turn primes the same skills — the pills are still
+     *    visible to the user, it would be strange to quietly drop them).
+     *  - Regenerate / continue / edit without an override → empty, and the
+     *    compose-time atom is deliberately NOT drained (those flows replay
+     *    a prior turn, not compose a new one).
+     *  - Fresh submit → drain the per-convo atom into the message.
+     */
+    const manualSkills =
+      overrideManualSkills != null
+        ? overrideManualSkills
+        : isRegenerate || isContinued || isEdited
+          ? []
+          : drainPendingManualSkills(conversationId ?? Constants.NEW_CONVO);
     const isEditOrContinue = isEdited || isContinued;
 
     let currentMessages: TMessage[] | null = overrideMessages ?? getMessages() ?? [];
 
+    if (conversation?.promptPrefix) {
+      conversation.promptPrefix = replaceSpecialVars({
+        text: conversation.promptPrefix,
+        user,
+      });
+    }
+
     // construct the query message
     // this is not a real messageId, it is used as placeholder before real messageId returned
-    text = text.trim();
     const intermediateId = overrideUserMessageId ?? v4();
     parentMessageId = parentMessageId ?? latestMessage?.messageId ?? Constants.NO_PARENT;
 
@@ -132,25 +196,36 @@ export default function useChatFunctions({
       parentMessageId = Constants.NO_PARENT;
       currentMessages = [];
       conversationId = null;
+      navigate('/c/new', { state: { focusChat: true } });
     }
 
-    const parentMessage = currentMessages.find(
-      (msg) => msg.messageId === latestMessage?.parentMessageId,
+    const targetParentMessageId = isRegenerate ? messageId : latestMessage?.parentMessageId;
+    /**
+     * If the user regenerated or resubmitted the message, the current parent is technically
+     * the latest user message, which is passed into `ask`; otherwise, we can rely on the
+     * latestMessage to find the parent.
+     */
+    const targetParentMessage = currentMessages.find(
+      (msg) => msg.messageId === targetParentMessageId,
     );
 
-    let thread_id = parentMessage?.thread_id ?? latestMessage?.thread_id;
-    if (!thread_id) {
+    let thread_id = targetParentMessage?.thread_id ?? latestMessage?.thread_id;
+    if (thread_id == null) {
       thread_id = currentMessages.find((message) => message.thread_id)?.thread_id;
     }
 
     const endpointsConfig = queryClient.getQueryData<TEndpointsConfig>([QueryKeys.endpoints]);
+    const startupConfig = queryClient.getQueryData<TStartupConfig>(startupConfigKey(true));
     const endpointType = getEndpointField(endpointsConfig, endpoint, 'type');
+    const iconURL = conversation?.iconURL;
+    const defaultParamsEndpoint = getDefaultParamsEndpoint(endpointsConfig, endpoint);
 
-    // set the endpoint option
+    /** This becomes part of the `endpointOption` */
     const convo = parseCompactConvo({
-      endpoint,
-      endpointType,
+      endpoint: endpoint as EndpointSchemaKey,
+      endpointType: endpointType as EndpointSchemaKey,
       conversation: conversation ?? {},
+      defaultParamsEndpoint,
     });
 
     const { modelDisplayLabel } = endpointsConfig?.[endpoint ?? ''] ?? {};
@@ -160,7 +235,6 @@ export default function useChatFunctions({
         endpointType,
         overrideConvoId,
         overrideUserMessageId,
-        artifacts: getArtifactsMode({ codeArtifacts, includeShadcnui, customPromptMode }),
       },
       convo,
     ) as TEndpointOption;
@@ -168,23 +242,38 @@ export default function useChatFunctions({
       endpointOption.key = getExpiry();
       endpointOption.thread_id = thread_id;
       endpointOption.modelDisplayLabel = modelDisplayLabel;
+    } else {
+      endpointOption.key = new Date(Date.now() + 60 * 60 * 1000).toISOString();
     }
     const responseSender = getSender({ model: conversation?.model, ...endpointOption });
 
     const currentMsg: TMessage = {
       text,
       sender: 'User',
+      clientTimestamp: new Date().toLocaleString('sv').replace(' ', 'T'),
       isCreatedByUser: true,
       parentMessageId,
       conversationId,
-      messageId: isContinued && messageId ? messageId : intermediateId,
+      messageId: isContinued && messageId != null && messageId ? messageId : intermediateId,
       thread_id,
       error: false,
+      /**
+       * UI-only metadata. Survives reload because the backend persists the
+       * field on the message schema, and `SkillPills` reads straight
+       * off the message so there's no Recoil state to clean up. Runtime
+       * skill resolution reads the top-level `manualSkills` payload field.
+       */
+      manualSkills: manualSkills.length > 0 ? manualSkills : undefined,
     };
 
-    const reuseFiles = (isRegenerate || resubmitFiles) && parentMessage?.files;
-    if (setFiles && reuseFiles && parentMessage.files?.length) {
-      currentMsg.files = parentMessage.files;
+    const submissionFiles = overrideFiles ?? targetParentMessage?.files;
+    const reuseFiles =
+      (isRegenerate || (overrideFiles != null && overrideFiles.length)) &&
+      submissionFiles &&
+      submissionFiles.length > 0;
+
+    if (setFiles && reuseFiles === true) {
+      currentMsg.files = [...submissionFiles];
       setFiles(new Map());
       setFilesToDelete({});
     } else if (setFiles && files && files.size > 0) {
@@ -199,24 +288,38 @@ export default function useChatFunctions({
       setFilesToDelete({});
     }
 
-    // construct the placeholder response message
-    const generation = editedText ?? latestMessage?.text ?? '';
-    const responseText = isEditOrContinue ? generation : '';
+    const responseMessageId =
+      editedMessageId ??
+      (latestMessage?.messageId && isRegenerate
+        ? latestMessage.messageId.replace(/_+$/, '') + '_'
+        : null) ??
+      null;
+    const initialResponseId =
+      responseMessageId ?? `${isRegenerate ? messageId : intermediateId}`.replace(/_+$/, '') + '_';
 
-    const responseMessageId = editedMessageId ?? latestMessage?.messageId ?? null;
     const initialResponse: TMessage = {
       sender: responseSender,
-      text: responseText,
+      text: '',
       endpoint: endpoint ?? '',
       parentMessageId: isRegenerate ? messageId : intermediateId,
-      messageId: responseMessageId ?? `${isRegenerate ? messageId : intermediateId}_`,
+      messageId: initialResponseId,
       thread_id,
       conversationId,
       unfinished: false,
       isCreatedByUser: false,
-      isEdited: isEditOrContinue,
-      iconURL: convo.iconURL,
+      model: convo?.model,
       error: false,
+      iconURL,
+      /**
+       * Seed the assistant placeholder with the turn's manually-invoked
+       * skill names so `ContentParts` can render interim `SkillCall` cards
+       * from the very first render — no round-trip through the `created`
+       * SSE event required. Rides along with every subsequent spread
+       * (`useStepHandler` response construction, `updateContent` result
+       * spreads) and drops out naturally at `finalHandler` when the
+       * server-backed `responseMessage` replacement takes over.
+       */
+      manualSkills: manualSkills.length > 0 ? manualSkills : undefined,
     };
 
     if (isAssistantsEndpoint(endpoint)) {
@@ -226,23 +329,40 @@ export default function useChatFunctions({
         {
           type: ContentTypes.TEXT,
           [ContentTypes.TEXT]: {
-            value: responseText,
+            value: '',
           },
         },
       ];
-    } else if (endpoint === EModelEndpoint.agents) {
-      initialResponse.model = conversation?.agent_id ?? '';
+    } else if (endpoint != null) {
+      initialResponse.model = isAgentsEndpoint(endpoint)
+        ? (conversation?.agent_id ?? '')
+        : (conversation?.model ?? '');
       initialResponse.text = '';
-      initialResponse.content = [
-        {
-          type: ContentTypes.TEXT,
-          [ContentTypes.TEXT]: {
-            value: responseText,
-          },
-        },
-      ];
-      setShowStopButton(true);
-    } else {
+
+      if (editedContent && latestMessage?.content) {
+        initialResponse.content = cloneDeep(latestMessage.content);
+        const { index, type, ...part } = editedContent;
+        if (initialResponse.content && index >= 0 && index < initialResponse.content.length) {
+          const contentPart = initialResponse.content[index];
+          if (type === ContentTypes.THINK && contentPart.type === ContentTypes.THINK) {
+            contentPart[ContentTypes.THINK] = part[ContentTypes.THINK];
+          } else if (type === ContentTypes.TEXT && contentPart.type === ContentTypes.TEXT) {
+            contentPart[ContentTypes.TEXT] = part[ContentTypes.TEXT];
+          }
+        }
+      } else if (addedConvo && conversation) {
+        // Pre-populate placeholders for smooth UI - these will be overridden/extended
+        // as SSE events arrive with actual content, preserving the agent-based agentId
+        initialResponse.content = createDualMessageContent(
+          conversation,
+          addedConvo,
+          endpointsConfig,
+          startupConfig?.modelSpecs?.list,
+        );
+      } else {
+        initialResponse.content = [];
+      }
+      setIsSubmitting(true);
       setShowStopButton(true);
     }
 
@@ -250,6 +370,7 @@ export default function useChatFunctions({
       currentMessages = currentMessages.filter((msg) => msg.messageId !== responseMessageId);
     }
 
+    logger.log('message_state', initialResponse);
     const submission: TSubmission = {
       conversation: {
         ...conversation,
@@ -258,7 +379,6 @@ export default function useChatFunctions({
       endpointOption,
       userMessage: {
         ...currentMsg,
-        generation,
         responseMessageId,
         overrideParentMessageId: isRegenerate ? messageId : null,
       },
@@ -267,6 +387,11 @@ export default function useChatFunctions({
       isContinued,
       isRegenerate,
       initialResponse,
+      isTemporary,
+      ephemeralAgent,
+      editedContent,
+      addedConvo,
+      manualSkills: manualSkills.length > 0 ? manualSkills : undefined,
     };
 
     if (isRegenerate) {
@@ -282,12 +407,24 @@ export default function useChatFunctions({
     logger.dir('message_stream', submission, { depth: null });
   };
 
-  const regenerate = ({ parentMessageId }) => {
+  const regenerate = ({ parentMessageId }, options?: { addedConvo?: TConversation | null }) => {
     const messages = getMessages();
     const parentMessage = messages?.find((element) => element.messageId == parentMessageId);
 
     if (parentMessage && parentMessage.isCreatedByUser) {
-      ask({ ...parentMessage }, { isRegenerate: true });
+      ask(
+        { ...parentMessage },
+        {
+          isRegenerate: true,
+          addedConvo: options?.addedConvo ?? undefined,
+          /** Carry the original user message's manual skill picks forward
+           *  so the regenerated response is primed with the same skills.
+           *  The compose-time atom was drained on the first submit; without
+           *  this the model sees an unprimed turn even though the pills
+           *  still show on the user bubble. */
+          overrideManualSkills: parentMessage.manualSkills,
+        },
+      );
     } else {
       console.error(
         'Failed to regenerate the message: parentMessage not found or not created by user.',

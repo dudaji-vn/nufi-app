@@ -1,5 +1,13 @@
-const { CacheKeys, findLastSeparatorIndex, SEPARATORS } = require('librechat-data-provider');
+const { scopedCacheKey } = require('@librechat/data-schemas');
+const {
+  Time,
+  CacheKeys,
+  SEPARATORS,
+  parseTextParts,
+  findLastSeparatorIndex,
+} = require('librechat-data-provider');
 const { getLogStores } = require('~/cache');
+const { getMessage } = require('~/models');
 
 /**
  * @param {string[]} voiceIds - Array of voice IDs
@@ -47,10 +55,11 @@ const MAX_NOT_FOUND_COUNT = 6;
 const MAX_NO_CHANGE_COUNT = 10;
 
 /**
+ * @param {string} user
  * @param {string} messageId
  * @returns {() => Promise<{ text: string, isFinished: boolean }[]>}
  */
-function createChunkProcessor(messageId) {
+function createChunkProcessor(user, messageId) {
   let notFoundCount = 0;
   let noChangeCount = 0;
   let processedText = '';
@@ -59,6 +68,8 @@ function createChunkProcessor(messageId) {
   }
 
   const messageCache = getLogStores(CacheKeys.MESSAGES);
+  // Captured at creation time — must be called within an active request ALS scope
+  const cacheKey = scopedCacheKey(messageId);
 
   /**
    * @returns {Promise<{ text: string, isFinished: boolean }[] | string>}
@@ -73,15 +84,28 @@ function createChunkProcessor(messageId) {
     }
 
     /** @type { string | { text: string; complete: boolean } } */
-    const message = await messageCache.get(messageId);
+    let message = await messageCache.get(cacheKey);
+    if (!message) {
+      message = await getMessage({ user, messageId });
+    }
 
     if (!message) {
       notFoundCount++;
       return [];
+    } else {
+      const text = message.content?.length > 0 ? parseTextParts(message.content) : message.text;
+      messageCache.set(
+        cacheKey,
+        {
+          text,
+          complete: true,
+        },
+        Time.FIVE_MINUTES,
+      );
     }
 
     const text = typeof message === 'string' ? message : message.text;
-    const complete = typeof message === 'string' ? false : message.complete;
+    const complete = typeof message === 'string' ? false : (message.complete ?? true);
 
     if (text === processedText) {
       noChangeCount++;

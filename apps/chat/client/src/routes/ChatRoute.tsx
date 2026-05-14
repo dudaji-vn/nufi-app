@@ -1,70 +1,127 @@
-import { useEffect, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useEffect } from 'react';
+import { useRecoilCallback, useRecoilValue } from 'recoil';
+import { Spinner, useToastContext } from '@librechat/client';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { Constants, EModelEndpoint } from 'librechat-data-provider';
-import {
-  useGetModelsQuery,
-  useGetStartupConfig,
-  useGetEndpointsQuery,
-} from 'librechat-data-provider/react-query';
+import { useGetModelsQuery } from 'librechat-data-provider/react-query';
 import type { TPreset } from 'librechat-data-provider';
-import { useNewConvo, useAppStartup, useAssistantListMap } from '~/hooks';
-import { useGetConvoIdQuery, useHealthCheck } from '~/data-provider';
-import { getDefaultModelSpec, getModelSpecIconURL } from '~/utils';
+import {
+  mergeQuerySettingsWithSpec,
+  processValidSettings,
+  getDefaultModelSpec,
+  getModelSpecPreset,
+  isNotFoundError,
+  logger,
+} from '~/utils';
+import {
+  useAssistantListMap,
+  useIdChangeEffect,
+  useAppStartup,
+  useNewConvo,
+  useLocalize,
+} from '~/hooks';
+import { useGetConvoIdQuery, useGetStartupConfig, useGetEndpointsQuery } from '~/data-provider';
+import { ToolCallsMapProvider } from '~/Providers';
 import ChatView from '~/components/Chat/ChatView';
+import { NotificationSeverity } from '~/common';
 import useAuthRedirect from './useAuthRedirect';
-import { Spinner } from '~/components/svg';
+import temporaryStore from '~/store/temporary';
 import store from '~/store';
 
 export default function ChatRoute() {
-  useHealthCheck();
   const { data: startupConfig } = useGetStartupConfig();
-  const { isAuthenticated, user } = useAuthRedirect();
+  const { isAuthenticated, user, roles } = useAuthRedirect();
+
+  const defaultTemporaryChat = useRecoilValue(temporaryStore.defaultTemporaryChat);
+  const setIsTemporary = useRecoilCallback(
+    ({ set }) =>
+      (value: boolean) => {
+        set(temporaryStore.isTemporary, value);
+      },
+    [],
+  );
   useAppStartup({ startupConfig, user });
 
   const index = 0;
-  const { conversationId } = useParams();
-
-  const { conversation } = store.useCreateConversationAtom(index);
+  const [searchParams] = useSearchParams();
+  const { conversationId = '' } = useParams();
+  useIdChangeEffect(conversationId);
+  const { hasSetConversation, conversation } = store.useCreateConversationAtom(index);
   const { newConversation } = useNewConvo();
-  const hasSetConversation = useRef(false);
+  const { showToast } = useToastContext();
+  const localize = useLocalize();
 
   const modelsQuery = useGetModelsQuery({
     enabled: isAuthenticated,
     refetchOnMount: 'always',
   });
-  const initialConvoQuery = useGetConvoIdQuery(conversationId ?? '', {
-    enabled: isAuthenticated && conversationId !== Constants.NEW_CONVO,
+  const initialConvoQuery = useGetConvoIdQuery(conversationId, {
+    enabled:
+      isAuthenticated && conversationId !== Constants.NEW_CONVO && !hasSetConversation.current,
   });
   const endpointsQuery = useGetEndpointsQuery({ enabled: isAuthenticated });
   const assistantListMap = useAssistantListMap();
 
+  const isTemporaryChat = conversation && conversation.expiredAt ? true : false;
+
   useEffect(() => {
+    if (conversationId === Constants.NEW_CONVO) {
+      setIsTemporary(defaultTemporaryChat);
+    } else if (isTemporaryChat) {
+      setIsTemporary(isTemporaryChat);
+    } else {
+      setIsTemporary(false);
+    }
+  }, [conversationId, isTemporaryChat, setIsTemporary, defaultTemporaryChat]);
+
+  /** This effect is mainly for the first conversation state change on first load of the page.
+   *  Adjusting this may have unintended consequences on the conversation state.
+   */
+  useEffect(() => {
+    // Wait for roles to load so hasAgentAccess has a definitive value in useNewConvo
+    const rolesLoaded = roles?.USER != null;
     const shouldSetConvo =
-      startupConfig && !hasSetConversation.current && !modelsQuery.data?.initial;
+      (startupConfig && rolesLoaded && !hasSetConversation.current && !modelsQuery.data?.initial) ??
+      false;
     /* Early exit if startupConfig is not loaded and conversation is already set and only initial models have loaded */
     if (!shouldSetConvo) {
       return;
     }
 
-    if (conversationId === Constants.NEW_CONVO && endpointsQuery.data && modelsQuery.data) {
-      const spec = getDefaultModelSpec(startupConfig.modelSpecs?.list);
+    const isNewConvo = conversationId === Constants.NEW_CONVO;
 
+    const getNewConvoPreset = () => {
+      const result = getDefaultModelSpec(startupConfig);
+      const spec = result?.default ?? result?.last;
+      const specPreset = spec ? getModelSpecPreset(spec) : undefined;
+
+      const queryParams: Record<string, string> = {};
+      searchParams.forEach((value, key) => {
+        if (key !== 'prompt' && key !== 'q' && key !== 'submit') {
+          queryParams[key] = value;
+        }
+      });
+      const querySettings = processValidSettings(queryParams);
+
+      if (Object.keys(querySettings).length > 0) {
+        return mergeQuerySettingsWithSpec(specPreset, querySettings);
+      }
+      return specPreset;
+    };
+
+    if (isNewConvo && endpointsQuery.data && modelsQuery.data) {
+      const preset = getNewConvoPreset();
+
+      logger.log('conversation', 'ChatRoute, new convo effect', conversation);
       newConversation({
         modelsData: modelsQuery.data,
         template: conversation ? conversation : undefined,
-        ...(spec
-          ? {
-            preset: {
-              ...spec.preset,
-              iconURL: getModelSpecIconURL(spec),
-              spec: spec.name,
-            },
-          }
-          : {}),
+        ...(preset ? { preset } : {}),
       });
 
       hasSetConversation.current = true;
     } else if (initialConvoQuery.data && endpointsQuery.data && modelsQuery.data) {
+      logger.log('conversation', 'ChatRoute initialConvoQuery', initialConvoQuery.data);
       newConversation({
         template: initialConvoQuery.data,
         /* this is necessary to load all existing settings */
@@ -74,29 +131,47 @@ export default function ChatRoute() {
       });
       hasSetConversation.current = true;
     } else if (
-      conversationId === Constants.NEW_CONVO &&
+      conversationId &&
+      endpointsQuery.data &&
+      modelsQuery.data &&
+      initialConvoQuery.isError &&
+      isNotFoundError(initialConvoQuery.error)
+    ) {
+      const result = getDefaultModelSpec(startupConfig);
+      const spec = result?.default ?? result?.last;
+      showToast({
+        message: localize('com_ui_conversation_not_found'),
+        severity: NotificationSeverity.WARNING,
+      });
+      logger.log(
+        'conversation',
+        'ChatRoute initialConvoQuery isNotFoundError',
+        initialConvoQuery.error,
+      );
+      newConversation({
+        modelsData: modelsQuery.data,
+        ...(spec ? { preset: getModelSpecPreset(spec) } : {}),
+      });
+      hasSetConversation.current = true;
+    } else if (
+      isNewConvo &&
       assistantListMap[EModelEndpoint.assistants] &&
       assistantListMap[EModelEndpoint.azureAssistants]
     ) {
-      const spec = getDefaultModelSpec(startupConfig.modelSpecs?.list);
+      const preset = getNewConvoPreset();
+
+      logger.log('conversation', 'ChatRoute new convo, assistants effect', conversation);
       newConversation({
         modelsData: modelsQuery.data,
         template: conversation ? conversation : undefined,
-        ...(spec
-          ? {
-            preset: {
-              ...spec.preset,
-              iconURL: getModelSpecIconURL(spec),
-              spec: spec.name,
-            },
-          }
-          : {}),
+        ...(preset ? { preset } : {}),
       });
       hasSetConversation.current = true;
     } else if (
       assistantListMap[EModelEndpoint.assistants] &&
       assistantListMap[EModelEndpoint.azureAssistants]
     ) {
+      logger.log('conversation', 'ChatRoute convo, assistants effect', initialConvoQuery.data);
       newConversation({
         template: initialConvoQuery.data,
         preset: initialConvoQuery.data as TPreset,
@@ -108,8 +183,10 @@ export default function ChatRoute() {
     /* Creates infinite render if all dependencies included due to newConversation invocations exceeding call stack before hasSetConversation.current becomes truthy */
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    roles,
     startupConfig,
     initialConvoQuery.data,
+    initialConvoQuery.isError,
     endpointsQuery.data,
     modelsQuery.data,
     assistantListMap,
@@ -117,8 +194,8 @@ export default function ChatRoute() {
 
   if (endpointsQuery.isLoading || modelsQuery.isLoading) {
     return (
-      <div aria-live="polite" role="status">
-        <Spinner className="m-auto text-black dark:text-white" />
+      <div className="flex h-screen items-center justify-center" aria-live="polite" role="status">
+        <Spinner className="text-text-primary" />
       </div>
     );
   }
@@ -128,7 +205,7 @@ export default function ChatRoute() {
   }
 
   // if not a conversation
-  if (conversation?.conversationId === 'search') {
+  if (conversation?.conversationId === Constants.SEARCH) {
     return null;
   }
   // if conversationId not match
@@ -140,5 +217,9 @@ export default function ChatRoute() {
     return null;
   }
 
-  return <ChatView index={index} />;
+  return (
+    <ToolCallsMapProvider conversationId={conversation.conversationId ?? ''}>
+      <ChatView index={index} />
+    </ToolCallsMapProvider>
+  );
 }

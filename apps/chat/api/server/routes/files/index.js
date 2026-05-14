@@ -1,5 +1,14 @@
 const express = require('express');
-const { uaParser, checkBan, requireJwtAuth, createFileLimiters } = require('~/server/middleware');
+const {
+  createFileLimiters,
+  configMiddleware,
+  requireJwtAuth,
+  uaParser,
+  checkBan,
+} = require('~/server/middleware');
+const { restoreTenantContextFromReq } = require('@librechat/api');
+const { avatar: asstAvatarRouter } = require('~/server/routes/assistants/v1');
+const { avatar: agentAvatarRouter } = require('~/server/routes/agents/v1');
 const { createMulterInstance } = require('./multer');
 
 const files = require('./files');
@@ -10,21 +19,50 @@ const speech = require('./speech');
 const initialize = async () => {
   const router = express.Router();
   router.use(requireJwtAuth);
+  router.use(configMiddleware);
   router.use(checkBan);
   router.use(uaParser);
+
+  const upload = await createMulterInstance();
+  router.post('/speech/stt', upload.single('audio'), restoreTenantContextFromReq);
 
   /* Important: speech route must be added before the upload limiters */
   router.use('/speech', speech);
 
-  const upload = await createMulterInstance();
   const { fileUploadIpLimiter, fileUploadUserLimiter } = createFileLimiters();
-  router.post('*', fileUploadIpLimiter, fileUploadUserLimiter);
-  router.post('/', upload.single('file'));
-  router.post('/images', upload.single('file'));
+
+  /** Apply rate limiters to all POST routes (excluding /speech which is handled above) */
+  router.use((req, res, next) => {
+    if (req.method === 'POST' && !req.path.startsWith('/speech')) {
+      return fileUploadIpLimiter(req, res, (err) => {
+        if (err) {
+          return next(err);
+        }
+        return fileUploadUserLimiter(req, res, next);
+      });
+    }
+    next();
+  });
+
+  router.post('/', upload.single('file'), restoreTenantContextFromReq);
+  router.post('/images', upload.single('file'), restoreTenantContextFromReq);
+  router.post('/images/avatar', upload.single('file'), restoreTenantContextFromReq);
+  router.post(
+    '/images/agents/:agent_id/avatar',
+    upload.single('file'),
+    restoreTenantContextFromReq,
+  );
+  router.post(
+    '/images/assistants/:assistant_id/avatar',
+    upload.single('file'),
+    restoreTenantContextFromReq,
+  );
 
   router.use('/', files);
   router.use('/images', images);
   router.use('/images/avatar', avatar);
+  router.use('/images/agents', agentAvatarRouter);
+  router.use('/images/assistants', asstAvatarRouter);
   return router;
 };
 

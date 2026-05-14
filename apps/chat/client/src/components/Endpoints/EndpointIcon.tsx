@@ -1,13 +1,13 @@
-import { isAssistantsEndpoint } from 'librechat-data-provider';
+import { getEndpointField, isAssistantsEndpoint } from 'librechat-data-provider';
 import type {
-  TConversation,
-  TEndpointsConfig,
   TPreset,
+  TConversation,
   TAssistantsMap,
+  TEndpointsConfig,
 } from 'librechat-data-provider';
 import ConvoIconURL from '~/components/Endpoints/ConvoIconURL';
 import MinimalIcon from '~/components/Endpoints/MinimalIcon';
-import { getEndpointField, getIconEndpoint } from '~/utils';
+import { getIconEndpoint } from '~/utils';
 
 export default function EndpointIcon({
   conversation,
@@ -42,10 +42,8 @@ export default function EndpointIcon({
   if (iconURL && (iconURL.includes('http') || iconURL.startsWith('/images/'))) {
     return (
       <ConvoIconURL
-        preset={{
-          ...(conversation as TPreset),
-          iconURL,
-        }}
+        iconURL={iconURL}
+        modelLabel={conversation?.chatGptLabel ?? conversation?.modelLabel ?? ''}
         context={context}
         endpointIconURL={endpointIconURL}
         assistantAvatar={assistantAvatar}
@@ -65,7 +63,6 @@ export default function EndpointIcon({
         isCreatedByUser={false}
         chatGptLabel={undefined}
         modelLabel={undefined}
-        jailbreak={undefined}
       />
     );
   }

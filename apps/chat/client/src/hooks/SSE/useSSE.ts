@@ -1,21 +1,15 @@
-import { v4 } from 'uuid';
-import { useSetRecoilState } from 'recoil';
 import { useEffect, useState } from 'react';
-import {
-  /* @ts-ignore */
-  SSE,
-  createPayload,
-  isAgentsEndpoint,
-  removeNullishValues,
-  isAssistantsEndpoint,
-} from 'librechat-data-provider';
-import { useGetUserBalance, useGetStartupConfig } from 'librechat-data-provider/react-query';
-import type { TMessage, TSubmission, TPayload, EventSubmission } from 'librechat-data-provider';
+import { v4 } from 'uuid';
+import { SSE } from 'sse.js';
+import { useSetRecoilState } from 'recoil';
+import { request, createPayload, removeNullishValues } from 'librechat-data-provider';
+import type { TMessage, TPayload, TSubmission, EventSubmission } from 'librechat-data-provider';
 import type { EventHandlerParams } from './useEventHandlers';
 import type { TResData } from '~/common';
-import { useGenTitleMutation } from '~/data-provider';
+import { useGetStartupConfig, useGetUserBalance } from '~/data-provider';
 import { useAuthContext } from '~/hooks/AuthContext';
 import useEventHandlers from './useEventHandlers';
+import { clearAllDrafts } from '~/utils';
 import store from '~/store';
 
 type ChatHelpers = Pick<
@@ -34,7 +28,6 @@ export default function useSSE(
   isAddedRequest = false,
   runIndex = 0,
 ) {
-  const genTitle = useGenTitleMutation();
   const setActiveRunId = useSetRecoilState(store.activeRunFamily(runIndex));
 
   const { token, isAuthenticated } = useAuthContext();
@@ -52,6 +45,7 @@ export default function useSSE(
   } = chatHelpers;
 
   const {
+    clearStepMaps,
     stepHandler,
     syncHandler,
     finalHandler,
@@ -62,7 +56,6 @@ export default function useSSE(
     attachmentHandler,
     abortConversation,
   } = useEventHandlers({
-    genTitle,
     setMessages,
     getMessages,
     setCompleted,
@@ -76,11 +69,11 @@ export default function useSSE(
 
   const { data: startupConfig } = useGetStartupConfig();
   const balanceQuery = useGetUserBalance({
-    enabled: !!isAuthenticated && startupConfig?.checkBalance,
+    enabled: !!isAuthenticated && startupConfig?.balance?.enabled,
   });
 
   useEffect(() => {
-    if (submission === null || Object.keys(submission).length === 0) {
+    if (submission == null || Object.keys(submission).length === 0) {
       return;
     }
 
@@ -88,33 +81,38 @@ export default function useSSE(
 
     const payloadData = createPayload(submission);
     let { payload } = payloadData;
-    if (isAssistantsEndpoint(payload.endpoint) || isAgentsEndpoint(payload.endpoint)) {
-      payload = removeNullishValues(payload) as TPayload;
-    }
+    payload = removeNullishValues(payload) as TPayload;
 
     let textIndex = null;
+    clearStepMaps();
 
-    const events = new SSE(payloadData.server, {
+    const sse = new SSE(payloadData.server, {
       payload: JSON.stringify(payload),
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     });
 
-    events.onattachment = (e: MessageEvent) => {
+    sse.addEventListener('attachment', (e: MessageEvent) => {
       try {
         const data = JSON.parse(e.data);
         attachmentHandler({ data, submission: submission as EventSubmission });
       } catch (error) {
         console.error(error);
       }
-    };
+    });
 
-    events.onmessage = (e: MessageEvent) => {
+    sse.addEventListener('message', (e: MessageEvent) => {
       const data = JSON.parse(e.data);
 
       if (data.final != null) {
-        const { plugins } = data;
-        finalHandler(data, { ...submission, plugins } as EventSubmission);
-        (startupConfig?.checkBalance ?? false) && balanceQuery.refetch();
+        clearAllDrafts(submission.conversation?.conversationId);
+        try {
+          finalHandler(data, submission as EventSubmission);
+        } catch (error) {
+          console.error('Error in finalHandler:', error);
+          setIsSubmitting(false);
+          setShowStopButton(false);
+        }
+        (startupConfig?.balance?.enabled ?? false) && balanceQuery.refetch();
         console.log('final', data);
         return;
       } else if (data.created != null) {
@@ -143,7 +141,6 @@ export default function useSSE(
         contentHandler({ data, submission: submission as EventSubmission });
       } else {
         const text = data.text ?? data.response;
-        const { plugin, plugins } = data;
 
         const initialResponse = {
           ...(submission.initialResponse as TMessage),
@@ -152,17 +149,17 @@ export default function useSSE(
         };
 
         if (data.message != null) {
-          messageHandler(text, { ...submission, plugin, plugins, userMessage, initialResponse });
+          messageHandler(text, { ...submission, userMessage, initialResponse });
         }
       }
-    };
+    });
 
-    events.onopen = () => {
+    sse.addEventListener('open', () => {
       setAbortScroll(false);
       console.log('connection is opened');
-    };
+    });
 
-    events.oncancel = async () => {
+    sse.addEventListener('cancel', async () => {
       const streamKey = (submission as TSubmission | null)?.['initialResponse']?.messageId;
       if (completed.has(streamKey)) {
         setIsSubmitting(false);
@@ -176,16 +173,48 @@ export default function useSSE(
       setCompleted((prev) => new Set(prev.add(streamKey)));
       const latestMessages = getMessages();
       const conversationId = latestMessages?.[latestMessages.length - 1]?.conversationId;
-      return await abortConversation(
-        conversationId ?? userMessage.conversationId ?? submission.conversationId,
-        submission as EventSubmission,
-        latestMessages,
-      );
-    };
+      try {
+        await abortConversation(
+          conversationId ??
+            userMessage.conversationId ??
+            submission.conversation?.conversationId ??
+            '',
+          submission as EventSubmission,
+          latestMessages,
+        );
+      } catch (error) {
+        console.error('Error during abort:', error);
+        setIsSubmitting(false);
+        setShowStopButton(false);
+      }
+    });
 
-    events.onerror = function (e: MessageEvent) {
+    sse.addEventListener('error', async (e: MessageEvent) => {
+      /* @ts-ignore */
+      if (e.responseCode === 401) {
+        /* token expired, refresh and retry */
+        try {
+          const refreshResponse = await request.refreshToken();
+          const token = refreshResponse?.token ?? '';
+          if (!token) {
+            throw new Error('Token refresh failed.');
+          }
+          sse.headers = {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          };
+
+          request.dispatchTokenUpdatedEvent(token);
+          sse.stream();
+          return;
+        } catch (error) {
+          /* token refresh failed, continue handling the original 401 */
+          console.log(error);
+        }
+      }
+
       console.log('error in server stream.');
-      (startupConfig?.checkBalance ?? false) && balanceQuery.refetch();
+      (startupConfig?.balance?.enabled ?? false) && balanceQuery.refetch();
 
       let data: TResData | undefined = undefined;
       try {
@@ -197,18 +226,18 @@ export default function useSSE(
       }
 
       errorHandler({ data, submission: { ...submission, userMessage } as EventSubmission });
-    };
+    });
 
     setIsSubmitting(true);
-    events.stream();
+    sse.stream();
 
     return () => {
-      const isCancelled = events.readyState <= 1;
-      events.close();
-      // setSource(null);
+      const isCancelled = sse.readyState <= 1;
+      sse.close();
       if (isCancelled) {
         const e = new Event('cancel');
-        events.dispatchEvent(e);
+        /* @ts-ignore */
+        sse.dispatchEvent(e);
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -4,12 +4,12 @@ import { useFormContext, Controller, useWatch } from 'react-hook-form';
 import {
   Checkbox,
   HoverCard,
+  CircleHelpIcon,
   HoverCardContent,
   HoverCardPortal,
   HoverCardTrigger,
-} from '~/components/ui';
+} from '@librechat/client';
 import OptionHover from '~/components/SidePanel/Parameters/OptionHover';
-import { CircleHelpIcon } from '~/components/svg';
 import type { AgentForm } from '~/common';
 import { useLocalize } from '~/hooks';
 import { ESide } from '~/common';
@@ -43,7 +43,7 @@ export default function Retrieval({ retrievalModels }: { retrievalModels: Set<st
                 disabled={isDisabled}
                 onCheckedChange={field.onChange}
                 className="relative float-left mr-2 inline-flex h-4 w-4 cursor-pointer"
-                value={field?.value?.toString()}
+                value={field.value?.toString()}
               />
             )}
           />

@@ -1,5 +1,6 @@
 const rateLimit = require('express-rate-limit');
 const { ViolationTypes } = require('librechat-data-provider');
+const { limiterCache, removePorts } = require('@librechat/api');
 const logViolation = require('~/cache/logViolation');
 
 const getEnvironmentVariables = () => {
@@ -7,6 +8,7 @@ const getEnvironmentVariables = () => {
   const FILE_UPLOAD_IP_WINDOW = parseInt(process.env.FILE_UPLOAD_IP_WINDOW) || 15;
   const FILE_UPLOAD_USER_MAX = parseInt(process.env.FILE_UPLOAD_USER_MAX) || 50;
   const FILE_UPLOAD_USER_WINDOW = parseInt(process.env.FILE_UPLOAD_USER_WINDOW) || 15;
+  const FILE_UPLOAD_VIOLATION_SCORE = process.env.FILE_UPLOAD_VIOLATION_SCORE;
 
   const fileUploadIpWindowMs = FILE_UPLOAD_IP_WINDOW * 60 * 1000;
   const fileUploadIpMax = FILE_UPLOAD_IP_MAX;
@@ -23,6 +25,7 @@ const getEnvironmentVariables = () => {
     fileUploadUserWindowMs,
     fileUploadUserMax,
     fileUploadUserWindowInMinutes,
+    fileUploadViolationScore: FILE_UPLOAD_VIOLATION_SCORE,
   };
 };
 
@@ -32,6 +35,7 @@ const createFileUploadHandler = (ip = true) => {
     fileUploadIpWindowInMinutes,
     fileUploadUserMax,
     fileUploadUserWindowInMinutes,
+    fileUploadViolationScore,
   } = getEnvironmentVariables();
 
   return async (req, res) => {
@@ -43,7 +47,7 @@ const createFileUploadHandler = (ip = true) => {
       windowInMinutes: ip ? fileUploadIpWindowInMinutes : fileUploadUserWindowInMinutes,
     };
 
-    await logViolation(req, res, type, errorMessage);
+    await logViolation(req, res, type, errorMessage, fileUploadViolationScore);
     res.status(429).json({ message: 'Too many file upload requests. Try again later' });
   };
 };
@@ -52,20 +56,26 @@ const createFileLimiters = () => {
   const { fileUploadIpWindowMs, fileUploadIpMax, fileUploadUserWindowMs, fileUploadUserMax } =
     getEnvironmentVariables();
 
-  const fileUploadIpLimiter = rateLimit({
+  const ipLimiterOptions = {
     windowMs: fileUploadIpWindowMs,
     max: fileUploadIpMax,
     handler: createFileUploadHandler(),
-  });
+    keyGenerator: removePorts,
+    store: limiterCache('file_upload_ip_limiter'),
+  };
 
-  const fileUploadUserLimiter = rateLimit({
+  const userLimiterOptions = {
     windowMs: fileUploadUserWindowMs,
     max: fileUploadUserMax,
     handler: createFileUploadHandler(false),
     keyGenerator: function (req) {
-      return req.user?.id; // Use the user ID or NULL if not available
+      return req.user?.id;
     },
-  });
+    store: limiterCache('file_upload_user_limiter'),
+  };
+
+  const fileUploadIpLimiter = rateLimit(ipLimiterOptions);
+  const fileUploadUserLimiter = rateLimit(userLimiterOptions);
 
   return { fileUploadIpLimiter, fileUploadUserLimiter };
 };

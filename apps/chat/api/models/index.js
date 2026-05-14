@@ -1,80 +1,22 @@
-const {
-  comparePassword,
-  deleteUserById,
-  generateToken,
-  getUserById,
-  updateUser,
-  createUser,
-  countUsers,
-  findUser,
-} = require('./userMethods');
-const {
-  findFileById,
-  createFile,
-  updateFile,
-  deleteFile,
-  deleteFiles,
-  getFiles,
-  updateFileUsage,
-} = require('./File');
-const {
-  getMessages,
-  saveMessage,
-  recordMessage,
-  updateMessage,
-  deleteMessagesSince,
-  deleteMessages,
-} = require('./Message');
-const { getConvoTitle, getConvo, saveConvo, deleteConvos } = require('./Conversation');
-const { getPreset, getPresets, savePreset, deletePresets } = require('./Preset');
-const { createToken, findToken, updateToken, deleteTokens } = require('./Token');
-const Session = require('./Session');
-const Balance = require('./Balance');
-const User = require('./User');
-const Key = require('./Key');
+const mongoose = require('mongoose');
+const { createMethods } = require('@librechat/data-schemas');
+const { matchModelName, findMatchingPattern } = require('@librechat/api');
+const getLogStores = require('~/cache/getLogStores');
+
+const methods = createMethods(mongoose, {
+  matchModelName,
+  findMatchingPattern,
+  getCache: getLogStores,
+});
+
+const seedDatabase = async () => {
+  await methods.initializeRoles();
+  await methods.seedDefaultRoles();
+  await methods.ensureDefaultCategories();
+  await methods.seedSystemGrants();
+};
 
 module.exports = {
-  comparePassword,
-  deleteUserById,
-  generateToken,
-  getUserById,
-  updateUser,
-  createUser,
-  countUsers,
-  findUser,
-
-  findFileById,
-  createFile,
-  updateFile,
-  deleteFile,
-  deleteFiles,
-  getFiles,
-  updateFileUsage,
-
-  getMessages,
-  saveMessage,
-  recordMessage,
-  updateMessage,
-  deleteMessagesSince,
-  deleteMessages,
-
-  getConvoTitle,
-  getConvo,
-  saveConvo,
-  deleteConvos,
-
-  getPreset,
-  getPresets,
-  savePreset,
-  deletePresets,
-
-  createToken,
-  findToken,
-  updateToken,
-  deleteTokens,
-
-  User,
-  Key,
-  Session,
-  Balance,
+  ...methods,
+  seedDatabase,
 };

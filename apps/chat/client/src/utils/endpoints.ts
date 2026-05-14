@@ -1,25 +1,52 @@
 import {
+  Constants,
   EModelEndpoint,
   defaultEndpoints,
   modularEndpoints,
   LocalStorageKeys,
+  getEndpointField,
   isAgentsEndpoint,
+  isEphemeralAgentId,
   isAssistantsEndpoint,
 } from 'librechat-data-provider';
 import type * as t from 'librechat-data-provider';
-import type { LocalizeFunction } from '~/common';
+import type { LocalizeFunction, IconsRecord } from '~/common';
+import { getTimestampedValue } from './timestamps';
 
-export const getAssistantName = ({
+/**
+ * Clears model for non-ephemeral agent conversations.
+ * Agents use their configured model internally, so the conversation model should be undefined.
+ * Mutates the template in place.
+ */
+export function clearModelForNonEphemeralAgent<
+  T extends {
+    endpoint?: EModelEndpoint | string | null;
+    agent_id?: string | null;
+    model?: string | null;
+  },
+>(template: T): void {
+  if (
+    isAgentsEndpoint(template.endpoint) &&
+    template.agent_id &&
+    !isEphemeralAgentId(template.agent_id)
+  ) {
+    template.model = undefined as T['model'];
+  }
+}
+
+export const getEntityName = ({
   name = '',
   localize,
+  isAgent,
 }: {
   name?: string;
+  isAgent?: boolean;
   localize: LocalizeFunction;
 }) => {
   if (name && name.length > 0) {
     return name;
   } else {
-    return localize('com_ui_assistant');
+    return isAgent === true ? localize('com_ui_agent') : localize('com_ui_assistant');
   }
 };
 
@@ -55,24 +82,6 @@ export const getAvailableEndpoints = (
   return availableEndpoints;
 };
 
-/** Get the specified field from the endpoint config */
-export function getEndpointField<K extends keyof t.TConfig>(
-  endpointsConfig: t.TEndpointsConfig | undefined,
-  endpoint: EModelEndpoint | string | null | undefined,
-  property: K,
-): t.TConfig[K] | undefined {
-  if (!endpointsConfig || endpoint === null || endpoint === undefined) {
-    return undefined;
-  }
-
-  const config = endpointsConfig[endpoint];
-  if (!config) {
-    return undefined;
-  }
-
-  return config[property];
-}
-
 export function mapEndpoints(endpointsConfig: t.TEndpointsConfig) {
   const filter = getEndpointsFilter(endpointsConfig);
   return getAvailableEndpoints(filter, endpointsConfig).sort(
@@ -96,14 +105,18 @@ export function updateLastSelectedModel({
     return;
   }
   /* Note: an empty string value is possible */
-  const lastConversationSetup = JSON.parse((localStorage.getItem(firstLocalConvoKey) ?? '{}') || '{}');
+  const lastConversationSetup = JSON.parse(
+    (localStorage.getItem(firstLocalConvoKey) ?? '{}') || '{}',
+  );
 
   if (lastConversationSetup.endpoint === endpoint) {
     lastConversationSetup.model = model;
     localStorage.setItem(firstLocalConvoKey, JSON.stringify(lastConversationSetup));
   }
 
-  const lastSelectedModels = JSON.parse((localStorage.getItem(LocalStorageKeys.LAST_MODEL) ?? '{}') || '{}');
+  const lastSelectedModels = JSON.parse(
+    (localStorage.getItem(LocalStorageKeys.LAST_MODEL) ?? '{}') || '{}',
+  );
   lastSelectedModels[endpoint] = model;
   localStorage.setItem(LocalStorageKeys.LAST_MODEL, JSON.stringify(lastSelectedModels));
 }
@@ -134,6 +147,18 @@ export function getConvoSwitchLogic(params: ConversationInitParams): InitiatedTe
     endpoint: newEndpoint,
     conversationId: 'new',
   };
+
+  // Reset agent_id if switching to a non-agents endpoint but template has a non-ephemeral agent_id
+  if (
+    !isAgentsEndpoint(newEndpoint) &&
+    template.agent_id &&
+    !isEphemeralAgentId(template.agent_id)
+  ) {
+    template.agent_id = Constants.EPHEMERAL_AGENT_ID;
+  }
+
+  // Clear model for non-ephemeral agents - agents use their configured model internally
+  clearModelForNonEphemeralAgent(template);
 
   const isAssistantSwitch =
     isAssistantsEndpoint(newEndpoint) &&
@@ -170,15 +195,144 @@ export function getConvoSwitchLogic(params: ConversationInitParams): InitiatedTe
   };
 }
 
-/** Gets the default spec by order.
- *
- * First, the admin defined default, then last selected spec, followed by first spec
+export function getModelSpec({
+  specName,
+  startupConfig,
+}: {
+  specName?: string | null;
+  startupConfig?: t.TStartupConfig;
+}): t.TModelSpec | undefined {
+  if (!startupConfig || !specName) {
+    return;
+  }
+  return startupConfig.modelSpecs?.list?.find((spec) => spec.name === specName);
+}
+
+export function applyModelSpecEphemeralAgent({
+  convoId,
+  modelSpec,
+  updateEphemeralAgent,
+}: {
+  convoId?: string | null;
+  modelSpec?: t.TModelSpec;
+  updateEphemeralAgent: ((convoId: string, agent: t.TEphemeralAgent | null) => void) | undefined;
+}) {
+  if (!modelSpec || !updateEphemeralAgent) {
+    return;
+  }
+  const key = (convoId ?? Constants.NEW_CONVO) || Constants.NEW_CONVO;
+  const agent: t.TEphemeralAgent = {
+    mcp: modelSpec.mcpServers ?? [],
+    web_search: modelSpec.webSearch ?? false,
+    file_search: modelSpec.fileSearch ?? false,
+    execute_code: modelSpec.executeCode ?? false,
+    artifacts: modelSpec.artifacts === true ? 'default' : modelSpec.artifacts || '',
+  };
+
+  // For existing conversations, layer per-conversation localStorage overrides
+  // on top of spec defaults so user modifications persist across navigation.
+  // If localStorage is empty (e.g., cleared), spec values stand alone.
+  if (key !== Constants.NEW_CONVO) {
+    const toolStorageMap: Array<[keyof t.TEphemeralAgent, string]> = [
+      ['execute_code', LocalStorageKeys.LAST_CODE_TOGGLE_],
+      ['web_search', LocalStorageKeys.LAST_WEB_SEARCH_TOGGLE_],
+      ['file_search', LocalStorageKeys.LAST_FILE_SEARCH_TOGGLE_],
+      ['artifacts', LocalStorageKeys.LAST_ARTIFACTS_TOGGLE_],
+    ];
+
+    for (const [toolKey, storagePrefix] of toolStorageMap) {
+      const raw = getTimestampedValue(`${storagePrefix}${key}`);
+      if (raw !== null) {
+        try {
+          agent[toolKey] = JSON.parse(raw) as never;
+        } catch {
+          // ignore parse errors
+        }
+      }
+    }
+
+    const mcpRaw = localStorage.getItem(`${LocalStorageKeys.LAST_MCP_}${key}`);
+    if (mcpRaw !== null) {
+      try {
+        const parsed = JSON.parse(mcpRaw);
+        if (Array.isArray(parsed)) {
+          agent.mcp = parsed;
+        }
+      } catch {
+        // ignore parse errors
+      }
+    }
+  }
+
+  updateEphemeralAgent(key, agent);
+}
+
+/**
+ * Gets default model spec from config and user preferences.
+ * Priority: admin default → last selected → first spec (when prioritize=true or modelSelect disabled).
+ * Otherwise: admin default or last conversation spec.
  */
-export function getDefaultModelSpec(modelSpecs?: t.TModelSpec[]) {
-  const defaultSpec = modelSpecs?.find((spec) => spec.default);
-  const lastSelectedSpecName = localStorage.getItem(LocalStorageKeys.LAST_SPEC);
-  const lastSelectedSpec = modelSpecs?.find((spec) => spec.name === lastSelectedSpecName);
-  return defaultSpec || lastSelectedSpec || modelSpecs?.[0];
+export function getDefaultModelSpec(startupConfig?: t.TStartupConfig):
+  | {
+      default?: t.TModelSpec;
+      last?: t.TModelSpec;
+    }
+  | undefined {
+  const { modelSpecs, interface: interfaceConfig } = startupConfig ?? {};
+  const { list, prioritize } = modelSpecs ?? {};
+  if (!list) {
+    return;
+  }
+  const defaultSpec = list?.find((spec) => spec.default);
+  if (prioritize === true || !interfaceConfig?.modelSelect) {
+    const lastSelectedSpecName = localStorage.getItem(LocalStorageKeys.LAST_SPEC);
+    const lastSelectedSpec = list?.find((spec) => spec.name === lastSelectedSpecName);
+    return { default: defaultSpec || lastSelectedSpec || list?.[0] };
+  } else if (defaultSpec) {
+    return { default: defaultSpec };
+  }
+  const lastConversationSetup = JSON.parse(
+    localStorage.getItem(LocalStorageKeys.LAST_CONVO_SETUP + '_0') ?? '{}',
+  );
+  if (!lastConversationSetup.spec) {
+    return;
+  }
+  return { last: list?.find((spec) => spec.name === lastConversationSetup.spec) };
+}
+
+export function getModelSpecPreset(modelSpec?: t.TModelSpec) {
+  if (!modelSpec) {
+    return;
+  }
+  return {
+    ...modelSpec.preset,
+    spec: modelSpec.name,
+    iconURL: getModelSpecIconURL(modelSpec),
+  };
+}
+
+/** Fields set by a model spec that should be cleared when switching to a non-spec conversation. */
+export const specDisplayFieldReset = {
+  spec: null as string | null,
+  iconURL: null as string | null,
+  modelLabel: null as string | null,
+  greeting: undefined as string | undefined,
+};
+
+/**
+ * Merges a spec preset base with URL query settings, clearing spec display fields
+ * when the query doesn't explicitly set a spec. Prevents spec contamination on
+ * agent/assistant share links.
+ */
+export function mergeQuerySettingsWithSpec(
+  specPreset: t.TPreset | undefined,
+  querySettings: t.TPreset,
+): t.TPreset {
+  return {
+    ...specPreset,
+    ...querySettings,
+    ...(specPreset != null && querySettings.spec == null ? specDisplayFieldReset : {}),
+  };
 }
 
 /** Gets the default spec iconURL by order or definition.
@@ -198,11 +352,11 @@ export function getIconEndpoint({
   iconURL,
   endpoint,
 }: {
-  endpointsConfig: t.TEndpointsConfig | undefined;
-  iconURL: string | undefined;
-  endpoint: string | null | undefined;
+  endpointsConfig?: t.TEndpointsConfig;
+  iconURL?: string | null;
+  endpoint?: string | null;
 }) {
-  return (endpointsConfig?.[iconURL ?? ''] ? iconURL ?? endpoint : endpoint) ?? '';
+  return (endpointsConfig?.[iconURL ?? ''] ? (iconURL ?? endpoint) : endpoint) ?? '';
 }
 
 /** Gets the key to use for the default endpoint iconURL, as defined by the custom config */
@@ -213,16 +367,16 @@ export function getIconKey({
   endpointIconURL: iconURL,
 }: {
   endpoint?: string | null;
-  endpointsConfig?: t.TEndpointsConfig | undefined;
+  endpointsConfig?: t.TEndpointsConfig | null;
   endpointType?: string | null;
   endpointIconURL?: string;
-}) {
+}): keyof IconsRecord {
   const endpointType = _eType ?? getEndpointField(endpointsConfig, endpoint, 'type') ?? '';
   const endpointIconURL = iconURL ?? getEndpointField(endpointsConfig, endpoint, 'iconURL') ?? '';
   if (endpointIconURL && EModelEndpoint[endpointIconURL] != null) {
     return endpointIconURL;
   }
-  return endpointType ? 'unknown' : endpoint ?? 'unknown';
+  return endpointType ? 'unknown' : (endpoint ?? 'unknown');
 }
 
 export const getEntity = ({

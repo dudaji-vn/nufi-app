@@ -1,13 +1,13 @@
-const multer = require('multer');
 const express = require('express');
+const { configMiddleware } = require('~/server/middleware');
 const v1 = require('~/server/controllers/assistants/v1');
 const v2 = require('~/server/controllers/assistants/v2');
 const documents = require('./documents');
 const actions = require('./actions');
 const tools = require('./tools');
 
-const upload = multer();
 const router = express.Router();
+router.use(configMiddleware);
 
 /**
  * Assistant actions route.
@@ -78,6 +78,6 @@ router.get('/', v1.listAssistants);
  * @param {string} [req.body.metadata] - Optional metadata for the assistant's avatar.
  * @returns {Object} 200 - success response - application/json
  */
-router.post('/avatar/:assistant_id', upload.single('file'), v1.uploadAssistantAvatar);
+router.post('/avatar/:assistant_id', v1.uploadAssistantAvatar);
 
 module.exports = router;

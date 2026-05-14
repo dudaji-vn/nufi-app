@@ -1,103 +1,124 @@
-import { Fragment, Suspense, useMemo } from 'react';
+import { memo, Suspense, useMemo } from 'react';
 import { useRecoilValue } from 'recoil';
-import type { TMessage, TResPlugin } from 'librechat-data-provider';
+import { DelayedRender } from '@librechat/client';
+import type { TMessage } from 'librechat-data-provider';
 import type { TMessageContentProps, TDisplayProps } from '~/common';
-import Plugin from '~/components/Messages/Content/Plugin';
 import Error from '~/components/Messages/Content/Error';
-import { DelayedRender } from '~/components/ui';
-import { useChatContext } from '~/Providers';
+import { useMessageContext } from '~/Providers';
 import MarkdownLite from './MarkdownLite';
 import EditMessage from './EditMessage';
+import Thinking from './Parts/Thinking';
 import { useLocalize } from '~/hooks';
 import Container from './Container';
 import Markdown from './Markdown';
 import { cn } from '~/utils';
 import store from '~/store';
 
+const ERROR_CONNECTION_TEXT = 'Error connecting to server, try refreshing the page.';
+const DELAYED_ERROR_TIMEOUT = 5500;
+const UNFINISHED_DELAY = 250;
+
+const parseThinkingContent = (text: string) => {
+  const thinkingMatch = text.match(/:::thinking([\s\S]*?):::/);
+  return {
+    thinkingContent: thinkingMatch ? thinkingMatch[1].trim() : '',
+    regularContent: thinkingMatch ? text.replace(/:::thinking[\s\S]*?:::/, '').trim() : text,
+  };
+};
+
+const LoadingFallback = () => (
+  <div className="text-message mb-[0.625rem] flex min-h-[20px] flex-col items-start gap-3 overflow-visible">
+    <div className="markdown prose dark:prose-invert light w-full break-words dark:text-gray-100">
+      <div className="absolute">
+        <p className="submitting relative">
+          <span className="result-thinking" />
+        </p>
+      </div>
+    </div>
+  </div>
+);
+
+const ErrorBox = ({
+  children,
+  className = '',
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) => (
+  <div
+    role="alert"
+    aria-live="assertive"
+    className={cn(
+      'rounded-xl border border-red-500/20 bg-red-500/5 px-3 py-2 text-sm text-gray-600 dark:text-gray-200',
+      className,
+    )}
+  >
+    {children}
+  </div>
+);
+
+const ConnectionError = ({ message }: { message?: TMessage }) => {
+  const localize = useLocalize();
+
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <DelayedRender delay={DELAYED_ERROR_TIMEOUT}>
+        <Container message={message}>
+          <div className="mt-2 rounded-xl border border-red-500/20 bg-red-50/50 px-4 py-3 text-sm text-red-700 shadow-sm transition-all dark:bg-red-950/30 dark:text-red-100">
+            {localize('com_ui_error_connection')}
+          </div>
+        </Container>
+      </DelayedRender>
+    </Suspense>
+  );
+};
+
 export const ErrorMessage = ({
   text,
   message,
   className = '',
-}: Pick<TDisplayProps, 'text' | 'className'> & {
-  message?: TMessage;
-}) => {
-  const localize = useLocalize();
-  if (text === 'Error connecting to server, try refreshing the page.') {
-    console.log('error message', message);
-    return (
-      <Suspense
-        fallback={
-          <div className="text-message mb-[0.625rem] flex min-h-[20px] flex-col items-start gap-3 overflow-x-auto">
-            <div className="markdown prose dark:prose-invert light w-full break-words dark:text-gray-100">
-              <div className="absolute">
-                <p className="submitting relative">
-                  <span className="result-thinking" />
-                </p>
-              </div>
-            </div>
-          </div>
-        }
-      >
-        <DelayedRender delay={5500}>
-          <Container message={message}>
-            <div
-              className={cn(
-                'rounded-md border border-red-500 bg-red-500/10 px-3 py-2 text-sm text-gray-600 dark:text-gray-200',
-                className,
-              )}
-            >
-              {localize('com_ui_error_connection')}
-            </div>
-          </Container>
-        </DelayedRender>
-      </Suspense>
-    );
+}: Pick<TDisplayProps, 'text' | 'className'> & { message?: TMessage }) => {
+  if (text === ERROR_CONNECTION_TEXT) {
+    return <ConnectionError message={message} />;
   }
+
   return (
     <Container message={message}>
-      <div
-        className={cn(
-          'rounded-xl border border-red-500/20 bg-red-500/5 px-3 py-2 text-sm text-gray-600 dark:text-gray-200',
-          className,
-        )}
-      >
+      <ErrorBox className={className}>
         <Error text={text} />
-      </div>
+      </ErrorBox>
     </Container>
   );
 };
 
 const DisplayMessage = ({ text, isCreatedByUser, message, showCursor }: TDisplayProps) => {
-  const { isSubmitting, latestMessage } = useChatContext();
+  const { isSubmitting = false, isLatestMessage = false } = useMessageContext();
   const enableUserMsgMarkdown = useRecoilValue(store.enableUserMsgMarkdown);
+
   const showCursorState = useMemo(
     () => showCursor === true && isSubmitting,
     [showCursor, isSubmitting],
   );
-  const isLatestMessage = useMemo(
-    () => message.messageId === latestMessage?.messageId,
-    [message.messageId, latestMessage?.messageId],
-  );
 
-  let content: React.ReactElement;
-  if (!isCreatedByUser) {
-    content = (
-      <Markdown content={text} showCursor={showCursorState} isLatestMessage={isLatestMessage} />
-    );
-  } else if (enableUserMsgMarkdown) {
-    content = <MarkdownLite content={text} />;
-  } else {
-    content = <>{text}</>;
-  }
+  const content = useMemo(() => {
+    if (!isCreatedByUser) {
+      return <Markdown content={text} isLatestMessage={isLatestMessage} />;
+    }
+    if (enableUserMsgMarkdown) {
+      return <MarkdownLite content={text} />;
+    }
+    return <>{text}</>;
+  }, [isCreatedByUser, enableUserMsgMarkdown, text, isLatestMessage]);
 
   return (
     <Container message={message}>
       <div
         className={cn(
-          isSubmitting ? 'submitting' : '',
-          showCursorState && !!text.length ? 'result-streaming' : '',
           'markdown prose message-content dark:prose-invert light w-full break-words',
-          isCreatedByUser ? 'whitespace-pre-wrap dark:text-gray-20' : 'dark:text-gray-100',
+          isSubmitting && 'submitting',
+          showCursorState && text.length > 0 && 'result-streaming',
+          isCreatedByUser && !enableUserMsgMarkdown && 'whitespace-pre-wrap',
+          isCreatedByUser ? 'dark:text-gray-20' : 'dark:text-gray-100',
         )}
       >
         {content}
@@ -106,7 +127,6 @@ const DisplayMessage = ({ text, isCreatedByUser, message, showCursor }: TDisplay
   );
 };
 
-// Unfinished Message Component
 export const UnfinishedMessage = ({ message }: { message: TMessage }) => (
   <ErrorMessage
     message={message}
@@ -114,7 +134,6 @@ export const UnfinishedMessage = ({ message }: { message: TMessage }) => (
   />
 );
 
-// Content Component
 const MessageContent = ({
   text,
   edit,
@@ -124,72 +143,49 @@ const MessageContent = ({
   isLast,
   ...props
 }: TMessageContentProps) => {
+  const { message } = props;
+  const { messageId } = message;
+
+  const { thinkingContent, regularContent } = useMemo(() => parseThinkingContent(text), [text]);
+  const showRegularCursor = useMemo(() => isLast && isSubmitting, [isLast, isSubmitting]);
+
+  const unfinishedMessage = useMemo(
+    () =>
+      !isSubmitting && unfinished ? (
+        <Suspense>
+          <DelayedRender delay={UNFINISHED_DELAY}>
+            <UnfinishedMessage message={message} />
+          </DelayedRender>
+        </Suspense>
+      ) : null,
+    [isSubmitting, unfinished, message],
+  );
+
   if (error) {
-    return <ErrorMessage message={props.message} text={text} />;
-  } else if (edit) {
-    return <EditMessage text={text} isSubmitting={isSubmitting} {...props} />;
-  } else {
-    const marker = ':::plugin:::\n';
-    const splitText = text.split(marker);
-    const { message } = props;
-    const { plugins, messageId } = message;
-    const displayedIndices = new Set<number>();
-    // Function to get the next non-empty text index
-    const getNextNonEmptyTextIndex = (currentIndex: number) => {
-      for (let i = currentIndex + 1; i < splitText.length; i++) {
-        // Allow the last index to be last in case it has text
-        // this may need to change if I add back streaming
-        if (i === splitText.length - 1) {
-          return currentIndex;
-        }
-
-        if (splitText[i].trim() !== '' && !displayedIndices.has(i)) {
-          return i;
-        }
-      }
-      return currentIndex; // If no non-empty text is found, return the current index
-    };
-
-    return splitText.map((text, idx) => {
-      let currentText = text.trim();
-      let plugin: TResPlugin | null = null;
-
-      if (plugins) {
-        plugin = plugins[idx];
-      }
-
-      // If the current text is empty, get the next non-empty text index
-      const displayTextIndex = currentText === '' ? getNextNonEmptyTextIndex(idx) : idx;
-      currentText = splitText[displayTextIndex];
-      const isLastIndex = displayTextIndex === splitText.length - 1;
-      const isEmpty = currentText.trim() === '';
-      const showText =
-        (currentText && !isEmpty && !displayedIndices.has(displayTextIndex)) ||
-        (isEmpty && isLastIndex);
-      displayedIndices.add(displayTextIndex);
-
-      return (
-        <Fragment key={idx}>
-          {plugin && <Plugin key={`plugin-${messageId}-${idx}`} plugin={plugin} />}
-          {showText ? (
-            <DisplayMessage
-              key={`display-${messageId}-${idx}`}
-              showCursor={isLastIndex && isLast && isSubmitting}
-              text={currentText}
-              {...props}
-            />
-          ) : null}
-          {!isSubmitting && unfinished && (
-            <Suspense>
-              <DelayedRender delay={250}>
-                <UnfinishedMessage message={message} key={`unfinished-${messageId}-${idx}`} />
-              </DelayedRender>
-            </Suspense>
-          )}
-        </Fragment>
-      );
-    });
+    return <ErrorMessage message={message} text={text} />;
   }
+
+  if (edit) {
+    return <EditMessage text={text} isSubmitting={isSubmitting} {...props} />;
+  }
+
+  return (
+    <>
+      {thinkingContent.length > 0 && (
+        <Thinking key={`thinking-${messageId}`}>{thinkingContent}</Thinking>
+      )}
+      <DisplayMessage
+        key={`display-${messageId}`}
+        showCursor={showRegularCursor}
+        text={regularContent}
+        {...props}
+      />
+      {unfinishedMessage}
+    </>
+  );
 };
 
-export default MessageContent;
+const MemoizedMessageContent = memo(MessageContent);
+MemoizedMessageContent.displayName = 'MessageContent';
+
+export default MemoizedMessageContent;

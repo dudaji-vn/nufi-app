@@ -1,27 +1,19 @@
-import { v4 } from 'uuid';
 import { useCallback } from 'react';
-import { Constants } from 'librechat-data-provider';
 import { useRecoilValue, useSetRecoilState } from 'recoil';
+import { replaceSpecialVars } from 'librechat-data-provider';
 import { useChatContext, useChatFormContext, useAddedChatContext } from '~/Providers';
 import { useAuthContext } from '~/hooks/AuthContext';
-import { replaceSpecialVars } from '~/utils';
+import { mainTextareaId } from '~/common';
 import store from '~/store';
 
-const appendIndex = (index: number, value?: string) => {
-  if (!value) {
-    return value;
-  }
-  return `${value}${Constants.COMMON_DIVIDER}${index}`;
-};
-
-export default function useSubmitMessage(helpers?: { clearDraft?: () => void }) {
+export default function useSubmitMessage() {
   const { user } = useAuthContext();
   const methods = useChatFormContext();
-  const { ask, index, getMessages, setMessages, latestMessage } = useChatContext();
-  const { addedIndex, ask: askAdditional, conversation: addedConvo } = useAddedChatContext();
+  const { conversation: addedConvo } = useAddedChatContext();
+  const { ask, index, getMessages, setMessages } = useChatContext();
+  const latestMessage = useRecoilValue(store.latestMessageFamily(index));
 
   const autoSendPrompts = useRecoilValue(store.autoSendPrompts);
-  const activeConvos = useRecoilValue(store.allConversationsSelector);
   const setActivePrompt = useSetRecoilState(store.activePromptByIndex(index));
 
   const submitMessage = useCallback(
@@ -37,44 +29,17 @@ export default function useSubmitMessage(helpers?: { clearDraft?: () => void }) 
         setMessages([...(rootMessages || []), latestMessage]);
       }
 
-      const hasAdded = addedIndex && activeConvos[addedIndex] && addedConvo;
-      const isNewMultiConvo =
-        hasAdded &&
-        activeConvos.every((convoId) => convoId === Constants.NEW_CONVO) &&
-        !rootMessages?.length;
-      const overrideConvoId = isNewMultiConvo ? v4() : undefined;
-      const overrideUserMessageId = hasAdded ? v4() : undefined;
-      const rootIndex = addedIndex - 1;
-      ask({
-        text: data.text,
-        overrideConvoId: appendIndex(rootIndex, overrideConvoId),
-        overrideUserMessageId: appendIndex(rootIndex, overrideUserMessageId),
-      });
-      if (hasAdded) {
-        askAdditional(
-          {
-            text: data.text,
-            overrideConvoId: appendIndex(addedIndex, overrideConvoId),
-            overrideUserMessageId: appendIndex(addedIndex, overrideUserMessageId),
-          },
-          { overrideMessages: rootMessages },
-        );
-      }
+      ask(
+        {
+          text: data.text,
+        },
+        {
+          addedConvo: addedConvo ?? undefined,
+        },
+      );
       methods.reset();
-      helpers?.clearDraft && helpers.clearDraft();
     },
-    [
-      ask,
-      methods,
-      helpers,
-      addedIndex,
-      addedConvo,
-      setMessages,
-      getMessages,
-      activeConvos,
-      askAdditional,
-      latestMessage,
-    ],
+    [ask, methods, addedConvo, setMessages, getMessages, latestMessage],
   );
 
   const submitPrompt = useCallback(
@@ -85,7 +50,8 @@ export default function useSubmitMessage(helpers?: { clearDraft?: () => void }) 
         return;
       }
 
-      const currentText = methods.getValues('text');
+      const textarea = document.getElementById(mainTextareaId) as HTMLTextAreaElement | null;
+      const currentText = textarea?.value ?? methods.getValues('text');
       const newText = currentText.trim().length > 1 ? `\n${parsedText}` : parsedText;
       setActivePrompt(newText);
     },

@@ -1,18 +1,22 @@
 import React, { useState } from 'react';
 import { useFormContext } from 'react-hook-form';
-import type { TPlugin } from 'librechat-data-provider';
 import { useUpdateUserPluginsMutation } from 'librechat-data-provider/react-query';
-import { OGDialog, OGDialogTrigger, Label } from '~/components/ui';
-import OGDialogTemplate from '~/components/ui/OGDialogTemplate';
-import { useToastContext } from '~/Providers';
-import { TrashIcon } from '~/components/svg';
+import {
+  OGDialog,
+  OGDialogTrigger,
+  Label,
+  OGDialogTemplate,
+  TrashIcon,
+  useToastContext,
+} from '@librechat/client';
+import type { TPlugin } from 'librechat-data-provider';
 import { useLocalize } from '~/hooks';
 import { cn } from '~/utils';
 
 export default function AssistantTool({
   tool,
   allTools,
-  assistant_id,
+  assistant_id = '',
 }: {
   tool: string;
   allTools: TPlugin[];
@@ -28,7 +32,7 @@ export default function AssistantTool({
   const removeTool = (tool: string) => {
     if (tool) {
       updateUserPlugins.mutate(
-        { pluginKey: tool, action: 'uninstall', auth: null, isAssistantTool: true },
+        { pluginKey: tool, action: 'uninstall', auth: null, isEntityTool: true },
         {
           onError: (error: unknown) => {
             showToast({ message: `Error while deleting the tool: ${error}`, status: 'error' });
@@ -78,7 +82,7 @@ export default function AssistantTool({
           <OGDialogTrigger asChild>
             <button
               type="button"
-              className="transition-colors flex h-9 w-9 min-w-9 items-center justify-center rounded-lg duration-200 hover:bg-gray-200 dark:hover:bg-gray-700"
+              className="flex h-9 w-9 min-w-9 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-gray-200 dark:hover:bg-gray-700"
             >
               <TrashIcon />
             </button>

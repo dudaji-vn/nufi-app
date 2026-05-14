@@ -1,7 +1,15 @@
 const { Constants } = require('librechat-data-provider');
 const { initializeFakeClient } = require('./FakeClient');
 
-jest.mock('~/lib/db/connectDb');
+jest.mock('~/db/connect');
+jest.mock('~/server/services/Config', () => ({
+  getAppConfig: jest.fn().mockResolvedValue({
+    // Default app config for tests
+    paths: { uploads: '/tmp' },
+    fileStrategy: 'local',
+    memory: { disabled: false },
+  }),
+}));
 jest.mock('~/models', () => ({
   User: jest.fn(),
   Key: jest.fn(),
@@ -30,8 +38,12 @@ jest.mock('~/models', () => ({
   updateFileUsage: jest.fn(),
 }));
 
-jest.mock('langchain/chat_models/openai', () => {
+const { getConvo, saveConvo, saveMessage } = require('~/models');
+
+jest.mock('@librechat/agents', () => {
+  const actual = jest.requireActual('@librechat/agents');
   return {
+    ...actual,
     ChatOpenAI: jest.fn().mockImplementation(() => {
       return {};
     }),
@@ -50,7 +62,7 @@ const messageHistory = [
   {
     role: 'user',
     isCreatedByUser: true,
-    text: 'What\'s up',
+    text: "What's up",
     messageId: '3',
     parentMessageId: '2',
   },
@@ -61,7 +73,7 @@ describe('BaseClient', () => {
   const options = {
     // debug: true,
     modelOptions: {
-      model: 'gpt-3.5-turbo',
+      model: 'gpt-4o-mini',
       temperature: 0,
     },
   };
@@ -88,6 +100,19 @@ describe('BaseClient', () => {
     const messages = [{ content: 'Hello' }, { content: 'How are you?' }, { content: 'Goodbye' }];
     const instructions = { content: 'Please respond to the question.' };
     const result = TestClient.addInstructions(messages, instructions);
+    const expected = [
+      { content: 'Please respond to the question.' },
+      { content: 'Hello' },
+      { content: 'How are you?' },
+      { content: 'Goodbye' },
+    ];
+    expect(result).toEqual(expected);
+  });
+
+  test('returns the input messages with instructions properly added when addInstructions() with legacy flag', () => {
+    const messages = [{ content: 'Hello' }, { content: 'How are you?' }, { content: 'Goodbye' }];
+    const instructions = { content: 'Please respond to the question.' };
+    const result = TestClient.addInstructions(messages, instructions, true);
     const expected = [
       { content: 'Hello' },
       { content: 'How are you?' },
@@ -146,10 +171,10 @@ describe('BaseClient', () => {
       expectedMessagesToRefine?.[expectedMessagesToRefine.length - 1] ?? {};
     const expectedIndex = messages.findIndex((msg) => msg.content === lastExpectedMessage?.content);
 
-    const result = await TestClient.getMessagesWithinTokenLimit(messages);
+    const result = await TestClient.getMessagesWithinTokenLimit({ messages });
 
     expect(result.context).toEqual(expectedContext);
-    expect(result.summaryIndex).toEqual(expectedIndex);
+    expect(result.messagesToRefine.length - 1).toEqual(expectedIndex);
     expect(result.remainingContextTokens).toBe(expectedRemainingContextTokens);
     expect(result.messagesToRefine).toEqual(expectedMessagesToRefine);
   });
@@ -182,72 +207,12 @@ describe('BaseClient', () => {
       expectedMessagesToRefine?.[expectedMessagesToRefine.length - 1] ?? {};
     const expectedIndex = messages.findIndex((msg) => msg.content === lastExpectedMessage?.content);
 
-    const result = await TestClient.getMessagesWithinTokenLimit(messages);
+    const result = await TestClient.getMessagesWithinTokenLimit({ messages });
 
     expect(result.context).toEqual(expectedContext);
-    expect(result.summaryIndex).toEqual(expectedIndex);
+    expect(result.messagesToRefine.length - 1).toEqual(expectedIndex);
     expect(result.remainingContextTokens).toBe(expectedRemainingContextTokens);
     expect(result.messagesToRefine).toEqual(expectedMessagesToRefine);
-  });
-
-  test('handles context strategy correctly in handleContextStrategy()', async () => {
-    TestClient.addInstructions = jest
-      .fn()
-      .mockReturnValue([
-        { content: 'Hello' },
-        { content: 'How can I help you?' },
-        { content: 'Please provide more details.' },
-        { content: 'I can assist you with that.' },
-      ]);
-    TestClient.getMessagesWithinTokenLimit = jest.fn().mockReturnValue({
-      context: [
-        { content: 'How can I help you?' },
-        { content: 'Please provide more details.' },
-        { content: 'I can assist you with that.' },
-      ],
-      remainingContextTokens: 80,
-      messagesToRefine: [{ content: 'Hello' }],
-      summaryIndex: 3,
-    });
-
-    TestClient.getTokenCount = jest.fn().mockReturnValue(40);
-
-    const instructions = { content: 'Please provide more details.' };
-    const orderedMessages = [
-      { content: 'Hello' },
-      { content: 'How can I help you?' },
-      { content: 'Please provide more details.' },
-      { content: 'I can assist you with that.' },
-    ];
-    const formattedMessages = [
-      { content: 'Hello' },
-      { content: 'How can I help you?' },
-      { content: 'Please provide more details.' },
-      { content: 'I can assist you with that.' },
-    ];
-    const expectedResult = {
-      payload: [
-        {
-          role: 'system',
-          content: 'Refined answer',
-        },
-        { content: 'How can I help you?' },
-        { content: 'Please provide more details.' },
-        { content: 'I can assist you with that.' },
-      ],
-      promptTokens: expect.any(Number),
-      tokenCountMap: {},
-      messages: expect.any(Array),
-    };
-
-    TestClient.shouldSummarize = true;
-    const result = await TestClient.handleContextStrategy({
-      instructions,
-      orderedMessages,
-      formattedMessages,
-    });
-
-    expect(result).toEqual(expectedResult);
   });
 
   describe('getMessagesForConversation', () => {
@@ -390,7 +355,8 @@ describe('BaseClient', () => {
           id: '3',
           parentMessageId: '2',
           role: 'system',
-          text: 'Summary for Message 3',
+          text: 'Message 3',
+          content: [{ type: 'text', text: 'Summary for Message 3' }],
           summary: 'Summary for Message 3',
         },
         { id: '4', parentMessageId: '3', text: 'Message 4' },
@@ -415,7 +381,8 @@ describe('BaseClient', () => {
           id: '4',
           parentMessageId: '3',
           role: 'system',
-          text: 'Summary for Message 4',
+          text: 'Message 4',
+          content: [{ type: 'text', text: 'Summary for Message 4' }],
           summary: 'Summary for Message 4',
         },
         { id: '5', parentMessageId: '4', text: 'Message 5' },
@@ -440,11 +407,122 @@ describe('BaseClient', () => {
           id: '4',
           parentMessageId: '3',
           role: 'system',
-          text: 'Summary for Message 4',
+          text: 'Message 4',
+          content: [{ type: 'text', text: 'Summary for Message 4' }],
           summary: 'Summary for Message 4',
         },
         { id: '5', parentMessageId: '4', text: 'Message 5' },
       ]);
+    });
+
+    it('should detect summary content block and use it over legacy fields (summary mode)', () => {
+      const messagesWithContentBlock = [
+        { id: '3', parentMessageId: '2', text: 'Message 3' },
+        {
+          id: '2',
+          parentMessageId: '1',
+          text: 'Message 2',
+          content: [
+            { type: 'text', text: 'Original text' },
+            { type: 'summary', text: 'Content block summary', tokenCount: 42 },
+          ],
+        },
+        { id: '1', parentMessageId: null, text: 'Message 1' },
+      ];
+      const result = TestClient.constructor.getMessagesForConversation({
+        messages: messagesWithContentBlock,
+        parentMessageId: '3',
+        summary: true,
+      });
+      expect(result).toHaveLength(2);
+      expect(result[0].role).toBe('system');
+      expect(result[0].content).toEqual([{ type: 'text', text: 'Content block summary' }]);
+      expect(result[0].tokenCount).toBe(42);
+    });
+
+    it('should prefer content block summary over legacy summary field', () => {
+      const messagesWithBoth = [
+        { id: '2', parentMessageId: '1', text: 'Message 2' },
+        {
+          id: '1',
+          parentMessageId: null,
+          text: 'Message 1',
+          summary: 'Legacy summary',
+          summaryTokenCount: 10,
+          content: [{ type: 'summary', text: 'Content block summary', tokenCount: 20 }],
+        },
+      ];
+      const result = TestClient.constructor.getMessagesForConversation({
+        messages: messagesWithBoth,
+        parentMessageId: '2',
+        summary: true,
+      });
+      expect(result).toHaveLength(2);
+      expect(result[0].content).toEqual([{ type: 'text', text: 'Content block summary' }]);
+      expect(result[0].tokenCount).toBe(20);
+    });
+
+    it('should fallback to legacy summary when no content block exists', () => {
+      const messagesWithLegacy = [
+        { id: '2', parentMessageId: '1', text: 'Message 2' },
+        {
+          id: '1',
+          parentMessageId: null,
+          text: 'Message 1',
+          summary: 'Legacy summary only',
+          summaryTokenCount: 15,
+        },
+      ];
+      const result = TestClient.constructor.getMessagesForConversation({
+        messages: messagesWithLegacy,
+        parentMessageId: '2',
+        summary: true,
+      });
+      expect(result).toHaveLength(2);
+      expect(result[0].content).toEqual([{ type: 'text', text: 'Legacy summary only' }]);
+      expect(result[0].tokenCount).toBe(15);
+    });
+  });
+
+  describe('findSummaryContentBlock', () => {
+    it('should find a summary block in the content array', () => {
+      const message = {
+        content: [
+          { type: 'text', text: 'some text' },
+          { type: 'summary', text: 'Summary of conversation', tokenCount: 50 },
+        ],
+      };
+      const result = TestClient.constructor.findSummaryContentBlock(message);
+      expect(result).toBeTruthy();
+      expect(result.text).toBe('Summary of conversation');
+      expect(result.tokenCount).toBe(50);
+    });
+
+    it('should return null when no summary block exists', () => {
+      const message = {
+        content: [
+          { type: 'text', text: 'some text' },
+          { type: 'tool_call', tool_call: {} },
+        ],
+      };
+      expect(TestClient.constructor.findSummaryContentBlock(message)).toBeNull();
+    });
+
+    it('should return null for string content', () => {
+      const message = { content: 'just a string' };
+      expect(TestClient.constructor.findSummaryContentBlock(message)).toBeNull();
+    });
+
+    it('should return null for missing content', () => {
+      expect(TestClient.constructor.findSummaryContentBlock({})).toBeNull();
+      expect(TestClient.constructor.findSummaryContentBlock(null)).toBeNull();
+    });
+
+    it('should skip summary blocks with no text', () => {
+      const message = {
+        content: [{ type: 'summary', tokenCount: 10 }],
+      };
+      expect(TestClient.constructor.findSummaryContentBlock(message)).toBeNull();
     });
   });
 
@@ -463,6 +541,46 @@ describe('BaseClient', () => {
       parentMessageId = response.messageId;
       conversationId = response.conversationId;
       expect(response).toEqual(expectedResult);
+    });
+
+    test('should replace responseMessageId with new UUID when isRegenerate is true and messageId ends with underscore', async () => {
+      const mockCrypto = require('crypto');
+      const newUUID = 'new-uuid-1234';
+      jest.spyOn(mockCrypto, 'randomUUID').mockReturnValue(newUUID);
+
+      const opts = {
+        isRegenerate: true,
+        responseMessageId: 'existing-message-id_',
+      };
+
+      await TestClient.setMessageOptions(opts);
+
+      expect(TestClient.responseMessageId).toBe(newUUID);
+      expect(TestClient.responseMessageId).not.toBe('existing-message-id_');
+
+      mockCrypto.randomUUID.mockRestore();
+    });
+
+    test('should not replace responseMessageId when isRegenerate is false', async () => {
+      const opts = {
+        isRegenerate: false,
+        responseMessageId: 'existing-message-id_',
+      };
+
+      await TestClient.setMessageOptions(opts);
+
+      expect(TestClient.responseMessageId).toBe('existing-message-id_');
+    });
+
+    test('should not replace responseMessageId when it does not end with underscore', async () => {
+      const opts = {
+        isRegenerate: true,
+        responseMessageId: 'existing-message-id',
+      };
+
+      await TestClient.setMessageOptions(opts);
+
+      expect(TestClient.responseMessageId).toBe('existing-message-id');
     });
 
     test('sendMessage should work with provided conversationId and parentMessageId', async () => {
@@ -501,7 +619,7 @@ describe('BaseClient', () => {
 
       const chatMessages2 = await TestClient.loadHistory(conversationId, '3');
       expect(TestClient.currentMessages).toHaveLength(3);
-      expect(chatMessages2[chatMessages2.length - 1].text).toEqual('What\'s up');
+      expect(chatMessages2[chatMessages2.length - 1].text).toEqual("What's up");
     });
 
     /* Most of the new sendMessage logic revolving around edited/continued AI messages
@@ -582,15 +700,18 @@ describe('BaseClient', () => {
       expect(onStart).toHaveBeenCalledWith(
         expect.objectContaining({ text: 'Hello, world!' }),
         expect.any(String),
+        /** `isNewConvo` */
+        true,
       );
     });
 
     test('saveMessageToDatabase is called with the correct arguments', async () => {
       const saveOptions = TestClient.getSaveOptions();
-      const user = {}; // Mock user
+      const user = {};
       const opts = { user };
+      const saveSpy = jest.spyOn(TestClient, 'saveMessageToDatabase');
       await TestClient.sendMessage('Hello, world!', opts);
-      expect(TestClient.saveMessageToDatabase).toHaveBeenCalledWith(
+      expect(saveSpy).toHaveBeenCalledWith(
         expect.objectContaining({
           sender: expect.any(String),
           text: expect.any(String),
@@ -604,6 +725,157 @@ describe('BaseClient', () => {
       );
     });
 
+    test('should handle existing conversation when getConvo retrieves one', async () => {
+      const existingConvo = {
+        conversationId: 'existing-convo-id',
+        endpoint: 'openai',
+        endpointType: 'openai',
+        model: 'gpt-3.5-turbo',
+        messages: [
+          { role: 'user', content: 'Existing message 1' },
+          { role: 'assistant', content: 'Existing response 1' },
+        ],
+        temperature: 1,
+      };
+
+      const { temperature: _temp, ...newConvo } = existingConvo;
+
+      const user = {
+        id: 'user-id',
+      };
+
+      getConvo.mockResolvedValue(existingConvo);
+      saveConvo.mockResolvedValue(newConvo);
+
+      TestClient = initializeFakeClient(
+        apiKey,
+        {
+          ...options,
+          req: {
+            user,
+          },
+        },
+        [],
+      );
+
+      const saveSpy = jest.spyOn(TestClient, 'saveMessageToDatabase');
+
+      const newMessage = 'New message in existing conversation';
+      const response = await TestClient.sendMessage(newMessage, {
+        user,
+        conversationId: existingConvo.conversationId,
+      });
+
+      expect(getConvo).toHaveBeenCalledWith(user.id, existingConvo.conversationId);
+      expect(TestClient.conversationId).toBe(existingConvo.conversationId);
+      expect(response.conversationId).toBe(existingConvo.conversationId);
+      expect(TestClient.fetchedConvo).toBe(true);
+
+      expect(saveSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: existingConvo.conversationId,
+          text: newMessage,
+        }),
+        expect.any(Object),
+        expect.any(Object),
+      );
+
+      expect(saveConvo).toHaveBeenCalledTimes(2);
+      expect(saveConvo).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.objectContaining({
+          conversationId: existingConvo.conversationId,
+        }),
+        expect.objectContaining({
+          context: 'api/app/clients/BaseClient.js - saveMessageToDatabase #saveConvo',
+          unsetFields: {
+            temperature: 1,
+          },
+        }),
+      );
+
+      await TestClient.sendMessage('Another message', {
+        conversationId: existingConvo.conversationId,
+      });
+      expect(getConvo).toHaveBeenCalledTimes(1);
+    });
+
+    test('should correctly handle existing conversation and unset fields appropriately', async () => {
+      const existingConvo = {
+        conversationId: 'existing-convo-id',
+        endpoint: 'openai',
+        endpointType: 'openai',
+        model: 'gpt-3.5-turbo',
+        messages: [
+          { role: 'user', content: 'Existing message 1' },
+          { role: 'assistant', content: 'Existing response 1' },
+        ],
+        title: 'Existing Conversation',
+        someExistingField: 'existingValue',
+        anotherExistingField: 'anotherValue',
+        temperature: 0.7,
+        modelLabel: 'GPT-3.5',
+      };
+
+      getConvo.mockResolvedValue(existingConvo);
+      saveConvo.mockResolvedValue(existingConvo);
+
+      TestClient = initializeFakeClient(
+        apiKey,
+        {
+          ...options,
+          modelOptions: {
+            model: 'gpt-4',
+            temperature: 0.5,
+          },
+        },
+        [],
+      );
+
+      const newMessage = 'New message in existing conversation';
+      await TestClient.sendMessage(newMessage, {
+        conversationId: existingConvo.conversationId,
+      });
+
+      expect(saveConvo).toHaveBeenCalledTimes(2);
+
+      const saveConvoCall = saveConvo.mock.calls[0];
+      const [, savedFields, saveOptions] = saveConvoCall;
+
+      // Instead of checking all excludedKeys, we'll just check specific fields
+      // that we know should be excluded
+      expect(savedFields).not.toHaveProperty('messages');
+      expect(savedFields).not.toHaveProperty('title');
+
+      // Only check that someExistingField is in unsetFields
+      expect(saveOptions.unsetFields).toHaveProperty('someExistingField', 1);
+
+      // Mock saveConvo to return the expected fields
+      saveConvo.mockImplementation((req, fields) => {
+        return Promise.resolve({
+          ...fields,
+          endpoint: 'openai',
+          endpointType: 'openai',
+          model: 'gpt-4',
+          temperature: 0.5,
+        });
+      });
+
+      // Only check the conversationId since that's the only field we can be sure about
+      expect(savedFields).toHaveProperty('conversationId', 'existing-convo-id');
+
+      expect(TestClient.fetchedConvo).toBe(true);
+
+      await TestClient.sendMessage('Another message', {
+        conversationId: existingConvo.conversationId,
+      });
+
+      expect(getConvo).toHaveBeenCalledTimes(1);
+
+      const secondSaveConvoCall = saveConvo.mock.calls[1];
+      expect(secondSaveConvoCall[2]).toHaveProperty('unsetFields', {});
+    });
+
     test('sendCompletion is called with the correct arguments', async () => {
       const payload = {}; // Mock payload
       TestClient.buildMessages.mockReturnValue({ prompt: payload, tokenCountMap: null });
@@ -615,9 +887,9 @@ describe('BaseClient', () => {
     test('getTokenCount for response is called with the correct arguments', async () => {
       const tokenCountMap = {}; // Mock tokenCountMap
       TestClient.buildMessages.mockReturnValue({ prompt: [], tokenCountMap });
-      TestClient.getTokenCount = jest.fn();
+      TestClient.getTokenCountForResponse = jest.fn();
       const response = await TestClient.sendMessage('Hello, world!', {});
-      expect(TestClient.getTokenCount).toHaveBeenCalledWith(response.text);
+      expect(TestClient.getTokenCountForResponse).toHaveBeenCalledWith(response);
     });
 
     test('returns an object with the correct shape', async () => {
@@ -630,6 +902,91 @@ describe('BaseClient', () => {
           messageId: expect.any(String),
           parentMessageId: expect.any(String),
           conversationId: expect.any(String),
+        }),
+      );
+    });
+
+    test('saveMessageToDatabase returns early when this.options is null (client disposed)', async () => {
+      const savedOptions = TestClient.options;
+      TestClient.options = null;
+      saveMessage.mockClear();
+
+      const result = await TestClient.saveMessageToDatabase(
+        { messageId: 'msg-1', conversationId: 'conv-1', isCreatedByUser: true, text: 'hi' },
+        {},
+        null,
+      );
+
+      expect(result).toEqual({});
+      expect(saveMessage).not.toHaveBeenCalled();
+
+      TestClient.options = savedOptions;
+    });
+
+    test('saveMessageToDatabase uses snapshot of options, immune to mid-await disposal', async () => {
+      const savedOptions = TestClient.options;
+      saveMessage.mockClear();
+      saveConvo.mockClear();
+
+      // Make db.saveMessage yield, simulating I/O suspension during which disposal occurs
+      saveMessage.mockImplementation(async (_reqCtx, msgData) => {
+        // Simulate disposeClient nullifying client.options while awaiting
+        TestClient.options = null;
+        return msgData;
+      });
+      saveConvo.mockResolvedValue({ conversationId: 'conv-1' });
+
+      const result = await TestClient.saveMessageToDatabase(
+        { messageId: 'msg-1', conversationId: 'conv-1', isCreatedByUser: true, text: 'hi' },
+        { endpoint: 'openAI' },
+        null,
+      );
+
+      // Should complete without TypeError, using the snapshotted options
+      expect(result).toHaveProperty('message');
+      expect(result).toHaveProperty('conversation');
+      expect(saveMessage).toHaveBeenCalled();
+
+      TestClient.options = savedOptions;
+      saveMessage.mockReset();
+      saveConvo.mockReset();
+    });
+
+    test('saveMessageToDatabase reuses conversation resolved on the request', async () => {
+      const existingConvo = {
+        conversationId: 'cached-convo-id',
+        endpoint: 'openai',
+        endpointType: 'openai',
+        temperature: 0.7,
+      };
+      const user = { id: 'user-id' };
+      const req = { user, resolvedConversation: existingConvo };
+
+      getConvo.mockClear();
+      saveMessage.mockResolvedValue({ messageId: 'msg-1' });
+      saveConvo.mockResolvedValue(existingConvo);
+
+      TestClient = initializeFakeClient(apiKey, { ...options, endpoint: 'openai', req }, []);
+
+      await TestClient.saveMessageToDatabase(
+        {
+          messageId: 'msg-1',
+          conversationId: existingConvo.conversationId,
+          isCreatedByUser: true,
+          text: 'hi',
+        },
+        { endpoint: 'openai' },
+        user,
+      );
+
+      expect(getConvo).not.toHaveBeenCalled();
+      expect(req).not.toHaveProperty('resolvedConversation');
+      expect(TestClient.fetchedConvo).toBe(true);
+      expect(saveConvo).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.objectContaining({ conversationId: existingConvo.conversationId }),
+        expect.objectContaining({
+          unsetFields: expect.objectContaining({ temperature: 1 }),
         }),
       );
     });
@@ -659,6 +1016,283 @@ describe('BaseClient', () => {
       const calls = TestClient.saveMessageToDatabase.mock.calls;
       expect(calls[0][0].isCreatedByUser).toBe(true); // First call should be for user message
       expect(calls[1][0].isCreatedByUser).toBe(false); // Second call should be for response message
+    });
+  });
+
+  describe('recordTokenUsage model assignment', () => {
+    test('should pass this.model to recordTokenUsage, not the agent ID from responseMessage.model', async () => {
+      const actualModel = 'claude-opus-4-5';
+      const agentId = 'agent_p5Z_IU6EIxBoqn1BoqLBp';
+
+      TestClient.model = actualModel;
+      TestClient.options.endpoint = 'agents';
+      TestClient.options.agent = { id: agentId };
+
+      TestClient.getTokenCountForResponse = jest.fn().mockReturnValue(50);
+      TestClient.recordTokenUsage = jest.fn().mockResolvedValue(undefined);
+      TestClient.buildMessages.mockReturnValue({
+        prompt: [],
+        tokenCountMap: { res: 50 },
+      });
+
+      await TestClient.sendMessage('Hello', {});
+
+      expect(TestClient.recordTokenUsage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: actualModel,
+        }),
+      );
+
+      const callArgs = TestClient.recordTokenUsage.mock.calls[0][0];
+      expect(callArgs.model).not.toBe(agentId);
+    });
+
+    test('should pass this.model even when this.model differs from modelOptions.model', async () => {
+      const instanceModel = 'gpt-4o';
+      TestClient.model = instanceModel;
+      TestClient.modelOptions = { model: 'gpt-4o-mini' };
+
+      TestClient.getTokenCountForResponse = jest.fn().mockReturnValue(50);
+      TestClient.recordTokenUsage = jest.fn().mockResolvedValue(undefined);
+      TestClient.buildMessages.mockReturnValue({
+        prompt: [],
+        tokenCountMap: { res: 50 },
+      });
+
+      await TestClient.sendMessage('Hello', {});
+
+      expect(TestClient.recordTokenUsage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: instanceModel,
+        }),
+      );
+    });
+  });
+
+  describe('getMessagesWithinTokenLimit with instructions', () => {
+    test('should always include instructions when present', async () => {
+      TestClient.maxContextTokens = 50;
+      const instructions = {
+        role: 'system',
+        content: 'System instructions',
+        tokenCount: 20,
+      };
+
+      const messages = [
+        instructions,
+        { role: 'user', content: 'Hello', tokenCount: 10 },
+        { role: 'assistant', content: 'Hi there', tokenCount: 15 },
+      ];
+
+      const result = await TestClient.getMessagesWithinTokenLimit({
+        messages,
+        instructions,
+      });
+
+      expect(result.context[0]).toBe(instructions);
+      expect(result.remainingContextTokens).toBe(2);
+    });
+
+    test('should handle case when messages exceed limit but instructions must be preserved', async () => {
+      TestClient.maxContextTokens = 30;
+      const instructions = {
+        role: 'system',
+        content: 'System instructions',
+        tokenCount: 20,
+      };
+
+      const messages = [
+        instructions,
+        { role: 'user', content: 'Hello', tokenCount: 10 },
+        { role: 'assistant', content: 'Hi there', tokenCount: 15 },
+      ];
+
+      const result = await TestClient.getMessagesWithinTokenLimit({
+        messages,
+        instructions,
+      });
+
+      // Should only include instructions and the last message that fits
+      expect(result.context).toHaveLength(1);
+      expect(result.context[0].content).toBe(instructions.content);
+      expect(result.messagesToRefine).toHaveLength(2);
+      expect(result.remainingContextTokens).toBe(7); // 30 - 20 - 3 (assistant label)
+    });
+
+    test('should work correctly without instructions (1/2)', async () => {
+      TestClient.maxContextTokens = 50;
+      const messages = [
+        { role: 'user', content: 'Hello', tokenCount: 10 },
+        { role: 'assistant', content: 'Hi there', tokenCount: 15 },
+      ];
+
+      const result = await TestClient.getMessagesWithinTokenLimit({
+        messages,
+      });
+
+      expect(result.context).toHaveLength(2);
+      expect(result.remainingContextTokens).toBe(22); // 50 - 10 - 15 - 3(assistant label)
+      expect(result.messagesToRefine).toHaveLength(0);
+    });
+
+    test('should work correctly without instructions (2/2)', async () => {
+      TestClient.maxContextTokens = 30;
+      const messages = [
+        { role: 'user', content: 'Hello', tokenCount: 10 },
+        { role: 'assistant', content: 'Hi there', tokenCount: 20 },
+      ];
+
+      const result = await TestClient.getMessagesWithinTokenLimit({
+        messages,
+      });
+
+      expect(result.context).toHaveLength(1);
+      expect(result.remainingContextTokens).toBe(7);
+      expect(result.messagesToRefine).toHaveLength(1);
+    });
+
+    test('should handle case when only instructions fit within limit', async () => {
+      TestClient.maxContextTokens = 25;
+      const instructions = {
+        role: 'system',
+        content: 'System instructions',
+        tokenCount: 20,
+      };
+
+      const messages = [
+        instructions,
+        { role: 'user', content: 'Hello', tokenCount: 10 },
+        { role: 'assistant', content: 'Hi there', tokenCount: 15 },
+      ];
+
+      const result = await TestClient.getMessagesWithinTokenLimit({
+        messages,
+        instructions,
+      });
+
+      expect(result.context).toHaveLength(1);
+      expect(result.context[0]).toBe(instructions);
+      expect(result.messagesToRefine).toHaveLength(2);
+      expect(result.remainingContextTokens).toBe(2); // 25 - 20 - 3(assistant label)
+    });
+  });
+
+  describe('sendMessage file population', () => {
+    const attachment = {
+      file_id: 'file-abc',
+      filename: 'image.png',
+      filepath: '/uploads/image.png',
+      type: 'image/png',
+      bytes: 1024,
+      object: 'file',
+      user: 'user-1',
+      embedded: false,
+      usage: 0,
+      text: 'large ocr blob that should be stripped',
+      _id: 'mongo-id-1',
+    };
+
+    beforeEach(() => {
+      TestClient.options.req = { body: { files: [{ file_id: 'file-abc' }] } };
+      TestClient.options.attachments = [attachment];
+    });
+
+    test('populates userMessage.files before saveMessageToDatabase is called', async () => {
+      TestClient.saveMessageToDatabase = jest.fn().mockImplementation((msg) => {
+        return Promise.resolve({ message: msg });
+      });
+
+      await TestClient.sendMessage('Hello');
+
+      const userSave = TestClient.saveMessageToDatabase.mock.calls.find(
+        ([msg]) => msg.isCreatedByUser,
+      );
+      expect(userSave).toBeDefined();
+      expect(userSave[0].files).toBeDefined();
+      expect(userSave[0].files).toHaveLength(1);
+      expect(userSave[0].files[0].file_id).toBe('file-abc');
+    });
+
+    test('strips text and _id from files before saving', async () => {
+      TestClient.saveMessageToDatabase = jest.fn().mockResolvedValue({ message: {} });
+
+      await TestClient.sendMessage('Hello');
+
+      const userSave = TestClient.saveMessageToDatabase.mock.calls.find(
+        ([msg]) => msg.isCreatedByUser,
+      );
+      expect(userSave[0].files[0].text).toBeUndefined();
+      expect(userSave[0].files[0]._id).toBeUndefined();
+      expect(userSave[0].files[0].filename).toBe('image.png');
+    });
+
+    test('deletes image_urls from userMessage when files are present', async () => {
+      TestClient.saveMessageToDatabase = jest.fn().mockResolvedValue({ message: {} });
+      TestClient.options.attachments = [
+        { ...attachment, image_urls: ['data:image/png;base64,...'] },
+      ];
+
+      await TestClient.sendMessage('Hello');
+
+      const userSave = TestClient.saveMessageToDatabase.mock.calls.find(
+        ([msg]) => msg.isCreatedByUser,
+      );
+      expect(userSave[0].image_urls).toBeUndefined();
+    });
+
+    test('does not set files when no attachments match request file IDs', async () => {
+      TestClient.options.req = { body: { files: [{ file_id: 'file-nomatch' }] } };
+      TestClient.saveMessageToDatabase = jest.fn().mockResolvedValue({ message: {} });
+
+      await TestClient.sendMessage('Hello');
+
+      const userSave = TestClient.saveMessageToDatabase.mock.calls.find(
+        ([msg]) => msg.isCreatedByUser,
+      );
+      expect(userSave[0].files).toBeUndefined();
+    });
+
+    test('skips file population when attachments is not an array (Promise case)', async () => {
+      TestClient.options.attachments = Promise.resolve([attachment]);
+      TestClient.saveMessageToDatabase = jest.fn().mockResolvedValue({ message: {} });
+
+      await TestClient.sendMessage('Hello');
+
+      const userSave = TestClient.saveMessageToDatabase.mock.calls.find(
+        ([msg]) => msg.isCreatedByUser,
+      );
+      expect(userSave[0].files).toBeUndefined();
+    });
+
+    test('skips file population when skipSaveUserMessage is true', async () => {
+      TestClient.skipSaveUserMessage = true;
+      TestClient.saveMessageToDatabase = jest.fn().mockResolvedValue({ message: {} });
+
+      await TestClient.sendMessage('Hello');
+
+      const userSave = TestClient.saveMessageToDatabase.mock.calls.find(
+        ([msg]) => msg?.isCreatedByUser,
+      );
+      expect(userSave).toBeUndefined();
+    });
+
+    test('ignores file_id: undefined entries in req.body.files (no set poisoning)', async () => {
+      TestClient.options.req = {
+        body: { files: [{ file_id: undefined }, { file_id: 'file-abc' }] },
+      };
+      TestClient.options.attachments = [
+        { ...attachment, file_id: undefined },
+        { ...attachment, file_id: 'file-abc' },
+      ];
+      TestClient.saveMessageToDatabase = jest.fn().mockResolvedValue({ message: {} });
+
+      await TestClient.sendMessage('Hello');
+
+      const userSave = TestClient.saveMessageToDatabase.mock.calls.find(
+        ([msg]) => msg.isCreatedByUser,
+      );
+      expect(userSave[0].files).toHaveLength(1);
+      expect(userSave[0].files[0].file_id).toBe('file-abc');
     });
   });
 });

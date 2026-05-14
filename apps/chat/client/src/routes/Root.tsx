@@ -1,34 +1,48 @@
-import React, { useState, useEffect } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
-import { useGetStartupConfig } from 'librechat-data-provider/react-query';
-import { useUserTermsQuery } from '~/data-provider';
-
-import type { ContextType } from '~/common';
-import { AgentsMapContext, AssistantsMapContext, FileMapContext, SearchContext } from '~/Providers';
-import { useAuthContext, useAssistantsMap, useAgentsMap, useFileMap, useSearch } from '~/hooks';
-import { Nav, MobileNav } from '~/components/Nav';
-import TermsAndConditionsModal from '~/components/ui/TermsAndConditionsModal';
+import { useState, useEffect } from 'react';
+import { useRecoilValue } from 'recoil';
+import { Outlet } from 'react-router-dom';
+import { useMediaQuery } from '@librechat/client';
+import {
+  useSearchEnabled,
+  useAssistantsMap,
+  useAuthContext,
+  useAgentsMap,
+  useFileMap,
+} from '~/hooks';
+import store from '~/store';
+import {
+  PromptGroupsProvider,
+  AssistantsMapContext,
+  AgentsMapContext,
+  SetConvoProvider,
+  FileMapContext,
+} from '~/Providers';
+import { useUserTermsQuery, useGetStartupConfig } from '~/data-provider';
+import { UnifiedSidebar } from '~/components/UnifiedSidebar';
+import { TermsAndConditionsModal } from '~/components/ui';
+import { useHealthCheck } from '~/data-provider';
 import { Banner } from '~/components/Banners';
 
 export default function Root() {
-  const { isAuthenticated, logout } = useAuthContext();
-  const navigate = useNavigate();
-  const [navVisible, setNavVisible] = useState(() => {
-    const savedNavVisible = localStorage.getItem('navVisible');
-    return savedNavVisible !== null ? JSON.parse(savedNavVisible) : true;
-  });
+  const [showTerms, setShowTerms] = useState(false);
   const [bannerHeight, setBannerHeight] = useState(0);
+  const sidebarExpanded = useRecoilValue(store.sidebarExpanded);
+  const isSmallScreen = useMediaQuery('(max-width: 768px)');
 
-  const search = useSearch({ isAuthenticated });
-  const fileMap = useFileMap({ isAuthenticated });
+  const { isAuthenticated, logout } = useAuthContext();
+
+  useHealthCheck(isAuthenticated);
+
   const assistantsMap = useAssistantsMap({ isAuthenticated });
   const agentsMap = useAgentsMap({ isAuthenticated });
+  const fileMap = useFileMap({ isAuthenticated });
 
-  const [showTerms, setShowTerms] = useState(false);
   const { data: config } = useGetStartupConfig();
   const { data: termsData } = useUserTermsQuery({
     enabled: isAuthenticated && config?.interface?.termsOfService?.modalAcceptance === true,
   });
+
+  useSearchEnabled(isAuthenticated);
 
   useEffect(() => {
     if (termsData) {
@@ -42,8 +56,7 @@ export default function Root() {
 
   const handleDeclineTerms = () => {
     setShowTerms(false);
-    logout();
-    navigate('/login');
+    logout('/login?redirect=false');
   };
 
   if (!isAuthenticated) {
@@ -51,20 +64,29 @@ export default function Root() {
   }
 
   return (
-    <SearchContext.Provider value={search}>
+    <SetConvoProvider>
       <FileMapContext.Provider value={fileMap}>
         <AssistantsMapContext.Provider value={assistantsMap}>
           <AgentsMapContext.Provider value={agentsMap}>
-            <Banner onHeightChange={setBannerHeight} />
-            <div className="flex" style={{ height: `calc(100dvh - ${bannerHeight}px)` }}>
-              <div className="relative z-0 flex h-full w-full overflow-hidden">
-                <Nav navVisible={navVisible} setNavVisible={setNavVisible} />
-                <div className="relative flex h-full max-w-full flex-1 flex-col overflow-hidden">
-                  <MobileNav setNavVisible={setNavVisible} />
-                  <Outlet context={{ navVisible, setNavVisible } satisfies ContextType} />
+            <PromptGroupsProvider>
+              <Banner onHeightChange={setBannerHeight} />
+              <div className="flex" style={{ height: `calc(100dvh - ${bannerHeight}px)` }}>
+                <div className="relative z-0 flex h-full w-full overflow-hidden">
+                  <UnifiedSidebar />
+                  <div
+                    className="relative flex h-full max-w-full flex-1 flex-col overflow-hidden"
+                    style={{
+                      transform:
+                        isSmallScreen && sidebarExpanded ? 'translateX(min(85vw, 380px))' : 'none',
+                      transition: 'transform 300ms cubic-bezier(0.2, 0, 0, 1)',
+                    }}
+                    inert={isSmallScreen && sidebarExpanded ? '' : undefined}
+                  >
+                    <Outlet />
+                  </div>
                 </div>
               </div>
-            </div>
+            </PromptGroupsProvider>
           </AgentsMapContext.Provider>
           {config?.interface?.termsOfService?.modalAcceptance === true && (
             <TermsAndConditionsModal
@@ -78,6 +100,6 @@ export default function Root() {
           )}
         </AssistantsMapContext.Provider>
       </FileMapContext.Provider>
-    </SearchContext.Provider>
+    </SetConvoProvider>
   );
 }

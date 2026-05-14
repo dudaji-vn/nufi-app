@@ -1,4 +1,23 @@
 import { z } from 'zod';
+import {
+  Permissions,
+  PermissionTypes,
+  permissionsSchema,
+  agentPermissionsSchema,
+  promptPermissionsSchema,
+  skillPermissionsSchema,
+  memoryPermissionsSchema,
+  runCodePermissionsSchema,
+  bookmarkPermissionsSchema,
+  webSearchPermissionsSchema,
+  fileSearchPermissionsSchema,
+  multiConvoPermissionsSchema,
+  mcpServersPermissionsSchema,
+  peoplePickerPermissionsSchema,
+  remoteAgentsPermissionsSchema,
+  temporaryChatPermissionsSchema,
+  fileCitationsPermissionsSchema,
+} from './permissions';
 
 /**
  * Enum for System Defined Roles
@@ -14,121 +33,222 @@ export enum SystemRoles {
   USER = 'USER',
 }
 
-/**
- * Enum for Permission Types
- */
-export enum PermissionTypes {
-  /**
-   * Type for Prompt Permissions
-   */
-  PROMPTS = 'PROMPTS',
-  /**
-   * Type for Bookmark Permissions
-   */
-  BOOKMARKS = 'BOOKMARKS',
-  /**
-   * Type for Agent Permissions
-   */
-  AGENTS = 'AGENTS',
-  /**
-   * Type for Multi-Conversation Permissions
-   */
-  MULTI_CONVO = 'MULTI_CONVO',
-}
-
-/**
- * Enum for Role-Based Access Control Constants
- */
-export enum Permissions {
-  SHARED_GLOBAL = 'SHARED_GLOBAL',
-  USE = 'USE',
-  CREATE = 'CREATE',
-  UPDATE = 'UPDATE',
-  READ = 'READ',
-  READ_AUTHOR = 'READ_AUTHOR',
-  SHARE = 'SHARE',
-}
-
-export const promptPermissionsSchema = z.object({
-  [Permissions.SHARED_GLOBAL]: z.boolean().default(false),
-  [Permissions.USE]: z.boolean().default(true),
-  [Permissions.CREATE]: z.boolean().default(true),
-  // [Permissions.SHARE]: z.boolean().default(false),
-});
-
-export const bookmarkPermissionsSchema = z.object({
-  [Permissions.USE]: z.boolean().default(true),
-});
-
-export const agentPermissionsSchema = z.object({
-  [Permissions.SHARED_GLOBAL]: z.boolean().default(false),
-  [Permissions.USE]: z.boolean().default(true),
-  [Permissions.CREATE]: z.boolean().default(true),
-  // [Permissions.SHARE]: z.boolean().default(false),
-});
-
-export const multiConvoPermissionsSchema = z.object({
-  [Permissions.USE]: z.boolean().default(false),
-});
-
 export const roleSchema = z.object({
   name: z.string(),
-  [PermissionTypes.PROMPTS]: promptPermissionsSchema,
-  [PermissionTypes.BOOKMARKS]: bookmarkPermissionsSchema,
-  [PermissionTypes.AGENTS]: agentPermissionsSchema,
-  [PermissionTypes.MULTI_CONVO]: multiConvoPermissionsSchema,
+  permissions: permissionsSchema,
 });
 
 export type TRole = z.infer<typeof roleSchema>;
-export type TAgentPermissions = z.infer<typeof agentPermissionsSchema>;
-export type TPromptPermissions = z.infer<typeof promptPermissionsSchema>;
-export type TBookmarkPermissions = z.infer<typeof bookmarkPermissionsSchema>;
-export type TMultiConvoPermissions = z.infer<typeof multiConvoPermissionsSchema>;
 
 const defaultRolesSchema = z.object({
   [SystemRoles.ADMIN]: roleSchema.extend({
     name: z.literal(SystemRoles.ADMIN),
-    [PermissionTypes.PROMPTS]: promptPermissionsSchema.extend({
-      [Permissions.SHARED_GLOBAL]: z.boolean().default(true),
-      [Permissions.USE]: z.boolean().default(true),
-      [Permissions.CREATE]: z.boolean().default(true),
-      // [Permissions.SHARE]: z.boolean().default(true),
-    }),
-    [PermissionTypes.BOOKMARKS]: bookmarkPermissionsSchema.extend({
-      [Permissions.USE]: z.boolean().default(true),
-    }),
-    [PermissionTypes.AGENTS]: agentPermissionsSchema.extend({
-      [Permissions.SHARED_GLOBAL]: z.boolean().default(true),
-      [Permissions.USE]: z.boolean().default(true),
-      [Permissions.CREATE]: z.boolean().default(true),
-      // [Permissions.SHARE]: z.boolean().default(true),
-    }),
-    [PermissionTypes.MULTI_CONVO]: multiConvoPermissionsSchema.extend({
-      [Permissions.USE]: z.boolean().default(true),
+    permissions: permissionsSchema.extend({
+      [PermissionTypes.PROMPTS]: promptPermissionsSchema.extend({
+        [Permissions.USE]: z.boolean().default(true),
+        [Permissions.CREATE]: z.boolean().default(true),
+        [Permissions.SHARE]: z.boolean().default(true),
+        [Permissions.SHARE_PUBLIC]: z.boolean().default(true),
+      }),
+      [PermissionTypes.BOOKMARKS]: bookmarkPermissionsSchema.extend({
+        [Permissions.USE]: z.boolean().default(true),
+      }),
+      [PermissionTypes.MEMORIES]: memoryPermissionsSchema.extend({
+        [Permissions.USE]: z.boolean().default(true),
+        [Permissions.CREATE]: z.boolean().default(true),
+        [Permissions.UPDATE]: z.boolean().default(true),
+        [Permissions.READ]: z.boolean().default(true),
+        [Permissions.OPT_OUT]: z.boolean().default(true),
+      }),
+      [PermissionTypes.AGENTS]: agentPermissionsSchema.extend({
+        [Permissions.USE]: z.boolean().default(true),
+        [Permissions.CREATE]: z.boolean().default(true),
+        [Permissions.SHARE]: z.boolean().default(true),
+        [Permissions.SHARE_PUBLIC]: z.boolean().default(true),
+      }),
+      [PermissionTypes.MULTI_CONVO]: multiConvoPermissionsSchema.extend({
+        [Permissions.USE]: z.boolean().default(true),
+      }),
+      [PermissionTypes.TEMPORARY_CHAT]: temporaryChatPermissionsSchema.extend({
+        [Permissions.USE]: z.boolean().default(true),
+      }),
+      [PermissionTypes.RUN_CODE]: runCodePermissionsSchema.extend({
+        [Permissions.USE]: z.boolean().default(true),
+      }),
+      [PermissionTypes.WEB_SEARCH]: webSearchPermissionsSchema.extend({
+        [Permissions.USE]: z.boolean().default(true),
+      }),
+      [PermissionTypes.PEOPLE_PICKER]: peoplePickerPermissionsSchema.extend({
+        [Permissions.VIEW_USERS]: z.boolean().default(true),
+        [Permissions.VIEW_GROUPS]: z.boolean().default(true),
+        [Permissions.VIEW_ROLES]: z.boolean().default(true),
+      }),
+      [PermissionTypes.MARKETPLACE]: z.object({
+        [Permissions.USE]: z.boolean().default(false),
+      }),
+      [PermissionTypes.FILE_SEARCH]: fileSearchPermissionsSchema.extend({
+        [Permissions.USE]: z.boolean().default(true),
+      }),
+      [PermissionTypes.FILE_CITATIONS]: fileCitationsPermissionsSchema.extend({
+        [Permissions.USE]: z.boolean().default(true),
+      }),
+      [PermissionTypes.MCP_SERVERS]: mcpServersPermissionsSchema.extend({
+        [Permissions.USE]: z.boolean().default(true),
+        [Permissions.CREATE]: z.boolean().default(true),
+        [Permissions.SHARE]: z.boolean().default(true),
+        [Permissions.SHARE_PUBLIC]: z.boolean().default(true),
+      }),
+      [PermissionTypes.REMOTE_AGENTS]: remoteAgentsPermissionsSchema.extend({
+        [Permissions.USE]: z.boolean().default(true),
+        [Permissions.CREATE]: z.boolean().default(true),
+        [Permissions.SHARE]: z.boolean().default(true),
+        [Permissions.SHARE_PUBLIC]: z.boolean().default(true),
+      }),
+      [PermissionTypes.SKILLS]: skillPermissionsSchema.extend({
+        [Permissions.USE]: z.boolean().default(true),
+        [Permissions.CREATE]: z.boolean().default(true),
+        [Permissions.SHARE]: z.boolean().default(true),
+        [Permissions.SHARE_PUBLIC]: z.boolean().default(true),
+      }),
     }),
   }),
   [SystemRoles.USER]: roleSchema.extend({
     name: z.literal(SystemRoles.USER),
-    [PermissionTypes.PROMPTS]: promptPermissionsSchema,
-    [PermissionTypes.BOOKMARKS]: bookmarkPermissionsSchema,
-    [PermissionTypes.AGENTS]: agentPermissionsSchema,
-    [PermissionTypes.MULTI_CONVO]: multiConvoPermissionsSchema,
+    permissions: permissionsSchema,
   }),
 });
+
+const systemRoleSet = new Set(Object.values(SystemRoles).map((r) => r.toUpperCase()));
+
+/** Case-insensitive check for reserved system role names. */
+export function isSystemRoleName(name: string | undefined | null): boolean {
+  if (!name) {
+    return false;
+  }
+  return systemRoleSet.has(name.toUpperCase());
+}
 
 export const roleDefaults = defaultRolesSchema.parse({
   [SystemRoles.ADMIN]: {
     name: SystemRoles.ADMIN,
-    [PermissionTypes.PROMPTS]: {},
-    [PermissionTypes.BOOKMARKS]: {},
-    [PermissionTypes.AGENTS]: {},
-    [PermissionTypes.MULTI_CONVO]: {},
+    permissions: {
+      [PermissionTypes.PROMPTS]: {
+        [Permissions.USE]: true,
+        [Permissions.CREATE]: true,
+        [Permissions.SHARE]: true,
+        [Permissions.SHARE_PUBLIC]: true,
+      },
+      [PermissionTypes.BOOKMARKS]: {
+        [Permissions.USE]: true,
+      },
+      [PermissionTypes.MEMORIES]: {
+        [Permissions.USE]: true,
+        [Permissions.CREATE]: true,
+        [Permissions.UPDATE]: true,
+        [Permissions.READ]: true,
+        [Permissions.OPT_OUT]: true,
+      },
+      [PermissionTypes.AGENTS]: {
+        [Permissions.USE]: true,
+        [Permissions.CREATE]: true,
+        [Permissions.SHARE]: true,
+        [Permissions.SHARE_PUBLIC]: true,
+      },
+      [PermissionTypes.MULTI_CONVO]: {
+        [Permissions.USE]: true,
+      },
+      [PermissionTypes.TEMPORARY_CHAT]: {
+        [Permissions.USE]: true,
+      },
+      [PermissionTypes.RUN_CODE]: {
+        [Permissions.USE]: true,
+      },
+      [PermissionTypes.WEB_SEARCH]: {
+        [Permissions.USE]: true,
+      },
+      [PermissionTypes.PEOPLE_PICKER]: {
+        [Permissions.VIEW_USERS]: true,
+        [Permissions.VIEW_GROUPS]: true,
+        [Permissions.VIEW_ROLES]: true,
+      },
+      [PermissionTypes.MARKETPLACE]: {
+        [Permissions.USE]: true,
+      },
+      [PermissionTypes.FILE_SEARCH]: {
+        [Permissions.USE]: true,
+      },
+      [PermissionTypes.FILE_CITATIONS]: {
+        [Permissions.USE]: true,
+      },
+      [PermissionTypes.MCP_SERVERS]: {
+        [Permissions.USE]: true,
+        [Permissions.CREATE]: true,
+        [Permissions.SHARE]: true,
+        [Permissions.SHARE_PUBLIC]: true,
+      },
+      [PermissionTypes.REMOTE_AGENTS]: {
+        [Permissions.USE]: true,
+        [Permissions.CREATE]: true,
+        [Permissions.SHARE]: true,
+        [Permissions.SHARE_PUBLIC]: true,
+      },
+      [PermissionTypes.SKILLS]: {
+        [Permissions.USE]: true,
+        [Permissions.CREATE]: true,
+        [Permissions.SHARE]: true,
+        [Permissions.SHARE_PUBLIC]: true,
+      },
+    },
   },
   [SystemRoles.USER]: {
     name: SystemRoles.USER,
-    [PermissionTypes.PROMPTS]: {},
-    [PermissionTypes.BOOKMARKS]: {},
-    [PermissionTypes.AGENTS]: {},
-    [PermissionTypes.MULTI_CONVO]: {},
+    permissions: {
+      [PermissionTypes.PROMPTS]: {
+        [Permissions.USE]: true,
+        [Permissions.CREATE]: true,
+        [Permissions.SHARE]: false,
+        [Permissions.SHARE_PUBLIC]: false,
+      },
+      [PermissionTypes.BOOKMARKS]: {},
+      [PermissionTypes.MEMORIES]: {},
+      [PermissionTypes.AGENTS]: {
+        [Permissions.USE]: true,
+        [Permissions.CREATE]: true,
+        [Permissions.SHARE]: false,
+        [Permissions.SHARE_PUBLIC]: false,
+      },
+      [PermissionTypes.MULTI_CONVO]: {},
+      [PermissionTypes.TEMPORARY_CHAT]: {},
+      [PermissionTypes.RUN_CODE]: {},
+      [PermissionTypes.WEB_SEARCH]: {},
+      [PermissionTypes.PEOPLE_PICKER]: {
+        [Permissions.VIEW_USERS]: false,
+        [Permissions.VIEW_GROUPS]: false,
+        [Permissions.VIEW_ROLES]: false,
+      },
+      [PermissionTypes.MARKETPLACE]: {
+        [Permissions.USE]: false,
+      },
+      [PermissionTypes.FILE_SEARCH]: {},
+      [PermissionTypes.FILE_CITATIONS]: {},
+      [PermissionTypes.MCP_SERVERS]: {
+        [Permissions.USE]: true,
+        [Permissions.CREATE]: false,
+        [Permissions.SHARE]: false,
+        [Permissions.SHARE_PUBLIC]: false,
+      },
+      [PermissionTypes.REMOTE_AGENTS]: {
+        [Permissions.USE]: false,
+        [Permissions.CREATE]: false,
+        [Permissions.SHARE]: false,
+        [Permissions.SHARE_PUBLIC]: false,
+      },
+      [PermissionTypes.SKILLS]: {
+        [Permissions.USE]: true,
+        [Permissions.CREATE]: true,
+        [Permissions.SHARE]: false,
+        [Permissions.SHARE_PUBLIC]: false,
+      },
+    },
   },
 });

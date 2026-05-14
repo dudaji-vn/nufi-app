@@ -1,31 +1,31 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRecoilValue } from 'recoil';
-import { CodeInProgress } from './Parts/CodeProgress';
+import { Terminal } from 'lucide-react';
 import { useProgress, useLocalize } from '~/hooks';
 import ProgressText from './ProgressText';
-import FinishedIcon from './FinishedIcon';
 import MarkdownLite from './MarkdownLite';
+import { cn } from '~/utils';
 import store from '~/store';
 
 export default function CodeAnalyze({
   initialProgress = 0.1,
   code,
   outputs = [],
-  isSubmitting,
 }: {
   initialProgress: number;
   code: string;
   outputs: Record<string, unknown>[];
-  isSubmitting: boolean;
 }) {
   const localize = useLocalize();
   const progress = useProgress(initialProgress);
-  const showAnalysisCode = useRecoilValue(store.showCode);
-  const [showCode, setShowCode] = useState(showAnalysisCode);
+  const autoExpand = useRecoilValue(store.autoExpandTools);
+  const [showCode, setShowCode] = useState(autoExpand);
 
-  const radius = 56.08695652173913;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference - progress * circumference;
+  useEffect(() => {
+    if (autoExpand) {
+      setShowCode(true);
+    }
+  }, [autoExpand]);
 
   const logs = outputs.reduce((acc, output) => {
     if (output['logs']) {
@@ -36,26 +36,23 @@ export default function CodeAnalyze({
 
   return (
     <>
-      <div className="my-2.5 flex items-center gap-2.5">
-        <div className="relative h-5 w-5 shrink-0">
-          {progress < 1 ? (
-            <CodeInProgress
-              offset={offset}
-              radius={radius}
-              progress={progress}
-              isSubmitting={isSubmitting}
-              circumference={circumference}
-            />
-          ) : (
-            <FinishedIcon />
-          )}
-        </div>
+      <span className="sr-only" aria-live="polite" aria-atomic="true">
+        {progress < 1 ? localize('com_ui_analyzing') : localize('com_ui_analyzing_finished')}
+      </span>
+      <div className="my-1 flex items-center gap-2.5">
         <ProgressText
           progress={progress}
           onClick={() => setShowCode((prev) => !prev)}
-          inProgressText="Analyzing"
-          finishedText="Finished analyzing"
+          inProgressText={localize('com_ui_analyzing')}
+          finishedText={localize('com_ui_analyzing_finished')}
           hasInput={!!code.length}
+          isExpanded={showCode}
+          icon={
+            <Terminal
+              className={cn('size-4 shrink-0 text-text-secondary', progress < 1 && 'animate-pulse')}
+              aria-hidden="true"
+            />
+          }
         />
       </div>
       {showCode && (

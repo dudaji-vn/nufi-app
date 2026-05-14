@@ -1,28 +1,28 @@
-import type { TMessage } from 'librechat-data-provider';
 import { EModelEndpoint, isAssistantsEndpoint } from 'librechat-data-provider';
 
 type TUseGenerations = {
+  error?: boolean;
   endpoint?: string;
-  message?: TMessage;
-  isSubmitting: boolean;
+  messageId?: string;
   isEditing?: boolean;
-  latestMessage: TMessage | null;
+  isSubmitting: boolean;
+  searchResult?: boolean;
+  finish_reason?: string;
+  latestMessageId?: string;
+  isCreatedByUser?: boolean;
 };
 
 export default function useGenerationsByLatest({
+  error = false,
   endpoint,
-  message,
-  isSubmitting,
+  messageId,
   isEditing = false,
-  latestMessage,
+  isSubmitting,
+  searchResult = false,
+  finish_reason = '',
+  latestMessageId,
+  isCreatedByUser = false,
 }: TUseGenerations) {
-  const {
-    messageId,
-    searchResult = false,
-    error = false,
-    finish_reason = '',
-    isCreatedByUser = false,
-  } = message ?? {};
   const isEditableEndpoint = Boolean(
     [
       EModelEndpoint.openAI,
@@ -31,13 +31,12 @@ export default function useGenerationsByLatest({
       EModelEndpoint.agents,
       EModelEndpoint.bedrock,
       EModelEndpoint.anthropic,
-      EModelEndpoint.gptPlugins,
       EModelEndpoint.azureOpenAI,
     ].find((e) => e === endpoint),
   );
 
   const continueSupported =
-    latestMessage?.messageId === messageId &&
+    latestMessageId === messageId &&
     finish_reason &&
     finish_reason !== 'stop' &&
     !isEditing &&
@@ -51,10 +50,7 @@ export default function useGenerationsByLatest({
       EModelEndpoint.custom,
       EModelEndpoint.agents,
       EModelEndpoint.bedrock,
-      EModelEndpoint.chatGPTBrowser,
       EModelEndpoint.google,
-      EModelEndpoint.bingAI,
-      EModelEndpoint.gptPlugins,
       EModelEndpoint.anthropic,
     ].find((e) => e === endpoint),
   );

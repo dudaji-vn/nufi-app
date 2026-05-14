@@ -1,51 +1,76 @@
+import { useCallback, useMemo, useState } from 'react';
 import { useRecoilValue } from 'recoil';
-import { useCallback, useMemo } from 'react';
-import { isAssistantsEndpoint, isAgentsEndpoint } from 'librechat-data-provider';
-import type { TMessageProps } from '~/common';
+import { useUpdateFeedbackMutation } from 'librechat-data-provider/react-query';
 import {
-  useChatContext,
-  useAddedChatContext,
-  useAssistantsMapContext,
-  useAgentsMapContext,
-} from '~/Providers';
+  TFeedback,
+  getTagByKey,
+  isAgentsEndpoint,
+  SearchResultData,
+  toMinimalFeedback,
+  isAssistantsEndpoint,
+  TUpdateFeedbackRequest,
+} from 'librechat-data-provider';
+import type { TMessageProps } from '~/common';
+import type { TMessageChatContext } from '~/common/types';
+import { useAssistantsMapContext, useAgentsMapContext } from '~/Providers';
 import useCopyToClipboard from './useCopyToClipboard';
 import { useAuthContext } from '~/hooks/AuthContext';
-import useLocalize from '~/hooks/useLocalize';
+import { useGetAddedConvo } from '~/hooks/Chat';
+import { useLocalize } from '~/hooks';
 import store from '~/store';
 
 export type TMessageActions = Pick<
   TMessageProps,
   'message' | 'currentEditId' | 'setCurrentEditId'
 > & {
-  isMultiMessage?: boolean;
+  searchResults?: { [key: string]: SearchResultData };
+  /**
+   * Stable context object passed from wrapper components to avoid subscribing
+   * to ChatContext inside memo'd components (which would bypass React.memo).
+   * The `isSubmitting` property uses a getter backed by a ref, so it always
+   * returns the current value at call-time without triggering re-renders.
+   */
+  chatContext: TMessageChatContext;
 };
+
 export default function useMessageActions(props: TMessageActions) {
   const localize = useLocalize();
   const { user } = useAuthContext();
   const UsernameDisplay = useRecoilValue<boolean>(store.UsernameDisplay);
-  const { message, currentEditId, setCurrentEditId, isMultiMessage } = props;
+  const { message, currentEditId, setCurrentEditId, searchResults, chatContext } = props;
 
   const {
     ask,
     index,
     regenerate,
-    latestMessage,
+    conversation,
+    latestMessageId,
+    latestMessageDepth,
     handleContinue,
-    setLatestMessage,
-    conversation: rootConvo,
-    isSubmitting: isSubmittingRoot,
-  } = useChatContext();
-  const { conversation: addedConvo, isSubmitting: isSubmittingAdditional } = useAddedChatContext();
-  const conversation = useMemo(
-    () => (isMultiMessage === true ? addedConvo : rootConvo),
-    [isMultiMessage, addedConvo, rootConvo],
-  );
+    // NOTE: isSubmitting is intentionally NOT destructured here.
+    // chatContext.isSubmitting is a getter backed by a ref — destructuring
+    // would capture a one-time snapshot. Always access via chatContext.isSubmitting.
+  } = chatContext;
 
-  const agentMap = useAgentsMapContext();
+  const getAddedConvo = useGetAddedConvo();
+
+  const agentsMap = useAgentsMapContext();
   const assistantMap = useAssistantsMapContext();
 
   const { text, content, messageId = null, isCreatedByUser } = message ?? {};
   const edit = useMemo(() => messageId === currentEditId, [messageId, currentEditId]);
+
+  const [feedback, setFeedback] = useState<TFeedback | undefined>(() => {
+    if (message?.feedback) {
+      const tag = getTagByKey(message.feedback?.tag?.key);
+      return {
+        rating: message.feedback.rating,
+        tag,
+        text: message.feedback.text,
+      };
+    }
+    return undefined;
+  });
 
   const enterEdit = useCallback(
     (cancel?: boolean) => setCurrentEditId && setCurrentEditId(cancel === true ? -1 : messageId),
@@ -68,35 +93,35 @@ export default function useMessageActions(props: TMessageActions) {
       return undefined;
     }
 
-    if (!agentMap) {
+    if (!agentsMap) {
       return undefined;
     }
 
     const modelKey = message?.model ?? '';
     if (modelKey) {
-      return agentMap[modelKey];
+      return agentsMap[modelKey];
     }
 
     const agentId = conversation?.agent_id ?? '';
     if (agentId) {
-      return agentMap[agentId];
+      return agentsMap[agentId];
     }
-  }, [agentMap, conversation?.agent_id, conversation?.endpoint, message?.model]);
+  }, [agentsMap, conversation?.agent_id, conversation?.endpoint, message?.model]);
 
-  const isSubmitting = useMemo(
-    () => (isMultiMessage === true ? isSubmittingAdditional : isSubmittingRoot),
-    [isMultiMessage, isSubmittingAdditional, isSubmittingRoot],
-  );
-
+  /**
+   * chatContext.isSubmitting is a getter backed by the wrapper's ref,
+   * so it always returns the current value at call-time — even for
+   * non-latest messages that don't re-render during streaming.
+   */
   const regenerateMessage = useCallback(() => {
-    if ((isSubmitting && isCreatedByUser === true) || !message) {
+    if ((chatContext.isSubmitting && isCreatedByUser === true) || !message) {
       return;
     }
 
-    regenerate(message);
-  }, [isSubmitting, isCreatedByUser, message, regenerate]);
+    regenerate(message, { addedConvo: getAddedConvo() });
+  }, [chatContext, isCreatedByUser, message, regenerate, getAddedConvo]);
 
-  const copyToClipboard = useCopyToClipboard({ text, content });
+  const copyToClipboard = useCopyToClipboard({ text, content, searchResults });
 
   const messageLabel = useMemo(() => {
     if (message?.isCreatedByUser === true) {
@@ -110,20 +135,53 @@ export default function useMessageActions(props: TMessageActions) {
     }
   }, [message, agent, assistant, UsernameDisplay, user, localize]);
 
+  const feedbackMutation = useUpdateFeedbackMutation(
+    conversation?.conversationId || '',
+    message?.messageId || '',
+  );
+
+  const handleFeedback = useCallback(
+    ({ feedback: newFeedback }: { feedback: TFeedback | undefined }) => {
+      const payload: TUpdateFeedbackRequest = {
+        feedback: newFeedback ? toMinimalFeedback(newFeedback) : undefined,
+      };
+
+      feedbackMutation.mutate(payload, {
+        onSuccess: (data) => {
+          if (!data.feedback) {
+            setFeedback(undefined);
+          } else {
+            const tag = getTagByKey(data.feedback?.tag ?? undefined);
+            setFeedback({
+              rating: data.feedback.rating,
+              tag,
+              text: data.feedback.text,
+            });
+          }
+        },
+        onError: (error) => {
+          console.error('Failed to update feedback:', error);
+        },
+      });
+    },
+    [feedbackMutation],
+  );
+
   return {
     ask,
     edit,
     index,
     agent,
+    feedback,
     assistant,
     enterEdit,
     conversation,
     messageLabel,
-    isSubmitting,
-    latestMessage,
+    handleFeedback,
     handleContinue,
     copyToClipboard,
-    setLatestMessage,
+    latestMessageId,
     regenerateMessage,
+    latestMessageDepth,
   };
 }

@@ -1,11 +1,11 @@
-import React, { useEffect } from 'react';
-import ReactMarkdown from 'react-markdown';
+import React, { useEffect, memo } from 'react';
 import TagManager from 'react-gtm-module';
+import ReactMarkdown from 'react-markdown';
 import { Constants } from 'librechat-data-provider';
-import { useGetStartupConfig } from 'librechat-data-provider/react-query';
+import { useGetStartupConfig } from '~/data-provider';
 import { useLocalize } from '~/hooks';
 
-export default function Footer({ className }: { className?: string }) {
+function Footer({ className }: { className?: string }) {
   const { data: config } = useGetStartupConfig();
   const localize = useLocalize();
 
@@ -13,23 +13,13 @@ export default function Footer({ className }: { className?: string }) {
   const termsOfService = config?.interface?.termsOfService;
 
   const privacyPolicyRender = privacyPolicy?.externalUrl != null && (
-    <a
-      className="text-text-secondary underline"
-      href={privacyPolicy.externalUrl}
-      target={privacyPolicy.openNewTab === true ? '_blank' : undefined}
-      rel="noreferrer"
-    >
+    <a className="text-text-secondary underline" href={privacyPolicy.externalUrl} rel="noreferrer">
       {localize('com_ui_privacy_policy')}
     </a>
   );
 
   const termsOfServiceRender = termsOfService?.externalUrl != null && (
-    <a
-      className="text-text-secondary underline"
-      href={termsOfService.externalUrl}
-      target={termsOfService.openNewTab === true ? '_blank' : undefined}
-      rel="noreferrer"
-    >
+    <a className="text-text-secondary underline" href={termsOfService.externalUrl} rel="noreferrer">
       {localize('com_ui_terms_of_service')}
     </a>
   );
@@ -51,13 +41,11 @@ export default function Footer({ className }: { className?: string }) {
     <React.Fragment key={`main-content-part-${index}`}>
       <ReactMarkdown
         components={{
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
           a: ({ node: _n, href, children, ...otherProps }) => {
             return (
               <a
                 className="text-text-secondary underline"
                 href={href}
-                target="_blank"
                 rel="noreferrer"
                 {...otherProps}
               >
@@ -65,7 +53,7 @@ export default function Footer({ className }: { className?: string }) {
               </a>
             );
           },
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
           p: ({ node: _n, ...props }) => <span {...props} />,
         }}
       >
@@ -79,24 +67,34 @@ export default function Footer({ className }: { className?: string }) {
   );
 
   return (
-    <div
-      className={
-        className ??
-        'relative flex items-center justify-center gap-2 px-2 py-2 text-center text-xs text-text-primary md:px-[60px]'
-      }
-      role="contentinfo"
-    >
-      {footerElements.map((contentRender, index) => {
-        const isLastElement = index === footerElements.length - 1;
-        return (
-          <React.Fragment key={`footer-element-${index}`}>
-            {contentRender}
-            {!isLastElement && (
-              <div key={`separator-${index}`} className="h-2 border-r-[1px] border-border-medium" />
-            )}
-          </React.Fragment>
-        );
-      })}
+    <div className="relative w-full">
+      <div
+        className={
+          className ??
+          'absolute bottom-0 left-0 right-0 hidden items-center justify-center gap-2 px-2 py-2 text-center text-xs text-text-primary sm:flex md:px-[60px]'
+        }
+        role="contentinfo"
+      >
+        {footerElements.map((contentRender, index) => {
+          const isLastElement = index === footerElements.length - 1;
+          return (
+            <React.Fragment key={`footer-element-${index}`}>
+              {contentRender}
+              {!isLastElement && (
+                <div
+                  key={`separator-${index}`}
+                  className="h-2 border-r-[1px] border-border-medium"
+                />
+              )}
+            </React.Fragment>
+          );
+        })}
+      </div>
     </div>
   );
 }
+
+const MemoizedFooter = memo(Footer);
+MemoizedFooter.displayName = 'Footer';
+
+export default MemoizedFooter;

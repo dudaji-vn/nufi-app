@@ -1,10 +1,12 @@
+import React, { useState, useEffect, useContext } from 'react';
 import { useForm } from 'react-hook-form';
-import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { useGetStartupConfig } from 'librechat-data-provider/react-query';
+import { Turnstile } from '@marsidev/react-turnstile';
+import { ThemeContext, Spinner, Button, isDark } from '@librechat/client';
 import type { TLoginUser, TStartupConfig } from 'librechat-data-provider';
 import type { TAuthContext } from '~/common';
-import { useResendVerificationEmail } from '~/data-provider';
+import { useResendVerificationEmail, useGetStartupConfig } from '~/data-provider';
+import { validateEmail } from '~/utils';
 import { useLocalize } from '~/hooks';
 
 type TLoginFormProps = {
@@ -31,16 +33,20 @@ const labelClass = `
 
 const LoginForm: React.FC<TLoginFormProps> = ({ onSubmit, startupConfig, error, setError }) => {
   const localize = useLocalize();
+  const { theme } = useContext(ThemeContext);
   const {
     register,
     getValues,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isSubmitting },
   } = useForm<TLoginUser>();
   const [showResendLink, setShowResendLink] = useState<boolean>(false);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
 
   const { data: config } = useGetStartupConfig();
   const useUsernameLogin = config?.ldap?.username;
+  const validTheme = isDark(theme) ? 'dark' : 'light';
+  const requireCaptcha = Boolean(startupConfig.turnstile?.siteKey);
 
   useEffect(() => {
     if (error && error.includes('422') && !showResendLink) {
@@ -107,10 +113,9 @@ const LoginForm: React.FC<TLoginFormProps> = ({ onSubmit, startupConfig, error, 
               {...register('email', {
                 required: localize('com_auth_email_required'),
                 maxLength: { value: 120, message: localize('com_auth_email_max_length') },
-                pattern: {
-                  value: useUsernameLogin ? /\S+/ : /\S+@\S+\.\S+/,
-                  message: localize('com_auth_email_pattern'),
-                },
+                validate: useUsernameLogin
+                  ? undefined
+                  : (value) => validateEmail(value, localize('com_auth_email_pattern')),
               })}
               aria-invalid={!!errors.email}
               className={inputClass}
@@ -134,7 +139,10 @@ const LoginForm: React.FC<TLoginFormProps> = ({ onSubmit, startupConfig, error, 
               aria-label={localize('com_auth_password')}
               {...register('password', {
                 required: localize('com_auth_password_required'),
-                minLength: { value: 8, message: localize('com_auth_password_min_length') },
+                minLength: {
+                  value: startupConfig?.minPasswordLength || 8,
+                  message: localize('com_auth_password_min_length'),
+                },
                 maxLength: { value: 128, message: localize('com_auth_password_max_length') },
               })}
               aria-invalid={!!errors.password}
@@ -159,14 +167,33 @@ const LoginForm: React.FC<TLoginFormProps> = ({ onSubmit, startupConfig, error, 
           </div>
         )}
 
-        <button
-          aria-label="Sign in"
-          data-testid="login-button"
-          type="submit"
-          className="btn-primary w-full rounded-xl px-4 py-3 text-sm font-semibold tracking-wide shadow-sm transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-brand-purple/40 focus:ring-offset-2 focus:ring-offset-background"
-        >
-          {localize('com_auth_continue')}
-        </button>
+        {requireCaptcha && (
+          <div className="my-4 flex justify-center">
+            <Turnstile
+              siteKey={startupConfig.turnstile!.siteKey}
+              options={{
+                ...startupConfig.turnstile!.options,
+                theme: validTheme,
+              }}
+              onSuccess={setTurnstileToken}
+              onError={() => setTurnstileToken(null)}
+              onExpire={() => setTurnstileToken(null)}
+            />
+          </div>
+        )}
+
+        <div className="mt-6">
+          <Button
+            aria-label={localize('com_auth_continue')}
+            data-testid="login-button"
+            type="submit"
+            disabled={(requireCaptcha && !turnstileToken) || isSubmitting}
+            variant="submit"
+            className="h-12 w-full rounded-2xl"
+          >
+            {isSubmitting ? <Spinner /> : localize('com_auth_continue')}
+          </Button>
+        </div>
       </form>
     </>
   );

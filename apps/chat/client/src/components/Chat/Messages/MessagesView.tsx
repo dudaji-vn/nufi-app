@@ -1,24 +1,28 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
+import { useAtomValue } from 'jotai';
 import { useRecoilValue } from 'recoil';
 import { CSSTransition } from 'react-transition-group';
-import type { ReactNode } from 'react';
 import type { TMessage } from 'librechat-data-provider';
+import { useScreenshot, useMessageScrolling, useLocalize } from '~/hooks';
 import ScrollToBottom from '~/components/Messages/ScrollToBottom';
-import { useScreenshot, useMessageScrolling } from '~/hooks';
+import { MessagesViewProvider } from '~/Providers';
+import { fontSizeAtom } from '~/store/fontSize';
 import MultiMessage from './MultiMessage';
+import MessageNav from './MessageNav';
 import { cn } from '~/utils';
 import store from '~/store';
 
-export default function MessagesView({
+function MessagesViewContent({
   messagesTree: _messagesTree,
-  Header,
 }: {
   messagesTree?: TMessage[] | null;
-  Header?: ReactNode;
 }) {
-  const fontSize = useRecoilValue(store.fontSize);
+  const localize = useLocalize();
+  const fontSize = useAtomValue(fontSizeAtom);
   const { screenshotTargetRef } = useScreenshot();
+  const scrollButtonPreference = useRecoilValue(store.showScrollButton);
   const [currentEditId, setCurrentEditId] = useState<number | string | null>(-1);
+  const scrollToBottomRef = useRef<HTMLDivElement>(null);
 
   const {
     conversation,
@@ -32,58 +36,74 @@ export default function MessagesView({
   const { conversationId } = conversation ?? {};
 
   return (
-    <div className="flex-1 overflow-hidden overflow-y-auto">
-      <div className="relative h-full">
-        <div
-          onScroll={debouncedHandleScroll}
-          ref={scrollableRef}
-          style={{
-            height: '100%',
-            overflowY: 'auto',
-            width: '100%',
-          }}
-        >
-          <div className="flex flex-col pb-9 dark:bg-transparent">
-            {(_messagesTree && _messagesTree.length == 0) || _messagesTree === null ? (
-              <div
-                className={cn(
-                  'flex w-full items-center justify-center gap-1 rounded-md border border-border bg-muted p-3 text-muted-foreground',
-                  fontSize,
-                )}
-              >
-                Nothing found
-              </div>
-            ) : (
-              <>
-                {Header && Header}
-                <div ref={screenshotTargetRef}>
-                  <MultiMessage
-                    key={conversationId} // avoid internal state mixture
-                    messagesTree={_messagesTree}
-                    messageId={conversationId ?? null}
-                    setCurrentEditId={setCurrentEditId}
-                    currentEditId={currentEditId ?? null}
-                  />
+    <>
+      <div className="relative flex-1 overflow-hidden overflow-y-auto">
+        <div className="relative h-full">
+          <div
+            className="scrollbar-gutter-stable"
+            onScroll={debouncedHandleScroll}
+            ref={scrollableRef}
+            style={{
+              height: '100%',
+              overflowY: 'auto',
+              width: '100%',
+            }}
+          >
+            <div className="flex flex-col pb-9 pt-14 dark:bg-transparent">
+              {(_messagesTree && _messagesTree.length == 0) || _messagesTree === null ? (
+                <div
+                  className={cn(
+                    'flex w-full items-center justify-center p-3 text-text-secondary',
+                    fontSize,
+                  )}
+                >
+                  {localize('com_ui_nothing_found')}
                 </div>
-              </>
-            )}
-            <div
-              id="messages-end"
-              className="group h-0 w-full flex-shrink-0"
-              ref={messagesEndRef}
-            />
+              ) : (
+                <>
+                  <div ref={screenshotTargetRef}>
+                    <MultiMessage
+                      messagesTree={_messagesTree}
+                      messageId={conversationId ?? null}
+                      setCurrentEditId={setCurrentEditId}
+                      currentEditId={currentEditId ?? null}
+                    />
+                  </div>
+                </>
+              )}
+              <div
+                id="messages-end"
+                className="group h-0 w-full flex-shrink-0"
+                ref={messagesEndRef}
+              />
+            </div>
           </div>
+
+          <CSSTransition
+            in={showScrollButton && scrollButtonPreference}
+            timeout={{
+              enter: 300,
+              exit: 250,
+            }}
+            classNames="scroll-animation"
+            unmountOnExit={true}
+            appear={true}
+            nodeRef={scrollToBottomRef}
+          >
+            <ScrollToBottom ref={scrollToBottomRef} scrollHandler={handleSmoothToRef} />
+          </CSSTransition>
+
+          <MessageNav scrollableRef={scrollableRef} />
         </div>
-        <CSSTransition
-          in={showScrollButton}
-          timeout={400}
-          classNames="scroll-down"
-          unmountOnExit={false}
-          // appear
-        >
-          {() => showScrollButton && <ScrollToBottom scrollHandler={handleSmoothToRef} />}
-        </CSSTransition>
       </div>
-    </div>
+    </>
+  );
+}
+
+export default function MessagesView({ messagesTree }: { messagesTree?: TMessage[] | null }) {
+  return (
+    <MessagesViewProvider>
+      <MessagesViewContent messagesTree={messagesTree} />
+    </MessagesViewProvider>
   );
 }
