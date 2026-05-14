@@ -192,7 +192,7 @@ html {
   --surface-secondary-alt: hsl(var(--muted));
   --surface-tertiary: hsl(var(--muted));
   --surface-tertiary-alt: hsl(var(--accent));
-  --surface-dialog: hsl(var(--popover));
+  --surface-dialog: hsl(230 18% 15%);
   --surface-submit: var(--brand-primary);
   --surface-submit-hover: var(--brand-primary-hover);
   --surface-destructive: hsl(var(--destructive));
