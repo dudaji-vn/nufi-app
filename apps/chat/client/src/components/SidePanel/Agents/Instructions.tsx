@@ -95,7 +95,7 @@ export default function Instructions() {
             />
             {error && (
               <span
-                className="text-sm text-red-500 transition duration-300 ease-in-out"
+                className="text-sm text-status-error transition duration-300 ease-in-out"
                 role="alert"
               >
                 {localize('com_ui_field_required')}

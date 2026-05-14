@@ -94,7 +94,7 @@ function DeleteButton({
           title={localize('com_ui_delete_agent')}
           type="button"
         >
-          <div className="flex w-full items-center justify-center gap-2 text-red-500">
+          <div className="flex w-full items-center justify-center gap-2 text-destructive">
             <TrashIcon />
           </div>
         </Button>

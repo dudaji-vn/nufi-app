@@ -117,12 +117,10 @@ describe('MemoryInfo', () => {
       const errorContainer = errorMessage.closest('div');
 
       expect(errorContainer).toHaveClass('rounded-md');
-      expect(errorContainer).toHaveClass('bg-red-50');
+      expect(errorContainer).toHaveClass('bg-destructive/10');
       expect(errorContainer).toHaveClass('p-3');
       expect(errorContainer).toHaveClass('text-sm');
-      expect(errorContainer).toHaveClass('text-red-800');
-      expect(errorContainer).toHaveClass('dark:bg-red-900/20');
-      expect(errorContainer).toHaveClass('dark:text-red-400');
+      expect(errorContainer).toHaveClass('text-destructive');
     });
   });
 

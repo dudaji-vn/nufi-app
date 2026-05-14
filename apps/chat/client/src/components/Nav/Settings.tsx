@@ -152,11 +152,11 @@ export default function Settings({ open, onOpenChange }: TDialogProps) {
           <div className={cn('fixed inset-0 flex w-screen items-center justify-center p-4')}>
             <DialogPanel
               className={cn(
-                'max-h-[90vh] min-h-[600px] overflow-hidden rounded-xl rounded-b-lg bg-surface-dialog pb-6 shadow-2xl backdrop-blur-2xl animate-in sm:rounded-2xl md:min-h-[373px] md:w-[680px]',
+                'flex h-[640px] max-h-[90vh] w-full flex-col overflow-hidden rounded-xl rounded-b-lg bg-surface-dialog shadow-2xl backdrop-blur-2xl animate-in sm:rounded-2xl md:w-[680px]',
               )}
             >
               <DialogTitle
-                className="mb-1 flex items-center justify-between p-6 pb-5 text-left"
+                className="flex shrink-0 items-center justify-between p-6 pb-5 text-left"
                 as="div"
               >
                 <h2 className="text-lg font-medium leading-6 text-text-primary">
@@ -185,7 +185,7 @@ export default function Settings({ open, onOpenChange }: TDialogProps) {
                   <span className="sr-only">{localize('com_ui_close_settings')}</span>
                 </button>
               </DialogTitle>
-              <div className="max-h-[calc(90vh-120px)] overflow-auto px-6 md:w-[680px]">
+              <div className="min-h-0 flex-1 overflow-auto px-6 pb-6">
                 <Tabs.Root
                   value={activeTab}
                   onValueChange={handleTabChange}

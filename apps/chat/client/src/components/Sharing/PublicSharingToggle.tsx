@@ -53,7 +53,7 @@ export default function PublicSharingToggle({
             <div
               className={cn(
                 'transition-colors duration-200',
-                isPublic ? 'text-blue-600 dark:text-blue-500' : 'text-text-secondary',
+                isPublic ? 'text-status-info' : 'text-text-secondary',
               )}
             >
               <Globe className="size-5" />
@@ -114,7 +114,7 @@ export default function PublicSharingToggle({
                 className={cn(
                   'transition-all duration-300',
                   isPublic
-                    ? 'scale-100 text-blue-600 dark:text-blue-500'
+                    ? 'scale-100 text-status-info'
                     : 'scale-95 text-text-secondary',
                 )}
               >

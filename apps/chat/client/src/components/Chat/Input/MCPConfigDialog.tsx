@@ -102,25 +102,25 @@ export default function MCPConfigDialog({
                 />
                 {details.description && (
                   <p
-                    className="text-xs text-text-secondary [&_a]:text-blue-500 [&_a]:hover:text-blue-600 dark:[&_a]:text-blue-400 dark:[&_a]:hover:text-blue-300"
+                    className="text-xs text-text-secondary [&_a]:text-status-info [&_a]:hover:text-status-info/80"
                     dangerouslySetInnerHTML={{ __html: sanitize(details.description) }}
                   />
                 )}
-                {errors[key] && <p className="text-xs text-red-500">{errors[key]?.message}</p>}
+                {errors[key] && <p className="text-xs text-status-error">{errors[key]?.message}</p>}
               </div>
             ))}
           </form>
         }
         selection={{
           selectHandler: handleSubmit(onFormSubmit),
-          selectClasses: 'bg-green-500 hover:bg-green-600 text-white',
+          selectClasses: 'bg-surface-submit hover:bg-surface-submit-hover text-white',
           selectText: isSubmitting ? localize('com_ui_saving') : localize('com_ui_save'),
         }}
         buttons={
           onRevoke && (
             <Button
               onClick={handleRevoke}
-              className="bg-red-600 text-white hover:bg-red-700 dark:hover:bg-red-800"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/80"
               disabled={isSubmitting}
             >
               {localize('com_ui_revoke')}

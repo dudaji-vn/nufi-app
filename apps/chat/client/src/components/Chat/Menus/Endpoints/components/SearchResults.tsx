@@ -183,7 +183,7 @@ export function SearchResults({ results, localize, searchValue }: SearchResultsP
                         <span>{modelName}</span>
                       </div>
                       {isGlobal && (
-                        <EarthIcon className="ml-auto size-4 text-green-400" aria-hidden="true" />
+                        <EarthIcon className="ml-auto size-4 text-status-ok" aria-hidden="true" />
                       )}
                       {isModelSelected && (
                         <>

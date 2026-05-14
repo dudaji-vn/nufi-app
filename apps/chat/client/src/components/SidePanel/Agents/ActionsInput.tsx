@@ -223,7 +223,7 @@ export default function ActionsInput({
             />
           </div>
           {validationResult && validationResult.message !== 'OpenAPI spec is valid.' && (
-            <div className="border-token-border-light border-t p-2 text-red-500">
+            <div className="border-token-border-light border-t p-2 text-status-error">
               {validationResult.message.split('\n').map((line: string, i: number) => (
                 <div key={i}>{line}</div>
               ))}
@@ -260,7 +260,7 @@ export default function ActionsInput({
         <button
           disabled={!functions || !functions.length}
           onClick={saveAction}
-          className="focus:shadow-outline flex min-w-[100px] items-center justify-center rounded bg-green-500 px-4 py-2 font-semibold text-white hover:bg-green-400 focus:border-green-500 focus:outline-none focus:ring-0 disabled:bg-green-400"
+          className="focus:shadow-outline flex min-w-[100px] items-center justify-center rounded bg-surface-submit px-4 py-2 font-semibold text-white hover:bg-surface-submit-hover focus:outline-none focus:ring-0 disabled:opacity-60"
           type="button"
         >
           {getButtonContent()}

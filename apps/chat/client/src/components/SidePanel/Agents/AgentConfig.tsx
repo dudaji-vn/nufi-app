@@ -222,7 +222,7 @@ export default function AgentConfig() {
           <AgentAvatar avatar={agent?.['avatar'] ?? null} />
           <label className={labelClass} htmlFor="name">
             {localize('com_ui_name')}
-            <span className="text-red-500">*</span>
+            <span className="text-status-error">*</span>
           </label>
           <Controller
             name="name"
@@ -245,7 +245,7 @@ export default function AgentConfig() {
                 {errors.name && (
                   <div
                     id="agent-name-error"
-                    className="mt-1 w-56 text-sm text-red-500"
+                    className="mt-1 w-56 text-sm text-status-error"
                     role="alert"
                   >
                     {errors.name.message}
@@ -289,7 +289,7 @@ export default function AgentConfig() {
         {/* Category */}
         <div className="mb-4">
           <label className={labelClass} htmlFor="category-selector">
-            {localize('com_ui_category')} <span className="text-red-500">*</span>
+            {localize('com_ui_category')} <span className="text-status-error">*</span>
           </label>
           <AgentCategorySelector className="w-full" />
         </div>
@@ -298,7 +298,7 @@ export default function AgentConfig() {
         {/* Model and Provider */}
         <div className="mb-4">
           <label className={labelClass} htmlFor="provider">
-            {localize('com_ui_model')} <span className="text-red-500">*</span>
+            {localize('com_ui_model')} <span className="text-status-error">*</span>
           </label>
           <button
             type="button"
@@ -536,7 +536,7 @@ export default function AgentConfig() {
                     <input
                       {...field}
                       value={field.value ?? ''}
-                      className={cn(inputClass, error ? 'border-2 border-red-500' : '')}
+                      className={cn(inputClass, error ? 'border-2 border-status-error' : '')}
                       id="support-contact-name"
                       type="text"
                       placeholder={localize('com_ui_support_contact_name_placeholder')}
@@ -547,7 +547,7 @@ export default function AgentConfig() {
                     {error && (
                       <span
                         id="support-contact-name-error"
-                        className="text-sm text-red-500 transition duration-300 ease-in-out"
+                        className="text-sm text-status-error transition duration-300 ease-in-out"
                         role="alert"
                         aria-live="polite"
                       >
@@ -578,7 +578,7 @@ export default function AgentConfig() {
                     <input
                       {...field}
                       value={field.value ?? ''}
-                      className={cn(inputClass, error ? 'border-2 border-red-500' : '')}
+                      className={cn(inputClass, error ? 'border-2 border-status-error' : '')}
                       id="support-contact-email"
                       type="email"
                       placeholder={localize('com_ui_support_contact_email_placeholder')}
@@ -589,7 +589,7 @@ export default function AgentConfig() {
                     {error && (
                       <span
                         id="support-contact-email-error"
-                        className="text-sm text-red-500 transition duration-300 ease-in-out"
+                        className="text-sm text-status-error transition duration-300 ease-in-out"
                         role="alert"
                         aria-live="polite"
                       >

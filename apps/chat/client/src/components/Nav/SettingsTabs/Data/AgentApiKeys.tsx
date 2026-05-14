@@ -105,8 +105,8 @@ function CreateKeyDialog({ onKeyCreated }: { onKeyCreated?: () => void }) {
             </>
           ) : (
             <>
-              <div className="rounded-lg border border-yellow-500/50 bg-yellow-50 p-4 dark:bg-yellow-900/20">
-                <p className="text-sm text-yellow-800 dark:text-yellow-200">
+              <div className="rounded-lg border border-border-warning bg-surface-warning p-4">
+                <p className="text-sm text-text-warning">
                   {localize('com_ui_api_key_warning')}
                 </p>
               </div>

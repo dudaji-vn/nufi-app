@@ -124,7 +124,7 @@ export default function ModelPanel({
             className="text-token-text-primary model-panel-label mb-2 block text-sm font-medium"
             htmlFor="provider"
           >
-            {localize('com_ui_provider')} <span className="text-red-500">*</span>
+            {localize('com_ui_provider')} <span className="text-status-error">*</span>
           </label>
           <Controller
             name="provider"
@@ -152,13 +152,13 @@ export default function ModelPanel({
                       label: typeof provider === 'string' ? provider : provider.label,
                       value: typeof provider === 'string' ? provider : provider.value,
                     }))}
-                    className={cn(error ? 'border-2 border-red-500' : '')}
+                    className={cn(error ? 'border-2 border-status-error' : '')}
                     ariaLabel={localize('com_ui_provider')}
                     isCollapsed={false}
                     showCarat={true}
                   />
                   {error && (
-                    <span className="model-panel-error text-sm text-red-500 transition duration-300 ease-in-out">
+                    <span className="model-panel-error text-sm text-status-error transition duration-300 ease-in-out">
                       {localize('com_ui_field_required')}
                     </span>
                   )}
@@ -177,7 +177,7 @@ export default function ModelPanel({
             )}
             htmlFor="model"
           >
-            {localize('com_ui_model')} <span className="text-red-500">*</span>
+            {localize('com_ui_model')} <span className="text-status-error">*</span>
           </label>
           <Controller
             name="model"
@@ -200,13 +200,13 @@ export default function ModelPanel({
                       value: model,
                     }))}
                     disabled={!provider}
-                    className={cn('disabled:opacity-50', error ? 'border-2 border-red-500' : '')}
+                    className={cn('disabled:opacity-50', error ? 'border-2 border-status-error' : '')}
                     ariaLabel={localize('com_ui_model')}
                     isCollapsed={false}
                     showCarat={true}
                   />
                   {provider && error && (
-                    <span className="text-sm text-red-500 transition duration-300 ease-in-out">
+                    <span className="text-sm text-status-error transition duration-300 ease-in-out">
                       {localize('com_ui_field_required')}
                     </span>
                   )}
