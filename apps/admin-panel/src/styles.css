@@ -169,7 +169,7 @@
     --destructive: 3 85% 68%;
     --destructive-foreground: 0 0% 100%;
     --border: 235 16% 16%;
-    --input: 230 22% 10%;
+    --input: 235 16% 18%;
     --ring: 236 80% 75%;
     --sidebar-background: 230 28% 9%;
     --sidebar-foreground: 230 15% 68%;
@@ -244,7 +244,7 @@
       --destructive: 3 85% 68%;
       --destructive-foreground: 0 0% 100%;
       --border: 235 16% 16%;
-      --input: 230 22% 10%;
+      --input: 235 16% 18%;
       --ring: 236 80% 75%;
       --sidebar-background: 230 28% 9%;
       --sidebar-foreground: 230 15% 68%;
@@ -517,13 +517,6 @@ textarea:focus-visible {
   outline-offset: -1px !important;
 }
 
-/* CUI input components handle focus via their own wrapper border;
-   suppress the global outline to avoid double focus rings. */
-.cui-field input:focus-visible,
-.cui-field textarea:focus-visible {
-  outline: none !important;
-}
-
 .password-field-a11y button {
   padding-inline: 4px;
 }
@@ -654,17 +647,17 @@ textarea:focus-visible {
 
 .config-input {
   border-radius: var(--cui-radii-sm);
-  border: 1px solid var(--cui-color-stroke-default);
-  background: var(--cui-color-background-default);
+  border: 1px solid hsl(var(--input));
+  background: hsl(var(--background));
   padding: 0.5rem 0.75rem;
   font-size: 0.875rem;
   line-height: 1.25rem;
-  color: var(--cui-color-text-default);
+  color: hsl(var(--foreground));
   outline: none;
 }
 
 .config-input:focus {
-  border-color: var(--cui-color-stroke-intense);
+  border-color: hsl(var(--ring));
 }
 
 .config-input:disabled {
@@ -766,21 +759,6 @@ input[type='number'].config-input::-webkit-outer-spin-button {
   pointer-events: none;
 }
 
-/* ── Configured vs default field states ──────────────────────── */
-
-.config-row-default {
-  opacity: 0.55;
-}
-
-.config-row-default:hover,
-.config-row-default:focus-within {
-  opacity: 0.85;
-}
-
-.config-row-configured {
-  opacity: 1;
-}
-
 /* ── Config field badge (Configured / Default) ───────────────── */
 
 .config-field-badge {
@@ -796,8 +774,8 @@ input[type='number'].config-input::-webkit-outer-spin-button {
 }
 
 .config-field-badge-set {
-  background-color: var(--cui-color-feedback-info-bg);
-  color: var(--cui-color-feedback-info-fg);
+  background-color: hsl(var(--primary) / 0.18);
+  color: hsl(var(--primary));
 }
 
 .config-field-badge-default {
@@ -835,8 +813,8 @@ input[type='number'].config-input::-webkit-outer-spin-button {
 }
 
 .toc-item[data-toc-active] {
-  color: var(--cui-color-text-default);
-  border-left-color: var(--cui-color-accent);
+  color: hsl(var(--foreground));
+  border-left-color: hsl(var(--primary));
 }
 
 .toc-item-parent[data-toc-active] {
@@ -859,13 +837,13 @@ input[type='number'].config-input::-webkit-outer-spin-button {
 }
 
 .config-count-badge-active {
-  background-color: var(--cui-color-feedback-info-bg);
-  color: var(--cui-color-feedback-info-fg);
+  background-color: hsl(var(--primary) / 0.18);
+  color: hsl(var(--primary));
 }
 
 .config-count-badge-muted {
-  background-color: var(--cui-color-background-secondary);
-  color: var(--cui-color-text-disabled);
+  background-color: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
 }
 
 /* ── Inline add button (section / group headers) ────────────── */
@@ -922,13 +900,13 @@ input[type='number'].config-input::-webkit-outer-spin-button {
 }
 
 .config-tab-count-active {
-  background-color: var(--cui-color-feedback-info-bg);
-  color: var(--cui-color-feedback-info-fg);
+  background-color: hsl(var(--primary) / 0.18);
+  color: hsl(var(--primary));
 }
 
 .config-tab-count-zero {
-  background-color: var(--cui-color-background-secondary);
-  color: var(--cui-color-text-disabled);
+  background-color: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
 }
 
 /* ── Reset to default button ─────────────────────────────────── */

@@ -11,7 +11,7 @@ export function AddItemButton({
   disabled?: boolean;
 }) {
   return (
-    <Button variant="outline" size="sm" onClick={onClick} disabled={disabled}>
+    <Button type="button" variant="outline" size="sm" onClick={onClick} disabled={disabled}>
       <Plus />
       {label}
     </Button>

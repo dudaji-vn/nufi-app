@@ -104,7 +104,7 @@ export function RecordObjectField({
         />
       ))}
       {entries.length === 0 && !showAddInput && (
-        <p className="py-2 text-sm text-(--cui-color-text-muted)">
+        <p className="py-2 text-sm text-muted-foreground">
           {localize('com_config_no_entries')}
         </p>
       )}

@@ -217,7 +217,7 @@ export function ScopeSelector({
           <DialogDescription>{localize('com_scope_delete')}</DialogDescription>
         </VisuallyHidden>
         <div className="flex flex-col gap-4 p-4">
-          <p className="text-sm text-(--cui-color-text-default)">
+          <p className="text-sm text-foreground">
             {localize('com_scope_delete_confirm', { name: deleteTarget.name })}
           </p>
           <div className="flex justify-end gap-2">
@@ -225,7 +225,7 @@ export function ScopeSelector({
               type="button"
               onClick={() => setDeleteTarget(null)}
               disabled={deleting}
-              className="cursor-pointer rounded-md px-3 py-1.5 text-sm text-(--cui-color-text-muted) transition-colors hover:text-(--cui-color-text-default)"
+              className="cursor-pointer rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
             >
               {localize('com_ui_cancel')}
             </button>
@@ -236,8 +236,8 @@ export function ScopeSelector({
               className={cn(
                 'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
                 deleting
-                  ? 'cursor-not-allowed text-(--cui-color-text-muted)'
-                  : 'cursor-pointer bg-(--cui-color-accent-danger) text-white hover:opacity-90',
+                  ? 'cursor-not-allowed text-muted-foreground'
+                  : 'cursor-pointer bg-destructive text-white hover:opacity-90',
               )}
             >
               {deleting ? (
@@ -273,15 +273,15 @@ export function ScopeSelector({
           <DialogTitle>{localize('com_scope_create_new')}</DialogTitle>
           <DialogDescription>{localize('com_scope_create_new')}</DialogDescription>
         </VisuallyHidden>
-        <div className="flex items-center gap-2 border-b border-(--cui-color-stroke-default) px-4 py-3">
+        <div className="flex items-center gap-2 border-b border-border px-4 py-3">
           <button
             type="button"
             onClick={() => setShowCreate(false)}
-            className="flex cursor-pointer items-center text-(--cui-color-text-muted) hover:text-(--cui-color-text-default)"
+            className="flex cursor-pointer items-center text-muted-foreground hover:text-foreground"
           >
             <Icon name="chevron-left" size="sm" />
           </button>
-          <span className="text-sm font-medium text-(--cui-color-text-default)">
+          <span className="text-sm font-medium text-foreground">
             {localize('com_scope_create_new')}
           </span>
           {creating && (
@@ -295,7 +295,7 @@ export function ScopeSelector({
           <div className="cmdk-group">
             <div className="cmdk-group-heading">{localize('com_scope_roles')}</div>
             {noRoles ? (
-              <p className="px-4 py-4 text-center text-xs text-(--cui-color-text-muted)">
+              <p className="px-4 py-4 text-center text-xs text-muted-foreground">
                 {localize('com_scope_no_available_roles')}
               </p>
             ) : (
@@ -318,11 +318,11 @@ export function ScopeSelector({
                     <Icon name={roleConfig.icon} size="sm" />
                   </span>
                   <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="text-sm font-medium text-(--cui-color-text-default)">
+                    <span className="text-sm font-medium text-foreground">
                       {role.name}
                     </span>
                     {role.description && (
-                      <span className="text-xs text-(--cui-color-text-muted)">
+                      <span className="text-xs text-muted-foreground">
                         {role.description}
                       </span>
                     )}
@@ -336,7 +336,7 @@ export function ScopeSelector({
           <div className="cmdk-group">
             <div className="cmdk-group-heading">{localize('com_scope_groups')}</div>
             {noGroups ? (
-              <p className="px-4 py-4 text-center text-xs text-(--cui-color-text-muted)">
+              <p className="px-4 py-4 text-center text-xs text-muted-foreground">
                 {localize('com_scope_no_available_groups')}
               </p>
             ) : (
@@ -359,11 +359,11 @@ export function ScopeSelector({
                     <Icon name={groupConfig.icon} size="sm" />
                   </span>
                   <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="text-sm font-medium text-(--cui-color-text-default)">
+                    <span className="text-sm font-medium text-foreground">
                       {group.name}
                     </span>
                     {group.description && (
-                      <span className="text-xs text-(--cui-color-text-muted)">
+                      <span className="text-xs text-muted-foreground">
                         {group.description}
                       </span>
                     )}
@@ -391,12 +391,12 @@ export function ScopeSelector({
         <DialogTitle>{localize('com_scope_select')}</DialogTitle>
         <DialogDescription>{localize('com_scope_select')}</DialogDescription>
       </VisuallyHidden>
-      <div className="flex items-center gap-2 border-b border-(--cui-color-stroke-default) px-4">
+      <div className="flex items-center gap-2 border-b border-border px-4">
         <Command.Input
           value={search}
           onValueChange={handleSearchChange}
           placeholder={localize('com_scope_search')}
-          className="flex min-w-0 flex-1 bg-transparent py-3 text-sm text-(--cui-color-text-default) outline-none placeholder:text-(--cui-color-text-muted)"
+          className="flex min-w-0 flex-1 bg-transparent py-3 text-sm text-foreground outline-none placeholder:text-muted-foreground"
         />
         {canAssign && (
           <Button
@@ -414,13 +414,13 @@ export function ScopeSelector({
             <span aria-hidden="true">
               <Icon name="loading-animated" size="sm" />
             </span>
-            <span className="text-sm text-(--cui-color-text-muted)">
+            <span className="text-sm text-muted-foreground">
               {localize('com_ui_loading')}
             </span>
           </div>
         ) : (
           <>
-            <Command.Empty className="px-4 py-8 text-center text-sm text-(--cui-color-text-muted)">
+            <Command.Empty className="px-4 py-8 text-center text-sm text-muted-foreground">
               {localize('com_scope_no_results')}
             </Command.Empty>
 
@@ -435,15 +435,15 @@ export function ScopeSelector({
                   <Icon name={baseConfig.icon} size="sm" />
                 </span>
                 <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="text-sm font-medium text-(--cui-color-text-default)">
+                  <span className="text-sm font-medium text-foreground">
                     {localize('com_scope_base_config')}
                   </span>
-                  <span className="text-xs text-(--cui-color-text-muted)">
+                  <span className="text-xs text-muted-foreground">
                     {localize('com_scope_base_config_desc')}
                   </span>
                 </span>
                 {currentSelection.type === 'BASE' && (
-                  <span aria-hidden="true" className="shrink-0 text-(--cui-color-accent)">
+                  <span aria-hidden="true" className="shrink-0 text-primary">
                     <Icon name="check" size="sm" />
                   </span>
                 )}
@@ -532,17 +532,17 @@ function ScopeItem({ scope, isSelected, onSelect, onDelete, localize }: ScopeIte
       </span>
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="flex items-center gap-2">
-          <span className="text-sm font-medium text-(--cui-color-text-default)">{scope.name}</span>
+          <span className="text-sm font-medium text-foreground">{scope.name}</span>
           {!scope.isActive && (
-            <span className="rounded-sm bg-(--cui-color-background-secondary) px-1.5 py-0.5 text-[10px] font-medium text-(--cui-color-text-muted)">
+            <span className="rounded-sm bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
               {localize('com_scope_inactive')}
             </span>
           )}
         </span>
-        {memberText && <span className="text-xs text-(--cui-color-text-muted)">{memberText}</span>}
+        {memberText && <span className="text-xs text-muted-foreground">{memberText}</span>}
       </span>
       {isSelected && (
-        <span aria-hidden="true" className="shrink-0 text-(--cui-color-accent)">
+        <span aria-hidden="true" className="shrink-0 text-primary">
           <Icon name="check" size="sm" />
         </span>
       )}
@@ -553,7 +553,7 @@ function ScopeItem({ scope, isSelected, onSelect, onDelete, localize }: ScopeIte
             e.stopPropagation();
             onDelete(scope);
           }}
-          className="shrink-0 cursor-pointer rounded-sm p-0.5 text-(--cui-color-text-muted) opacity-0 transition-opacity group-hover:opacity-100 group-data-[active=true]:opacity-100 group-data-[selected=true]:opacity-100 hover:text-(--cui-color-accent-danger)"
+          className="shrink-0 cursor-pointer rounded-sm p-0.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-data-[active=true]:opacity-100 group-data-[selected=true]:opacity-100 hover:text-destructive"
           aria-label={localize('com_scope_delete')}
           title={localize('com_scope_delete')}
         >
@@ -582,14 +582,14 @@ export function ScopeTriggerButton({ currentSelection, onClick }: t.ScopeTrigger
     <button
       type="button"
       onClick={onClick}
-      className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-(--cui-color-stroke-default) bg-transparent px-3 py-1.5 text-sm text-(--cui-color-text-default) transition-colors hover:bg-(--cui-color-background-hover)"
+      className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-transparent px-3 py-1.5 text-sm text-foreground transition-colors hover:bg-accent"
       aria-label={`${localize('com_scope_select')}: ${label}`}
     >
       <span aria-hidden="true" style={{ color: config.color }}>
         <Icon name={config.icon} size="xs" />
       </span>
       <span>{label}</span>
-      <span aria-hidden="true" className="text-(--cui-color-text-muted)">
+      <span aria-hidden="true" className="text-muted-foreground">
         <Icon name="chevron-down" size="xs" />
       </span>
     </button>

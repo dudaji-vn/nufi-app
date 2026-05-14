@@ -944,7 +944,7 @@ function HeaderActions({
           disabled={importDisabled}
           aria-disabled={importDisabled || undefined}
           title={importTitle}
-          className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-(--cui-color-stroke-default) bg-transparent px-3 py-1.5 text-sm text-(--cui-color-text-default) transition-colors hover:bg-(--cui-color-background-hover) disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-transparent px-3 py-1.5 text-sm text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
         >
           <span aria-hidden="true">
             <Icon name="upload" size="xs" />

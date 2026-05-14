@@ -98,20 +98,7 @@ export const ConfigTableOfContents = memo(function ConfigTableOfContents({
         return true;
       };
 
-      // Expand collapsed Radix accordion items (MultiAccordion.Item).
-      const expandAccordionItem = (el: HTMLElement): boolean => {
-        if (el.getAttribute('data-state') !== 'closed') return false;
-        const trigger = el.querySelector<HTMLElement>(':scope > button[data-state="closed"]');
-        if (trigger) {
-          trigger.click();
-          return true;
-        }
-        return false;
-      };
-
-      const cardExpanded = existing
-        ? expandCard(existing) || expandAccordionItem(existing)
-        : false;
+      const cardExpanded = existing ? expandCard(existing) : false;
       const needsSettle = parentExpanded || needsExpand || cardExpanded;
 
       if (needsSettle) {
@@ -120,7 +107,6 @@ export const ConfigTableOfContents = memo(function ConfigTableOfContents({
           const el = document.getElementById(id) ?? existing;
           if (el) {
             expandCard(el);
-            expandAccordionItem(el);
           }
           setTimeout(() => {
             const target = document.getElementById(id) ?? existing;
@@ -182,7 +168,7 @@ export const ConfigTableOfContents = memo(function ConfigTableOfContents({
                   type="button"
                   data-toc-id={sectionDomId}
                   onClick={() => handleClick(sectionDomId)}
-                  className="toc-item toc-item-parent block w-full cursor-pointer truncate border-none bg-transparent py-1.5 pr-1 pl-3 text-left text-[13px] font-medium text-(--cui-color-text-muted) transition-colors hover:text-(--cui-color-text-default)"
+                  className="toc-item toc-item-parent block w-full cursor-pointer truncate border-none bg-transparent py-1.5 pr-1 pl-3 text-left text-[13px] font-medium text-muted-foreground transition-colors hover:text-foreground"
                 >
                   {localize(section.titleKey)}
                 </button>
@@ -194,7 +180,7 @@ export const ConfigTableOfContents = memo(function ConfigTableOfContents({
                           type="button"
                           data-toc-id={item.id}
                           onClick={() => handleClick(item.id)}
-                          className="toc-item toc-item-child block w-full cursor-pointer truncate border-none bg-transparent py-1 pr-1 pl-6 text-left text-xs text-(--cui-color-text-muted) transition-colors hover:text-(--cui-color-text-default)"
+                          className="toc-item toc-item-child block w-full cursor-pointer truncate border-none bg-transparent py-1 pr-1 pl-6 text-left text-xs text-muted-foreground transition-colors hover:text-foreground"
                           title={item.label}
                         >
                           {item.label}
@@ -221,7 +207,7 @@ export const ConfigTableOfContents = memo(function ConfigTableOfContents({
                             type="button"
                             data-toc-id={childDomId}
                             onClick={() => handleClick(childDomId)}
-                            className="toc-item toc-item-child block w-full cursor-pointer truncate border-none bg-transparent py-1 pr-1 pl-6 text-left text-xs text-(--cui-color-text-muted) transition-colors hover:text-(--cui-color-text-default)"
+                            className="toc-item toc-item-child block w-full cursor-pointer truncate border-none bg-transparent py-1 pr-1 pl-6 text-left text-xs text-muted-foreground transition-colors hover:text-foreground"
                           >
                             {localize(`com_config_field_${child.key}`)}
                           </button>

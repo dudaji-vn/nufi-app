@@ -132,13 +132,10 @@ export function Sidebar({ user, collapsed, onToggle }: t.SidebarProps) {
                   aria-label={collapsed ? label : undefined}
                   className={cn(
                     'group relative flex h-10 items-center text-sm no-underline transition-colors duration-150',
-                    collapsed ? 'w-10 justify-center rounded-md' : 'gap-3 rounded-r-md pr-3 pl-4',
-                    active &&
-                      'bg-sidebar-accent font-medium text-primary before:absolute before:inset-y-0 before:left-0 before:w-0.75 before:bg-primary',
-                    !active &&
-                      'font-normal text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground',
-                    !active && !collapsed && 'rounded-l-md',
-                    active && collapsed && 'before:hidden',
+                    collapsed ? 'w-10 justify-center' : 'gap-3 pr-3 pl-4',
+                    active
+                      ? 'rounded-r-md bg-sidebar-accent font-medium text-primary before:absolute before:inset-y-0 before:left-0 before:w-0.75 before:bg-primary'
+                      : 'rounded-md font-normal text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground',
                   )}
                 >
                   <Icon

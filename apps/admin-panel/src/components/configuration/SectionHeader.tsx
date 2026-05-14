@@ -12,7 +12,7 @@ export function SectionHeader({
 }: t.SectionHeaderProps) {
   const localize = useLocalize();
 
-  const titleClasses = 'wrap-break-word text-sm font-medium text-(--cui-color-text-default)';
+  const titleClasses = 'wrap-break-word text-sm font-medium text-foreground';
 
   return (
     <div className="flex w-[20%] max-w-75 min-w-0 shrink-0 flex-col gap-1 pl-2.5">
@@ -32,7 +32,7 @@ export function SectionHeader({
         {subtitle}
       </div>
       {description && (
-        <span className="text-sm wrap-break-word text-(--cui-color-text-muted)">
+        <span className="text-sm wrap-break-word text-muted-foreground">
           {description}
           {learnMoreUrl && (
             <>
@@ -41,7 +41,7 @@ export function SectionHeader({
                 href={learnMoreUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-sm font-medium text-(--cui-color-text-link) hover:underline"
+                className="text-sm font-medium text-primary hover:underline"
               >
                 {localize('com_ui_read_more')}
               </a>

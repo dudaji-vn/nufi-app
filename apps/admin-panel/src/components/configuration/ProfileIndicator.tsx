@@ -70,7 +70,7 @@ export function ProfileIndicator({
         ) : (
           <span
             aria-hidden="true"
-            className="inline-flex shrink-0 items-center justify-center text-(--cui-color-text-muted)"
+            className="inline-flex shrink-0 items-center justify-center text-muted-foreground"
             style={{ width: 18, height: 18 }}
             title={localize('com_scope_add_profile_value')}
           >

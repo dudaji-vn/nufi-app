@@ -146,7 +146,7 @@ export function FieldProfilePopover({
         </div>
 
         {profileValues.length === 0 && !adding && (
-          <div className="px-2.5 py-1.5 text-xs text-(--cui-color-text-muted)">
+          <div className="px-2.5 py-1.5 text-xs text-muted-foreground">
             {localize('com_scope_no_field_profiles')}
           </div>
         )}
@@ -184,12 +184,12 @@ export function FieldProfilePopover({
         })}
 
         {adding && (
-          <div className="border-t border-(--cui-color-stroke-default) px-2.5 py-1.5">
-            <div className="mb-1.5 text-xs font-medium text-(--cui-color-text-default)">
+          <div className="border-t border-border px-2.5 py-1.5">
+            <div className="mb-1.5 text-xs font-medium text-foreground">
               {localize('com_scope_select')}
             </div>
             {availableScopes.length === 0 ? (
-              <div className="py-1 text-xs text-(--cui-color-text-muted)">
+              <div className="py-1 text-xs text-muted-foreground">
                 {localize('com_scope_no_results')}
               </div>
             ) : (
@@ -210,14 +210,14 @@ export function FieldProfilePopover({
                       className={cn(
                         'flex items-center gap-2 rounded-(--cui-radii-sm) px-2 py-1.5 text-left text-xs transition-colors',
                         isSelected
-                          ? 'bg-(--cui-color-background-active)'
-                          : 'hover:bg-(--cui-color-background-hover)',
+                          ? 'bg-accent'
+                          : 'hover:bg-accent',
                       )}
                     >
                       <span aria-hidden="true" style={{ color: config.color }}>
                         <Icon name={config.icon} size="sm" />
                       </span>
-                      <span className="text-(--cui-color-text-default)">{scope.name}</span>
+                      <span className="text-foreground">{scope.name}</span>
                     </button>
                   );
                 })}
@@ -226,11 +226,11 @@ export function FieldProfilePopover({
           </div>
         )}
         {!adding && canAssign && (
-          <div className="border-t border-(--cui-color-stroke-default) px-2.5 py-1.5">
+          <div className="border-t border-border px-2.5 py-1.5">
             <button
               type="button"
               onClick={handleStartAdd}
-              className="flex w-full items-center gap-2 rounded-(--cui-radii-sm) px-2 py-1 text-xs text-(--cui-color-text-link) transition-colors hover:bg-(--cui-color-background-hover)"
+              className="flex w-full items-center gap-2 rounded-(--cui-radii-sm) px-2 py-1 text-xs text-primary transition-colors hover:bg-accent"
               disabled={saving}
             >
               <span aria-hidden="true">
@@ -279,10 +279,10 @@ function CascadeItem({ label, icon, color, sublabel }: t.CascadeItemProps) {
         <Icon name={icon} size="sm" />
       </span>
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className="flex items-center gap-1.5 text-xs font-medium text-(--cui-color-text-default)">
+        <span className="flex items-center gap-1.5 text-xs font-medium text-foreground">
           {label}
         </span>
-        <span className="text-[11px] wrap-break-word text-(--cui-color-text-muted)">
+        <span className="text-[11px] wrap-break-word text-muted-foreground">
           {sublabel}
         </span>
       </span>

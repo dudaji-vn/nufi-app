@@ -9,8 +9,10 @@
  */
 
 import { Icon } from '@clickhouse/click-ui';
+import { ChevronRight } from 'lucide-react';
 import { useState, useCallback } from 'react';
 import type { ReactNode } from 'react';
+import { Input, Label } from '@/components/ui';
 import type * as t from '@/types';
 import { useCollapsibleSection } from '../useCollapsibleSection';
 import { ObjectEntryCard } from '../fields/ObjectEntryCard';
@@ -183,10 +185,10 @@ function flattenGroupFields(
         <div key={field.key} className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-4">
           <label
             htmlFor={fieldId}
-            className="shrink-0 text-sm font-medium text-(--cui-color-text-default) sm:w-35"
+            className="shrink-0 text-sm font-medium text-foreground sm:w-35"
           >
             {label}
-            <span className="ml-0.5 text-(--cui-color-text-danger)">*</span>
+            <span className="ml-0.5 text-destructive">*</span>
           </label>
           <div className="flex-1">
             <SelectField
@@ -259,31 +261,30 @@ function FieldGroupSection({
   });
 
   return (
-    <section ref={sectionRef} className="flex flex-col">
-      <div className="flex items-center gap-2 border-b border-(--cui-color-stroke-default) pb-2">
-        <button
-          type="button"
-          aria-expanded={isExpanded}
-          onClick={toggle}
-          className="flex cursor-pointer items-center gap-2 border-none bg-transparent px-0 select-none"
-        >
-          <span
-            className={cn(
-              'flex shrink-0 items-center justify-center transition-transform duration-200',
-              isExpanded && 'rotate-90',
-            )}
-          >
-            <Icon name="chevron-right" size="xs" />
-          </span>
-          <span className="text-xs font-medium text-(--cui-color-text-muted)">
-            {localize(labelKey)}
-          </span>
-        </button>
-      </div>
+    <section
+      ref={sectionRef}
+      className="flex flex-col overflow-hidden rounded-md border border-border bg-muted/30"
+    >
+      <button
+        type="button"
+        aria-expanded={isExpanded}
+        onClick={toggle}
+        className="flex w-full cursor-pointer items-center gap-3 border-none bg-muted/40 px-3 py-2.5 text-left transition-colors outline-none select-none hover:bg-muted/70 focus-visible:bg-muted/70"
+      >
+        <ChevronRight
+          aria-hidden="true"
+          className={cn(
+            'h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200',
+            isExpanded && 'rotate-90',
+          )}
+        />
+        <span className="text-sm font-medium text-foreground">{localize(labelKey)}</span>
+      </button>
       {renderCollapsible(
         isExpanded,
         hasEverExpanded,
-        <div className="flex flex-col gap-4 pt-2 pl-3">{children}</div>,
+        children,
+        'flex flex-col gap-4 px-3 pt-3 pb-3',
       )}
     </section>
   );
@@ -316,41 +317,38 @@ function FieldGroup({
   if (fields.length === 0) return null;
 
   return (
-    <section ref={sectionRef} className="flex flex-col">
-      <div className="flex items-center gap-2 border-b border-(--cui-color-stroke-default) pb-2">
-        <button
-          type="button"
-          aria-expanded={isExpanded}
-          onClick={toggle}
-          className="flex cursor-pointer items-center gap-2 border-none bg-transparent px-0 select-none"
-        >
-          <span
-            className={cn(
-              'flex shrink-0 items-center justify-center transition-transform duration-200',
-              isExpanded && 'rotate-90',
-            )}
-          >
-            <Icon name="chevron-right" size="xs" />
-          </span>
-          <span className="text-xs font-medium text-(--cui-color-text-muted)">
-            {localize(labelKey)}
-          </span>
-        </button>
-      </div>
+    <section
+      ref={sectionRef}
+      className="flex flex-col overflow-hidden rounded-md border border-border bg-muted/30"
+    >
+      <button
+        type="button"
+        aria-expanded={isExpanded}
+        onClick={toggle}
+        className="flex w-full cursor-pointer items-center gap-3 border-none bg-muted/40 px-3 py-2.5 text-left transition-colors outline-none select-none hover:bg-muted/70 focus-visible:bg-muted/70"
+      >
+        <ChevronRight
+          aria-hidden="true"
+          className={cn(
+            'h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200',
+            isExpanded && 'rotate-90',
+          )}
+        />
+        <span className="text-sm font-medium text-foreground">{localize(labelKey)}</span>
+      </button>
       {renderCollapsible(
         isExpanded,
         hasEverExpanded,
-        <div className="flex flex-col gap-3 pt-1">
-          {flattenGroupFields(
-            fields,
-            parentValue,
-            parentPath,
-            onChange,
-            localize,
-            transportType,
-            disabled,
-          )}
-        </div>,
+        flattenGroupFields(
+          fields,
+          parentValue,
+          parentPath,
+          onChange,
+          localize,
+          transportType,
+          disabled,
+        ),
+        'flex flex-col gap-3 px-3 pt-3 pb-3',
       )}
     </section>
   );
@@ -573,13 +571,11 @@ function CreateMcpServerDialog({
     >
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
-          <label
-            htmlFor="mcp-server-name"
-            className="text-sm font-medium text-(--cui-color-text-default)"
-          >
-            {localize('com_config_server_name')} <span className="text-red-500">*</span>
-          </label>
-          <input
+          <Label htmlFor="mcp-server-name">
+            {localize('com_config_server_name')}{' '}
+            <span className="text-destructive">*</span>
+          </Label>
+          <Input
             id="mcp-server-name"
             type="text"
             value={serverName}
@@ -588,7 +584,6 @@ function CreateMcpServerDialog({
               setError(undefined);
             }}
             placeholder={localize('com_config_server_name')}
-            className="config-input px-2.5 py-1.5 text-sm"
             autoFocus
           />
         </div>
@@ -715,7 +710,7 @@ export function McpServersRenderer(props: t.FieldRendererProps) {
         );
       })}
       {entries.length === 0 && (
-        <p className="py-2 text-sm text-(--cui-color-text-muted)">
+        <p className="py-2 text-sm text-muted-foreground">
           {localize('com_config_no_entries')}
         </p>
       )}

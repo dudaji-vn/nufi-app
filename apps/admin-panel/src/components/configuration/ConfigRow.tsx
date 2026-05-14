@@ -20,7 +20,6 @@ export function ConfigRow({
   onResetField,
   isConfigured,
   isDbOverride,
-  isTouched,
   isPendingReset,
   defaultHint,
 }: t.ConfigRowProps) {
@@ -45,7 +44,7 @@ export function ConfigRow({
           ? localize('com_a11y_remove_override', { name: title })
           : localize('com_a11y_reset_to_default', { name: title })
       }
-      className="inline-flex items-center gap-0.5 text-[11px] text-(--cui-color-text-muted) transition-colors hover:text-(--cui-color-text-default)"
+      className="inline-flex items-center gap-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
     >
       <Icon name="refresh" size="sm" />
       <span>{localize('com_ui_reset')}</span>
@@ -53,7 +52,7 @@ export function ConfigRow({
   ) : null;
 
   const pendingResetHint = isPendingReset ? (
-    <span className="text-[11px] font-medium text-(--cui-color-accent-danger)">
+    <span className="text-[11px] font-medium text-destructive">
       {localize('com_config_pending_reset')}
     </span>
   ) : null;
@@ -61,14 +60,14 @@ export function ConfigRow({
   const configuredDot =
     isConfigured && !isPendingReset ? (
       <span
-        className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-(--cui-color-accent)"
+        className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-primary"
         aria-hidden="true"
       />
     ) : null;
 
   const defaultHintEl =
     defaultHint != null ? (
-      <span className="text-[11px] text-(--cui-color-text-muted)">
+      <span className="text-[11px] text-muted-foreground">
         {localize('com_config_default_hint', { value: String(defaultHint) })}
       </span>
     ) : null;
@@ -78,11 +77,10 @@ export function ConfigRow({
   return (
     <div
       className={cn(
-        'config-row flex w-full gap-6 rounded-md px-2.5 py-2 transition-opacity',
+        'config-row flex w-full gap-6 rounded-md px-2.5 py-2',
         hasSubContent ? 'items-start' : 'items-center',
-        disabled && 'pointer-events-none',
-        isPendingReset && 'opacity-50',
-        !isPendingReset && !isConfigured && !isTouched && 'opacity-50',
+        disabled && 'pointer-events-none opacity-60',
+        isPendingReset && 'opacity-60',
       )}
     >
       <SectionHeader

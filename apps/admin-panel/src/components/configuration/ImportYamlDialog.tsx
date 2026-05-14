@@ -211,7 +211,7 @@ export function ImportYamlDialog({
 
           {step === 'input' && (
             <>
-              <p className="text-sm text-(--cui-color-text-muted)">
+              <p className="text-sm text-muted-foreground">
                 {localize('com_config_import_yaml_desc')}
               </p>
 
@@ -233,7 +233,7 @@ export function ImportYamlDialog({
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-(--cui-color-stroke-default) bg-transparent px-4 py-8 text-sm text-(--cui-color-text-muted) transition-colors hover:border-(--cui-color-accent) hover:text-(--cui-color-text-default)"
+                      className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border bg-transparent px-4 py-8 text-sm text-muted-foreground transition-colors hover:border-primary hover:text-foreground"
                     >
                       <span aria-hidden="true">
                         <Icon name="upload" size="sm" />
@@ -241,12 +241,12 @@ export function ImportYamlDialog({
                       {fileName ?? localize('com_config_import_choose_file')}
                     </button>
                     {fileName && hasContent && (
-                      <div className="flex items-center gap-2 text-sm text-(--cui-color-text-default)">
+                      <div className="flex items-center gap-2 text-sm text-foreground">
                         <span aria-hidden="true">
                           <Icon name="check" size="xs" />
                         </span>
                         <span>{fileName}</span>
-                        <span className="text-(--cui-color-text-muted)">
+                        <span className="text-muted-foreground">
                           ({yamlText.split('\n').length} lines)
                         </span>
                       </div>
@@ -277,7 +277,7 @@ export function ImportYamlDialog({
 
           {step === 'target' && (
             <div ref={targetRef}>
-              <p className="mb-3 text-sm text-(--cui-color-text-muted)">
+              <p className="mb-3 text-sm text-muted-foreground">
                 {localize('com_config_import_target')}
               </p>
 
@@ -308,7 +308,7 @@ export function ImportYamlDialog({
                 />
 
                 {targetMode === 'existing' && (
-                  <div className="ml-6 flex flex-col gap-1.5 border-l-2 border-(--cui-color-stroke-default) pl-3">
+                  <div className="ml-6 flex flex-col gap-1.5 border-l-2 border-border pl-3">
                     {roleScopes.length > 0 && (
                       <ScopeGroup
                         label={localize('com_scope_roles')}
@@ -326,7 +326,7 @@ export function ImportYamlDialog({
                       />
                     )}
                     {allScopes.length === 0 && (
-                      <span className="py-1 text-xs text-(--cui-color-text-muted)">
+                      <span className="py-1 text-xs text-muted-foreground">
                         {localize('com_scope_no_results')}
                       </span>
                     )}
@@ -340,14 +340,14 @@ export function ImportYamlDialog({
                     setSelectedScope(null);
                   }}
                   icon="plus"
-                  iconColor="var(--cui-color-text-muted)"
+                  iconColor="hsl(var(--muted-foreground))"
                   label={localize('com_config_import_create_scope')}
                 />
 
                 {targetMode === 'create' && (
-                  <div className="ml-6 flex flex-col gap-3 border-l-2 border-(--cui-color-stroke-default) pt-1 pl-3">
+                  <div className="ml-6 flex flex-col gap-3 border-l-2 border-border pt-1 pl-3">
                     <div className="flex flex-col gap-1">
-                      <label className="text-xs font-medium text-(--cui-color-text-muted)">
+                      <label className="text-xs font-medium text-muted-foreground">
                         {localize('com_config_import_scope_type')}
                       </label>
                       <div className="flex gap-1">
@@ -361,8 +361,8 @@ export function ImportYamlDialog({
                               className={cn(
                                 'cursor-pointer rounded-md px-3 py-1 text-xs font-medium transition-colors',
                                 newScopeType === pt
-                                  ? 'bg-(--cui-color-background-active) text-(--cui-color-text-default)'
-                                  : 'text-(--cui-color-text-muted) hover:text-(--cui-color-text-default)',
+                                  ? 'bg-accent text-foreground'
+                                  : 'text-muted-foreground hover:text-foreground',
                               )}
                               aria-pressed={newScopeType === pt}
                             >
@@ -376,7 +376,7 @@ export function ImportYamlDialog({
                     <div className="flex flex-col gap-1">
                       <label
                         htmlFor="new-scope-name"
-                        className="text-xs font-medium text-(--cui-color-text-muted)"
+                        className="text-xs font-medium text-muted-foreground"
                       >
                         {localize('com_config_import_scope_name')}
                       </label>
@@ -400,9 +400,9 @@ export function ImportYamlDialog({
               className="flex flex-col gap-1 rounded-lg bg-[rgba(220,38,38,0.1)] px-3 py-2"
               role="alert"
             >
-              <span className="text-sm font-medium text-(--cui-color-text-danger)">{error}</span>
+              <span className="text-sm font-medium text-destructive">{error}</span>
               {validationErrors && validationErrors.length > 0 && (
-                <ul className="m-0 max-h-32 list-none overflow-auto p-0 text-xs text-(--cui-color-text-danger)">
+                <ul className="m-0 max-h-32 list-none overflow-auto p-0 text-xs text-destructive">
                   {validationErrors.slice(0, 10).map((ve, i) => (
                     <li key={`${ve.path}-${i}`} className="py-0.5">
                       <code>{ve.path}</code>: {ve.message}
@@ -492,17 +492,17 @@ function TargetOption({
       className={cn(
         'flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors',
         selected
-          ? 'border-(--cui-color-accent) bg-(--cui-color-background-hover)'
-          : 'border-(--cui-color-stroke-default) bg-transparent hover:bg-(--cui-color-background-hover)',
+          ? 'border-primary bg-accent'
+          : 'border-border bg-transparent hover:bg-accent',
       )}
     >
       <span aria-hidden="true" style={{ color: iconColor }}>
         <Icon name={icon} size="sm" />
       </span>
       <div className="flex flex-col">
-        <span className="text-sm font-medium text-(--cui-color-text-default)">{label}</span>
+        <span className="text-sm font-medium text-foreground">{label}</span>
         {description && (
-          <span className="text-xs text-(--cui-color-text-muted)">{description}</span>
+          <span className="text-xs text-muted-foreground">{description}</span>
         )}
       </div>
     </button>
@@ -522,7 +522,7 @@ function ScopeGroup({
 }) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-[10px] font-semibold tracking-wider text-(--cui-color-text-muted) uppercase">
+      <span className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
         {label}
       </span>
       {scopes.map((scope) => {
@@ -536,8 +536,8 @@ function ScopeGroup({
             className={cn(
               'flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors',
               isSelected
-                ? 'bg-(--cui-color-background-active) text-(--cui-color-text-default)'
-                : 'text-(--cui-color-text-muted) hover:bg-(--cui-color-background-hover) hover:text-(--cui-color-text-default)',
+                ? 'bg-accent text-foreground'
+                : 'text-muted-foreground hover:bg-accent hover:text-foreground',
             )}
             aria-pressed={isSelected}
           >

@@ -45,7 +45,7 @@ export function ProfileValueModal({
                 <Icon name={scopeConfig.icon} size="sm" />
               </span>
             )}
-            <span className="text-xs text-(--cui-color-text-muted)">{scopeName}</span>
+            <span className="text-xs text-muted-foreground">{scopeName}</span>
           </div>
 
           <ModalValueControl
@@ -90,7 +90,7 @@ function ModalValueControl({
     return (
       <div className="flex justify-center">
         <div
-          className="flex gap-1 rounded-lg border border-(--cui-color-stroke-default) p-0.5"
+          className="flex gap-1 rounded-lg border border-border p-0.5"
           role="radiogroup"
           aria-label={localize('com_ui_value')}
         >
@@ -102,8 +102,8 @@ function ModalValueControl({
               className={cn(
                 'cursor-pointer rounded-md px-4 py-1.5 text-sm font-medium transition-colors',
                 boolVal === opt
-                  ? 'bg-(--cui-color-background-active) text-(--cui-color-text-default)'
-                  : 'text-(--cui-color-text-muted) hover:text-(--cui-color-text-default)',
+                  ? 'bg-accent text-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
               )}
               role="radio"
               aria-checked={boolVal === opt}
@@ -305,7 +305,7 @@ function JsonEditor({
         spellCheck={false}
         autoFocus
       />
-      {error && <span className="text-xs text-(--cui-color-text-danger)">{error}</span>}
+      {error && <span className="text-xs text-destructive">{error}</span>}
     </div>
   );
 }

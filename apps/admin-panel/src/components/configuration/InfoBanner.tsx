@@ -39,7 +39,7 @@ export function InfoBanner({
         <span aria-hidden="true" style={{ color: config.color }}>
           <Icon name={config.icon} size="sm" />
         </span>
-        <span className="flex-1 text-(--cui-color-text-default)">
+        <span className="flex-1 text-foreground">
           {localize('com_scope_editing', {
             type: localize(config.labelKey),
             name: scope.name,
@@ -49,7 +49,7 @@ export function InfoBanner({
           <button
             type="button"
             onClick={onBackToBase}
-            className="shrink-0 cursor-pointer rounded-md border border-(--cui-color-stroke-default) bg-transparent px-2.5 py-1 text-xs font-medium text-(--cui-color-text-default) transition-colors hover:bg-(--cui-color-background-hover)"
+            className="shrink-0 cursor-pointer rounded-md border border-border bg-transparent px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent"
           >
             {localize('com_scope_back_to_base')}
           </button>

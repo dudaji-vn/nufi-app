@@ -1,5 +1,5 @@
-import { TextAreaField } from '@clickhouse/click-ui';
 import type * as t from '@/types';
+import { Textarea } from '@/components/ui';
 import { useLocalize } from '@/hooks';
 
 export function TextareaField({
@@ -14,16 +14,15 @@ export function TextareaField({
   const localize = useLocalize();
 
   return (
-    <div className="cui-field max-w-75">
-      <TextAreaField
-        id={id}
-        value={value}
-        onChange={onChange}
-        placeholder={placeholder ?? localize('com_ui_enter_text')}
-        disabled={disabled}
-        rows={rows}
-        {...ariaProps}
-      />
-    </div>
+    <Textarea
+      id={id}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder ?? localize('com_ui_enter_text')}
+      disabled={disabled}
+      rows={rows}
+      className="max-w-75"
+      {...ariaProps}
+    />
   );
 }

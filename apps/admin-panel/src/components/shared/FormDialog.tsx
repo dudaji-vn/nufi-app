@@ -42,17 +42,19 @@ export function FormDialog({
       }}
     >
       <DialogContent className={cn(sizeClasses[size])}>
-        <DialogHeader>
+        <DialogHeader className="shrink-0">
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-          {children}
-          {error && (
-            <p role="alert" className="text-sm text-destructive">
-              {error}
-            </p>
-          )}
-          <DialogFooter>
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col gap-5">
+          <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto pr-1">
+            {children}
+            {error && (
+              <p role="alert" className="text-sm text-destructive">
+                {error}
+              </p>
+            )}
+          </div>
+          <DialogFooter className="shrink-0">
             <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
               {localize('com_ui_cancel')}
             </Button>

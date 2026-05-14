@@ -11,6 +11,7 @@ const sizeClass: Record<NonNullable<t.TrashButtonProps['size']>, string> = {
 export function TrashButton({ onClick, ariaLabel, size = 'sm', disabled }: t.TrashButtonProps) {
   return (
     <Button
+      type="button"
       variant="ghost"
       size="icon"
       onClick={onClick}

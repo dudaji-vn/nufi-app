@@ -4,7 +4,7 @@ import type * as t from '@/types';
 export const SCOPE_TYPE_CONFIG: Record<t.ScopePrincipalType | 'BASE', t.ScopeTypeConfigEntry> = {
   BASE: {
     icon: 'settings',
-    color: 'var(--cui-color-accent-success)',
+    color: 'var(--brand-primary)',
     labelKey: 'com_scope_base_config',
     badgeClass: '',
   },

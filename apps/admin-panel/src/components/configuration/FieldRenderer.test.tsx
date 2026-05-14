@@ -30,23 +30,6 @@ interface MockButtonProps {
   label: string;
   onClick?: () => void;
 }
-interface MockTextFieldProps {
-  id?: string;
-  value?: string;
-  placeholder?: string;
-  onChange?: (value: string) => void;
-  onBlur?: () => void;
-  onKeyDown?: (e: React.KeyboardEvent) => void;
-  type?: string;
-}
-interface MockNumberFieldProps {
-  id?: string;
-  value?: string | number;
-  placeholder?: string;
-  onChange?: (value: string) => void;
-  onBlur?: () => void;
-  onKeyDown?: (e: React.KeyboardEvent) => void;
-}
 interface MockIconButtonProps {
   icon: string;
   onClick?: () => void;
@@ -54,15 +37,6 @@ interface MockIconButtonProps {
 }
 
 vi.mock('@clickhouse/click-ui', () => ({
-  Switch: (props: MockSwitchProps) => (
-    <button
-      role="switch"
-      aria-checked={props.checked}
-      aria-label={props['aria-label']}
-      data-testid="toggle"
-      onClick={() => props.onCheckedChange?.(!props.checked)}
-    />
-  ),
   Select: Object.assign(
     ({ children, value, ...props }: MockSelectProps) => (
       <div data-testid="select" data-value={value} aria-label={props['aria-label']}>
@@ -84,13 +58,44 @@ vi.mock('@clickhouse/click-ui', () => ({
   IconButton: ({ icon, onClick, ...props }: MockIconButtonProps) => (
     <button onClick={onClick} aria-label={props['aria-label'] ?? icon} data-testid={`icon-button-${icon}`} />
   ),
-  TextField: ({ id, value, placeholder, onChange, onBlur, type }: MockTextFieldProps) => (
-    <input id={id} value={value ?? ''} placeholder={placeholder} type={type ?? 'text'} onChange={(e) => onChange?.(e.target.value)} onBlur={onBlur} />
-  ),
-  NumberField: ({ id, value, placeholder, onChange, onBlur }: MockNumberFieldProps) => (
-    <input id={id} value={value ?? ''} placeholder={placeholder} type="number" onChange={(e) => onChange?.(e.target.value)} onBlur={onBlur} />
-  ),
 }));
+
+vi.mock('@/components/ui', async () => {
+  const actual = await vi.importActual<Record<string, unknown>>('@/components/ui');
+  return {
+    ...actual,
+    Switch: (props: MockSwitchProps) => (
+      <button
+        role="switch"
+        aria-checked={props.checked}
+        aria-label={props['aria-label']}
+        data-testid="toggle"
+        onClick={() => props.onCheckedChange?.(!props.checked)}
+      />
+    ),
+    Select: ({ children, value, onValueChange, ...props }: MockSelectProps & { onValueChange?: (v: string) => void }) => (
+      <div data-testid="select" data-value={value} aria-label={props['aria-label']} data-onvaluechange={onValueChange ? 'set' : undefined}>
+        {children}
+      </div>
+    ),
+    SelectTrigger: ({ children, ...props }: { children: React.ReactNode; id?: string; 'aria-label'?: string }) => (
+      <button data-testid="select-trigger" id={props.id} aria-label={props['aria-label']}>
+        {children}
+      </button>
+    ),
+    SelectValue: ({ placeholder }: { placeholder?: string }) => (
+      <span data-testid="select-value">{placeholder}</span>
+    ),
+    SelectContent: ({ children }: { children: React.ReactNode }) => (
+      <div data-testid="select-content">{children}</div>
+    ),
+    SelectItem: ({ children, value }: MockSelectItemProps) => (
+      <div data-testid="select-item" data-value={value}>
+        {children}
+      </div>
+    ),
+  };
+});
 
 const noop = () => {};
 const getValue = (_path: string, fallback: t.ConfigValue) => fallback;

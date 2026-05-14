@@ -34,8 +34,8 @@ export function DeleteProfileValueModal({
                   <Icon name={scopeConfig.icon} size="sm" />
                 </span>
               )}
-              <span className="text-sm text-(--cui-color-text-default)">{fieldLabel}</span>
-              <span className="text-xs text-(--cui-color-text-muted)">{scope.name}</span>
+              <span className="text-sm text-foreground">{fieldLabel}</span>
+              <span className="text-xs text-muted-foreground">{scope.name}</span>
             </div>
             <div className="flex items-center justify-end gap-2">
               <Button
