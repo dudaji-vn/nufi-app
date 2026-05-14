@@ -1,8 +1,26 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Button, Dialog, Tabs } from '@clickhouse/click-ui';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import type { AdminMember, AdminUserSearchResult } from '@librechat/data-schemas';
 import type * as t from '@/types';
+import {
+  Badge,
+  Button,
+  Input,
+  Label,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@/components/ui';
+import {
+  Avatar,
+  FormDialog,
+  LoadingState,
+  Pagination,
+  SelectedMemberList,
+  TrashButton,
+  UserSearchInline,
+} from '@/components/shared';
 import {
   addRoleMemberFn,
   removeRoleMemberFn,
@@ -12,14 +30,6 @@ import {
   updateRolePermissionsFn,
   MEMBERS_PAGE_SIZE,
 } from '@/server';
-import {
-  Avatar,
-  LoadingState,
-  Pagination,
-  SelectedMemberList,
-  TrashButton,
-  UserSearchInline,
-} from '@/components/shared';
 import { RolePermissionsPanel } from './RolePermissionsPanel';
 import { useLocalize } from '@/hooks';
 import { cn } from '@/utils';
@@ -158,195 +168,168 @@ export function EditRoleDialog({ role, canManage, onClose }: t.EditRoleDialogPro
     updateMutation.mutate();
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    doSubmit();
-  };
-
   return (
-    <Dialog
+    <FormDialog
       open={!!role}
-      onOpenChange={(isOpen) => {
-        if (!isOpen) onClose();
-      }}
+      title={localize('com_access_edit_role')}
+      submitLabel={localize('com_ui_save')}
+      submitDisabled={
+        !canManage ||
+        !name.trim() ||
+        (permissionsDirty && permissions === null) ||
+        (!detailsDirty && !permissionsDirty && !membersDirty)
+      }
+      saving={updateMutation.isPending}
+      error={error}
+      size="lg"
+      onSubmit={doSubmit}
+      onClose={onClose}
     >
-      <Dialog.Content
-        title={localize('com_access_edit_role')}
-        showClose
-        onClose={onClose}
-        className="modal-frost max-w-2xl!"
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => setActiveTab(v as EditRoleTab)}
+        aria-label={localize('com_access_edit_role')}
       >
-        <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-          <Tabs
-            value={activeTab}
-            onValueChange={(v) => setActiveTab(v as EditRoleTab)}
-            ariaLabel={localize('com_access_edit_role')}
-          >
-            <Tabs.TriggersList>
-              <Tabs.Trigger value="details">
-                {localize('com_access_tab_details')}
-              </Tabs.Trigger>
-              <Tabs.Trigger value="permissions">
-                {localize('com_access_tab_permissions')}
-              </Tabs.Trigger>
-              <Tabs.Trigger value="members">
-                {localize('com_access_tab_members')}
-              </Tabs.Trigger>
-            </Tabs.TriggersList>
-            <Tabs.Content value="details" forceMount tabIndex={-1} className={cn(activeTab !== 'details' && 'hidden')}>
-              <div className="flex flex-col gap-5 pt-5">
-                {role?.isSystemRole && (
-                  <span className="inline-flex w-fit items-center rounded-md bg-(--cui-color-background-muted) px-2 py-1 text-xs font-medium text-(--cui-color-text-muted)">
-                    {localize('com_access_system_role')}
-                  </span>
-                )}
-                <div className="flex flex-col gap-1.5">
-                  <label
-                    htmlFor="edit-role-name"
-                    className="text-sm font-medium text-(--cui-color-text-default)"
-                  >
-                    {localize('com_access_col_name')}
-                  </label>
-                  <input
-                    id="edit-role-name"
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder={localize('com_access_role_name_placeholder')}
-                    disabled={role?.isSystemRole || !canManage}
-                    readOnly={!canManage}
-                    autoFocus
-                    className="rounded-lg border border-(--cui-color-stroke-default) bg-(--cui-color-background-default) px-3 py-2 text-sm text-(--cui-color-text-default) placeholder:text-(--cui-color-text-disabled) disabled:cursor-not-allowed disabled:opacity-50"
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label
-                    htmlFor="edit-role-description"
-                    className="text-sm font-medium text-(--cui-color-text-default)"
-                  >
-                    {localize('com_config_field_description')}
-                  </label>
-                  <input
-                    id="edit-role-description"
-                    type="text"
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder={localize('com_access_role_desc_placeholder')}
-                    disabled={!canManage}
-                    readOnly={!canManage}
-                    className="rounded-lg border border-(--cui-color-stroke-default) bg-(--cui-color-background-default) px-3 py-2 text-sm text-(--cui-color-text-default) placeholder:text-(--cui-color-text-disabled) disabled:cursor-not-allowed disabled:opacity-50"
-                  />
-                </div>
-              </div>
-            </Tabs.Content>
-            <Tabs.Content value="permissions" forceMount tabIndex={-1} className={cn(activeTab !== 'permissions' && 'hidden')}>
-              <div className="pt-5">
-                {(() => {
-                  if (roleDetail.isLoading) {
-                    return <LoadingState className="flex items-center justify-center py-8" />;
-                  }
-                  if (roleDetail.isError || !permissions) {
-                    return (
-                      <div className="flex flex-col items-center justify-center gap-3 py-8 text-center text-sm text-(--cui-color-text-muted)">
-                        <p>{localize('com_access_permissions_load_error')}</p>
-                        {roleDetail.isError && (
-                          <Button
-                            type="secondary"
-                            label={localize('com_ui_retry')}
-                            onClick={() => roleDetail.refetch()}
-                          />
-                        )}
-                      </div>
-                    );
-                  }
-                  return (
-                    <RolePermissionsPanel
-                      permissions={permissions}
-                      onChange={setPermissions}
-                      disabled={!canManage || updateMutation.isPending}
-                    />
-                  );
-                })()}
-              </div>
-            </Tabs.Content>
-            <Tabs.Content value="members" forceMount tabIndex={-1} className={cn(activeTab !== 'members' && 'hidden')}>
-              <div className="flex flex-col gap-4 pt-5">
-                {canManage && (
-                  <UserSearchInline
-                    existingIds={existingIds}
-                    onAdd={addUser}
-                    listboxId="edit-role-member-search"
-                    disabled={updateMutation.isPending}
-                  />
-                )}
-                {pendingAdditions.length > 0 && (
-                  <div className="flex flex-col gap-1">
-                    <span className="text-xs font-medium text-(--cui-color-text-muted)">
-                      {localize('com_access_pending_additions', { count: pendingAdditions.length })}
-                    </span>
-                    <SelectedMemberList
-                      users={pendingAdditions}
-                      onRemove={removePendingUser}
-                      disabled={updateMutation.isPending}
-                    />
+        <TabsList>
+          <TabsTrigger value="details">{localize('com_access_tab_details')}</TabsTrigger>
+          <TabsTrigger value="permissions">{localize('com_access_tab_permissions')}</TabsTrigger>
+          <TabsTrigger value="members">{localize('com_access_tab_members')}</TabsTrigger>
+        </TabsList>
+        <TabsContent
+          value="details"
+          forceMount
+          tabIndex={-1}
+          className={cn(activeTab !== 'details' && 'hidden')}
+        >
+          <div className="flex flex-col gap-5 pt-3">
+            {role?.isSystemRole && (
+              <Badge variant="secondary" className="w-fit">
+                {localize('com_access_system_role')}
+              </Badge>
+            )}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="edit-role-name">{localize('com_access_col_name')}</Label>
+              <Input
+                id="edit-role-name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={localize('com_access_role_name_placeholder')}
+                disabled={role?.isSystemRole || !canManage}
+                readOnly={!canManage}
+                autoFocus
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="edit-role-description">
+                {localize('com_config_field_description')}
+              </Label>
+              <Input
+                id="edit-role-description"
+                type="text"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder={localize('com_access_role_desc_placeholder')}
+                disabled={!canManage}
+                readOnly={!canManage}
+              />
+            </div>
+          </div>
+        </TabsContent>
+        <TabsContent
+          value="permissions"
+          forceMount
+          tabIndex={-1}
+          className={cn(activeTab !== 'permissions' && 'hidden')}
+        >
+          <div className="pt-3">
+            {(() => {
+              if (roleDetail.isLoading) {
+                return <LoadingState className="flex items-center justify-center py-8" />;
+              }
+              if (roleDetail.isError || !permissions) {
+                return (
+                  <div className="flex flex-col items-center justify-center gap-3 py-8 text-center text-sm text-muted-foreground">
+                    <p>{localize('com_access_permissions_load_error')}</p>
+                    {roleDetail.isError && (
+                      <Button type="button" variant="outline" onClick={() => roleDetail.refetch()}>
+                        {localize('com_ui_retry')}
+                      </Button>
+                    )}
                   </div>
-                )}
-                {pendingRemovals.length > 0 && (
-                  <div className="flex flex-col gap-1">
-                    <span className="text-xs font-medium text-(--cui-color-text-muted)">
-                      {localize('com_access_pending_removals', { count: pendingRemovals.length })}
-                    </span>
-                    <SelectedMemberList
-                      users={pendingRemovals.map((m) => ({ id: m.userId, name: m.name, email: m.email, avatarUrl: m.avatarUrl }))}
-                      onRemove={unstageRemoval}
-                      disabled={updateMutation.isPending}
-                    />
-                  </div>
-                )}
-                <MemberList
-                  members={members}
-                  loading={membersQuery.isLoading}
-                  error={membersQuery.isError}
-                  fetching={membersQuery.isFetching}
-                  removalIds={removalIds}
-                  onRemove={stageRemoval}
-                  canManage={canManage}
-                  total={total}
-                  currentPage={page}
-                  totalPages={totalPages}
-                  onPageChange={setPage}
+                );
+              }
+              return (
+                <RolePermissionsPanel
+                  permissions={permissions}
+                  onChange={setPermissions}
+                  disabled={!canManage || updateMutation.isPending}
+                />
+              );
+            })()}
+          </div>
+        </TabsContent>
+        <TabsContent
+          value="members"
+          forceMount
+          tabIndex={-1}
+          className={cn(activeTab !== 'members' && 'hidden')}
+        >
+          <div className="flex flex-col gap-4 pt-3">
+            {canManage && (
+              <UserSearchInline
+                existingIds={existingIds}
+                onAdd={addUser}
+                listboxId="edit-role-member-search"
+                disabled={updateMutation.isPending}
+              />
+            )}
+            {pendingAdditions.length > 0 && (
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-muted-foreground">
+                  {localize('com_access_pending_additions', { count: pendingAdditions.length })}
+                </span>
+                <SelectedMemberList
+                  users={pendingAdditions}
+                  onRemove={removePendingUser}
+                  disabled={updateMutation.isPending}
                 />
               </div>
-            </Tabs.Content>
-          </Tabs>
-
-          {error && (
-            <p role="alert" className="text-sm text-(--cui-color-text-danger)">
-              {error}
-            </p>
-          )}
-          <div className="flex items-center justify-end gap-2">
-            <Button
-              type="secondary"
-              label={localize('com_ui_cancel')}
-              onClick={onClose}
-              disabled={updateMutation.isPending}
-            />
-            <Button
-              type="primary"
-              label={localize('com_ui_save')}
-              disabled={
-                !canManage ||
-                !name.trim() ||
-                (permissionsDirty && permissions === null) ||
-                (!detailsDirty && !permissionsDirty && !membersDirty) ||
-                updateMutation.isPending
-              }
+            )}
+            {pendingRemovals.length > 0 && (
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-muted-foreground">
+                  {localize('com_access_pending_removals', { count: pendingRemovals.length })}
+                </span>
+                <SelectedMemberList
+                  users={pendingRemovals.map((m) => ({
+                    id: m.userId,
+                    name: m.name,
+                    email: m.email,
+                    avatarUrl: m.avatarUrl,
+                  }))}
+                  onRemove={unstageRemoval}
+                  disabled={updateMutation.isPending}
+                />
+              </div>
+            )}
+            <MemberList
+              members={members}
+              loading={membersQuery.isLoading}
+              error={membersQuery.isError}
+              fetching={membersQuery.isFetching}
+              removalIds={removalIds}
+              onRemove={stageRemoval}
+              canManage={canManage}
+              total={total}
+              currentPage={page}
+              totalPages={totalPages}
+              onPageChange={setPage}
             />
           </div>
-        </form>
-      </Dialog.Content>
-    </Dialog>
+        </TabsContent>
+      </Tabs>
+    </FormDialog>
   );
 }
 
@@ -381,13 +364,13 @@ function MemberList({
 
   if (loading) {
     return (
-      <LoadingState className="flex items-center justify-center gap-2 py-6 text-sm text-(--cui-color-text-muted)" />
+      <LoadingState className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground" />
     );
   }
 
   if (error) {
     return (
-      <div className="flex items-center justify-center py-6 text-sm text-(--cui-color-foreground-danger)">
+      <div className="flex items-center justify-center py-6 text-sm text-destructive">
         {localize('com_error_load_members')}
       </div>
     );
@@ -395,7 +378,7 @@ function MemberList({
 
   if (members.length === 0 && total === 0) {
     return (
-      <div className="flex items-center justify-center py-6 text-sm text-(--cui-color-text-muted)">
+      <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
         {localize('com_access_no_members')}
       </div>
     );
@@ -403,12 +386,12 @@ function MemberList({
 
   return (
     <div className="flex flex-col">
-      <span className="mb-2 text-xs font-medium text-(--cui-color-text-muted)">
+      <span className="mb-2 text-xs font-medium text-muted-foreground">
         {localize('com_access_member_count', { count: total })}
       </span>
       <div
         className={cn(
-          'max-h-64 overflow-auto rounded-lg border border-(--cui-color-stroke-default)',
+          'max-h-64 overflow-auto rounded-lg border border-border',
           fetching && 'opacity-60 transition-opacity',
         )}
       >
@@ -419,7 +402,7 @@ function MemberList({
               key={member.userId}
               className={cn(
                 'flex items-center justify-between px-3 py-2',
-                i < members.length - 1 && 'border-b border-(--cui-color-stroke-default)',
+                i < members.length - 1 && 'border-b border-border',
                 staged && 'opacity-40',
               )}
             >
@@ -428,13 +411,13 @@ function MemberList({
                 <div className="flex flex-col">
                   <span
                     className={cn(
-                      'text-sm font-medium text-(--cui-color-text-default)',
+                      'text-sm font-medium text-foreground',
                       staged && 'line-through',
                     )}
                   >
                     {member.name}
                   </span>
-                  <span className="text-xs text-(--cui-color-text-muted)">{member.email}</span>
+                  <span className="text-xs text-muted-foreground">{member.email}</span>
                 </div>
               </div>
               {canManage && !staged && (

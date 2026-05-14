@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { NumberField as CUINumberField } from '@clickhouse/click-ui';
 import type * as t from '@/types';
+import { Input } from '@/components/ui';
 import { useLocalize } from '@/hooks';
 
 export function NumberField({
@@ -34,24 +34,22 @@ export function NumberField({
   };
 
   return (
-    <div className="cui-field max-w-75">
-      <CUINumberField
-        id={id}
-        value={local}
-        onChange={setLocal}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') commit();
-        }}
-        placeholder={placeholder ?? localize('com_ui_enter_number')}
-        disabled={disabled}
-        min={min}
-        max={max}
-        step={step}
-        loading={false}
-        hideControls
-        {...ariaProps}
-      />
-    </div>
+    <Input
+      id={id}
+      type="number"
+      value={local}
+      onChange={(e) => setLocal(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') commit();
+      }}
+      placeholder={placeholder ?? localize('com_ui_enter_number')}
+      disabled={disabled}
+      min={min}
+      max={max}
+      step={step}
+      className="max-w-75 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+      {...ariaProps}
+    />
   );
 }

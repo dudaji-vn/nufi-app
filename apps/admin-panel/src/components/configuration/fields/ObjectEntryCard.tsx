@@ -1,4 +1,4 @@
-import { Icon } from '@clickhouse/click-ui';
+import { ChevronRight, Pencil, Plus } from 'lucide-react';
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type * as t from '@/types';
 import { TrashButton } from '@/components/shared';
@@ -93,13 +93,13 @@ export function ObjectEntryCard({
     <div
       ref={cardRef}
       id={id}
-      className="rounded-lg border border-(--cui-color-stroke-default) bg-(--cui-color-background-default)"
+      className="overflow-hidden rounded-md border border-border bg-muted/30"
     >
       <div
         data-section-id={id}
         className={cn(
-          'group flex w-full cursor-pointer items-center gap-3 px-3 py-2.5 select-none hover:bg-(--cui-color-background-hover) focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-(--cui-color-outline)',
-          isExpanded && 'sticky top-0 z-5 bg-(--cui-color-background-default)',
+          'group flex w-full cursor-pointer items-center gap-3 px-3 py-2.5 select-none bg-card transition-colors hover:bg-muted focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-ring',
+          isExpanded && 'sticky top-0 z-5',
         )}
         onClick={isEditing ? undefined : toggle}
         role="button"
@@ -116,14 +116,13 @@ export function ObjectEntryCard({
         }
         aria-expanded={isExpanded}
       >
-        <span
+        <ChevronRight
+          aria-hidden="true"
           className={cn(
-            'flex shrink-0 items-center justify-center transition-transform duration-200',
+            'h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200',
             isExpanded && 'rotate-90',
           )}
-        >
-          <Icon name="chevron-right" size="sm" />
-        </span>
+        />
         <span className="flex min-w-0 flex-1 items-center gap-2">
           {isEditing && onRename ? (
             <input
@@ -145,7 +144,7 @@ export function ObjectEntryCard({
           ) : (
             <>
               <span
-                className="truncate text-sm font-medium text-(--cui-color-text-default)"
+                className="truncate text-sm font-medium text-foreground"
                 title={entryKey}
               >
                 {entryKey}
@@ -165,16 +164,16 @@ export function ObjectEntryCard({
                       setIsEditing(true);
                     }
                   }}
-                  className="inline-flex shrink-0 cursor-pointer items-center rounded border-none bg-transparent p-1 text-(--cui-color-text-muted) transition-colors hover:bg-(--cui-color-background-hover) hover:text-(--cui-color-text-default) focus-visible:outline focus-visible:outline-2 focus-visible:outline-(--cui-color-outline)"
+                  className="inline-flex shrink-0 cursor-pointer items-center rounded border-none bg-transparent p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
                   aria-label={localize('com_a11y_rename_entry', { name: entryKey })}
                 >
-                  <Icon name="pencil" size="sm" />
+                  <Pencil className="h-3.5 w-3.5" />
                 </button>
               )}
             </>
           )}
           {summary && !isExpanded && (
-            <span className="truncate text-xs text-(--cui-color-text-muted)">{summary}</span>
+            <span className="truncate text-xs text-muted-foreground">{summary}</span>
           )}
         </span>
         {!disabled && hasAddField && (
@@ -187,7 +186,7 @@ export function ObjectEntryCard({
             }}
             className="config-add-btn"
           >
-            <Icon name="plus" size="sm" />
+            <Plus className="h-3.5 w-3.5" />
             <span>{localize('com_config_add_field')}</span>
           </button>
         )}
@@ -211,7 +210,7 @@ export function ObjectEntryCard({
         inert={!isExpanded ? true : undefined}
       >
         <div className="config-section-inner">
-          <div className="flex flex-col gap-4 border-t border-(--cui-color-stroke-default) px-4 py-3">
+          <div className="flex flex-col gap-4 border-t border-border px-4 py-3">
             {hasEverExpanded && (
               <>
                 {isPrimitive(value) && (
@@ -260,7 +259,7 @@ function PrimitiveEntry({
   const localize = useLocalize();
   return (
     <div className="flex items-center gap-3">
-      <span className="text-sm text-(--cui-color-text-muted)">
+      <span className="text-sm text-muted-foreground">
         {typeof value === 'boolean'
           ? localize(value ? 'com_ui_enabled' : 'com_ui_disabled')
           : String(value ?? '')}
@@ -269,7 +268,7 @@ function PrimitiveEntry({
         <button
           type="button"
           onClick={() => onChange({})}
-          className="text-xs text-(--cui-color-text-link) hover:underline"
+          className="text-xs text-primary hover:underline"
         >
           {localize('com_config_customize')}
         </button>

@@ -1,4 +1,5 @@
 import { Icon } from '@clickhouse/click-ui';
+import { ChevronRight } from 'lucide-react';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import type * as t from '@/types';
@@ -579,7 +580,6 @@ export function NestedGroup({
 }) {
   const localize = useLocalize();
   const hasConfigured = configuredCount > 0;
-  const indent = depth > 0 ? `${depth}rem` : undefined;
 
   const { isExpanded, hasEverExpanded, sectionRef, toggle, handleAddClick } = useCollapsibleSection(
     { defaultExpanded: hasConfigured, onAdd },
@@ -590,28 +590,27 @@ export function NestedGroup({
       ref={sectionRef}
       id={sectionId}
       aria-label={label}
-      className={cn(depth > 0 ? 'mt-3' : 'mt-4', 'flex flex-col')}
-      style={indent ? { paddingLeft: indent } : undefined}
+      className={cn(
+        depth > 0 ? 'mt-3' : 'mt-4',
+        'flex flex-col overflow-hidden rounded-md border border-border bg-muted/30',
+      )}
     >
-      <div className="flex items-center gap-2 border-b border-(--cui-color-stroke-default)">
+      <div className="flex items-center gap-2 bg-muted/40">
         <button
           type="button"
           aria-expanded={isExpanded}
           data-section-id={sectionId}
           onClick={toggle}
-          className="flex flex-1 cursor-pointer items-center gap-2 rounded-lg border-none bg-transparent py-2 pr-0 pl-1 transition-colors outline-none select-none hover:bg-(--cui-color-background-hover) focus-visible:bg-(--cui-color-background-hover)"
+          className="flex flex-1 cursor-pointer items-center gap-3 border-none bg-transparent px-3 py-2.5 text-left transition-colors outline-none select-none hover:bg-muted/70 focus-visible:bg-muted/70"
         >
-          <span
+          <ChevronRight
+            aria-hidden="true"
             className={cn(
-              'flex shrink-0 items-center justify-center transition-transform duration-200',
+              'h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200',
               isExpanded && 'rotate-90',
             )}
-          >
-            <Icon name="chevron-right" size="xs" />
-          </span>
-          <span className="text-sm font-medium text-(--cui-color-text-default)">
-            {label}
-          </span>
+          />
+          <span className="text-sm font-medium text-foreground">{label}</span>
           {totalCount > 0 && (
             <span
               className={cn(
@@ -624,7 +623,7 @@ export function NestedGroup({
           )}
         </button>
         {onAdd && (
-          <button type="button" onClick={handleAddClick} className="config-add-btn">
+          <button type="button" onClick={handleAddClick} className="config-add-btn mr-2">
             <Icon name="plus" size="sm" />
             <span>
               {addLabel ?? localize('com_ui_add_item', { item: localize('com_ui_entry') })}
@@ -632,7 +631,7 @@ export function NestedGroup({
           </button>
         )}
       </div>
-      {renderCollapsible(isExpanded, hasEverExpanded, children)}
+      {renderCollapsible(isExpanded, hasEverExpanded, children, 'flex flex-col gap-4 px-3 pt-3 pb-3')}
     </section>
   );
 }
@@ -651,10 +650,10 @@ function CollectionRow({
   return (
     <div className="flex w-full flex-col gap-2">
       <div>
-        <label htmlFor={fieldId} className="text-sm font-medium text-(--cui-color-text-default)">
+        <label htmlFor={fieldId} className="text-sm font-medium text-foreground">
           {title}
         </label>
-        {description && <p className="text-xs text-(--cui-color-text-muted)">{description}</p>}
+        {description && <p className="text-xs text-muted-foreground">{description}</p>}
       </div>
       {children}
     </div>
@@ -1119,10 +1118,10 @@ function InlineRow({
     <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-4">
       <label
         htmlFor={fieldId}
-        className="shrink-0 text-sm font-medium text-(--cui-color-text-default) sm:w-35"
+        className="shrink-0 text-sm font-medium text-foreground sm:w-35"
       >
         {label}
-        {required && <span className="ml-0.5 text-(--cui-color-text-danger)">*</span>}
+        {required && <span className="ml-0.5 text-destructive">*</span>}
       </label>
       <div className="flex-1">{children}</div>
     </div>

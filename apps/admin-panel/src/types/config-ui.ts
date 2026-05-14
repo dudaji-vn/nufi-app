@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react';
 import type {
   ConfigScope,
-  IconName,
   ScopeSelection,
   FieldProfileValue,
   ScopePermissions,
 } from './scope';
+import type { LucideIconComponent } from './layout';
 import type { ConfigValue, FlatConfigMap, SchemaField } from './config';
 
 export interface ConfigTab {
@@ -171,7 +171,7 @@ export interface FieldProfilePopoverProps {
 
 export interface CascadeItemProps {
   label: string;
-  icon: IconName;
+  icon: LucideIconComponent;
   color: string;
   sublabel: string;
 }

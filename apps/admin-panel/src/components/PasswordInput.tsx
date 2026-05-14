@@ -1,48 +1,57 @@
-import { PasswordField } from '@clickhouse/click-ui';
-import { forwardRef, useEffect, useRef } from 'react';
-import type { ComponentPropsWithoutRef } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
+import { forwardRef, useState } from 'react';
+import type { InputHTMLAttributes, KeyboardEvent } from 'react';
+import { Input, Label } from '@/components/ui';
 import { useLocalize } from '@/hooks';
+import { cn } from '@/utils';
 
-type PasswordInputProps = ComponentPropsWithoutRef<typeof PasswordField>;
+interface PasswordInputProps
+  extends Omit<InputHTMLAttributes<HTMLInputElement>, 'onChange' | 'type'> {
+  label?: string;
+  value: string;
+  onChange: (value: string) => void;
+  onKeyDown?: (event: KeyboardEvent<HTMLInputElement>) => void;
+  error?: string;
+}
 
-/**
- * Wraps click-ui PasswordField to:
- * - Add a visible focus ring on the show/hide toggle (upstream strips outline)
- * - Label the toggle button for screen readers ("Show password" / "Hide password")
- */
-export const PasswordInput = forwardRef<HTMLInputElement, PasswordInputProps>((props, ref) => {
-  const localize = useLocalize();
-  const wrapperRef = useRef<HTMLDivElement>(null);
+export const PasswordInput = forwardRef<HTMLInputElement, PasswordInputProps>(
+  ({ label, value, onChange, error, className, id, ...props }, ref) => {
+    const localize = useLocalize();
+    const [visible, setVisible] = useState(false);
+    const inputId = id ?? `password-${label?.replace(/\s+/g, '-').toLowerCase() ?? 'input'}`;
 
-  useEffect(() => {
-    const wrapper = wrapperRef.current;
-    if (!wrapper) return;
-
-    const updateLabel = () => {
-      const input = wrapper.querySelector('input');
-      const button = wrapper.querySelector('button');
-      if (!input || !button) return;
-      const visible = input.type === 'text';
-      button.setAttribute(
-        'aria-label',
-        visible ? localize('com_auth_hide_password') : localize('com_auth_show_password'),
-      );
-    };
-
-    updateLabel();
-
-    const input = wrapper.querySelector('input');
-    if (!input) return;
-
-    const observer = new MutationObserver(updateLabel);
-    observer.observe(input, { attributes: true, attributeFilter: ['type'] });
-    return () => observer.disconnect();
-  }, [localize]);
-
-  return (
-    <div ref={wrapperRef} className="password-field-a11y w-full">
-      {/* eslint-disable-next-line click-ui/form-controlled-components -- value/onChange passed via ...props */}
-      <PasswordField ref={ref} {...props} />
-    </div>
-  );
-});
+    return (
+      <div className="flex w-full flex-col gap-1.5">
+        {label && (
+          <Label htmlFor={inputId} className="text-sm font-medium text-foreground">
+            {label}
+          </Label>
+        )}
+        <div className="relative">
+          <Input
+            ref={ref}
+            id={inputId}
+            type={visible ? 'text' : 'password'}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            aria-invalid={error ? true : undefined}
+            className={cn('pr-10', error && 'border-destructive focus-visible:ring-destructive', className)}
+            {...props}
+          />
+          <button
+            type="button"
+            onClick={() => setVisible((v) => !v)}
+            aria-label={
+              visible ? localize('com_auth_hide_password') : localize('com_auth_show_password')
+            }
+            className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:text-foreground"
+          >
+            {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        </div>
+        {error && <span className="text-xs text-destructive">{error}</span>}
+      </div>
+    );
+  },
+);
+PasswordInput.displayName = 'PasswordInput';

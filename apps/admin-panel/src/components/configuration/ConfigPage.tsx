@@ -765,8 +765,8 @@ export function ConfigPage({ initialTab, highlightField, initialScope }: t.Confi
   const banner = renderBanner();
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden pt-2">
-      <div className="shrink-0 px-4">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden pt-6">
+      <div className="shrink-0 px-6">
         {banner && <div className="pt-4 pb-2">{banner}</div>}
         <HeaderActions
           showImport
@@ -802,7 +802,7 @@ export function ConfigPage({ initialTab, highlightField, initialScope }: t.Confi
             </div>
           )}
           <div
-            className="h-full overflow-auto pl-4 [scrollbar-gutter:stable]"
+            className="h-full overflow-auto pl-6 [scrollbar-gutter:stable]"
             ref={scrollCallbackRef}
           >
             <ConfigTabContent
@@ -944,7 +944,7 @@ function HeaderActions({
           disabled={importDisabled}
           aria-disabled={importDisabled || undefined}
           title={importTitle}
-          className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-(--cui-color-stroke-default) bg-transparent px-3 py-1.5 text-sm text-(--cui-color-text-default) transition-colors hover:bg-(--cui-color-background-hover) disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-transparent px-3 py-1.5 text-sm text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
         >
           <span aria-hidden="true">
             <Icon name="upload" size="xs" />

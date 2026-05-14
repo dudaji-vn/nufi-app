@@ -1,5 +1,6 @@
 import { useRef, useLayoutEffect } from 'react';
 import type * as t from '@/types';
+import { Input } from '@/components/ui';
 import { AddItemButton, TrashButton } from '@/components/shared';
 import { useLocalize } from '@/hooks';
 
@@ -41,14 +42,14 @@ export function NumberListField({
     <div ref={listRef} id={id} className="flex w-full max-w-75 flex-col gap-2" role="list">
       {values.map((value, index) => (
         <div key={index} className="flex items-center gap-2" role="listitem">
-          <input
+          <Input
             type="number"
             value={value}
             onChange={(e) => handleChange(index, Number(e.target.value))}
             placeholder={resolvedPlaceholder}
             disabled={disabled}
             aria-label={`${resolvedItemLabel} ${index + 1}`}
-            className="config-input flex-1"
+            className="flex-1 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
           />
           {!disabled && (
             <TrashButton

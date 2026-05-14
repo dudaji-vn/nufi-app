@@ -284,16 +284,16 @@ function UserHeader({ user }: { user: TUser }) {
     <div className="flex items-center gap-3">
       <Avatar name={user.name} size="md" />
       <div className="flex min-w-0 flex-col">
-        <span className="truncate text-base font-semibold text-(--cui-color-text-default)">
+        <span className="truncate text-base font-semibold text-foreground">
           {user.name}
         </span>
-        <span className="truncate text-sm text-(--cui-color-text-muted)">{user.email}</span>
+        <span className="truncate text-sm text-muted-foreground">{user.email}</span>
         <span
           className={cn(
             'mt-1 inline-block w-fit rounded-full px-2 py-0.5 text-[10px] font-medium',
             user.role === SystemRoles.ADMIN
               ? 'badge-admin'
-              : 'bg-(--cui-color-background-secondary) text-(--cui-color-text-muted)',
+              : 'bg-muted text-muted-foreground',
           )}
         >
           {user.role}
@@ -321,7 +321,7 @@ function ProfileList({
 
   if (empty) {
     return (
-      <p className="py-4 text-center text-sm text-(--cui-color-text-muted)">
+      <p className="py-4 text-center text-sm text-muted-foreground">
         {localize('com_users_no_profiles')}
       </p>
     );
@@ -331,7 +331,7 @@ function ProfileList({
     <ul
       role="list"
       aria-label={localize('com_a11y_assigned_profiles')}
-      className="flex flex-col divide-y divide-(--cui-color-stroke-default) rounded-lg border border-(--cui-color-stroke-default)"
+      className="flex flex-col divide-y divide-border rounded-lg border border-border"
     >
       {roles.map((role) => (
         <ProfileRow
@@ -383,7 +383,7 @@ function ProfileRow({
 }: t.ProfileRowProps) {
   return (
     <li role="listitem" className="flex items-center justify-between px-3 py-2">
-      <div className="flex items-center gap-2 text-sm text-(--cui-color-text-default)">
+      <div className="flex items-center gap-2 text-sm text-foreground">
         <span
           className={cn('inline-flex items-center rounded-full p-1', colorClass)}
           aria-hidden="true"
@@ -441,11 +441,11 @@ function AddProfilesPanel({
       )}
       {canAssignConfigs && (
         <div className="flex flex-col gap-1.5">
-          <span className="text-xs font-medium text-(--cui-color-text-muted)">
+          <span className="text-xs font-medium text-muted-foreground">
             {localize('com_users_user_profile', { name: userName })}
           </span>
           {hasUserProfile ? (
-            <span className="py-1 text-xs text-(--cui-color-text-muted)">
+            <span className="py-1 text-xs text-muted-foreground">
               {localize('com_users_profile_already_created')}
             </span>
           ) : (
@@ -454,7 +454,7 @@ function AddProfilesPanel({
               disabled={busy}
               aria-disabled={busy}
               onClick={onCreateUserProfile}
-              className="flex cursor-pointer items-center gap-2 rounded-lg border border-(--cui-color-stroke-default) px-3 py-2 text-sm text-(--cui-color-text-default) transition-colors hover:bg-(--cui-color-background-hover) disabled:pointer-events-none disabled:opacity-50"
+              className="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
             >
               <span
                 className="badge-profile inline-flex items-center rounded-full p-1"
@@ -486,12 +486,12 @@ function PickerSection({
 }: t.PickerSectionProps) {
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-xs font-medium text-(--cui-color-text-muted)">{label}</span>
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
       {items.length > 0 ? (
         <ul
           role="list"
           aria-label={listLabel}
-          className="flex max-h-48 flex-col overflow-auto rounded-lg border border-(--cui-color-stroke-default)"
+          className="flex max-h-48 flex-col overflow-auto rounded-lg border border-border"
         >
           {items.map((item, i) => (
             <li key={item.id} role="listitem">
@@ -501,8 +501,8 @@ function PickerSection({
                 aria-disabled={busy}
                 onClick={() => onSelect(item.id)}
                 className={cn(
-                  'flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-sm text-(--cui-color-text-default) transition-colors hover:bg-(--cui-color-background-hover) disabled:pointer-events-none disabled:opacity-50',
-                  i < items.length - 1 && 'border-b border-(--cui-color-stroke-default)',
+                  'flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-sm text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50',
+                  i < items.length - 1 && 'border-b border-border',
                 )}
               >
                 <span
@@ -517,7 +517,7 @@ function PickerSection({
           ))}
         </ul>
       ) : (
-        <span className="py-1 text-xs text-(--cui-color-text-muted)">{emptyLabel}</span>
+        <span className="py-1 text-xs text-muted-foreground">{emptyLabel}</span>
       )}
     </div>
   );

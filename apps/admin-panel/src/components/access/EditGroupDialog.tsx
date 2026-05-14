@@ -1,8 +1,17 @@
 import { useState, useCallback } from 'react';
-import { Button, Dialog, Tabs } from '@clickhouse/click-ui';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import type { AdminMember, AdminUserSearchResult } from '@librechat/data-schemas';
 import type * as t from '@/types';
+import { Input, Label, Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui';
+import {
+  Avatar,
+  FormDialog,
+  LoadingState,
+  Pagination,
+  SelectedMemberList,
+  TrashButton,
+  UserSearchInline,
+} from '@/components/shared';
 import {
   addGroupMemberFn,
   groupMembersQueryOptions,
@@ -10,14 +19,6 @@ import {
   updateGroupFn,
   MEMBERS_PAGE_SIZE,
 } from '@/server';
-import {
-  Avatar,
-  LoadingState,
-  Pagination,
-  SelectedMemberList,
-  TrashButton,
-  UserSearchInline,
-} from '@/components/shared';
 import { useLocalize } from '@/hooks';
 import { cn } from '@/utils';
 
@@ -115,151 +116,124 @@ export function EditGroupDialog({ group, canManage, onClose }: t.EditGroupDialog
     mutation.mutate();
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    doSubmit();
-  };
-
   return (
-    <Dialog
+    <FormDialog
       open={!!group}
-      onOpenChange={(isOpen) => {
-        if (!isOpen) onClose();
-      }}
+      title={localize('com_access_edit_group')}
+      submitLabel={localize('com_ui_save')}
+      submitDisabled={!canManage || !name.trim() || (!detailsDirty && !membersDirty)}
+      saving={mutation.isPending}
+      error={error}
+      size="lg"
+      onSubmit={doSubmit}
+      onClose={onClose}
     >
-      <Dialog.Content
-        title={localize('com_access_edit_group')}
-        showClose
-        onClose={onClose}
-        className="modal-frost max-w-2xl!"
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => setActiveTab(v as EditGroupTab)}
+        aria-label={localize('com_access_edit_group')}
       >
-        <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-          <Tabs
-            value={activeTab}
-            onValueChange={(v) => setActiveTab(v as EditGroupTab)}
-            ariaLabel={localize('com_access_edit_group')}
-          >
-            <Tabs.TriggersList>
-              <Tabs.Trigger value="details">
-                {localize('com_access_tab_details')}
-              </Tabs.Trigger>
-              <Tabs.Trigger value="members">
-                {localize('com_access_tab_members')}
-              </Tabs.Trigger>
-            </Tabs.TriggersList>
-            <Tabs.Content value="details" forceMount tabIndex={-1} className={cn(activeTab !== 'details' && 'hidden')}>
-              <div className="flex flex-col gap-5 pt-5">
-                <div className="flex flex-col gap-1.5">
-                  <label
-                    htmlFor="edit-group-name"
-                    className="text-sm font-medium text-(--cui-color-text-default)"
-                  >
-                    {localize('com_access_col_name')}
-                  </label>
-                  <input
-                    id="edit-group-name"
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder={localize('com_access_group_name_placeholder')}
-                    disabled={!canManage}
-                    readOnly={!canManage}
-                    autoFocus
-                    className="rounded-lg border border-(--cui-color-stroke-default) bg-(--cui-color-background-default) px-3 py-2 text-sm text-(--cui-color-text-default) placeholder:text-(--cui-color-text-disabled) disabled:cursor-not-allowed disabled:opacity-50"
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label
-                    htmlFor="edit-group-description"
-                    className="text-sm font-medium text-(--cui-color-text-default)"
-                  >
-                    {localize('com_config_field_description')}
-                  </label>
-                  <input
-                    id="edit-group-description"
-                    type="text"
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder={localize('com_access_group_desc_placeholder')}
-                    disabled={!canManage}
-                    readOnly={!canManage}
-                    className="rounded-lg border border-(--cui-color-stroke-default) bg-(--cui-color-background-default) px-3 py-2 text-sm text-(--cui-color-text-default) placeholder:text-(--cui-color-text-disabled) disabled:cursor-not-allowed disabled:opacity-50"
-                  />
-                </div>
-              </div>
-            </Tabs.Content>
-            <Tabs.Content value="members" forceMount tabIndex={-1} className={cn(activeTab !== 'members' && 'hidden')}>
-              <div className="flex flex-col gap-4 pt-5">
-                {canManage && (
-                  <UserSearchInline
-                    existingIds={existingIds}
-                    onAdd={addUser}
-                    listboxId="edit-group-member-search"
-                    disabled={mutation.isPending}
-                  />
-                )}
-                {pendingAdditions.length > 0 && (
-                  <div className="flex flex-col gap-1">
-                    <span className="text-xs font-medium text-(--cui-color-text-muted)">
-                      {localize('com_access_pending_additions', { count: pendingAdditions.length })}
-                    </span>
-                    <SelectedMemberList
-                      users={pendingAdditions}
-                      onRemove={removePendingUser}
-                      disabled={mutation.isPending}
-                    />
-                  </div>
-                )}
-                {pendingRemovals.length > 0 && (
-                  <div className="flex flex-col gap-1">
-                    <span className="text-xs font-medium text-(--cui-color-text-muted)">
-                      {localize('com_access_pending_removals', { count: pendingRemovals.length })}
-                    </span>
-                    <SelectedMemberList
-                      users={pendingRemovals.map((m) => ({ id: m.userId, name: m.name, email: m.email, avatarUrl: m.avatarUrl }))}
-                      onRemove={unstageRemoval}
-                      disabled={mutation.isPending}
-                    />
-                  </div>
-                )}
-                <MemberList
-                  members={members}
-                  loading={membersQuery.isLoading}
-                  error={membersQuery.isError}
-                  fetching={membersQuery.isFetching}
-                  removalIds={removalIds}
-                  onRemove={stageRemoval}
-                  canManage={canManage}
-                  total={total}
-                  currentPage={page}
-                  totalPages={totalPages}
-                  onPageChange={setPage}
+        <TabsList>
+          <TabsTrigger value="details">{localize('com_access_tab_details')}</TabsTrigger>
+          <TabsTrigger value="members">{localize('com_access_tab_members')}</TabsTrigger>
+        </TabsList>
+        <TabsContent
+          value="details"
+          forceMount
+          tabIndex={-1}
+          className={cn(activeTab !== 'details' && 'hidden')}
+        >
+          <div className="flex flex-col gap-5 pt-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="edit-group-name">{localize('com_access_col_name')}</Label>
+              <Input
+                id="edit-group-name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={localize('com_access_group_name_placeholder')}
+                disabled={!canManage}
+                readOnly={!canManage}
+                autoFocus
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="edit-group-description">
+                {localize('com_config_field_description')}
+              </Label>
+              <Input
+                id="edit-group-description"
+                type="text"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder={localize('com_access_group_desc_placeholder')}
+                disabled={!canManage}
+                readOnly={!canManage}
+              />
+            </div>
+          </div>
+        </TabsContent>
+        <TabsContent
+          value="members"
+          forceMount
+          tabIndex={-1}
+          className={cn(activeTab !== 'members' && 'hidden')}
+        >
+          <div className="flex flex-col gap-4 pt-3">
+            {canManage && (
+              <UserSearchInline
+                existingIds={existingIds}
+                onAdd={addUser}
+                listboxId="edit-group-member-search"
+                disabled={mutation.isPending}
+              />
+            )}
+            {pendingAdditions.length > 0 && (
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-muted-foreground">
+                  {localize('com_access_pending_additions', { count: pendingAdditions.length })}
+                </span>
+                <SelectedMemberList
+                  users={pendingAdditions}
+                  onRemove={removePendingUser}
+                  disabled={mutation.isPending}
                 />
               </div>
-            </Tabs.Content>
-          </Tabs>
-
-          {error && (
-            <p role="alert" className="text-sm text-(--cui-color-text-danger)">
-              {error}
-            </p>
-          )}
-          <div className="flex items-center justify-end gap-2">
-            <Button
-              type="secondary"
-              label={localize('com_ui_cancel')}
-              onClick={onClose}
-              disabled={mutation.isPending}
-            />
-            <Button
-              type="primary"
-              label={localize('com_ui_save')}
-              disabled={!canManage || !name.trim() || (!detailsDirty && !membersDirty) || mutation.isPending}
+            )}
+            {pendingRemovals.length > 0 && (
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-muted-foreground">
+                  {localize('com_access_pending_removals', { count: pendingRemovals.length })}
+                </span>
+                <SelectedMemberList
+                  users={pendingRemovals.map((m) => ({
+                    id: m.userId,
+                    name: m.name,
+                    email: m.email,
+                    avatarUrl: m.avatarUrl,
+                  }))}
+                  onRemove={unstageRemoval}
+                  disabled={mutation.isPending}
+                />
+              </div>
+            )}
+            <MemberList
+              members={members}
+              loading={membersQuery.isLoading}
+              error={membersQuery.isError}
+              fetching={membersQuery.isFetching}
+              removalIds={removalIds}
+              onRemove={stageRemoval}
+              canManage={canManage}
+              total={total}
+              currentPage={page}
+              totalPages={totalPages}
+              onPageChange={setPage}
             />
           </div>
-        </form>
-      </Dialog.Content>
-    </Dialog>
+        </TabsContent>
+      </Tabs>
+    </FormDialog>
   );
 }
 
@@ -294,13 +268,13 @@ function MemberList({
 
   if (loading) {
     return (
-      <LoadingState className="flex items-center justify-center gap-2 py-6 text-sm text-(--cui-color-text-muted)" />
+      <LoadingState className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground" />
     );
   }
 
   if (error) {
     return (
-      <div className="flex items-center justify-center py-6 text-sm text-(--cui-color-foreground-danger)">
+      <div className="flex items-center justify-center py-6 text-sm text-destructive">
         {localize('com_error_load_members')}
       </div>
     );
@@ -308,7 +282,7 @@ function MemberList({
 
   if (members.length === 0 && total === 0) {
     return (
-      <div className="flex items-center justify-center py-6 text-sm text-(--cui-color-text-muted)">
+      <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
         {localize('com_access_no_members')}
       </div>
     );
@@ -316,12 +290,12 @@ function MemberList({
 
   return (
     <div className="flex flex-col">
-      <span className="mb-2 text-xs font-medium text-(--cui-color-text-muted)">
+      <span className="mb-2 text-xs font-medium text-muted-foreground">
         {localize('com_access_member_count', { count: total })}
       </span>
       <div
         className={cn(
-          'max-h-64 overflow-auto rounded-lg border border-(--cui-color-stroke-default)',
+          'max-h-64 overflow-auto rounded-lg border border-border',
           fetching && 'opacity-60 transition-opacity',
         )}
       >
@@ -332,7 +306,7 @@ function MemberList({
               key={member.userId}
               className={cn(
                 'flex items-center justify-between px-3 py-2',
-                i < members.length - 1 && 'border-b border-(--cui-color-stroke-default)',
+                i < members.length - 1 && 'border-b border-border',
                 staged && 'opacity-40',
               )}
             >
@@ -341,13 +315,13 @@ function MemberList({
                 <div className="flex flex-col">
                   <span
                     className={cn(
-                      'text-sm font-medium text-(--cui-color-text-default)',
+                      'text-sm font-medium text-foreground',
                       staged && 'line-through',
                     )}
                   >
                     {member.name}
                   </span>
-                  <span className="text-xs text-(--cui-color-text-muted)">{member.email}</span>
+                  <span className="text-xs text-muted-foreground">{member.email}</span>
                 </div>
               </div>
               {canManage && !staged && (

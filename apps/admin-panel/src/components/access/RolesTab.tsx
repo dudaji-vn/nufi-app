@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
-import { Button } from '@clickhouse/click-ui';
+import { Plus } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type * as t from '@/types';
+import { Button } from '@/components/ui';
 import {
   LoadingState,
   Pagination,
@@ -72,7 +73,7 @@ export function RolesTab({ onCreateRole }: t.RolesTabProps) {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto py-2 pr-1">
+    <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-1 py-2">
       <div className="flex items-center justify-between gap-3">
         <SearchInput
           value={search}
@@ -80,9 +81,8 @@ export function RolesTab({ onCreateRole }: t.RolesTabProps) {
           placeholder={localize('com_access_search_roles')}
         />
         <Button
-          type="secondary"
-          iconLeft="plus"
-          label={localize('com_access_create_role')}
+          type="button"
+          variant="outline"
           onClick={onCreateRole}
           disabled={!canManage}
           aria-disabled={!canManage || undefined}
@@ -91,7 +91,10 @@ export function RolesTab({ onCreateRole }: t.RolesTabProps) {
               ? localize('com_cap_no_permission', { cap: SystemCapabilities.MANAGE_ROLES })
               : undefined
           }
-        />
+        >
+          <Plus />
+          {localize('com_access_create_role')}
+        </Button>
       </div>
 
       {paged.length === 0 ? (
@@ -107,25 +110,25 @@ export function RolesTab({ onCreateRole }: t.RolesTabProps) {
           {paged.map((role) => (
             <div
               key={role.id}
-              className="mb-2 flex items-center gap-3 rounded-lg border border-(--cui-color-stroke-default) bg-(--cui-color-background-panel) px-3 py-3"
+              className="mb-2 flex items-center gap-3 rounded-lg border border-border bg-card px-3 py-3"
             >
               <button
                 type="button"
                 onClick={() => setEditTarget(role)}
-                className="-my-2 -ml-2 min-w-0 flex-1 cursor-pointer rounded py-3 pl-3 text-left outline-none focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-(--cui-color-outline)"
+                className="-my-2 -ml-2 min-w-0 flex-1 cursor-pointer rounded py-3 pl-3 text-left outline-none focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-ring"
               >
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-(--cui-color-text-default) hover:underline">
+                  <span className="text-sm font-medium text-foreground hover:underline">
                     {role.name}
                   </span>
                   {role.isSystemRole && (
-                    <span className="inline-block rounded-full bg-(--cui-color-background-secondary) px-2 py-0.5 text-[10px] font-medium text-(--cui-color-text-default)">
+                    <span className="inline-block rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-foreground">
                       {localize('com_access_system_role')}
                     </span>
                   )}
                 </div>
                 {role.description && (
-                  <div className="truncate text-xs text-(--cui-color-text-muted)">
+                  <div className="truncate text-xs text-muted-foreground">
                     {role.description}
                   </div>
                 )}

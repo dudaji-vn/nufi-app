@@ -1,10 +1,15 @@
-import { Command } from 'cmdk';
-import { Icon } from '@clickhouse/click-ui';
 import { useRouter } from '@tanstack/react-router';
-import { useCallback, useRef, useState } from 'react';
-import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
-import { Title as DialogTitle, Description as DialogDescription } from '@radix-ui/react-dialog';
+import { useCallback, useState } from 'react';
+import { HelpCircle, Home, Lock, Monitor, Moon, Settings, Sun, Users } from 'lucide-react';
 import type * as t from '@/types';
+import {
+  CommandDialog,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui';
 import { CONFIG_TABS } from './configuration/configMeta';
 import { useSearchIndex, useLocalize } from '@/hooks';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -16,14 +21,6 @@ export function CommandMenu({ open, onOpenChange }: t.CommandMenuProps) {
   const { items: configSections } = useSearchIndex(localize, open);
 
   const [search, setSearch] = useState('');
-  const listRef = useRef<HTMLDivElement>(null);
-
-  const handleSearchChange = useCallback((value: string) => {
-    setSearch(value);
-    if (listRef.current) {
-      listRef.current.scrollTop = 0;
-    }
-  }, []);
 
   const close = useCallback(() => onOpenChange(false), [onOpenChange]);
 
@@ -44,133 +41,111 @@ export function CommandMenu({ open, onOpenChange }: t.CommandMenuProps) {
   );
 
   return (
-    <Command.Dialog
-      open={open}
-      onOpenChange={onOpenChange}
-      label={localize('com_cmdk_label')}
-      overlayClassName="cmdk-overlay"
-      contentClassName="cmdk-content"
-    >
-      <VisuallyHidden>
-        <DialogTitle>{localize('com_cmdk_label')}</DialogTitle>
-        <DialogDescription>{localize('com_cmdk_label')}</DialogDescription>
-      </VisuallyHidden>
-      <Command.Input
+    <CommandDialog open={open} onOpenChange={onOpenChange}>
+      <CommandInput
         value={search}
-        onValueChange={handleSearchChange}
+        onValueChange={setSearch}
         placeholder={localize('com_cmdk_placeholder')}
-        className="flex w-full border-b border-(--cui-color-stroke-default) bg-transparent px-4 py-3 text-sm text-(--cui-color-text-default) outline-none placeholder:text-(--cui-color-text-muted)"
       />
-      <Command.List ref={listRef} className="max-h-85 overflow-y-auto p-2">
-        <Command.Empty className="px-4 py-8 text-center text-sm text-(--cui-color-text-muted)">
-          {localize('com_cmdk_no_results')}
-        </Command.Empty>
+      <CommandList>
+        <CommandEmpty>{localize('com_cmdk_no_results')}</CommandEmpty>
 
-        <Command.Group heading={localize('com_cmdk_group_navigation')} className="cmdk-group">
-          <CommandItem
-            icon="home"
-            label={localize('com_nav_dashboard')}
-            onSelect={() => navigateTo('/')}
-          />
-          <CommandItem
-            icon="settings"
-            label={localize('com_nav_configuration')}
-            onSelect={() => navigateTo('/configuration')}
-          />
-          <CommandItem
-            icon="user"
-            label={localize('com_nav_access')}
-            onSelect={() => navigateTo('/access')}
-          />
-          <CommandItem
-            icon="lock"
-            label={localize('com_nav_grants')}
-            onSelect={() => navigateTo('/grants')}
-          />
-          <CommandItem
-            icon="question"
-            label={localize('com_nav_help')}
-            onSelect={() => navigateTo('/help')}
-          />
-        </Command.Group>
+        <CommandGroup heading={localize('com_cmdk_group_navigation')}>
+          <CommandItem onSelect={() => navigateTo('/')}>
+            <Home className="h-4 w-4 text-muted-foreground" />
+            <span>{localize('com_nav_dashboard')}</span>
+          </CommandItem>
+          <CommandItem onSelect={() => navigateTo('/configuration')}>
+            <Settings className="h-4 w-4 text-muted-foreground" />
+            <span>{localize('com_nav_configuration')}</span>
+          </CommandItem>
+          <CommandItem onSelect={() => navigateTo('/access')}>
+            <Users className="h-4 w-4 text-muted-foreground" />
+            <span>{localize('com_nav_access')}</span>
+          </CommandItem>
+          <CommandItem onSelect={() => navigateTo('/grants')}>
+            <Lock className="h-4 w-4 text-muted-foreground" />
+            <span>{localize('com_nav_grants')}</span>
+          </CommandItem>
+          <CommandItem onSelect={() => navigateTo('/help')}>
+            <HelpCircle className="h-4 w-4 text-muted-foreground" />
+            <span>{localize('com_nav_help')}</span>
+          </CommandItem>
+        </CommandGroup>
 
-        <Command.Group heading={localize('com_cmdk_group_tabs')} className="cmdk-group">
+        <CommandGroup heading={localize('com_cmdk_group_tabs')}>
           {CONFIG_TABS.map((tab) => (
             <CommandItem
               key={`config-tab-${tab.id}`}
-              icon="settings"
-              label={localize(tab.labelKey)}
               keywords={['configuration', 'config', tab.id]}
               onSelect={() => navigateTo('/configuration', { tab: tab.id })}
-            />
+            >
+              <Settings className="h-4 w-4 text-muted-foreground" />
+              <span>{localize(tab.labelKey)}</span>
+            </CommandItem>
           ))}
           <CommandItem
-            icon="user"
-            label={localize('com_access_tab_groups')}
             keywords={['access', 'groups', 'permissions']}
             onSelect={() => navigateTo('/access', { tab: 'groups' })}
-          />
+          >
+            <Users className="h-4 w-4 text-muted-foreground" />
+            <span>{localize('com_access_tab_groups')}</span>
+          </CommandItem>
           <CommandItem
-            icon="user"
-            label={localize('com_access_tab_roles')}
             keywords={['access', 'roles', 'permissions']}
             onSelect={() => navigateTo('/access', { tab: 'roles' })}
-          />
-        </Command.Group>
+          >
+            <Users className="h-4 w-4 text-muted-foreground" />
+            <span>{localize('com_access_tab_roles')}</span>
+          </CommandItem>
+        </CommandGroup>
 
         {configSections.length > 0 && (
-          <Command.Group heading={localize('com_cmdk_group_sections')} className="cmdk-group">
+          <CommandGroup heading={localize('com_cmdk_group_sections')}>
             {configSections.map((item) => (
               <CommandItem
                 key={item.id}
-                icon="settings"
-                label={item.label}
+                value={item.label}
                 keywords={item.keywords}
                 onSelect={() => item.tab && navigateTo('/configuration', { tab: item.tab })}
-              />
+              >
+                <Settings className="h-4 w-4 text-muted-foreground" />
+                <span>{item.label}</span>
+              </CommandItem>
             ))}
-          </Command.Group>
+          </CommandGroup>
         )}
 
-        <Command.Group heading={localize('com_cmdk_group_actions')} className="cmdk-group">
+        <CommandGroup heading={localize('com_cmdk_group_actions')}>
           <CommandItem
-            icon="light-bulb-on"
-            label={localize('com_cmdk_set_theme', { theme: localize('com_nav_theme_light') })}
             keywords={['theme', 'light', 'mode', 'appearance']}
             onSelect={() => selectTheme('light')}
-          />
+          >
+            <Sun className="h-4 w-4 text-muted-foreground" />
+            <span>
+              {localize('com_cmdk_set_theme', { theme: localize('com_nav_theme_light') })}
+            </span>
+          </CommandItem>
           <CommandItem
-            icon="moon"
-            label={localize('com_cmdk_set_theme', { theme: localize('com_nav_theme_dark') })}
             keywords={['theme', 'dark', 'mode', 'appearance']}
             onSelect={() => selectTheme('dark')}
-          />
+          >
+            <Moon className="h-4 w-4 text-muted-foreground" />
+            <span>
+              {localize('com_cmdk_set_theme', { theme: localize('com_nav_theme_dark') })}
+            </span>
+          </CommandItem>
           <CommandItem
-            icon="display"
-            label={localize('com_cmdk_set_theme', { theme: localize('com_nav_theme_system') })}
             keywords={['theme', 'system', 'auto', 'mode', 'appearance']}
             onSelect={() => selectTheme('system')}
-          />
-        </Command.Group>
-      </Command.List>
-    </Command.Dialog>
-  );
-}
-
-function CommandItem({ icon, label, keywords, onSelect }: t.CommandItemProps) {
-  return (
-    <Command.Item
-      value={label}
-      keywords={keywords}
-      onSelect={onSelect}
-      className="flex cursor-pointer items-center gap-3 rounded-(--cui-radii-sm) px-3 py-2 text-sm text-(--cui-color-text-default) aria-selected:bg-(--cui-color-background-active)"
-    >
-      {icon && (
-        <span aria-hidden="true" className="shrink-0 text-(--cui-color-text-muted)">
-          <Icon name={icon} size="sm" />
-        </span>
-      )}
-      <span className="truncate">{label}</span>
-    </Command.Item>
+          >
+            <Monitor className="h-4 w-4 text-muted-foreground" />
+            <span>
+              {localize('com_cmdk_set_theme', { theme: localize('com_nav_theme_system') })}
+            </span>
+          </CommandItem>
+        </CommandGroup>
+      </CommandList>
+    </CommandDialog>
   );
 }

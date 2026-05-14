@@ -1,5 +1,13 @@
 import { useRef, useLayoutEffect } from 'react';
 import type * as t from '@/types';
+import {
+  Input,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui';
 import { AddItemButton, TrashButton } from '@/components/shared';
 import { useLocalize } from '@/hooks';
 
@@ -18,12 +26,12 @@ export function ListField({
   const listRef = useRef<HTMLDivElement>(null);
   const focusLastRef = useRef(false);
 
-  // useLayoutEffect runs synchronously after DOM mutation but before paint,
-  // so focus happens instantly with no visible flash to another element.
   useLayoutEffect(() => {
     if (focusLastRef.current) {
       focusLastRef.current = false;
-      const items = listRef.current?.querySelectorAll<HTMLElement>('input, select');
+      const items = listRef.current?.querySelectorAll<HTMLElement>(
+        'input, [role="combobox"]',
+      );
       items?.[items.length - 1]?.focus();
     }
   });
@@ -57,39 +65,46 @@ export function ListField({
       aria-label={ariaLabel}
     >
       {values.map((value, index) => {
-        const itemLabel = `${resolvedItemLabel} ${index + 1}`;
+        const itemAriaLabel = `${resolvedItemLabel} ${index + 1}`;
 
         let control: React.ReactNode;
         if (options) {
           control = (
-            <select
-              value={value}
-              onChange={(e) => handleChange(index, e.target.value)}
+            <Select
+              value={value || undefined}
+              onValueChange={(v) => handleChange(index, v)}
               disabled={disabled}
-              aria-label={itemLabel}
-              className="config-input flex-1"
             >
-              {options.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger aria-label={itemAriaLabel} className="flex-1">
+                <SelectValue placeholder={resolvedPlaceholder} />
+              </SelectTrigger>
+              <SelectContent>
+                {options.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           );
         } else if (variant === 'inline-edit') {
           control = (
-            <input
+            <Input
               type="text"
               value={value}
               onChange={(e) => handleChange(index, e.target.value)}
               placeholder={resolvedPlaceholder}
               disabled={disabled}
-              aria-label={itemLabel}
-              className="config-input flex-1"
+              aria-label={itemAriaLabel}
+              className="flex-1"
             />
           );
         } else {
-          control = <span className="config-input flex-1">{value}</span>;
+          control = (
+            <span className="flex h-10 flex-1 items-center rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground">
+              {value}
+            </span>
+          );
         }
 
         return (

@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom';
-import { Icon } from '@clickhouse/click-ui';
+import { Search } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import type { AdminUserSearchResult } from '@librechat/data-schemas';
@@ -115,7 +115,7 @@ export function UserSearchInline({
           id={listboxId}
           role="listbox"
           style={positionStyle}
-          className="max-h-48 overflow-auto rounded-lg border border-(--cui-color-stroke-default) bg-(--cui-color-background-panel) shadow-lg"
+          className="max-h-48 overflow-auto rounded-md border border-border bg-popover shadow-lg"
         >
           {results.map((user, i) => (
             <li
@@ -127,14 +127,14 @@ export function UserSearchInline({
               className={cn(
                 'flex cursor-pointer items-center gap-3 px-3 py-2 text-sm transition-colors',
                 i === activeIndex
-                  ? 'bg-(--cui-color-background-active) text-(--cui-color-text-default)'
-                  : 'text-(--cui-color-text-default) hover:bg-(--cui-color-background-hover)',
+                  ? 'bg-accent text-accent-foreground'
+                  : 'text-popover-foreground hover:bg-accent/60 hover:text-accent-foreground',
               )}
             >
               <Avatar name={user.name} size="sm" />
               <div className="flex flex-col">
                 <span className="font-medium">{user.name}</span>
-                <span className="text-xs text-(--cui-color-text-muted)">{user.email}</span>
+                <span className="text-xs text-muted-foreground">{user.email}</span>
               </div>
             </li>
           ))}
@@ -145,7 +145,7 @@ export function UserSearchInline({
       return (
         <div
           style={positionStyle}
-          className="rounded-lg border border-(--cui-color-stroke-default) bg-(--cui-color-background-panel) px-3 py-3 text-center text-sm text-(--cui-color-text-muted) shadow-lg"
+          className="rounded-md border border-border bg-popover px-3 py-3 text-center text-sm text-muted-foreground shadow-lg"
         >
           {localize('com_access_no_users_found')}
         </div>
@@ -185,12 +185,10 @@ export function UserSearchInline({
 
   return (
     <div className="relative">
-      <span
+      <Search
         aria-hidden="true"
-        className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-(--cui-color-text-muted)"
-      >
-        <Icon name="search" size="xs" />
-      </span>
+        className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+      />
       <input
         ref={inputRef}
         type="text"
@@ -210,7 +208,7 @@ export function UserSearchInline({
         aria-controls={listboxId}
         role="combobox"
         disabled={disabled}
-        className="w-full rounded-lg border border-(--cui-color-stroke-default) bg-(--cui-color-background-default) py-2 pr-3 pl-9 text-sm text-(--cui-color-text-default) placeholder:text-(--cui-color-text-disabled)"
+        className="w-full rounded-md border border-input bg-background py-2 pr-3 pl-9 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
       />
       {hasResults &&
         dropdownRect &&

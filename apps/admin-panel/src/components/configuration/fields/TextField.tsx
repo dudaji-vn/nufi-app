@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { TextField as CUITextField } from '@clickhouse/click-ui';
 import type * as t from '@/types';
+import { Input } from '@/components/ui';
 import { useLocalize } from '@/hooks';
 
 export function TextField({
@@ -31,20 +31,19 @@ export function TextField({
   };
 
   return (
-    <div className="cui-field max-w-75">
-      <CUITextField
-        id={id}
-        type={type}
-        value={local}
-        onChange={setLocal}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') commit();
-        }}
-        placeholder={placeholder ?? localize('com_ui_enter_value')}
-        disabled={disabled}
-        {...ariaProps}
-      />
-    </div>
+    <Input
+      id={id}
+      type={type}
+      value={local}
+      onChange={(e) => setLocal(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') commit();
+      }}
+      placeholder={placeholder ?? localize('com_ui_enter_value')}
+      disabled={disabled}
+      className="max-w-75"
+      {...ariaProps}
+    />
   );
 }

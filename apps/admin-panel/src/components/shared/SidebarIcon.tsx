@@ -1,4 +1,4 @@
-export default function SidebarIcon({ className }: { className?: string }) {
+export function SidebarIcon({ className }: { className?: string }) {
   return (
     <svg
       width="24"

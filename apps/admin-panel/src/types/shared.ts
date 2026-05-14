@@ -1,6 +1,6 @@
 import type { AdminUserSearchResult } from '@librechat/data-schemas';
 import type { ReactNode, RefObject } from 'react';
-import type { MenuIconName } from './scope';
+import type { LucideIconComponent } from './layout';
 
 export interface ReorderableListHandle {
   discard: () => void;
@@ -25,7 +25,7 @@ export interface ReorderableListProps<T extends { id: string }> {
 
 export interface KebabMenuItem {
   label: string;
-  icon?: MenuIconName;
+  icon?: LucideIconComponent;
   danger?: boolean;
   onClick: () => void;
 }

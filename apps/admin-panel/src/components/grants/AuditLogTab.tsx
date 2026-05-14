@@ -81,8 +81,8 @@ export function AuditLogTab() {
                 className={cn(
                   'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
                   actionFilter === filter
-                    ? 'bg-(--cui-color-background-active) text-(--cui-color-text-default)'
-                    : 'text-(--cui-color-text-muted) hover:bg-(--cui-color-background-hover) hover:text-(--cui-color-text-default)',
+                    ? 'bg-accent text-foreground'
+                    : 'text-muted-foreground hover:bg-accent hover:text-foreground',
                 )}
               >
                 {localize(ACTION_FILTER_LABELS[filter])}
@@ -91,7 +91,7 @@ export function AuditLogTab() {
           </div>
 
           <div className="flex items-center gap-2">
-            <label htmlFor="audit-date-from" className="text-xs text-(--cui-color-text-muted)">
+            <label htmlFor="audit-date-from" className="text-xs text-muted-foreground">
               {localize('com_audit_date_from')}
             </label>
             <input
@@ -99,11 +99,11 @@ export function AuditLogTab() {
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
-              className="rounded-lg border border-(--cui-color-stroke-default) bg-(--cui-color-background-default) px-3 py-1.5 text-sm text-(--cui-color-text-default) transition-colors focus-visible:ring-2 focus-visible:ring-(--cui-color-stroke-active) focus-visible:outline-none"
+              className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
             />
           </div>
           <div className="flex items-center gap-2">
-            <label htmlFor="audit-date-to" className="text-xs text-(--cui-color-text-muted)">
+            <label htmlFor="audit-date-to" className="text-xs text-muted-foreground">
               {localize('com_audit_date_to')}
             </label>
             <input
@@ -111,7 +111,7 @@ export function AuditLogTab() {
               type="date"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
-              className="rounded-lg border border-(--cui-color-stroke-default) bg-(--cui-color-background-default) px-3 py-1.5 text-sm text-(--cui-color-text-default) transition-colors focus-visible:ring-2 focus-visible:ring-(--cui-color-stroke-active) focus-visible:outline-none"
+              className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
             />
           </div>
         </div>
@@ -121,7 +121,7 @@ export function AuditLogTab() {
           onClick={handleExport}
           disabled={exporting || entries.length === 0}
           aria-label={localize('com_audit_export_csv')}
-          className="flex shrink-0 items-center gap-1.5 rounded-lg border border-(--cui-color-stroke-default) bg-transparent px-3 py-1.5 text-sm text-(--cui-color-text-default) transition-colors hover:bg-(--cui-color-background-hover) disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-transparent px-3 py-1.5 text-sm text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
         >
           <span aria-hidden="true">
             <Icon name="download" size="xs" />
@@ -131,7 +131,7 @@ export function AuditLogTab() {
       </div>
 
       <div
-        className="min-h-0 flex-1 overflow-auto rounded-lg border border-(--cui-color-stroke-default)"
+        className="min-h-0 flex-1 overflow-auto rounded-lg border border-border"
         tabIndex={0}
         role="region"
         aria-label={localize('com_audit_title')}
@@ -139,25 +139,25 @@ export function AuditLogTab() {
         <table className="w-full text-left text-sm">
           <caption className="sr-only">{localize('com_audit_title')}</caption>
           <thead className="sticky top-0 z-(--z-sticky)">
-            <tr className="border-b border-(--cui-color-stroke-default) bg-(--cui-color-background-muted)">
+            <tr className="border-b border-border bg-muted">
               <th
                 scope="col"
-                className="w-24 px-4 py-2.5 font-medium text-(--cui-color-text-muted)"
+                className="w-24 px-4 py-2.5 font-medium text-muted-foreground"
               >
                 {localize('com_audit_col_action')}
               </th>
-              <th scope="col" className="px-4 py-2.5 font-medium text-(--cui-color-text-muted)">
+              <th scope="col" className="px-4 py-2.5 font-medium text-muted-foreground">
                 {localize('com_audit_col_target')}
               </th>
-              <th scope="col" className="px-4 py-2.5 font-medium text-(--cui-color-text-muted)">
+              <th scope="col" className="px-4 py-2.5 font-medium text-muted-foreground">
                 {localize('com_audit_col_capability')}
               </th>
-              <th scope="col" className="px-4 py-2.5 font-medium text-(--cui-color-text-muted)">
+              <th scope="col" className="px-4 py-2.5 font-medium text-muted-foreground">
                 {localize('com_audit_col_actor')}
               </th>
               <th
                 scope="col"
-                className="px-4 py-2.5 font-medium whitespace-nowrap text-(--cui-color-text-muted)"
+                className="px-4 py-2.5 font-medium whitespace-nowrap text-muted-foreground"
               >
                 {localize('com_audit_col_timestamp')}
               </th>
@@ -178,7 +178,7 @@ export function AuditLogTab() {
         </table>
       </div>
 
-      <p className="text-xs text-(--cui-color-text-muted)" aria-live="polite" aria-atomic="true">
+      <p className="text-xs text-muted-foreground" aria-live="polite" aria-atomic="true">
         {localize(entries.length === 1 ? 'com_audit_entry_count' : 'com_audit_entry_count_plural', {
           count: entries.length,
         })}

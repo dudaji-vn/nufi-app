@@ -118,7 +118,7 @@ export function ArrayObjectField({
         />
       ))}
       {items.length === 0 && !hideAddButton && (
-        <p className="py-2 text-sm text-(--cui-color-text-muted)">
+        <p className="py-2 text-sm text-muted-foreground">
           {localize('com_config_no_entries')}
         </p>
       )}

@@ -1,28 +1,29 @@
+import { Lock, Settings2, User, Users } from 'lucide-react';
 import { PrincipalType } from 'librechat-data-provider';
 import type * as t from '@/types';
 
 export const SCOPE_TYPE_CONFIG: Record<t.ScopePrincipalType | 'BASE', t.ScopeTypeConfigEntry> = {
   BASE: {
-    icon: 'settings',
-    color: 'var(--cui-color-accent-success)',
+    icon: Settings2,
+    color: 'hsl(var(--primary))',
     labelKey: 'com_scope_base_config',
     badgeClass: '',
   },
   [PrincipalType.ROLE]: {
-    icon: 'lock',
-    color: 'var(--cui-color-accent-warning)',
+    icon: Lock,
+    color: 'hsl(var(--secondary))',
     labelKey: 'com_scope_roles',
     badgeClass: 'badge-role',
   },
   [PrincipalType.GROUP]: {
-    icon: 'users',
-    color: 'var(--cui-color-accent-info)',
+    icon: Users,
+    color: 'hsl(var(--primary))',
     labelKey: 'com_scope_groups',
     badgeClass: 'badge-group',
   },
   [PrincipalType.USER]: {
-    icon: 'user',
-    color: 'var(--cui-color-accent-user)',
+    icon: User,
+    color: 'hsl(var(--secondary))',
     labelKey: 'com_scope_users',
     badgeClass: 'badge-user',
   },

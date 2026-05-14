@@ -1,11 +1,18 @@
-import { Button, Dialog } from '@clickhouse/click-ui';
 import type * as t from '@/types';
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui';
 import { useLocalize } from '@/hooks';
 import { cn } from '@/utils';
 
-const sizeClasses: Record<string, string> = {
+const sizeClasses: Record<NonNullable<t.FormDialogProps['size']>, string> = {
   sm: '',
-  lg: '!max-w-2xl',
+  lg: 'sm:max-w-2xl',
 };
 
 export function FormDialog({
@@ -15,7 +22,7 @@ export function FormDialog({
   submitDisabled,
   saving,
   error,
-  size,
+  size = 'sm',
   onSubmit,
   onClose,
   children,
@@ -34,34 +41,29 @@ export function FormDialog({
         if (!isOpen) onClose();
       }}
     >
-      <Dialog.Content
-        title={title}
-        showClose
-        onClose={onClose}
-        className={cn('modal-frost', size && sizeClasses[size])}
-      >
-        <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-          {children}
-          {error && (
-            <p role="alert" className="text-sm text-(--cui-color-text-danger)">
-              {error}
-            </p>
-          )}
-          <div className="flex items-center justify-end gap-2">
-            <Button
-              type="secondary"
-              label={localize('com_ui_cancel')}
-              onClick={onClose}
-              disabled={saving}
-            />
-            <Button
-              type="primary"
-              label={submitLabel}
-              disabled={submitDisabled || saving}
-            />
+      <DialogContent className={cn(sizeClasses[size])}>
+        <DialogHeader className="shrink-0">
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col gap-5">
+          <div className="-m-1 flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-1">
+            {children}
+            {error && (
+              <p role="alert" className="text-sm text-destructive">
+                {error}
+              </p>
+            )}
           </div>
+          <DialogFooter className="shrink-0">
+            <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
+              {localize('com_ui_cancel')}
+            </Button>
+            <Button type="submit" disabled={submitDisabled || saving}>
+              {submitLabel}
+            </Button>
+          </DialogFooter>
         </form>
-      </Dialog.Content>
+      </DialogContent>
     </Dialog>
   );
 }

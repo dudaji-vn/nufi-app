@@ -1,7 +1,15 @@
 import yaml from 'js-yaml';
-import { Badge, Button, Dialog } from '@clickhouse/click-ui';
 import type { ReactNode } from 'react';
 import type * as t from '@/types';
+import {
+  Badge,
+  Button,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui';
 import { useLocalize } from '@/hooks';
 
 export function ConfirmSaveDialog({
@@ -28,40 +36,31 @@ export function ConfirmSaveDialog({
         if (!isOpen) onCancel();
       }}
     >
-      <Dialog.Content
-        title={localize('com_config_confirm_save_title')}
-        showClose
-        onClose={onCancel}
-        className="modal-frost"
-      >
-        <div className="flex flex-col gap-4">
-          <p className="text-sm text-(--cui-color-text-muted)">{countLabel}</p>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{localize('com_config_confirm_save_title')}</DialogTitle>
+        </DialogHeader>
 
-          <div className="flex max-h-80 flex-col gap-3 overflow-y-auto pr-1">
-            {entries.map(([path, newValue]) => {
-              const oldValue = originalValues?.[path];
-              return <ChangeCard key={path} path={path} oldValue={oldValue} newValue={newValue} />;
-            })}
-          </div>
+        <p className="text-sm text-muted-foreground">{countLabel}</p>
 
-          {error && <p className="text-sm text-(--cui-color-text-danger)">{error}</p>}
-
-          <div className="flex items-center justify-end gap-2">
-            <Button
-              type="secondary"
-              label={localize('com_ui_cancel')}
-              onClick={onCancel}
-              disabled={saving}
-            />
-            <Button
-              type="primary"
-              label={saving ? localize('com_ui_loading') : localize('com_config_save')}
-              onClick={onConfirm}
-              disabled={saving}
-            />
-          </div>
+        <div className="flex max-h-80 flex-col gap-3 overflow-y-auto pr-1">
+          {entries.map(([path, newValue]) => {
+            const oldValue = originalValues?.[path];
+            return <ChangeCard key={path} path={path} oldValue={oldValue} newValue={newValue} />;
+          })}
         </div>
-      </Dialog.Content>
+
+        {error && <p className="text-sm text-destructive">{error}</p>}
+
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onCancel} disabled={saving}>
+            {localize('com_ui_cancel')}
+          </Button>
+          <Button type="button" onClick={onConfirm} disabled={saving}>
+            {saving ? localize('com_ui_loading') : localize('com_config_save')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
     </Dialog>
   );
 }
@@ -92,23 +91,27 @@ function ChangeCard({
   const displayPath = resolvePathLabel(path, newValue, oldValue);
 
   return (
-    <div className="rounded-lg border border-(--cui-color-stroke-default) bg-(--cui-color-background-muted)">
-      <div className="flex items-center gap-2 border-b border-(--cui-color-stroke-default) px-3 py-2">
-        <span className="font-mono text-xs font-medium text-(--cui-color-text-default)">
+    <div className="rounded-lg border border-border bg-muted">
+      <div className="flex items-center gap-2 border-b border-border px-3 py-2">
+        <span className="font-mono text-xs font-medium text-foreground">
           {displayPath}
         </span>
         {isAddition && (
-          <Badge text={localize('com_config_field_added')} state="success" size="sm" />
+          <Badge className="border-emerald-500/30 bg-emerald-500/15 px-2 py-0 text-[10px] font-semibold text-emerald-400">
+            {localize('com_config_field_added')}
+          </Badge>
         )}
         {isRemoval && (
-          <Badge text={localize('com_config_field_removed')} state="danger" size="sm" />
+          <Badge variant="destructive" className="px-2 py-0 text-[10px] font-semibold">
+            {localize('com_config_field_removed')}
+          </Badge>
         )}
       </div>
 
-      <div className="flex flex-col gap-0 divide-y divide-(--cui-color-stroke-default)">
+      <div className="flex flex-col gap-0 divide-y divide-border">
         {!isAddition && (
           <div className="flex items-baseline gap-2 px-3 py-2">
-            <span className="w-12 shrink-0 text-[10px] font-medium tracking-wide text-(--cui-color-text-muted) uppercase">
+            <span className="w-12 shrink-0 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
               {localize('com_config_field_before')}
             </span>
             <div className="min-w-0 flex-1 overflow-x-auto">
@@ -118,7 +121,7 @@ function ChangeCard({
         )}
         {!isRemoval && (
           <div className="flex items-baseline gap-2 px-3 py-2">
-            <span className="w-12 shrink-0 text-[10px] font-medium tracking-wide text-(--cui-color-text-muted) uppercase">
+            <span className="w-12 shrink-0 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
               {localize('com_config_field_after')}
             </span>
             <div className="min-w-0 flex-1 overflow-x-auto">
@@ -151,7 +154,7 @@ function ValueDisplay({
     return (
       <code
         className={`block font-mono text-[11px] leading-snug whitespace-pre ${
-          variant === 'new' ? 'text-(--cui-color-text-default)' : 'text-(--cui-color-text-muted)'
+          variant === 'new' ? 'text-foreground' : 'text-muted-foreground'
         }`}
       >
         {formatted}
@@ -163,8 +166,8 @@ function ValueDisplay({
     <span
       className={`text-xs ${
         variant === 'new'
-          ? 'font-medium text-(--cui-color-text-default)'
-          : 'text-(--cui-color-text-muted)'
+          ? 'font-medium text-foreground'
+          : 'text-muted-foreground'
       }`}
     >
       {formatted}

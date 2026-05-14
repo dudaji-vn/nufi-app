@@ -1,5 +1,5 @@
-import { Button } from '@clickhouse/click-ui';
 import type * as t from '@/types';
+import { Button } from '@/components/ui';
 
 export function StickyActionBar({
   discardLabel,
@@ -9,15 +9,17 @@ export function StickyActionBar({
   message,
 }: t.StickyActionBarProps) {
   return (
-    <div className="flex shrink-0 animate-[slideUp_200ms_ease-out] items-center gap-2 border-t border-(--cui-color-stroke-default) bg-(--cui-color-background-default) px-6 py-3">
+    <div className="flex shrink-0 animate-[slideUp_200ms_ease-out] items-center gap-2 border-t border-border bg-card px-6 py-3">
       {message && (
-        <span className="flex-1 text-sm font-medium text-(--cui-color-text-default)">
-          {message}
-        </span>
+        <span className="flex-1 text-sm font-medium text-foreground">{message}</span>
       )}
       <div className="ml-auto flex items-center gap-2">
-        <Button type="secondary" label={discardLabel} onClick={onDiscard} />
-        <Button type="primary" label={saveLabel} onClick={onSave} />
+        <Button variant="outline" size="sm" onClick={onDiscard}>
+          {discardLabel}
+        </Button>
+        <Button size="sm" onClick={onSave}>
+          {saveLabel}
+        </Button>
       </div>
     </div>
   );

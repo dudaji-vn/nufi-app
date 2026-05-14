@@ -7,4 +7,5 @@ export * from './useLocalize';
 export * from './useProfileMutations';
 export * from './useReorderVoiceover';
 export * from './useSearchIndex';
+export * from './useSidebar';
 export * from './useStripAriaExpanded';

@@ -619,6 +619,7 @@
   "com_config_section_summarization": "Summarization",
   "com_config_section_summarization_desc": "Configure conversation summarization behavior",
   "com_auth_title": "Admin Panel",
+  "com_auth_subtitle": "Sign in to manage your workspace",
   "com_auth_email_label": "Email",
   "com_auth_email_placeholder": "admin@example.com",
   "com_auth_password_label": "Password",

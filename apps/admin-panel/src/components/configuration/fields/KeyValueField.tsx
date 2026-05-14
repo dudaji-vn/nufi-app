@@ -1,7 +1,13 @@
-import { Select } from '@clickhouse/click-ui';
 import TextareaAutosize from 'react-textarea-autosize';
 import { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import type * as t from '@/types';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui';
 import { AddItemButton, TrashButton } from '@/components/shared';
 import { useLocalize } from '@/hooks';
 
@@ -106,6 +112,34 @@ function LocalTextarea({
   );
 }
 
+function TypeSelect({
+  value,
+  options,
+  onChange,
+  ariaLabel,
+}: {
+  value: t.KVValueType;
+  options: t.KVValueType[];
+  onChange: (next: t.KVValueType) => void;
+  ariaLabel: string;
+}) {
+  const localize = useLocalize();
+  return (
+    <Select value={value} onValueChange={(v) => onChange(v as t.KVValueType)}>
+      <SelectTrigger className="h-9 w-20 shrink-0 text-xs" aria-label={ariaLabel}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((vt) => (
+          <SelectItem key={vt} value={vt}>
+            {localize(TYPE_LABEL_KEYS[vt])}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
 export function KeyValueField({
   id,
   pairs,
@@ -164,15 +198,19 @@ export function KeyValueField({
           className="config-input max-w-37.5 flex-1"
         />
         {vType === 'boolean' ? (
-          <div className="select-field-a11y flex-2">
+          <div className="flex-2">
             <Select
               value={pair.value === 'true' ? 'true' : 'false'}
-              onSelect={(v) => handleChange(index, 'value', v)}
+              onValueChange={(v) => handleChange(index, 'value', v)}
               disabled={disabled}
-              aria-label={valueLabel}
             >
-              <Select.Item value="true">{localize('com_ui_true')}</Select.Item>
-              <Select.Item value="false">{localize('com_ui_false')}</Select.Item>
+              <SelectTrigger className="h-9" aria-label={valueLabel}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="true">{localize('com_ui_true')}</SelectItem>
+                <SelectItem value="false">{localize('com_ui_false')}</SelectItem>
+              </SelectContent>
             </Select>
           </div>
         ) : (
@@ -187,19 +225,12 @@ export function KeyValueField({
           />
         )}
         {!disabled && availableTypes.length > 1 && (
-          <div className="select-field-a11y w-20 shrink-0">
-            <Select
-              value={vType}
-              onSelect={(v) => handleTypeChange(index, v as t.KVValueType)}
-              aria-label={`${localize('com_config_field_type')} ${index + 1}`}
-            >
-              {availableTypes.map((vt) => (
-                <Select.Item key={vt} value={vt}>
-                  {localize(TYPE_LABEL_KEYS[vt])}
-                </Select.Item>
-              ))}
-            </Select>
-          </div>
+          <TypeSelect
+            value={vType}
+            options={availableTypes}
+            onChange={(next) => handleTypeChange(index, next)}
+            ariaLabel={`${localize('com_config_field_type')} ${index + 1}`}
+          />
         )}
         {!disabled && (
           <TrashButton
@@ -223,19 +254,12 @@ export function KeyValueField({
           className="config-input min-w-0 flex-1"
         />
         {!disabled && availableTypes.length > 1 && (
-          <div className="select-field-a11y w-20 shrink-0">
-            <Select
-              value="json"
-              onSelect={(v) => handleTypeChange(index, v as t.KVValueType)}
-              aria-label={`${localize('com_config_field_type')} ${index + 1}`}
-            >
-              {availableTypes.map((vt) => (
-                <Select.Item key={vt} value={vt}>
-                  {localize(TYPE_LABEL_KEYS[vt])}
-                </Select.Item>
-              ))}
-            </Select>
-          </div>
+          <TypeSelect
+            value="json"
+            options={availableTypes}
+            onChange={(next) => handleTypeChange(index, next)}
+            ariaLabel={`${localize('com_config_field_type')} ${index + 1}`}
+          />
         )}
         {!disabled && (
           <TrashButton

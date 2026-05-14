@@ -1,5 +1,5 @@
-import { Tabs } from '@clickhouse/click-ui';
 import type * as t from '@/types';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui';
 import { useLocalize } from '@/hooks';
 import { cn } from '@/utils';
 
@@ -13,16 +13,12 @@ export function ConfigTabBar({
   const localize = useLocalize();
 
   return (
-    <Tabs
-      value={activeTab}
-      onValueChange={onTabChange}
-      ariaLabel={localize('com_nav_configuration')}
-    >
-      <Tabs.TriggersList>
+    <Tabs value={activeTab} onValueChange={onTabChange} aria-label={localize('com_nav_configuration')}>
+      <TabsList>
         {tabs.map((tab) => {
           const count = tabCounts?.[tab.id];
           return (
-            <Tabs.Trigger key={tab.id} value={tab.id}>
+            <TabsTrigger key={tab.id} value={tab.id}>
               <span className="flex items-center gap-1.5">
                 {localize(tab.labelKey)}
                 {count !== undefined && (
@@ -36,10 +32,10 @@ export function ConfigTabBar({
                   </span>
                 )}
               </span>
-            </Tabs.Trigger>
+            </TabsTrigger>
           );
         })}
-      </Tabs.TriggersList>
+      </TabsList>
       {children}
     </Tabs>
   );

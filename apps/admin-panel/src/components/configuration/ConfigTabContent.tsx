@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import { MultiAccordion } from '@clickhouse/click-ui';
 import type * as t from '@/types';
 import { SECTION_RENDERERS, SELF_CONTAINED_SECTION_RENDERERS } from './sections';
 import { FieldRenderer, SingleFieldRenderer } from './FieldRenderer';
@@ -143,7 +142,7 @@ export function ConfigTabContent({
 
   if ((filtering || showConfiguredOnly) && visibleSections.length === 0) {
     return (
-      <div className="flex items-center justify-center py-16 text-(--cui-color-text-muted)">
+      <div className="flex items-center justify-center py-16 text-muted-foreground">
         <span className="text-sm">
           {localize(filtering ? 'com_scope_no_changed_in_tab' : 'com_config_no_fields')}
         </span>
@@ -292,27 +291,28 @@ export function ConfigTabContent({
           );
         }
         return (
-          <MultiAccordion
-            key={group.sections[0].id}
-            type="multiple"
-            showBorder
-            showCheck={false}
-            fillWidth
-            defaultValue={group.sections.map((s) => s.id)}
-            data-top-level-accordion
-          >
-            {group.sections.map((section) => (
-              <MultiAccordion.Item
-                key={section.id}
-                id={`section-${section.id}`}
-                data-section-id={`section-${section.id}`}
-                value={section.id}
-                title={localize(section.titleKey)}
-              >
-                {renderSectionContent(section)}
-              </MultiAccordion.Item>
-            ))}
-          </MultiAccordion>
+          <div key={group.sections[0].id} data-top-level-accordion className="flex flex-col">
+            {group.sections.map((section) => {
+              const counts = countsById[section.id];
+              return (
+                <ConfigSection
+                  key={section.id}
+                  sectionId={section.id}
+                  title={localize(section.titleKey)}
+                  description={
+                    section.descriptionKey ? localize(section.descriptionKey) : undefined
+                  }
+                  learnMoreUrl={section.learnMoreUrl}
+                  configuredCount={counts?.configured ?? 0}
+                  totalCount={counts?.total ?? 0}
+                  defaultExpanded
+                  showConfiguredOnly={showConfiguredOnly}
+                >
+                  {renderSectionContent(section)}
+                </ConfigSection>
+              );
+            })}
+          </div>
         );
       })}
     </form>

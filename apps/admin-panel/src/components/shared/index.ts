@@ -11,7 +11,7 @@ export { PermissionsUnavailable } from './PermissionsUnavailable';
 export { ReorderableList } from './ReorderableList';
 export { ScreenReaderAnnouncer } from './ScreenReaderAnnouncer';
 export { SearchInput } from './SearchInput';
-export { default as SidebarIcon } from './SidebarIcon';
+export { SidebarIcon } from './SidebarIcon';
 export { SelectedMemberList } from './SelectedMemberList';
 export { StatusToggle } from './StatusToggle';
 export { StickyActionBar } from './StickyActionBar';

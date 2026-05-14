@@ -24,7 +24,7 @@ function getInitialPreference(): ThemePreference {
   } catch {
     // localStorage unavailable
   }
-  return 'system';
+  return 'dark';
 }
 
 function getSystemTheme(): ResolvedTheme {

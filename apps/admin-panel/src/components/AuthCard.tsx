@@ -1,14 +1,17 @@
 import { z } from 'zod';
+import { AlertTriangle, Loader2 } from 'lucide-react';
 import { REGEXP_ONLY_DIGITS } from 'input-otp';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from '@tanstack/react-router';
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Alert, Title, Panel, Button, Separator, TextField, Container } from '@clickhouse/click-ui';
 import type * as t from '@/types';
 import { adminLoginFn, adminVerify2FAFn, openIdCheckOptions, openidLoginFn } from '@/server';
+import { Button, Card, CardContent, Input, Label, Separator } from '@/components/ui';
 import { InputOTP, InputOTPGroup, InputOTPSlot, InputOTPSeparator } from './InputOTP';
 import { PasswordInput } from './PasswordInput';
 import { useLocalize } from '@/hooks';
+import nufiLogo from '@/assets/nufi-logo.svg';
+import { cn } from '@/utils';
 
 export function AuthCard({
   redirectTo = '/',
@@ -210,46 +213,54 @@ export function AuthCard({
     }
   };
 
+  const Brand = (
+    <div className="flex flex-col items-center gap-3">
+      <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-white shadow-md">
+        <img src={nufiLogo} alt={localize('com_a11y_logo_alt')} className="h-11 w-11" />
+      </div>
+      <div className="flex flex-col items-center gap-1">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+          {step === '2fa' ? localize('com_auth_2fa_title') : localize('com_auth_title')}
+        </h1>
+        {step !== '2fa' && (
+          <p className="text-sm text-muted-foreground">{localize('com_auth_subtitle')}</p>
+        )}
+      </div>
+    </div>
+  );
+
   if (showAutoRedirect) {
     return (
-      <Panel
-        className="auth-card w-full max-w-md"
-        padding="xl"
-        radii="lg"
-        hasBorder
-        hasShadow
-        color="default"
-      >
-        <Container orientation="vertical" gap="lg" alignItems="center">
-          <Title type="h1">{localize('com_auth_title')}</Title>
-          <p className="text-center text-sm text-(--cui-color-text-muted)">
+      <Card className="w-full max-w-md border-border/60 shadow-2xl shadow-black/30">
+        <CardContent className="flex flex-col items-center gap-6 p-8">
+          {Brand}
+          <p className="text-center text-sm text-muted-foreground">
             {localize('com_auth_sso_redirecting_auto')}
           </p>
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-(--cui-color-stroke-default) border-t-(--cui-color-accent-info)" />
-        </Container>
-      </Panel>
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <Panel
-      className="auth-card w-full max-w-md"
-      padding="xl"
-      radii="lg"
-      hasBorder
-      hasShadow
-      color="default"
-    >
-      <Container orientation="vertical" gap="lg" alignItems="center">
-        <Title type="h1">
-          {step === '2fa' ? localize('com_auth_2fa_title') : localize('com_auth_title')}
-        </Title>
+    <Card className="w-full max-w-md border-border/60 shadow-2xl shadow-black/30">
+      <CardContent className="flex flex-col gap-6 p-8">
+        {Brand}
 
-        {generalError && <Alert type="banner" state="danger" text={generalError} />}
+        {generalError && (
+          <div
+            role="alert"
+            className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          >
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{generalError}</span>
+          </div>
+        )}
 
         {step === '2fa' ? (
           <>
-            <p className="text-center text-sm text-(--cui-color-text-muted)">
+            <p className="text-center text-sm text-muted-foreground">
               {localize('com_auth_2fa_prompt')}
             </p>
             <div className="flex justify-center">
@@ -277,7 +288,7 @@ export function AuthCard({
               </InputOTP>
             </div>
             {isSubmitting && (
-              <p className="text-center text-sm text-(--cui-color-text-muted)">
+              <p className="text-center text-sm text-muted-foreground">
                 {localize('com_auth_2fa_verifying')}
               </p>
             )}
@@ -285,24 +296,33 @@ export function AuthCard({
               type="button"
               onClick={handleBack}
               disabled={isSubmitting}
-              className="text-sm text-(--cui-color-accent-info) transition-colors hover:underline disabled:pointer-events-none disabled:opacity-50"
+              className={cn(
+                'text-sm text-primary transition-colors hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                'disabled:pointer-events-none disabled:opacity-50',
+              )}
             >
               {localize('com_auth_2fa_back')}
             </button>
           </>
         ) : (
           <>
-            <TextField
-              label={localize('com_auth_email_label')}
-              placeholder={localize('com_auth_email_placeholder')}
-              value={email}
-              onChange={(value) => {
-                setEmail(value);
-                if (errors.email) setErrors((prev) => ({ ...prev, email: undefined }));
-              }}
-              onKeyDown={handleKeyDown}
-              error={errors.email}
-            />
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="login-email">{localize('com_auth_email_label')}</Label>
+              <Input
+                id="login-email"
+                type="email"
+                placeholder={localize('com_auth_email_placeholder')}
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (errors.email) setErrors((prev) => ({ ...prev, email: undefined }));
+                }}
+                onKeyDown={handleKeyDown}
+                aria-invalid={errors.email ? true : undefined}
+                className={errors.email ? 'border-destructive focus-visible:ring-destructive' : ''}
+              />
+              {errors.email && <span className="text-xs text-destructive">{errors.email}</span>}
+            </div>
 
             <PasswordInput
               label={localize('com_auth_password_label')}
@@ -316,34 +336,33 @@ export function AuthCard({
               error={errors.password}
             />
 
-            <Button
-              label={isSubmitting ? localize('com_auth_signing_in') : localize('com_auth_sign_in')}
-              type="primary"
-              onClick={handleLogin}
-              disabled={isSubmitting}
-            />
+            <Button onClick={handleLogin} disabled={isSubmitting} className="w-full">
+              {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+              {isSubmitting ? localize('com_auth_signing_in') : localize('com_auth_sign_in')}
+            </Button>
 
             {ssoAvailable && (
               <>
-                <Separator size="sm" />
+                <Separator />
                 <Button
-                  label={
-                    ssoLoading
-                      ? localize('com_auth_sso_redirecting')
-                      : localize('com_auth_sso_sign_in')
-                  }
-                  type="secondary"
+                  variant="outline"
                   onClick={handleSsoLogin}
                   disabled={ssoLoading}
-                />
+                  className="w-full"
+                >
+                  {ssoLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {ssoLoading
+                    ? localize('com_auth_sso_redirecting')
+                    : localize('com_auth_sso_sign_in')}
+                </Button>
               </>
             )}
           </>
         )}
-      </Container>
-      <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
-        {announcement}
-      </div>
-    </Panel>
+        <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+          {announcement}
+        </div>
+      </CardContent>
+    </Card>
   );
 }

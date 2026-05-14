@@ -1,4 +1,4 @@
-import { Icon } from '@clickhouse/click-ui';
+import { ChevronRight } from 'lucide-react';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import type * as t from '@/types';
@@ -10,13 +10,13 @@ function renderCollapsible(isExpanded: boolean, hasEverExpanded: boolean, childr
   return (
     <div
       className={cn(
-        'config-section-grid',
+        'config-section-grid bg-muted/30',
         isExpanded ? 'config-section-grid-open' : 'config-section-grid-closed',
       )}
       inert={!isExpanded ? true : undefined}
     >
       <div className="config-section-inner">
-        <div className="flex flex-col gap-4 pb-4 pl-7">{shouldRender && children}</div>
+        <div className="flex flex-col gap-4 px-3 pt-2 pb-4">{shouldRender && children}</div>
       </div>
     </div>
   );
@@ -76,14 +76,14 @@ export function ConfigSection({
       >
         <div className="config-row flex w-full items-center gap-6 rounded-md px-2.5 py-3">
           <div className="flex w-[20%] max-w-75 min-w-0 shrink-0 flex-col gap-1 pl-2.5">
-            <span className="text-sm font-semibold text-(--cui-color-text-default)">{title}</span>
+            <span className="text-sm font-semibold text-foreground">{title}</span>
             {description && (
-              <span className="text-xs text-(--cui-color-text-muted)">{description}</span>
+              <span className="text-xs text-muted-foreground">{description}</span>
             )}
           </div>
           <div className="flex min-w-0 flex-1 flex-col gap-3">{children}</div>
         </div>
-        <hr className="border-(--cui-color-stroke-default)" />
+        <hr className="border-border" />
       </section>
     );
   }
@@ -100,19 +100,18 @@ export function ConfigSection({
         onClick={toggle}
         aria-expanded={isExpanded}
         data-section-id={sectionId ? `section-${sectionId}` : undefined}
-        className="group sticky top-0 z-(--z-sticky) flex w-full cursor-pointer items-start gap-4 rounded-lg border-none bg-(--cui-color-background-panel) px-0 py-3 text-left transition-colors select-none hover:bg-(--cui-color-background-hover)"
+        className="group sticky top-0 z-(--z-sticky) flex w-full cursor-pointer items-center gap-3 border-none bg-card px-3 py-3.5 text-left transition-colors select-none hover:bg-muted"
       >
-        <span
+        <ChevronRight
+          aria-hidden="true"
           className={cn(
-            'mt-0.5 flex shrink-0 items-center justify-center transition-transform duration-200',
+            'h-5 w-5 shrink-0 text-muted-foreground transition-transform duration-200',
             isExpanded && 'rotate-90',
           )}
-        >
-          <Icon name="chevron-right" size="sm" />
-        </span>
+        />
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-(--cui-color-text-default)">{title}</span>
+            <span className="text-sm font-semibold text-foreground">{title}</span>
             {totalCount > 0 && (
               <span
                 className={cn(
@@ -125,7 +124,7 @@ export function ConfigSection({
             )}
           </span>
           {description && (
-            <span className="text-xs text-(--cui-color-text-muted)">
+            <span className="text-xs text-muted-foreground">
               {description}
               {learnMoreUrl && (
                 <>
@@ -134,7 +133,7 @@ export function ConfigSection({
                     href={learnMoreUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-xs font-medium text-(--cui-color-text-link) hover:underline"
+                    className="text-xs font-medium text-primary hover:underline"
                     onClick={(e) => e.stopPropagation()}
                   >
                     {localize('com_ui_read_more')}
@@ -146,7 +145,7 @@ export function ConfigSection({
         </span>
       </button>
       {renderCollapsible(isExpanded, hasEverExpanded, children)}
-      <hr className="border-(--cui-color-stroke-default)" />
+      <hr className="border-border" />
     </section>
   );
 }

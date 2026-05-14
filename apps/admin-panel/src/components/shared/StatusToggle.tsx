@@ -1,5 +1,5 @@
-import { Switch } from '@clickhouse/click-ui';
 import type * as t from '@/types';
+import { Switch } from '@/components/ui';
 import { useLocalize } from '@/hooks';
 
 export function StatusToggle({ id, isActive, onChange, disabled }: t.StatusToggleProps) {
@@ -15,7 +15,7 @@ export function StatusToggle({ id, isActive, onChange, disabled }: t.StatusToggl
         disabled={disabled}
         aria-label={label}
       />
-      <span className="text-xs text-(--cui-color-text-muted)">{label}</span>
+      <span className="text-xs text-muted-foreground">{label}</span>
     </div>
   );
 }

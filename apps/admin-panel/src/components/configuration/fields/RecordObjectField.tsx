@@ -1,6 +1,6 @@
-import { Button } from '@clickhouse/click-ui';
 import { useState, useCallback, useEffect, memo } from 'react';
 import type * as t from '@/types';
+import { Button } from '@/components/ui';
 import { ObjectEntryCard } from './ObjectEntryCard';
 import { AddItemButton } from '@/components/shared';
 import { useLocalize } from '@/hooks';
@@ -104,7 +104,7 @@ export function RecordObjectField({
         />
       ))}
       {entries.length === 0 && !showAddInput && (
-        <p className="py-2 text-sm text-(--cui-color-text-muted)">
+        <p className="py-2 text-sm text-muted-foreground">
           {localize('com_config_no_entries')}
         </p>
       )}
@@ -157,15 +157,20 @@ const AddKeyInput = memo(function AddKeyInput({
         className="config-input max-w-50 px-2 py-1 text-sm"
         autoFocus
       />
-      <Button type="primary" label={localize('com_ui_add')} onClick={handleAdd} />
+      <Button type="button" size="sm" onClick={handleAdd}>
+        {localize('com_ui_add')}
+      </Button>
       <Button
-        type="secondary"
-        label={localize('com_ui_cancel')}
+        type="button"
+        size="sm"
+        variant="outline"
         onClick={() => {
           setNewKey('');
           onCancel();
         }}
-      />
+      >
+        {localize('com_ui_cancel')}
+      </Button>
     </div>
   );
 });

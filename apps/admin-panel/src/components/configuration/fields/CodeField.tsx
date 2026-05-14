@@ -68,7 +68,7 @@ export function CodeField({
         )}
         spellCheck={false}
       />
-      {error && <span className="text-xs text-(--cui-color-text-danger)">{error}</span>}
+      {error && <span className="text-xs text-destructive">{error}</span>}
     </div>
   );
 }

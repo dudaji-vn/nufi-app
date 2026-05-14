@@ -1,5 +1,7 @@
-import type { ReactNode } from 'react';
+import type { ComponentType, ReactNode, SVGProps } from 'react';
 import type { IconName } from './scope';
+
+export type LucideIconComponent = ComponentType<SVGProps<SVGSVGElement>>;
 
 export interface SidebarProps {
   user?: {
@@ -13,7 +15,7 @@ export interface SidebarProps {
 export interface NavItem {
   labelKey: string;
   path: string;
-  icon: IconName;
+  icon: LucideIconComponent;
   capability?: string | string[];
 }
 
@@ -29,7 +31,7 @@ export interface CommandMenuProps {
 }
 
 export interface CommandItemProps {
-  icon?: IconName;
+  icon?: IconName | LucideIconComponent;
   label: string;
   keywords?: string[];
   onSelect: () => void;

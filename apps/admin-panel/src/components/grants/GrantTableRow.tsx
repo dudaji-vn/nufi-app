@@ -14,12 +14,12 @@ export function GrantTableRow({ row, isLast, onClick, onKeyDown, rowRef }: t.Gra
       onClick={onClick}
       onKeyDown={onKeyDown}
       className={cn(
-        'cursor-pointer bg-(--cui-color-background-panel) transition-colors hover:bg-(--cui-color-background-hover) focus-visible:bg-(--cui-color-background-hover) focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-(--cui-color-outline)',
-        !isLast && 'border-b border-(--cui-color-stroke-default)',
+        'cursor-pointer bg-card transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-ring',
+        !isLast && 'border-b border-border',
       )}
     >
-      <td className="px-4 py-3 font-medium text-(--cui-color-text-default)">{row.name}</td>
-      <td className="px-4 py-3 text-(--cui-color-text-muted)">
+      <td className="px-4 py-3 font-medium text-foreground">{row.name}</td>
+      <td className="px-4 py-3 text-muted-foreground">
         {row.grantCount === 0
           ? localize('com_grants_no_capabilities')
           : localize('com_grants_capability_count', { count: row.grantCount })}

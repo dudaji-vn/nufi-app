@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { Button, Dialog, Tabs } from '@clickhouse/click-ui';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { AdminUserSearchResult } from '@librechat/data-schemas';
 import type * as t from '@/types';
+import { Input, Label, Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui';
+import { FormDialog, SelectedMemberList, UserSearchInline } from '@/components/shared';
 import { addRoleMemberFn, createRoleFn, updateRolePermissionsFn } from '@/server';
-import { SelectedMemberList, UserSearchInline } from '@/components/shared';
 import { RolePermissionsPanel } from './RolePermissionsPanel';
 import { defaultPermissions } from '@/constants';
 import { useLocalize } from '@/hooks';
@@ -58,11 +58,6 @@ export function CreateRoleDialog({ open, onClose }: t.CreateRoleDialogProps) {
     mutation.mutate();
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    doSubmit();
-  };
-
   const addUser = (user: AdminUserSearchResult) => {
     setSelectedUsers((prev) => {
       if (prev.some((u) => u.id === user.id)) return prev;
@@ -75,118 +70,94 @@ export function CreateRoleDialog({ open, onClose }: t.CreateRoleDialogProps) {
   };
 
   return (
-    <Dialog
+    <FormDialog
       open={open}
-      onOpenChange={(isOpen) => {
-        if (!isOpen) resetAndClose();
-      }}
+      title={localize('com_access_create_role')}
+      submitLabel={localize('com_access_create_role')}
+      submitDisabled={!name.trim()}
+      saving={mutation.isPending}
+      error={error}
+      size="lg"
+      onSubmit={doSubmit}
+      onClose={resetAndClose}
     >
-      <Dialog.Content
-        title={localize('com_access_create_role')}
-        showClose
-        onClose={resetAndClose}
-        className="modal-frost max-w-2xl!"
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => setActiveTab(v as t.CreateRoleTab)}
+        aria-label={localize('com_access_create_role')}
       >
-        <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-          <Tabs
-            value={activeTab}
-            onValueChange={(v) => setActiveTab(v as t.CreateRoleTab)}
-            ariaLabel={localize('com_access_create_role')}
-          >
-            <Tabs.TriggersList>
-              <Tabs.Trigger value="details">
-                {localize('com_access_tab_details')}
-              </Tabs.Trigger>
-              <Tabs.Trigger value="permissions">
-                {localize('com_access_tab_permissions')}
-              </Tabs.Trigger>
-              <Tabs.Trigger value="members">
-                {localize('com_access_tab_members')}
-              </Tabs.Trigger>
-            </Tabs.TriggersList>
-            <Tabs.Content value="details" forceMount tabIndex={-1} className={cn(activeTab !== 'details' && 'hidden')}>
-              <div className="flex flex-col gap-5 pt-5">
-                <div className="flex flex-col gap-1.5">
-                  <label
-                    htmlFor="create-role-name"
-                    className="text-sm font-medium text-(--cui-color-text-default)"
-                  >
-                    {localize('com_access_col_name')}
-                  </label>
-                  <input
-                    id="create-role-name"
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder={localize('com_access_role_name_placeholder')}
-                    autoFocus
-                    className="rounded-lg border border-(--cui-color-stroke-default) bg-(--cui-color-background-default) px-3 py-2 text-sm text-(--cui-color-text-default) placeholder:text-(--cui-color-text-disabled)"
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label
-                    htmlFor="create-role-description"
-                    className="text-sm font-medium text-(--cui-color-text-default)"
-                  >
-                    {localize('com_config_field_description')}
-                  </label>
-                  <input
-                    id="create-role-description"
-                    type="text"
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder={localize('com_access_role_desc_placeholder')}
-                    className="rounded-lg border border-(--cui-color-stroke-default) bg-(--cui-color-background-default) px-3 py-2 text-sm text-(--cui-color-text-default) placeholder:text-(--cui-color-text-disabled)"
-                  />
-                </div>
-              </div>
-            </Tabs.Content>
-            <Tabs.Content value="permissions" forceMount tabIndex={-1} className={cn(activeTab !== 'permissions' && 'hidden')}>
-              <div className="pt-5">
-                <RolePermissionsPanel
-                  permissions={permissions}
-                  onChange={setPermissions}
-                  disabled={mutation.isPending}
-                />
-              </div>
-            </Tabs.Content>
-            <Tabs.Content value="members" forceMount tabIndex={-1} className={cn(activeTab !== 'members' && 'hidden')}>
-              <div className="flex flex-col gap-4 pt-5">
-                <UserSearchInline
-                  existingIds={selectedUsers.map((u) => u.id)}
-                  onAdd={addUser}
-                  listboxId="create-role-member-results"
-                  disabled={mutation.isPending}
-                />
-                <SelectedMemberList
-                  users={selectedUsers}
-                  onRemove={removeUser}
-                  disabled={mutation.isPending}
-                />
-              </div>
-            </Tabs.Content>
-          </Tabs>
-
-          {error && (
-            <p role="alert" className="text-sm text-(--cui-color-text-danger)">
-              {error}
-            </p>
-          )}
-          <div className="flex items-center justify-end gap-2">
-            <Button
-              type="secondary"
-              label={localize('com_ui_cancel')}
-              onClick={resetAndClose}
+        <TabsList>
+          <TabsTrigger value="details">{localize('com_access_tab_details')}</TabsTrigger>
+          <TabsTrigger value="permissions">{localize('com_access_tab_permissions')}</TabsTrigger>
+          <TabsTrigger value="members">{localize('com_access_tab_members')}</TabsTrigger>
+        </TabsList>
+        <TabsContent
+          value="details"
+          forceMount
+          tabIndex={-1}
+          className={cn(activeTab !== 'details' && 'hidden')}
+        >
+          <div className="flex flex-col gap-5 pt-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="create-role-name">{localize('com_access_col_name')}</Label>
+              <Input
+                id="create-role-name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={localize('com_access_role_name_placeholder')}
+                autoFocus
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="create-role-description">
+                {localize('com_config_field_description')}
+              </Label>
+              <Input
+                id="create-role-description"
+                type="text"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder={localize('com_access_role_desc_placeholder')}
+              />
+            </div>
+          </div>
+        </TabsContent>
+        <TabsContent
+          value="permissions"
+          forceMount
+          tabIndex={-1}
+          className={cn(activeTab !== 'permissions' && 'hidden')}
+        >
+          <div className="pt-3">
+            <RolePermissionsPanel
+              permissions={permissions}
+              onChange={setPermissions}
               disabled={mutation.isPending}
             />
-            <Button
-              type="primary"
-              label={localize('com_access_create_role')}
-              disabled={!name.trim() || mutation.isPending}
+          </div>
+        </TabsContent>
+        <TabsContent
+          value="members"
+          forceMount
+          tabIndex={-1}
+          className={cn(activeTab !== 'members' && 'hidden')}
+        >
+          <div className="flex flex-col gap-4 pt-3">
+            <UserSearchInline
+              existingIds={selectedUsers.map((u) => u.id)}
+              onAdd={addUser}
+              listboxId="create-role-member-results"
+              disabled={mutation.isPending}
+            />
+            <SelectedMemberList
+              users={selectedUsers}
+              onRemove={removeUser}
+              disabled={mutation.isPending}
             />
           </div>
-        </form>
-      </Dialog.Content>
-    </Dialog>
+        </TabsContent>
+      </Tabs>
+    </FormDialog>
   );
 }

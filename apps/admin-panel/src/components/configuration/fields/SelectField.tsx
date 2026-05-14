@@ -1,5 +1,5 @@
-import { Select } from '@clickhouse/click-ui';
 import type * as t from '@/types';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui';
 import { useLocalize } from '@/hooks';
 
 export function SelectField({
@@ -14,20 +14,17 @@ export function SelectField({
   const localize = useLocalize();
 
   return (
-    <div className="select-field-a11y max-w-75" id={id}>
-      <Select
-        value={value || undefined}
-        onSelect={(v) => onChange(v)}
-        placeholder={placeholder || localize('com_ui_select')}
-        disabled={disabled}
-        aria-label={ariaLabel}
-      >
+    <Select value={value || undefined} onValueChange={onChange} disabled={disabled}>
+      <SelectTrigger id={id} aria-label={ariaLabel} className="max-w-75">
+        <SelectValue placeholder={placeholder || localize('com_ui_select')} />
+      </SelectTrigger>
+      <SelectContent>
         {options.map((option) => (
-          <Select.Item key={option.value} value={option.value}>
+          <SelectItem key={option.value} value={option.value}>
             {option.label}
-          </Select.Item>
+          </SelectItem>
         ))}
-      </Select>
-    </div>
+      </SelectContent>
+    </Select>
   );
 }

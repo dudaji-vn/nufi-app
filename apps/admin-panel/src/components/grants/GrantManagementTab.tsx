@@ -65,7 +65,7 @@ export function GrantManagementTab() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto py-2 pr-1">
+    <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-1 py-2">
       <div className="flex flex-wrap items-center gap-3">
         <SearchInput
           value={search}
@@ -75,18 +75,18 @@ export function GrantManagementTab() {
         />
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-(--cui-color-stroke-default)">
+      <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full text-left text-sm">
           <caption className="sr-only">{localize('com_grants_title')}</caption>
           <thead>
-            <tr className="border-b border-(--cui-color-stroke-default) bg-(--cui-color-background-muted)">
-              <th scope="col" className="px-4 py-2.5 font-medium text-(--cui-color-text-muted)">
+            <tr className="border-b border-border bg-muted">
+              <th scope="col" className="px-4 py-2.5 font-medium text-muted-foreground">
                 {localize('com_cap_col_name')}
               </th>
-              <th scope="col" className="px-4 py-2.5 font-medium text-(--cui-color-text-muted)">
+              <th scope="col" className="px-4 py-2.5 font-medium text-muted-foreground">
                 {localize('com_cap_col_capabilities')}
               </th>
-              <th scope="col" className="px-4 py-2.5 font-medium text-(--cui-color-text-muted)">
+              <th scope="col" className="px-4 py-2.5 font-medium text-muted-foreground">
                 {localize('com_cap_col_status')}
               </th>
             </tr>

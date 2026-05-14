@@ -1,5 +1,5 @@
-import { Switch } from '@clickhouse/click-ui';
 import type * as t from '@/types';
+import { Switch } from '@/components/ui';
 
 export function ToggleField({
   id,

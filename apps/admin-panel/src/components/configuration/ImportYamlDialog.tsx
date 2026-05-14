@@ -1,9 +1,22 @@
 import { useQuery } from '@tanstack/react-query';
 import { PrincipalType } from 'librechat-data-provider';
+import { Check, Loader2, Lock, Plus, Settings2, UploadCloud } from 'lucide-react';
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Icon, Button, Dialog, Tabs } from '@clickhouse/click-ui';
 import type * as t from '@/types';
 import { availableScopesOptions, createGroupFn, createRoleFn, parseImportedYaml } from '@/server';
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@/components/ui';
 import { getScopeTypeConfig } from '@/constants';
 import { useLocalize } from '@/hooks';
 import { cn } from '@/utils';
@@ -198,86 +211,78 @@ export function ImportYamlDialog({
         if (!isOpen) handleClose();
       }}
     >
-      <Dialog.Content
-        title={localize('com_config_import_yaml_title')}
-        showClose
-        onClose={handleClose}
-        className="modal-frost"
-      >
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{localize('com_config_import_yaml_title')}</DialogTitle>
+          {step === 'input' && (
+            <DialogDescription>{localize('com_config_import_yaml_desc')}</DialogDescription>
+          )}
+        </DialogHeader>
+
         <div className="flex flex-col gap-4">
           <div className="sr-only" aria-live="polite">
             {step === 'target' && localize('com_config_import_target')}
           </div>
 
           {step === 'input' && (
-            <>
-              <p className="text-sm text-(--cui-color-text-muted)">
-                {localize('com_config_import_yaml_desc')}
-              </p>
+            <Tabs value={activeTab} onValueChange={handleTabSwitch} className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="upload">{localize('com_config_import_upload')}</TabsTrigger>
+                <TabsTrigger value="paste">{localize('com_config_import_paste')}</TabsTrigger>
+              </TabsList>
 
-              <Tabs value={activeTab} onValueChange={handleTabSwitch}>
-                <Tabs.TriggersList>
-                  <Tabs.Trigger value="upload">{localize('com_config_import_upload')}</Tabs.Trigger>
-                  <Tabs.Trigger value="paste">{localize('com_config_import_paste')}</Tabs.Trigger>
-                </Tabs.TriggersList>
-
-                <Tabs.Content value="upload" tabIndex={-1}>
-                  <div className="flex flex-col gap-3 pt-3">
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept=".yaml,.yml"
-                      onChange={handleFileChange}
-                      className="hidden"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-(--cui-color-stroke-default) bg-transparent px-4 py-8 text-sm text-(--cui-color-text-muted) transition-colors hover:border-(--cui-color-accent) hover:text-(--cui-color-text-default)"
-                    >
-                      <span aria-hidden="true">
-                        <Icon name="upload" size="sm" />
+              <TabsContent value="upload" tabIndex={-1}>
+                <div className="flex flex-col gap-3 pt-1">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".yaml,.yml"
+                    onChange={handleFileChange}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border bg-transparent px-4 py-10 text-sm text-muted-foreground transition-colors hover:border-primary hover:bg-accent/40 hover:text-foreground"
+                  >
+                    <UploadCloud className="h-4 w-4" aria-hidden="true" />
+                    {fileName ?? localize('com_config_import_choose_file')}
+                  </button>
+                  {fileName && hasContent && (
+                    <div className="flex items-center gap-2 text-sm text-foreground">
+                      <Check className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+                      <span>{fileName}</span>
+                      <span className="text-muted-foreground">
+                        ({yamlText.split('\n').length} lines)
                       </span>
-                      {fileName ?? localize('com_config_import_choose_file')}
-                    </button>
-                    {fileName && hasContent && (
-                      <div className="flex items-center gap-2 text-sm text-(--cui-color-text-default)">
-                        <span aria-hidden="true">
-                          <Icon name="check" size="xs" />
-                        </span>
-                        <span>{fileName}</span>
-                        <span className="text-(--cui-color-text-muted)">
-                          ({yamlText.split('\n').length} lines)
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </Tabs.Content>
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
 
-                <Tabs.Content value="paste" tabIndex={-1}>
-                  <div className="pt-3">
-                    <textarea
-                      value={yamlText}
-                      onChange={(e) => {
-                        setYamlText(e.target.value);
-                        if (error) setError(undefined);
-                        if (validationErrors) setValidationErrors(undefined);
-                      }}
-                      aria-label={localize('com_config_import_paste')}
-                      placeholder={localize('com_config_import_paste_placeholder')}
-                      rows={12}
-                      className="config-input config-input-mono w-full resize-y"
-                      spellCheck={false}
-                    />
-                  </div>
-                </Tabs.Content>
-              </Tabs>
-            </>
+              <TabsContent value="paste" tabIndex={-1}>
+                <div className="pt-1">
+                  <textarea
+                    value={yamlText}
+                    onChange={(e) => {
+                      setYamlText(e.target.value);
+                      if (error) setError(undefined);
+                      if (validationErrors) setValidationErrors(undefined);
+                    }}
+                    aria-label={localize('com_config_import_paste')}
+                    placeholder={localize('com_config_import_paste_placeholder')}
+                    rows={12}
+                    className="config-input config-input-mono w-full resize-y"
+                    spellCheck={false}
+                  />
+                </div>
+              </TabsContent>
+            </Tabs>
           )}
 
           {step === 'target' && (
             <div ref={targetRef}>
-              <p className="mb-3 text-sm text-(--cui-color-text-muted)">
+              <p className="mb-3 text-sm text-muted-foreground">
                 {localize('com_config_import_target')}
               </p>
 
@@ -292,7 +297,7 @@ export function ImportYamlDialog({
                     setTargetMode('base');
                     setSelectedScope(null);
                   }}
-                  icon="settings"
+                  icon={Settings2}
                   iconColor={getScopeTypeConfig('BASE').color}
                   label={localize('com_config_import_as_base')}
                   description={localize('com_config_import_as_base_desc')}
@@ -301,14 +306,14 @@ export function ImportYamlDialog({
                 <TargetOption
                   selected={targetMode === 'existing'}
                   onClick={() => setTargetMode('existing')}
-                  icon="lock"
+                  icon={Lock}
                   iconColor={getScopeTypeConfig(PrincipalType.ROLE).color}
                   label={localize('com_config_import_as_profile')}
                   description={localize('com_config_import_as_profile_desc')}
                 />
 
                 {targetMode === 'existing' && (
-                  <div className="ml-6 flex flex-col gap-1.5 border-l-2 border-(--cui-color-stroke-default) pl-3">
+                  <div className="ml-6 flex flex-col gap-1.5 border-l-2 border-border pl-3">
                     {roleScopes.length > 0 && (
                       <ScopeGroup
                         label={localize('com_scope_roles')}
@@ -326,7 +331,7 @@ export function ImportYamlDialog({
                       />
                     )}
                     {allScopes.length === 0 && (
-                      <span className="py-1 text-xs text-(--cui-color-text-muted)">
+                      <span className="py-1 text-xs text-muted-foreground">
                         {localize('com_scope_no_results')}
                       </span>
                     )}
@@ -339,15 +344,15 @@ export function ImportYamlDialog({
                     setTargetMode('create');
                     setSelectedScope(null);
                   }}
-                  icon="plus"
-                  iconColor="var(--cui-color-text-muted)"
+                  icon={Plus}
+                  iconColor="hsl(var(--muted-foreground))"
                   label={localize('com_config_import_create_scope')}
                 />
 
                 {targetMode === 'create' && (
-                  <div className="ml-6 flex flex-col gap-3 border-l-2 border-(--cui-color-stroke-default) pt-1 pl-3">
+                  <div className="ml-6 flex flex-col gap-3 border-l-2 border-border pt-1 pl-3">
                     <div className="flex flex-col gap-1">
-                      <label className="text-xs font-medium text-(--cui-color-text-muted)">
+                      <label className="text-xs font-medium text-muted-foreground">
                         {localize('com_config_import_scope_type')}
                       </label>
                       <div className="flex gap-1">
@@ -361,8 +366,8 @@ export function ImportYamlDialog({
                               className={cn(
                                 'cursor-pointer rounded-md px-3 py-1 text-xs font-medium transition-colors',
                                 newScopeType === pt
-                                  ? 'bg-(--cui-color-background-active) text-(--cui-color-text-default)'
-                                  : 'text-(--cui-color-text-muted) hover:text-(--cui-color-text-default)',
+                                  ? 'bg-accent text-foreground'
+                                  : 'text-muted-foreground hover:text-foreground',
                               )}
                               aria-pressed={newScopeType === pt}
                             >
@@ -376,7 +381,7 @@ export function ImportYamlDialog({
                     <div className="flex flex-col gap-1">
                       <label
                         htmlFor="new-scope-name"
-                        className="text-xs font-medium text-(--cui-color-text-muted)"
+                        className="text-xs font-medium text-muted-foreground"
                       >
                         {localize('com_config_import_scope_name')}
                       </label>
@@ -397,12 +402,12 @@ export function ImportYamlDialog({
 
           {error && (
             <div
-              className="flex flex-col gap-1 rounded-lg bg-[rgba(220,38,38,0.1)] px-3 py-2"
+              className="flex flex-col gap-1 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2"
               role="alert"
             >
-              <span className="text-sm font-medium text-(--cui-color-text-danger)">{error}</span>
+              <span className="text-sm font-medium text-destructive">{error}</span>
               {validationErrors && validationErrors.length > 0 && (
-                <ul className="m-0 max-h-32 list-none overflow-auto p-0 text-xs text-(--cui-color-text-danger)">
+                <ul className="m-0 max-h-32 list-none overflow-auto p-0 text-xs text-destructive">
                   {validationErrors.slice(0, 10).map((ve, i) => (
                     <li key={`${ve.path}-${i}`} className="py-0.5">
                       <code>{ve.path}</code>: {ve.message}
@@ -419,51 +424,45 @@ export function ImportYamlDialog({
               )}
             </div>
           )}
-
-          <div className="flex items-center justify-end gap-2">
-            {step === 'target' && (
-              <Button
-                type="secondary"
-                label={localize('com_config_import_back')}
-                onClick={() => {
-                  setStep('input');
-                  setError(undefined);
-                }}
-              />
-            )}
-            {step === 'input' && (
-              <Button type="secondary" label={localize('com_ui_cancel')} onClick={handleClose} />
-            )}
-            {step === 'input' ? (
-              <Button
-                type="primary"
-                label={
-                  loading ? localize('com_ui_loading') : localize('com_config_import_validate')
-                }
-                iconLeft={loading ? 'loading-animated' : undefined}
-                onClick={handleValidate}
-                disabled={!hasContent || loading}
-              />
-            ) : (
-              <Button
-                type="primary"
-                label={
-                  loading
-                    ? localize(
-                        targetMode === 'create'
-                          ? 'com_config_import_creating'
-                          : 'com_config_import_saving',
-                      )
-                    : localize('com_config_import_apply')
-                }
-                iconLeft={loading ? 'loading-animated' : undefined}
-                onClick={handleApply}
-                disabled={!canApply}
-              />
-            )}
-          </div>
         </div>
-      </Dialog.Content>
+
+        <DialogFooter>
+          {step === 'target' && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setStep('input');
+                setError(undefined);
+              }}
+            >
+              {localize('com_config_import_back')}
+            </Button>
+          )}
+          {step === 'input' && (
+            <Button type="button" variant="outline" onClick={handleClose}>
+              {localize('com_ui_cancel')}
+            </Button>
+          )}
+          {step === 'input' ? (
+            <Button type="button" onClick={handleValidate} disabled={!hasContent || loading}>
+              {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+              {loading ? localize('com_ui_loading') : localize('com_config_import_validate')}
+            </Button>
+          ) : (
+            <Button type="button" onClick={handleApply} disabled={!canApply}>
+              {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+              {loading
+                ? localize(
+                    targetMode === 'create'
+                      ? 'com_config_import_creating'
+                      : 'com_config_import_saving',
+                  )
+                : localize('com_config_import_apply')}
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
     </Dialog>
   );
 }
@@ -471,14 +470,14 @@ export function ImportYamlDialog({
 function TargetOption({
   selected,
   onClick,
-  icon,
+  icon: TargetIcon,
   iconColor,
   label,
   description,
 }: {
   selected: boolean;
   onClick: () => void;
-  icon: t.IconName;
+  icon: t.LucideIconComponent;
   iconColor: string;
   label: string;
   description?: string;
@@ -492,17 +491,15 @@ function TargetOption({
       className={cn(
         'flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors',
         selected
-          ? 'border-(--cui-color-accent) bg-(--cui-color-background-hover)'
-          : 'border-(--cui-color-stroke-default) bg-transparent hover:bg-(--cui-color-background-hover)',
+          ? 'border-primary bg-accent'
+          : 'border-border bg-transparent hover:bg-accent',
       )}
     >
-      <span aria-hidden="true" style={{ color: iconColor }}>
-        <Icon name={icon} size="sm" />
-      </span>
+      <TargetIcon aria-hidden="true" className="h-4 w-4" style={{ color: iconColor }} />
       <div className="flex flex-col">
-        <span className="text-sm font-medium text-(--cui-color-text-default)">{label}</span>
+        <span className="text-sm font-medium text-foreground">{label}</span>
         {description && (
-          <span className="text-xs text-(--cui-color-text-muted)">{description}</span>
+          <span className="text-xs text-muted-foreground">{description}</span>
         )}
       </div>
     </button>
@@ -522,12 +519,13 @@ function ScopeGroup({
 }) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-[10px] font-semibold tracking-wider text-(--cui-color-text-muted) uppercase">
+      <span className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
         {label}
       </span>
       {scopes.map((scope) => {
         const config = getScopeTypeConfig(scope.principalType);
         const isSelected = selectedId === scope.principalId;
+        const ScopeIcon = config.icon;
         return (
           <button
             key={scope.principalId}
@@ -536,14 +534,12 @@ function ScopeGroup({
             className={cn(
               'flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors',
               isSelected
-                ? 'bg-(--cui-color-background-active) text-(--cui-color-text-default)'
-                : 'text-(--cui-color-text-muted) hover:bg-(--cui-color-background-hover) hover:text-(--cui-color-text-default)',
+                ? 'bg-accent text-foreground'
+                : 'text-muted-foreground hover:bg-accent hover:text-foreground',
             )}
             aria-pressed={isSelected}
           >
-            <span aria-hidden="true" style={{ color: config.color }}>
-              <Icon name={config.icon} size="xs" />
-            </span>
+            <ScopeIcon aria-hidden="true" className="h-3 w-3" style={{ color: config.color }} />
             <span>{scope.name}</span>
           </button>
         );

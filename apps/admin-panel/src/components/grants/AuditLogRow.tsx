@@ -1,4 +1,3 @@
-import { Icon } from '@clickhouse/click-ui';
 import type * as t from '@/types';
 import { capabilityLabel, formatTimestamp } from './auditLogUtils';
 import { getScopeTypeConfig } from '@/constants';
@@ -8,12 +7,13 @@ import { cn } from '@/utils';
 export function AuditLogRow({ entry, isLast }: t.AuditLogRowProps) {
   const localize = useLocalize();
   const targetConfig = getScopeTypeConfig(entry.targetPrincipalType);
+  const TargetIcon = targetConfig.icon;
 
   return (
     <tr
       className={cn(
-        'bg-(--cui-color-background-panel)',
-        !isLast && 'border-b border-(--cui-color-stroke-default)',
+        'bg-card',
+        !isLast && 'border-b border-border',
       )}
     >
       <td className="px-4 py-3">
@@ -36,22 +36,22 @@ export function AuditLogRow({ entry, isLast }: t.AuditLogRowProps) {
               targetConfig.badgeClass,
             )}
           >
-            <Icon name={targetConfig.icon} size="xs" />
+            <TargetIcon className="h-3 w-3" />
             {localize(targetConfig.labelKey)}
           </span>
-          <span className="text-(--cui-color-text-default)">{entry.targetName}</span>
+          <span className="text-foreground">{entry.targetName}</span>
         </span>
       </td>
       <td className="px-4 py-3">
         <div className="flex flex-col">
-          <span className="text-(--cui-color-text-default)">
+          <span className="text-foreground">
             {capabilityLabel(entry.capability, localize)}
           </span>
-          <span className="text-[10px] text-(--cui-color-text-muted)">{entry.capability}</span>
+          <span className="text-[10px] text-muted-foreground">{entry.capability}</span>
         </div>
       </td>
-      <td className="px-4 py-3 font-medium text-(--cui-color-text-default)">{entry.actorName}</td>
-      <td className="px-4 py-3 text-xs whitespace-nowrap text-(--cui-color-text-muted)">
+      <td className="px-4 py-3 font-medium text-foreground">{entry.actorName}</td>
+      <td className="px-4 py-3 text-xs whitespace-nowrap text-muted-foreground">
         {formatTimestamp(entry.timestamp)}
       </td>
     </tr>
