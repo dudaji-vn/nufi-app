@@ -195,8 +195,8 @@ html {
   --surface-dialog: hsl(var(--popover));
   --surface-submit: var(--brand-primary);
   --surface-submit-hover: var(--brand-primary-hover);
-  --surface-destructive: var(--red-800);
-  --surface-destructive-hover: var(--red-900);
+  --surface-destructive: hsl(var(--destructive));
+  --surface-destructive-hover: hsl(3 75% 58%);
   --surface-chat: hsl(var(--card));
   --border-light: hsl(var(--border));
   --border-medium: hsl(var(--border));

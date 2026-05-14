@@ -22,17 +22,17 @@ const ConvoLink: React.FC<ConvoLinkProps> = ({
 }) => {
   return (
     <div
-      className={cn(
-        'flex grow items-center gap-2 overflow-hidden rounded-lg px-2',
-        isActiveConvo || isPopoverActive ? 'bg-surface-active-alt' : '',
-      )}
+      className={cn('flex grow items-center gap-2 overflow-hidden rounded-lg px-2')}
       title={title ?? undefined}
       aria-current={isActiveConvo ? 'page' : undefined}
       style={{ width: '100%' }}
     >
       {children}
       <div
-        className="relative flex-1 grow overflow-hidden whitespace-nowrap"
+        className={cn(
+          'relative flex-1 grow overflow-hidden whitespace-nowrap',
+          isActiveConvo || isPopoverActive ? 'font-medium' : '',
+        )}
         style={{ textOverflow: 'clip' }}
         onDoubleClick={(e) => {
           if (isSmallScreen) {
@@ -46,15 +46,6 @@ const ConvoLink: React.FC<ConvoLinkProps> = ({
       >
         {title || localize('com_ui_untitled')}
       </div>
-      <div
-        className={cn(
-          'pointer-events-none absolute bottom-0.5 right-0.5 top-0.5 w-20 rounded-r-md bg-gradient-to-l',
-          isActiveConvo || isPopoverActive
-            ? 'from-surface-active-alt'
-            : 'from-surface-primary-alt from-0% to-transparent group-hover:from-surface-active-alt group-hover:from-40%',
-        )}
-        aria-hidden="true"
-      />
     </div>
   );
 };
