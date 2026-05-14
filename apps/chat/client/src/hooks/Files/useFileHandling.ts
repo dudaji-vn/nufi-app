@@ -1,65 +1,90 @@
+import React, { useCallback, useEffect, useRef, useMemo, useState } from 'react';
 import { v4 } from 'uuid';
-import debounce from 'lodash/debounce';
+import { useSetRecoilState } from 'recoil';
+import { useToastContext } from '@librechat/client';
 import { useQueryClient } from '@tanstack/react-query';
-import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  megabyte,
   QueryKeys,
-  EModelEndpoint,
-  codeTypeMapping,
+  Constants,
+  EToolResources,
   mergeFileConfig,
   isAssistantsEndpoint,
+  getEndpointFileConfig,
   defaultAssistantsVersion,
-  fileConfig as defaultFileConfig,
 } from 'librechat-data-provider';
-import type { TEndpointsConfig, TError } from 'librechat-data-provider';
+import debounce from 'lodash/debounce';
+import type { EModelEndpoint, TEndpointsConfig, TError } from 'librechat-data-provider';
 import type { ExtendedFile, FileSetter } from '~/common';
-import { useUploadFileMutation, useGetFileConfig } from '~/data-provider';
+import type { TConversation } from 'librechat-data-provider';
+import { logger, validateFiles, cachePreview, getCachedPreview, removePreviewEntry } from '~/utils';
+import { useGetFileConfig, useUploadFileMutation } from '~/data-provider';
+import useLocalize, { TranslationKeys } from '~/hooks/useLocalize';
 import { useDelayedUploadToast } from './useDelayedUploadToast';
-import { useToastContext } from '~/Providers/ToastContext';
+import { processFileForUpload } from '~/utils/heicConverter';
 import { useChatContext } from '~/Providers/ChatContext';
-import useLocalize from '~/hooks/useLocalize';
+import { ephemeralAgentByConvoId } from '~/store';
+import useClientResize from './useClientResize';
 import useUpdateFiles from './useUpdateFiles';
-import { logger } from '~/utils';
-
-const { checkType } = defaultFileConfig;
 
 type UseFileHandling = {
-  overrideEndpoint?: EModelEndpoint;
   fileSetter?: FileSetter;
   fileFilter?: (file: File) => boolean;
   additionalMetadata?: Record<string, string | undefined>;
+  /** Overrides `endpoint` for upload routing; also used as `endpointType` fallback when `endpointTypeOverride` is not set */
+  endpointOverride?: EModelEndpoint | string;
+  /** Overrides `endpointType` independently from `endpointOverride` */
+  endpointTypeOverride?: EModelEndpoint | string;
 };
 
-const useFileHandling = (params?: UseFileHandling) => {
+export type FileHandlingState = {
+  files: Map<string, ExtendedFile>;
+  setFiles: FileSetter;
+  setFilesLoading?: React.Dispatch<React.SetStateAction<boolean>>;
+  conversation?: TConversation | null;
+};
+
+const noop = () => {};
+
+const useFileHandlingCore = (params: UseFileHandling | undefined, fileState: FileHandlingState) => {
   const localize = useLocalize();
   const queryClient = useQueryClient();
   const { showToast } = useToastContext();
   const [errors, setErrors] = useState<string[]>([]);
   const abortControllerRef = useRef<AbortController | null>(null);
   const { startUploadTimer, clearUploadTimer } = useDelayedUploadToast();
-  const { files, setFiles, setFilesLoading, conversation } = useChatContext();
+  const { files, setFiles, conversation } = fileState;
+  const setFilesLoading = fileState.setFilesLoading ?? noop;
+  const setEphemeralAgent = useSetRecoilState(
+    ephemeralAgentByConvoId(conversation?.conversationId ?? Constants.NEW_CONVO),
+  );
   const setError = (error: string) => setErrors((prevErrors) => [...prevErrors, error]);
   const { addFile, replaceFile, updateFileById, deleteFileById } = useUpdateFiles(
     params?.fileSetter ?? setFiles,
   );
+  const { resizeImageIfNeeded } = useClientResize();
 
   const agent_id = params?.additionalMetadata?.agent_id ?? '';
   const assistant_id = params?.additionalMetadata?.assistant_id ?? '';
+  const endpointOverride = params?.endpointOverride;
+  const endpointTypeOverride = params?.endpointTypeOverride;
+  const endpointType = useMemo(
+    () => endpointTypeOverride ?? endpointOverride ?? conversation?.endpointType,
+    [endpointTypeOverride, endpointOverride, conversation?.endpointType],
+  );
+  const endpoint = useMemo(
+    () => endpointOverride ?? conversation?.endpoint ?? 'default',
+    [endpointOverride, conversation?.endpoint],
+  );
 
-  const { data: fileConfig = defaultFileConfig } = useGetFileConfig({
+  const { data: fileConfig = null } = useGetFileConfig({
     select: (data) => mergeFileConfig(data),
   });
-  const endpoint =
-    params?.overrideEndpoint ?? conversation?.endpointType ?? conversation?.endpoint ?? 'default';
-
-  const { fileLimit, fileSizeLimit, totalSizeLimit, supportedMimeTypes } =
-    fileConfig.endpoints[endpoint] ?? fileConfig.endpoints.default;
 
   const displayToast = useCallback(() => {
     if (errors.length > 1) {
+      // TODO: this should not be a dynamic localize input!!
       const errorList = Array.from(new Set(errors))
-        .map((e, i) => `${i > 0 ? '• ' : ''}${localize(e) || e}\n`)
+        .map((e, i) => `${i > 0 ? '• ' : ''}${localize(e as TranslationKeys) || e}\n`)
         .join('');
       showToast({
         message: errorList,
@@ -67,7 +92,8 @@ const useFileHandling = (params?: UseFileHandling) => {
         duration: 5000,
       });
     } else if (errors.length === 1) {
-      const message = localize(errors[0]) || errors[0];
+      // TODO: this should not be a dynamic localize input!!
+      const message = localize(errors[0] as TranslationKeys) || errors[0];
       showToast({
         message,
         status: 'error',
@@ -107,6 +133,11 @@ const useFileHandling = (params?: UseFileHandling) => {
         );
 
         setTimeout(() => {
+          const cachedBlob = getCachedPreview(data.temp_file_id);
+          if (cachedBlob && data.file_id !== data.temp_file_id) {
+            cachePreview(data.file_id, cachedBlob);
+            removePreviewEntry(data.temp_file_id);
+          }
           updateFileById(
             data.temp_file_id,
             {
@@ -129,12 +160,23 @@ const useFileHandling = (params?: UseFileHandling) => {
         const error = _error as TError | undefined;
         console.log('upload error', error);
         const file_id = body.get('file_id');
+        const tool_resource = body.get('tool_resource');
+        if (tool_resource === EToolResources.execute_code) {
+          setEphemeralAgent((prev) => ({
+            ...prev,
+            [EToolResources.execute_code]: false,
+          }));
+        }
         clearUploadTimer(file_id as string);
         deleteFileById(file_id as string);
-        const errorMessage =
-          error?.code === 'ERR_CANCELED'
-            ? 'com_error_files_upload_canceled'
-            : error?.response?.data?.message ?? 'com_error_files_upload';
+
+        let errorMessage = 'com_error_files_upload';
+
+        if (error?.code === 'ERR_CANCELED') {
+          errorMessage = 'com_error_files_upload_canceled';
+        } else if (error?.response?.data?.message) {
+          errorMessage = error.response.data.message;
+        }
         setError(errorMessage);
       },
     },
@@ -146,6 +188,8 @@ const useFileHandling = (params?: UseFileHandling) => {
     startUploadTimer(extendedFile.file_id, filename, extendedFile.size);
 
     const formData = new FormData();
+    formData.append('endpoint', endpoint);
+    formData.append('endpointType', endpointType ?? '');
     formData.append('file', extendedFile.file as File, encodeURIComponent(filename));
     formData.append('file_id', extendedFile.file_id);
 
@@ -167,9 +211,18 @@ const useFileHandling = (params?: UseFileHandling) => {
       }
     }
 
-    formData.append('endpoint', endpoint);
+    if (!isAssistantsEndpoint(endpointType ?? endpoint)) {
+      if (!agent_id) {
+        formData.append('message_file', 'true');
+      }
+      const tool_resource = extendedFile.tool_resource;
+      if (tool_resource != null) {
+        formData.append('tool_resource', tool_resource);
+      }
+      if (conversation?.agent_id != null && formData.get('agent_id') == null) {
+        formData.append('agent_id', conversation.agent_id);
+      }
 
-    if (!isAssistantsEndpoint(endpoint)) {
       uploadFile.mutate(formData);
       return;
     }
@@ -203,82 +256,6 @@ const useFileHandling = (params?: UseFileHandling) => {
     uploadFile.mutate(formData);
   };
 
-  const validateFiles = (fileList: File[]) => {
-    const existingFiles = Array.from(files.values());
-    const incomingTotalSize = fileList.reduce((total, file) => total + file.size, 0);
-    if (incomingTotalSize === 0) {
-      setError('com_error_files_empty');
-      return false;
-    }
-    const currentTotalSize = existingFiles.reduce((total, file) => total + file.size, 0);
-
-    if (fileList.length + files.size > fileLimit) {
-      setError(`You can only upload up to ${fileLimit} files at a time.`);
-      return false;
-    }
-
-    for (let i = 0; i < fileList.length; i++) {
-      let originalFile = fileList[i];
-      let fileType = originalFile.type;
-      const extension = originalFile.name.split('.').pop() ?? '';
-      const knownCodeType = codeTypeMapping[extension];
-
-      // Infer MIME type for Known Code files when the type is empty or a mismatch
-      if (knownCodeType && (!fileType || fileType !== knownCodeType)) {
-        fileType = knownCodeType;
-      }
-
-      // Check if the file type is still empty after the extension check
-      if (!fileType) {
-        setError('Unable to determine file type for: ' + originalFile.name);
-        return false;
-      }
-
-      // Replace empty type with inferred type
-      if (originalFile.type !== fileType) {
-        const newFile = new File([originalFile], originalFile.name, { type: fileType });
-        originalFile = newFile;
-        fileList[i] = newFile;
-      }
-
-      if (!checkType(originalFile.type, supportedMimeTypes)) {
-        console.log(originalFile);
-        setError('Currently, unsupported file type: ' + originalFile.type);
-        return false;
-      }
-
-      if (originalFile.size >= fileSizeLimit) {
-        setError(`File size exceeds ${fileSizeLimit / megabyte} MB.`);
-        return false;
-      }
-    }
-
-    if (currentTotalSize + incomingTotalSize > totalSizeLimit) {
-      setError(`The total size of the files cannot exceed ${totalSizeLimit / megabyte} MB.`);
-      return false;
-    }
-
-    const combinedFilesInfo = [
-      ...existingFiles.map(
-        (file) =>
-          `${file.file?.name ?? file.filename}-${file.size}-${file.type?.split('/')[0] ?? 'file'}`,
-      ),
-      ...fileList.map(
-        (file: File | undefined) =>
-          `${file?.name}-${file?.size}-${file?.type.split('/')[0] ?? 'file'}`,
-      ),
-    ];
-
-    const uniqueFilesSet = new Set(combinedFilesInfo);
-
-    if (uniqueFilesSet.size !== combinedFilesInfo.length) {
-      setError('com_error_files_dupe');
-      return false;
-    }
-
-    return true;
-  };
-
   const loadImage = (extendedFile: ExtendedFile, preview: string) => {
     const img = new Image();
     img.onload = async () => {
@@ -291,18 +268,30 @@ const useFileHandling = (params?: UseFileHandling) => {
       replaceFile(extendedFile);
 
       await startUpload(extendedFile);
-      URL.revokeObjectURL(preview);
     };
     img.src = preview;
   };
 
-  const handleFiles = async (_files: FileList | File[]) => {
+  const handleFiles = async (_files: FileList | File[], _toolResource?: string) => {
     abortControllerRef.current = new AbortController();
     const fileList = Array.from(_files);
     /* Validate files */
     let filesAreValid: boolean;
     try {
-      filesAreValid = validateFiles(fileList);
+      const endpointFileConfig = getEndpointFileConfig({
+        endpoint,
+        fileConfig,
+        endpointType,
+      });
+
+      filesAreValid = validateFiles({
+        files,
+        fileList,
+        setError,
+        fileConfig,
+        endpointFileConfig,
+        toolResource: _toolResource,
+      });
     } catch (error) {
       console.error('file validation error', error);
       setError('com_error_files_validation');
@@ -317,37 +306,141 @@ const useFileHandling = (params?: UseFileHandling) => {
     for (const originalFile of fileList) {
       const file_id = v4();
       try {
-        const preview = URL.createObjectURL(originalFile);
-        const extendedFile: ExtendedFile = {
+        // Create initial preview with original file
+        const initialPreview = URL.createObjectURL(originalFile);
+        cachePreview(file_id, initialPreview);
+
+        // Create initial ExtendedFile to show immediately
+        const initialExtendedFile: ExtendedFile = {
           file_id,
           file: originalFile,
           type: originalFile.type,
-          preview,
-          progress: 0.2,
+          preview: initialPreview,
+          progress: 0.1, // Show as processing
           size: originalFile.size,
         };
 
-        addFile(extendedFile);
-
-        if (originalFile.type.split('/')[0] === 'image') {
-          loadImage(extendedFile, preview);
-          continue;
+        if (_toolResource != null && _toolResource !== '') {
+          initialExtendedFile.tool_resource = _toolResource;
         }
 
-        await startUpload(extendedFile);
+        // Add file immediately to show in UI
+        addFile(initialExtendedFile);
+
+        // Check if HEIC conversion is needed and show toast
+        const isHEIC =
+          originalFile.type === 'image/heic' ||
+          originalFile.type === 'image/heif' ||
+          originalFile.name.toLowerCase().match(/\.(heic|heif)$/);
+
+        if (isHEIC) {
+          showToast({
+            message: localize('com_info_heic_converting'),
+            status: 'info',
+            duration: 3000,
+          });
+        }
+
+        // Process file for HEIC conversion if needed
+        const heicProcessedFile = await processFileForUpload(
+          originalFile,
+          0.9,
+          (conversionProgress) => {
+            // Update progress during HEIC conversion (0.1 to 0.5 range for conversion)
+            const adjustedProgress = 0.1 + conversionProgress * 0.4;
+            replaceFile({
+              ...initialExtendedFile,
+              progress: adjustedProgress,
+            });
+          },
+        );
+
+        let finalProcessedFile = heicProcessedFile;
+
+        // Apply client-side resizing if available and appropriate
+        if (heicProcessedFile.type.startsWith('image/')) {
+          try {
+            const resizeResult = await resizeImageIfNeeded(heicProcessedFile);
+            finalProcessedFile = resizeResult.file;
+
+            // Show toast notification if image was resized
+            if (resizeResult.resized && resizeResult.result) {
+              const { originalSize, newSize, compressionRatio } = resizeResult.result;
+              const originalSizeMB = (originalSize / (1024 * 1024)).toFixed(1);
+              const newSizeMB = (newSize / (1024 * 1024)).toFixed(1);
+              const savedPercent = Math.round((1 - compressionRatio) * 100);
+
+              showToast({
+                message: `Image resized: ${originalSizeMB}MB → ${newSizeMB}MB (${savedPercent}% smaller)`,
+                status: 'success',
+                duration: 3000,
+              });
+            }
+          } catch (resizeError) {
+            console.warn('Image resize failed, using original:', resizeError);
+            // Continue with HEIC processed file if resizing fails
+          }
+        }
+
+        // If file was processed (HEIC converted or resized), update with new file and preview
+        if (finalProcessedFile !== originalFile) {
+          URL.revokeObjectURL(initialPreview); // Clean up original preview
+          const newPreview = URL.createObjectURL(finalProcessedFile);
+          cachePreview(file_id, newPreview);
+
+          const updatedExtendedFile: ExtendedFile = {
+            ...initialExtendedFile,
+            file: finalProcessedFile,
+            type: finalProcessedFile.type,
+            preview: newPreview,
+            progress: 0.5, // Processing complete, ready for upload
+            size: finalProcessedFile.size,
+          };
+
+          replaceFile(updatedExtendedFile);
+
+          const isImage = finalProcessedFile.type.split('/')[0] === 'image';
+          if (isImage) {
+            loadImage(updatedExtendedFile, newPreview);
+            continue;
+          }
+
+          await startUpload(updatedExtendedFile);
+        } else {
+          // File wasn't processed, proceed with original
+          const isImage = originalFile.type.split('/')[0] === 'image';
+
+          // Update progress to show ready for upload
+          const readyExtendedFile = {
+            ...initialExtendedFile,
+            progress: 0.2,
+          };
+          replaceFile(readyExtendedFile);
+
+          if (isImage) {
+            loadImage(readyExtendedFile, initialPreview);
+            continue;
+          }
+
+          await startUpload(readyExtendedFile);
+        }
       } catch (error) {
         deleteFileById(file_id);
         console.log('file handling error', error);
-        setError('com_error_files_process');
+        if (error instanceof Error && error.message.includes('HEIC')) {
+          setError('com_error_heic_conversion');
+        } else {
+          setError('com_error_files_process');
+        }
       }
     }
   };
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>, _toolResource?: string) => {
     event.stopPropagation();
     if (event.target.files) {
       setFilesLoading(true);
-      handleFiles(event.target.files);
+      handleFiles(event.target.files, _toolResource);
       // reset the input
       event.target.value = '';
     }
@@ -368,6 +461,22 @@ const useFileHandling = (params?: UseFileHandling) => {
     setFiles,
     files,
   };
+};
+
+export const useFileHandlingNoChatContext = (
+  params: UseFileHandling | undefined,
+  fileState: FileHandlingState,
+) => useFileHandlingCore(params, fileState);
+
+const useFileHandling = (params?: UseFileHandling) => {
+  const { files, setFiles, setFilesLoading, conversation } = useChatContext();
+
+  return useFileHandlingCore(params, {
+    files,
+    setFiles,
+    conversation,
+    setFilesLoading,
+  });
 };
 
 export default useFileHandling;

@@ -1,4 +1,13 @@
 const { v4 } = require('uuid');
+const { sleep } = require('@librechat/agents');
+const { logger } = require('@librechat/data-schemas');
+const {
+  sendEvent,
+  countTokens,
+  checkBalance,
+  getBalanceConfig,
+  getModelMaxTokens,
+} = require('@librechat/api');
 const {
   Time,
   Constants,
@@ -18,31 +27,33 @@ const {
   saveAssistantMessage,
 } = require('~/server/services/Threads');
 const { runAssistant, createOnTextProgress } = require('~/server/services/AssistantService');
-const { sendMessage, sleep, isEnabled, countTokens } = require('~/server/utils');
 const { createErrorHandler } = require('~/server/controllers/assistants/errors');
 const validateAuthor = require('~/server/middleware/assistants/validateAuthor');
 const { createRun, StreamRunManager } = require('~/server/services/Runs');
 const { addTitle } = require('~/server/services/Endpoints/assistants');
-const { getTransactions } = require('~/models/Transaction');
-const checkBalance = require('~/models/checkBalance');
-const { getConvo } = require('~/models/Conversation');
-const getLogStores = require('~/cache/getLogStores');
-const { getModelMaxTokens } = require('~/utils');
+const { createRunBody } = require('~/server/services/createRunBody');
+const {
+  getConvo,
+  getMultiplier,
+  getTransactions,
+  findBalanceByUser,
+  upsertBalanceFields,
+  createAutoRefillTransaction,
+} = require('~/models');
+const { logViolation, getLogStores } = require('~/cache');
 const { getOpenAIClient } = require('./helpers');
-const { logger } = require('~/config');
-
-const ten_minutes = 1000 * 60 * 10;
 
 /**
  * @route POST /
  * @desc Chat with an assistant
  * @access Public
- * @param {Express.Request} req - The request object, containing the request data.
+ * @param {ServerRequest} req - The request object, containing the request data.
  * @param {Express.Response} res - The response object, used to send back a response.
  * @returns {void}
  */
 const chatV2 = async (req, res) => {
   logger.debug('[/assistants/chat/] req.body', req.body);
+  const appConfig = req.config;
 
   /** @type {{files: MongoFile[]}} */
   const {
@@ -58,9 +69,10 @@ const chatV2 = async (req, res) => {
     messageId: _messageId,
     conversationId: convoId,
     parentMessageId: _parentId = Constants.NO_PARENT,
+    clientTimestamp,
   } = req.body;
 
-  /** @type {OpenAIClient} */
+  /** @type {OpenAI} */
   let openai;
   /** @type {string|undefined} - the current thread id */
   let thread_id = _thread_id;
@@ -124,7 +136,8 @@ const chatV2 = async (req, res) => {
     }
 
     const checkBalanceBeforeRun = async () => {
-      if (!isEnabled(process.env.CHECK_BALANCE)) {
+      const balanceConfig = getBalanceConfig(appConfig);
+      if (!balanceConfig?.enabled) {
         return;
       }
       const transactions =
@@ -146,23 +159,32 @@ const chatV2 = async (req, res) => {
       // Count tokens up to the current context window
       promptTokens = Math.min(promptTokens, getModelMaxTokens(model));
 
-      await checkBalance({
-        req,
-        res,
-        txData: {
-          model,
-          user: req.user.id,
-          tokenType: 'prompt',
-          amount: promptTokens,
+      await checkBalance(
+        {
+          req,
+          res,
+          txData: {
+            model,
+            user: req.user.id,
+            tokenType: 'prompt',
+            amount: promptTokens,
+          },
         },
-      });
+        {
+          findBalanceByUser,
+          getMultiplier,
+          createAutoRefillTransaction,
+          logViolation,
+          balanceConfig,
+          upsertBalanceFields,
+        },
+      );
     };
 
-    const { openai: _openai, client } = await getOpenAIClient({
+    const { openai: _openai } = await getOpenAIClient({
       req,
       res,
       endpointOption,
-      initAppClient: true,
     });
 
     openai = _openai;
@@ -186,22 +208,14 @@ const chatV2 = async (req, res) => {
     };
 
     /** @type {CreateRunBody | undefined} */
-    const body = {
+    const body = createRunBody({
       assistant_id,
       model,
-    };
-
-    if (promptPrefix) {
-      body.additional_instructions = promptPrefix;
-    }
-
-    if (typeof endpointOption.artifactsPrompt === 'string' && endpointOption.artifactsPrompt) {
-      body.additional_instructions = `${body.additional_instructions ?? ''}\n${endpointOption.artifactsPrompt}`.trim();
-    }
-
-    if (instructions) {
-      body.instructions = instructions;
-    }
+      promptPrefix,
+      instructions,
+      endpointOption,
+      clientTimestamp,
+    });
 
     const getRequestFileIds = async () => {
       let thread_file_ids = [];
@@ -316,7 +330,7 @@ const chatV2 = async (req, res) => {
     await Promise.all(promises);
 
     const sendInitialResponse = () => {
-      sendMessage(res, {
+      sendEvent(res, {
         sync: true,
         conversationId,
         // messages: previousMessages,
@@ -361,7 +375,7 @@ const chatV2 = async (req, res) => {
         });
 
         run_id = run.id;
-        await cache.set(cacheKey, `${thread_id}:${run_id}`, ten_minutes);
+        await cache.set(cacheKey, `${thread_id}:${run_id}`, Time.TEN_MINUTES);
         sendInitialResponse();
 
         // todo: retry logic
@@ -372,16 +386,16 @@ const chatV2 = async (req, res) => {
       /** @type {{[AssistantStreamEvents.ThreadRunCreated]: (event: ThreadRunCreated) => Promise<void>}} */
       const handlers = {
         [AssistantStreamEvents.ThreadRunCreated]: async (event) => {
-          await cache.set(cacheKey, `${thread_id}:${event.data.id}`, ten_minutes);
+          await cache.set(cacheKey, `${thread_id}:${event.data.id}`, Time.TEN_MINUTES);
           run_id = event.data.id;
           sendInitialResponse();
         },
       };
 
       /** @type {undefined | TAssistantEndpoint} */
-      const config = req.app.locals[endpoint] ?? {};
+      const config = appConfig.endpoints?.[endpoint] ?? {};
       /** @type {undefined | TBaseEndpoint} */
-      const allConfig = req.app.locals.all;
+      const allConfig = appConfig.endpoints?.all;
 
       const streamRunManager = new StreamRunManager({
         req,
@@ -405,16 +419,6 @@ const chatV2 = async (req, res) => {
 
       response = streamRunManager;
       response.text = streamRunManager.intermediateText;
-
-      const messageCache = getLogStores(CacheKeys.MESSAGES);
-      messageCache.set(
-        responseMessageId,
-        {
-          complete: true,
-          text: response.text,
-        },
-        Time.FIVE_MINUTES,
-      );
     };
 
     await processRun();
@@ -445,9 +449,11 @@ const chatV2 = async (req, res) => {
       thread_id,
       model: assistant_id,
       endpoint,
+      spec: endpointOption.spec,
+      iconURL: endpointOption.iconURL,
     };
 
-    sendMessage(res, {
+    sendEvent(res, {
       final: true,
       conversation,
       requestMessage: {
@@ -467,7 +473,6 @@ const chatV2 = async (req, res) => {
         text,
         responseText: response.text,
         conversationId,
-        client,
       });
     }
 
@@ -480,7 +485,7 @@ const chatV2 = async (req, res) => {
 
     if (!response.run.usage) {
       await sleep(3000);
-      completedRun = await openai.beta.threads.runs.retrieve(thread_id, response.run.id);
+      completedRun = await openai.beta.threads.runs.retrieve(response.run.id, { thread_id });
       if (completedRun.usage) {
         await recordUsage({
           ...completedRun.usage,

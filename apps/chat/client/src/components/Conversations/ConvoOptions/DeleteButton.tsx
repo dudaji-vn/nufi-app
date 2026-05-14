@@ -1,12 +1,22 @@
 import React, { useCallback } from 'react';
+import { Trans } from 'react-i18next';
 import { QueryKeys } from 'librechat-data-provider';
 import { useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
+import {
+  Button,
+  Spinner,
+  OGDialog,
+  OGDialogClose,
+  OGDialogTitle,
+  OGDialogHeader,
+  OGDialogContent,
+  useToastContext,
+} from '@librechat/client';
 import type { TMessage } from 'librechat-data-provider';
 import { useDeleteConversationMutation } from '~/data-provider';
-import OGDialogTemplate from '~/components/ui/OGDialogTemplate';
 import { useLocalize, useNewConvo } from '~/hooks';
-import { OGDialog, Label } from '~/components';
+import { NotificationSeverity } from '~/common';
 
 type DeleteButtonProps = {
   conversationId: string;
@@ -14,13 +24,19 @@ type DeleteButtonProps = {
   title: string;
   showDeleteDialog?: boolean;
   setShowDeleteDialog?: (value: boolean) => void;
+  triggerRef?: React.RefObject<HTMLButtonElement>;
+  setMenuOpen?: (open: boolean) => void;
 };
 
 export function DeleteConversationDialog({
+  setShowDeleteDialog,
   conversationId,
+  setMenuOpen,
   retainView,
   title,
 }: {
+  setMenuOpen?: (open: boolean) => void;
+  setShowDeleteDialog: (value: boolean) => void;
   conversationId: string;
   retainView: () => void;
   title: string;
@@ -28,49 +44,69 @@ export function DeleteConversationDialog({
   const localize = useLocalize();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { showToast } = useToastContext();
   const { newConversation } = useNewConvo();
   const { conversationId: currentConvoId } = useParams();
 
-  const deleteConvoMutation = useDeleteConversationMutation({
+  const deleteMutation = useDeleteConversationMutation({
     onSuccess: () => {
+      setShowDeleteDialog(false);
       if (currentConvoId === conversationId || currentConvoId === 'new') {
         newConversation();
         navigate('/c/new', { replace: true });
       }
+      setMenuOpen?.(false);
       retainView();
+      showToast({
+        message: localize('com_ui_convo_delete_success'),
+        severity: NotificationSeverity.SUCCESS,
+        showIcon: true,
+      });
+    },
+    onError: () => {
+      showToast({
+        message: localize('com_ui_convo_delete_error'),
+        severity: NotificationSeverity.ERROR,
+        showIcon: true,
+      });
     },
   });
 
   const confirmDelete = useCallback(() => {
     const messages = queryClient.getQueryData<TMessage[]>([QueryKeys.messages, conversationId]);
     const thread_id = messages?.[messages.length - 1]?.thread_id;
+    const endpoint = messages?.[messages.length - 1]?.endpoint;
 
-    deleteConvoMutation.mutate({ conversationId, thread_id, source: 'button' });
-  }, [conversationId, deleteConvoMutation, queryClient]);
+    deleteMutation.mutate({ conversationId, thread_id, endpoint, source: 'button' });
+  }, [conversationId, deleteMutation, queryClient]);
 
   return (
-    <OGDialogTemplate
+    <OGDialogContent
+      className="w-11/12 max-w-md"
       showCloseButton={false}
-      title={localize('com_ui_delete_conversation')}
-      className="max-w-[450px]"
-      main={
-        <>
-          <div className="flex w-full flex-col items-center gap-2">
-            <div className="grid w-full items-center gap-2">
-              <Label htmlFor="dialog-confirm-delete" className="text-left text-sm font-medium">
-                {localize('com_ui_delete_confirm')} <strong>{title}</strong>
-              </Label>
-            </div>
-          </div>
-        </>
-      }
-      selection={{
-        selectHandler: confirmDelete,
-        selectClasses:
-          'bg-destructive text-white transition-all duration-200 hover:bg-destructive/80',
-        selectText: localize('com_ui_delete'),
-      }}
-    />
+      aria-describedby="delete-conversation-description"
+    >
+      <OGDialogHeader>
+        <OGDialogTitle>{localize('com_ui_delete_conversation')}</OGDialogTitle>
+      </OGDialogHeader>
+      <div id="delete-conversation-description" className="w-full truncate">
+        <Trans
+          i18nKey="com_ui_delete_confirm_strong"
+          values={{ title }}
+          components={{ strong: <strong /> }}
+        />
+      </div>
+      <div className="flex justify-end gap-4 pt-4">
+        <OGDialogClose asChild>
+          <Button aria-label="cancel" variant="outline">
+            {localize('com_ui_cancel')}
+          </Button>
+        </OGDialogClose>
+        <Button variant="destructive" onClick={confirmDelete} disabled={deleteMutation.isLoading}>
+          {deleteMutation.isLoading ? <Spinner /> : localize('com_ui_delete')}
+        </Button>
+      </div>
+    </OGDialogContent>
   );
 }
 
@@ -78,17 +114,25 @@ export default function DeleteButton({
   conversationId,
   retainView,
   title,
+  setMenuOpen,
   showDeleteDialog,
   setShowDeleteDialog,
+  triggerRef,
 }: DeleteButtonProps) {
-  if (showDeleteDialog === undefined && setShowDeleteDialog === undefined) {
+  if (showDeleteDialog === undefined || setShowDeleteDialog === undefined) {
+    return null;
+  }
+
+  if (!conversationId) {
     return null;
   }
 
   return (
-    <OGDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+    <OGDialog open={showDeleteDialog!} onOpenChange={setShowDeleteDialog!} triggerRef={triggerRef}>
       <DeleteConversationDialog
+        setShowDeleteDialog={setShowDeleteDialog}
         conversationId={conversationId}
+        setMenuOpen={setMenuOpen}
         retainView={retainView}
         title={title}
       />

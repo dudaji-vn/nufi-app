@@ -1,12 +1,11 @@
-// client/src/components/SidePanel/Parameters/DynamicInput.tsx
 import { OptionTypes } from 'librechat-data-provider';
+import { Label, Input, HoverCard, HoverCardTrigger } from '@librechat/client';
 import type { DynamicSettingProps } from 'librechat-data-provider';
-import { useLocalize, useDebouncedInput, useParameterEffects } from '~/hooks';
-import { Label, Input, HoverCard, HoverCardTrigger } from '~/components/ui';
-import { cn, defaultTextProps } from '~/utils';
+import { useLocalize, useDebouncedInput, useParameterEffects, TranslationKeys } from '~/hooks';
 import { useChatContext } from '~/Providers';
 import OptionHover from './OptionHover';
 import { ESide } from '~/common';
+import { cn } from '~/utils';
 
 function DynamicInput({
   label = '',
@@ -27,12 +26,9 @@ function DynamicInput({
   const localize = useLocalize();
   const { preset } = useChatContext();
 
-  const [setInputValue, inputValue, setLocalValue] = useDebouncedInput<string | null>({
-    optionKey: optionType !== OptionTypes.Custom ? settingKey : undefined,
-    initialValue:
-      optionType !== OptionTypes.Custom
-        ? (conversation?.[settingKey] as string)
-        : (defaultValue as string),
+  const [setInputValue, inputValue, setLocalValue] = useDebouncedInput<string | number>({
+    optionKey: settingKey,
+    initialValue: optionType !== OptionTypes.Custom ? conversation?.[settingKey] : defaultValue,
     setter: () => ({}),
     setOption,
   });
@@ -46,6 +42,14 @@ function DynamicInput({
     setInputValue: setLocalValue,
   });
 
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInputValue(e, !isNaN(Number(e.target.value)));
+  };
+
+  const placeholderText = placeholderCode
+    ? localize(placeholder as TranslationKeys) || placeholder
+    : placeholder;
+
   return (
     <div
       className={`flex flex-col items-center justify-start gap-6 ${
@@ -57,9 +61,9 @@ function DynamicInput({
           <div className="flex w-full justify-between">
             <Label
               htmlFor={`${settingKey}-dynamic-input`}
-              className="text-left text-sm font-medium"
+              className="text-left text-xs font-medium"
             >
-              {labelCode ? localize(label) ?? label : label || settingKey}{' '}
+              {labelCode ? localize(label as TranslationKeys) || label : label || settingKey}{' '}
               {showDefault && (
                 <small className="opacity-40">
                   (
@@ -74,15 +78,21 @@ function DynamicInput({
           <Input
             id={`${settingKey}-dynamic-input`}
             disabled={readonly}
-            value={inputValue ?? ''}
-            onChange={setInputValue}
-            placeholder={placeholderCode ? localize(placeholder) ?? placeholder : placeholder}
-            className={cn(defaultTextProps, 'flex h-10 max-h-10 w-full resize-none px-3 py-2')}
+            value={inputValue ?? defaultValue ?? ''}
+            onChange={handleInputChange}
+            placeholder={placeholderText}
+            className={cn(
+              'flex h-9 max-h-9 w-full resize-none rounded-lg border border-border-light bg-surface-secondary px-3 py-2',
+            )}
           />
         </HoverCardTrigger>
         {description && (
           <OptionHover
-            description={descriptionCode ? localize(description) ?? description : description}
+            description={
+              descriptionCode
+                ? localize(description as TranslationKeys) || description
+                : description
+            }
             side={ESide.Left}
           />
         )}

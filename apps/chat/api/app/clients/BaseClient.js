@@ -1,47 +1,56 @@
 const crypto = require('crypto');
 const fetch = require('node-fetch');
+const { logger } = require('@librechat/data-schemas');
 const {
-  supportsBalanceCheck,
-  isAgentsEndpoint,
-  isParamEndpoint,
-  ErrorTypes,
+  countTokens,
+  checkBalance,
+  getBalanceConfig,
+  buildMessageFiles,
+  extractFileContext,
+  encodeAndFormatAudios,
+  encodeAndFormatVideos,
+  encodeAndFormatDocuments,
+} = require('@librechat/api');
+const {
   Constants,
-  CacheKeys,
-  Time,
+  FileSources,
+  ContentTypes,
+  excludedKeys,
+  EModelEndpoint,
+  mergeFileConfig,
+  isParamEndpoint,
+  isAgentsEndpoint,
+  isEphemeralAgentId,
+  supportsBalanceCheck,
+  isBedrockDocumentType,
+  getEndpointFileConfig,
 } = require('librechat-data-provider');
-const { getMessages, saveMessage, updateMessage, saveConvo } = require('~/models');
-const { addSpaceIfNeeded, isEnabled } = require('~/server/utils');
-const checkBalance = require('~/models/checkBalance');
-const { getFiles } = require('~/models/File');
-const { getLogStores } = require('~/cache');
+const { getStrategyFunctions } = require('~/server/services/Files/strategies');
+const { logViolation } = require('~/cache');
 const TextStream = require('./TextStream');
-const { logger } = require('~/config');
+const db = require('~/models');
 
 class BaseClient {
   constructor(apiKey, options = {}) {
     this.apiKey = apiKey;
     this.sender = options.sender ?? 'AI';
-    this.contextStrategy = null;
     this.currentDateString = new Date().toLocaleDateString('en-us', {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
     });
-    this.fetch = this.fetch.bind(this);
     /** @type {boolean} */
     this.skipSaveConvo = false;
     /** @type {boolean} */
     this.skipSaveUserMessage = false;
-    /** @type {ClientDatabaseSavePromise} */
-    this.userMessagePromise;
-    /** @type {ClientDatabaseSavePromise} */
-    this.responsePromise;
     /** @type {string} */
     this.user;
     /** @type {string} */
     this.conversationId;
     /** @type {string} */
     this.responseMessageId;
+    /** @type {string} */
+    this.parentMessageId;
     /** @type {TAttachment[]} */
     this.attachments;
     /** The key for the usage object's input tokens
@@ -50,18 +59,37 @@ class BaseClient {
     /** The key for the usage object's output tokens
      * @type {string} */
     this.outputTokensKey = 'completion_tokens';
+    /** @type {Set<string>} */
+    this.savedMessageIds = new Set();
+    /**
+     * Flag to determine if the client re-submitted the latest assistant message.
+     * @type {boolean | undefined} */
+    this.continued;
+    /**
+     * Flag to determine if the client has already fetched the conversation while saving new messages.
+     * @type {boolean | undefined} */
+    this.fetchedConvo;
+    /** @type {TMessage[]} */
+    this.currentMessages = [];
+    /** @type {import('librechat-data-provider').VisionModes | undefined} */
+    this.visionMode;
+    /** @type {import('librechat-data-provider').FileConfig | undefined} */
+    this._mergedFileConfig;
+    /** @type {import('librechat-data-provider').EndpointFileConfig | undefined} */
+    this._endpointFileConfig;
   }
 
   setOptions() {
-    throw new Error('Method \'setOptions\' must be implemented.');
+    throw new Error("Method 'setOptions' must be implemented.");
   }
 
   async getCompletion() {
-    throw new Error('Method \'getCompletion\' must be implemented.');
+    throw new Error("Method 'getCompletion' must be implemented.");
   }
 
+  /** @type {sendCompletion} */
   async sendCompletion() {
-    throw new Error('Method \'sendCompletion\' must be implemented.');
+    throw new Error("Method 'sendCompletion' must be implemented.");
   }
 
   getSaveOptions() {
@@ -84,7 +112,7 @@ class BaseClient {
       return this.options.agent.id;
     }
 
-    return this.modelOptions.model;
+    return this.modelOptions?.model ?? this.model;
   }
 
   /**
@@ -93,18 +121,27 @@ class BaseClient {
    * @returns {number}
    */
   getTokenCountForResponse(responseMessage) {
-    logger.debug('`[BaseClient] recordTokenUsage` not implemented.', responseMessage);
+    logger.debug('[BaseClient] `recordTokenUsage` not implemented.', {
+      messageId: responseMessage?.messageId,
+    });
   }
 
   /**
    * Abstract method to record token usage. Subclasses must implement this method.
    * If a correction to the token usage is needed, the method should return an object with the corrected token counts.
+   * Should only be used if `recordCollectedUsage` was not used instead.
+   * @param {string} [model]
+   * @param {AppConfig['balance']} [balance]
    * @param {number} promptTokens
    * @param {number} completionTokens
+   * @param {string} [messageId]
    * @returns {Promise<void>}
    */
-  async recordTokenUsage({ promptTokens, completionTokens }) {
-    logger.debug('`[BaseClient] recordTokenUsage` not implemented.', {
+  async recordTokenUsage({ model, balance, promptTokens, completionTokens, messageId }) {
+    logger.debug('[BaseClient] `recordTokenUsage` not implemented.', {
+      model,
+      balance,
+      messageId,
       promptTokens,
       completionTokens,
     });
@@ -173,7 +210,8 @@ class BaseClient {
     this.user = user;
     const saveOptions = this.getSaveOptions();
     this.abortController = opts.abortController ?? new AbortController();
-    const conversationId = overrideConvoId ?? opts.conversationId ?? crypto.randomUUID();
+    const requestConvoId = overrideConvoId ?? opts.conversationId;
+    const conversationId = requestConvoId ?? crypto.randomUUID();
     const parentMessageId = opts.parentMessageId ?? Constants.NO_PARENT;
     const userMessageId =
       overrideUserMessageId ?? opts.overrideParentMessageId ?? crypto.randomUUID();
@@ -188,17 +226,22 @@ class BaseClient {
       this.currentMessages[this.currentMessages.length - 1].messageId = head;
     }
 
+    if (opts.isRegenerate && responseMessageId.endsWith('_')) {
+      responseMessageId = crypto.randomUUID();
+    }
+
     this.responseMessageId = responseMessageId;
 
     return {
       ...opts,
       user,
       head,
+      saveOptions,
+      userMessageId,
+      requestConvoId,
       conversationId,
       parentMessageId,
-      userMessageId,
       responseMessageId,
-      saveOptions,
     };
   }
 
@@ -217,21 +260,22 @@ class BaseClient {
     const {
       user,
       head,
+      saveOptions,
+      userMessageId,
+      requestConvoId,
       conversationId,
       parentMessageId,
-      userMessageId,
       responseMessageId,
-      saveOptions,
     } = await this.setMessageOptions(opts);
 
     const userMessage = opts.isEdited
       ? this.currentMessages[this.currentMessages.length - 2]
       : this.createUserMessage({
-        messageId: userMessageId,
-        parentMessageId,
-        conversationId,
-        text: message,
-      });
+          messageId: userMessageId,
+          parentMessageId,
+          conversationId,
+          text: message,
+        });
 
     if (typeof opts?.getReqData === 'function') {
       opts.getReqData({
@@ -243,7 +287,8 @@ class BaseClient {
     }
 
     if (typeof opts?.onStart === 'function') {
-      opts.onStart(userMessage, responseMessageId);
+      const isNewConvo = !requestConvoId && parentMessageId === Constants.NO_PARENT;
+      opts.onStart(userMessage, responseMessageId, isNewConvo);
     }
 
     return {
@@ -260,17 +305,24 @@ class BaseClient {
   /**
    * Adds instructions to the messages array. If the instructions object is empty or undefined,
    * the original messages array is returned. Otherwise, the instructions are added to the messages
-   * array, preserving the last message at the end.
+   * array either at the beginning (default) or preserving the last message at the end.
    *
    * @param {Array} messages - An array of messages.
    * @param {Object} instructions - An object containing instructions to be added to the messages.
+   * @param {boolean} [beforeLast=false] - If true, adds instructions before the last message; if false, adds at the beginning.
    * @returns {Array} An array containing messages and instructions, or the original messages if instructions are empty.
    */
-  addInstructions(messages, instructions) {
-    const payload = [];
+  addInstructions(messages, instructions, beforeLast = false) {
     if (!instructions || Object.keys(instructions).length === 0) {
       return messages;
     }
+
+    if (!beforeLast) {
+      return [instructions, ...messages];
+    }
+
+    // Legacy behavior: add instructions before the last message
+    const payload = [];
     if (messages.length > 1) {
       payload.push(...messages.slice(0, -1));
     }
@@ -282,42 +334,6 @@ class BaseClient {
     }
 
     return payload;
-  }
-
-  async handleTokenCountMap(tokenCountMap) {
-    if (this.currentMessages.length === 0) {
-      return;
-    }
-
-    for (let i = 0; i < this.currentMessages.length; i++) {
-      // Skip the last message, which is the user message.
-      if (i === this.currentMessages.length - 1) {
-        break;
-      }
-
-      const message = this.currentMessages[i];
-      const { messageId } = message;
-      const update = {};
-
-      if (messageId === tokenCountMap.summaryMessage?.messageId) {
-        logger.debug(`[BaseClient] Adding summary props to ${messageId}.`);
-
-        update.summary = tokenCountMap.summaryMessage.content;
-        update.summaryTokenCount = tokenCountMap.summaryMessage.tokenCount;
-      }
-
-      if (message.tokenCount && !update.summaryTokenCount) {
-        logger.debug(`[BaseClient] Skipping ${messageId}: already had a token count.`);
-        continue;
-      }
-
-      const tokenCount = tokenCountMap[messageId];
-      if (tokenCount) {
-        message.tokenCount = tokenCount;
-        update.tokenCount = tokenCount;
-        await this.updateMessageInDatabase({ messageId, ...update });
-      }
-    }
   }
 
   concatenateMessages(messages) {
@@ -333,25 +349,35 @@ class BaseClient {
    * If the token limit would be exceeded by adding a message, that message is not added to the context and remains in the original array.
    * The method uses `push` and `pop` operations for efficient array manipulation, and reverses the context array at the end to maintain the original order of the messages.
    *
-   * @param {Array} _messages - An array of messages, each with a `tokenCount` property. The messages should be ordered from oldest to newest.
-   * @param {number} [maxContextTokens] - The max number of tokens allowed in the context. If not provided, defaults to `this.maxContextTokens`.
-   * @returns {Object} An object with four properties: `context`, `summaryIndex`, `remainingContextTokens`, and `messagesToRefine`.
+   * @param {Object} params
+   * @param {TMessage[]} params.messages - An array of messages, each with a `tokenCount` property. The messages should be ordered from oldest to newest.
+   * @param {number} [params.maxContextTokens] - The max number of tokens allowed in the context. If not provided, defaults to `this.maxContextTokens`.
+   * @param {{ role: 'system', content: text, tokenCount: number }} [params.instructions] - Instructions already added to the context at index 0.
+   * @returns {Promise<{
+   *  context: TMessage[],
+   *  remainingContextTokens: number,
+   *  messagesToRefine: TMessage[],
+   * }>} An object with three properties: `context`, `remainingContextTokens`, and `messagesToRefine`.
    *    `context` is an array of messages that fit within the token limit.
-   *    `summaryIndex` is the index of the first message in the `messagesToRefine` array.
    *    `remainingContextTokens` is the number of tokens remaining within the limit after adding the messages to the context.
    *    `messagesToRefine` is an array of messages that were not added to the context because they would have exceeded the token limit.
    */
-  async getMessagesWithinTokenLimit(_messages, maxContextTokens) {
+  async getMessagesWithinTokenLimit({ messages: _messages, maxContextTokens, instructions }) {
     // Every reply is primed with <|start|>assistant<|message|>, so we
     // start with 3 tokens for the label after all messages have been counted.
     let currentTokenCount = 3;
-    let summaryIndex = -1;
-    let remainingContextTokens = maxContextTokens ?? this.maxContextTokens;
+    const instructionsTokenCount = instructions?.tokenCount ?? 0;
+    let remainingContextTokens =
+      (maxContextTokens ?? this.maxContextTokens) - instructionsTokenCount;
     const messages = [..._messages];
 
     const context = [];
+
     if (currentTokenCount < remainingContextTokens) {
       while (messages.length > 0 && currentTokenCount < remainingContextTokens) {
+        if (messages.length === 1 && instructions) {
+          break;
+        }
         const poppedMessage = messages.pop();
         const { tokenCount } = poppedMessage;
 
@@ -365,125 +391,25 @@ class BaseClient {
       }
     }
 
+    if (instructions) {
+      context.push(_messages[0]);
+      messages.shift();
+    }
+
     const prunedMemory = messages;
-    summaryIndex = prunedMemory.length - 1;
     remainingContextTokens -= currentTokenCount;
 
     return {
       context: context.reverse(),
       remainingContextTokens,
       messagesToRefine: prunedMemory,
-      summaryIndex,
     };
   }
 
-  async handleContextStrategy({
-    instructions,
-    orderedMessages,
-    formattedMessages,
-    buildTokenMap = true,
-  }) {
-    let _instructions;
-    let tokenCount;
-
-    if (instructions) {
-      ({ tokenCount, ..._instructions } = instructions);
-    }
-    _instructions && logger.debug('[BaseClient] instructions tokenCount: ' + tokenCount);
-    let payload = this.addInstructions(formattedMessages, _instructions);
-    let orderedWithInstructions = this.addInstructions(orderedMessages, instructions);
-
-    let { context, remainingContextTokens, messagesToRefine, summaryIndex } =
-      await this.getMessagesWithinTokenLimit(orderedWithInstructions);
-
-    logger.debug('[BaseClient] Context Count (1/2)', {
-      remainingContextTokens,
-      maxContextTokens: this.maxContextTokens,
-    });
-
-    let summaryMessage;
-    let summaryTokenCount;
-    let { shouldSummarize } = this;
-
-    // Calculate the difference in length to determine how many messages were discarded if any
-    const { length } = payload;
-    const diff = length - context.length;
-    const firstMessage = orderedWithInstructions[0];
-    const usePrevSummary =
-      shouldSummarize &&
-      diff === 1 &&
-      firstMessage?.summary &&
-      this.previous_summary.messageId === firstMessage.messageId;
-
-    if (diff > 0) {
-      payload = payload.slice(diff);
-      logger.debug(
-        `[BaseClient] Difference between original payload (${length}) and context (${context.length}): ${diff}`,
-      );
-    }
-
-    const latestMessage = orderedWithInstructions[orderedWithInstructions.length - 1];
-    if (payload.length === 0 && !shouldSummarize && latestMessage) {
-      const info = `${latestMessage.tokenCount} / ${this.maxContextTokens}`;
-      const errorMessage = `{ "type": "${ErrorTypes.INPUT_LENGTH}", "info": "${info}" }`;
-      logger.warn(`Prompt token count exceeds max token count (${info}).`);
-      throw new Error(errorMessage);
-    }
-
-    if (usePrevSummary) {
-      summaryMessage = { role: 'system', content: firstMessage.summary };
-      summaryTokenCount = firstMessage.summaryTokenCount;
-      payload.unshift(summaryMessage);
-      remainingContextTokens -= summaryTokenCount;
-    } else if (shouldSummarize && messagesToRefine.length > 0) {
-      ({ summaryMessage, summaryTokenCount } = await this.summarizeMessages({
-        messagesToRefine,
-        remainingContextTokens,
-      }));
-      summaryMessage && payload.unshift(summaryMessage);
-      remainingContextTokens -= summaryTokenCount;
-    }
-
-    // Make sure to only continue summarization logic if the summary message was generated
-    shouldSummarize = summaryMessage && shouldSummarize;
-
-    logger.debug('[BaseClient] Context Count (2/2)', {
-      remainingContextTokens,
-      maxContextTokens: this.maxContextTokens,
-    });
-
-    /** @type {Record<string, number> | undefined} */
-    let tokenCountMap;
-    if (buildTokenMap) {
-      tokenCountMap = orderedWithInstructions.reduce((map, message, index) => {
-        const { messageId } = message;
-        if (!messageId) {
-          return map;
-        }
-
-        if (shouldSummarize && index === summaryIndex && !usePrevSummary) {
-          map.summaryMessage = { ...summaryMessage, messageId, tokenCount: summaryTokenCount };
-        }
-
-        map[messageId] = orderedWithInstructions[index].tokenCount;
-        return map;
-      }, {});
-    }
-
-    const promptTokens = this.maxContextTokens - remainingContextTokens;
-
-    logger.debug('[BaseClient] tokenCountMap:', tokenCountMap);
-    logger.debug('[BaseClient]', {
-      promptTokens,
-      remainingContextTokens,
-      payloadSize: payload.length,
-      maxContextTokens: this.maxContextTokens,
-    });
-
-    return { payload, tokenCountMap, promptTokens, messages: orderedWithInstructions };
-  }
-
   async sendMessage(message, opts = {}) {
+    const appConfig = this.options.req?.config;
+    /** @type {Promise<TMessage>} */
+    let userMessagePromise;
     const { user, head, isEdited, conversationId, responseMessageId, saveOptions, userMessage } =
       await this.handleStartMethods(message, opts);
 
@@ -495,7 +421,7 @@ class BaseClient {
       });
     }
 
-    const { generation = '' } = opts;
+    const { editedContent } = opts;
 
     // It's not necessary to push to currentMessages
     // depending on subclass implementation of handling messages
@@ -508,72 +434,146 @@ class BaseClient {
           conversationId,
           parentMessageId: userMessage.messageId,
           isCreatedByUser: false,
-          model: this.modelOptions.model,
+          model: this.modelOptions?.model ?? this.model,
           sender: this.sender,
-          text: generation,
         };
         this.currentMessages.push(userMessage, latestMessage);
-      } else {
-        latestMessage.text = generation;
+      } else if (editedContent != null) {
+        // Handle editedContent for content parts
+        if (editedContent && latestMessage.content && Array.isArray(latestMessage.content)) {
+          const { index, text, type } = editedContent;
+          if (index >= 0 && index < latestMessage.content.length) {
+            const contentPart = latestMessage.content[index];
+            if (type === ContentTypes.THINK && contentPart.type === ContentTypes.THINK) {
+              contentPart[ContentTypes.THINK] = text;
+            } else if (type === ContentTypes.TEXT && contentPart.type === ContentTypes.TEXT) {
+              contentPart[ContentTypes.TEXT] = text;
+            }
+          }
+        }
       }
+      this.continued = true;
     } else {
       this.currentMessages.push(userMessage);
     }
 
+    /**
+     * When the userMessage is pushed to currentMessages, the parentMessage is the userMessageId.
+     * this only matters when buildMessages is utilizing the parentMessageId, and may vary on implementation
+     */
+    const parentMessageId = isEdited ? head : userMessage.messageId;
+    this.parentMessageId = parentMessageId;
     let {
       prompt: payload,
       tokenCountMap,
       promptTokens,
     } = await this.buildMessages(
       this.currentMessages,
-      // When the userMessage is pushed to currentMessages, the parentMessage is the userMessageId.
-      // this only matters when buildMessages is utilizing the parentMessageId, and may vary on implementation
-      isEdited ? head : userMessage.messageId,
+      parentMessageId,
       this.getBuildMessagesOptions(opts),
       opts,
     );
 
-    if (tokenCountMap) {
-      logger.debug('[BaseClient] tokenCountMap', tokenCountMap);
-      if (tokenCountMap[userMessage.messageId]) {
-        userMessage.tokenCount = tokenCountMap[userMessage.messageId];
-        logger.debug('[BaseClient] userMessage', userMessage);
-      }
-
-      this.handleTokenCountMap(tokenCountMap);
+    if (tokenCountMap && tokenCountMap[userMessage.messageId]) {
+      userMessage.tokenCount = tokenCountMap[userMessage.messageId];
+      logger.debug('[BaseClient] userMessage', {
+        messageId: userMessage.messageId,
+        tokenCount: userMessage.tokenCount,
+        conversationId: userMessage.conversationId,
+      });
     }
 
     if (!isEdited && !this.skipSaveUserMessage) {
-      this.userMessagePromise = this.saveMessageToDatabase(userMessage, saveOptions, user);
+      const reqFiles = this.options.req?.body?.files;
+      if (reqFiles && Array.isArray(this.options.attachments)) {
+        const files = buildMessageFiles(reqFiles, this.options.attachments);
+        if (files.length > 0) {
+          userMessage.files = files;
+        }
+        delete userMessage.image_urls;
+      }
+      /**
+       * Persist the user's manual skill picks onto the user message so the
+       * frontend `SkillPills` component can render them in history
+       * after reload. UI-only metadata — the runtime skill resolution
+       * pipeline reads the top-level `req.body.manualSkills` separately.
+       * Filter is defense-in-depth on top of Mongoose schema validation:
+       * keeps the DB row free of empty/non-string entries even if a
+       * crafted payload slips past schema checks upstream.
+       */
+      const rawManualSkills = this.options.req?.body?.manualSkills;
+      if (Array.isArray(rawManualSkills) && rawManualSkills.length > 0) {
+        const skills = rawManualSkills.filter((s) => typeof s === 'string' && s.length > 0);
+        if (skills.length > 0) {
+          userMessage.manualSkills = skills;
+        }
+      }
+      /**
+       * Persist the names of skills auto-primed this turn via `always-apply`
+       * frontmatter so `SkillPills` can render pinned-variant badges
+       * on the user bubble that survive reload and history render. Frozen
+       * at turn time (not reconstructed from `Skill.alwaysApply` at render
+       * time) because the flag is mutable — historical turns must keep
+       * their audit trail even if an admin flips `alwaysApply` off later.
+       */
+      const alwaysApplySkillPrimes = this.options.agent?.alwaysApplySkillPrimes;
+      if (Array.isArray(alwaysApplySkillPrimes) && alwaysApplySkillPrimes.length > 0) {
+        const names = alwaysApplySkillPrimes
+          .map((p) => p?.name)
+          .filter((n) => typeof n === 'string' && n.length > 0);
+        if (names.length > 0) {
+          userMessage.alwaysAppliedSkills = names;
+        }
+      }
+      userMessagePromise = this.saveMessageToDatabase(userMessage, saveOptions, user).catch(
+        (err) => {
+          logger.error('[BaseClient] Failed to save user message:', err);
+          return {};
+        },
+      );
+      this.savedMessageIds.add(userMessage.messageId);
       if (typeof opts?.getReqData === 'function') {
         opts.getReqData({
-          userMessagePromise: this.userMessagePromise,
+          userMessagePromise,
         });
       }
     }
 
+    const balanceConfig = getBalanceConfig(appConfig);
     if (
-      isEnabled(process.env.CHECK_BALANCE) &&
+      balanceConfig?.enabled &&
       supportsBalanceCheck[this.options.endpointType ?? this.options.endpoint]
     ) {
-      await checkBalance({
-        req: this.options.req,
-        res: this.options.res,
-        txData: {
-          user: this.user,
-          tokenType: 'prompt',
-          amount: promptTokens,
-          model: this.modelOptions.model,
-          endpoint: this.options.endpoint,
-          endpointTokenConfig: this.options.endpointTokenConfig,
+      await checkBalance(
+        {
+          req: this.options.req,
+          res: this.options.res,
+          txData: {
+            user: this.user,
+            tokenType: 'prompt',
+            amount: promptTokens,
+            endpoint: this.options.endpoint,
+            model: this.modelOptions?.model ?? this.model,
+            endpointTokenConfig: this.options.endpointTokenConfig,
+          },
         },
-      });
+        {
+          logViolation,
+          getMultiplier: db.getMultiplier,
+          findBalanceByUser: db.findBalanceByUser,
+          createAutoRefillTransaction: db.createAutoRefillTransaction,
+          balanceConfig,
+          upsertBalanceFields: db.upsertBalanceFields,
+        },
+      );
     }
 
-    /** @type {string|string[]|undefined} */
-    const completion = await this.sendCompletion(payload, opts);
-    this.abortController.requestCompleted = true;
+    const { completion, metadata } = await this.sendCompletion(payload, opts);
+    if (this.abortController) {
+      this.abortController.requestCompleted = true;
+    }
 
+    /** @type {TMessage} */
     const responseMessage = {
       messageId: responseMessageId,
       conversationId,
@@ -586,26 +586,39 @@ class BaseClient {
       iconURL: this.options.iconURL,
       endpoint: this.options.endpoint,
       ...(this.metadata ?? {}),
+      metadata: Object.keys(metadata ?? {}).length > 0 ? metadata : undefined,
     };
 
     if (typeof completion === 'string') {
-      responseMessage.text = addSpaceIfNeeded(generation) + completion;
+      responseMessage.text = completion;
     } else if (
       Array.isArray(completion) &&
-      isParamEndpoint(this.options.endpoint, this.options.endpointType)
+      (this.clientName === EModelEndpoint.agents ||
+        isParamEndpoint(this.options.endpoint, this.options.endpointType))
     ) {
       responseMessage.text = '';
-      responseMessage.content = completion;
+
+      if (!opts.editedContent || this.currentMessages.length === 0) {
+        responseMessage.content = completion;
+      } else {
+        const latestMessage = this.currentMessages[this.currentMessages.length - 1];
+        if (!latestMessage?.content) {
+          responseMessage.content = completion;
+        } else {
+          const existingContent = [...latestMessage.content];
+          const { type: editedType } = opts.editedContent;
+          responseMessage.content = this.mergeEditedContent(
+            existingContent,
+            completion,
+            editedType,
+          );
+        }
+      }
     } else if (Array.isArray(completion)) {
-      responseMessage.text = addSpaceIfNeeded(generation) + completion.join('');
+      responseMessage.text = completion.join('');
     }
 
-    if (
-      tokenCountMap &&
-      this.recordTokenUsage &&
-      this.getTokenCountForResponse &&
-      this.getTokenCount
-    ) {
+    if (tokenCountMap && this.recordTokenUsage && this.getTokenCountForResponse) {
       let completionTokens;
 
       /**
@@ -618,101 +631,83 @@ class BaseClient {
       if (usage != null && Number(usage[this.outputTokensKey]) > 0) {
         responseMessage.tokenCount = usage[this.outputTokensKey];
         completionTokens = responseMessage.tokenCount;
-        await this.updateUserMessageTokenCount({ usage, tokenCountMap, userMessage, opts });
       } else {
         responseMessage.tokenCount = this.getTokenCountForResponse(responseMessage);
-        completionTokens = this.getTokenCount(completion);
+        completionTokens = responseMessage.tokenCount;
+        await this.recordTokenUsage({
+          usage,
+          promptTokens,
+          completionTokens,
+          balance: balanceConfig,
+          /** Note: When using agents, responseMessage.model is the agent ID, not the model */
+          model: this.model,
+          messageId: this.responseMessageId,
+        });
       }
 
-      await this.recordTokenUsage({ promptTokens, completionTokens, usage });
+      logger.debug('[BaseClient] Response token usage', {
+        messageId: responseMessage.messageId,
+        model: responseMessage.model,
+        promptTokens,
+        completionTokens,
+      });
     }
 
-    if (this.userMessagePromise) {
-      await this.userMessagePromise;
+    if (userMessagePromise) {
+      await userMessagePromise;
+    }
+
+    if (
+      this.contextMeta?.calibrationRatio > 0 &&
+      this.contextMeta.calibrationRatio !== 1 &&
+      userMessage.tokenCount > 0
+    ) {
+      const calibrated = Math.round(userMessage.tokenCount * this.contextMeta.calibrationRatio);
+      if (calibrated !== userMessage.tokenCount) {
+        logger.debug('[BaseClient] Calibrated user message tokenCount', {
+          messageId: userMessage.messageId,
+          raw: userMessage.tokenCount,
+          calibrated,
+          ratio: this.contextMeta.calibrationRatio,
+        });
+        userMessage.tokenCount = calibrated;
+        await this.updateMessageInDatabase({
+          messageId: userMessage.messageId,
+          tokenCount: calibrated,
+        });
+      }
     }
 
     if (this.artifactPromises) {
       responseMessage.attachments = (await Promise.all(this.artifactPromises)).filter((a) => a);
     }
 
-    this.responsePromise = this.saveMessageToDatabase(responseMessage, saveOptions, user);
-    const messageCache = getLogStores(CacheKeys.MESSAGES);
-    messageCache.set(
-      responseMessageId,
-      {
-        text: responseMessage.text,
-        complete: true,
-      },
-      Time.FIVE_MINUTES,
+    if (this.options.attachments) {
+      try {
+        saveOptions.files = this.options.attachments.map((attachments) => attachments.file_id);
+      } catch (error) {
+        logger.error('[BaseClient] Error mapping attachments for conversation', error);
+      }
+    }
+
+    if (this.contextMeta) {
+      responseMessage.contextMeta = this.contextMeta;
+    }
+
+    responseMessage.databasePromise = this.saveMessageToDatabase(
+      responseMessage,
+      saveOptions,
+      user,
     );
+    this.savedMessageIds.add(responseMessage.messageId);
     delete responseMessage.tokenCount;
     return responseMessage;
-  }
-
-  /**
-   * Stream usage should only be used for user message token count re-calculation if:
-   * - The stream usage is available, with input tokens greater than 0,
-   * - the client provides a function to calculate the current token count,
-   * - files are being resent with every message (default behavior; or if `false`, with no attachments),
-   * - the `promptPrefix` (custom instructions) is not set.
-   *
-   * In these cases, the legacy token estimations would be more accurate.
-   *
-   * TODO: included system messages in the `orderedMessages` accounting, potentially as a
-   * separate message in the UI. ChatGPT does this through "hidden" system messages.
-   * @param {object} params
-   * @param {StreamUsage} params.usage
-   * @param {Record<string, number>} params.tokenCountMap
-   * @param {TMessage} params.userMessage
-   * @param {object} params.opts
-   */
-  async updateUserMessageTokenCount({ usage, tokenCountMap, userMessage, opts }) {
-    /** @type {boolean} */
-    const shouldUpdateCount =
-      this.calculateCurrentTokenCount != null &&
-      Number(usage[this.inputTokensKey]) > 0 &&
-      (this.options.resendFiles ||
-        (!this.options.resendFiles && !this.options.attachments?.length)) &&
-      !this.options.promptPrefix;
-
-    if (!shouldUpdateCount) {
-      return;
-    }
-
-    const userMessageTokenCount = this.calculateCurrentTokenCount({
-      currentMessageId: userMessage.messageId,
-      tokenCountMap,
-      usage,
-    });
-
-    if (userMessageTokenCount === userMessage.tokenCount) {
-      return;
-    }
-
-    userMessage.tokenCount = userMessageTokenCount;
-    /*
-      Note: `AskController` saves the user message, so we update the count of its `userMessage` reference
-    */
-    if (typeof opts?.getReqData === 'function') {
-      opts.getReqData({
-        userMessage,
-      });
-    }
-    /*
-      Note: we update the user message to be sure it gets the calculated token count;
-      though `AskController` saves the user message, EditController does not
-    */
-    await this.userMessagePromise;
-    await this.updateMessageInDatabase({
-      messageId: userMessage.messageId,
-      tokenCount: userMessageTokenCount,
-    });
   }
 
   async loadHistory(conversationId, parentMessageId = null) {
     logger.debug('[BaseClient] Loading history:', { conversationId, parentMessageId });
 
-    const messages = (await getMessages({ conversationId })) ?? [];
+    const messages = (await db.getMessages({ conversationId })) ?? [];
 
     if (messages.length === 0) {
       return [];
@@ -735,10 +730,24 @@ class BaseClient {
       return _messages;
     }
 
-    // Find the latest message with a 'summary' property
     for (let i = _messages.length - 1; i >= 0; i--) {
-      if (_messages[i]?.summary) {
-        this.previous_summary = _messages[i];
+      const msg = _messages[i];
+      if (!msg) {
+        continue;
+      }
+
+      const summaryBlock = BaseClient.findSummaryContentBlock(msg);
+      if (summaryBlock) {
+        this.previous_summary = {
+          ...msg,
+          summary: BaseClient.getSummaryText(summaryBlock),
+          summaryTokenCount: summaryBlock.tokenCount,
+        };
+        break;
+      }
+
+      if (msg.summary) {
+        this.previous_summary = msg;
         break;
       }
     }
@@ -763,17 +772,33 @@ class BaseClient {
    * @param {string | null} user
    */
   async saveMessageToDatabase(message, endpointOptions, user = null) {
+    // Snapshot options before any await; disposeClient may set client.options = null
+    // while this method is suspended at an I/O boundary, but the local reference
+    // remains valid (disposeClient nulls the property, not the object itself).
+    const options = this.options;
+    if (!options) {
+      logger.error('[BaseClient] saveMessageToDatabase: client disposed before save, skipping');
+      return {};
+    }
+
     if (this.user && user !== this.user) {
       throw new Error('User mismatch.');
     }
 
-    const savedMessage = await saveMessage(
-      this.options.req,
+    const hasAddedConvo = options?.req?.body?.addedConvo != null;
+    const reqCtx = {
+      userId: options?.req?.user?.id,
+      isTemporary: options?.req?.body?.isTemporary,
+      interfaceConfig: options?.req?.config?.interfaceConfig,
+    };
+    const savedMessage = await db.saveMessage(
+      reqCtx,
       {
         ...message,
-        endpoint: this.options.endpoint,
+        endpoint: options.endpoint,
         unfinished: false,
         user,
+        ...(hasAddedConvo && { addedConvo: true }),
       },
       { context: 'api/app/clients/BaseClient.js - saveMessageToDatabase #saveMessage' },
     );
@@ -782,16 +807,65 @@ class BaseClient {
       return { message: savedMessage };
     }
 
-    const conversation = await saveConvo(
-      this.options.req,
-      {
-        conversationId: message.conversationId,
-        endpoint: this.options.endpoint,
-        endpointType: this.options.endpointType,
-        ...endpointOptions,
-      },
-      { context: 'api/app/clients/BaseClient.js - saveMessageToDatabase #saveConvo' },
-    );
+    const fieldsToKeep = {
+      conversationId: message.conversationId,
+      endpoint: options.endpoint,
+      endpointType: options.endpointType,
+      ...endpointOptions,
+    };
+    const conversationCreatedAt = options?.req?.conversationCreatedAt;
+    const createdAtOnInsert =
+      conversationCreatedAt != null ? new Date(conversationCreatedAt) : undefined;
+    const validCreatedAtOnInsert =
+      createdAtOnInsert && !Number.isNaN(createdAtOnInsert.getTime())
+        ? createdAtOnInsert
+        : undefined;
+
+    const req = options?.req;
+    const skippedExistingConvoLookup = this.fetchedConvo === true;
+    const hasResolvedConversation =
+      req != null && Object.prototype.hasOwnProperty.call(req, 'resolvedConversation');
+    let existingConvo = null;
+    if (!skippedExistingConvoLookup && hasResolvedConversation) {
+      existingConvo = req.resolvedConversation;
+    } else if (!skippedExistingConvoLookup) {
+      existingConvo = await db.getConvo(req?.user?.id, message.conversationId);
+    }
+    if (hasResolvedConversation) {
+      delete req.resolvedConversation;
+    }
+    const shouldSetCreatedAtOnInsert = !skippedExistingConvoLookup && existingConvo == null;
+
+    const unsetFields = {};
+    const exceptions = new Set(['spec', 'iconURL']);
+    const hasNonEphemeralAgent =
+      isAgentsEndpoint(options.endpoint) &&
+      endpointOptions?.agent_id &&
+      !isEphemeralAgentId(endpointOptions.agent_id);
+    if (hasNonEphemeralAgent) {
+      exceptions.add('model');
+    }
+    if (existingConvo != null) {
+      this.fetchedConvo = true;
+      for (const key in existingConvo) {
+        if (!key) {
+          continue;
+        }
+        if (excludedKeys.has(key) && !exceptions.has(key)) {
+          continue;
+        }
+
+        if (endpointOptions?.[key] === undefined) {
+          unsetFields[key] = 1;
+        }
+      }
+    }
+
+    const conversation = await db.saveConvo(reqCtx, fieldsToKeep, {
+      context: 'api/app/clients/BaseClient.js - saveMessageToDatabase #saveConvo',
+      unsetFields,
+      createdAtOnInsert: shouldSetCreatedAtOnInsert ? validCreatedAtOnInsert : undefined,
+    });
 
     return { message: savedMessage, conversation };
   }
@@ -801,7 +875,35 @@ class BaseClient {
    * @param {Partial<TMessage>} message
    */
   async updateMessageInDatabase(message) {
-    await updateMessage(this.options.req, message);
+    await db.updateMessage(this.options?.req?.user?.id, message);
+  }
+
+  /** Extracts text from a summary block (handles both legacy `text` field and new `content` array format). */
+  static getSummaryText(summaryBlock) {
+    if (Array.isArray(summaryBlock.content)) {
+      return summaryBlock.content.map((b) => b.text ?? '').join('');
+    }
+    if (typeof summaryBlock.content === 'string') {
+      return summaryBlock.content;
+    }
+    return summaryBlock.text ?? '';
+  }
+
+  /** Finds the last summary content block in a message's content array (last-summary-wins). */
+  static findSummaryContentBlock(message) {
+    if (!Array.isArray(message?.content)) {
+      return null;
+    }
+    let lastSummary = null;
+    for (const part of message.content) {
+      if (
+        part?.type === ContentTypes.SUMMARY &&
+        BaseClient.getSummaryText(part).trim().length > 0
+      ) {
+        lastSummary = part;
+      }
+    }
+    return lastSummary;
   }
 
   /**
@@ -823,7 +925,8 @@ class BaseClient {
    * @param {Object} options - The options for the function.
    * @param {TMessage[]} options.messages - An array of message objects. Each object should have either an 'id' or 'messageId' property, and may have a 'parentMessageId' property.
    * @param {string} options.parentMessageId - The ID of the parent message to start the traversal from.
-   * @param {Function} [options.mapMethod] - An optional function to map over the ordered messages. If provided, it will be applied to each message in the resulting array.
+   * @param {Function} [options.mapMethod] - An optional function to map over the ordered messages. Applied conditionally based on mapCondition.
+   * @param {(message: TMessage) => boolean} [options.mapCondition] - An optional function to determine whether mapMethod should be applied to a given message. If not provided and mapMethod is set, mapMethod applies to all messages.
    * @param {boolean} [options.summary=false] - If set to true, the traversal modifies messages with 'summary' and 'summaryTokenCount' properties and stops at the message with a 'summary' property.
    * @returns {TMessage[]} An array containing the messages in the order they should be displayed, starting with the most recent message with a 'summary' property if the 'summary' option is true, and ending with the message identified by 'parentMessageId'.
    */
@@ -831,6 +934,7 @@ class BaseClient {
     messages,
     parentMessageId,
     mapMethod = null,
+    mapCondition = null,
     summary = false,
   }) {
     if (!messages || messages.length === 0) {
@@ -856,18 +960,35 @@ class BaseClient {
         break;
       }
 
-      if (summary && message.summary) {
-        message.role = 'system';
-        message.text = message.summary;
+      let resolved = message;
+      let hasSummary = false;
+      if (summary) {
+        const summaryBlock = BaseClient.findSummaryContentBlock(message);
+        if (summaryBlock) {
+          const summaryText = BaseClient.getSummaryText(summaryBlock);
+          resolved = {
+            ...message,
+            role: 'system',
+            content: [{ type: ContentTypes.TEXT, text: summaryText }],
+            tokenCount: summaryBlock.tokenCount,
+          };
+          hasSummary = true;
+        } else if (message.summary) {
+          resolved = {
+            ...message,
+            role: 'system',
+            content: [{ type: ContentTypes.TEXT, text: message.summary }],
+            tokenCount: message.summaryTokenCount ?? message.tokenCount,
+          };
+          hasSummary = true;
+        }
       }
 
-      if (summary && message.summaryTokenCount) {
-        message.tokenCount = message.summaryTokenCount;
-      }
+      const shouldMap = mapMethod != null && (mapCondition != null ? mapCondition(resolved) : true);
+      const processedMessage = shouldMap ? mapMethod(resolved) : resolved;
+      orderedMessages.push(processedMessage);
 
-      orderedMessages.push(message);
-
-      if (summary && message.summary) {
+      if (hasSummary) {
         break;
       }
 
@@ -876,11 +997,6 @@ class BaseClient {
     }
 
     orderedMessages.reverse();
-
-    if (mapMethod) {
-      return orderedMessages.map(mapMethod);
-    }
-
     return orderedMessages;
   }
 
@@ -902,8 +1018,9 @@ class BaseClient {
     // Note: gpt-3.5-turbo and gpt-4 may update over time. Use default for these as well as for unknown models
     let tokensPerMessage = 3;
     let tokensPerName = 1;
+    const model = this.modelOptions?.model ?? this.model;
 
-    if (this.modelOptions.model === 'gpt-3.5-turbo-0301') {
+    if (model === 'gpt-3.5-turbo-0301') {
       tokensPerMessage = 4;
       tokensPerName = -1;
     }
@@ -911,7 +1028,31 @@ class BaseClient {
     const processValue = (value) => {
       if (Array.isArray(value)) {
         for (let item of value) {
-          if (!item || !item.type || item.type === 'image_url') {
+          if (
+            !item ||
+            !item.type ||
+            item.type === ContentTypes.THINK ||
+            item.type === ContentTypes.ERROR ||
+            item.type === ContentTypes.IMAGE_URL
+          ) {
+            continue;
+          }
+
+          if (item.type === ContentTypes.TOOL_CALL && item.tool_call != null) {
+            const toolName = item.tool_call?.name || '';
+            if (toolName != null && toolName && typeof toolName === 'string') {
+              numTokens += this.getTokenCount(toolName);
+            }
+
+            const args = item.tool_call?.args || '';
+            if (args != null && args && typeof args === 'string') {
+              numTokens += this.getTokenCount(args);
+            }
+
+            const output = item.tool_call?.output || '';
+            if (output != null && output && typeof output === 'string') {
+              numTokens += this.getTokenCount(output);
+            }
             continue;
           }
 
@@ -943,6 +1084,50 @@ class BaseClient {
     return numTokens;
   }
 
+  /**
+   * Merges completion content with existing content when editing TEXT or THINK types
+   * @param {Array} existingContent - The existing content array
+   * @param {Array} newCompletion - The new completion content
+   * @param {string} editedType - The type of content being edited
+   * @returns {Array} The merged content array
+   */
+  mergeEditedContent(existingContent, newCompletion, editedType) {
+    if (!newCompletion.length) {
+      return existingContent.concat(newCompletion);
+    }
+
+    if (editedType !== ContentTypes.TEXT && editedType !== ContentTypes.THINK) {
+      return existingContent.concat(newCompletion);
+    }
+
+    const lastIndex = existingContent.length - 1;
+    const lastExisting = existingContent[lastIndex];
+    const firstNew = newCompletion[0];
+
+    if (lastExisting?.type !== firstNew?.type || firstNew?.type !== editedType) {
+      return existingContent.concat(newCompletion);
+    }
+
+    const mergedContent = [...existingContent];
+    if (editedType === ContentTypes.TEXT) {
+      mergedContent[lastIndex] = {
+        ...mergedContent[lastIndex],
+        [ContentTypes.TEXT]:
+          (mergedContent[lastIndex][ContentTypes.TEXT] || '') + (firstNew[ContentTypes.TEXT] || ''),
+      };
+    } else {
+      mergedContent[lastIndex] = {
+        ...mergedContent[lastIndex],
+        [ContentTypes.THINK]:
+          (mergedContent[lastIndex][ContentTypes.THINK] || '') +
+          (firstNew[ContentTypes.THINK] || ''),
+      };
+    }
+
+    // Add remaining completion items
+    return mergedContent.concat(newCompletion.slice(1));
+  }
+
   async sendPayload(payload, opts = {}) {
     if (opts && typeof opts === 'object') {
       this.setOptions(opts);
@@ -951,14 +1136,186 @@ class BaseClient {
     return await this.sendCompletion(payload, opts);
   }
 
+  async addDocuments(message, attachments) {
+    const documentResult = await encodeAndFormatDocuments(
+      this.options.req,
+      attachments,
+      {
+        provider: this.options.agent?.provider ?? this.options.endpoint,
+        endpoint: this.options.agent?.endpoint ?? this.options.endpoint,
+        useResponsesApi: this.options.agent?.model_parameters?.useResponsesApi,
+        model: this.modelOptions?.model ?? this.model,
+      },
+      getStrategyFunctions,
+    );
+    message.documents =
+      documentResult.documents && documentResult.documents.length
+        ? documentResult.documents
+        : undefined;
+    return documentResult.files;
+  }
+
+  async addVideos(message, attachments) {
+    const videoResult = await encodeAndFormatVideos(
+      this.options.req,
+      attachments,
+      {
+        provider: this.options.agent?.provider ?? this.options.endpoint,
+        endpoint: this.options.agent?.endpoint ?? this.options.endpoint,
+      },
+      getStrategyFunctions,
+    );
+    message.videos =
+      videoResult.videos && videoResult.videos.length ? videoResult.videos : undefined;
+    return videoResult.files;
+  }
+
+  async addAudios(message, attachments) {
+    const audioResult = await encodeAndFormatAudios(
+      this.options.req,
+      attachments,
+      {
+        provider: this.options.agent?.provider ?? this.options.endpoint,
+        endpoint: this.options.agent?.endpoint ?? this.options.endpoint,
+      },
+      getStrategyFunctions,
+    );
+    message.audios =
+      audioResult.audios && audioResult.audios.length ? audioResult.audios : undefined;
+    return audioResult.files;
+  }
+
   /**
-   *
+   * Extracts text context from attachments and sets it on the message.
+   * This handles text that was already extracted from files (OCR, transcriptions, document text, etc.)
+   * @param {TMessage} message - The message to add context to
+   * @param {MongoFile[]} attachments - Array of file attachments
+   * @returns {Promise<void>}
+   */
+  async addFileContextToMessage(message, attachments) {
+    const fileContext = await extractFileContext({
+      attachments,
+      req: this.options?.req,
+      tokenCountFn: (text) => countTokens(text),
+    });
+
+    if (fileContext) {
+      message.fileContext = fileContext;
+    }
+  }
+
+  async processAttachments(message, attachments) {
+    const categorizedAttachments = {
+      images: [],
+      videos: [],
+      audios: [],
+      documents: [],
+    };
+
+    const allFiles = [];
+
+    const provider = this.options.agent?.provider ?? this.options.endpoint;
+    const isBedrock = provider === EModelEndpoint.bedrock;
+
+    if (!this._mergedFileConfig && this.options.req?.config?.fileConfig) {
+      this._mergedFileConfig = mergeFileConfig(this.options.req.config.fileConfig);
+      const endpoint = this.options.agent?.endpoint ?? this.options.endpoint;
+      this._endpointFileConfig = getEndpointFileConfig({
+        fileConfig: this._mergedFileConfig,
+        endpoint,
+        endpointType: this.options.endpointType,
+      });
+    }
+
+    for (const file of attachments) {
+      /** @type {FileSources} */
+      const source = file.source ?? FileSources.local;
+      if (source === FileSources.text) {
+        allFiles.push(file);
+        continue;
+      }
+      if (
+        file.embedded === true ||
+        file.metadata?.codeEnvRef != null ||
+        file.metadata?.fileIdentifier != null
+      ) {
+        allFiles.push(file);
+        continue;
+      }
+
+      if (file.type.startsWith('image/')) {
+        categorizedAttachments.images.push(file);
+      } else if (file.type === 'application/pdf') {
+        categorizedAttachments.documents.push(file);
+        allFiles.push(file);
+      } else if (isBedrock && isBedrockDocumentType(file.type)) {
+        categorizedAttachments.documents.push(file);
+        allFiles.push(file);
+      } else if (file.type.startsWith('video/')) {
+        categorizedAttachments.videos.push(file);
+        allFiles.push(file);
+      } else if (file.type.startsWith('audio/')) {
+        categorizedAttachments.audios.push(file);
+        allFiles.push(file);
+      } else if (
+        file.type &&
+        this._mergedFileConfig &&
+        this._endpointFileConfig?.supportedMimeTypes &&
+        this._mergedFileConfig.checkType(file.type, this._endpointFileConfig.supportedMimeTypes)
+      ) {
+        categorizedAttachments.documents.push(file);
+        allFiles.push(file);
+      }
+    }
+
+    const [imageFiles] = await Promise.all([
+      categorizedAttachments.images.length > 0
+        ? this.addImageURLs(message, categorizedAttachments.images)
+        : Promise.resolve([]),
+      categorizedAttachments.documents.length > 0
+        ? this.addDocuments(message, categorizedAttachments.documents)
+        : Promise.resolve([]),
+      categorizedAttachments.videos.length > 0
+        ? this.addVideos(message, categorizedAttachments.videos)
+        : Promise.resolve([]),
+      categorizedAttachments.audios.length > 0
+        ? this.addAudios(message, categorizedAttachments.audios)
+        : Promise.resolve([]),
+    ]);
+
+    allFiles.push(...imageFiles);
+
+    const seenFileIds = new Set();
+    const uniqueFiles = [];
+
+    for (const file of allFiles) {
+      if (file.file_id && !seenFileIds.has(file.file_id)) {
+        seenFileIds.add(file.file_id);
+        uniqueFiles.push(file);
+      } else if (!file.file_id) {
+        uniqueFiles.push(file);
+      }
+    }
+
+    return uniqueFiles;
+  }
+
+  /**
    * @param {TMessage[]} _messages
    * @returns {Promise<TMessage[]>}
    */
   async addPreviousAttachments(_messages) {
     if (!this.options.resendFiles) {
       return _messages;
+    }
+
+    const seen = new Set();
+    const attachmentsProcessed =
+      this.options.attachments && !(this.options.attachments instanceof Promise);
+    if (attachmentsProcessed) {
+      for (const attachment of this.options.attachments) {
+        seen.add(attachment.file_id);
+      }
     }
 
     /**
@@ -971,12 +1328,29 @@ class BaseClient {
         this.message_file_map = {};
       }
 
-      const fileIds = message.files.map((file) => file.file_id);
-      const files = await getFiles({
-        file_id: { $in: fileIds },
-      });
+      const fileIds = [];
+      for (const file of message.files) {
+        if (seen.has(file.file_id)) {
+          continue;
+        }
+        fileIds.push(file.file_id);
+        seen.add(file.file_id);
+      }
 
-      await this.addImageURLs(message, files);
+      if (fileIds.length === 0) {
+        return message;
+      }
+
+      const files = await db.getFiles(
+        {
+          file_id: { $in: fileIds },
+        },
+        {},
+        {},
+      );
+
+      await this.addFileContextToMessage(message, files);
+      await this.processAttachments(message, files);
 
       this.message_file_map[message.messageId] = files;
       return message;

@@ -3,26 +3,45 @@ import { EndpointURLs } from './config';
 import * as s from './schemas';
 
 export default function createPayload(submission: t.TSubmission) {
-  const { conversation, userMessage, endpointOption, isEdited, isContinued } = submission;
+  const {
+    isEdited,
+    addedConvo,
+    userMessage,
+    isContinued,
+    isTemporary,
+    isRegenerate,
+    conversation,
+    editedContent,
+    ephemeralAgent,
+    endpointOption,
+    manualSkills,
+  } = submission;
   const { conversationId } = s.tConvoUpdateSchema.parse(conversation);
-  const { endpoint, endpointType } = endpointOption as {
+  const { endpoint: _e, endpointType } = endpointOption as {
     endpoint: s.EModelEndpoint;
     endpointType?: s.EModelEndpoint;
   };
 
-  let server = EndpointURLs[endpointType ?? endpoint];
-
-  if (isEdited && s.isAssistantsEndpoint(endpoint)) {
-    server += '/modify';
-  } else if (isEdited) {
-    server = server.replace('/ask/', '/edit/');
+  const endpoint = _e as s.EModelEndpoint;
+  let server = `${EndpointURLs[s.EModelEndpoint.agents]}/${endpoint}`;
+  if (s.isAssistantsEndpoint(endpoint)) {
+    server =
+      EndpointURLs[(endpointType ?? endpoint) as 'assistants' | 'azureAssistants'] +
+      (isEdited ? '/modify' : '');
   }
 
   const payload: t.TPayload = {
     ...userMessage,
     ...endpointOption,
-    isContinued: !!(isEdited && isContinued),
+    endpoint,
+    addedConvo,
+    isTemporary,
+    isRegenerate,
+    editedContent,
     conversationId,
+    isContinued: !!(isEdited && isContinued),
+    ephemeralAgent: s.isAssistantsEndpoint(endpoint) ? undefined : ephemeralAgent,
+    manualSkills: s.isAssistantsEndpoint(endpoint) ? undefined : manualSkills,
   };
 
   return { server, payload };

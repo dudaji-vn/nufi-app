@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import TextareaAutosize from 'react-textarea-autosize';
+import { Label, HoverCard, SelectDropDown, HoverCardTrigger } from '@librechat/client';
 import type { Assistant, TPreset } from 'librechat-data-provider';
 import type { TModelSelectProps, Option } from '~/common';
 import {
@@ -9,7 +10,6 @@ import {
   mapAssistants,
   createDropdownSetter,
 } from '~/utils';
-import { Label, HoverCard, SelectDropDown, HoverCardTrigger } from '~/components/ui';
 import { useLocalize, useDebouncedInput, useAssistantListMap } from '~/hooks';
 import OptionHover from './OptionHover';
 import { ESide } from '~/common';
@@ -27,12 +27,12 @@ export default function Settings({ conversation, setOption, models, readonly }: 
     conversation ?? {};
 
   const currentList = useMemo(
-    () => Object.values(assistantListMap?.[endpoint ?? ''] ?? {}) as Assistant[],
+    () => Object.values(assistantListMap[endpoint ?? ''] ?? {}) as Assistant[],
     [assistantListMap, endpoint],
   );
 
   const assistants = useMemo(() => {
-    const currentAssistants = (currentList ?? []).map(({ id, name }) => ({
+    const currentAssistants = currentList.map(({ id, name }) => ({
       label: name,
       value: id,
     }));
@@ -52,8 +52,8 @@ export default function Settings({ conversation, setOption, models, readonly }: 
   });
 
   const activeAssistant = useMemo(() => {
-    if (assistant_id) {
-      return assistantListMap[endpoint ?? '']?.[assistant_id];
+    if (assistant_id != null && assistant_id) {
+      return assistantListMap[endpoint ?? '']?.[assistant_id] as Assistant | null;
     }
 
     return null;
@@ -70,11 +70,13 @@ export default function Settings({ conversation, setOption, models, readonly }: 
   }, [models, activeAssistant, localize]);
 
   const [assistantValue, setAssistantValue] = useState<Option>(
-    activeAssistant ? { label: activeAssistant.name, value: activeAssistant.id } : defaultOption,
+    activeAssistant != null
+      ? { label: activeAssistant.name ?? '', value: activeAssistant.id }
+      : defaultOption,
   );
 
   useEffect(() => {
-    if (assistantValue && assistantValue.value === '') {
+    if (assistantValue.value === '') {
       setOption('presetOverride')({
         assistant_id: assistantValue.value,
       } as Partial<TPreset>);
@@ -95,7 +97,7 @@ export default function Settings({ conversation, setOption, models, readonly }: 
       return;
     }
 
-    const assistant = assistantListMap[endpoint ?? '']?.[value];
+    const assistant = assistantListMap[endpoint ?? '']?.[value] as Assistant | null;
     if (!assistant) {
       setAssistantValue(defaultOption);
       return;
@@ -103,7 +105,7 @@ export default function Settings({ conversation, setOption, models, readonly }: 
 
     setAssistantValue({
       label: assistant.name ?? '',
-      value: assistant.id ?? '',
+      value: assistant.id || '',
     });
     setOption('assistant_id')(assistant.id);
     if (assistant.model) {
@@ -119,6 +121,7 @@ export default function Settings({ conversation, setOption, models, readonly }: 
         <div className="grid w-full items-center gap-2">
           <SelectDropDown
             value={model ?? ''}
+            title={localize('com_ui_model')}
             setValue={createDropdownSetter(setModel)}
             availableValues={modelOptions}
             disabled={readonly}
@@ -159,7 +162,7 @@ export default function Settings({ conversation, setOption, models, readonly }: 
             placeholder={localize('com_endpoint_prompt_prefix_assistants_placeholder')}
             className={cn(
               defaultTextProps,
-              'flex max-h-[240px] min-h-[80px] w-full resize-none px-3 py-2 ',
+              'flex max-h-[240px] min-h-[80px] w-full resize-none px-3 py-2',
             )}
           />
         </div>
@@ -176,7 +179,7 @@ export default function Settings({ conversation, setOption, models, readonly }: 
             placeholder={localize('com_endpoint_instructions_assistants_placeholder')}
             className={cn(
               defaultTextProps,
-              'flex max-h-[240px] min-h-[80px] w-full resize-none px-3 py-2 ',
+              'flex max-h-[240px] min-h-[80px] w-full resize-none px-3 py-2',
             )}
           />
         </div>

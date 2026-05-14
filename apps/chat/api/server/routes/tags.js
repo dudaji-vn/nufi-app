@@ -1,18 +1,24 @@
 const express = require('express');
+const { logger } = require('@librechat/data-schemas');
+const { generateCheckAccess } = require('@librechat/api');
 const { PermissionTypes, Permissions } = require('librechat-data-provider');
 const {
-  getConversationTags,
+  updateTagsForConversation,
   updateConversationTag,
   createConversationTag,
   deleteConversationTag,
-  updateTagsForConversation,
-} = require('~/models/ConversationTag');
-const { requireJwtAuth, generateCheckAccess } = require('~/server/middleware');
-const { logger } = require('~/config');
+  getConversationTags,
+  getRoleByName,
+} = require('~/models');
+const { requireJwtAuth } = require('~/server/middleware');
 
 const router = express.Router();
 
-const checkBookmarkAccess = generateCheckAccess(PermissionTypes.BOOKMARKS, [Permissions.USE]);
+const checkBookmarkAccess = generateCheckAccess({
+  permissionType: PermissionTypes.BOOKMARKS,
+  permissions: [Permissions.USE],
+  getRoleByName,
+});
 
 router.use(requireJwtAuth);
 router.use(checkBookmarkAccess);

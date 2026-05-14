@@ -1,28 +1,49 @@
-import { useState, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import * as Tabs from '@radix-ui/react-tabs';
-import { MessageSquare, Command } from 'lucide-react';
 import { SettingsTabValues } from 'librechat-data-provider';
-import type { TDialogProps } from '~/common';
+import { MessageSquare, Command, DollarSign } from 'lucide-react';
 import { Dialog, DialogPanel, DialogTitle, Transition, TransitionChild } from '@headlessui/react';
-import { GearIcon, DataIcon, SpeechIcon, UserIcon, ExperimentIcon } from '~/components/svg';
-import { General, Chat, Speech, Beta, Commands, Data, Account } from './SettingsTabs';
-import { useMediaQuery, useLocalize } from '~/hooks';
+import {
+  GearIcon,
+  DataIcon,
+  UserIcon,
+  SpeechIcon,
+  useMediaQuery,
+  PersonalizationIcon,
+} from '@librechat/client';
+import type { TDialogProps } from '~/common';
+import {
+  General,
+  Chat,
+  Commands,
+  Speech,
+  Personalization,
+  Data,
+  Balance,
+  Account,
+} from './SettingsTabs';
+import usePersonalizationAccess from '~/hooks/usePersonalizationAccess';
+import { useLocalize, TranslationKeys } from '~/hooks';
+import { useGetStartupConfig } from '~/data-provider';
 import { cn } from '~/utils';
 
 export default function Settings({ open, onOpenChange }: TDialogProps) {
   const isSmallScreen = useMediaQuery('(max-width: 767px)');
+  const { data: startupConfig } = useGetStartupConfig();
   const localize = useLocalize();
   const [activeTab, setActiveTab] = useState(SettingsTabValues.GENERAL);
   const tabRefs = useRef({});
+  const { hasAnyPersonalizationFeature, hasMemoryOptOut } = usePersonalizationAccess();
 
   const handleKeyDown = (event: React.KeyboardEvent) => {
-    const tabs = [
+    const tabs: SettingsTabValues[] = [
       SettingsTabValues.GENERAL,
       SettingsTabValues.CHAT,
-      SettingsTabValues.BETA,
       SettingsTabValues.COMMANDS,
       SettingsTabValues.SPEECH,
+      ...(hasAnyPersonalizationFeature ? [SettingsTabValues.PERSONALIZATION] : []),
       SettingsTabValues.DATA,
+      ...(startupConfig?.balance?.enabled ? [SettingsTabValues.BALANCE] : []),
       SettingsTabValues.ACCOUNT,
     ];
     const currentIndex = tabs.indexOf(activeTab);
@@ -46,6 +67,61 @@ export default function Settings({ open, onOpenChange }: TDialogProps) {
         break;
     }
   };
+
+  const settingsTabs: {
+    value: SettingsTabValues;
+    icon: React.JSX.Element;
+    label: TranslationKeys;
+  }[] = [
+    {
+      value: SettingsTabValues.GENERAL,
+      icon: <GearIcon />,
+      label: 'com_nav_setting_general',
+    },
+    {
+      value: SettingsTabValues.CHAT,
+      icon: <MessageSquare className="icon-sm" aria-hidden="true" />,
+      label: 'com_nav_setting_chat',
+    },
+    {
+      value: SettingsTabValues.COMMANDS,
+      icon: <Command className="icon-sm" aria-hidden="true" />,
+      label: 'com_nav_commands',
+    },
+    {
+      value: SettingsTabValues.SPEECH,
+      icon: <SpeechIcon className="icon-sm" aria-hidden="true" />,
+      label: 'com_nav_setting_speech',
+    },
+    ...(hasAnyPersonalizationFeature
+      ? [
+          {
+            value: SettingsTabValues.PERSONALIZATION,
+            icon: <PersonalizationIcon />,
+            label: 'com_nav_setting_personalization' as TranslationKeys,
+          },
+        ]
+      : []),
+    {
+      value: SettingsTabValues.DATA,
+      icon: <DataIcon />,
+      label: 'com_nav_setting_data',
+    },
+    ...(startupConfig?.balance?.enabled
+      ? [
+          {
+            value: SettingsTabValues.BALANCE,
+            icon: <DollarSign size={18} />,
+            label: 'com_nav_setting_balance' as TranslationKeys,
+          },
+        ]
+      : ([] as { value: SettingsTabValues; icon: React.JSX.Element; label: TranslationKeys }[])),
+    {
+      value: SettingsTabValues.ACCOUNT,
+      icon: <UserIcon />,
+      label: 'com_nav_setting_account',
+    },
+  ];
 
   const handleTabChange = (value: string) => {
     setActiveTab(value as SettingsTabValues);
@@ -76,7 +152,7 @@ export default function Settings({ open, onOpenChange }: TDialogProps) {
           <div className={cn('fixed inset-0 flex w-screen items-center justify-center p-4')}>
             <DialogPanel
               className={cn(
-                'min-h-[600px] overflow-hidden rounded-xl rounded-b-lg bg-surface-dialog pb-6 shadow-2xl backdrop-blur-2xl animate-in sm:rounded-2xl md:min-h-[373px] md:w-[680px]',
+                'max-h-[90vh] min-h-[600px] overflow-hidden rounded-xl rounded-b-lg bg-surface-dialog pb-6 shadow-2xl backdrop-blur-2xl animate-in sm:rounded-2xl md:min-h-[373px] md:w-[680px]',
               )}
             >
               <DialogTitle
@@ -106,10 +182,10 @@ export default function Settings({ open, onOpenChange }: TDialogProps) {
                     <line x1="18" x2="6" y1="6" y2="18"></line>
                     <line x1="6" x2="18" y1="6" y2="18"></line>
                   </svg>
-                  <span className="sr-only">Close</span>
+                  <span className="sr-only">{localize('com_ui_close_settings')}</span>
                 </button>
               </DialogTitle>
-              <div className="max-h-[550px] overflow-auto px-6 md:max-h-[400px] md:min-h-[400px] md:w-[680px]">
+              <div className="max-h-[calc(90vh-120px)] overflow-auto px-6 md:w-[680px]">
                 <Tabs.Root
                   value={activeTab}
                   onValueChange={handleTabChange}
@@ -126,50 +202,14 @@ export default function Settings({ open, onOpenChange }: TDialogProps) {
                     )}
                     onKeyDown={handleKeyDown}
                   >
-                    {[
-                      {
-                        value: SettingsTabValues.GENERAL,
-                        icon: <GearIcon />,
-                        label: 'com_nav_setting_general',
-                      },
-                      {
-                        value: SettingsTabValues.CHAT,
-                        icon: <MessageSquare className="icon-sm" />,
-                        label: 'com_nav_setting_chat',
-                      },
-                      {
-                        value: SettingsTabValues.BETA,
-                        icon: <ExperimentIcon />,
-                        label: 'com_nav_setting_beta',
-                      },
-                      {
-                        value: SettingsTabValues.COMMANDS,
-                        icon: <Command className="icon-sm" />,
-                        label: 'com_nav_commands',
-                      },
-                      {
-                        value: SettingsTabValues.SPEECH,
-                        icon: <SpeechIcon className="icon-sm" />,
-                        label: 'com_nav_setting_speech',
-                      },
-                      {
-                        value: SettingsTabValues.DATA,
-                        icon: <DataIcon />,
-                        label: 'com_nav_setting_data',
-                      },
-                      {
-                        value: SettingsTabValues.ACCOUNT,
-                        icon: <UserIcon />,
-                        label: 'com_nav_setting_account',
-                      },
-                    ].map(({ value, icon, label }) => (
+                    {settingsTabs.map(({ value, icon, label }) => (
                       <Tabs.Trigger
                         key={value}
                         className={cn(
-                          'group relative z-10 m-1 flex items-center justify-start gap-2 px-2 py-1.5 transition-all duration-200 ease-in-out',
+                          'group relative z-10 m-1 flex items-center justify-start gap-2 rounded-xl px-2 py-1.5 transition-all duration-200 ease-in-out',
                           isSmallScreen
-                            ? 'flex-1 justify-center text-nowrap rounded-xl p-1 px-3 text-sm text-text-secondary radix-state-active:bg-surface-hover radix-state-active:text-text-primary'
-                            : 'rounded-md bg-transparent text-text-primary radix-state-active:bg-surface-tertiary',
+                            ? 'flex-1 justify-center text-nowrap p-1 px-3 text-sm text-text-secondary radix-state-active:bg-surface-hover radix-state-active:text-text-primary'
+                            : 'bg-transparent text-text-secondary radix-state-active:bg-surface-tertiary radix-state-active:text-text-primary',
                         )}
                         value={value}
                         ref={(el) => (tabRefs.current[value] = el)}
@@ -180,25 +220,35 @@ export default function Settings({ open, onOpenChange }: TDialogProps) {
                     ))}
                   </Tabs.List>
                   <div className="overflow-auto sm:w-full sm:max-w-none md:pr-0.5 md:pt-0.5">
-                    <Tabs.Content value={SettingsTabValues.GENERAL}>
+                    <Tabs.Content value={SettingsTabValues.GENERAL} tabIndex={-1}>
                       <General />
                     </Tabs.Content>
-                    <Tabs.Content value={SettingsTabValues.CHAT}>
+                    <Tabs.Content value={SettingsTabValues.CHAT} tabIndex={-1}>
                       <Chat />
                     </Tabs.Content>
-                    <Tabs.Content value={SettingsTabValues.BETA}>
-                      <Beta />
-                    </Tabs.Content>
-                    <Tabs.Content value={SettingsTabValues.COMMANDS}>
+                    <Tabs.Content value={SettingsTabValues.COMMANDS} tabIndex={-1}>
                       <Commands />
                     </Tabs.Content>
-                    <Tabs.Content value={SettingsTabValues.SPEECH}>
+                    <Tabs.Content value={SettingsTabValues.SPEECH} tabIndex={-1}>
                       <Speech />
                     </Tabs.Content>
-                    <Tabs.Content value={SettingsTabValues.DATA}>
+                    {hasAnyPersonalizationFeature && (
+                      <Tabs.Content value={SettingsTabValues.PERSONALIZATION} tabIndex={-1}>
+                        <Personalization
+                          hasMemoryOptOut={hasMemoryOptOut}
+                          hasAnyPersonalizationFeature={hasAnyPersonalizationFeature}
+                        />
+                      </Tabs.Content>
+                    )}
+                    <Tabs.Content value={SettingsTabValues.DATA} tabIndex={-1}>
                       <Data />
                     </Tabs.Content>
-                    <Tabs.Content value={SettingsTabValues.ACCOUNT}>
+                    {startupConfig?.balance?.enabled && (
+                      <Tabs.Content value={SettingsTabValues.BALANCE} tabIndex={-1}>
+                        <Balance />
+                      </Tabs.Content>
+                    )}
+                    <Tabs.Content value={SettingsTabValues.ACCOUNT} tabIndex={-1}>
                       <Account />
                     </Tabs.Content>
                   </div>

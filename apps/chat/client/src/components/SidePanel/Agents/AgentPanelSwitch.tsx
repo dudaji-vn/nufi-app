@@ -1,54 +1,36 @@
-import { useState, useEffect, useMemo } from 'react';
-import { EModelEndpoint } from 'librechat-data-provider';
-import { useGetEndpointsQuery } from 'librechat-data-provider/react-query';
-import type { ActionsEndpoint } from '~/common';
-import type { Action, TConfig, TEndpointsConfig } from 'librechat-data-provider';
-import { useGetActionsQuery } from '~/data-provider';
-import { useChatContext } from '~/Providers';
+import { useEffect } from 'react';
+import { useRecoilValue } from 'recoil';
+import { AgentPanelProvider, useAgentPanelContext } from '~/Providers/AgentPanelContext';
+import { Panel, isEphemeralAgent } from '~/common';
+import VersionPanel from './Version/VersionPanel';
 import ActionsPanel from './ActionsPanel';
 import AgentPanel from './AgentPanel';
-import { Panel } from '~/common';
+import store from '~/store';
 
 export default function AgentPanelSwitch() {
-  const { conversation, index } = useChatContext();
-  const [activePanel, setActivePanel] = useState(Panel.builder);
-  const [action, setAction] = useState<Action | undefined>(undefined);
-  const [currentAgentId, setCurrentAgentId] = useState<string | undefined>(conversation?.agent_id);
-  const { data: actions = [] } = useGetActionsQuery(conversation?.endpoint as ActionsEndpoint);
-  const { data: endpointsConfig = {} as TEndpointsConfig } = useGetEndpointsQuery();
-
-  const agentsConfig = useMemo(
-    () => endpointsConfig?.[EModelEndpoint.agents] ?? ({} as TConfig | null),
-    [endpointsConfig],
+  return (
+    <AgentPanelProvider>
+      <AgentPanelSwitchWithContext />
+    </AgentPanelProvider>
   );
+}
+
+function AgentPanelSwitchWithContext() {
+  const { activePanel, setCurrentAgentId } = useAgentPanelContext();
+  const agentId = useRecoilValue(store.conversationAgentIdByIndex(0));
 
   useEffect(() => {
-    const agent_id = conversation?.agent_id ?? '';
-    if (agent_id) {
+    const agent_id = agentId ?? '';
+    if (!isEphemeralAgent(agent_id)) {
       setCurrentAgentId(agent_id);
     }
-  }, [conversation?.agent_id]);
-
-  if (!conversation?.endpoint) {
-    return null;
-  }
-
-  const commonProps = {
-    index,
-    action,
-    actions,
-    setAction,
-    activePanel,
-    setActivePanel,
-    setCurrentAgentId,
-    agent_id: currentAgentId,
-  };
+  }, [setCurrentAgentId, agentId]);
 
   if (activePanel === Panel.actions) {
-    return <ActionsPanel {...commonProps} />;
+    return <ActionsPanel />;
   }
-
-  return (
-    <AgentPanel {...commonProps} agentsConfig={agentsConfig} endpointsConfig={endpointsConfig} />
-  );
+  if (activePanel === Panel.version) {
+    return <VersionPanel />;
+  }
+  return <AgentPanel />;
 }

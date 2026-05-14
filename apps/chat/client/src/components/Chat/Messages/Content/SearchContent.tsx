@@ -1,29 +1,55 @@
-import { Suspense } from 'react';
-import type { TMessage, TMessageContentParts } from 'librechat-data-provider';
+import { Suspense, useMemo } from 'react';
+import { useRecoilValue } from 'recoil';
+import { DelayedRender } from '@librechat/client';
+import { ContentTypes } from 'librechat-data-provider';
+import type {
+  Agents,
+  TMessage,
+  TAttachment,
+  SearchResultData,
+  TMessageContentParts,
+} from 'librechat-data-provider';
 import { UnfinishedMessage } from './MessageContent';
-import { DelayedRender } from '~/components/ui';
+import { cn, mapAttachments } from '~/utils';
+import { SearchContext } from '~/Providers';
 import MarkdownLite from './MarkdownLite';
-import { cn } from '~/utils';
+import store from '~/store';
 import Part from './Part';
 
-const SearchContent = ({ message }: { message: TMessage }) => {
+const SearchContent = ({
+  message,
+  attachments,
+  searchResults,
+}: {
+  message: TMessage;
+  attachments?: TAttachment[];
+  searchResults?: { [key: string]: SearchResultData };
+}) => {
+  const enableUserMsgMarkdown = useRecoilValue(store.enableUserMsgMarkdown);
   const { messageId } = message;
+
+  const attachmentMap = useMemo(() => mapAttachments(attachments ?? []), [attachments]);
+
   if (Array.isArray(message.content) && message.content.length > 0) {
     return (
-      <>
+      <SearchContext.Provider value={{ searchResults }}>
         {message.content
           .filter((part: TMessageContentParts | undefined) => part)
           .map((part: TMessageContentParts | undefined, idx: number) => {
             if (!part) {
               return null;
             }
+
+            const toolCallId =
+              (part?.[ContentTypes.TOOL_CALL] as Agents.ToolCall | undefined)?.id ?? '';
+            const partAttachments = attachmentMap[toolCallId];
             return (
               <Part
                 key={`display-${messageId}-${idx}`}
                 showCursor={false}
                 isSubmitting={false}
                 isCreatedByUser={message.isCreatedByUser}
-                messageId={message.messageId}
+                attachments={partAttachments}
                 part={part}
               />
             );
@@ -35,7 +61,7 @@ const SearchContent = ({ message }: { message: TMessage }) => {
             </DelayedRender>
           </Suspense>
         )}
-      </>
+      </SearchContext.Provider>
     );
   }
 
@@ -43,7 +69,8 @@ const SearchContent = ({ message }: { message: TMessage }) => {
     <div
       className={cn(
         'markdown prose dark:prose-invert light w-full break-words',
-        message.isCreatedByUser ? 'whitespace-pre-wrap dark:text-gray-20' : 'dark:text-gray-70',
+        message.isCreatedByUser && !enableUserMsgMarkdown && 'whitespace-pre-wrap',
+        message.isCreatedByUser ? 'dark:text-gray-20' : 'dark:text-gray-70',
       )}
       dir="auto"
     >

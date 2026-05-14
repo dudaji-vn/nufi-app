@@ -13,7 +13,8 @@ function Footer({ startupConfig }: { startupConfig: TStartupConfig | null | unde
     <a
       className="text-xs text-muted-foreground hover:text-brand-purple"
       href={privacyPolicy.externalUrl}
-      target={privacyPolicy.openNewTab ? '_blank' : undefined}
+      // Removed for WCAG compliance
+      // target={privacyPolicy.openNewTab ? '_blank' : undefined}
       rel="noreferrer"
     >
       {localize('com_ui_privacy_policy')}
@@ -24,7 +25,8 @@ function Footer({ startupConfig }: { startupConfig: TStartupConfig | null | unde
     <a
       className="text-xs text-muted-foreground hover:text-brand-purple"
       href={termsOfService.externalUrl}
-      target={termsOfService.openNewTab ? '_blank' : undefined}
+      // Removed for WCAG compliance
+      // target={termsOfService.openNewTab ? '_blank' : undefined}
       rel="noreferrer"
     >
       {localize('com_ui_terms_of_service')}

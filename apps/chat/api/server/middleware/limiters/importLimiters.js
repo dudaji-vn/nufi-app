@@ -1,5 +1,6 @@
 const rateLimit = require('express-rate-limit');
 const { ViolationTypes } = require('librechat-data-provider');
+const { limiterCache, removePorts } = require('@librechat/api');
 const logViolation = require('~/cache/logViolation');
 
 const getEnvironmentVariables = () => {
@@ -7,6 +8,7 @@ const getEnvironmentVariables = () => {
   const IMPORT_IP_WINDOW = parseInt(process.env.IMPORT_IP_WINDOW) || 15;
   const IMPORT_USER_MAX = parseInt(process.env.IMPORT_USER_MAX) || 50;
   const IMPORT_USER_WINDOW = parseInt(process.env.IMPORT_USER_WINDOW) || 15;
+  const IMPORT_VIOLATION_SCORE = process.env.IMPORT_VIOLATION_SCORE;
 
   const importIpWindowMs = IMPORT_IP_WINDOW * 60 * 1000;
   const importIpMax = IMPORT_IP_MAX;
@@ -23,12 +25,18 @@ const getEnvironmentVariables = () => {
     importUserWindowMs,
     importUserMax,
     importUserWindowInMinutes,
+    importViolationScore: IMPORT_VIOLATION_SCORE,
   };
 };
 
 const createImportHandler = (ip = true) => {
-  const { importIpMax, importIpWindowInMinutes, importUserMax, importUserWindowInMinutes } =
-    getEnvironmentVariables();
+  const {
+    importIpMax,
+    importUserMax,
+    importViolationScore,
+    importIpWindowInMinutes,
+    importUserWindowInMinutes,
+  } = getEnvironmentVariables();
 
   return async (req, res) => {
     const type = ViolationTypes.FILE_UPLOAD_LIMIT;
@@ -39,7 +47,7 @@ const createImportHandler = (ip = true) => {
       windowInMinutes: ip ? importIpWindowInMinutes : importUserWindowInMinutes,
     };
 
-    await logViolation(req, res, type, errorMessage);
+    await logViolation(req, res, type, errorMessage, importViolationScore);
     res.status(429).json({ message: 'Too many conversation import requests. Try again later' });
   };
 };
@@ -48,21 +56,25 @@ const createImportLimiters = () => {
   const { importIpWindowMs, importIpMax, importUserWindowMs, importUserMax } =
     getEnvironmentVariables();
 
-  const importIpLimiter = rateLimit({
+  const ipLimiterOptions = {
     windowMs: importIpWindowMs,
     max: importIpMax,
     handler: createImportHandler(),
-  });
-
-  const importUserLimiter = rateLimit({
+    keyGenerator: removePorts,
+    store: limiterCache('import_ip_limiter'),
+  };
+  const userLimiterOptions = {
     windowMs: importUserWindowMs,
     max: importUserMax,
     handler: createImportHandler(false),
     keyGenerator: function (req) {
-      return req.user?.id; // Use the user ID or NULL if not available
+      return req.user?.id;
     },
-  });
+    store: limiterCache('import_user_limiter'),
+  };
 
+  const importIpLimiter = rateLimit(ipLimiterOptions);
+  const importUserLimiter = rateLimit(userLimiterOptions);
   return { importIpLimiter, importUserLimiter };
 };
 

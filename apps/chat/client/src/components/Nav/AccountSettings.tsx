@@ -1,74 +1,59 @@
-import { useRecoilState } from 'recoil';
-import * as Select from '@ariakit/react/select';
-import { Fragment, useState, memo } from 'react';
+import { useState, memo, useRef } from 'react';
+import * as Menu from '@ariakit/react/menu';
 import { FileText, LayoutDashboard, LogOut } from 'lucide-react';
-import { useGetUserBalance, useGetStartupConfig } from 'librechat-data-provider/react-query';
-import { LinkIcon, GearIcon, DropdownMenuSeparator } from '~/components';
-import FilesView from '~/components/Chat/Input/Files/FilesView';
+import { LinkIcon, GearIcon, DropdownMenuSeparator, Avatar } from '@librechat/client';
+import { MyFilesModal } from '~/components/Chat/Input/Files/MyFilesModal';
+import { useGetStartupConfig, useGetUserBalance } from '~/data-provider';
 import { useAuthContext } from '~/hooks/AuthContext';
-import useAvatar from '~/hooks/Messages/useAvatar';
-import { UserIcon } from '~/components/svg';
 import { useLocalize } from '~/hooks';
 import Settings from './Settings';
-import store from '~/store';
 
-function AccountSettings() {
+function AccountSettings({ collapsed = false }: { collapsed?: boolean }) {
   const localize = useLocalize();
   const { user, isAuthenticated, logout } = useAuthContext();
   const { data: startupConfig } = useGetStartupConfig();
   const balanceQuery = useGetUserBalance({
-    enabled: !!isAuthenticated && startupConfig?.checkBalance,
+    enabled: !!isAuthenticated && startupConfig?.balance?.enabled,
   });
   const [showSettings, setShowSettings] = useState(false);
-  const [showFiles, setShowFiles] = useRecoilState(store.showFiles);
-
-  const avatarSrc = useAvatar(user);
-  const name = user?.avatar ?? user?.username ?? '';
+  const [showFiles, setShowFiles] = useState(false);
+  const accountSettingsButtonRef = useRef<HTMLButtonElement>(null);
 
   return (
-    <Select.SelectProvider>
-      <Select.Select
+    <Menu.MenuProvider>
+      <Menu.MenuButton
+        ref={accountSettingsButtonRef}
         aria-label={localize('com_nav_account_settings')}
         data-testid="nav-user"
-        className="mt-text-sm flex h-auto w-full items-center gap-2 rounded-xl p-2 text-sm transition-all duration-200 ease-in-out hover:bg-accent"
+        className={
+          collapsed
+            ? 'flex h-9 w-9 items-center justify-center rounded-lg transition-colors hover:bg-surface-active-alt aria-[expanded=true]:bg-surface-active-alt'
+            : 'mt-text-sm flex h-auto w-full items-center gap-2 rounded-xl p-2 text-sm transition-all duration-200 ease-in-out hover:bg-surface-active-alt aria-[expanded=true]:bg-surface-active-alt'
+        }
       >
-        <div className="-ml-0.9 -mt-0.8 h-8 w-8 flex-shrink-0">
+        <div
+          className={collapsed ? 'size-7 flex-shrink-0' : '-ml-0.9 -mt-0.8 h-8 w-8 flex-shrink-0'}
+        >
           <div className="relative flex">
-            {name.length === 0 ? (
-              <div
-                style={{
-                  backgroundColor: 'rgb(121, 137, 255)',
-                  width: '32px',
-                  height: '32px',
-                  boxShadow: 'rgba(240, 246, 252, 0.1) 0px 0px 0px 1px',
-                }}
-                className="relative flex items-center justify-center rounded-full p-1 text-text-primary"
-                aria-hidden="true"
-              >
-                <UserIcon />
-              </div>
-            ) : (
-              <img
-                className="rounded-full"
-                src={(user?.avatar ?? '') || avatarSrc}
-                alt={`${name}'s avatar`}
-              />
-            )}
+            <Avatar user={user} size={collapsed ? 28 : 32} />
           </div>
         </div>
-        <div
-          className="mt-2 grow overflow-hidden text-ellipsis whitespace-nowrap text-left text-text-primary"
-          style={{ marginTop: '0', marginLeft: '0' }}
-        >
-          {user?.name ?? user?.username ?? localize('com_nav_user')}
-        </div>
-      </Select.Select>
-      <Select.SelectPopover
-        className="popover-ui w-[235px]"
+        {!collapsed && (
+          <div
+            className="mt-2 grow overflow-hidden text-ellipsis whitespace-nowrap text-left text-text-primary"
+            style={{ marginTop: '0', marginLeft: '0' }}
+          >
+            {user?.name ?? user?.username ?? localize('com_nav_user')}
+          </div>
+        )}
+      </Menu.MenuButton>
+      <Menu.Menu
+        portal
+        className="account-settings-popover popover-ui z-[125] w-[305px] rounded-lg md:w-[244px]"
+        placement={collapsed ? 'right-end' : undefined}
         style={{
-          transformOrigin: 'bottom',
-          marginRight: '0px',
-          translate: '0px',
+          transformOrigin: collapsed ? 'left bottom' : 'bottom',
+          translate: collapsed ? '4px 0' : '0 -4px',
         }}
       >
         <div
@@ -79,37 +64,30 @@ function AccountSettings() {
           {user?.email ?? localize('com_nav_user')}
         </div>
         <DropdownMenuSeparator />
-        {startupConfig?.checkBalance === true &&
-          balanceQuery.data != null &&
-          !isNaN(parseFloat(balanceQuery.data)) && (
+        {startupConfig?.balance?.enabled === true && balanceQuery.data != null && (
           <>
             <div className="text-token-text-secondary ml-3 mr-2 py-2 text-sm" role="note">
-              {`Balance: ${parseFloat(balanceQuery.data).toFixed(2)}`}
+              {localize('com_nav_balance')}:{' '}
+              {new Intl.NumberFormat().format(Math.round(balanceQuery.data.tokenCredits))}
             </div>
             <DropdownMenuSeparator />
           </>
         )}
-        <Select.SelectItem
-          value=""
-          onClick={() => setShowFiles(true)}
-          className="select-item text-sm"
-        >
+        <Menu.MenuItem onClick={() => setShowFiles(true)} className="select-item text-sm">
           <FileText className="icon-md" aria-hidden="true" />
           {localize('com_nav_my_files')}
-        </Select.SelectItem>
+        </Menu.MenuItem>
         {startupConfig?.helpAndFaqURL !== '/' && (
-          <Select.SelectItem
-            value=""
+          <Menu.MenuItem
             onClick={() => window.open(startupConfig?.helpAndFaqURL, '_blank')}
             className="select-item text-sm"
           >
             <LinkIcon aria-hidden="true" />
             {localize('com_nav_help_faq')}
-          </Select.SelectItem>
+          </Menu.MenuItem>
         )}
         {startupConfig?.interface?.customConsole?.externalUrl && (
-          <Select.SelectItem
-            value=""
+          <Menu.MenuItem
             onClick={() =>
               window.open(
                 startupConfig.interface!.customConsole!.externalUrl,
@@ -120,30 +98,27 @@ function AccountSettings() {
           >
             <LayoutDashboard className="icon-md" aria-hidden="true" />
             Console
-          </Select.SelectItem>
+          </Menu.MenuItem>
         )}
-        <Select.SelectItem
-          value=""
-          onClick={() => setShowSettings(true)}
-          className="select-item text-sm"
-        >
+        <Menu.MenuItem onClick={() => setShowSettings(true)} className="select-item text-sm">
           <GearIcon className="icon-md" aria-hidden="true" />
           {localize('com_nav_settings')}
-        </Select.SelectItem>
+        </Menu.MenuItem>
         <DropdownMenuSeparator />
-        <Select.SelectItem
-          aria-selected={true}
-          onClick={() => logout()}
-          value="logout"
-          className="select-item text-sm"
-        >
-          <LogOut className="icon-md" />
+        <Menu.MenuItem onClick={() => logout()} className="select-item text-sm">
+          <LogOut className="icon-md" aria-hidden="true" />
           {localize('com_nav_log_out')}
-        </Select.SelectItem>
-      </Select.SelectPopover>
-      {showFiles && <FilesView open={showFiles} onOpenChange={setShowFiles} />}
+        </Menu.MenuItem>
+      </Menu.Menu>
+      {showFiles && (
+        <MyFilesModal
+          open={showFiles}
+          onOpenChange={setShowFiles}
+          triggerRef={accountSettingsButtonRef}
+        />
+      )}
       {showSettings && <Settings open={showSettings} onOpenChange={setShowSettings} />}
-    </Select.SelectProvider>
+    </Menu.MenuProvider>
   );
 }
 

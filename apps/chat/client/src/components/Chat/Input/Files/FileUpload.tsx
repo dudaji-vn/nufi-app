@@ -55,33 +55,45 @@ const FileUpload: React.FC<FileUploadProps> = ({
 
   let statusText: string;
   if (!status) {
-    statusText = text ?? localize('com_endpoint_import');
+    statusText = text ?? localize('com_ui_import');
   } else if (status === 'success') {
     statusText = successText ?? localize('com_ui_upload_success');
   } else {
     statusText = invalidText ?? localize('com_ui_upload_invalid');
   }
 
+  const handleClick = () => {
+    const fileInput = document.getElementById(`file-upload-${id}`) as HTMLInputElement;
+    if (fileInput) {
+      fileInput.click();
+    }
+  };
+
   return (
-    <label
-      htmlFor={`file-upload-${id}`}
-      className={cn(
-        'mr-1 flex h-auto cursor-pointer items-center rounded-md bg-transparent px-2 py-1 text-xs font-normal transition-colors hover:bg-gray-100 hover:text-primary dark:bg-transparent dark:text-gray-300 dark:hover:bg-accent dark:hover:text-primary',
-        statusColor,
-        containerClassName,
-      )}
-    >
-      <FileUp className="mr-1 flex w-[22px] items-center stroke-1" />
-      <span className="flex text-xs ">{statusText}</span>
+    <>
+      <button
+        type="button"
+        onClick={handleClick}
+        className={cn(
+          'mr-1 flex h-auto cursor-pointer items-center rounded-md bg-transparent px-2 py-1 text-xs font-normal transition-colors hover:bg-surface-hover hover:text-brand-purple focus:ring-ring dark:bg-transparent dark:text-gray-300 dark:hover:bg-accent dark:hover:text-brand-purple',
+          statusColor,
+          containerClassName,
+        )}
+        aria-label={statusText}
+      >
+        <FileUp className="mr-1 flex w-[22px] items-center stroke-1" aria-hidden="true" />
+        <span className="flex text-xs">{statusText}</span>
+      </button>
       <input
         id={`file-upload-${id}`}
         value=""
         type="file"
-        className={cn('hidden ', className)}
+        className={cn('hidden', className)}
         accept=".json"
         onChange={handleFileChange}
+        tabIndex={-1}
       />
-    </label>
+    </>
   );
 };
 

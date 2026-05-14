@@ -1,6 +1,6 @@
 import React from 'react';
-import { HoverCardPortal, HoverCardContent } from '~/components/ui';
-import { useLocalize } from '~/hooks';
+import { HoverCardPortal, HoverCardContent } from '@librechat/client';
+import { TranslationKeys, useLocalize } from '~/hooks';
 import { ESide } from '~/common';
 
 type TOptionHoverProps = {
@@ -24,12 +24,12 @@ function OptionHover({
   if (disabled) {
     return null;
   }
-  const text = langCode ? localize(description) : description;
+  const text = langCode ? localize(description as TranslationKeys) : description;
   return (
     <HoverCardPortal>
       <HoverCardContent side={side} className={`z-[999] w-80 ${className}`} sideOffset={sideOffset}>
         <div className="space-y-2">
-          <p className="text-sm text-gray-600 dark:text-gray-300">{text}</p>
+          <p className="whitespace-pre-wrap text-sm text-text-secondary">{text}</p>
         </div>
       </HoverCardContent>
     </HoverCardPortal>

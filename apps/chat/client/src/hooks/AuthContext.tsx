@@ -1,27 +1,41 @@
 import {
+  useRef,
   useMemo,
   useState,
   useEffect,
-  ReactNode,
   useContext,
   useCallback,
   createContext,
 } from 'react';
-import { useRecoilState } from 'recoil';
+import { debounce } from 'lodash';
+import { useRecoilState, useSetRecoilState } from 'recoil';
 import { useNavigate } from 'react-router-dom';
-import { setTokenHeader, SystemRoles } from 'librechat-data-provider';
 import {
+  apiBaseUrl,
+  SystemRoles,
+  setTokenHeader,
+  isSystemRoleName,
+  buildLoginRedirectUrl,
+} from 'librechat-data-provider';
+import type * as t from 'librechat-data-provider';
+import type { ReactNode } from 'react';
+import {
+  useGetRole,
   useGetUserQuery,
   useLoginUserMutation,
+  useLogoutUserMutation,
   useRefreshTokenMutation,
-} from 'librechat-data-provider/react-query';
-import type { TLoginResponse, TLoginUser } from 'librechat-data-provider';
+} from '~/data-provider';
 import { TAuthConfig, TUserContext, TAuthContext, TResError } from '~/common';
-import { useLogoutUserMutation, useGetRole } from '~/data-provider';
+import { SESSION_KEY, isSafeRedirect, getPostLoginRedirect } from '~/utils';
 import useTimeout from './useTimeout';
 import store from '~/store';
 
-const AuthContext = createContext<TAuthContext | undefined>(undefined);
+const AuthContext = (import.meta.hot?.data?.__AuthContext ??
+  createContext<TAuthContext | undefined>(undefined)) as React.Context<TAuthContext | undefined>;
+if (import.meta.hot) {
+  import.meta.hot.data.__AuthContext = AuthContext;
+}
 
 const AuthContextProvider = ({
   authConfig,
@@ -30,40 +44,98 @@ const AuthContextProvider = ({
   authConfig?: TAuthConfig;
   children: ReactNode;
 }) => {
+  const isExternalRedirectRef = useRef(false);
   const [user, setUser] = useRecoilState(store.user);
+  const logoutRedirectRef = useRef<string | undefined>(undefined);
   const [token, setToken] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const setQueriesEnabled = useSetRecoilState<boolean>(store.queriesEnabled);
+
+  const userRoleName = user?.role ?? '';
+  const isCustomRole = isAuthenticated && !!user?.role && !isSystemRoleName(user.role);
+
   const { data: userRole = null } = useGetRole(SystemRoles.USER, {
     enabled: !!(isAuthenticated && (user?.role ?? '')),
   });
   const { data: adminRole = null } = useGetRole(SystemRoles.ADMIN, {
     enabled: !!(isAuthenticated && user?.role === SystemRoles.ADMIN),
   });
+  const { data: customRole = null } = useGetRole(isCustomRole ? userRoleName : '_', {
+    enabled: isCustomRole,
+  });
 
   const navigate = useNavigate();
 
-  const setUserContext = useCallback(
-    (userContext: TUserContext) => {
-      const { token, isAuthenticated, user, redirect } = userContext;
-      if (user) {
+  const setUserContext = useMemo(
+    () =>
+      debounce((userContext: TUserContext) => {
+        const { token, isAuthenticated, user, redirect } = userContext;
         setUser(user);
-      }
-      setToken(token);
-      //@ts-ignore - ok for token to be undefined initially
-      setTokenHeader(token);
-      setIsAuthenticated(isAuthenticated);
-      if (redirect) {
-        navigate(redirect, { replace: true });
-      }
-    },
-    [navigate, setUser],
+        setToken(token);
+        setTokenHeader(token);
+        setIsAuthenticated(isAuthenticated);
+        if (isAuthenticated) {
+          setQueriesEnabled(true);
+        }
+
+        const searchParams = new URLSearchParams(window.location.search);
+        const postLoginRedirect = getPostLoginRedirect(searchParams);
+
+        const logoutRedirect = logoutRedirectRef.current;
+        logoutRedirectRef.current = undefined;
+
+        const finalRedirect =
+          logoutRedirect ??
+          postLoginRedirect ??
+          (redirect && isSafeRedirect(redirect) ? redirect : null);
+
+        if (finalRedirect == null) {
+          return;
+        }
+
+        navigate(finalRedirect, { replace: true });
+      }, 50),
+    [navigate, setUser, setQueriesEnabled],
   );
   const doSetError = useTimeout({ callback: (error) => setError(error as string | undefined) });
 
-  const loginUser = useLoginUserMutation();
+  const loginUser = useLoginUserMutation({
+    onSuccess: (data: t.TLoginResponse) => {
+      const { user, token, twoFAPending, tempToken } = data;
+      if (twoFAPending) {
+        navigate(`/login/2fa?tempToken=${tempToken}`, { replace: true });
+        return;
+      }
+      setError(undefined);
+      setUserContext({ token, isAuthenticated: true, user, redirect: '/c/new' });
+    },
+    onError: (error: TResError | unknown) => {
+      const resError = error as TResError;
+      doSetError(resError.message);
+      // Preserve a valid redirect_to across login failures so the deep link survives retries.
+      // Cannot use buildLoginRedirectUrl() here — it reads the current pathname (already /login)
+      // and would return plain /login, dropping the redirect_to destination.
+      const redirectTo = new URLSearchParams(window.location.search).get('redirect_to');
+      const loginPath =
+        redirectTo && isSafeRedirect(redirectTo)
+          ? `/login?redirect_to=${encodeURIComponent(redirectTo)}`
+          : '/login';
+      navigate(loginPath, { replace: true });
+    },
+  });
   const logoutUser = useLogoutUserMutation({
-    onSuccess: () => {
+    onSuccess: (data) => {
+      if (data.redirect) {
+        /** data.redirect is the IdP's end_session_endpoint URL — an absolute URL generated
+         * server-side from trusted IdP metadata (not user input), so isSafeRedirect is bypassed.
+         * setUserContext is debounced (50ms) and won't fire before page unload, so clear the
+         * axios Authorization header synchronously to prevent in-flight requests. */
+        isExternalRedirectRef.current = true;
+        setTokenHeader(undefined);
+        window.location.replace(data.redirect);
+        return;
+      }
       setUserContext({
         token: undefined,
         isAuthenticated: false,
@@ -81,65 +153,88 @@ const AuthContextProvider = ({
       });
     },
   });
-
-  const logout = useCallback(() => logoutUser.mutate(undefined), [logoutUser]);
-  const userQuery = useGetUserQuery({ enabled: !!token });
   const refreshToken = useRefreshTokenMutation();
 
-  const login = (data: TLoginUser) => {
-    loginUser.mutate(data, {
-      onSuccess: (data: TLoginResponse) => {
-        const { user, token } = data;
-        setError(undefined);
-        setUserContext({ token, isAuthenticated: true, user, redirect: '/c/new' });
-      },
-      onError: (error: TResError | unknown) => {
-        const resError = error as TResError;
-        doSetError(resError.message);
-        navigate('/login', { replace: true });
-      },
-    });
+  const logout = useCallback(
+    (redirect?: string) => {
+      if (redirect) {
+        logoutRedirectRef.current = redirect;
+      }
+      logoutUser.mutate(undefined);
+    },
+    [logoutUser],
+  );
+
+  const userQuery = useGetUserQuery({ enabled: !!(token ?? '') });
+
+  const login = (data: t.TLoginUser) => {
+    loginUser.mutate(data);
   };
 
   const silentRefresh = useCallback(() => {
-    if (authConfig?.test) {
+    if (authConfig?.test === true) {
       console.log('Test mode. Skipping silent refresh.');
       return;
     }
+    if (isExternalRedirectRef.current) {
+      return;
+    }
     refreshToken.mutate(undefined, {
-      onSuccess: (data: TLoginResponse) => {
-        const { user, token } = data;
-        if (token) {
-          setUserContext({ token, isAuthenticated: true, user });
-        } else {
-          console.log('Token is not present. User is not authenticated.');
-          if (authConfig?.test) {
-            return;
-          }
-          navigate('/login');
-        }
-      },
-      onError: (error) => {
-        console.log('refreshToken mutation error:', error);
-        if (authConfig?.test) {
+      onSuccess: (data: t.TRefreshTokenResponse | undefined) => {
+        if (isExternalRedirectRef.current) {
           return;
         }
-        navigate('/login');
+        const { user, token = '' } = data ?? {};
+        if (token) {
+          const storedRedirect = sessionStorage.getItem(SESSION_KEY);
+          sessionStorage.removeItem(SESSION_KEY);
+          const baseUrl = apiBaseUrl();
+          const rawPath = window.location.pathname;
+          const strippedPath =
+            baseUrl && (rawPath === baseUrl || rawPath.startsWith(baseUrl + '/'))
+              ? rawPath.slice(baseUrl.length) || '/'
+              : rawPath;
+          const currentUrl = `${strippedPath}${window.location.search}`;
+          const fallbackRedirect = isSafeRedirect(currentUrl) ? currentUrl : '/c/new';
+          const redirect =
+            storedRedirect && isSafeRedirect(storedRedirect) ? storedRedirect : fallbackRedirect;
+          setUserContext({ user, token, isAuthenticated: true, redirect });
+          return;
+        }
+        console.log('Token is not present. User is not authenticated.');
+        if (authConfig?.test === true) {
+          return;
+        }
+        navigate(buildLoginRedirectUrl());
+      },
+      onError: (error) => {
+        if (isExternalRedirectRef.current) {
+          return;
+        }
+        console.log('refreshToken mutation error:', error);
+        if (authConfig?.test === true) {
+          return;
+        }
+        navigate(buildLoginRedirectUrl());
       },
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are stable at mount; adding refreshToken causes infinite re-fire
   }, []);
 
   useEffect(() => {
+    if (isExternalRedirectRef.current) {
+      return;
+    }
     if (userQuery.data) {
       setUser(userQuery.data);
     } else if (userQuery.isError) {
       doSetError((userQuery.error as Error).message);
-      navigate('/login', { replace: true });
+      navigate(buildLoginRedirectUrl(), { replace: true });
     }
-    if (error && isAuthenticated) {
+    if (error != null && error && isAuthenticated) {
       doSetError(undefined);
     }
-    if (!token || !isAuthenticated) {
+    if (token == null || !token || !isAuthenticated) {
       silentRefresh();
     }
   }, [
@@ -149,29 +244,29 @@ const AuthContextProvider = ({
     userQuery.isError,
     userQuery.error,
     error,
+    setUser,
     navigate,
+    silentRefresh,
     setUserContext,
   ]);
 
   useEffect(() => {
-    const handleTokenUpdate = (event) => {
+    const handleTokenUpdate = (event: CustomEvent<string>) => {
       console.log('tokenUpdated event received event');
-      const newToken = event.detail;
       setUserContext({
-        token: newToken,
+        token: event.detail,
         isAuthenticated: true,
         user: user,
       });
     };
 
-    window.addEventListener('tokenUpdated', handleTokenUpdate);
+    window.addEventListener('tokenUpdated', handleTokenUpdate as EventListener);
 
     return () => {
-      window.removeEventListener('tokenUpdated', handleTokenUpdate);
+      window.removeEventListener('tokenUpdated', handleTokenUpdate as EventListener);
     };
   }, [setUserContext, user]);
 
-  // Make the provider update only when it should
   const memoedValue = useMemo(
     () => ({
       user,
@@ -183,11 +278,22 @@ const AuthContextProvider = ({
       roles: {
         [SystemRoles.USER]: userRole,
         [SystemRoles.ADMIN]: adminRole,
+        ...(isCustomRole && customRole ? { [userRoleName]: customRole } : {}),
       },
       isAuthenticated,
     }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user, error, isAuthenticated, token, userRole, adminRole],
+
+    [
+      user,
+      error,
+      isAuthenticated,
+      token,
+      userRole,
+      adminRole,
+      isCustomRole,
+      userRoleName,
+      customRole,
+    ],
   );
 
   return <AuthContext.Provider value={memoedValue}>{children}</AuthContext.Provider>;
@@ -203,4 +309,4 @@ const useAuthContext = () => {
   return context;
 };
 
-export { AuthContextProvider, useAuthContext };
+export { AuthContextProvider, useAuthContext, AuthContext };

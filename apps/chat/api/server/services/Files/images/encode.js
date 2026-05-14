@@ -1,13 +1,54 @@
 const axios = require('axios');
+const { logger } = require('@librechat/data-schemas');
+const { logAxiosError, validateImage } = require('@librechat/api');
 const {
   FileSources,
   VisionModes,
   ImageDetail,
   ContentTypes,
   EModelEndpoint,
+  mergeFileConfig,
+  getEndpointFileConfig,
 } = require('librechat-data-provider');
 const { getStrategyFunctions } = require('~/server/services/Files/strategies');
-const { logger } = require('~/config');
+
+/**
+ * Converts a readable stream to a base64 encoded string.
+ *
+ * @param {NodeJS.ReadableStream} stream - The readable stream to convert.
+ * @param {boolean} [destroyStream=true] - Whether to destroy the stream after processing.
+ * @returns {Promise<string>} - Promise resolving to the base64 encoded content.
+ */
+async function streamToBase64(stream, destroyStream = true) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+
+    stream.on('data', (chunk) => {
+      chunks.push(chunk);
+    });
+
+    stream.on('end', () => {
+      try {
+        const buffer = Buffer.concat(chunks);
+        const base64Data = buffer.toString('base64');
+        chunks.length = 0; // Clear the array
+        resolve(base64Data);
+      } catch (err) {
+        reject(err);
+      }
+    });
+
+    stream.on('error', (error) => {
+      chunks.length = 0;
+      reject(error);
+    });
+  }).finally(() => {
+    // Clean up the stream if required
+    if (destroyStream && stream.destroy && typeof stream.destroy === 'function') {
+      stream.destroy();
+    }
+  });
+}
 
 /**
  * Fetches an image from a URL and returns its base64 representation.
@@ -22,10 +63,12 @@ async function fetchImageToBase64(url) {
     const response = await axios.get(url, {
       responseType: 'arraybuffer',
     });
-    return Buffer.from(response.data).toString('base64');
+    const base64Data = Buffer.from(response.data).toString('base64');
+    response.data = null;
+    return base64Data;
   } catch (error) {
-    logger.error('Error fetching image to convert to base64', error);
-    throw error;
+    const message = 'Error fetching image to convert to base64';
+    throw new Error(logAxiosError({ message, error }));
   }
 }
 
@@ -37,17 +80,30 @@ const base64Only = new Set([
   EModelEndpoint.bedrock,
 ]);
 
+const blobStorageSources = new Set([
+  FileSources.azure_blob,
+  FileSources.s3,
+  FileSources.firebase,
+  FileSources.cloudfront,
+]);
+
 /**
  * Encodes and formats the given files.
- * @param {Express.Request} req - The request object.
+ * @param {ServerRequest} req - The request object.
  * @param {Array<MongoFile>} files - The array of files to encode and format.
- * @param {EModelEndpoint} [endpoint] - Optional: The endpoint for the image.
+ * @param {object} params - Object containing provider/endpoint information
+ * @param {Providers | EModelEndpoint | string} [params.provider] - The provider for the image
+ * @param {string} [params.endpoint] - Optional: The endpoint for the image
  * @param {string} [mode] - Optional: The endpoint mode for the image.
- * @returns {Promise<Object>} - A promise that resolves to the result object containing the encoded images and file details.
+ * @returns {Promise<{ files: MongoFile[]; image_urls: MessageContentImageUrl[] }>} - A promise that resolves to the result object containing the encoded images and file details.
  */
-async function encodeAndFormat(req, files, endpoint, mode) {
+async function encodeAndFormat(req, files, params, mode) {
+  const { provider, endpoint } = params;
+  const effectiveEndpoint = endpoint ?? provider;
   const promises = [];
+  /** @type {Record<FileSources, Pick<ReturnType<typeof getStrategyFunctions>, 'prepareImagePayload' | 'getDownloadStream'>>} */
   const encodingMethods = {};
+  /** @type {{ files: MongoFile[]; image_urls: MessageContentImageUrl[] }} */
   const result = {
     files: [],
     image_urls: [],
@@ -58,6 +114,7 @@ async function encodeAndFormat(req, files, endpoint, mode) {
   }
 
   for (let file of files) {
+    /** @type {FileSources} */
     const source = file.source ?? FileSources.local;
 
     if (!file.height) {
@@ -66,18 +123,29 @@ async function encodeAndFormat(req, files, endpoint, mode) {
     }
 
     if (!encodingMethods[source]) {
-      const { prepareImagePayload } = getStrategyFunctions(source);
+      const { prepareImagePayload, getDownloadStream } = getStrategyFunctions(source);
       if (!prepareImagePayload) {
         throw new Error(`Encoding function not implemented for ${source}`);
       }
 
-      encodingMethods[source] = prepareImagePayload;
+      encodingMethods[source] = { prepareImagePayload, getDownloadStream };
     }
 
-    const preparePayload = encodingMethods[source];
-
-    /* Google & Anthropic don't support passing URLs to payload */
-    if (source !== FileSources.local && base64Only.has(endpoint)) {
+    const preparePayload = encodingMethods[source].prepareImagePayload;
+    /* We need to fetch the image and convert it to base64 if we are using S3/Azure Blob/Firebase storage. */
+    if (blobStorageSources.has(source)) {
+      try {
+        const downloadStream = encodingMethods[source].getDownloadStream;
+        let stream = await downloadStream(req, file.filepath);
+        let base64Data = await streamToBase64(stream);
+        stream = null;
+        promises.push([file, base64Data]);
+        base64Data = null;
+        continue;
+      } catch (error) {
+        logger.error('Error processing image from blob storage:', error);
+      }
+    } else if (source !== FileSources.local && base64Only.has(effectiveEndpoint)) {
       const [_file, imageURL] = await preparePayload(req, file);
       promises.push([_file, await fetchImageToBase64(imageURL)]);
       continue;
@@ -89,6 +157,18 @@ async function encodeAndFormat(req, files, endpoint, mode) {
 
   /** @type {Array<[MongoFile, string]>} */
   const formattedImages = await Promise.all(promises);
+  promises.length = 0;
+
+  /** Extract configured file size limit from fileConfig for this endpoint */
+  let configuredFileSizeLimit;
+  if (req.config?.fileConfig) {
+    const fileConfig = mergeFileConfig(req.config.fileConfig);
+    const endpointConfig = getEndpointFileConfig({
+      fileConfig,
+      endpoint: effectiveEndpoint,
+    });
+    configuredFileSizeLimit = endpointConfig?.fileSizeLimit;
+  }
 
   for (const [file, imageContent] of formattedImages) {
     const fileMetadata = {
@@ -97,6 +177,7 @@ async function encodeAndFormat(req, files, endpoint, mode) {
       filepath: file.filepath,
       filename: file.filename,
       embedded: !!file.embedded,
+      metadata: file.metadata,
     };
 
     if (file.height && file.width) {
@@ -107,6 +188,26 @@ async function encodeAndFormat(req, files, endpoint, mode) {
     if (!imageContent) {
       result.files.push(fileMetadata);
       continue;
+    }
+
+    /** Validate image buffer against size limits */
+    if (file.height && file.width) {
+      const imageBuffer = imageContent.startsWith('http')
+        ? null
+        : Buffer.from(imageContent, 'base64');
+
+      if (imageBuffer) {
+        const validation = await validateImage(
+          imageBuffer,
+          imageBuffer.length,
+          effectiveEndpoint,
+          configuredFileSizeLimit,
+        );
+
+        if (!validation.isValid) {
+          throw new Error(`Image validation failed for ${file.filename}: ${validation.error}`);
+        }
+      }
     }
 
     const imagePart = {
@@ -120,20 +221,24 @@ async function encodeAndFormat(req, files, endpoint, mode) {
     };
 
     if (mode === VisionModes.agents) {
-      result.image_urls.push(imagePart);
-      result.files.push(fileMetadata);
+      result.image_urls.push({ ...imagePart });
+      result.files.push({ ...fileMetadata });
       continue;
     }
 
-    if (endpoint && endpoint === EModelEndpoint.google && mode === VisionModes.generative) {
+    if (
+      effectiveEndpoint &&
+      effectiveEndpoint === EModelEndpoint.google &&
+      mode === VisionModes.generative
+    ) {
       delete imagePart.image_url;
       imagePart.inlineData = {
         mimeType: file.type,
         data: imageContent,
       };
-    } else if (endpoint && endpoint === EModelEndpoint.google) {
+    } else if (effectiveEndpoint && effectiveEndpoint === EModelEndpoint.google) {
       imagePart.image_url = imagePart.image_url.url;
-    } else if (endpoint && endpoint === EModelEndpoint.anthropic) {
+    } else if (effectiveEndpoint && effectiveEndpoint === EModelEndpoint.anthropic) {
       imagePart.type = 'image';
       imagePart.source = {
         type: 'base64',
@@ -143,10 +248,11 @@ async function encodeAndFormat(req, files, endpoint, mode) {
       delete imagePart.image_url;
     }
 
-    result.image_urls.push(imagePart);
-    result.files.push(fileMetadata);
+    result.image_urls.push({ ...imagePart });
+    result.files.push({ ...fileMetadata });
   }
-  return result;
+  formattedImages.length = 0;
+  return { ...result };
 }
 
 module.exports = {

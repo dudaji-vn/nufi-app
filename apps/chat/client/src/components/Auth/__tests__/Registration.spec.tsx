@@ -3,6 +3,10 @@ import userEvent from '@testing-library/user-event';
 import { render, waitFor, screen } from 'test/layout-test-utils';
 import * as mockDataProvider from 'librechat-data-provider/react-query';
 import type { TStartupConfig } from 'librechat-data-provider';
+import * as miscDataProvider from '~/data-provider/Misc/queries';
+import * as endpointQueries from '~/data-provider/Endpoints/queries';
+import * as authMutations from '~/data-provider/Auth/mutations';
+import * as authQueries from '~/data-provider/Auth/queries';
 import Registration from '~/components/Auth/Registration';
 import AuthLayout from '~/components/Auth/AuthLayout';
 
@@ -13,7 +17,7 @@ const mockStartupConfig = {
   isLoading: false,
   isError: false,
   data: {
-    socialLogins: ['google', 'facebook', 'openid', 'github', 'discord'],
+    socialLogins: ['google', 'facebook', 'openid', 'github', 'discord', 'saml'],
     discordLoginEnabled: true,
     facebookLoginEnabled: true,
     githubLoginEnabled: true,
@@ -21,6 +25,9 @@ const mockStartupConfig = {
     openidLoginEnabled: true,
     openidLabel: 'Test OpenID',
     openidImageUrl: 'http://test-server.com',
+    samlLoginEnabled: true,
+    samlLabel: 'Test SAML',
+    samlImageUrl: 'http://test-server.com',
     registrationEnabled: true,
     socialLoginEnabled: true,
     serverDomain: 'mock-server',
@@ -62,22 +69,22 @@ const setup = ({
     //@ts-ignore - we don't need all parameters of the QueryObserverSuccessResult
     .mockReturnValue(useRegisterUserMutationReturnValue);
   const mockUseGetUserQuery = jest
-    .spyOn(mockDataProvider, 'useGetUserQuery')
+    .spyOn(authQueries, 'useGetUserQuery')
     //@ts-ignore - we don't need all parameters of the QueryObserverSuccessResult
     .mockReturnValue(useGetUserQueryReturnValue);
   const mockUseGetStartupConfig = jest
-    .spyOn(mockDataProvider, 'useGetStartupConfig')
+    .spyOn(endpointQueries, 'useGetStartupConfig')
     //@ts-ignore - we don't need all parameters of the QueryObserverSuccessResult
     .mockReturnValue(useGetStartupConfigReturnValue);
   const mockUseRefreshTokenMutation = jest
-    .spyOn(mockDataProvider, 'useRefreshTokenMutation')
+    .spyOn(authMutations, 'useRefreshTokenMutation')
     //@ts-ignore - we don't need all parameters of the QueryObserverSuccessResult
     .mockReturnValue(useRefreshTokenMutationReturnValue);
   const mockUseOutletContext = jest.spyOn(reactRouter, 'useOutletContext').mockReturnValue({
     startupConfig: useGetStartupConfigReturnValue.data,
   });
   const mockUseGetBannerQuery = jest
-    .spyOn(mockDataProvider, 'useGetBannerQuery')
+    .spyOn(miscDataProvider, 'useGetBannerQuery')
     //@ts-ignore - we don't need all parameters of the QueryObserverSuccessResult
     .mockReturnValue(useGetBannerQueryReturnValue);
   const renderResult = render(
@@ -142,9 +149,13 @@ test('renders registration form', () => {
     'href',
     'mock-server/oauth/discord',
   );
+  expect(getByRole('link', { name: /Test SAML/i })).toBeInTheDocument();
+  expect(getByRole('link', { name: /Test SAML/i })).toHaveAttribute(
+    'href',
+    'mock-server/oauth/saml',
+  );
 });
 
-// eslint-disable-next-line jest/no-commented-out-tests
 // test('calls registerUser.mutate on registration', async () => {
 //   const mutate = jest.fn();
 //   const { getByTestId, getByRole, history } = setup({
@@ -179,12 +190,16 @@ test('shows validation error messages', async () => {
   await userEvent.type(getByTestId('password'), 'pass');
   await userEvent.type(getByTestId('confirm_password'), 'password1');
   const alerts = getAllByRole('alert');
-  expect(alerts).toHaveLength(5);
-  expect(alerts[0]).toHaveTextContent(/Name must be at least 3 characters/i);
-  expect(alerts[1]).toHaveTextContent(/Username must be at least 2 characters/i);
-  expect(alerts[2]).toHaveTextContent(/You must enter a valid email address/i);
-  expect(alerts[3]).toHaveTextContent(/Password must be at least 8 characters/i);
-  expect(alerts[4]).toHaveTextContent(/Passwords do not match/i);
+  expect(alerts).toHaveLength(6);
+
+  // This first alert is for the theme toggle, which is empty within this test but still picked up by getAllByRole as an alert
+  expect(alerts[0]).toHaveTextContent('');
+
+  expect(alerts[1]).toHaveTextContent(/Name must be at least 3 characters/i);
+  expect(alerts[2]).toHaveTextContent(/Username must be at least 2 characters/i);
+  expect(alerts[3]).toHaveTextContent(/You must enter a valid email address/i);
+  expect(alerts[4]).toHaveTextContent(/Password must be at least 8 characters/i);
+  expect(alerts[5]).toHaveTextContent(/Passwords do not match/i);
 });
 
 test('shows error message when registration fails', async () => {

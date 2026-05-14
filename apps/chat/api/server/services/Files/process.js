@@ -1,3 +1,4 @@
+const fs = require('fs');
 const path = require('path');
 const mime = require('mime');
 const { v4 } = require('uuid');
@@ -10,37 +11,64 @@ const {
   EModelEndpoint,
   EToolResources,
   mergeFileConfig,
-  hostImageIdSuffix,
+  AgentCapabilities,
   checkOpenAIStorage,
-  hostImageNamePrefix,
+  removeNullishValues,
   isAssistantsEndpoint,
+  getEndpointFileConfig,
+  documentParserMimeTypes,
 } = require('librechat-data-provider');
+const { logger } = require('@librechat/data-schemas');
+const {
+  sanitizeFilename,
+  parseText,
+  processAudioFile,
+  getStorageMetadata,
+} = require('@librechat/api');
+const {
+  convertImage,
+  resizeAndConvert,
+  resizeImageBuffer,
+} = require('~/server/services/Files/images');
 const { addResourceFileId, deleteResourceFileId } = require('~/server/controllers/assistants/v2');
-const { convertImage, resizeAndConvert } = require('~/server/services/Files/images');
-const { addAgentResourceFile, removeAgentResourceFile } = require('~/models/Agent');
 const { getOpenAIClient } = require('~/server/controllers/assistants/helpers');
-const { createFile, updateFileUsage, deleteFiles } = require('~/models/File');
+const { loadAuthValues } = require('~/server/services/Tools/credentials');
+const { getFileStrategy } = require('~/server/utils/getFileStrategy');
+const { checkCapability } = require('~/server/services/Config');
 const { LB_QueueAsyncCall } = require('~/server/utils/queue');
 const { getStrategyFunctions } = require('./strategies');
 const { determineFileType } = require('~/server/utils');
-const { logger } = require('~/config');
+const { STTService } = require('./Audio/STTService');
+const db = require('~/models');
 
-const processFiles = async (files) => {
-  const promises = [];
-  for (let file of files) {
-    const { file_id } = file;
-    promises.push(updateFileUsage({ file_id }));
-  }
+/**
+ * Creates a modular file upload wrapper that ensures filename sanitization
+ * across all storage strategies. This prevents storage-specific implementations
+ * from having to handle sanitization individually.
+ *
+ * @param {Function} uploadFunction - The storage strategy's upload function
+ * @returns {Function} - Wrapped upload function with sanitization
+ */
+const createSanitizedUploadWrapper = (uploadFunction) => {
+  return async (params) => {
+    const { req, file, file_id, ...restParams } = params;
 
-  // TODO: calculate token cost when image is first uploaded
-  return await Promise.all(promises);
+    // Create a modified file object with sanitized original name
+    // This ensures consistent filename handling across all storage strategies
+    const sanitizedFile = {
+      ...file,
+      originalname: sanitizeFilename(file.originalname),
+    };
+
+    return uploadFunction({ req, file: sanitizedFile, file_id, ...restParams });
+  };
 };
 
 /**
  * Enqueues the delete operation to the leaky bucket queue if necessary, or adds it directly to promises.
  *
  * @param {object} params - The passed parameters.
- * @param {Express.Request} params.req - The express request object.
+ * @param {ServerRequest} params.req - The express request object.
  * @param {MongoFile} params.file - The file object to delete.
  * @param {Function} params.deleteFile - The delete file function.
  * @param {Promise[]} params.promises - The array of promises to await.
@@ -87,14 +115,16 @@ function enqueueDeleteOperation({ req, file, deleteFile, promises, resolvedFileI
  *
  * @param {Object} params - The params object.
  * @param {MongoFile[]} params.files - The file objects to delete.
- * @param {Express.Request} params.req - The express request object.
+ * @param {ServerRequest} params.req - The express request object.
  * @param {DeleteFilesBody} params.req.body - The request body.
+ * @param {string} [params.req.body.agent_id] - The agent ID if file uploaded is associated to an agent.
  * @param {string} [params.req.body.assistant_id] - The assistant ID if file uploaded is associated to an assistant.
  * @param {string} [params.req.body.tool_resource] - The tool resource if assistant file uploaded is associated to a tool resource.
  *
  * @returns {Promise<void>}
  */
 const processDeleteRequest = async ({ req, files }) => {
+  const appConfig = req.config;
   const resolvedFileIds = [];
   const deletionMethods = {};
   const promises = [];
@@ -102,13 +132,15 @@ const processDeleteRequest = async ({ req, files }) => {
   /** @type {Record<string, OpenAI | undefined>} */
   const client = { [FileSources.openai]: undefined, [FileSources.azure]: undefined };
   const initializeClients = async () => {
-    const openAIClient = await getOpenAIClient({
-      req,
-      overrideEndpoint: EModelEndpoint.assistants,
-    });
-    client[FileSources.openai] = openAIClient.openai;
+    if (appConfig.endpoints?.[EModelEndpoint.assistants]) {
+      const openAIClient = await getOpenAIClient({
+        req,
+        overrideEndpoint: EModelEndpoint.assistants,
+      });
+      client[FileSources.openai] = openAIClient.openai;
+    }
 
-    if (!req.app.locals[EModelEndpoint.azureOpenAI]?.assistants) {
+    if (!appConfig.endpoints?.[EModelEndpoint.azureOpenAI]?.assistants) {
       return;
     }
 
@@ -123,18 +155,20 @@ const processDeleteRequest = async ({ req, files }) => {
     await initializeClients();
   }
 
+  const agentFiles = [];
+
   for (const file of files) {
     const source = file.source ?? FileSources.local;
-
     if (req.body.agent_id && req.body.tool_resource) {
-      promises.push(
-        removeAgentResourceFile({
-          req,
-          file_id: file.file_id,
-          agent_id: req.body.agent_id,
-          tool_resource: req.body.tool_resource,
-        }),
-      );
+      agentFiles.push({
+        tool_resource: req.body.tool_resource,
+        file_id: file.file_id,
+      });
+    }
+
+    if (source === FileSources.text) {
+      resolvedFileIds.push(file.file_id);
+      continue;
     }
 
     if (checkOpenAIStorage(source) && !client[source]) {
@@ -178,8 +212,25 @@ const processDeleteRequest = async ({ req, files }) => {
     enqueueDeleteOperation({ req, file, deleteFile, promises, resolvedFileIds, openai });
   }
 
+  if (agentFiles.length > 0) {
+    promises.push(
+      db.removeAgentResourceFiles({
+        agent_id: req.body.agent_id,
+        files: agentFiles,
+      }),
+    );
+  }
+
   await Promise.allSettled(promises);
-  await deleteFiles(resolvedFileIds);
+  await db.deleteFiles(resolvedFileIds);
+
+  if (resolvedFileIds.length > 0) {
+    try {
+      await db.removeAgentResourceFilesFromAllAgents({ file_ids: resolvedFileIds });
+    } catch (error) {
+      logger.error('Error cleaning up orphaned agent file references', error);
+    }
+  }
 };
 
 /**
@@ -199,28 +250,62 @@ const processDeleteRequest = async ({ req, files }) => {
  * @param {string} params.fileName - The name that will be used to save the file (including extension)
  * @param {string} params.basePath - The base path or directory where the file will be saved or retrieved from.
  * @param {FileContext} params.context - The context of the file (e.g., 'avatar', 'image_generation', etc.)
+ * @param {string} [params.tenantId] - Optional tenant identifier for tenant-prefixed storage paths.
  * @returns {Promise<MongoFile>} A promise that resolves to the DB representation (MongoFile)
  *  of the processed file. It throws an error if the file processing fails at any stage.
  */
-const processFileURL = async ({ fileStrategy, userId, URL, fileName, basePath, context }) => {
+const processFileURL = async ({
+  fileStrategy,
+  userId,
+  URL,
+  fileName,
+  basePath,
+  context,
+  tenantId,
+}) => {
   const { saveURL, getFileURL } = getStrategyFunctions(fileStrategy);
   try {
+    const savedFile = await saveURL({ userId, URL, fileName, basePath, tenantId });
+    if (!savedFile) {
+      throw new Error(`Strategy "${fileStrategy}" did not save "${fileName}"`);
+    }
+
     const {
       bytes = 0,
       type = '',
       dimensions = {},
-    } = (await saveURL({ userId, URL, fileName, basePath })) || {};
-    const filepath = await getFileURL({ fileName: `${userId}/${fileName}`, basePath });
-    return await createFile(
+    } = typeof savedFile === 'string' ? {} : savedFile;
+    const fallbackFileName =
+      fileStrategy === FileSources.local || fileStrategy === FileSources.firebase
+        ? `${userId}/${fileName}`
+        : fileName;
+    const filepath =
+      typeof savedFile === 'string'
+        ? savedFile
+        : (savedFile.filepath ??
+          (await getFileURL({ userId, fileName: fallbackFileName, basePath, tenantId })));
+    if (!filepath) {
+      throw new Error(`Strategy "${fileStrategy}" did not return a file URL for "${fileName}"`);
+    }
+    const storageMetadata = getStorageMetadata({
+      filepath,
+      source: fileStrategy,
+      storageKey: typeof savedFile === 'string' ? undefined : savedFile.storageKey,
+      storageRegion: typeof savedFile === 'string' ? undefined : savedFile.storageRegion,
+    });
+
+    return await db.createFile(
       {
         user: userId,
         file_id: v4(),
         bytes,
         filepath,
+        ...storageMetadata,
         filename: fileName,
         source: fileStrategy,
         type,
         context,
+        tenantId,
         width: dimensions.width,
         height: dimensions.height,
       },
@@ -237,38 +322,42 @@ const processFileURL = async ({ fileStrategy, userId, URL, fileName, basePath, c
  * Saves file metadata to the database with an expiry TTL.
  *
  * @param {Object} params - The parameters object.
- * @param {Express.Request} params.req - The Express request object.
+ * @param {ServerRequest} params.req - The Express request object.
  * @param {Express.Response} [params.res] - The Express response object.
- * @param {Express.Multer.File} params.file - The uploaded file.
  * @param {ImageMetadata} params.metadata - Additional metadata for the file.
  * @param {boolean} params.returnFile - Whether to return the file metadata or return response as normal.
  * @returns {Promise<void>}
  */
-const processImageFile = async ({ req, res, file, metadata, returnFile = false }) => {
-  const source = req.app.locals.fileStrategy;
+const processImageFile = async ({ req, res, metadata, returnFile = false }) => {
+  const { file } = req;
+  const appConfig = req.config;
+  const source = getFileStrategy(appConfig, { isImage: true });
   const { handleImageUpload } = getStrategyFunctions(source);
   const { file_id, temp_file_id, endpoint } = metadata;
 
-  const { filepath, bytes, width, height } = await handleImageUpload({
+  const { filepath, bytes, width, height, storageKey, storageRegion } = await handleImageUpload({
     req,
     file,
     file_id,
     endpoint,
   });
+  const storageMetadata = getStorageMetadata({ filepath, source, storageKey, storageRegion });
 
-  const result = await createFile(
+  const result = await db.createFile(
     {
       user: req.user.id,
       file_id,
       temp_file_id,
       bytes,
       filepath,
+      ...storageMetadata,
       filename: file.originalname,
       context: FileContext.message_attachment,
       source,
-      type: `image/${req.app.locals.imageOutputType}`,
+      type: `image/${appConfig.imageOutputType}`,
       width,
       height,
+      tenantId: req.user.tenantId,
     },
     true,
   );
@@ -284,41 +373,50 @@ const processImageFile = async ({ req, res, file, metadata, returnFile = false }
  * returns minimal file metadata, without saving to the database.
  *
  * @param {Object} params - The parameters object.
- * @param {Express.Request} params.req - The Express request object.
+ * @param {ServerRequest} params.req - The Express request object.
  * @param {FileContext} params.context - The context of the file (e.g., 'avatar', 'image_generation', etc.)
  * @param {boolean} [params.resize=true] - Whether to resize and convert the image to target format. Default is `true`.
  * @param {{ buffer: Buffer, width: number, height: number, bytes: number, filename: string, type: string, file_id: string }} [params.metadata] - Required metadata for the file if resize is false.
  * @returns {Promise<{ filepath: string, filename: string, source: string, type: string}>}
  */
 const uploadImageBuffer = async ({ req, context, metadata = {}, resize = true }) => {
-  const source = req.app.locals.fileStrategy;
+  const appConfig = req.config;
+  const source = getFileStrategy(appConfig, { isImage: true });
   const { saveBuffer } = getStrategyFunctions(source);
   let { buffer, width, height, bytes, filename, file_id, type } = metadata;
   if (resize) {
     file_id = v4();
-    type = `image/${req.app.locals.imageOutputType}`;
+    type = `image/${appConfig.imageOutputType}`;
     ({ buffer, width, height, bytes } = await resizeAndConvert({
       inputBuffer: buffer,
-      desiredFormat: req.app.locals.imageOutputType,
+      desiredFormat: appConfig.imageOutputType,
     }));
     filename = `${path.basename(req.file.originalname, path.extname(req.file.originalname))}.${
-      req.app.locals.imageOutputType
+      appConfig.imageOutputType
     }`;
   }
-
-  const filepath = await saveBuffer({ userId: req.user.id, fileName: filename, buffer });
-  return await createFile(
+  const fileName = `${file_id}-${filename}`;
+  const filepath = await saveBuffer({
+    userId: req.user.id,
+    fileName,
+    buffer,
+    tenantId: req.user.tenantId,
+  });
+  const storageMetadata = getStorageMetadata({ filepath, source });
+  return await db.createFile(
     {
       user: req.user.id,
       file_id,
       bytes,
       filepath,
+      ...storageMetadata,
       filename,
       context,
       source,
       type,
       width,
       height,
+      tenantId: req.user.tenantId,
     },
     true,
   );
@@ -330,19 +428,20 @@ const uploadImageBuffer = async ({ req, context, metadata = {}, resize = true })
  * Files must be deleted from the server filesystem manually.
  *
  * @param {Object} params - The parameters object.
- * @param {Express.Request} params.req - The Express request object.
+ * @param {ServerRequest} params.req - The Express request object.
  * @param {Express.Response} params.res - The Express response object.
- * @param {Express.Multer.File} params.file - The uploaded file.
  * @param {FileMetadata} params.metadata - Additional metadata for the file.
  * @returns {Promise<void>}
  */
-const processFileUpload = async ({ req, res, file, metadata }) => {
+const processFileUpload = async ({ req, res, metadata }) => {
+  const appConfig = req.config;
   const isAssistantUpload = isAssistantsEndpoint(metadata.endpoint);
   const assistantSource =
     metadata.endpoint === EModelEndpoint.azureAssistants ? FileSources.azure : FileSources.openai;
-  const source = isAssistantUpload ? assistantSource : FileSources.vectordb;
+  // Use the configured file strategy for regular file uploads (not vectordb)
+  const source = isAssistantUpload ? assistantSource : appConfig.fileStrategy;
   const { handleFileUpload } = getStrategyFunctions(source);
-  const { file_id, temp_file_id } = metadata;
+  const { file_id, temp_file_id = null } = metadata;
 
   /** @type {OpenAI | undefined} */
   let openai;
@@ -350,15 +449,19 @@ const processFileUpload = async ({ req, res, file, metadata }) => {
     ({ openai } = await getOpenAIClient({ req }));
   }
 
+  const { file } = req;
+  const sanitizedUploadFn = createSanitizedUploadWrapper(handleFileUpload);
   const {
     id,
     bytes,
     filename,
     filepath: _filepath,
+    storageKey: _storageKey,
+    storageRegion: _storageRegion,
     embedded,
     height,
     width,
-  } = await handleFileUpload({
+  } = await sanitizedUploadFn({
     req,
     file,
     file_id,
@@ -380,6 +483,12 @@ const processFileUpload = async ({ req, res, file, metadata }) => {
   }
 
   let filepath = isAssistantUpload ? `${openai.baseURL}/files/${id}` : _filepath;
+  let storageMetadata = getStorageMetadata({
+    filepath,
+    source,
+    storageKey: _storageKey,
+    storageRegion: _storageRegion,
+  });
   if (isAssistantUpload && file.mimetype.startsWith('image')) {
     const result = await processImageFile({
       req,
@@ -388,16 +497,23 @@ const processFileUpload = async ({ req, res, file, metadata }) => {
       returnFile: true,
     });
     filepath = result.filepath;
+    storageMetadata = getStorageMetadata({
+      filepath,
+      source: result.source,
+      storageKey: result.storageKey,
+      storageRegion: result.storageRegion,
+    });
   }
 
-  const result = await createFile(
+  const result = await db.createFile(
     {
       user: req.user.id,
       file_id: id ?? file_id,
       temp_file_id,
       bytes,
       filepath,
-      filename: filename ?? file.originalname,
+      ...storageMetadata,
+      filename: filename ?? sanitizeFilename(file.originalname),
       context: isAssistantUpload ? FileContext.assistants : FileContext.message_attachment,
       model: isAssistantUpload ? req.body.model : undefined,
       type: file.mimetype,
@@ -405,6 +521,7 @@ const processFileUpload = async ({ req, res, file, metadata }) => {
       source,
       height,
       width,
+      tenantId: req.user.tenantId,
     },
     true,
   );
@@ -417,15 +534,19 @@ const processFileUpload = async ({ req, res, file, metadata }) => {
  * Files must be deleted from the server filesystem manually.
  *
  * @param {Object} params - The parameters object.
- * @param {Express.Request} params.req - The Express request object.
+ * @param {ServerRequest} params.req - The Express request object.
  * @param {Express.Response} params.res - The Express response object.
- * @param {Express.Multer.File} params.file - The uploaded file.
  * @param {FileMetadata} params.metadata - Additional metadata for the file.
  * @returns {Promise<void>}
  */
-const processAgentFileUpload = async ({ req, res, file, metadata }) => {
-  const { agent_id, tool_resource } = metadata;
-  if (agent_id && !tool_resource) {
+const processAgentFileUpload = async ({ req, res, metadata }) => {
+  const { file } = req;
+  const appConfig = req.config;
+  const { agent_id, tool_resource, file_id, temp_file_id = null } = metadata;
+
+  let messageAttachment = !!metadata.message_file;
+
+  if (agent_id && !tool_resource && !messageAttachment) {
     throw new Error('No tool resource provided for agent file upload');
   }
 
@@ -433,43 +554,262 @@ const processAgentFileUpload = async ({ req, res, file, metadata }) => {
     throw new Error('Image uploads are not supported for file search tool resources');
   }
 
-  let messageAttachment = !!metadata.message_file;
   if (!messageAttachment && !agent_id) {
     throw new Error('No agent ID provided for agent file upload');
   }
 
-  const source =
-    tool_resource === EToolResources.file_search
-      ? FileSources.vectordb
-      : req.app.locals.fileStrategy;
-  const { handleFileUpload } = getStrategyFunctions(source);
-  const { file_id, temp_file_id } = metadata;
-
-  const {
-    bytes,
-    filename,
-    filepath: _filepath,
-    embedded,
-    height,
-    width,
-  } = await handleFileUpload({
-    req,
-    file,
-    file_id,
-  });
-
-  let filepath = _filepath;
-
-  if (!messageAttachment && tool_resource) {
-    await addAgentResourceFile({
+  const isImage = file.mimetype.startsWith('image');
+  let fileInfoMetadata;
+  const entity_id = messageAttachment === true ? undefined : agent_id;
+  const basePath = mime.getType(file.originalname)?.startsWith('image') ? 'images' : 'uploads';
+  if (tool_resource === EToolResources.execute_code) {
+    const isCodeEnabled = await checkCapability(req, AgentCapabilities.execute_code);
+    if (!isCodeEnabled) {
+      throw new Error('Code execution is not enabled for Agents');
+    }
+    const { handleFileUpload: uploadCodeEnvFile } = getStrategyFunctions(FileSources.execute_code);
+    const stream = fs.createReadStream(file.path);
+    /* Resource identity for codeapi's sessionKey:
+     * - chat attachments (messageAttachment=true): `kind: 'user'`, codeapi
+     *   buckets under `<tenant>:user:<authContext.userId>` regardless of `id`.
+     * - agent setup files (messageAttachment=false): `kind: 'agent'`, shared
+     *   per agent identity. `id` carries the agent id. */
+    const codeKind = messageAttachment === true ? 'user' : 'agent';
+    const codeId = messageAttachment === true ? req.user.id : agent_id;
+    /* Upload under the same sanitized filename LC stores in its DB
+     * (`fileInfo.filename` below uses `sanitizeFilename(originalname)`).
+     * Codeapi/file_server use this as the on-disk name in the sandbox
+     * — `/mnt/data/<filename>` — and `primeFiles`'s `toolContext` text
+     * + `_injected_files.name` both reference `file.filename`. Sending
+     * the unsanitized `file.originalname` here makes the sandbox path
+     * (with spaces / special chars) drift from what LC tells the model
+     * is available, causing FileNotFoundError on the first reference. */
+    const sandboxFilename = sanitizeFilename(file.originalname);
+    const uploaded = await uploadCodeEnvFile({
       req,
-      agent_id,
+      stream,
+      filename: sandboxFilename,
+      kind: codeKind,
+      id: codeId,
+    });
+    /* Persist under the structured `codeEnvRef` shape — the only key the
+     * post-cutover schema (`metadata.codeEnvRef`) and downstream readers
+     * (`primeFiles`, `getCodeFilesByIds`, `categorizeFileForToolResources`,
+     * controller filtering) accept. Storing under the legacy
+     * `fileIdentifier` key would be silently dropped by mongoose strict
+     * mode and the file would lose its sandbox reference on subsequent
+     * priming turns. */
+    fileInfoMetadata = {
+      codeEnvRef: {
+        kind: codeKind,
+        id: codeId,
+        storage_session_id: uploaded.storage_session_id,
+        file_id: uploaded.file_id,
+      },
+    };
+  } else if (tool_resource === EToolResources.file_search) {
+    const isFileSearchEnabled = await checkCapability(req, AgentCapabilities.file_search);
+    if (!isFileSearchEnabled) {
+      throw new Error('File search is not enabled for Agents');
+    }
+    // Note: File search processing continues to dual storage logic below
+  } else if (tool_resource === EToolResources.context) {
+    const { file_id, temp_file_id = null } = metadata;
+
+    /**
+     * @param {object} params
+     * @param {string} params.text
+     * @param {number} params.bytes
+     * @param {string} params.filepath
+     * @param {string} params.type
+     * @return {Promise<void>}
+     */
+    const createTextFile = async ({ text, bytes, filepath, type = 'text/plain' }) => {
+      const textBytes = Buffer.byteLength(text, 'utf8');
+      if (textBytes > 15 * megabyte) {
+        throw new Error(
+          `Extracted text from "${file.originalname}" exceeds the 15MB storage limit (${Math.round(textBytes / megabyte)}MB). Try a shorter document.`,
+        );
+      }
+      const fileInfo = removeNullishValues({
+        text,
+        bytes,
+        file_id,
+        temp_file_id,
+        user: req.user.id,
+        type,
+        filepath: filepath ?? file.path,
+        source: FileSources.text,
+        filename: file.originalname,
+        model: messageAttachment ? undefined : req.body.model,
+        context: messageAttachment ? FileContext.message_attachment : FileContext.agents,
+        tenantId: req.user.tenantId,
+      });
+
+      if (!messageAttachment && tool_resource) {
+        await db.addAgentResourceFile({
+          file_id,
+          agent_id,
+          tool_resource,
+          updatingUserId: req?.user?.id,
+        });
+      }
+      const result = await db.createFile(fileInfo, true);
+      return res
+        .status(200)
+        .json({ message: 'Agent file uploaded and processed successfully', ...result });
+    };
+
+    const fileConfig = mergeFileConfig(appConfig.fileConfig);
+
+    const shouldUseConfiguredOCR =
+      appConfig?.ocr != null &&
+      fileConfig.checkType(file.mimetype, fileConfig.ocr?.supportedMimeTypes || []);
+
+    const shouldUseDocumentParser =
+      !shouldUseConfiguredOCR && documentParserMimeTypes.some((regex) => regex.test(file.mimetype));
+
+    const shouldUseOCR = shouldUseConfiguredOCR || shouldUseDocumentParser;
+
+    const resolveDocumentText = async () => {
+      if (shouldUseConfiguredOCR) {
+        try {
+          const ocrStrategy = appConfig?.ocr?.strategy ?? FileSources.document_parser;
+          const { handleFileUpload } = getStrategyFunctions(ocrStrategy);
+          return await handleFileUpload({ req, file, loadAuthValues });
+        } catch (err) {
+          logger.error(
+            `[processAgentFileUpload] Configured OCR failed for "${file.originalname}", falling back to document_parser:`,
+            err,
+          );
+        }
+      }
+      try {
+        const { handleFileUpload } = getStrategyFunctions(FileSources.document_parser);
+        return await handleFileUpload({ req, file, loadAuthValues });
+      } catch (err) {
+        logger.error(
+          `[processAgentFileUpload] Document parser failed for "${file.originalname}":`,
+          err,
+        );
+      }
+    };
+
+    if (shouldUseConfiguredOCR && !(await checkCapability(req, AgentCapabilities.ocr))) {
+      throw new Error('OCR capability is not enabled for Agents');
+    }
+
+    if (shouldUseOCR) {
+      const ocrResult = await resolveDocumentText();
+      if (ocrResult) {
+        const { text, bytes, filepath: ocrFileURL } = ocrResult;
+        return await createTextFile({ text, bytes, filepath: ocrFileURL });
+      }
+      throw new Error(
+        `Unable to extract text from "${file.originalname}". The document may be image-based and requires an OCR service to process.`,
+      );
+    }
+
+    const shouldUseSTT = fileConfig.checkType(
+      file.mimetype,
+      fileConfig.stt?.supportedMimeTypes || [],
+    );
+
+    if (shouldUseSTT) {
+      const sttService = await STTService.getInstance();
+      const { text, bytes } = await processAudioFile({ req, file, sttService });
+      return await createTextFile({ text, bytes });
+    }
+
+    const shouldUseText = fileConfig.checkType(
+      file.mimetype,
+      fileConfig.text?.supportedMimeTypes || [],
+    );
+
+    if (!shouldUseText) {
+      throw new Error(`File type ${file.mimetype} is not supported for text parsing.`);
+    }
+
+    const { text, bytes } = await parseText({ req, file, file_id });
+    return await createTextFile({ text, bytes, type: file.mimetype });
+  }
+
+  // Dual storage pattern for RAG files: Storage + Vector DB
+  let storageResult, embeddingResult;
+  const isImageFile = file.mimetype.startsWith('image');
+  const source = getFileStrategy(appConfig, { isImage: isImageFile });
+
+  if (tool_resource === EToolResources.file_search) {
+    // FIRST: Upload to Storage for permanent backup (S3/local/etc.)
+    const { handleFileUpload } = getStrategyFunctions(source);
+    const sanitizedUploadFn = createSanitizedUploadWrapper(handleFileUpload);
+    storageResult = await sanitizedUploadFn({
+      req,
+      file,
       file_id,
-      tool_resource: tool_resource,
+      basePath,
+      entity_id,
+    });
+
+    // SECOND: Upload to Vector DB
+    const { uploadVectors } = require('./VectorDB/crud');
+
+    embeddingResult = await uploadVectors({
+      req,
+      file,
+      file_id,
+      entity_id,
+    });
+
+    // Vector status will be stored at root level, no need for metadata
+    fileInfoMetadata = {};
+  } else {
+    // Standard single storage for non-RAG files
+    const { handleFileUpload } = getStrategyFunctions(source);
+    const sanitizedUploadFn = createSanitizedUploadWrapper(handleFileUpload);
+    storageResult = await sanitizedUploadFn({
+      req,
+      file,
+      file_id,
+      basePath,
+      entity_id,
     });
   }
 
-  if (file.mimetype.startsWith('image')) {
+  let {
+    bytes,
+    filename,
+    filepath: _filepath,
+    storageKey: _storageKey,
+    storageRegion: _storageRegion,
+    height,
+    width,
+  } = storageResult;
+  // For RAG files, use embedding result; for others, use storage result
+  let embedded = storageResult.embedded;
+  if (tool_resource === EToolResources.file_search) {
+    embedded = embeddingResult?.embedded;
+    filename = embeddingResult?.filename || filename;
+  }
+
+  let filepath = _filepath;
+  let storageMetadata = getStorageMetadata({
+    filepath,
+    source,
+    storageKey: _storageKey,
+    storageRegion: _storageRegion,
+  });
+
+  if (!messageAttachment && tool_resource) {
+    await db.addAgentResourceFile({
+      file_id,
+      agent_id,
+      tool_resource,
+      updatingUserId: req?.user?.id,
+    });
+  }
+
+  if (isImage) {
     const result = await processImageFile({
       req,
       file,
@@ -477,26 +817,35 @@ const processAgentFileUpload = async ({ req, res, file, metadata }) => {
       returnFile: true,
     });
     filepath = result.filepath;
+    storageMetadata = getStorageMetadata({
+      filepath,
+      source: result.source,
+      storageKey: result.storageKey,
+      storageRegion: result.storageRegion,
+    });
   }
 
-  const result = await createFile(
-    {
-      user: req.user.id,
-      file_id,
-      temp_file_id,
-      bytes,
-      filepath,
-      filename: filename ?? file.originalname,
-      context: messageAttachment ? FileContext.message_attachment : FileContext.agents,
-      model: messageAttachment ? undefined : req.body.model,
-      type: file.mimetype,
-      embedded,
-      source,
-      height,
-      width,
-    },
-    true,
-  );
+  const fileInfo = removeNullishValues({
+    user: req.user.id,
+    file_id,
+    temp_file_id,
+    bytes,
+    filepath,
+    ...storageMetadata,
+    filename: filename ?? sanitizeFilename(file.originalname),
+    context: messageAttachment ? FileContext.message_attachment : FileContext.agents,
+    model: messageAttachment ? undefined : req.body.model,
+    metadata: fileInfoMetadata,
+    type: file.mimetype,
+    embedded,
+    source,
+    height,
+    width,
+    tenantId: req.user.tenantId,
+  });
+
+  const result = await db.createFile(fileInfo, true);
+
   res.status(200).json({ message: 'Agent file uploaded and processed successfully', ...result });
 };
 
@@ -538,13 +887,14 @@ const processOpenAIFile = async ({
     source,
     model: openai.req.body.model,
     filename: originalName ?? file_id,
+    tenantId: openai.req?.user?.tenantId,
   };
 
   if (saveFile) {
-    await createFile(file, true);
+    await db.createFile(file, true);
   } else if (updateUsage) {
     try {
-      await updateFileUsage({ file_id });
+      await db.updateFileUsage({ file_id });
     } catch (error) {
       logger.error('Error updating file usage', error);
     }
@@ -556,7 +906,7 @@ const processOpenAIFile = async ({
 /**
  * Process OpenAI image files, convert to target format, save and return file metadata.
  * @param {object} params - The params object.
- * @param {Express.Request} params.req - The Express request object.
+ * @param {ServerRequest} params.req - The Express request object.
  * @param {Buffer} params.buffer - The image buffer.
  * @param {string} params.file_id - The file ID.
  * @param {string} params.filename - The filename.
@@ -566,32 +916,24 @@ const processOpenAIFile = async ({
 const processOpenAIImageOutput = async ({ req, buffer, file_id, filename, fileExt }) => {
   const currentDate = new Date();
   const formattedDate = currentDate.toISOString();
-  const _file = await convertImage(req, buffer, 'high', `${file_id}${fileExt}`);
+  const appConfig = req.config;
+  const _file = await convertImage(req, buffer, undefined, `${file_id}${fileExt}`);
+
+  // Create only one file record with the correct information
   const file = {
     ..._file,
     usage: 1,
     user: req.user.id,
-    type: `image/${req.app.locals.imageOutputType}`,
+    type: mime.getType(fileExt),
     createdAt: formattedDate,
     updatedAt: formattedDate,
-    source: req.app.locals.fileStrategy,
+    source: getFileStrategy(appConfig, { isImage: true }),
     context: FileContext.assistants_output,
-    file_id: `${file_id}${hostImageIdSuffix}`,
-    filename: `${hostImageNamePrefix}${filename}`,
+    file_id,
+    filename,
+    tenantId: req.user.tenantId,
   };
-  createFile(file, true);
-  const source =
-    req.body.endpoint === EModelEndpoint.azureAssistants ? FileSources.azure : FileSources.openai;
-  createFile(
-    {
-      ...file,
-      file_id,
-      filename,
-      source,
-      type: mime.getType(fileExt),
-    },
-    true,
-  );
+  db.createFile(file, true);
   return file;
 };
 
@@ -685,25 +1027,98 @@ async function retrieveAndProcessFile({
 }
 
 /**
+ * Converts a base64 string to a buffer.
+ * @param {string} base64String
+ * @returns {Buffer<ArrayBufferLike>}
+ */
+function base64ToBuffer(base64String) {
+  try {
+    const typeMatch = base64String.match(/^data:([A-Za-z-+/]+);base64,/);
+    const type = typeMatch ? typeMatch[1] : '';
+
+    const base64Data = base64String.replace(/^data:([A-Za-z-+/]+);base64,/, '');
+
+    if (!base64Data) {
+      throw new Error('Invalid base64 string');
+    }
+
+    return {
+      buffer: Buffer.from(base64Data, 'base64'),
+      type,
+    };
+  } catch (error) {
+    throw new Error(`Failed to convert base64 to buffer: ${error.message}`);
+  }
+}
+
+async function saveBase64Image(
+  url,
+  { req, file_id: _file_id, filename: _filename, endpoint, context, resolution },
+) {
+  const appConfig = req.config;
+  const effectiveResolution = resolution ?? appConfig.fileConfig?.imageGeneration ?? 'high';
+  const file_id = _file_id ?? v4();
+  let filename = `${file_id}-${_filename}`;
+  const { buffer: inputBuffer, type } = base64ToBuffer(url);
+  if (!path.extname(_filename)) {
+    const extension = mime.getExtension(type);
+    if (extension) {
+      filename += `.${extension}`;
+    } else {
+      throw new Error(`Could not determine file extension from MIME type: ${type}`);
+    }
+  }
+
+  const image = await resizeImageBuffer(inputBuffer, effectiveResolution, endpoint);
+  const source = getFileStrategy(appConfig, { isImage: true });
+  const { saveBuffer } = getStrategyFunctions(source);
+  const filepath = await saveBuffer({
+    userId: req.user.id,
+    fileName: filename,
+    buffer: image.buffer,
+    tenantId: req.user.tenantId,
+  });
+  const storageMetadata = getStorageMetadata({ filepath, source });
+  return await db.createFile(
+    {
+      type,
+      source,
+      context,
+      file_id,
+      filepath,
+      ...storageMetadata,
+      filename,
+      user: req.user.id,
+      bytes: image.bytes,
+      width: image.width,
+      height: image.height,
+      tenantId: req.user.tenantId,
+    },
+    true,
+  );
+}
+
+/**
  * Filters a file based on its size and the endpoint origin.
  *
  * @param {Object} params - The parameters for the function.
- * @param {object} params.req - The request object from Express.
+ * @param {ServerRequest} params.req - The request object from Express.
  * @param {string} [params.req.endpoint]
  * @param {string} [params.req.file_id]
  * @param {number} [params.req.width]
  * @param {number} [params.req.height]
  * @param {number} [params.req.version]
- * @param {Express.Multer.File} params.file - The file uploaded to the server via multer.
  * @param {boolean} [params.image] - Whether the file expected is an image.
+ * @param {boolean} [params.isAvatar] - Whether the file expected is a user or entity avatar.
  * @returns {void}
  *
  * @throws {Error} If a file exception is caught (invalid file size or type, lack of metadata).
  */
-function filterFile({ req, file, image }) {
-  const { endpoint, file_id, width, height } = req.body;
+function filterFile({ req, image, isAvatar }) {
+  const { file } = req;
+  const { endpoint, endpointType, file_id, width, height } = req.body;
 
-  if (!file_id) {
+  if (!file_id && !isAvatar) {
     throw new Error('No file_id provided');
   }
 
@@ -712,30 +1127,43 @@ function filterFile({ req, file, image }) {
   }
 
   /* parse to validate api call, throws error on fail */
-  isUUID.parse(file_id);
+  if (!isAvatar) {
+    isUUID.parse(file_id);
+  }
 
-  if (!endpoint) {
+  if (!endpoint && !isAvatar) {
     throw new Error('No endpoint provided');
   }
 
-  const fileConfig = mergeFileConfig(req.app.locals.fileConfig);
+  const appConfig = req.config;
+  const fileConfig = mergeFileConfig(appConfig.fileConfig);
 
-  const { fileSizeLimit, supportedMimeTypes } =
-    fileConfig.endpoints[endpoint] ?? fileConfig.endpoints.default;
+  const endpointFileConfig = getEndpointFileConfig({
+    endpoint,
+    fileConfig,
+    endpointType,
+  });
+  const fileSizeLimit =
+    isAvatar === true ? fileConfig.avatarSizeLimit : endpointFileConfig.fileSizeLimit;
 
   if (file.size > fileSizeLimit) {
     throw new Error(
-      `File size limit of ${fileSizeLimit / megabyte} MB exceeded for ${endpoint} endpoint`,
+      `File size limit of ${fileSizeLimit / megabyte} MB exceeded for ${
+        isAvatar ? 'avatar upload' : `${endpoint} endpoint`
+      }`,
     );
   }
 
-  const isSupportedMimeType = fileConfig.checkType(file.mimetype, supportedMimeTypes);
+  const isSupportedMimeType = fileConfig.checkType(
+    file.mimetype,
+    endpointFileConfig.supportedMimeTypes,
+  );
 
   if (!isSupportedMimeType) {
     throw new Error('Unsupported file type');
   }
 
-  if (!image) {
+  if (!image || isAvatar === true) {
     return;
   }
 
@@ -750,8 +1178,8 @@ function filterFile({ req, file, image }) {
 
 module.exports = {
   filterFile,
-  processFiles,
   processFileURL,
+  saveBase64Image,
   processImageFile,
   uploadImageBuffer,
   processFileUpload,

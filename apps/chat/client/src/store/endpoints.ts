@@ -8,9 +8,6 @@ const defaultConfig: TEndpointsConfig = {
   [EModelEndpoint.assistants]: null,
   [EModelEndpoint.agents]: null,
   [EModelEndpoint.openAI]: null,
-  [EModelEndpoint.bingAI]: null,
-  [EModelEndpoint.chatGPTBrowser]: null,
-  [EModelEndpoint.gptPlugins]: null,
   [EModelEndpoint.google]: null,
   [EModelEndpoint.anthropic]: null,
   [EModelEndpoint.custom]: null,
@@ -24,14 +21,6 @@ const endpointsConfig = atom<TEndpointsConfig>({
 const endpointsQueryEnabled = atom<boolean>({
   key: 'endpointsQueryEnabled',
   default: true,
-});
-
-const plugins = selector({
-  key: 'plugins',
-  get: ({ get }) => {
-    const config = get(endpointsConfig) || {};
-    return config?.gptPlugins?.plugins || {};
-  },
 });
 
 const endpointsFilter = selector({
@@ -48,7 +37,6 @@ const endpointsFilter = selector({
 });
 
 export default {
-  plugins,
   endpointsConfig,
   endpointsFilter,
   defaultConfig,
