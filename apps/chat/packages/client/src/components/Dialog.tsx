@@ -26,7 +26,7 @@ const DialogOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Overlay
     className={cn(
-      'fixed inset-0 z-[999] bg-gray-600/65 transition-all duration-100 data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=open]:fade-in dark:bg-black/80',
+      'fixed inset-0 z-[999] bg-gray-600/65 transition-all duration-100 data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=open]:fade-in dark:bg-black/85 dark:backdrop-blur-sm',
       className ?? '',
     )}
     {...props}
@@ -55,7 +55,7 @@ const DialogContent = React.forwardRef<
         <DialogPrimitive.Content
           ref={ref}
           className={cn(
-            'fixed z-[999] grid w-full gap-4 rounded-b-lg bg-surface-dialog pb-6 animate-in data-[state=open]:fade-in-90 data-[state=open]:slide-in-from-bottom-10 sm:rounded-lg',
+            'fixed z-[999] grid w-full gap-4 rounded-b-lg border border-border-light bg-surface-dialog pb-6 shadow-2xl animate-in data-[state=open]:fade-in-90 data-[state=open]:slide-in-from-bottom-10 dark:shadow-[0_0_0_1px_hsl(var(--border)),0_25px_50px_-12px_rgba(0,0,0,0.8)] sm:rounded-lg',
             isSmallScreen
               ? 'fixed left-1/2 top-1/2 z-[999] m-auto grid w-11/12 -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-surface-dialog pb-6'
               : '',
