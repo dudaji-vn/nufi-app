@@ -14,6 +14,9 @@ export const Route = createFileRoute('/login')({
       ssoOnly: openIdStatus.available && openIdStatus.ssoOnly,
     };
   },
+  head: () => ({
+    meta: [{ title: 'Sign in | NUFI Admin Panel' }],
+  }),
   component: LoginPage,
 });
 

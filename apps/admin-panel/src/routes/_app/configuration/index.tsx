@@ -19,6 +19,9 @@ export const Route = createFileRoute('/_app/configuration/')({
     field: typeof search.field === 'string' ? search.field : undefined,
     scope: typeof search.scope === 'string' ? search.scope : undefined,
   }),
+  head: () => ({
+    meta: [{ title: 'Configuration | NUFI Admin Panel' }],
+  }),
   component: ConfigurationPage,
 });
 

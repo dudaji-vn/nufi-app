@@ -18,6 +18,9 @@ export const Route = createFileRoute('/_app/access')({
   validateSearch: (search: Record<string, unknown>): AccessSearch => ({
     tab: typeof search.tab === 'string' ? search.tab : undefined,
   }),
+  head: () => ({
+    meta: [{ title: 'Access | NUFI Admin Panel' }],
+  }),
   component: AccessRoute,
 });
 
