@@ -15,6 +15,9 @@ export const Route = createFileRoute('/_app/grants')({
   validateSearch: (search: Record<string, unknown>): GrantsSearch => ({
     tab: typeof search.tab === 'string' ? search.tab : undefined,
   }),
+  head: () => ({
+    meta: [{ title: 'Grants | NUFI Admin Panel' }],
+  }),
   component: GrantsRoute,
 });
 
