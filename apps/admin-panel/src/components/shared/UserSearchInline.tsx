@@ -115,7 +115,7 @@ export function UserSearchInline({
           id={listboxId}
           role="listbox"
           style={positionStyle}
-          className="max-h-48 overflow-auto rounded-md border border-border bg-popover shadow-lg"
+          className="z-60 max-h-48 overflow-auto rounded-md border border-border bg-popover shadow-lg"
         >
           {results.map((user, i) => (
             <li
@@ -145,7 +145,7 @@ export function UserSearchInline({
       return (
         <div
           style={positionStyle}
-          className="rounded-md border border-border bg-popover px-3 py-3 text-center text-sm text-muted-foreground shadow-lg"
+          className="z-60 rounded-md border border-border bg-popover px-3 py-3 text-center text-sm text-muted-foreground shadow-lg"
         >
           {localize('com_access_no_users_found')}
         </div>
