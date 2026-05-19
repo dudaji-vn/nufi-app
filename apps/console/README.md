@@ -1,8 +1,13 @@
-# NPUOps Console
+# NUFI Console
 
-Self-service UI for end users to manage LiteLLM API keys, budgets, and usage.
-Single container — Hono serves both the Vite-built React SPA and the
-oRPC API at one origin (`http://localhost:3001` in the running stack).
+Self-service developer console for the NUFI AI platform: end users manage
+LiteLLM API keys, budgets, and usage. Single container — Hono serves both
+the Vite-built React SPA and the oRPC API at one origin
+(`http://localhost:3001` in the running stack).
+
+Deployed alongside the chat product (LibreChat fork) by the
+[npuops-platform](https://github.com/dudaji-vn/npuops-platform) compose stack,
+which pulls this image from `ghcr.io/dudaji-vn/nufi-console`.
 
 ## Stack
 
@@ -19,7 +24,7 @@ oRPC API at one origin (`http://localhost:3001` in the running stack).
 ## Layout
 
 ```
-console/
+nufi-console/
 ├── server/                    Bun + Hono + oRPC
 │   ├── index.ts                Hono app; mounts oRPC handler + SPA fallback
 │   ├── orpc.ts                 base oRPC instance with Context type
@@ -74,12 +79,17 @@ locally for HMR while editing console code.
 
 ## Run inside the compose stack
 
+The image is published to `ghcr.io/dudaji-vn/nufi-console` by
+`.github/workflows/docker-publish.yml` on every push to `develop`/`main` and
+on `nufi-console-v*` tags. From the npuops-platform repo:
+
 ```bash
-# from the repo root
-docker compose build console
+docker compose pull console
 docker compose up -d console
 # -> http://localhost:3001
 ```
+
+Pin a specific tag via `NUFI_CONSOLE_TAG=v0.2.0` in the platform `.env`.
 
 The container is stateless — every restart starts fresh. All persistent
 state lives in LiteLLM's Postgres, LibreChat's MongoDB, and Langfuse.
@@ -117,6 +127,7 @@ LiteLLM key metadata, spend rows, and Langfuse traces.
    or `useMutation(api.<resource>.<proc>.mutationOptions(...))`. No fetch
    wrappers, no manual types — the `AppRouter` type carries the contract.
 
-## Plan + roadmap
+## Related repos
 
-Implementation plan and Day-by-Day status: `docs/w3-console-plan.md`.
+- [npuops-platform](https://github.com/dudaji-vn/npuops-platform) — docker compose stack that runs this console alongside LiteLLM, LibreChat, Langfuse, and monitoring.
+- [LibreChat fork](https://github.com/dudaji-vn/LibreChat) — chat UI that issues the JWT this console verifies.

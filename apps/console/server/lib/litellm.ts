@@ -123,8 +123,8 @@ type SpendLogResponse = SpendLog[] | { data: SpendLog[] };
  *   - log.metadata.user_api_key_user_id   — issued-key traffic
  *
  * TODO: if log volume grows, switch to a /spend/end_users/info-style endpoint
- * or per-user materialised view. For W3 scale (low thousands per user) the
- * client-side filter is fine.
+ * or per-user materialised view. At current scale (low thousands per user)
+ * the client-side filter is fine.
  */
 export async function spendLogsForUser(userId: string, startDate?: string): Promise<SpendLog[]> {
   const params = new URLSearchParams();

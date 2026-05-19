@@ -13,8 +13,8 @@ COPY src ./src
 COPY server ./server
 
 # Where the chat UI lives. Inlined into the Vite bundle so the unauthorized
-# page can deep-link users back to sign in. Override via `build.args` in
-# docker-compose.yml.
+# page can deep-link users back to sign in. Override via build-args in CI
+# (see .github/workflows/docker-publish.yml).
 ARG LIBRECHAT_URL=http://localhost:3080
 ENV VITE_LIBRECHAT_URL=$LIBRECHAT_URL
 

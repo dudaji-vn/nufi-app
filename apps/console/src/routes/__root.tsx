@@ -12,7 +12,7 @@ function RootLayout() {
     <div className="min-h-dvh bg-background text-foreground">
       <header className="border-b">
         <div className="mx-auto flex h-14 max-w-5xl items-center gap-4 px-4 sm:gap-6 sm:px-6">
-          <span className="font-semibold tracking-tight">NPUOps Console</span>
+          <span className="font-semibold tracking-tight">NUFI Console</span>
           <nav className="flex flex-1 items-center gap-3 text-sm sm:gap-4">
             <NavLink to="/">Profile</NavLink>
             <NavLink to="/usage">Usage</NavLink>

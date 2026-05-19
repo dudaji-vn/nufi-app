@@ -37,7 +37,7 @@ type TraceListResponse = {
 // Per-page limit accepted by Langfuse public API; 100 is the documented max.
 const PAGE_LIMIT = 100;
 // Hard cap on pages we'll fetch in one procedure call. 5 × 100 = 500 traces
-// per period — enough for W4 dev usage; if a user grows past that we'll
+// per period — enough at current scale; if a user grows past that we'll
 // switch to Langfuse's `/api/public/metrics` aggregations.
 const MAX_PAGES = 5;
 
@@ -55,9 +55,9 @@ async function call<T>(path: string): Promise<T> {
 }
 
 // 60s TTL keeps the dashboard's 30s polling tick cheap without pinning
-// stale data for long. Sized for one entry per (userId, fromIso) — fine for
-// W4 scale; if a single console grows past a few thousand active users this
-// turns into an LRU.
+// stale data for long. Sized for one entry per (userId, fromIso) — fine
+// at current scale; if a single console grows past a few thousand active
+// users this turns into an LRU.
 const TRACE_CACHE_TTL_MS = 60_000;
 const traceCache = new Map<
   string,

@@ -1,11 +1,12 @@
 #!/usr/bin/env bun
 /**
- * console smoke test — drives the full W3 happy path against a running
- * stack. Exits non-zero if any step fails. Intended for local regression
- * checks and (eventually) CI.
+ * console smoke test — drives the full happy path (login → JIT-provision →
+ * generate key → use vs LiteLLM → 429 on rate-limit → revoke → 401 on
+ * revoked) against a running stack. Exits non-zero if any step fails.
+ * Intended for local regression checks and CI.
  *
- * Reads E2E_USER_EMAIL / E2E_USER_PASSWORD / E2E_MODEL from the env
- * (loaded from the repo-root .env by the bash wrapper).
+ * Reads E2E_USER_EMAIL / E2E_USER_PASSWORD / E2E_MODEL from the env.
+ * Requires the npuops-platform stack to be up.
  */
 
 const LIBRECHAT = process.env.LIBRECHAT_URL ?? 'http://localhost:3080';
@@ -126,7 +127,7 @@ async function step(name: string, fn: () => Promise<void>): Promise<void> {
   }
 }
 
-console.log(`\n${C.bold}NPUOps Console — smoke test${C.reset}`);
+console.log(`\n${C.bold}NUFI Console — smoke test${C.reset}`);
 console.log(`  Console:   ${CONSOLE}`);
 console.log(`  LibreChat: ${LIBRECHAT}`);
 console.log(`  LiteLLM:   ${LITELLM}`);
