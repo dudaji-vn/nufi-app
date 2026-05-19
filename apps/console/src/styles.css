@@ -31,49 +31,51 @@
   --color-ring: var(--ring);
 }
 
+/* NUFI brand palette — mirrors super-llm/dashboard (DudajiVN company UI lib). */
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --radius: 0.75rem;
+  --background: hsl(0 0% 100%);
+  --foreground: hsl(224 71.4% 4.1%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(224 71.4% 4.1%);
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(224 71.4% 4.1%);
+  --primary: hsl(262.1 83.3% 57.8%);
+  --primary-foreground: hsl(210 20% 98%);
+  --secondary: hsl(220 14.3% 95.9%);
+  --secondary-foreground: hsl(220.9 39.3% 11%);
+  --muted: hsl(220 14.3% 95.9%);
+  --muted-foreground: hsl(220 8.9% 46.1%);
+  --accent: hsl(220 14.3% 95.9%);
+  --accent-foreground: hsl(220.9 39.3% 11%);
+  --destructive: hsl(0 84.2% 60.2%);
+  --destructive-foreground: hsl(210 20% 98%);
+  --border: hsl(220 13% 91%);
+  --input: hsl(220 13% 91%);
+  --ring: hsl(262.1 83.3% 57.8%);
 }
 
+/* NUFI Cyber-Grid — Deep Void palette (dark) */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --background: hsl(240 22% 5%); /* #080810 near-black main area */
+  --foreground: hsl(240 20% 92%); /* #e8e8f0 near-white text */
+  --card: hsl(230 22% 10%); /* #111620 card surface (navy tint) */
+  --card-foreground: hsl(240 20% 92%);
+  --popover: hsl(230 22% 9%);
+  --popover-foreground: hsl(240 20% 92%);
+  --primary: hsl(236 80% 75%); /* #7b82f0 periwinkle accent */
+  --primary-foreground: hsl(236 42% 12%);
+  --secondary: hsl(10 75% 70%); /* #e8967f salmon, logo-matched */
+  --secondary-foreground: hsl(10 30% 18%);
+  --muted: hsl(235 18% 13%); /* #151823 subtle surface */
+  --muted-foreground: hsl(240 8% 52%); /* #7d7d8a subdued text */
+  --accent: hsl(235 16% 17%); /* #1a1e2a hover surface */
+  --accent-foreground: hsl(240 20% 92%);
+  --destructive: hsl(3 85% 68%);
+  --destructive-foreground: hsl(0 0% 100%);
+  --border: hsl(235 16% 16%); /* #181d28 subtle border */
+  --input: hsl(230 22% 10%);
+  --ring: hsl(236 80% 75%);
 }
 
 @layer base {
