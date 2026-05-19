@@ -25,6 +25,7 @@ dist/
 .vscode/
 .idea/
 *.swp
+*.code-workspace
 
 # macOS
 .DS_Store
@@ -37,3 +38,5 @@ Icon
 
 # Claude Code (giữ shared config, ignore personal)
 .claude/local/
+
+
