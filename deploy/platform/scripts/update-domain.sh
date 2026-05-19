@@ -22,8 +22,8 @@
 # Mapping (edit here when adding a new public surface):
 #   chat.<domain>      -> DOMAIN_CLIENT, DOMAIN_SERVER   (LibreChat OAuth + emails)
 #                         LIBRECHAT_URL                  (Console -> Chat link;
-#                                                         baked into console SPA
-#                                                         at build time)
+#                                                         read at runtime by the
+#                                                         console container)
 #   langfuse.<domain>  -> LANGFUSE_NEXTAUTH_URL          (Langfuse OAuth callback)
 #   console.<domain>   -> CONSOLE_URL                    (Chat -> Console link)
 #
@@ -119,8 +119,7 @@ done
 
 echo "done."
 echo
-echo "next: rebuild the console (LIBRECHAT_URL is baked into its Vite bundle)"
-echo "      and recreate the services that read .env at startup:"
+echo "next: recreate the services that read .env at startup:"
 echo
-echo "  docker compose up -d --force-recreate --build librechat console langfuse-web"
+echo "  docker compose up -d --force-recreate librechat console langfuse-web"
 echo

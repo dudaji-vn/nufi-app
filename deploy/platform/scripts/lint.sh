@@ -46,25 +46,6 @@ if [ -s docker-compose.yml ]; then
   run "docker compose config" docker compose config --quiet
 fi
 
-if [ -d console ]; then
-  if command -v bun >/dev/null 2>&1; then
-    if [ -d console/node_modules ]; then
-      echo "==> biome (console)"
-      if (cd console && bun run lint); then
-        echo "ok"
-      else
-        fail=1
-      fi
-    else
-      echo "==> biome (console): skipped (run 'cd console && bun install' first)"
-      missing=1
-    fi
-  else
-    echo "==> biome (console): skipped (bun not installed)"
-    missing=1
-  fi
-fi
-
 echo
 if [ "${fail}" -ne 0 ]; then
   echo "lint: failures detected"

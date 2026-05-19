@@ -7,13 +7,11 @@
     "lint": "./scripts/lint.sh",
     "smoke": "./scripts/smoke-test.sh",
     "smoke:e2e": "./scripts/e2e-smoke-test.sh",
-    "smoke:console": "./scripts/console-smoke-test.sh",
     "add-model": "./scripts/add-model.sh",
     "up": "docker compose up -d",
     "down": "docker compose down",
     "restart": "docker compose restart",
     "logs": "docker compose logs -f",
-    "ps": "docker compose ps",
-    "console": "cd console && bun run dev"
+    "ps": "docker compose ps"
   }
 }

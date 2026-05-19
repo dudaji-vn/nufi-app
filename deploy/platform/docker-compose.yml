@@ -350,10 +350,7 @@ services:
     networks: [npuops]
 
   console:
-    build:
-      context: ./console
-      args:
-        LIBRECHAT_URL: ${LIBRECHAT_URL:-http://localhost:3080}
+    image: ghcr.io/dudaji-vn/nufi-console:${NUFI_CONSOLE_TAG:-main}
     container_name: npuops-console
     restart: unless-stopped
     depends_on:
@@ -370,6 +367,7 @@ services:
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
       JWT_SECRET: ${JWT_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      LIBRECHAT_URL: ${LIBRECHAT_URL:-http://localhost:3080}
       DEFAULT_USER_BUDGET: ${DEFAULT_USER_BUDGET:-10}
       DEFAULT_BUDGET_DURATION: ${DEFAULT_BUDGET_DURATION:-30d}
       DEFAULT_TPM_LIMIT: ${DEFAULT_TPM_LIMIT:-10000}

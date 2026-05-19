@@ -186,13 +186,13 @@ network. Useful as a regression check after touching any of those services.
 ./scripts/e2e-smoke-test.sh --rebuild   # rebuild the e2e image first
 ```
 
-`./scripts/console-smoke-test.sh` is a faster, host-side regression
-check for the W3 console specifically — drives the full happy path
-(login → JIT-provision → generate key → use vs LiteLLM → 429 on
-rate-limit → revoke → 401 on revoked) in under a second:
+The console-specific smoke test (login → JIT-provision → generate key →
+use vs LiteLLM → 429 on rate-limit → revoke → 401 on revoked) now lives
+in the standalone [nufi-console](https://github.com/dudaji-vn/nufi-console)
+repo:
 
 ```bash
-./scripts/console-smoke-test.sh
+cd ../nufi-console && bun run smoke
 ```
 
 Same `E2E_*` env vars; requires the stack to already be running.
@@ -266,7 +266,6 @@ npuops-platform/
 ├── langfuse/         # Langfuse setup
 ├── librechat/        # runtime config only — see "LibreChat customization"
 │   └── librechat.yaml  # mounted into the container; image lives in the fork
-├── console/          # self-service UI (Bun + Hono + Vite + React)
 ├── monitoring/       # Prometheus, Grafana, alert rules
 ├── scripts/          # helper scripts (smoke test, backups)
 └── docs/             # internal documentation (roadmap.md)
@@ -275,8 +274,10 @@ npuops-platform/
 ## Console (self-service UI)
 
 The console at `http://localhost:3001` is where users self-issue LiteLLM API
-keys and view their own usage. It's a single Bun container — Hono serves
-both the React SPA and the oRPC API at one origin.
+keys and view their own usage. The source lives in a separate repo —
+[dudaji-vn/nufi-console](https://github.com/dudaji-vn/nufi-console) — and is
+deployed here as a pre-built image (`ghcr.io/dudaji-vn/nufi-console`). See
+`docs/separate-developer-console.md` for the rationale.
 
 **SSO**: the console verifies the LibreChat-issued JWT (shared `JWT_SECRET`)
 out of the cookie jar — sign in once at LibreChat, then open the console in
@@ -287,17 +288,17 @@ the same browser. No second login.
 - `/` — profile + this-period spend (combined chat + issued-key usage)
 - `/keys` — list / generate / revoke API keys with budgets and rpm/tpm limits
 
-**Develop locally** (without rebuilding the image on every change):
+**Pin a specific image tag** (default is `main`):
 
 ```bash
-cd console
-bun install
-bun run dev          # Vite at :5173, Hono at :3000, proxied for you
+# in .env
+NUFI_CONSOLE_TAG=v0.2.0
 ```
 
-Set the same `JWT_SECRET` / `JWT_REFRESH_SECRET` / `LITELLM_MASTER_KEY` as
-the running stack so auth and admin calls work in dev. See
-`docs/w3-console-plan.md` for the full implementation plan.
+**Develop locally**: clone the [nufi-console](https://github.com/dudaji-vn/nufi-console)
+repo as a sibling directory and run `bun run dev` there. Set the same
+`JWT_SECRET` / `JWT_REFRESH_SECRET` / `LITELLM_MASTER_KEY` as the running
+stack so auth and admin calls work in dev.
 
 ## LibreChat customization
 

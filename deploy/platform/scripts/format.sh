@@ -42,20 +42,6 @@ if ensure shfmt; then
   fi
 fi
 
-if [ -d console ] && ensure bun; then
-  if [ -d console/node_modules ]; then
-    echo "==> biome (console — applies safe lint fixes + formats)"
-    if (cd console && bun run lint:fix); then
-      echo "ok"
-    else
-      fail=1
-    fi
-  else
-    echo "==> biome (console): skipped (run 'cd console && bun install' first)"
-    missing=1
-  fi
-fi
-
 echo
 if [ "${fail}" -ne 0 ]; then
   echo "format: errors during formatting"
