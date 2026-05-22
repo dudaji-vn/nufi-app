@@ -44,7 +44,21 @@ jest.mock('~/models', () => ({
 }));
 jest.mock('~/strategies/validators', () => ({ registerSchema: { parse: jest.fn() } }));
 jest.mock('~/server/services/Config', () => ({ getAppConfig: jest.fn() }));
-jest.mock('~/server/utils', () => ({ sendEmail: jest.fn() }));
+jest.mock('~/server/utils', () => {
+  const { shouldUseSecureCookie } = require('@librechat/api');
+  const getSessionCookieOptions = (extras = {}) => ({
+    httpOnly: true,
+    secure: shouldUseSecureCookie(),
+    sameSite: process.env.COOKIE_SAMESITE || 'strict',
+    ...extras,
+    ...(process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
+  });
+  return {
+    sendEmail: jest.fn(),
+    getSessionCookieOptions,
+    getClearCookieOptions: () => getSessionCookieOptions(),
+  };
+});
 
 const {
   shouldUseSecureCookie,

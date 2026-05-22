@@ -16,7 +16,6 @@ const {
   parseCloudFrontCookieScope,
   CLOUDFRONT_SCOPE_COOKIE,
   isEmailDomainAllowed,
-  shouldUseSecureCookie,
   resolveAppConfigForUser,
 } = require('@librechat/api');
 const {
@@ -37,7 +36,7 @@ const {
 } = require('~/models');
 const { registerSchema } = require('~/strategies/validators');
 const { getAppConfig } = require('~/server/services/Config');
-const { sendEmail } = require('~/server/utils');
+const { sendEmail, getSessionCookieOptions } = require('~/server/utils');
 
 const domains = {
   client: process.env.DOMAIN_CLIENT,
@@ -532,18 +531,16 @@ const setAuthTokens = async (userId, res, _session = null, req = null) => {
     const sessionExpiry = math(process.env.SESSION_EXPIRY, DEFAULT_SESSION_EXPIRY);
     const token = await generateToken(user, sessionExpiry);
 
-    res.cookie('refreshToken', refreshToken, {
-      expires: new Date(refreshTokenExpires),
-      httpOnly: true,
-      secure: shouldUseSecureCookie(),
-      sameSite: 'strict',
-    });
-    res.cookie('token_provider', 'librechat', {
-      expires: new Date(refreshTokenExpires),
-      httpOnly: true,
-      secure: shouldUseSecureCookie(),
-      sameSite: 'strict',
-    });
+    res.cookie(
+      'refreshToken',
+      refreshToken,
+      getSessionCookieOptions({ expires: new Date(refreshTokenExpires) }),
+    );
+    res.cookie(
+      'token_provider',
+      'librechat',
+      getSessionCookieOptions({ expires: new Date(refreshTokenExpires) }),
+    );
 
     setCloudFrontAuthCookies(req, res, user, { userId: user?._id ?? userId });
 
@@ -644,12 +641,7 @@ const setOpenIDAuthTokens = (
      * The refresh token is small (opaque string) so it doesn't hit the HTTP/2 header
      * size limits that motivated session storage for the larger access_token/id_token.
      */
-    res.cookie('refreshToken', refreshToken, {
-      expires: expirationDate,
-      httpOnly: true,
-      secure: shouldUseSecureCookie(),
-      sameSite: 'strict',
-    });
+    res.cookie('refreshToken', refreshToken, getSessionCookieOptions({ expires: expirationDate }));
 
     /** Store tokens server-side in session to avoid large cookies */
     if (req.session) {
@@ -662,40 +654,32 @@ const setOpenIDAuthTokens = (
       };
     } else {
       logger.warn('[setOpenIDAuthTokens] No session available, falling back to cookies');
-      res.cookie('openid_access_token', tokenset.access_token, {
-        expires: expirationDate,
-        httpOnly: true,
-        secure: shouldUseSecureCookie(),
-        sameSite: 'strict',
-      });
+      res.cookie(
+        'openid_access_token',
+        tokenset.access_token,
+        getSessionCookieOptions({ expires: expirationDate }),
+      );
       if (tokenset.id_token) {
-        res.cookie('openid_id_token', tokenset.id_token, {
-          expires: expirationDate,
-          httpOnly: true,
-          secure: shouldUseSecureCookie(),
-          sameSite: 'strict',
-        });
+        res.cookie(
+          'openid_id_token',
+          tokenset.id_token,
+          getSessionCookieOptions({ expires: expirationDate }),
+        );
       }
     }
 
     /** Small cookie to indicate token provider (required for auth middleware) */
-    res.cookie('token_provider', 'openid', {
-      expires: expirationDate,
-      httpOnly: true,
-      secure: shouldUseSecureCookie(),
-      sameSite: 'strict',
-    });
+    res.cookie('token_provider', 'openid', getSessionCookieOptions({ expires: expirationDate }));
     if (userId && isEnabled(process.env.OPENID_REUSE_TOKENS)) {
       /** JWT-signed user ID cookie for image path validation when OPENID_REUSE_TOKENS is enabled */
       const signedUserId = jwt.sign({ id: userId }, process.env.JWT_REFRESH_SECRET, {
         expiresIn: expiryInMilliseconds / 1000,
       });
-      res.cookie('openid_user_id', signedUserId, {
-        expires: expirationDate,
-        httpOnly: true,
-        secure: shouldUseSecureCookie(),
-        sameSite: 'strict',
-      });
+      res.cookie(
+        'openid_user_id',
+        signedUserId,
+        getSessionCookieOptions({ expires: expirationDate }),
+      );
     }
 
     setCloudFrontAuthCookies(req, res, req.user, { userId, tenantId });
