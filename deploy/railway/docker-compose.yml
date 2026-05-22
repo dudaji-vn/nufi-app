@@ -26,6 +26,10 @@ services:
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
       CREDS_KEY: ${CREDS_KEY}
       CREDS_IV: ${CREDS_IV}
+      # Set both to share the session cookie with sibling subdomain apps
+      # (e.g. console.nufi.me reading auth set by chat.nufi.me).
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
+      COOKIE_SAMESITE: ${COOKIE_SAMESITE:-strict}
       ENDPOINTS: custom
       # Both consumed by librechat.yaml via ${VAR} interpolation.
       BACKEND_API_KEY: ${BACKEND_API_KEY}
