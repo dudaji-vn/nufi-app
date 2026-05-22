@@ -2,6 +2,7 @@ const { logger } = require('@librechat/data-schemas');
 const { ViolationTypes } = require('librechat-data-provider');
 const { isEnabled, math, removePorts } = require('@librechat/api');
 const { deleteAllUserSessions } = require('~/models');
+const { getClearCookieOptions } = require('~/server/utils');
 const getLogStores = require('./getLogStores');
 
 const { BAN_VIOLATIONS, BAN_INTERVAL } = process.env ?? {};
@@ -52,11 +53,12 @@ const banViolation = async (req, res, errorMessage) => {
     delete req.session.openidTokens;
   }
 
-  res.clearCookie('refreshToken');
-  res.clearCookie('openid_access_token');
-  res.clearCookie('openid_id_token');
-  res.clearCookie('openid_user_id');
-  res.clearCookie('token_provider');
+  const clearOpts = getClearCookieOptions();
+  res.clearCookie('refreshToken', clearOpts);
+  res.clearCookie('openid_access_token', clearOpts);
+  res.clearCookie('openid_id_token', clearOpts);
+  res.clearCookie('openid_user_id', clearOpts);
+  res.clearCookie('token_provider', clearOpts);
 
   const banLogs = getLogStores(ViolationTypes.BAN);
   const duration = errorMessage.duration || banLogs.opts.ttl;
