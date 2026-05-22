@@ -11,6 +11,10 @@ RUN bun install --frozen-lockfile
 COPY tsconfig.json vite.config.ts components.json index.html ./
 COPY src ./src
 COPY server ./server
+# Vite copies the contents of public/ to dist/ at build time. Holds the
+# brand logo (referenced as /nufi-logo.svg from the SPA) and any future
+# static assets — required for the runtime stage to serve them.
+COPY public ./public
 
 # Where the chat UI lives. Inlined into the Vite bundle so the unauthorized
 # page can deep-link users back to sign in. Override via build-args in CI
