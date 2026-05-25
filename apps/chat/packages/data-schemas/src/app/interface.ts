@@ -1,7 +1,17 @@
-import { removeNullishValues } from 'librechat-data-provider';
+import { extractEnvVariable, removeNullishValues } from 'librechat-data-provider';
 import type { TCustomConfig, TConfigDefaults } from 'librechat-data-provider';
 import type { AppConfig } from '~/types/app';
 import { isMemoryEnabled } from './memory';
+
+// LibreChat only env-interpolates `${VAR}` in endpoint fields. Apply the same
+// treatment to interface URLs so librechat.yaml can reference env vars (e.g.
+// CONSOLE_URL) without requiring a rebuild.
+function resolveExternalUrl<T extends { externalUrl?: string }>(
+  obj: T | undefined,
+): T | undefined {
+  if (!obj || typeof obj.externalUrl !== 'string') return obj;
+  return { ...obj, externalUrl: extractEnvVariable(obj.externalUrl) } as T;
+}
 
 /**
  * Loads the default interface object.
@@ -34,8 +44,10 @@ export async function loadDefaultInterface({
       (hasModelSpecs ? includesAddedEndpoints : defaults.modelSelect),
     parameters: interfaceConfig?.parameters ?? (hasModelSpecs ? false : defaults.parameters),
     presets: interfaceConfig?.presets ?? (hasModelSpecs ? false : defaults.presets),
-    privacyPolicy: interfaceConfig?.privacyPolicy ?? defaults.privacyPolicy,
-    termsOfService: interfaceConfig?.termsOfService ?? defaults.termsOfService,
+    privacyPolicy: resolveExternalUrl(interfaceConfig?.privacyPolicy) ?? defaults.privacyPolicy,
+    termsOfService:
+      resolveExternalUrl(interfaceConfig?.termsOfService) ?? defaults.termsOfService,
+    customConsole: resolveExternalUrl(interfaceConfig?.customConsole),
     mcpServers: interfaceConfig?.mcpServers ?? defaults.mcpServers,
     customWelcome: interfaceConfig?.customWelcome ?? defaults.customWelcome,
     autoSubmitFromUrl: interfaceConfig?.autoSubmitFromUrl ?? defaults.autoSubmitFromUrl,
