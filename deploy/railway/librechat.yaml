@@ -13,6 +13,12 @@ interface:
   multiConvo: true
   temporaryChat: true
   agents: false
+  # Adds a "Console" entry to the Account Settings dropdown. The api container
+  # interpolates ${CONSOLE_URL} at startup (see resolveExternalUrl). Leave the
+  # env var empty to hide the entry.
+  customConsole:
+    externalUrl: "${CONSOLE_URL}"
+    openNewTab: true
 
 endpoints:
   custom:
