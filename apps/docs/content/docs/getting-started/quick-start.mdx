@@ -1,0 +1,88 @@
+---
+title: Quick start
+description: "From a fresh checkout to a working chat at http://localhost:3080 in about ten minutes."
+---
+
+This guide stands up the **full** NUFI platform — chat, console,
+gateway, observability, monitoring — on your laptop. For the
+chat-only deployment, see [nufi-chat](/docs/developer/nufi-chat).
+
+## 1. Authenticate to the container registry
+
+The NUFI images ship as private container images. You only have to
+log in once per machine.
+
+```bash
+# Create a Personal Access Token with `read:packages` scope at
+# https://github.com/settings/tokens/new
+echo ghp_xxxxxxxxxxxxxxxxxxxx | docker login ghcr.io -u <your-gh-username> --password-stdin
+```
+
+## 2. Clone the platform repository
+
+```bash
+git clone https://github.com/dudaji-vn/npuops-platform.git
+cd npuops-platform
+```
+
+## 3. Run the bootstrap script
+
+```bash
+./scripts/bootstrap.sh
+```
+
+It will ask:
+
+1. **Which AI backend?** Pick `ollama` if you have Ollama running
+   locally, `remote` for a model server on your network, `cloud`
+   for an OpenAI / Anthropic / Together / Groq API key, or `skip`
+   to bring the stack up without a model.
+2. **Which model?** (Ollama only.) Pick from installed models or
+   let the script pull one for you.
+
+Non-interactive alternatives:
+
+```bash
+./scripts/bootstrap.sh --backend ollama --model qwen2.5:3b   # local
+./scripts/bootstrap.sh --backend skip                         # stack only
+```
+
+The script:
+
+- Generates every secret in `.env`.
+- Pulls every container image (~2 GB on first run).
+- Brings the stack up.
+- Waits for the gateway to report healthy.
+- Runs the smoke test (skipped if `--backend skip`).
+- Prints the URLs and the initial admin credentials.
+
+## 4. Open the URLs
+
+| URL                          | What                       | Default credentials                          |
+|------------------------------|----------------------------|----------------------------------------------|
+| http://localhost:3080        | Chat                       | Register on first visit                      |
+| http://localhost:3001        | Developer console          | SSO from the chat                            |
+| http://localhost:3000        | Trace viewer               | Email + password printed by bootstrap        |
+| http://localhost:3030        | Dashboards                 | Admin credentials in `.env`                  |
+| http://localhost:4000/ui     | Gateway admin              | Master key in `.env`                         |
+
+## 5. Send your first message
+
+1. Open http://localhost:3080.
+2. Register an account. The first registered user gets the `ADMIN`
+   role automatically.
+3. Pick a model from the dropdown (fetched live from the gateway).
+4. Type a message.
+5. Open http://localhost:3000 → **Traces** to see the request you
+   just sent.
+
+## What is next
+
+- The smoke test (`./scripts/smoke-test.sh`) is a good idempotent
+  regression check after any change. See
+  [Verify install](/docs/getting-started/verify-install).
+- To register another model later, use
+  [`./scripts/add-model.sh`](/docs/developer/adding-models).
+- To call NUFI from your own code, see
+  [End user → API keys](/docs/end-user/api-keys).
+- For production deployment, see [Deployment](/docs/deployment).

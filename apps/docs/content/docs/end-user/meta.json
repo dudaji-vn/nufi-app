@@ -1,0 +1,17 @@
+{
+  "title": "End user",
+  "description": "Use the chat and the developer console",
+  "root": true,
+  "icon": "MessageSquare",
+  "pages": [
+    "index",
+    "sign-in",
+    "chat",
+    "models-and-presets",
+    "files-and-images",
+    "agents",
+    "web-search",
+    "speech",
+    "api-keys"
+  ]
+}

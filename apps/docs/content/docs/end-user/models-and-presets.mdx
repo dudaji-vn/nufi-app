@@ -1,0 +1,85 @@
+---
+title: Models and presets
+description: Switch between AI models, tune the response style, save presets.
+---
+
+NUFI offers several AI models. You pick which one answers each
+conversation.
+
+## Pick a model
+
+The dropdown at the top of every conversation lists every model
+available to you. The list updates automatically — if your admin
+adds a new model, refreshing the page is enough to see it.
+
+Common badges next to model names:
+
+- 👁️ **vision** — accepts images
+- 🛠️ **tools** — can call tools and run code
+- 🧠 **reasoning** — thinks step-by-step before replying
+
+Newer or larger models are usually more capable but slower and more
+expensive against your budget. Smaller models are faster and cheaper.
+Try a few and see what fits.
+
+## Tune the response style
+
+The side panel has a **Parameters** tab. The two you will actually use:
+
+- **Temperature** — low (around 0) for precise, deterministic
+  answers (good for code, summaries, extracting data). High (around
+  1) for creative, varied answers (brainstorming, copy-writing).
+- **Max length** — caps how long the reply can be.
+
+The advanced ones (Top P, frequency penalty, presence penalty) are
+sampling controls — leave them alone unless you know what you want.
+
+The **System prompt** field is what the AI sees before your first
+message — a persona, instructions, a tone. Set one to steer the
+whole conversation.
+
+Settings stick to the current conversation only. Start a new chat to
+reset, or save your favourite combo as a **preset**.
+
+## Presets
+
+A preset is a saved bundle: `{ model, parameters, system prompt }`
+with a name.
+
+**Save**: click **Save as preset** in the side panel. Give it a name
+(e.g. "Code review", "Translation EN→VN", "Friendly customer reply").
+
+**Use**: pick a preset from the **Presets** dropdown above the
+message box. New conversations seeded from a preset start with all
+its settings applied.
+
+**Share** (if enabled in your deployment): you can share a preset
+with specific teammates or a team. Useful for "our team always uses
+this system prompt for support tickets".
+
+## Saved prompts
+
+A **saved prompt** is lighter than a preset — just a chunk of text
+you want to insert often. No model or parameters attached.
+
+Manage them under **Prompts** in the sidebar. Insert one mid-
+conversation by typing `/` at the start of the message box, then
+picking from the list.
+
+Good prompt candidates:
+
+- Frequently-used personas ("You are a senior copywriter…")
+- Tedious boilerplate ("Reformat the following as a markdown table…")
+- Tone modifiers ("Rewrite in plain English, no jargon")
+
+## If the dropdown is empty
+
+If you only see `loading...`:
+
+- Refresh the page once.
+- If still empty, the platform cannot reach the AI provider. Ask
+  your admin — they have monitoring that tells them what is wrong.
+
+If the dropdown is full but every model errors with "unauthorised",
+open the [console](/docs/end-user/api-keys) once. The first visit
+sets up your account automatically.

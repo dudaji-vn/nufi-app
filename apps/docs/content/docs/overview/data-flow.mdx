@@ -1,0 +1,103 @@
+---
+title: Data flow
+description: Follow a single chat message from the browser through NUFI and back.
+---
+
+When a user types "hello" into the chat and presses Enter, this is
+what happens — top to bottom.
+
+## 1. The browser → NUFI Chat
+
+The user opens `chat.nufi.me`. Their browser already has a sign-in
+cookie, so they are logged in.
+
+They type a message and pick a model from the dropdown. The chat UI
+sends the message to the NUFI backend.
+
+## 2. NUFI Chat → AI Gateway
+
+The chat backend forwards the conversation to the **NUFI AI
+Gateway** (`api.nufi.me`). This is the single chokepoint every AI
+call goes through.
+
+The gateway:
+
+- Identifies which user sent the request.
+- Looks up the user's budget and rate limit.
+- Checks the user is allowed to use the requested model.
+- Picks the right upstream AI provider for the model.
+
+## 3. Safety filters (pre-call)
+
+Before the prompt leaves NUFI's boundary, two safety filters run:
+
+- **Personal data scanner** — flags or masks sensitive information
+  (names, IDs, credit cards, emails) so it never reaches the AI
+  provider.
+- **Prompt-injection scanner** — checks for adversarial inputs
+  designed to make the AI ignore its instructions. Suspicious
+  prompts are blocked.
+
+What gets sent forward is the safe, sanitised version.
+
+## 4. AI Gateway → AI provider
+
+The gateway calls the actual AI model — OpenAI, Anthropic, Google,
+Mistral, an open-source model on your own GPU, whichever was
+configured.
+
+The AI streams back tokens as it generates them. The gateway streams
+them onward to the chat backend, which streams them to the user's
+browser. The reply appears word by word.
+
+## 5. Logging (during and after)
+
+While the reply streams, NUFI records a **trace** of the whole
+exchange:
+
+- Who sent it (the user's account).
+- Which model handled it.
+- Which AI provider was called.
+- How many tokens were used.
+- How long it took.
+- How much it cost.
+
+Traces land in the trace store within a few seconds. Admins can
+search them in the trace viewer to debug a specific user's
+experience.
+
+## 6. Metrics (continuous, in the background)
+
+Independent of any single message, NUFI continuously emits metrics:
+request rate, error rate, latency. These feed live dashboards and
+the alert system — if error rate spikes, on-call is paged within
+five minutes.
+
+## Where the user's identity flows
+
+The same user identity flows through three independent systems:
+
+- **Chat** — knows the user from their sign-in cookie.
+- **Gateway** — receives the user identity attached to the request
+  and applies that user's budget + limits.
+- **Trace store** — records the user identity on every trace so
+  admins can pivot from "user complaint" → "their last 10
+  conversations" → "the exact prompt that failed".
+
+This is what makes "show me everything user X did yesterday" a
+one-search operation, instead of a multi-system manual hunt.
+
+## What happens when something fails
+
+- **AI provider unreachable** → the chat shows an error bubble. The
+  trace is still recorded with `status: error` so the failure is
+  attributable.
+- **Out of budget** → the chat shows "Budget reached". The user
+  needs to wait or ask an admin to raise their cap.
+- **Prompt blocked by safety filter** → the chat shows "This
+  message was blocked". The trace records the reason.
+- **Rate limited** → the chat shows "Please slow down". The user
+  waits a few seconds.
+
+All four are visible to admins on a single dashboard panel —
+**Errors by reason** — so trends are obvious.

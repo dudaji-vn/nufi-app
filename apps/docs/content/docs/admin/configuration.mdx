@@ -1,0 +1,74 @@
+---
+title: Configuration editor
+description: A schema-driven UI for every NUFI setting.
+---
+
+NUFI's behaviour is controlled by a single configuration tree. Every
+setting is editable from the admin panel — no file editing, no
+restarts. The page is generated from the underlying schema, so when
+a new feature ships, its settings appear automatically.
+
+## What is on the page
+
+Top-level sections:
+
+- **App** — title, footer, links to your privacy / terms pages.
+- **Interface** — every UI feature flag (agents, presets, web
+  search, multi-chat, …).
+- **Models** — which AI providers and models are exposed to users.
+- **Limits** — rate limits, file sizes, conversation length.
+- **Registration** — email allow-list, password rules, SSO.
+- **Speech** — voice in / voice out engines.
+- **Connected tools** — your organisation's integrations.
+- **Files** — storage, allowed types, size caps.
+
+## Read vs write
+
+By default the editor shows **resolved** values: the merge of the
+base config plus any active overrides. To see who set a particular
+value, click the gear next to a field — the **Field profile
+popover** lists every override on that field, sorted by priority.
+
+## Edit a global value
+
+1. Find the field.
+2. Type the new value.
+3. Click **Save** at the top of the section.
+
+Changes apply immediately — NUFI re-evaluates on the next request.
+No restart needed.
+
+## Edit a scoped override
+
+A scoped override applies the new value only when the resolved-for
+user matches the scope (role, group, or specific user).
+
+1. Find the field, click the gear, **Add override**.
+2. Pick the scope type: **Role**, **Group**, or **User**.
+3. Pick the specific scope (e.g. the `power-users` group).
+4. Set the value.
+5. Pick a **priority** (lower wins — see
+   [Scoped overrides](/docs/admin/scoped-overrides)).
+
+When a user in that scope makes their next chat request, NUFI walks
+the override stack and resolves the lowest-priority match.
+
+## Discard / revert
+
+Each section has an **Unsaved changes** banner while you have a
+draft. **Discard** drops the draft. For full per-field history, use
+the audit log.
+
+## Drift detection
+
+If a config value is changed outside the admin panel — e.g. by
+running migrations or direct database edits — the **Drift** banner
+at the top of the page tells you which keys diverged. Resolve by
+syncing the running config into the database (**Pull values**) or
+the other way (**Push values**).
+
+## When a new setting appears
+
+As NUFI adds features, new settings show up in this editor
+automatically — no admin-panel upgrade needed. The schema is the
+source of truth for what is editable.

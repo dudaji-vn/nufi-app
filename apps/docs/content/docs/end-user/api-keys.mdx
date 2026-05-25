@@ -1,0 +1,157 @@
+---
+title: API keys
+description: Generate keys for your own apps and watch your usage.
+---
+
+The **console** at `console.nufi.me` is where you manage API keys for
+your own code — scripts, internal tools, integrations. You only need
+this page if you call NUFI from your own software. If you only use
+the chat, ignore everything here.
+
+You sign in at the chat first; the console reads the same login. No
+second password.
+
+## What the console shows
+
+### Profile (`/`)
+
+- Your name and email.
+- Your monthly budget and how much you have used so far.
+- A 7-day usage chart.
+- Your most-used API keys.
+
+### Keys (`/keys`)
+
+- A table of every key you have generated.
+- Each row shows the key's nickname, when it was last used, its
+  remaining budget, and a masked preview of the token.
+- Buttons to **generate** new keys and **revoke** ones you no longer
+  need.
+
+### Usage (`/usage`)
+
+- Charts for the last 7, 30, or 90 days.
+- Spend broken down by model.
+- A table of your most recent requests.
+
+## Generate a key
+
+<Steps>
+<Step>Open **Keys → Generate**.</Step>
+<Step>Give the key a friendly name — `laptop`, `prod-job`,
+`zapier-integration`. You can have as many as you want.</Step>
+<Step>Optional: tighten the limits for this key (lower budget than
+your account default, slower rate limit). Useful for service keys
+where you do not want a runaway script to drain your budget.</Step>
+<Step>Click **Generate**. The next window shows the real key
+**once** — copy it immediately.</Step>
+<Step>Close the window. After this, only the prefix
+(`sk-nufi-…d7c`) is visible. NUFI does not store the full key, so
+there is no "show me again" option.</Step>
+</Steps>
+
+If you lose a key, just revoke it and generate a new one.
+
+## Use a key
+
+The key works with anything that speaks the OpenAI API format.
+
+### From the command line
+
+```bash
+curl https://api.nufi.me/v1/chat/completions \
+  -H "Authorization: Bearer sk-nufi-…" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen2.5-7b",
+    "messages": [{"role": "user", "content": "hello"}]
+  }'
+```
+
+### From Python
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="https://api.nufi.me/v1",
+    api_key="sk-nufi-…",
+)
+print(client.chat.completions.create(
+    model="qwen2.5-7b",
+    messages=[{"role": "user", "content": "hello"}],
+).choices[0].message.content)
+```
+
+### From Node / TypeScript
+
+```ts
+import OpenAI from 'openai';
+
+const client = new OpenAI({
+  baseURL: 'https://api.nufi.me/v1',
+  apiKey: process.env.NUFI_API_KEY,
+});
+
+const reply = await client.chat.completions.create({
+  model: 'qwen2.5-7b',
+  messages: [{ role: 'user', content: 'hello' }],
+});
+
+console.log(reply.choices[0].message.content);
+```
+
+All the usual OpenAI parameters work — `stream: true` for streaming
+replies, `tools: [...]` for function calling, `temperature`,
+`max_tokens`, etc.
+
+## Revoke a key
+
+Open **Keys**, find the row, click **·  ·  · ** → **Revoke**. The key
+stops working within seconds. Revoking cannot be undone — but you
+can always generate a fresh one with the same nickname.
+
+Always revoke a key when:
+
+- A laptop with the key on it is lost.
+- A teammate who had the key leaves.
+- You suspect the key has been exposed in a public repo or log.
+
+## Budgets and limits
+
+Two layers protect you:
+
+1. **Account budget** — your overall cap, set by your admin. Every
+   key you issue counts against this.
+2. **Per-key budget** — you can make individual keys tighter (e.g.
+   a service key gets $5/month even if your account has $100).
+
+When a budget runs out, calls return a `429 Budget reached` error.
+Either wait for the next cycle, ask your admin to raise the
+account budget, or revoke and re-issue a key with a higher cap.
+
+## See exactly what your code did
+
+Every call you make is logged with your account. The console's
+**Usage** page shows the last 50 calls — model, time, tokens spent.
+For deeper investigation (the actual prompt, the full reply, why a
+call was slow), your admin has access to a more detailed trace
+viewer.
+
+## First-time setup
+
+The first time you open the console, your account is set up
+automatically with your organisation's default budget and limits.
+If you ever see "user not found" errors from `api.nufi.me`, just
+open the console once — that fixes it.
+
+## Best practices
+
+- **One key per app.** Easier to revoke when you decommission the
+  app.
+- **Never commit keys to git.** Even private repos eventually leak.
+  Use a secret manager or environment variable.
+- **Rotate every 90 days.** Even without a known breach. Generate a
+  new key, swap it in, revoke the old one.
+- **Set tight per-key budgets** for unattended scripts. A bug should
+  not drain your whole month.

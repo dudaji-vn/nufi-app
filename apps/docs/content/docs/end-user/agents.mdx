@@ -1,0 +1,117 @@
+---
+title: Agents
+description: No-code AI assistants with tools, knowledge files, and skills.
+---
+
+An **agent** is a saved AI assistant with its own name, avatar,
+instructions, tools, and optional knowledge files. Think of it as
+your own custom GPT — built once, reused everywhere.
+
+Some examples:
+
+- **Support Triage** — knows your help-centre docs, drafts replies in
+  your brand voice.
+- **Code Reviewer** — given a repo style guide, reviews pull requests
+  for naming, structure, and bugs.
+- **Meeting Notetaker** — given a transcript, produces minutes,
+  action items, and follow-up emails.
+
+## Start chatting with an agent
+
+If agents are enabled for your team, the endpoint dropdown has an
+**Agents** group. Pick one, start a conversation as normal. The
+agent's instructions, tools, and knowledge are applied automatically.
+
+## Build your own
+
+<Steps>
+<Step>Click **Agents** in the sidebar → **+ New agent**.</Step>
+<Step>Name it, write a short description, upload an avatar.</Step>
+<Step>Write the **instructions** — what the agent should do and how
+it should behave. This is the most important part. Be specific.</Step>
+<Step>Pick which **tools** the agent can use (see below).</Step>
+<Step>Optionally attach **knowledge files** — PDFs, docs, notes the
+agent should always have on hand.</Step>
+<Step>Pick the underlying **AI model**.</Step>
+<Step>Save. Your agent now appears in the dropdown.</Step>
+</Steps>
+
+### Tips for good instructions
+
+- **Tell it the role**: "You are a senior support agent for an
+  e-commerce store."
+- **Tell it the style**: "Concise. Friendly. No jargon. End every
+  reply with a clear next action."
+- **Tell it the constraints**: "Never share personal data. If asked
+  about pricing, link to /pricing instead of stating numbers."
+- **Tell it what to do when stuck**: "If you cannot answer
+  confidently, say so and offer to escalate."
+
+The instructions are the dial that takes an agent from "generic AI"
+to "this feels like a teammate".
+
+## Tools
+
+Tools give the agent extra capabilities beyond text:
+
+- **Code Interpreter** — runs Python, JavaScript, Go and more in a
+  sandbox. Upload a CSV, ask the agent to analyse it.
+- **Web search** — looks up live information from the internet
+  mid-conversation. See [Web search](/docs/end-user/web-search).
+- **Image generation** — generates images from prompts.
+- **Connected tools** — your organisation's own integrations (your
+  CRM, your wiki, your ticketing system). What is available depends
+  on what your admin has connected.
+
+Pick only the tools the agent needs. Fewer tools means faster,
+cheaper, more predictable behaviour.
+
+## Knowledge files
+
+Upload PDFs, docs, code, anything text-based. The agent stores them,
+finds the relevant pieces on every question, and uses them to answer.
+
+Good knowledge files:
+
+- Your product documentation.
+- Your style guide.
+- Reference material for a specific domain.
+- Templates the agent should produce variants of.
+
+Avoid loading entire codebases or thousand-page manuals — quality
+beats quantity. The agent picks better when you give it focused
+material.
+
+## Sharing
+
+By default agents are **private** to you. To share:
+
+- **Share with people** — invite specific teammates by email.
+- **Share with a team** — anyone in the team can use it.
+- **Publish to the marketplace** — everyone in your organisation can
+  discover and use it.
+
+Shared agents can be **read-only** (teammates use, you keep editing)
+or **collaborative** (teammates can also edit).
+
+## Skills
+
+A **skill** is a smaller, reusable unit — a saved set of
+instructions plus a tiny tool palette. Attach a skill to an agent
+to give it a focused capability ("can write SQL", "can translate
+to Vietnamese") without rebuilding the whole agent.
+
+Skills can also be invoked manually in any conversation by typing
+`/skill-name`.
+
+## When things go wrong
+
+- **Agent ignores its instructions** — instructions might be too
+  long or contradictory. Try shorter, clearer phrasing.
+- **Agent cannot find an answer in its knowledge** — the file may
+  not be relevant enough. Remove it or replace with focused
+  excerpts.
+- **Agent gives the wrong tool the wrong job** — disable tools the
+  agent should not need.
+- **Agents missing entirely** — your admin has not enabled them for
+  your team. Ask.

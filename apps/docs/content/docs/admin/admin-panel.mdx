@@ -1,0 +1,79 @@
+---
+title: Admin panel basics
+description: Logging in, navigating, and the capability model behind every action.
+---
+
+The admin panel is the web app at `admin.nufi.me` where you manage
+NUFI for your organisation — configuration, users, roles, groups,
+and capability grants.
+
+## Sign in
+
+The admin panel does **not** auto-SSO from the chat. Sign in
+separately, with one of:
+
+- **Email + password** — for any NUFI user whose `role=ADMIN`.
+- **Single Sign-On** — when SSO is configured and the user's role
+  from your identity provider is `ADMIN`.
+
+When SSO-only mode is enabled, the email/password form is hidden and
+visitors are redirected to the identity provider.
+
+If your account has two-factor authentication enabled, the panel
+asks for a TOTP code after the password check.
+
+Sessions are encrypted client-side. The panel **revalidates every
+60 seconds** against NUFI — if your admin role is removed elsewhere,
+the next revalidation signs you out. The default idle timeout is
+30 minutes.
+
+## Layout
+
+The panel has five top-level sections:
+
+- **Configuration** — every value NUFI reads from its central
+  config.
+- **Users** — list, search, create, deactivate, impersonate.
+- **Roles** — define roles and the capability set each one grants.
+- **Groups** — define groups and assign users to them.
+- **Audit** — view what changed when and by whom.
+
+The left sidebar surfaces only the sections you have capability
+grants for. A sub-admin with `MANAGE_USERS` but no
+`MANAGE_CONFIG` sees only **Users**.
+
+## The capability model
+
+Every admin action is gated by a **capability**. Capabilities are
+defined constants that group together related powers — you do not
+hand out individual permissions, you hand out roles that bundle
+capabilities.
+
+Key capabilities:
+
+| Capability        | What it grants                                                   |
+|-------------------|------------------------------------------------------------------|
+| `MANAGE_USERS`    | List, create, deactivate users; reset passwords                  |
+| `MANAGE_ROLES`    | Define roles and capability grants                               |
+| `MANAGE_GROUPS`   | Create groups and manage membership                              |
+| `MANAGE_CONFIG`   | Read and write configuration (global and scoped overrides)       |
+| `ASSIGN_CONFIGS`  | Attach config overrides to roles / groups / users                |
+| `VIEW_AUDIT`      | Read the audit log                                               |
+| `IMPERSONATE`     | Sign in as another user (for debugging)                          |
+
+A user gets capabilities by belonging to a role that grants them.
+The built-in `ADMIN` role has every capability; you do not need to
+manage it directly unless you want to constrain a sub-admin.
+
+## Common workflow
+
+1. A new dev joins. You create their user in **Users**.
+2. They need access to the `gpt-4o` model. You add them to the
+   `gpt-4o-users` group in **Groups**.
+3. You realise the group needs a higher rate limit. In
+   **Configuration**, you add a scoped override under the group
+   raising the rate-limit cap.
+4. The dev's next request reflects the change immediately — no
+   sign-out / sign-in required.
+
+The next pages walk through each step.

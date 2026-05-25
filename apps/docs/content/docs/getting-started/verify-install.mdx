@@ -1,0 +1,82 @@
+---
+title: Verify the install
+description: A handful of one-liners that confirm each layer is healthy.
+---
+
+The bootstrap script runs a smoke test, but it is useful to know what to
+check yourself when something is off.
+
+## All services up
+
+```bash
+docker compose ps
+```
+
+Every service should be `Up` with `(healthy)` next to it (except the
+`minio-init` one-shot, which exits cleanly after creating the bucket).
+
+## Gateway
+
+```bash
+curl -s http://localhost:4000/health/liveliness
+# → "I'm alive!"
+curl -s -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
+  http://localhost:4000/v1/models | jq '.data[].id'
+# → list of registered models
+```
+
+If `/v1/models` is empty, you probably ran bootstrap with
+`--backend skip`. Add one with
+[`./scripts/add-model.sh`](/docs/developer/adding-models).
+
+## Chat
+
+```bash
+curl -s http://localhost:3080/api/health
+# → OK
+```
+
+Open http://localhost:3080 in a browser. The dropdown should populate
+within a couple of seconds. If it stays on `loading...`, the chat backend
+cannot reach the gateway — check `docker compose logs chat` for the
+exact error.
+
+## Console
+
+```bash
+curl -s http://localhost:3001/_health
+# → ok
+```
+
+Open http://localhost:3001. If you are not signed in to the chat in
+the same browser, you will be redirected to `/unauthorized`. Sign in at
+The chat first.
+
+## Langfuse
+
+Open http://localhost:3000. Log in with the admin email + password
+that bootstrap printed. Click **Traces** — after you have sent at least
+one chat message, you should see it here within a few seconds.
+
+## Grafana
+
+Open http://localhost:3030 and log in (`GRAFANA_ADMIN_USER` /
+`GRAFANA_ADMIN_PASSWORD`). The **Gateway Overview** dashboard auto-loads
+from `monitoring/grafana/dashboards/`.
+
+## End-to-end smoke test
+
+```bash
+./scripts/smoke-test.sh         # quick: just gateway ↔ AI provider
+./scripts/e2e-smoke-test.sh     # full: chat → gateway → AI provider → trace
+```
+
+The end-to-end version registers a user, sends a chat, and asserts the
+Langfuse trace landed with the expected `hardware_id`. See
+[`E2E_*` env vars](/docs/reference/env-vars) for what it needs in
+`.env`.
+
+## If something is broken
+
+See [Troubleshooting](/docs/operations/troubleshooting) for the common
+failure modes.

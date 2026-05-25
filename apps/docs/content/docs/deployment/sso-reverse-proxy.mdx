@@ -1,0 +1,123 @@
+---
+title: SSO and reverse proxy
+description: Sharing the the NUFI session across chat, console, and admin panel.
+---
+
+The chat and the console must share one logged-in session. Auth is a
+JWT cookie issued by the chat. Whether that cookie reaches the
+console depends on how the two are hosted.
+
+## Hosting options
+
+| Layout                                                          | Cookie shared? | Effort                              |
+|-----------------------------------------------------------------|----------------|-------------------------------------|
+| Same origin (`nufi.me/`, `nufi.me/console/`)                    | yes, automatic | Path-routing in the proxy           |
+| Subdomains (`chat.nufi.me`, `console.nufi.me`)                  | yes, with rewrite | Proxy + one cookie rewrite line  |
+| Separate domains (`org-chat.com`, `org-console.com`)            | no             | Not supported                       |
+
+**Pick same-origin** if you do not care about the URL.
+
+**Pick subdomains** when branding wants `console.nufi.me` — the proxy
+rewrites `Set-Cookie` to add `Domain=.nufi.me` so the browser scopes
+the cookie across siblings.
+
+## Caddy: same-origin (path routing)
+
+```
+nufi.me {
+  handle_path /console/* {
+    reverse_proxy console:3000
+  }
+  handle {
+    reverse_proxy librechat:3080
+  }
+}
+```
+
+No cookie tricks needed. TLS via Let's Encrypt is automatic.
+
+## Caddy: subdomains (with cookie rewrite)
+
+```
+chat.nufi.me {
+  reverse_proxy librechat:3080 {
+    header_down Set-Cookie (.+) "{1}; Domain=.nufi.me"
+  }
+}
+
+console.nufi.me {
+  reverse_proxy console:3000
+}
+
+admin.nufi.me {
+  reverse_proxy librechat-admin-panel:3000
+}
+```
+
+The `header_down` line appends `Domain=.nufi.me` to every
+`Set-Cookie` from the chat. The browser now sends the cookie to all
+subdomains of `nufi.me`.
+
+You must also set in `.env`:
+
+```bash
+COOKIE_DOMAIN=.nufi.me
+COOKIE_SAMESITE=lax      # required when COOKIE_DOMAIN is set
+```
+
+## Traefik (subdomains)
+
+Traefik does not rewrite `Set-Cookie` natively. Either the
+[rewrite-headers plugin](https://plugins.traefik.io/plugins/628c9eb7ffc0cd18356a979b/rewrite-headers)
+or a custom middleware:
+
+```yaml
+labels:
+  - traefik.enable=true
+  - traefik.http.routers.librechat.rule=Host(`chat.nufi.me`)
+  - traefik.http.routers.librechat.tls.certresolver=letsencrypt
+  - traefik.http.middlewares.cookie-domain.plugin.rewriteHeaders.headers[0].name=Set-Cookie
+  - traefik.http.middlewares.cookie-domain.plugin.rewriteHeaders.headers[0].regex=(.*)
+  - traefik.http.middlewares.cookie-domain.plugin.rewriteHeaders.headers[0].replacement=$$1; Domain=.nufi.me
+  - traefik.http.routers.librechat.middlewares=cookie-domain
+```
+
+For NUFI, Caddy is the lower-effort choice.
+
+## Console-side: verify the shared JWT
+
+The console does not call the chat backend. Compose passes both secrets to
+both services. On every console request the middleware:
+
+1. Reads the `refreshToken` cookie.
+2. Verifies with `JWT_REFRESH_SECRET` (HS256).
+3. Extracts `userId` from the payload.
+4. Uses it for audit + scoping.
+
+If the cookie is missing or invalid → 401, redirect to
+`/unauthorized` (which deep-links back to the chat sign-in via
+`VITE_LIBRECHAT_URL`).
+
+## Common subdomain gotchas
+
+- **`SameSite=Strict` blocks the cross-subdomain cookie.** Set
+  `COOKIE_SAMESITE=lax` whenever `COOKIE_DOMAIN` is set.
+- **Trailing dot matters.** `Domain=.nufi.me` (with leading dot) is
+  the cross-subdomain form. `Domain=nufi.me` (no dot) restricts to
+  the root only on some browsers.
+- **HTTP works, HTTPS does not.** The cookie has `Secure`. You need
+  HTTPS on every subdomain. Caddy gives you Let's Encrypt for free;
+  Cloudflare proxy gives you flexible TLS.
+- **Mixed scheme.** If chat is `https://` and console is `http://`,
+  the cookie does not travel. Move both to HTTPS.
+
+## Cost
+
+- Caddy is Apache-2.0, Traefik is MIT — no license fee.
+- TLS via Let's Encrypt — free.
+- One extra container (~20 MB RAM idle for Caddy).
+
+## See also
+
+- [Cloudflare tunnel](/docs/deployment/cloudflare-tunnel) — when you
+  do not have a public IP at all.

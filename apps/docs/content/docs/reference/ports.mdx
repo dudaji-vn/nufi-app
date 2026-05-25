@@ -1,0 +1,74 @@
+---
+title: Ports
+description: Every host port the stack binds, by service.
+---
+
+## Full platform (`npuops-platform`)
+
+| Host port | Container        | Container port | Purpose                                |
+|-----------|------------------|----------------|----------------------------------------|
+| 3080      | librechat        | 3080           | Chat UI                                |
+| 3001      | console          | 3000           | Self-service console                   |
+| 3000      | langfuse-web     | 3000           | Observability UI                       |
+| 3030      | grafana          | 3000           | Dashboards                             |
+| 4000      | gateway          | 4000           | AI gateway + admin UI             |
+| 9090      | prometheus       | 9090           | Prometheus UI (admin only)             |
+| 9093      | alertmanager     | 9093           | Alertmanager UI (admin only)           |
+
+Internal-only services (no host port):
+
+`postgres`, `redis`, `mongodb`, `clickhouse`, `minio`, `minio-init`,
+`langfuse-worker`, `postgres-exporter`, `redis-exporter`,
+`presidio-analyzer`, `presidio-anonymizer`, `llm-guard-api`.
+
+## Chat-only (`nufi-chat`)
+
+| Host port | Container         | Container port | Purpose      |
+|-----------|-------------------|----------------|--------------|
+| 3081      | nufi-chat-api     | 3081           | Chat UI      |
+| —         | nufi-chat-mongo   | 27017          | MongoDB      |
+
+## Admin panel (`nufichat-admin-panel`)
+
+| Host port | Container               | Container port | Purpose     |
+|-----------|-------------------------|----------------|-------------|
+| 3000      | librechat-admin-panel   | 3000           | Admin SPA   |
+
+Run on a different host port (or behind a reverse proxy) when
+co-locating with `langfuse-web`, which also defaults to 3000.
+
+## In dev (HMR)
+
+| Repo                | Tool      | Port       |
+|---------------------|-----------|------------|
+| the NUFI Chat application      | API       | 3080       |
+| the NUFI Chat application      | Frontend  | 3090       |
+| Admin panel         | Vite      | 3000       |
+| Console             | Vite      | 5173       |
+| Console             | Hono      | 3000       |
+| **nufi-docs**       | Next.js   | 3000       |
+
+## Picking host ports under a single host
+
+If you run everything on one machine and hit conflicts:
+
+- the NUFI Chat application dev (`:3080`) collides with the platform-bundled chat
+  (`:3080`). Run only one at a time.
+- Console dev (`:5173`) is unique.
+- Admin panel dev (`:3000`) collides with Langfuse (`:3000`). Either
+  move the admin panel to a different `PORT`, or only run one at a
+  time, or use a host-aliased subdomain (`*.localhost` →
+  `127.0.0.1`).
+
+For day-to-day dev, the cleanest layout is:
+
+- `:3080` — Chat (one or the other, never both)
+- `:3000` — Langfuse (platform) OR admin panel (dev) — pick one
+- `:3001` — Console (platform)
+- `:5173` — Console (dev)
+- `:4000` — Gateway
+- `:3030` — Grafana
+- `:3090` — the NUFI Chat application frontend dev
+
+When in doubt, `lsof -iTCP -sTCP:LISTEN -P -n | grep <port>` tells
+you who is squatting.

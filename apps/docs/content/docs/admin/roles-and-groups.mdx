@@ -1,0 +1,96 @@
+---
+title: Roles and groups
+description: Two orthogonal ways to bucket users — roles for capabilities, groups for config.
+---
+
+Roles and groups are **separate concepts**. Both are scopes that a
+user belongs to. They differ in what they attach.
+
+| Concept | Attaches               | Used for                                                  |
+|---------|------------------------|-----------------------------------------------------------|
+| Role    | Capability grants      | Who can do which admin action                             |
+| Group   | Config overrides       | Which features and limits a user sees                     |
+
+A user can be in one or more groups and (usually) one role.
+
+## Roles
+
+A role is a named bundle of capabilities. Built-in roles:
+
+- **`ADMIN`** — every capability.
+- **`USER`** — no admin capabilities, only chat access.
+
+Custom roles let you carve out sub-admins. Examples:
+
+- `BILLING_ADMIN` — `VIEW_AUDIT`, can view spend, no config edits.
+- `SUPPORT` — `IMPERSONATE`, can reset passwords, no role
+  management.
+
+### Create a role
+
+1. **Roles** → **+ New role**.
+2. Name it.
+3. Tick the capabilities it grants. See
+   [Capabilities](/docs/admin/capabilities) for the full list.
+4. Save.
+
+### Assign a role
+
+In **Users**, edit the user's record → set their **Role**. The
+change takes effect on the user's next request (the admin panel
+re-checks every 60 seconds).
+
+### Capability cascade
+
+Some capabilities **imply** others. `MANAGE_ROLES` automatically
+grants `VIEW_ROLES`, `MANAGE_USERS` implies `VIEW_USERS`, and so on.
+You cannot un-grant the view permission while keeping the manage
+permission.
+
+## Groups
+
+A group is a named collection of users. It exists so you can attach
+**config overrides** to a set of users without changing each user
+record.
+
+Examples:
+
+- `gpt-4o-users` — members get an override that adds the `gpt-4o`
+  model to their dropdown.
+- `power-users` — members get higher file-size and rate-limit caps.
+- `beta-features` — members see flags that are off for everyone
+  else.
+
+### Create a group
+
+1. **Groups** → **+ New group**.
+2. Name it, optionally describe it.
+3. Save.
+
+### Add members
+
+In the group's detail view, **Members** has search and bulk-add.
+Adding a user takes effect immediately. They do not need to sign
+out / in.
+
+### Attach a config override
+
+See [Scoped overrides](/docs/admin/scoped-overrides).
+
+## How resolution works
+
+When NUFI needs a config value for a user:
+
+1. Compute the user's effective override stack:
+   - User-scope overrides (highest precedence)
+   - Group-scope overrides for every group the user is in
+   - Role-scope overrides for the user's role
+   - Base config (lowest precedence)
+2. Within each scope, take the override with the **lowest** numeric
+   `priority` (priority 0 wins over priority 10).
+3. Use the resolved value.
+
+So `priority` lets you have a "default for the group" that is
+itself overridden by a "default for power users" that is itself
+overridden by a single user's personal override — all without
+editing the base config.

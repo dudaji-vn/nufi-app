@@ -1,0 +1,142 @@
+---
+title: Environment variables
+description: Every variable in .env, what it does, how to generate it.
+---
+
+The `.env` file is the single source of truth for runtime config. The
+bootstrap script generates a working one; this page is the reference
+for when you need to edit by hand.
+
+## Secrets
+
+Generate every secret. Never check `.env` into git.
+
+| Variable                    | Generate with                  | Used by                                |
+|-----------------------------|--------------------------------|----------------------------------------|
+| `POSTGRES_PASSWORD`         | `openssl rand -base64 32`      | Postgres, Gateway, trace store            |
+| `CLICKHOUSE_PASSWORD`       | `openssl rand -base64 32`      | ClickHouse, Langfuse                   |
+| `REDIS_PASSWORD`            | `openssl rand -base64 32`      | Redis (optional)                       |
+| `MONGO_INITDB_ROOT_PASSWORD`| `openssl rand -base64 32`      | MongoDB, NUFI Chat                     |
+| `MINIO_ROOT_PASSWORD`       | `openssl rand -base64 32`      | MinIO, Langfuse S3 client              |
+| `LITELLM_MASTER_KEY`        | `openssl rand -hex 32`         | gateway admin auth                     |
+| `LITELLM_SALT_KEY`          | `openssl rand -hex 32`         | Gateway key hashing                    |
+| `JWT_SECRET`                | `openssl rand -hex 32`         | Chat + Console (shared)           |
+| `JWT_REFRESH_SECRET`        | `openssl rand -hex 32`         | Chat + Console (shared)           |
+| `CREDS_KEY`                 | `openssl rand -hex 32`         | Chat credential encryption        |
+| `CREDS_IV`                  | `openssl rand -hex 16`         | Chat credential encryption        |
+| `LANGFUSE_SALT`             | `openssl rand -base64 32`      | Langfuse                               |
+| `LANGFUSE_ENCRYPTION_KEY`   | `openssl rand -hex 32`         | Langfuse encryption-at-rest            |
+| `LANGFUSE_NEXTAUTH_SECRET`  | `openssl rand -base64 32`      | Langfuse session signing               |
+| `LANGFUSE_PUBLIC_KEY`       | `openssl rand -base64 24`      | Gateway → trace store ingestion     |
+| `LANGFUSE_SECRET_KEY`       | `openssl rand -base64 32`      | Gateway → trace store ingestion     |
+| `LLM_GUARD_AUTH_TOKEN`      | `openssl rand -base64 32`      | Gateway → safety filter auth               |
+
+## Public URLs
+
+Set to match how users reach you.
+
+| Variable                     | Example                              |
+|------------------------------|--------------------------------------|
+| `DOMAIN_CLIENT`              | `https://chat.nufi.me`          |
+| `DOMAIN_SERVER`              | `https://chat.nufi.me`          |
+| `LIBRECHAT_URL`              | `https://chat.nufi.me`          |
+| `CONSOLE_URL`                | `https://console.nufi.me`       |
+| `LANGFUSE_NEXTAUTH_URL`      | `https://langfuse.nufi.me`      |
+| `LANGFUSE_HOST`              | `https://langfuse.nufi.me`      |
+| `LANGFUSE_INIT_USER_EMAIL`   | First admin email                    |
+| `LANGFUSE_INIT_USER_PASSWORD`| First admin password                 |
+
+## Cross-subdomain SSO
+
+If chat and console live on different subdomains of the same parent
+domain:
+
+```bash
+COOKIE_DOMAIN=.nufi.me
+COOKIE_SAMESITE=lax       # must be 'lax' when COOKIE_DOMAIN is set
+```
+
+Leave both blank for a same-origin or single-subdomain setup.
+
+## LLM backend
+
+For each backend that has a `${VAR}` reference in `litellm/config.yaml`,
+set it here:
+
+```bash
+# Used by add-model.sh when registering local backends
+GPU_BACKEND_BASE_URL=http://host.docker.internal:11434/v1
+GPU_BACKEND_API_KEY=ollama
+NPU_BACKEND_BASE_URL=
+NPU_BACKEND_API_KEY=
+
+# Cloud providers — set per provider you use
+OPENAI_API_KEY=sk-…
+ANTHROPIC_API_KEY=sk-…
+TOGETHER_API_KEY=…
+GROQ_API_KEY=…
+GEMINI_API_KEY=…
+```
+
+The gateway exposes every variable from `.env`, so any
+config.yaml `${VAR}` reference works without editing compose.
+
+## Console defaults
+
+JIT-provision defaults for new users:
+
+| Variable                  | Default | Purpose                          |
+|---------------------------|---------|----------------------------------|
+| `DEFAULT_USER_BUDGET`     | `10`    | USD / period                     |
+| `DEFAULT_BUDGET_DURATION` | `30d`   | Refresh interval                 |
+| `DEFAULT_TPM_LIMIT`       | `10000` | Tokens per minute                |
+| `DEFAULT_RPM_LIMIT`       | `60`    | Requests per minute              |
+| `KEY_DEFAULT_DURATION`    | `90d`   | TTL of issued keys               |
+
+## E2E smoke test
+
+Required by `./scripts/e2e-smoke-test.sh`:
+
+```bash
+E2E_USER_EMAIL=e2e@nufi.local
+E2E_USER_PASSWORD=<random>
+E2E_USER_NAME=E2E Bot
+E2E_MODEL=qwen2.5-3b
+E2E_EXPECTED_HARDWARE_ID=mac-local
+E2E_ENDPOINT_NAME=NPUOps
+```
+
+When `ALLOW_REGISTRATION=false`, the e2e user must be **pre-created**
+— the test only auto-registers when registration is open.
+
+## Chat feature toggles
+
+| Variable             | Default | Purpose                                          |
+|----------------------|---------|--------------------------------------------------|
+| `APP_TITLE`          | `Nufi Chat` | Brand title in the UI                        |
+| `ALLOW_REGISTRATION` | `true`  | Self-sign-up on / off                            |
+| `ALLOW_EMAIL_LOGIN`  | `true`  | Email + password login on / off                  |
+| `CUSTOM_FOOTER`      | (empty) | Footer text in the chat                          |
+| `HELP_AND_FAQ_URL`   | (empty) | "Help" link in the chat                          |
+| `PRIVACY_POLICY_URL` | (empty) | Privacy link                                     |
+| `TERMS_OF_SERVICE_URL`| (empty)| Terms link                                       |
+
+## Grafana
+
+```bash
+GRAFANA_ADMIN_USER=admin
+GRAFANA_ADMIN_PASSWORD=<random>
+```
+
+## Image tags (pin in prod)
+
+| Variable               | Example value                  |
+|------------------------|--------------------------------|
+| `NUFI_CONSOLE_TAG`     | `nufi-console-v0.2.0`          |
+| `IMAGE_TAG` (nufi-chat)| `nufi-v0.0.5`                  |
+
+The compose file uses `${NUFI_CONSOLE_TAG:-main}` as the default. In
+production, pin a specific tag and bump it intentionally.
+
+See [Reference → env vars](/docs/reference/env-vars) for the same
+table as a quick lookup.

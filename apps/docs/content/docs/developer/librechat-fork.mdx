@@ -1,0 +1,124 @@
+---
+title: LibreChat fork
+description: Customising the chat product — branch model, dev loop, release flow.
+---
+
+The chat product is a fork of upstream [LibreChat](https://librechat.ai)
+at [`dudaji-vn/LibreChat`](https://github.com/dudaji-vn/LibreChat).
+Branch `npuops/main` is the integration branch, currently pinned to
+upstream `v0.7.5`. CI publishes
+`ghcr.io/dudaji-vn/librechat:npuops-v0.7.5-<N>` on each tag.
+
+## Repo layout
+
+LibreChat is a monorepo:
+
+| Workspace                    | Language        | Role                                            |
+|------------------------------|-----------------|-------------------------------------------------|
+| `/api`                       | JS (legacy)     | Express server. **Minimise edits here.**        |
+| `/packages/api`              | TypeScript      | New backend code (consumed by `/api`)           |
+| `/packages/data-schemas`     | TypeScript      | DB schemas / models                             |
+| `/packages/data-provider`    | TypeScript      | Shared API contract (FE + BE)                   |
+| `/client`                    | TypeScript/Rect | Frontend SPA                                    |
+| `/packages/client`           | TypeScript      | Shared frontend utilities                       |
+
+**All new backend code must be TypeScript in `/packages/api`**. The
+legacy `/api` exists only as a thin JS wrapper. See `CLAUDE.md` in
+the fork for the full conventions.
+
+## Dev loop
+
+```bash
+git clone git@github.com:dudaji-vn/LibreChat.git
+cd LibreChat
+git checkout npuops/main
+
+npm run smart-reinstall           # install + build (turborepo)
+npm run backend:dev               # API at :3080 with file watching
+# in a second terminal:
+npm run frontend:dev              # SPA at :3090 with HMR
+```
+
+You need a running MongoDB and a reachable gateway. The simplest
+setup is to keep `npuops-platform` running and point the fork at it:
+
+```bash
+# .env in the fork's root
+MONGO_URI=mongodb://localhost:27018/LibreChat
+# Or point at the platform's mongo via host.docker.internal if you
+# remap its port.
+
+ENDPOINTS=custom
+LITELLM_MASTER_KEY=<copy from npuops-platform/.env>
+```
+
+The fork's `.env.example` has the full list.
+
+## Adding a feature
+
+1. Edit code in `/packages/api`, `/client`, etc.
+2. If you touched the shared schema, rebuild it:
+   ```bash
+   npm run build:data-provider
+   ```
+3. Run tests in the affected workspace:
+   ```bash
+   cd packages/api && npx jest <pattern>
+   cd api && npx jest <pattern>
+   ```
+4. Open a PR against `npuops/main`.
+
+## Release
+
+Tag the fork. CI builds and pushes
+`ghcr.io/dudaji-vn/librechat:npuops-v0.7.5-<N>`:
+
+```bash
+git tag npuops-v0.7.5-4         # bump the trailing number
+git push origin npuops-v0.7.5-4
+```
+
+In `npuops-platform/docker-compose.yml`, bump the image tag:
+
+```yaml
+librechat:
+  image: ghcr.io/dudaji-vn/librechat:npuops-v0.7.5-4
+```
+
+Then:
+
+```bash
+docker compose pull librechat && docker compose up -d librechat
+```
+
+## Upgrading upstream LibreChat
+
+```bash
+# in the fork
+git remote add upstream https://github.com/danny-avila/LibreChat.git  # one-time
+git fetch upstream --tags
+git checkout npuops/main
+git merge v0.7.6                # resolve conflicts in npuops commits
+git push
+git tag npuops-v0.7.6-1
+git push origin npuops-v0.7.6-1
+```
+
+Then bump the image tag in `npuops-platform/docker-compose.yml`. Keep
+the rebase diff small — `git log upstream/v0.7.5..npuops/main` should
+fit on one screen for sanity.
+
+## Conventions
+
+- TypeScript strict, no `any`, limit `unknown`.
+- Single-word file names (`permissions.ts`, not `userPermissions.ts`).
+- Functional first; never-nesting (early returns, flat code).
+- `useLocalize()` for every user-facing string in `client/`.
+- Real-DB tests via `mongodb-memory-server`. Mocks are last resort.
+
+The full style guide is in `CLAUDE.md` at the fork root.
+
+## See also
+
+- [Release flow](/docs/developer/release-flow) — the NUFI release
+  pipeline (chat image tagging + GHCR build verification).

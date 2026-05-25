@@ -1,0 +1,134 @@
+---
+title: FAQ
+description: Questions we get often.
+---
+
+## Does NUFI host AI models?
+
+No. NUFI routes through its gateway to whatever AI provider you
+point at — your own model server, OpenAI, Anthropic, Together,
+Groq, OpenRouter, anything that speaks the OpenAI Chat Completions
+API. Bring your own model.
+
+## Can I run only the chat?
+
+Yes. Use the **nufi-chat** standalone deployment — chat application
++ database, no gateway. Point it at any OpenAI-compatible endpoint.
+
+## Can I run multiple chat instances behind a load balancer?
+
+Yes. NUFI supports horizontal scaling with Redis-backed resumable
+streams. Set the relevant Redis env vars. You also need a load
+balancer in front.
+
+## How do users sign up?
+
+By default anyone with the chat URL can register. The first
+registered user becomes admin; the rest are regular users. In
+production, disable self-sign-up and create users from the admin
+panel (and/or wire in your identity provider).
+
+## What models do you recommend?
+
+Depends on what you have. Common combinations:
+
+- **Local laptops** — Ollama with `qwen2.5:3b` or `llama3.2:3b`.
+- **GPU pilot** — a model server hosting
+  `qwen2.5-7b-instruct` or `llama-3.1-8b-instruct`.
+- **Cloud** — `gpt-4o`, `claude-3.5-sonnet`, `gemini-1.5-pro` for
+  quality; `gpt-4o-mini`, `claude-3.5-haiku` for cost.
+
+Mix and match — NUFI lets you expose all of them and per-user
+allow-list which ones each user can call.
+
+## How do I limit a user's spend?
+
+Two layers:
+
+1. **Account budget** — set on the user. Applies to everything the
+   user does across all keys.
+2. **Per-key budget** — set when the user issues a key. Tighter
+   than the account budget.
+
+Both are visible to the user in the
+[console](/docs/end-user/api-keys).
+
+## Can I expose only specific models to specific users?
+
+Yes — three ways:
+
+- **Teams** — bucket users by plan, attach an `allowed_models`
+  list to each team.
+- **Per-user models** — virtual keys can have an `allowed_models`
+  set; you can edit per user from the gateway admin UI.
+- **Endpoint scoping** — per-role / per-group config overrides on
+  which endpoints and models are visible.
+
+Pick the layer based on whether the gate is **policy** (gateway)
+or **presentation** (chat UI). Usually both — present only the
+models you have policy-allowed.
+
+## How do I add a new AI provider?
+
+Use the `add-model` helper. Any OpenAI-compatible endpoint works —
+pass the base URL, the API key, and the model identifier. See
+[Adding a model](/docs/developer/adding-models).
+
+## Where do my conversations live?
+
+In NUFI's own database. They are not sent to AI providers beyond
+the prompt itself. If you want to delete a conversation, the chat
+UI does it. If you want to delete a user's entire history, the
+admin panel's "Delete user" cascade-deletes their conversations
+and files.
+
+## Is my prompt logged?
+
+Yes — every chat completion is recorded with the full prompt and
+reply. This is the trade-off for being able to debug bad replies
+and answer "what did user X see?". If you have prompts you do not
+want logged, use **temporary chat** in the UI; temporary
+conversations are not persisted.
+
+## Can I disable conversation logging?
+
+Yes. Ask your operator to remove the trace store credentials from
+the gateway and the recording stops. You lose observability and
+the console's usage analytics in exchange.
+
+## Why is the trace store growing so fast?
+
+It stores every conversation in detail. At moderate usage, expect
+~50 MB per 1000 conversations. Apply a retention policy if needed.
+
+## How do I sign people in via my identity provider?
+
+NUFI supports OpenID Connect out of the box. Add the OIDC settings
+to your deployment, restart, and the sign-in screen gets a "Sign
+in with \<provider\>" button. The admin panel reads the same auth.
+
+## How do I rotate the gateway master key?
+
+1. Generate a new key.
+2. Set it in the deployment env, restart the gateway.
+3. Update every consumer that uses it.
+4. User-issued API keys keep working — only the master key
+   changed.
+
+## Does NUFI work behind Cloudflare Access / Zscaler / corporate proxy?
+
+Yes. NUFI is just HTTPS. Anything that fronts HTTPS works. If you
+put NUFI behind Cloudflare Access, signing in to Access lets you
+through to the chat sign-in.
+
+## Where do I report a bug?
+
+The component that owns the surface:
+
+- Chat behaviour or UI → the NUFI chat repo.
+- Admin panel → the admin panel repo.
+- Developer console → the console repo.
+- Compose / env / install → the platform repo.
+
+If you are not sure, file on the platform repo — the team will
+route it.

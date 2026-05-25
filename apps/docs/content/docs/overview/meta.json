@@ -1,0 +1,16 @@
+{
+  "title": "Overview",
+  "description": "Start here — architecture, components, and quick start",
+  "root": true,
+  "icon": "BookOpen",
+  "pages": [
+    "index",
+    "architecture",
+    "components",
+    "data-flow",
+    "---Get started---",
+    "../getting-started/prerequisites",
+    "../getting-started/quick-start",
+    "../getting-started/verify-install"
+  ]
+}

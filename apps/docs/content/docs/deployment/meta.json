@@ -1,0 +1,21 @@
+{
+  "title": "DevOps",
+  "description": "Deploy, monitor, troubleshoot",
+  "root": true,
+  "icon": "Server",
+  "pages": [
+    "index",
+    "docker-compose",
+    "environment-variables",
+    "ghcr-images",
+    "sso-reverse-proxy",
+    "cloudflare-tunnel",
+    "monitoring-alerts",
+    "backup-restore",
+    "infra-sizing",
+    "---Operate---",
+    "../operations/troubleshooting",
+    "../operations/upgrade-librechat",
+    "../operations/faq"
+  ]
+}

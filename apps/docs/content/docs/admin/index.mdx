@@ -1,0 +1,39 @@
+---
+title: For admins
+description: Where to look for each admin task, by surface.
+---
+
+Day-to-day administration is split across four surfaces. Pick the
+one that owns what you want to change.
+
+| Want to…                                                                  | Use…                                                          |
+|---------------------------------------------------------------------------|---------------------------------------------------------------|
+| Change chat features, allowed file types, branding                        | [Admin panel → Configuration](/docs/admin/configuration)      |
+| Add / disable / impersonate a user, reset a password                      | [Admin panel → Users](/docs/admin/users)                      |
+| Define roles, put users into groups, grant capabilities                   | [Admin panel → Roles and groups](/docs/admin/roles-and-groups)|
+| Apply a per-role or per-group override (e.g. raise the file size cap)     | [Admin panel → Scoped overrides](/docs/admin/scoped-overrides)|
+| Register a new AI model, set budgets, set rate limits                     | [Gateway admin](/docs/admin/litellm)                          |
+| Read a single user's conversation, debug a bad reply                      | [Trace viewer](/docs/admin/langfuse)                          |
+| Watch error rate, latency, request rate, host health                      | [Dashboards](/docs/admin/grafana)                             |
+
+## The admin role
+
+The first user registered on a fresh NUFI install gets the `ADMIN`
+role automatically. Every later user defaults to `USER`. The
+[Roles and groups](/docs/admin/roles-and-groups) page covers how to
+elevate later users to admin.
+
+Admin status applies separately to each surface:
+
+- **Admin panel** — uses your NUFI sign-in. Only `ADMIN`-role
+  accounts can sign in.
+- **Gateway admin** — has its own master key. Set during install.
+- **Trace viewer** — has its own user model. The first user on a
+  fresh install becomes the org owner.
+- **Dashboards** — has its own user model. Initial credentials are
+  set during install.
+
+Yes, four separate sign-ins. Each system is independent so a
+compromise of one does not cascade. The chat sign-in is the
+canonical user identity; the others are operational tools you only
+open when you need them.

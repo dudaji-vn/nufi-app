@@ -1,0 +1,108 @@
+---
+title: Cloudflare tunnel
+description: Expose an internal NUFI install to the internet without opening a port.
+---
+
+When the server is inside an office network with no inbound access —
+or you simply do not want to manage TLS and DNS yourself — a
+**Cloudflare tunnel** is the path of least resistance.
+
+The tunnel is outbound: `cloudflared` on the server holds a long-lived
+connection to Cloudflare. Cloudflare receives requests for your
+hostnames and forwards them down the tunnel. No public IP, no
+firewall rules.
+
+## Five public hostnames
+
+Following the platform's reference layout:
+
+| Hostname                  | Target              | Notes                                          |
+|---------------------------|---------------------|------------------------------------------------|
+| `chat.nufi.me`              | `librechat:3080`    | Behind Cloudflare Access (SSO)                 |
+| `console.nufi.me`           | `console:3000`      | Behind Cloudflare Access (SSO)                 |
+| `langfuse.nufi.me`          | `langfuse-web:3000` | Behind Cloudflare Access (SSO)                 |
+| `grafana.nufi.me`           | `grafana:3000`      | Behind Cloudflare Access (SSO)                 |
+| `api.nufi.me`               | `litellm-proxy:4000`| **No Access** — virtual-key auth only          |
+
+`api.nufi.me` is deliberately not behind Access — clients hit it with a
+gateway-issued API key in the `Authorization` header, not a browser
+session.
+
+## One-time setup
+
+1. **Add your domain to Cloudflare.** Update your registrar's
+   nameservers to Cloudflare's.
+2. **Enable Zero Trust** (free plan supports up to 50 users).
+3. **Create a tunnel.** Zero Trust → Networks → Tunnels →
+   `Create Tunnel`. Name it `nufi-prod`. Copy the install command.
+4. **Install `cloudflared` on the host** as a system service:
+   ```bash
+   sudo cloudflared service install <token-from-step-3>
+   sudo systemctl status cloudflared
+   ```
+5. **Add hostname routes.** In the tunnel's UI:
+   - `chat.nufi.me` → `http://librechat:3080`
+   - `console.nufi.me` → `http://console:3000`
+   - etc.
+
+Each route picks its target by Docker service name, because
+`cloudflared` runs on the host with access to the `npuops` network
+(use `--network npuops` on the cloudflared container, or run
+cloudflared inside the compose file with the right network attached).
+
+## Lock it down with Access policies
+
+For each hostname *except* `api.nufi.me`:
+
+1. Zero Trust → Access → Applications → **Add application**.
+2. Type: `Self-hosted`.
+3. Hostname: pick the same domain.
+4. Add an access policy:
+   - **Action**: Allow
+   - **Include**: `Emails ending in @dudaji.com` (or your domain).
+5. Save.
+
+Visitors land on a Cloudflare Access login screen, sign in with their
+corporate email, and are then forwarded to the chat (which then
+checks its own session).
+
+This is two-factor in a useful sense: even if a the NUFI session is
+stolen, the attacker still needs an Access-eligible identity to reach
+the hostname.
+
+## Cookie scoping under Cloudflare
+
+The cookie rewrite from [SSO + reverse proxy](/docs/deployment/sso-reverse-proxy)
+still applies. The cleanest way is to keep Caddy on the host between
+`cloudflared` and the compose stack, doing the cookie rewrite, and
+let Cloudflare just be the public face:
+
+```
+client → Cloudflare → cloudflared → Caddy on host → librechat / console / …
+```
+
+Or skip Caddy and do the cookie rewrite in a Cloudflare Worker — but
+Caddy is simpler.
+
+## Cost
+
+- Tunnel: free.
+- Access: free up to 50 users; $3/user/month above.
+- TLS: free (Cloudflare-managed).
+
+## Troubleshooting
+
+- **404 from Cloudflare** — hostname route missing or pointing at
+  the wrong service name. Check the tunnel's Public Hostnames page.
+- **502 / 521** — `cloudflared` can reach Cloudflare but cannot
+  reach the target service. Verify the target hostname resolves
+  inside the same network as `cloudflared`.
+- **Loop redirecting Access** — clock skew on the host. Sync NTP.
+- **Slow chat completions** — Cloudflare has a 100-second timeout on
+  free-plan tunnels. Long streams hit it. Either move to a paid plan
+  (longer timeout) or split big responses into smaller ones.
+
+## See also
+
+The platform repo's `docs/cloudflare-tunnel-setup.md` has the full
+walkthrough with screenshots.

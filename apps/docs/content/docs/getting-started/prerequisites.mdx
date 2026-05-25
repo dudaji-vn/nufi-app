@@ -1,0 +1,59 @@
+---
+title: Prerequisites
+description: What you need installed before the quick start.
+---
+
+## Required for everyone
+
+- **Docker Engine 24+** with the Compose v2 plugin.
+  - macOS / Windows: [Docker Desktop](https://www.docker.com) with at
+    least 4 GB of RAM allocated.
+  - Linux: Docker Engine + the `docker compose` plugin (not the legacy
+    `docker-compose` binary).
+- **git**
+- **A POSIX shell** to run the bootstrap scripts.
+  - macOS / Linux — Terminal works.
+  - Windows — **Git Bash** (ships with Git for Windows) or **WSL2**. Do
+    not run `*.sh` scripts from cmd.exe or PowerShell.
+- **`openssl`** — used by the bootstrap scripts to generate secrets.
+- **A GitHub Personal Access Token with `read:packages`** to pull
+  private images from `ghcr.io/dudaji-vn/*`. See
+  [GHCR auth](/docs/deployment/ghcr-images).
+
+## Required only for the full platform
+
+- **`yq`** (Mike Farah's Go binary, not the Python tool with the same
+  name). Used by `bootstrap.sh` and `add-model.sh` to edit YAML in place.
+  - macOS — `brew install yq`
+  - Linux — `sudo snap install yq` or download the binary from
+    [github.com/mikefarah/yq](https://github.com/mikefarah/yq/releases)
+  - Windows (Git Bash / WSL2) — `winget install MikeFarah.yq` or the
+    Linux binary above
+- **An LLM backend** that speaks the OpenAI Chat Completions API. Any
+  of:
+  - Local **Ollama** (`brew install ollama && brew services start ollama`)
+  - A remote **vLLM / TGI** server on your network
+  - A cloud provider (OpenAI, Anthropic, Together, Groq, OpenRouter, …)
+  - A custom OpenAI-compatible server
+
+  You can also start with `--backend skip` and register a model later.
+- **~10 GB of free disk** for Postgres / Mongo / ClickHouse / MinIO /
+  Langfuse / Prometheus volumes.
+
+## Required only for the dev console / admin-panel repos
+
+- **Bun 1.3+** — `curl -fsSL https://bun.sh/install | bash`
+- **Node.js 20.19+ / 22.12+ / 23+** — for the the NUFI Chat application itself.
+
+## Quick verification
+
+```bash
+docker --version          # Docker version 27.0+
+docker compose version    # Compose v2.30+
+git --version
+openssl version
+yq --version              # full-platform only — must be the Go yq
+```
+
+Once these all return non-error output, you are ready for the
+[Quick start](/docs/getting-started/quick-start).

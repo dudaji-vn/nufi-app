@@ -1,0 +1,110 @@
+---
+title: Upgrade the chat backend
+description: Bumping the chat application version without breaking the world.
+---
+
+NUFI's chat application is its own codebase. New releases land
+periodically. This page walks through how operators bump the version
+in production safely.
+
+There are two upgrades to think about:
+
+1. **New chat version available** — a new image tag is published.
+2. **Deploy that new tag** — update the image in your compose file
+   and roll it out.
+
+## Decide whether to upgrade
+
+Read the chat backend's release notes **before** rolling out a new
+version. Look for:
+
+- **Breaking schema changes** in the database (rare, but they
+  happen at major versions).
+- **Removed or renamed configuration keys** (force a config
+  update).
+- **New required environment variables** (force a `.env` update).
+
+If any of those apply, plan a maintenance window and a rollback
+path.
+
+## Take a backup first
+
+Always take a fresh database backup right before bumping. See
+[Backup and restore](/docs/deployment/backup-restore). The rollback
+plan depends on this backup existing.
+
+## Bump the image tag
+
+In `npuops-platform/docker-compose.yml`, change the chat image's
+tag:
+
+```yaml
+chat:
+  image: ghcr.io/dudaji-vn/nufichat:nufi-v0.0.6   # previous: nufi-v0.0.5
+```
+
+Then:
+
+```bash
+docker compose pull chat
+docker compose up -d chat
+docker compose logs -f chat
+```
+
+## Watch for schema migrations
+
+The chat application's schema migrations run automatically on first
+boot of the new image. The container logs them at INFO level —
+tail the logs on the first start to confirm they all pass.
+
+If a migration fails:
+
+1. Restore the database backup taken before the upgrade.
+2. Roll back the image tag (see [Release flow](/docs/developer/release-flow)).
+3. Open an issue describing the failure.
+
+## Smoke-test
+
+After the new container is healthy:
+
+1. Sign in. Pick a model. Send a message. Confirm the reply
+   arrives.
+2. Open a recent conversation. Confirm it loads and history is
+   intact.
+3. Generate an API key. Make a call against `api.nufi.me`.
+   Confirm 200.
+4. Check the trace viewer. Confirm new traces are landing.
+
+If all four pass, the upgrade is done.
+
+## Roll back
+
+If something is wrong:
+
+```yaml
+chat:
+  image: ghcr.io/dudaji-vn/nufichat:nufi-v0.0.5   # previous good
+```
+
+```bash
+docker compose pull chat
+docker compose up -d chat
+```
+
+If the new version ran schema migrations that the old version
+cannot read, also restore the database backup. This is why a
+fresh backup before every upgrade is non-negotiable.
+
+## Keep your customisation small
+
+If your team has customised the chat application, the value of the
+customisation is the small, auditable diff over the upstream base.
+The smaller the diff, the less painful each upgrade. Push general-
+purpose customisations upstream as PRs whenever you can.
+
+## See also
+
+- [Backup and restore](/docs/deployment/backup-restore) — the
+  backup to take **before** you merge.
+- [Release flow](/docs/developer/release-flow) — the standard ship
+  pipeline.

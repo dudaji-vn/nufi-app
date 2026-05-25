@@ -1,0 +1,7 @@
+{
+  "title": "Reference",
+  "description": "Tables you look up",
+  "root": true,
+  "icon": "List",
+  "pages": ["index", "ports", "env-vars", "glossary"]
+}

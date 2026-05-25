@@ -1,0 +1,67 @@
+---
+title: Trace viewer
+description: Inspect every conversation, debug bad replies, watch cost.
+---
+
+The **trace viewer** at `langfuse.nufi.me` records every AI request
+NUFI handles — the prompt, the reply, the latency, the token
+counts, the cost, and the user identity. This is what you open when
+a user says "the AI got it wrong" or "where did our budget go this
+month?"
+
+## Sign in
+
+The first user to register on a fresh install becomes the **org
+owner**. Subsequent users you invite from **Settings → Members**.
+
+The trace viewer has its own user model, separate from the chat.
+This is intentional — it limits who can read other users'
+conversations to a small set of trusted operators.
+
+## What is a trace?
+
+A **trace** is a top-level event — usually one chat completion.
+Inside a trace, **observations** record nested calls (one per AI
+call, one per tool call, one per safety filter). Each observation
+has its own duration, model, prompt, reply, and cost.
+
+## What you actually do here
+
+### Debug a specific user complaint
+
+A user says "the model lied to me at 2 pm".
+
+1. **Traces** → filter `userId = <their id>` and timeframe `last
+   2h`.
+2. Find the trace, click in.
+3. The **Observations** panel shows every step — the system
+   prompt, the user prompt, the assistant reply, any tool calls,
+   any safety filter decisions.
+
+### Compare two models on the same prompt
+
+1. **Datasets** → create a dataset of prompts you care about.
+2. **Datasets → Run** → pick the two models.
+3. Read the diff and the latency comparison.
+
+### Score a model run
+
+For feedback collection:
+
+1. Open a trace.
+2. Click **Add score** in the observation.
+3. Tag it (`quality`, `helpfulness`, `1-5`, …).
+
+Scores aggregate into the dashboard panels and the Datasets view.
+
+### Watch cost
+
+**Dashboard → Cost** shows daily and monthly spend broken down by
+model, user, and hardware. Useful for "which team is burning
+through the budget?" questions.
+
+## Retention
+
+By default, traces are kept forever. If your trace store grows too
+large, ask your operator to set a retention policy — typically 90
+days for development, 1 year for production.

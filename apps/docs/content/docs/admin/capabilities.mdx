@@ -1,0 +1,60 @@
+---
+title: Capabilities
+description: Every admin action is gated by a capability constant.
+---
+
+Capabilities are the unit of authorisation inside the admin panel.
+You do not hand out individual permissions — you hand out roles
+that bundle capabilities.
+
+## Why constants, not booleans
+
+A user's permissions are encoded as a `Set<Capability>` rather than
+a list of feature flags. This makes:
+
+- Implication graphs easy (`MANAGE_X` automatically grants
+  `VIEW_X`).
+- Server-side checks cheap (a single set lookup).
+- The capability list refactor-proof — renaming a feature in the
+  UI does not change the persisted role definitions.
+
+## The full list
+
+| Capability                  | Grants                                                              |
+|-----------------------------|---------------------------------------------------------------------|
+| `MANAGE_USERS`              | Create, edit, deactivate, delete users; reset passwords            |
+| `VIEW_USERS`                | Read-only access to the user list                                  |
+| `MANAGE_ROLES`              | Define roles and capability grants                                 |
+| `VIEW_ROLES`                | Read-only access to role definitions                               |
+| `MANAGE_GROUPS`             | Create, edit, delete groups; add / remove members                  |
+| `VIEW_GROUPS`               | Read-only access to groups                                         |
+| `MANAGE_CONFIG`             | Read and write base configuration                                  |
+| `ASSIGN_CONFIGS`            | Attach scoped config overrides to roles / groups / users           |
+| `VIEW_CONFIG`               | Read-only access to the configuration tab                          |
+| `MANAGE_AGENTS`             | Create / edit / delete shared agents in the marketplace            |
+| `MANAGE_TOOLS`              | Register / deregister connected tools                              |
+| `VIEW_AUDIT`                | Read the audit log                                                 |
+| `IMPERSONATE`               | Sign in as another user                                            |
+
+## Implications
+
+Some capabilities cascade. For example, granting `MANAGE_USERS`
+implicitly grants `VIEW_USERS` — you cannot edit what you cannot
+read.
+
+When you tick `MANAGE_X`, the panel renders the `VIEW_X` tick as
+already-on and disables it. To un-grant `VIEW_X`, you must first
+un-grant `MANAGE_X`.
+
+## Server-side enforcement
+
+Every server function that mutates state asserts the calling user
+holds the relevant capability. A panel that forgets to render a
+button never permits an action — the button only suppresses the
+UI. The server is the source of truth.
+
+## Custom capabilities
+
+You cannot add custom capabilities from the panel — they are part
+of NUFI's authorisation schema. If you need a new one, request it
+from the NUFI engineering team.

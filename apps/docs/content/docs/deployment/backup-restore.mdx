@@ -1,0 +1,129 @@
+---
+title: Backup and restore
+description: What is worth backing up, how to schedule it, how to restore.
+---
+
+The state that matters lives in four volumes. Everything else
+(Prometheus metrics, Redis cache) is rebuilt automatically and not
+worth backing up.
+
+## What to back up
+
+| Volume             | What is in it                                       | Frequency | RPO target |
+|--------------------|-----------------------------------------------------|-----------|------------|
+| `postgres-data`    | Gateway keys, budgets; trace metadata            | Nightly   | 24 h       |
+| `mongodb-data`     | chat conversations, users, agents              | Nightly   | 24 h       |
+| `clickhouse-data`  | Langfuse traces                                     | Weekly    | 7 d        |
+| `minio-data`       | Langfuse blob payloads                              | Weekly    | 7 d        |
+
+Postgres + MongoDB are the **business-critical** stores. Without them
+you lose user accounts and conversation history. ClickHouse + MinIO
+are **forensic** — losing them costs you observability history, not
+operational state.
+
+## Postgres
+
+Logical dump on a schedule:
+
+```bash
+docker compose exec -T postgres \
+  pg_dumpall -U "$POSTGRES_USER" \
+  | gzip > "/backups/pg_$(date +%F).sql.gz"
+```
+
+Stick that in `cron` or systemd-timer. Keep 30 days. Restore:
+
+```bash
+gunzip < pg_2026-05-25.sql.gz | \
+  docker compose exec -T postgres psql -U "$POSTGRES_USER"
+```
+
+## MongoDB
+
+```bash
+docker compose exec -T mongodb \
+  mongodump --archive --gzip \
+  > "/backups/mongo_$(date +%F).gz"
+```
+
+Restore:
+
+```bash
+docker compose exec -T mongodb \
+  mongorestore --archive --gzip --drop < mongo_2026-05-25.gz
+```
+
+`--drop` clears existing collections first — use only on a fresh
+target.
+
+## ClickHouse + MinIO
+
+Both are too large for daily logical dumps. Snapshot the underlying
+volumes weekly instead:
+
+```bash
+docker run --rm \
+  -v npuops_clickhouse-data:/data \
+  -v "$PWD/backups:/out" \
+  alpine tar czf "/out/clickhouse_$(date +%F).tar.gz" /data
+```
+
+…and the same for `npuops_minio-data`. Restore by extracting back
+into the volume while the service is stopped.
+
+For larger deployments, replicate to off-host storage — S3, NFS,
+restic, borg, your IT team's preferred tool. Don't keep backups on
+the same disk as production data.
+
+## Ship backups off-host
+
+Whatever scheduler you use, end the script with a copy to off-host
+storage. Examples:
+
+```bash
+# Rsync to a separate VM
+rsync -av /backups/ backup-vm:/srv/nufi/
+
+# S3 / MinIO
+aws s3 sync /backups s3://nufi-backups/nufi/
+
+# B2 / Wasabi etc.
+restic backup /backups
+```
+
+## Restore drill
+
+Schedule a drill once a quarter. The drill:
+
+1. Spin up a parallel compose stack on a separate host.
+2. Stop it. Replace its volumes with the latest backups.
+3. Start it.
+4. Sign in. Pick a recent conversation. Issue a chat. Confirm
+   everything works.
+
+Untested backups are not backups. The drill is the only way you
+learn the gotchas (e.g. ClickHouse migration mismatches if the schema
+moved forward) before an actual incident.
+
+## What you do not back up
+
+- **Prometheus metrics**. Cheap to lose; would only impact graphs.
+- **Redis**. Rate-limit counters and cache. Reset on restart.
+- **Grafana data**. Dashboards are provisioned from
+  `monitoring/grafana/dashboards/` (in git), so a fresh container
+  reads them on first boot.
+- **MinIO `langfuse` bucket bootstrap**. Recreated by `minio-init` on
+  startup.
+
+## On Postgres tablespace growth
+
+Langfuse stores **metadata** in Postgres and **traces** in ClickHouse.
+That keeps Postgres small (~1–5 GB at moderate scale). If your
+Postgres dump grows past ~10 GB, something else is wrong — typically
+The gateway's spend logs not being purged. Set
+`spend_logs_max_size` in `litellm/config.yaml` to enforce retention.
+
+## See also
+
+- [Operations → Troubleshooting](/docs/operations/troubleshooting) —
+  recovering from common failure modes.

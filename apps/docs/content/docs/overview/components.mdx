@@ -1,0 +1,64 @@
+---
+title: Components
+description: Every piece of NUFI and what it does.
+---
+
+NUFI is one product but it is made of several services. End users
+see only **the chat** and **the console**. Admins also see **the
+admin panel** and **observability dashboards**. Everything else runs
+behind the scenes.
+
+## What end users see
+
+| Surface           | URL                  | Purpose                                |
+|-------------------|----------------------|----------------------------------------|
+| **Chat**          | `chat.nufi.me`       | Day-to-day AI conversations            |
+| **Console**       | `console.nufi.me`    | Self-serve API keys + your own usage   |
+
+That is the entire end-user-facing world. Sign in once, get to both.
+
+## What admins see
+
+| Surface           | URL                  | Purpose                                |
+|-------------------|----------------------|----------------------------------------|
+| **Admin panel**   | `admin.nufi.me`      | Users, roles, groups, configuration    |
+| **Trace viewer**  | `langfuse.nufi.me`   | Inspect any conversation in detail     |
+| **Dashboards**    | `grafana.nufi.me`    | Request volume, latency, errors        |
+| **Gateway admin** | `api.nufi.me/ui`     | Models, virtual keys, routing rules    |
+
+Admins do not need to know how each one works internally — the
+[Admin](/docs/admin) section walks through the day-to-day tasks for
+each.
+
+## Behind the scenes
+
+The platform is built from a number of independent services. These
+exist so NUFI can swap parts (a new AI provider, a different storage
+engine) without rebuilding the product. You do not need to remember
+these to **use** NUFI — they are listed here for the operators who
+run it.
+
+| Service              | Role                                                |
+|----------------------|-----------------------------------------------------|
+| **Chat application** | Renders the conversation UI                         |
+| **Console**          | Renders the developer self-serve UI                 |
+| **Admin panel**      | Renders the admin tools                             |
+| **AI Gateway**       | Routes every request through one authenticated entry point |
+| **Safety filters**   | Pre-scan prompts for sensitive personal data and injection attempts |
+| **Trace store**      | Records every conversation for audit and debugging |
+| **Metrics & alerts** | Watches platform health, pages on-call             |
+| **State stores**     | Databases for conversations, users, settings        |
+
+For the exact image names, ports, and ops detail, see
+[DevOps → Docker compose](/docs/deployment/docker-compose) or
+[Reference → ports](/docs/reference/ports).
+
+## Repositories (for builders only)
+
+If you are integrating with NUFI from outside (your own code calling
+the API), you do not need anything from this section — just an API
+key from the [console](/docs/end-user/api-keys).
+
+If you are **building** NUFI itself, the source code lives in five
+GitHub repositories. See [Developer](/docs/developer) for the
+per-repo walkthroughs.

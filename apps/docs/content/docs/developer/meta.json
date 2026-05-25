@@ -1,0 +1,16 @@
+{
+  "title": "Developer",
+  "description": "Run the stack locally and ship to it",
+  "root": true,
+  "icon": "Code",
+  "pages": [
+    "index",
+    "local-stack",
+    "nufi-chat",
+    "librechat-fork",
+    "admin-panel-dev",
+    "console-dev",
+    "adding-models",
+    "release-flow"
+  ]
+}
