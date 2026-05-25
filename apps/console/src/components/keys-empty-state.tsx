@@ -1,7 +1,17 @@
+import { useQuery } from '@tanstack/react-query';
 import { Activity, KeyRound, Plus, Wallet } from 'lucide-react';
+import { api } from '@/lib/orpc';
 import { Button } from './ui/button';
 
+const LITELLM_URL = import.meta.env.VITE_LITELLM_URL ?? 'http://localhost:4000';
+const FALLBACK_MODEL = 'qwen2.5-3b';
+
 export function KeysEmptyState({ onGenerate }: { onGenerate: () => void }) {
+  const { data: models } = useQuery({
+    ...api.models.list.queryOptions(),
+    staleTime: 5 * 60_000,
+  });
+  const model = models?.[0]?.id ?? FALLBACK_MODEL;
   return (
     <div className="rounded-xl border bg-card p-6 text-card-foreground sm:p-10">
       <div className="mx-auto max-w-xl text-center">
@@ -43,10 +53,10 @@ export function KeysEmptyState({ onGenerate }: { onGenerate: () => void }) {
           What a call looks like
         </p>
         <pre className="overflow-x-auto text-[11px] font-mono leading-relaxed text-muted-foreground sm:text-xs">
-          {`curl http://localhost:4000/v1/chat/completions \\
+          {`curl ${LITELLM_URL}/v1/chat/completions \\
   -H "Authorization: Bearer sk-..." \\
   -H "Content-Type: application/json" \\
-  -d '{"model":"qwen2.5-3b","messages":[
+  -d '{"model":"${model}","messages":[
        {"role":"user","content":"hello"}]}'`}
         </pre>
       </div>

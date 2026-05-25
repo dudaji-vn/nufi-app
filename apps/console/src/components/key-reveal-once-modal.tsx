@@ -1,6 +1,8 @@
+import { useQuery } from '@tanstack/react-query';
 import { Check, Copy } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { api } from '@/lib/orpc';
 import { useUi } from '@/stores/ui';
 import { Button } from './ui/button';
 import {
@@ -13,15 +15,15 @@ import {
 } from './ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 
-const LITELLM_URL = 'http://localhost:4000';
-const DEFAULT_MODEL = 'qwen2.5-3b';
+const LITELLM_URL = import.meta.env.VITE_LITELLM_URL ?? 'http://localhost:4000';
+const FALLBACK_MODEL = 'qwen2.5-3b';
 
-const snippets = (key: string) => ({
+const snippets = (key: string, model: string) => ({
   curl: `curl ${LITELLM_URL}/v1/chat/completions \\
   -H "Authorization: Bearer ${key}" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "model": "${DEFAULT_MODEL}",
+    "model": "${model}",
     "messages": [{"role": "user", "content": "hello"}]
   }'`,
   python: `from openai import OpenAI
@@ -32,7 +34,7 @@ client = OpenAI(
 )
 
 resp = client.chat.completions.create(
-    model="${DEFAULT_MODEL}",
+    model="${model}",
     messages=[{"role": "user", "content": "hello"}],
 )
 print(resp.choices[0].message.content)`,
@@ -44,7 +46,7 @@ const client = new OpenAI({
 });
 
 const resp = await client.chat.completions.create({
-  model: "${DEFAULT_MODEL}",
+  model: "${model}",
   messages: [{ role: "user", content: "hello" }],
 });
 console.log(resp.choices[0].message.content);`,
@@ -56,9 +58,16 @@ export function KeyRevealOnceModal() {
   const [copiedKey, setCopiedKey] = useState(false);
   const [copiedSnippet, setCopiedSnippet] = useState<string | null>(null);
 
+  const { data: models } = useQuery({
+    ...api.models.list.queryOptions(),
+    enabled: !!revealed,
+    staleTime: 5 * 60_000,
+  });
+
   if (!revealed) return null;
 
-  const code = snippets(revealed.key);
+  const model = models?.[0]?.id ?? FALLBACK_MODEL;
+  const code = snippets(revealed.key, model);
 
   async function copy(text: string, kind: 'key' | string) {
     try {

@@ -10,6 +10,10 @@ on:
         description: "Public chat URL to bake into the SPA (overrides repo variable LIBRECHAT_URL)"
         required: false
         default: ""
+      litellm_url:
+        description: "Public LiteLLM URL shown in API key code snippets (overrides repo variable LITELLM_URL)"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -51,6 +55,14 @@ jobs:
           url="${url:-http://localhost:3080}"
           echo "url=$url" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve LITELLM_URL build arg
+        id: litellm
+        run: |
+          url="${{ github.event.inputs.litellm_url }}"
+          url="${url:-${{ vars.LITELLM_URL }}}"
+          url="${url:-http://localhost:4000}"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
       - uses: docker/build-push-action@v6
         with:
           context: .
@@ -61,5 +73,6 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             LIBRECHAT_URL=${{ steps.librechat.outputs.url }}
+            LITELLM_URL=${{ steps.litellm.outputs.url }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

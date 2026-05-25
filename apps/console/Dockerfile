@@ -22,6 +22,12 @@ COPY public ./public
 ARG LIBRECHAT_URL=http://localhost:3080
 ENV VITE_LIBRECHAT_URL=$LIBRECHAT_URL
 
+# Public LiteLLM URL shown in the "How to use it" code snippets after a key
+# is generated. Distinct from the server-side LITELLM_BASE_URL (which talks
+# to the proxy over the internal docker network).
+ARG LITELLM_URL=http://localhost:4000
+ENV VITE_LITELLM_URL=$LITELLM_URL
+
 RUN bunx @tanstack/router-cli generate \
  && bun run build
 

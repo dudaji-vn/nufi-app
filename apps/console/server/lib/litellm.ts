@@ -195,6 +195,19 @@ export async function deleteKey(token: string): Promise<void> {
   await call<unknown>('POST', '/key/delete', { keys: [token] });
 }
 
+// --- Models -----------------------------------------------------------------
+
+export type LiteLLMModel = { id: string };
+type ModelListResponse = { data?: Array<{ id: string }> } | Array<{ id: string }>;
+
+export async function listModels(): Promise<LiteLLMModel[]> {
+  const raw = await call<ModelListResponse>('GET', '/v1/models');
+  const rows = Array.isArray(raw) ? raw : (raw?.data ?? []);
+  return rows
+    .filter((m): m is { id: string } => typeof m?.id === 'string')
+    .map((m) => ({ id: m.id }));
+}
+
 export async function getKeyInfo(token: string): Promise<LiteLLMKey | null> {
   try {
     const res = await call<{ info?: LiteLLMKey } & LiteLLMKey>(
