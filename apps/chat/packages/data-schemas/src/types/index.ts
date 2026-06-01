@@ -32,6 +32,8 @@ export * from './systemGrant';
 export * from './group';
 /* Config */
 export * from './config';
+/* Audit log */
+export * from './auditLog';
 /* Admin */
 export * from './admin';
 /* Web */

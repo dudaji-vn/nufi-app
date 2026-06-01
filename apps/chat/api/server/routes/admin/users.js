@@ -3,6 +3,7 @@ const { createAdminUsersHandlers } = require('@librechat/api');
 const { SystemCapabilities } = require('@librechat/data-schemas');
 const { requireCapability } = require('~/server/middleware/roles/capabilities');
 const { requireJwtAuth } = require('~/server/middleware');
+const recordAdminAction = require('~/server/middleware/audit/recordAdminAction');
 const db = require('~/models');
 
 const router = express.Router();
@@ -20,6 +21,7 @@ const handlers = createAdminUsersHandlers({
 });
 
 router.use(requireJwtAuth, requireAdminAccess);
+router.use(recordAdminAction('user'));
 
 router.get('/', requireReadUsers, handlers.listUsers);
 router.get('/search', requireReadUsers, handlers.searchUsers);

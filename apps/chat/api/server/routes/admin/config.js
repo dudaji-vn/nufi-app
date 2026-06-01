@@ -7,6 +7,7 @@ const {
 } = require('~/server/middleware/roles/capabilities');
 const { getAppConfig, invalidateConfigCaches } = require('~/server/services/Config');
 const { requireJwtAuth } = require('~/server/middleware');
+const recordAdminAction = require('~/server/middleware/audit/recordAdminAction');
 const db = require('~/models');
 
 const router = express.Router();
@@ -27,6 +28,7 @@ const handlers = createAdminConfigHandlers({
 });
 
 router.use(requireJwtAuth, requireAdminAccess);
+router.use(recordAdminAction('config'));
 
 router.get('/', handlers.listConfigs);
 router.get('/base', handlers.getBaseConfig);

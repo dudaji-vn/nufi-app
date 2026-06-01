@@ -62,6 +62,8 @@ import {
 import { createAgentMethods, type AgentMethods, type AgentDeps } from './agent';
 /* Config */
 import { createConfigMethods, type ConfigMethods } from './config';
+/* Audit log */
+import { createAuditLogMethods, type AuditLogMethods } from './auditLog';
 
 export { RoleConflictError, DEFAULT_REFRESH_TOKEN_EXPIRY, DEFAULT_SESSION_EXPIRY };
 export { tokenValues, cacheTokenValues, premiumTokenValues, defaultRate };
@@ -98,7 +100,8 @@ export type AllMethods = UserMethods &
   PromptMethods &
   SkillMethods &
   AgentMethods &
-  ConfigMethods;
+  ConfigMethods &
+  AuditLogMethods;
 
 /** Dependencies injected from the api layer into createMethods */
 export interface CreateMethodsDeps {
@@ -228,6 +231,8 @@ export function createMethods(
     ...agentMethods,
     /* Config */
     ...createConfigMethods(mongoose),
+    /* Audit log */
+    ...createAuditLogMethods(mongoose),
   };
 }
 
@@ -273,4 +278,5 @@ export type {
   ValidationIssue,
   AgentMethods,
   ConfigMethods,
+  AuditLogMethods,
 };
