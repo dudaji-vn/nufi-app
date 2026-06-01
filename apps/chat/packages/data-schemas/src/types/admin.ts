@@ -65,8 +65,26 @@ export type AdminConfigDeleteResponse = {
   success: boolean;
 };
 
-/** Audit action types for grant changes. */
-export type AuditAction = 'grant_assigned' | 'grant_removed';
+/**
+ * Audit action keys for administrative actions. `grant_assigned`/`grant_removed`
+ * are kept for backward compatibility with the grants audit tab; the remaining
+ * keys cover the full admin audit log (user / role / group / config / login).
+ */
+export type AuditAction =
+  | 'admin_login'
+  | 'user_created'
+  | 'user_updated'
+  | 'user_deleted'
+  | 'role_created'
+  | 'role_updated'
+  | 'role_deleted'
+  | 'group_created'
+  | 'group_updated'
+  | 'group_deleted'
+  | 'grant_assigned'
+  | 'grant_removed'
+  | 'config_updated'
+  | 'config_deleted';
 
 /** SystemGrant document as returned by the admin API. */
 export type AdminSystemGrant = {
@@ -79,16 +97,36 @@ export type AdminSystemGrant = {
   expiresAt?: string;
 };
 
-/** Audit log entry for grant changes as returned by the admin API. */
+/**
+ * Audit log entry as returned by the admin API. The grant-specific fields
+ * (`targetPrincipalType`, `targetPrincipalId`, `capability`) are optional and
+ * only populated for `grant_assigned` / `grant_removed`; the generic fields
+ * (`targetType`, `targetId`, `targetName`, `details`, `ipAddress`) apply to all
+ * actions.
+ */
 export type AdminAuditLogEntry = {
   id: string;
   action: AuditAction;
   actorId: string;
   actorName: string;
-  targetPrincipalType: PrincipalType;
-  targetPrincipalId: string;
-  targetName: string;
-  capability: string;
+  /** Domain the action touched: 'user' | 'role' | 'group' | 'grant' | 'config'. */
+  targetType?: string;
+  /** Identifier of the affected resource. */
+  targetId?: string;
+  /** Display name of the affected resource. */
+  targetName?: string;
+  /** Human-readable summary of the change. */
+  details?: string;
+  /** Client IP address the action originated from. */
+  ipAddress?: string;
+  /** Outcome of the action. */
+  status?: 'success' | 'failure';
+  /** Grant-only: principal type the capability was granted to / removed from. */
+  targetPrincipalType?: PrincipalType;
+  /** Grant-only: principal id. */
+  targetPrincipalId?: string;
+  /** Grant-only: capability string. */
+  capability?: string;
   timestamp: string;
 };
 

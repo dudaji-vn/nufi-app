@@ -34,6 +34,7 @@ const {
 const { getAppConfig } = require('~/server/services/Config');
 const getLogStores = require('~/cache/getLogStores');
 const { getOpenIdConfig } = require('~/strategies');
+const recordAdminLogin = require('~/server/middleware/audit/recordAdminLogin');
 const middleware = require('~/server/middleware');
 
 const requireAdminAccess = requireCapability(SystemCapabilities.ACCESS_ADMIN);
@@ -77,6 +78,7 @@ router.post(
   tenantContextMiddleware,
   requireAdminAccess,
   setBalanceConfig,
+  recordAdminLogin,
   loginController,
 );
 
