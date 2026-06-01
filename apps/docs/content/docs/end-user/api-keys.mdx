@@ -6,10 +6,16 @@ description: Generate keys for your own apps and watch your usage.
 The **console** at `console.nufi.me` is where you manage API keys for
 your own code — scripts, internal tools, integrations. You only need
 this page if you call NUFI from your own software. If you only use
-the chat, ignore everything here.
+the app, ignore everything here.
 
-You sign in at the chat first; the console reads the same login. No
-second password.
+You sign in at the app first; the console reads the same login. No
+second password. Open it from the app's **avatar menu (bottom-left) →
+Console**, or go straight to `console.nufi.me`.
+
+![The NUFI console overview](/screenshots/console-home.png)
+
+The top navigation has three tabs — **Profile**, **Usage**, and
+**API keys**.
 
 ## What the console shows
 
@@ -20,7 +26,7 @@ second password.
 - A 7-day usage chart.
 - Your most-used API keys.
 
-### Keys (`/keys`)
+### API keys
 
 - A table of every key you have generated.
 - Each row shows the key's nickname, when it was last used, its
@@ -37,7 +43,7 @@ second password.
 ## Generate a key
 
 <Steps>
-<Step>Open **Keys → Generate**.</Step>
+<Step>Open the **API keys** tab and click **Generate**.</Step>
 <Step>Give the key a friendly name — `laptop`, `prod-job`,
 `zapier-integration`. You can have as many as you want.</Step>
 <Step>Optional: tighten the limits for this key (lower budget than
@@ -107,7 +113,8 @@ replies, `tools: [...]` for function calling, `temperature`,
 
 ## Revoke a key
 
-Open **Keys**, find the row, click **·  ·  · ** → **Revoke**. The key
+Open the **API keys** tab, find the row, click **·  ·  · ** →
+**Revoke**. The key
 stops working within seconds. Revoking cannot be undone — but you
 can always generate a fresh one with the same nickname.
 

@@ -1,6 +1,6 @@
 {
-  "title": "End user",
-  "description": "Use the chat and the developer console",
+  "title": "App",
+  "description": "Use the NUFI app and the developer console",
   "root": true,
   "icon": "MessageSquare",
   "pages": [

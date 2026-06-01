@@ -6,7 +6,7 @@ import type { Metadata } from 'next';
 export const metadata: Metadata = {
   title: { default: 'NUFI Docs', template: '%s · NUFI Docs' },
   description:
-    'NUFI is an AI chat platform for teams — documentation for end users, admins, developers, and operators.',
+    'NUFI is an AI app for teams — documentation for end users and admins.',
 };
 
 export default function Layout({ children }: { children: ReactNode }) {

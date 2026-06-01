@@ -1,89 +1,96 @@
 ---
 title: Start chatting
-description: Sending messages, editing, branching, bookmarks, multi-chat, temporary chat.
+description: Send your first message, edit, branch, bookmark, run two chats side by side, and use temporary chat.
 ---
 
-NUFI Chat works like ChatGPT — type, press Enter, get a streaming
-reply. A handful of extras are worth knowing.
+The NUFI app works like ChatGPT — type a question, press **Enter**,
+and the answer streams back word by word. This page walks you through
+it click by click.
 
-## Send a message
+![A conversation in the NUFI app, with the answer toolbar under the reply](/screenshots/chat-conversation.png)
 
-Type into the box at the bottom and press **Enter**. **Shift+Enter**
-for a newline. The reply streams in word by word.
+## Send your first message
 
-While it is streaming you can:
+<Steps>
+<Step>Open `chat.nufi.me`. You land on a **New chat** with an empty
+message box at the bottom that says **"Message Nufi"**.</Step>
+<Step>Click the box and type your question, for example
+*"In one friendly sentence, what can you help me with?"*</Step>
+<Step>Press **Enter** to send. (Use **Shift + Enter** if you want a
+new line instead of sending.)</Step>
+<Step>The reply streams in under **Nufi**. Wait for it to finish —
+that's it, you're chatting.</Step>
+</Steps>
 
-- Hit **Stop** to cancel mid-response.
-- Hit **Regenerate** to ask for a different answer to the same prompt.
+While a reply is still streaming you can click **Stop** to cancel it,
+or **Regenerate** afterwards to ask for a different answer to the same
+question.
 
-## Edit and resubmit
+## The answer toolbar
 
-Hover any message you sent and click the **pencil** icon. Change the
-text, click **Save**. The conversation **branches**: the original
-reply stays on one branch, the new edited prompt produces a new
-reply on another. Switch between branches with the arrows under the
-assistant's reply.
+Hover (or look just under) any reply from Nufi and a small row of
+icons appears — left to right:
 
-This is how you ask "what if I phrase it differently?" without losing
-the original answer.
+| Icon | What it does |
+|------|--------------|
+| 🔊 Speaker | Read the reply aloud — see [Speech](/docs/end-user/speech) |
+| ⧉ Copy | Copy the reply to your clipboard |
+| ✏️ Pencil | Edit your message and try again (see below) |
+| ⑂ Branch | Fork a new conversation from this point |
+| 👍 / 👎 | Tell your admins whether the answer was good |
+| ⟳ Regenerate | Ask for a fresh answer |
 
-## Branching and forking
+## Edit and try again
 
-- **Branching** happens automatically when you edit a message.
-- **Forking** is explicit — right-click any message → **Fork from
-  here**. A fresh conversation opens, seeded with everything up to
-  that message. Great for exploring a tangent without polluting the
-  main thread.
+Click the **pencil** on a message *you* sent, change the wording, and
+click **Save**. The conversation **branches**: your original reply is
+kept on one branch, the edited prompt creates a new reply on another.
+Use the small arrows under the reply to switch between them.
 
-## Bookmarks
+This is how you ask *"what if I phrase it differently?"* without
+losing the original answer.
 
-Star any conversation to add it to **Bookmarks** (left sidebar). Use
-this for the small set of conversations you reference often — a
-project, a recurring task, a useful prompt.
+## Start a new chat
 
-## Multi-conversation mode
+Click **New chat** (top of the left sidebar) any time you want a
+clean, separate conversation. Past chats are listed below it, grouped
+by **Previous 7 days**, **Previous 30 days**, and so on. Click any one
+to reopen it.
 
-The **+** button next to the model picker opens a second conversation
-**side-by-side**. Useful for:
+## Two chats side by side
 
-- A/B-testing two prompts.
+The **Add multi-conversation** button in the top bar (next to the
+model name) opens a second conversation **beside** the first. Handy
+for:
+
 - Comparing how two models answer the same question.
 - Drafting in one pane while reading reference material in the other.
 
 ## Temporary chat
 
-The **clock** icon next to the message box starts an **ephemeral**
-conversation. Nothing is saved — once you close the tab, the
-conversation is gone.
+The **Temporary Chat** button in the top bar starts an **ephemeral**
+conversation — nothing is saved. Close the tab and it's gone. Use it
+for one-off or sensitive questions you don't want kept in your
+history.
 
-Use temporary chat for:
+## Find an old answer
 
-- Sensitive questions you do not want recorded.
-- One-off experiments.
-- Sharing your screen without exposing past conversations.
+Click **Search messages** at the top of the sidebar and type a word
+you remember. Results jump straight to the matching message — useful
+when you recall an answer but not which chat it came from.
 
-## Search
+## Bookmarks
 
-The **magnifying glass** in the sidebar searches every conversation
-you have. Results jump straight to the matching message — handy when
-you remember an answer but not which chat it came from.
-
-## Export and share
-
-Each conversation has a **·  ·  · ** menu in the top-right:
-
-- **Export** → JSON, Markdown, or screenshot (PNG).
-- **Share** → public link or share with specific teammates.
-- **Import** → bring back a conversation from a previous export.
+Star a conversation to add it to **Bookmarks** in the left sidebar.
+Keep the handful of chats you return to often within easy reach.
 
 ## Keyboard shortcuts
 
 | Shortcut          | Action                                  |
 |-------------------|-----------------------------------------|
 | **Enter**         | Send the message                        |
-| **Shift+Enter**   | New line in the message box             |
-| **Ctrl/⌘ + K**    | Universal jump bar — find anything      |
-| **Ctrl/⌘ + /**    | Toggle the side panel                   |
+| **Shift + Enter** | New line in the message box             |
+| **Ctrl/⌘ + K**    | Jump bar — find anything                |
 | **/** (in box)    | Insert a saved prompt or run a command  |
 
 ## Limits
@@ -91,7 +98,7 @@ Each conversation has a **·  ·  · ** menu in the top-right:
 NUFI is shared across your organisation, so each account has limits:
 
 - **Speed limit** — how many messages per minute. If you go very
-  fast, the chat shows a "please slow down" notice. Wait a few
+  fast, the app shows a "please slow down" notice. Wait a few
   seconds.
 - **Monthly budget** — how much your account can spend on AI per
   cycle. If you hit it, you will see "Budget reached". Ask your

@@ -1,85 +1,93 @@
 ---
 title: Models and presets
-description: Switch between AI models, tune the response style, save presets.
+description: Switch between AI models, tune the response style, and save presets.
 ---
 
-NUFI offers several AI models. You pick which one answers each
-conversation.
+NUFI can offer several AI models. You choose which one answers each
+conversation, and you can fine-tune how it replies.
 
 ## Pick a model
 
-The dropdown at the top of every conversation lists every model
-available to you. The list updates automatically — if your admin
-adds a new model, refreshing the page is enough to see it.
+<Steps>
+<Step>Click the **model name** at the top-left of the conversation
+(in the screenshot below it reads *gemini*).</Step>
+<Step>A menu opens listing the model groups available to you —
+for example **Nufi** and **Sun LLM**. Use the **Search models…** box
+to filter when the list is long.</Step>
+<Step>Click a group, then pick a model from it. The conversation now
+uses that model. A ✓ marks the one currently selected.</Step>
+</Steps>
 
-Common badges next to model names:
+![The model picker open, showing the available model groups](/screenshots/chat-model-menu.png)
 
-- 👁️ **vision** — accepts images
-- 🛠️ **tools** — can call tools and run code
-- 🧠 **reasoning** — thinks step-by-step before replying
-
-Newer or larger models are usually more capable but slower and more
-expensive against your budget. Smaller models are faster and cheaper.
-Try a few and see what fits.
+The list updates automatically — when your admin adds a new model,
+refreshing the page is enough to see it. Newer or larger models are
+usually more capable but slower and cost more against your budget;
+smaller models are faster and cheaper. Try a few and see what fits.
 
 ## Tune the response style
 
-The side panel has a **Parameters** tab. The two you will actually use:
+Open **Parameters** from the left icon rail. A panel slides out where
+you can shape how the model behaves:
 
-- **Temperature** — low (around 0) for precise, deterministic
-  answers (good for code, summaries, extracting data). High (around
-  1) for creative, varied answers (brainstorming, copy-writing).
-- **Max length** — caps how long the reply can be.
+![The Parameters panel with model settings](/screenshots/chat-parameters.png)
 
-The advanced ones (Top P, frequency penalty, presence penalty) are
-sampling controls — leave them alone unless you know what you want.
+The settings you'll actually reach for:
 
-The **System prompt** field is what the AI sees before your first
-message — a persona, instructions, a tone. Set one to steer the
-whole conversation.
+- **Custom Instructions** — what the model should know before your
+  first message: a persona, a tone, standing rules. This steers the
+  whole conversation. *("You are a concise assistant. Reply in
+  Vietnamese.")*
+- **Temperature** — low (near 0) for precise, repeatable answers
+  (code, summaries, data). High (near 1) for creative, varied answers
+  (brainstorming, copy-writing).
+- **Max Output Tokens** — caps how long a single reply can be.
+- **Web Search** — toggle live web lookups for this conversation (see
+  [Web search](/docs/end-user/web-search)).
 
-Settings stick to the current conversation only. Start a new chat to
-reset, or save your favourite combo as a **preset**.
+The advanced controls (Top P, frequency / presence penalty, reasoning
+effort) are sampling knobs — leave them alone unless you know what you
+want. Click **Reset Model Parameters** at the bottom to go back to
+defaults.
+
+Settings apply to the **current conversation only**. Start a new chat
+to reset, or save your favourite combination as a **preset**.
 
 ## Presets
 
-A preset is a saved bundle: `{ model, parameters, system prompt }`
-with a name.
+A preset is a saved bundle of `{ model, parameters, instructions }`
+under a name.
 
-**Save**: click **Save as preset** in the side panel. Give it a name
-(e.g. "Code review", "Translation EN→VN", "Friendly customer reply").
+![The Presets menu](/screenshots/chat-presets-menu.png)
 
-**Use**: pick a preset from the **Presets** dropdown above the
-message box. New conversations seeded from a preset start with all
-its settings applied.
-
-**Share** (if enabled in your deployment): you can share a preset
-with specific teammates or a team. Useful for "our team always uses
-this system prompt for support tickets".
+- **See your presets** — click **Presets** in the top bar. When you
+  have none yet it says *"No presets yet, use the settings button to
+  create one."*
+- **Create one** — set up a model and its parameters the way you like,
+  then save it from the settings/parameters panel and give it a clear
+  name (e.g. *"Code review"*, *"Translation EN→VN"*, *"Friendly
+  reply"*).
+- **Use one** — pick it from the **Presets** menu; new conversations
+  start with all its settings applied.
+- **Import / Clear all** — bring in a preset someone exported, or wipe
+  your list, from the same menu.
 
 ## Saved prompts
 
-A **saved prompt** is lighter than a preset — just a chunk of text
-you want to insert often. No model or parameters attached.
+A **saved prompt** is lighter than a preset — just a chunk of text you
+reuse often, with no model or parameters attached.
 
-Manage them under **Prompts** in the sidebar. Insert one mid-
-conversation by typing `/` at the start of the message box, then
-picking from the list.
+Manage them under **Prompts** in the left icon rail. Insert one
+mid-conversation by typing `/` at the start of the message box and
+picking from the list. Good candidates: frequently-used personas,
+tedious boilerplate, tone modifiers like *"Rewrite in plain English,
+no jargon."*
 
-Good prompt candidates:
-
-- Frequently-used personas ("You are a senior copywriter…")
-- Tedious boilerplate ("Reformat the following as a markdown table…")
-- Tone modifiers ("Rewrite in plain English, no jargon")
-
-## If the dropdown is empty
-
-If you only see `loading...`:
+## If the model menu is empty
 
 - Refresh the page once.
-- If still empty, the platform cannot reach the AI provider. Ask
-  your admin — they have monitoring that tells them what is wrong.
-
-If the dropdown is full but every model errors with "unauthorised",
-open the [console](/docs/end-user/api-keys) once. The first visit
-sets up your account automatically.
+- If it's still empty, the platform can't reach the AI provider — ask
+  your admin; they have monitoring that tells them what's wrong.
+- If models appear but every reply errors with *"unauthorised"*, open
+  the [console](/docs/end-user/api-keys) once. The first visit sets up
+  your account automatically.

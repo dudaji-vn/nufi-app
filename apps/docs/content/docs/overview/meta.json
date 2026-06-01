@@ -8,9 +8,6 @@
     "architecture",
     "components",
     "data-flow",
-    "---Get started---",
-    "../getting-started/prerequisites",
-    "../getting-started/quick-start",
-    "../getting-started/verify-install"
+    "rag-integration"
   ]
 }
