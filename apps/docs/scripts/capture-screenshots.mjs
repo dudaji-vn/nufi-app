@@ -150,6 +150,24 @@ const captures = {
     await login(page, URLS.admin);
     await page.waitForTimeout(3000);
     await shot(page, 'admin-home');
+
+    // Each top-level section of the admin panel.
+    const section = async (path, file, settle = 3000) => {
+      await page.goto(URLS.admin + path, { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(settle);
+      await shot(page, file);
+    };
+    await section('/configuration', 'admin-configuration');
+    await section('/access', 'admin-access');
+    await section('/grants', 'admin-grants');
+
+    // Access → open the ADMIN role to show the Details / Permissions / Members tabs.
+    await page.goto(URLS.admin + '/access', { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(2500);
+    await page.getByRole('button', { name: /^ADMIN/ }).first().click().catch(() => {});
+    await page.waitForTimeout(1800);
+    await shot(page, 'admin-role-detail');
+
     await page.close();
   },
 

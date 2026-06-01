@@ -1,60 +1,61 @@
 ---
-title: Capabilities
-description: Every admin action is gated by a capability constant.
+title: Capabilities (Grants)
+description: Grant each role the set of admin capabilities it should hold.
 ---
 
-Capabilities are the unit of authorisation inside the admin panel.
-You do not hand out individual permissions — you hand out roles
-that bundle capabilities.
+The **Grants** page lists every role and the capabilities it holds.
+Capabilities are the unit of authorisation — you don't hand out
+individual permissions, you grant a role a bundle of capabilities,
+then add people to that role on the [Access](/docs/admin/roles-and-groups)
+page.
 
-## Why constants, not booleans
+![The Grants page — capability counts per role](/screenshots/admin-grants.png)
 
-A user's permissions are encoded as a `Set<Capability>` rather than
-a list of feature flags. This makes:
+Each row shows a role, how many capabilities it holds, and its status.
+Out of the box:
 
-- Implication graphs easy (`MANAGE_X` automatically grants
-  `VIEW_X`).
-- Server-side checks cheap (a single set lookup).
-- The capability list refactor-proof — renaming a feature in the
-  UI does not change the persisted role definitions.
+- **`ADMIN`** — holds **all** capabilities (20), **Active**.
+- **`USER`** — **no** capabilities, **Active**.
 
-## The full list
+## Edit a role's capabilities
 
-| Capability                  | Grants                                                              |
-|-----------------------------|---------------------------------------------------------------------|
-| `MANAGE_USERS`              | Create, edit, deactivate, delete users; reset passwords            |
-| `VIEW_USERS`                | Read-only access to the user list                                  |
-| `MANAGE_ROLES`              | Define roles and capability grants                                 |
-| `VIEW_ROLES`                | Read-only access to role definitions                               |
-| `MANAGE_GROUPS`             | Create, edit, delete groups; add / remove members                  |
-| `VIEW_GROUPS`               | Read-only access to groups                                         |
-| `MANAGE_CONFIG`             | Read and write base configuration                                  |
-| `ASSIGN_CONFIGS`            | Attach scoped config overrides to roles / groups / users           |
-| `VIEW_CONFIG`               | Read-only access to the configuration tab                          |
-| `MANAGE_AGENTS`             | Create / edit / delete shared agents in the marketplace            |
-| `MANAGE_TOOLS`              | Register / deregister connected tools                              |
-| `VIEW_AUDIT`                | Read the audit log                                                 |
-| `IMPERSONATE`               | Sign in as another user                                            |
+<Steps>
+<Step>Open the **Grants** page.</Step>
+<Step>Click the role you want to change.</Step>
+<Step>Tick the capabilities it should hold (untick the rest).</Step>
+<Step>Save. The change takes effect on each member's next request.</Step>
+</Steps>
 
-## Implications
+> You can also reach the same controls from the **Permissions** tab of
+> a role on the [Access](/docs/admin/roles-and-groups) page.
 
-Some capabilities cascade. For example, granting `MANAGE_USERS`
-implicitly grants `VIEW_USERS` — you cannot edit what you cannot
-read.
+## What capabilities cover
 
-When you tick `MANAGE_X`, the panel renders the `VIEW_X` tick as
-already-on and disables it. To un-grant `VIEW_X`, you must first
-un-grant `MANAGE_X`.
+Capabilities map to areas of the admin panel — broadly:
 
-## Server-side enforcement
+| Area | Lets the role… |
+|------|----------------|
+| **Users / members** | View, and add or remove members of roles and groups |
+| **Roles** | View and define roles |
+| **Groups** | View and manage groups and their members |
+| **Configuration** | View, and edit base configuration |
+| **Scoped overrides** | Attach config overrides to roles / groups / users |
+| **Tools / agents** | Manage connected tools and shared agents |
 
-Every server function that mutates state asserts the calling user
-holds the relevant capability. A panel that forgets to render a
-button never permits an action — the button only suppresses the
-UI. The server is the source of truth.
+The exact names and the full set are defined by NUFI's authorisation
+schema, so the precise list can grow as NUFI adds features. The
+`ADMIN` role always bundles all of them, so you only need to touch
+this page when carving out a **constrained sub-admin** role.
+
+## How enforcement works
+
+Capabilities are checked **on the server**, not just in the UI. Hiding
+a button only suppresses the UI — the server independently verifies
+the caller holds the required capability before changing anything. So
+a custom role is safe even if a screen forgets to hide a control.
 
 ## Custom capabilities
 
-You cannot add custom capabilities from the panel — they are part
-of NUFI's authorisation schema. If you need a new one, request it
-from the NUFI engineering team.
+You can't invent new capabilities from the panel — they're part of
+NUFI's schema. If you need one that doesn't exist, request it from the
+NUFI team.
