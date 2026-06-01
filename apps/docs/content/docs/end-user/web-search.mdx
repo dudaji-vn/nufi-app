@@ -3,74 +3,68 @@ title: Web search
 description: Let the AI look up live information from the internet.
 ---
 
-By default, the AI answers from what it learned during training —
-which has a cutoff date and no knowledge of your specific situation.
+By default the AI answers from what it learned during training — which
+has a cutoff date and knows nothing about your specific situation.
 **Web search** lets it look things up live before replying.
 
 ## Turn it on
 
-In the message-box toolbar, toggle the **🌐 Search** chip. It stays
-on for the rest of the conversation. Toggle off when you want a
-purely from-training answer.
+<Steps>
+<Step>Click the **Tools** menu — the sliders icon next to the
+paperclip at the bottom of the message box.</Step>
+<Step>Click **Web Search** to enable it. (The gear next to it opens
+search options, if your deployment exposes any.)</Step>
+<Step>Ask your question as normal. Web search stays on for the rest of
+the conversation — open the menu again to turn it off.</Step>
+</Steps>
 
-## What changes when search is on
+![The Tools menu with Web Search](/screenshots/chat-tools-menu.png)
 
-Behind the scenes:
+## What happens when search is on
 
-1. The AI extracts a search query (sometimes several) from your
-   prompt.
+1. The AI turns your prompt into one or more search queries.
 2. It searches the web and fetches the top results.
-3. It re-ranks the snippets by relevance.
-4. The most useful pieces are included in its answer.
-5. The reply includes inline **citations** linking back to the
-   source.
+3. It picks the most relevant snippets.
+4. It writes its answer using them, with inline **citations** linking
+   back to each source.
 
-You see the citations as small numbered links. Hover one to see the
-exact snippet that influenced the answer.
+You'll see the citations as small numbered links — hover one to see
+the snippet it came from.
 
 ## When to use it
 
 Web search shines for:
 
-- **Latest news, prices, events** — anything that changes faster
-  than the AI's training data.
-- **Specific facts** — exact dates, current versions, real-time
-  stats.
-- **Live research** — "What are people saying about X this week?"
-- **Citations needed** — you want links to back up the answer.
+- **Latest news, prices, events** — anything newer than the model's
+  training data.
+- **Specific facts** — exact dates, current versions, live stats.
+- **Citations** — when you want links backing up the answer.
 
-It is less useful for:
-
-- Brainstorming or creative writing (slows you down).
-- Pure reasoning, math, code (no external info needed).
-- Anything where you already provided the source material in your
-  prompt.
+It's less useful for brainstorming, creative writing, pure math/code,
+or when you already pasted the source material into your prompt.
 
 ## Tips for better results
 
-- **Be specific in the prompt** — "Compare iPhone 16 Pro to Galaxy
-  S25 Ultra on camera reviews from 2025" beats "Which phone is
-  better?".
-- **Ask for citations explicitly** — "with sources" or "cite each
-  claim" pushes the model to attribute its answer.
-- **Ask follow-ups** — once it has the search results, you can drill
-  in: "Read source [2] more carefully, what does it say about
-  battery life?"
+- **Be specific** — *"Compare the iPhone 16 Pro and Galaxy S25 Ultra
+  on 2025 camera reviews"* beats *"which phone is better?"*.
+- **Ask for citations** — *"with sources"* or *"cite each claim"*.
+- **Drill in** — *"Read source [2] more carefully — what does it say
+  about battery life?"*
 
 ## Privacy
 
-Anything the AI needs to search for becomes part of a search query,
-which leaves NUFI for the search provider. **Do not** put confidential
-content into a search-enabled prompt. Toggle search off for those.
+Whatever the AI needs to look up becomes part of a search query, which
+leaves NUFI for the search provider. **Don't** put confidential
+content into a search-enabled prompt — turn search off for those.
 
-## If the toggle is missing
+## If Web Search isn't in the menu
 
-Your organisation has not connected a search provider. Ask your
-admin to enable it.
+Your organisation hasn't connected a search provider. Ask your admin
+to enable it.
 
 ## Cost
 
-Search-augmented replies cost a bit more — extra fetches plus a
-longer prompt. You will see the difference on the
-[Usage](/docs/end-user/api-keys) page if you query a lot. For most
-users it is well within budget.
+Search-augmented replies cost a little more — extra fetches plus a
+longer prompt. You'll see it on the
+[Usage](/docs/end-user/api-keys) page if you query a lot; for most
+people it stays well within budget.

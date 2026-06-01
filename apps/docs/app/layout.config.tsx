@@ -23,8 +23,7 @@ export const baseOptions: BaseLayoutProps = {
   },
   links: [
     { text: 'Documentation', url: '/docs', active: 'nested-url' },
-    { text: 'Chat', url: '/docs/end-user', active: 'nested-url' },
+    { text: 'App', url: '/docs/end-user', active: 'nested-url' },
     { text: 'Admin', url: '/docs/admin', active: 'nested-url' },
-    { text: 'Deploy', url: '/docs/deployment', active: 'nested-url' },
   ],
 };

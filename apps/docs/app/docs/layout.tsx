@@ -10,24 +10,14 @@ const personaTabs = [
     url: '/docs/overview',
   },
   {
-    title: 'End user',
-    description: 'Chat + console',
+    title: 'App',
+    description: 'Use the NUFI app',
     url: '/docs/end-user',
   },
   {
     title: 'Admin',
     description: 'Configure & manage',
     url: '/docs/admin',
-  },
-  {
-    title: 'Developer',
-    description: 'Run & ship locally',
-    url: '/docs/developer',
-  },
-  {
-    title: 'DevOps',
-    description: 'Deploy & operate',
-    url: '/docs/deployment',
   },
   {
     title: 'Reference',

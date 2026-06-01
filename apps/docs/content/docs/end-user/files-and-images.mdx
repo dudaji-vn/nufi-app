@@ -1,39 +1,36 @@
 ---
 title: Files and images
-description: Upload documents, send images, generate images from prompts.
+description: Upload documents, send images, and ask the AI questions about them.
 ---
 
-## Upload a file
+You can attach files to a message and ask the AI about them — read a
+PDF, describe a photo, turn a screenshot into a table.
 
-Click the **paperclip** icon next to the message box, or just **drag
-a file** onto the conversation. NUFI handles the file based on what
-it is:
+## Attach a file
 
-- **Images** — sent directly to the model (for vision-capable
-  models). Ask the model anything about the image.
-- **Documents** (PDF, Markdown, plain text, code files) — NUFI reads
-  the document, finds the relevant parts, and includes them in your
-  prompt automatically. You do not have to paste the contents.
+<Steps>
+<Step>Click the **paperclip** (Attach File) at the bottom-left of the
+message box. You can also just **drag a file** onto the conversation.</Step>
+<Step>Choose how to send it:
+**Upload to Provider** (sends the file to the model — best for images
+and rich documents) or **Upload as Text** (pulls the text out and adds
+it to your prompt).</Step>
+<Step>Type your question and press **Enter**. The file rides along with
+the message.</Step>
+</Steps>
 
-You can attach multiple files in one message.
+![The attach menu with Upload to Provider and Upload as Text](/screenshots/chat-attach-menu.png)
 
-## What works out of the box
+You can attach more than one file to a single message.
 
-| Type     | Examples                              |
-|----------|---------------------------------------|
-| Images   | PNG, JPEG, WebP, GIF                  |
-| Docs     | PDF, plain text, Markdown             |
-| Code     | `.py`, `.ts`, `.go`, `.md`, …         |
+## Search across your files
 
-Limits per message:
+Open the **Tools** menu (the sliders icon next to the paperclip) and
+turn on **File Search**. The AI can then look through the files you've
+uploaded and pull in the relevant parts when it answers — you don't
+have to paste the contents yourself.
 
-| Limit          | Default |
-|----------------|---------|
-| Files / msg    | 5       |
-| Per file size  | 20 MB   |
-| Total          | 50 MB   |
-
-Need more? Ask your admin to raise the cap for your team.
+![The Tools menu — File Search, Web Search, Skills, Run Code, Artifacts](/screenshots/chat-tools-menu.png)
 
 ## Talk to a document
 
@@ -45,8 +42,7 @@ Upload a PDF, then ask questions about it:
 
 > Translate the conclusion into Vietnamese.
 
-NUFI extracts the relevant pages, feeds them to the model, and
-returns an answer with citations to the source.
+NUFI feeds the relevant parts to the model and answers in context.
 
 ## Look at an image
 
@@ -58,50 +54,55 @@ Upload an image, then ask:
 
 > Suggest three improvements to this UI design.
 
-You need a **vision-capable** model — look for the 👁️ badge in the
-model dropdown.
+This needs a **vision-capable** model. If the model can't read the
+image, switch models from the [model picker](/docs/end-user/models-and-presets#pick-a-model).
 
-## Generate images from prompts
+## What works
 
-Type `/image` at the start of the message box, then describe what you
-want:
+| Type     | Examples                              |
+|----------|---------------------------------------|
+| Images   | PNG, JPEG, WebP, GIF                  |
+| Docs     | PDF, plain text, Markdown             |
+| Code     | `.py`, `.ts`, `.go`, `.md`, …         |
+
+Typical limits per message (your admin can change these):
+
+| Limit          | Default |
+|----------------|---------|
+| Files / msg    | 5       |
+| Per file size  | 20 MB   |
+| Total          | 50 MB   |
+
+## Generate and edit images
+
+If image generation is enabled for your team, you can create images
+from a description. Turn on the image tool from the **Tools** menu (or
+type `/image` at the start of the box if your deployment uses that),
+then describe what you want:
 
 ```
-/image a watercolour fox reading a book in a cosy library,
-       soft pastel colours, dawn lighting
+a watercolour fox reading a book in a cosy library,
+soft pastel colours, dawn lighting
 ```
 
-The image lands in the conversation and is saved to your account so
-you can re-download it later. To make variations, hover the image
-and click **Variations** or just describe the change in your next
-message.
+The image appears in the conversation and is saved to your account. To
+change it, describe the edit in your next message ("make the sky
+purple and add a moon") — you keep both versions.
 
-## Edit an image
-
-Upload an image, then describe the change in plain English:
-
-> Make the sky purple and add a moon.
-
-> Remove the watermark in the bottom-right.
-
-> Add a smiling cartoon dog next to the desk.
-
-You keep both versions — the original is preserved next to the edit.
+> If you don't see an image tool, your organisation hasn't turned on
+> image generation. Ask your admin.
 
 ## Storage and privacy
 
 Files you upload are saved to your account and visible only to you
-(plus anyone you explicitly share a conversation with). Deleting a
-conversation also deletes its files.
-
-To delete a single file, hover it in the conversation → **·  ·  · ** →
-**Delete**.
+(plus anyone you explicitly share a conversation with). Your own files
+are listed under the avatar menu → **My Files**. Deleting a
+conversation also deletes the files attached to it.
 
 ## Errors you might see
 
-- **"File too large"** — your file is over the per-file cap. Compress
-  or split it.
-- **"Out of budget"** — image generation is more expensive than text.
-  Check your usage in the [console](/docs/end-user/api-keys).
-- **"Please slow down"** — too many requests in a short window. Wait
-  a few seconds.
+- **"File too large"** — over the per-file cap. Compress or split it.
+- **"Out of budget"** — image generation costs more than text. Check
+  your usage in the [console](/docs/end-user/api-keys).
+- **"Please slow down"** — too many requests in a short window. Wait a
+  few seconds.

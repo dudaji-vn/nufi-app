@@ -9,7 +9,13 @@ type Card = {
 
 const cards: Card[] = [
   {
-    title: 'Use the chat',
+    title: 'Overview',
+    href: '/docs/overview',
+    desc: 'What NUFI is and how it works. Read this first if you are new.',
+    icon: '📖',
+  },
+  {
+    title: 'Use the app',
     href: '/docs/end-user',
     desc: 'Sign in, pick a model, work with agents, files, and presets.',
     icon: '💬',
@@ -21,16 +27,10 @@ const cards: Card[] = [
     icon: '🛠️',
   },
   {
-    title: 'Build on NUFI',
-    href: '/docs/developer',
-    desc: 'Generate API keys, integrate from your code, and ship to NUFI.',
-    icon: '🧑‍💻',
-  },
-  {
-    title: 'Run the platform',
-    href: '/docs/deployment',
-    desc: 'Operate NUFI in production — infra, SSO, monitoring, backups.',
-    icon: '🚀',
+    title: 'Reference',
+    href: '/docs/reference',
+    desc: 'Flat lookup tables — every port, environment variable, glossary.',
+    icon: '📚',
   },
 ];
 
@@ -42,10 +42,10 @@ export default function HomePage() {
           NUFI · User Manual
         </p>
         <h1 className="text-4xl md:text-6xl font-bold tracking-tight mb-6 bg-gradient-to-br from-fd-foreground to-fd-muted-foreground bg-clip-text text-transparent">
-          The AI chat platform built for teams.
+          The AI app built for teams.
         </h1>
         <p className="text-lg md:text-xl text-fd-muted-foreground max-w-2xl mb-10">
-          NUFI is a conversational AI workspace — think Claude, ChatGPT,
+          NUFI is a secure AI workspace — think Claude, ChatGPT,
           or Gemini, but for your organisation, with the models you
           choose, the budget controls you need, and a developer
           console for building on top.
@@ -61,7 +61,7 @@ export default function HomePage() {
             href="/docs/end-user"
             className="inline-flex items-center rounded-lg border border-fd-border bg-fd-card px-5 py-2.5 text-sm font-medium hover:bg-fd-accent"
           >
-            Start chatting
+            Open the app
           </Link>
         </div>
       </section>
