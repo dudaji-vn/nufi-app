@@ -6,6 +6,7 @@ import {
   Home,
   LifeBuoy,
   LogOut,
+  ScrollText,
   Settings,
   ShieldCheck,
   Users as UsersIcon,
@@ -47,6 +48,12 @@ const navItems: t.NavItem[] = [
     capability: [SystemCapabilities.READ_ROLES, SystemCapabilities.READ_GROUPS],
   },
   { labelKey: 'com_nav_grants', path: '/grants', icon: ShieldCheck },
+  {
+    labelKey: 'com_nav_audit_log',
+    path: '/audit-log',
+    icon: ScrollText,
+    capability: SystemCapabilities.ACCESS_ADMIN,
+  },
   { labelKey: 'com_nav_help', path: '/help', icon: LifeBuoy },
 ];
 

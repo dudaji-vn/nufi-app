@@ -1,4 +1,3 @@
-import type { AdminAuditLogEntry, AuditAction } from '@librechat/data-schemas';
 import type { PrincipalType } from 'librechat-data-provider';
 import type { KeyboardEvent } from 'react';
 
@@ -8,13 +7,6 @@ export interface PrincipalRow {
   name: string;
   grantCount: number;
   isActive: boolean;
-}
-
-export type ActionFilter = 'all' | AuditAction;
-
-export interface AuditLogRowProps {
-  entry: AdminAuditLogEntry;
-  isLast: boolean;
 }
 
 export interface CapabilityPanelProps {

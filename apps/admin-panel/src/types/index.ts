@@ -1,4 +1,5 @@
 export type * from './access';
+export type * from './audit';
 export type * from './auth';
 export type * from './config';
 export type * from './config-ui';

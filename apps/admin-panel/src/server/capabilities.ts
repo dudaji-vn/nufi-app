@@ -11,7 +11,7 @@ import { queryOptions } from '@tanstack/react-query';
 import { createServerFn } from '@tanstack/react-start';
 import { PrincipalType } from 'librechat-data-provider';
 import { hasImpliedCapability, SystemCapabilities } from '@librechat/data-schemas/capabilities';
-import type { AdminAuditLogEntry, AdminSystemGrant } from '@librechat/data-schemas';
+import type { AdminSystemGrant } from '@librechat/data-schemas';
 import { apiFetch, extractApiError } from './utils/api';
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -218,29 +218,3 @@ export const revokeCapabilityFn = createServerFn({ method: 'POST' })
       return { success: true };
     },
   );
-
-// ── Audit Log (stubbed -- no backend endpoint yet) ───────────────────
-
-const auditFilterSchema = z.object({
-  search: z.string().optional(),
-  action: z.enum(['grant_assigned', 'grant_removed']).optional(),
-  from: z.string().optional(),
-  to: z.string().optional(),
-});
-
-type AuditFilters = z.infer<typeof auditFilterSchema>;
-
-export const getAuditLogFn = createServerFn({ method: 'GET' })
-  .inputValidator(auditFilterSchema)
-  .handler(async (): Promise<{ entries: AdminAuditLogEntry[] }> => ({ entries: [] }));
-
-export const auditLogQueryOptions = (filters: AuditFilters = {}) =>
-  queryOptions<AdminAuditLogEntry[]>({
-    queryKey: ['auditLog', filters],
-    queryFn: () => getAuditLogFn({ data: filters }).then((r) => r.entries),
-    staleTime: 30_000,
-  });
-
-export const exportAuditLogCsvFn = createServerFn({ method: 'POST' })
-  .inputValidator(auditFilterSchema)
-  .handler(async () => ({ csv: '' }));
