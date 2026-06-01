@@ -70,7 +70,7 @@ export function createAuditLogMethods(mongoose: typeof import('mongoose')) {
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
-      .lean()) as IAuditLog[];
+      .lean()) as unknown as IAuditLog[];
   }
 
   /** Count audit entries matching the filters (for pagination totals). */
