@@ -1,88 +1,67 @@
 ---
 title: Scoped overrides
-description: How role-, group-, and user-level overrides cascade.
+description: Give a role, group, or user different settings without changing the base config.
 ---
 
-Most fields under [Configuration](/docs/admin/configuration) accept
-**scoped overrides** in addition to the base value. When a user
-makes a request, NUFI resolves the value for that specific user by
-walking the override stack.
+Most fields in [Configuration](/docs/admin/configuration) can take a
+**scoped override** on top of the base value. An override applies only
+to the people in its scope — everyone else keeps the base value.
 
-This page covers the resolution rules and a worked example.
+This is how you do things like *"the `power-users` group gets a 200 MB
+upload cap"* or *"the `beta` group sees an extra model"* without
+touching the org-wide default.
 
-## The four scopes
+## The scopes
 
-| Scope    | When it applies                                            |
-|----------|------------------------------------------------------------|
-| `BASE`   | Always — this is the default                               |
-| `ROLE`   | When the user has the matching role                        |
-| `GROUP`  | For each group the user belongs to                         |
-| `USER`   | Only for the named user                                    |
+| Scope | Applies to |
+|-------|------------|
+| **Base** | Everyone — the default |
+| **Role** | People who hold that role |
+| **Group** | People in that group |
+| **User** | One specific person |
 
-## Priority
+A more specific scope wins over a broader one: **User → Group → Role →
+Base**. So a single user's override beats their group's, which beats
+their role's, which beats the base.
 
-Every override carries a numeric **priority**. Lower priority wins.
-The order is:
+## Add an override
 
-1. Among `USER` overrides for the field, pick the one with the
-   lowest priority.
-2. If no `USER` override matched, repeat for each of the user's
-   `GROUP` overrides — pick the lowest priority.
-3. If no `GROUP` override matched, try the user's `ROLE` override.
-4. If still nothing matched, use the `BASE` value.
+<Steps>
+<Step>Open [Configuration](/docs/admin/configuration).</Step>
+<Step>Click the **scope selector** at the top (it reads **Base
+configuration** by default) and **Create** — or pick — a scope for the
+role, group, or user you want to target.</Step>
+<Step>With that scope selected, edit the field(s). The values you
+change now apply only to that scope.</Step>
+<Step>Save. Affected users pick up the change on their next request.</Step>
+</Steps>
 
-The scope hierarchy is **not** a tie-breaker: `USER` always beats
-`GROUP` which always beats `ROLE` which always beats `BASE`.
-Priority only breaks ties within the same scope.
+## A quick example
 
-## A worked example
+Upload size per conversation:
 
-Say total upload size per conversation:
+- **Base** → 50 MB (everyone).
+- **Group `power-users`** → 200 MB.
+- **User `alice@org`** → 1 GB.
 
-- `BASE = 50 MB`
-- `ROLE: USER` → `100 MB` with priority 10
-- `GROUP: power-users` → `200 MB` with priority 5
-- `GROUP: beta-testers` → `500 MB` with priority 1
-- `USER: alice@org` → `1 GB` with priority 0
+Then:
 
-For alice (in both groups, role `USER`):
-
-1. `USER` override: `1 GB` → matches → resolved.
-
-For bob (in `power-users` only, role `USER`):
-
-1. `USER` override: none.
-2. `GROUP` overrides: `power-users → 200 MB`. Resolved to `200 MB`.
-
-For carol (in `beta-testers` and `power-users`, role `USER`):
-
-1. `USER`: none. `GROUP` overrides: `power-users (prio 5)` and
-   `beta-testers (prio 1)`. Lowest priority wins → `500 MB`.
-
-For dave (no groups, role `USER`):
-
-1. `USER`: none. `GROUP`: none. `ROLE`: `USER → 100 MB`. Resolved
-   to `100 MB`.
+- **Alice** gets **1 GB** (her user override is the most specific).
+- A `power-users` member who has no personal override gets **200 MB**.
+- Everyone else gets the base **50 MB**.
 
 ## When to use which scope
 
-- **`ROLE`** — broad defaults that follow people as roles change.
-  Example: every `USER` gets 100 MB, every `ADMIN` gets 500 MB.
-- **`GROUP`** — targeted feature flags or capacity bumps for a
-  known set of people. Example: members of `beta-testers` see a
-  new model in the dropdown.
-- **`USER`** — exceptions. Example: a paid customer asked for 1 GB.
+- **Role** — broad defaults that follow people as their role changes.
+- **Group** — a capability or capacity bump for a known set of people.
+- **User** — one-off exceptions.
 
-If you find yourself with dozens of `USER` overrides for the same
-field, that is the signal to create a `GROUP` and consolidate.
+If you find yourself adding the same **User** override for many people,
+that's the signal to make a **Group** and set it once.
 
-## Removing an override
+## Remove an override
 
-Click the gear next to the field, find the override in the popover,
-**Delete**. Removal is immediate.
-
-## Auditing the cascade
-
-The **Field profile popover** is the easiest way to debug "why is
-this user seeing 100 MB?" — it shows every active override on the
-field, sorted by priority, with the winning one highlighted.
+Switch to the scope, clear the field (or delete the scope's override),
+and save. Removal takes effect immediately. To check *why* a particular
+person sees a particular value, compare the base value with the
+overrides on the scopes they belong to.

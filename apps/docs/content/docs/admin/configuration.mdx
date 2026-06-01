@@ -1,74 +1,59 @@
 ---
 title: Configuration editor
-description: A schema-driven UI for every NUFI setting.
+description: A schema-driven UI for every NUFI setting — no file editing, no restarts.
 ---
 
-NUFI's behaviour is controlled by a single configuration tree. Every
-setting is editable from the admin panel — no file editing, no
-restarts. The page is generated from the underlying schema, so when
-a new feature ships, its settings appear automatically.
+NUFI's behaviour comes from a single configuration tree (rooted in
+`librechat.yaml`). The **Configuration** page lets you edit every
+value from the browser. The UI is generated from the schema, so when
+a new feature ships its settings appear here automatically.
 
-## What is on the page
+![The Configuration page — provider settings under the Base scope](/screenshots/admin-configuration.png)
 
-Top-level sections:
+## The tabs
 
-- **App** — title, footer, links to your privacy / terms pages.
-- **Interface** — every UI feature flag (agents, presets, web
-  search, multi-chat, …).
-- **Models** — which AI providers and models are exposed to users.
-- **Limits** — rate limits, file sizes, conversation length.
-- **Registration** — email allow-list, password rules, SSO.
-- **Speech** — voice in / voice out engines.
-- **Connected tools** — your organisation's integrations.
-- **Files** — storage, allowed types, size caps.
+Settings are grouped across the tabs at the top of the page. The small
+number on each tab counts how many values you've configured there:
 
-## Read vs write
+| Tab | What it holds |
+|-----|---------------|
+| **AI providers** | Credentials and options per provider — OpenAI, Google, Anthropic, Azure OpenAI, Bedrock, Assistants, Agents, … |
+| **Custom endpoints** | Your own OpenAI-compatible endpoints (e.g. a self-hosted gateway) |
+| **Model specs** | Curated model entries shown to users |
+| **MCP** | Model Context Protocol servers / connected tools |
+| **Features** | Feature flags — agents, presets, web search, speech, and so on |
+| **Files & storage** | Storage backend, allowed file types, size caps |
+| **System** | Server-level settings |
 
-By default the editor shows **resolved** values: the merge of the
-base config plus any active overrides. To see who set a particular
-value, click the gear next to a field — the **Field profile
-popover** lists every override on that field, sorted by priority.
+Within a tab, expand a section (e.g. **Anthropic**) to see its fields.
+**Expand all / Collapse all** and **Show configured only** at the top
+help you focus, and the **Search** box (`⌘K`) jumps to any field.
 
-## Edit a global value
+## Edit a value
 
-1. Find the field.
-2. Type the new value.
-3. Click **Save** at the top of the section.
+<Steps>
+<Step>Open the tab, expand the section, and find the field.</Step>
+<Step>Type or toggle the new value.</Step>
+<Step>Save. Changes apply on NUFI's next request — no restart needed.</Step>
+</Steps>
 
-Changes apply immediately — NUFI re-evaluates on the next request.
-No restart needed.
+## Scopes — base vs overrides
 
-## Edit a scoped override
+The **scope selector** at the top (it reads **Base configuration** by
+default) controls *who* the values you're editing apply to:
 
-A scoped override applies the new value only when the resolved-for
-user matches the scope (role, group, or specific user).
+- **Base configuration** — the default for everyone. This is where you
+  set the org-wide value.
+- **A scoped override** — create one for a specific **role**, **group**,
+  or **user** to give just them a different value. More specific scopes
+  win over the base. See [Scoped overrides](/docs/admin/scoped-overrides).
 
-1. Find the field, click the gear, **Add override**.
-2. Pick the scope type: **Role**, **Group**, or **User**.
-3. Pick the specific scope (e.g. the `power-users` group).
-4. Set the value.
-5. Pick a **priority** (lower wins — see
-   [Scoped overrides](/docs/admin/scoped-overrides)).
+To work on an override, open the scope selector, pick or **Create** the
+scope, then edit fields the same way — the values you change apply only
+within that scope.
 
-When a user in that scope makes their next chat request, NUFI walks
-the override stack and resolves the lowest-priority match.
+## Import YAML
 
-## Discard / revert
-
-Each section has an **Unsaved changes** banner while you have a
-draft. **Discard** drops the draft. For full per-field history, use
-the audit log.
-
-## Drift detection
-
-If a config value is changed outside the admin panel — e.g. by
-running migrations or direct database edits — the **Drift** banner
-at the top of the page tells you which keys diverged. Resolve by
-syncing the running config into the database (**Pull values**) or
-the other way (**Push values**).
-
-## When a new setting appears
-
-As NUFI adds features, new settings show up in this editor
-automatically — no admin-panel upgrade needed. The schema is the
-source of truth for what is editable.
+The **Import YAML** button (top-right) lets you paste or upload a
+`librechat.yaml`-style document to apply many settings at once instead
+of editing field by field. Review the diff before applying.

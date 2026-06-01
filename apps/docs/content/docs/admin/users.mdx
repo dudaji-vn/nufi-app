@@ -1,77 +1,53 @@
 ---
-title: Users
-description: Create, deactivate, search, and impersonate NUFI users.
+title: Users and membership
+description: Where user accounts come from and how you assign them roles and groups.
 ---
 
-The **Users** tab is the canonical source of truth for who can use
-NUFI in your organisation.
+People get a NUFI account by **signing in to the app** at
+`chat.nufi.me` (self-registration or SSO, depending on how you've set
+up [Configuration → Features / Registration](/docs/admin/configuration)).
+As an admin, you don't create accounts in a separate "Users" screen —
+you control what each person can do by assigning them to **roles** and
+**groups** on the [Access](/docs/admin/roles-and-groups) page.
 
-## List and search
+## Give someone admin powers
 
-The table shows everyone, paginated. Filters across the top:
+<Steps>
+<Step>Make sure the person has signed in to the app at least once so
+their account exists.</Step>
+<Step>Open **Access → Roles** and click the role you want them in
+(e.g. `ADMIN`, or a custom sub-admin role).</Step>
+<Step>Go to the **Members** tab and add them.</Step>
+<Step>Save. They pick up the role on their next request — no sign-out
+needed.</Step>
+</Steps>
 
-- **Role** — `ADMIN`, `USER`, or custom roles you have defined.
-- **Group** — show only members of a specific group.
-- **Status** — active or disabled.
+![The Members tab lives inside each role on the Access page](/screenshots/admin-role-detail.png)
 
-Search is full-text across email, name, and username.
+To **remove** someone's powers, open the role's **Members** tab and
+remove them; they fall back to the default `USER` role.
 
-## Create a user
+## Give a set of people different features or limits
 
-Click **+ New user**. You need:
+Use a **group** rather than editing people one by one:
 
-- Email (must be unique).
-- Name.
-- Initial password.
-- Role (defaults to `USER`).
-- Optional group membership(s).
+<Steps>
+<Step>On **Access → Groups**, create a group and add the members.</Step>
+<Step>In [Configuration](/docs/admin/configuration), add a scoped
+override for that group — a model, a feature flag, a higher cap.</Step>
+</Steps>
 
-Once saved, the user can sign in immediately. If your deployment
-has email delivery configured, you can also send them a "welcome —
-please reset your password" email instead.
+See [Scoped overrides](/docs/admin/scoped-overrides) for how the
+override resolves.
 
-## Deactivate vs delete
+## What about budgets, API keys, and usage?
 
-- **Deactivate** keeps the user record, their conversations, and
-  their files, but blocks sign-in. Reversible.
-- **Delete** removes the user, their conversations, their messages,
-  their files, and revokes every API key they ever issued.
-  Irreversible.
+Per-user **budgets, rate limits, and API keys** are managed in the
+gateway and surfaced to each user in their own
+[console](/docs/end-user/api-keys). For org-wide model access and
+limits, use **Configuration** plus group overrides; for the gateway's
+own admin UI see [Gateway admin](/docs/admin/litellm).
 
-Prefer **Deactivate** for off-boarding. Reserve **Delete** for test
-accounts and explicit right-to-be-forgotten requests.
-
-## Impersonate
-
-If you have the `IMPERSONATE` capability, the row menu has **Sign
-in as**. Your session switches to the target user; you see exactly
-what they see. The audit log records both your account and the
-impersonated user on every action you take.
-
-Impersonation is one-shot — sign out to return to your admin
-account.
-
-## Reset password
-
-The row menu has **Reset password** with two modes:
-
-- **Set new password** — type a value, save. The user sees the new
-  password on next sign-in.
-- **Send reset link** — emails the user a one-time link. Requires
-  email delivery configured.
-
-If 2FA is enabled, the row menu also has **Reset 2FA** to clear the
-TOTP secret. The user re-enrols on next sign-in.
-
-## Bulk import
-
-CSV import lives under **+ New user → Import**. Required columns:
-`email`, `name`. Optional: `password`, `role`, `groups`. Missing
-passwords trigger a one-time-link email (if email is configured) or
-fail (if not).
-
-## Audit
-
-Every create / deactivate / delete / impersonate is recorded with
-the acting admin's identity and timestamp. Visible under the
-**Audit** tab.
+> The roles available when you assign membership are the ones defined
+> on [Access](/docs/admin/roles-and-groups); the capabilities each role
+> carries are set on [Grants](/docs/admin/capabilities).
