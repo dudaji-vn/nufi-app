@@ -53,3 +53,11 @@ fileConfig:
         - "image/jpeg"
         - "image/webp"
         - "image/gif"
+        # Document types for RAG file upload. Uploading one of these embeds it
+        # via rag_api so the model can retrieve from it during the chat.
+        - "application/pdf"
+        - "text/plain"
+        - "text/markdown"
+        - "text/csv"
+        - "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        - "application/json"

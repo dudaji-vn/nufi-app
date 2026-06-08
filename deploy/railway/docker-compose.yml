@@ -2,6 +2,7 @@ name: nufi-chat
 
 volumes:
   mongo-data:
+  pgdata:
 
 services:
   api:
@@ -11,6 +12,8 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
+      rag_api:
+        condition: service_started
     ports:
       - "3081:3081"
     environment:
@@ -37,6 +40,9 @@ services:
       # Surfaces the "Console" link in the Account Settings dropdown. Leave
       # unset to hide it. Consumed by librechat.yaml via ${VAR} interpolation.
       CONSOLE_URL: ${CONSOLE_URL:-}
+      # Enables the RAG file-upload UI for end users. Points at the rag_api
+      # service below; LibreChat embeds uploaded docs and retrieves from them.
+      RAG_API_URL: http://rag_api:${RAG_PORT:-8000}
     volumes:
       - ./librechat.yaml:/app/librechat.yaml:ro
 
@@ -53,3 +59,39 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+
+  # --- RAG stack -----------------------------------------------------------
+  # pgvector stores document embeddings; rag_api does the chunking/embedding/
+  # retrieval. Together they power the end-user file-upload RAG UI in the chat.
+  vectordb:
+    image: pgvector/pgvector:0.8.0-pg15-trixie
+    container_name: nufi-chat-vectordb
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: mydatabase
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+      # Init into a subdirectory so a mounted volume's lost+found dir doesn't
+      # make Postgres refuse to initialize (Railway mounts include lost+found).
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  rag_api:
+    image: ghcr.io/danny-avila/librechat-rag-api-dev-lite:latest
+    container_name: nufi-chat-rag-api
+    restart: unless-stopped
+    depends_on:
+      - vectordb
+    environment:
+      RAG_PORT: ${RAG_PORT:-8000}
+      DB_HOST: vectordb
+      DB_PORT: 5432
+      POSTGRES_DB: mydatabase
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+      # Embeddings via Google Gemini (AI Studio). Just needs a Gemini API key.
+      # See .env for the key; default model is gemini-embedding-001.
+      EMBEDDINGS_PROVIDER: ${EMBEDDINGS_PROVIDER:-google_genai}
+      EMBEDDINGS_MODEL: ${EMBEDDINGS_MODEL:-gemini-embedding-001}
+      RAG_GOOGLE_API_KEY: ${RAG_GOOGLE_API_KEY:-}
