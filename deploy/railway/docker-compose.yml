@@ -85,6 +85,9 @@ services:
       - vectordb
     environment:
       RAG_PORT: ${RAG_PORT:-8000}
+      # Bind IPv6 dual-stack so Railway's IPv6-only private network can reach
+      # it (default 0.0.0.0 is IPv4-only). Also accepts IPv4, so fine locally.
+      RAG_HOST: "::"
       DB_HOST: vectordb
       DB_PORT: 5432
       POSTGRES_DB: mydatabase
