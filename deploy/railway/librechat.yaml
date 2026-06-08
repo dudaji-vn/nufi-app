@@ -3,7 +3,9 @@ cache: true
 
 interface:
   customWelcome: "Welcome to Nufi Chat."
-  endpointsMenu: false
+  # Must be visible so users can switch to the Agents endpoint (where RAG /
+  # File Search lives). With it hidden, agents are unreachable.
+  endpointsMenu: true
   modelSelect: true
   parameters: true
   sidePanel: true
@@ -12,7 +14,10 @@ interface:
   bookmarks: true
   multiConvo: true
   temporaryChat: true
-  agents: false
+  # RAG file upload for end users is an Agents feature (File Search). Enabling
+  # agents surfaces the agent builder where a user attaches documents that get
+  # embedded via rag_api into pgvector and retrieved during chat.
+  agents: true
   # Adds a "Console" entry to the Account Settings dropdown. The api container
   # interpolates ${CONSOLE_URL} at startup (see resolveExternalUrl). Leave the
   # env var empty to hide the entry.
@@ -21,6 +26,15 @@ interface:
     openNewTab: true
 
 endpoints:
+  # Agents endpoint — hosts the File Search (RAG) capability. A user creates an
+  # agent backed by the Nufi model, enables File Search, and uploads documents;
+  # those are embedded via rag_api (RAG_API_URL) into pgvector and retrieved at
+  # chat time. Scoped to file_search only to keep the demo focused (no code
+  # interpreter / web search buttons that need extra services).
+  agents:
+    capabilities:
+      - "file_search"
+
   custom:
     # Single OpenAI-compatible endpoint. Works with any backend that speaks the
     # OpenAI Chat Completions API: LiteLLM, vLLM, TGI, OpenAI itself, OpenRouter,
