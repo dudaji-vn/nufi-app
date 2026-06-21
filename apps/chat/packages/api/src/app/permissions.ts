@@ -49,6 +49,8 @@ function hasExplicitConfig(
       return interfaceConfig?.skills !== undefined;
     case PermissionTypes.FILES:
       return false;
+    case PermissionTypes.TEAMS:
+      return false;
     default:
       return false;
   }
@@ -203,6 +205,8 @@ export async function updateInterfacePermissions({
     const filesDefaultCreate = true;
     const filesDefaultShare = false;
     const filesDefaultPublic = false;
+    const teamsDefaultUse = true;
+    const teamsDefaultCreate = true;
 
     const allPermissions: Partial<Record<PermissionTypes, Record<string, boolean | undefined>>> = {
       [PermissionTypes.PROMPTS]: {
@@ -500,6 +504,22 @@ export async function updateInterfacePermissions({
                 undefined,
                 defaultPerms[PermissionTypes.FILES]?.[Permissions.SHARE_PUBLIC],
                 filesDefaultPublic,
+              ),
+            }
+          : {}),
+      },
+      [PermissionTypes.TEAMS]: {
+        ...(!existingPermissions?.[PermissionTypes.TEAMS]
+          ? {
+              [Permissions.USE]: getPermissionValue(
+                undefined,
+                defaultPerms[PermissionTypes.TEAMS]?.[Permissions.USE],
+                teamsDefaultUse,
+              ),
+              [Permissions.CREATE]: getPermissionValue(
+                undefined,
+                defaultPerms[PermissionTypes.TEAMS]?.[Permissions.CREATE],
+                teamsDefaultCreate,
               ),
             }
           : {}),

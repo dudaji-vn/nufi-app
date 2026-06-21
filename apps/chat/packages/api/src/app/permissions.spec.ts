@@ -118,6 +118,10 @@ describe('updateInterfacePermissions - permissions', () => {
         [Permissions.SHARE]: false,
         [Permissions.SHARE_PUBLIC]: false,
       },
+      [PermissionTypes.TEAMS]: {
+        [Permissions.USE]: true,
+        [Permissions.CREATE]: true,
+      },
     };
 
     const expectedPermissionsForAdmin = {
@@ -176,6 +180,10 @@ describe('updateInterfacePermissions - permissions', () => {
         [Permissions.CREATE]: true,
         [Permissions.SHARE]: true,
         [Permissions.SHARE_PUBLIC]: true,
+      },
+      [PermissionTypes.TEAMS]: {
+        [Permissions.USE]: true,
+        [Permissions.CREATE]: true,
       },
     };
 
@@ -300,6 +308,10 @@ describe('updateInterfacePermissions - permissions', () => {
         [Permissions.SHARE]: false,
         [Permissions.SHARE_PUBLIC]: false,
       },
+      [PermissionTypes.TEAMS]: {
+        [Permissions.USE]: true,
+        [Permissions.CREATE]: true,
+      },
     };
 
     const expectedPermissionsForAdmin = {
@@ -358,6 +370,10 @@ describe('updateInterfacePermissions - permissions', () => {
         [Permissions.CREATE]: true,
         [Permissions.SHARE]: true,
         [Permissions.SHARE_PUBLIC]: true,
+      },
+      [PermissionTypes.TEAMS]: {
+        [Permissions.USE]: true,
+        [Permissions.CREATE]: true,
       },
     };
 
@@ -468,6 +484,10 @@ describe('updateInterfacePermissions - permissions', () => {
         [Permissions.SHARE]: false,
         [Permissions.SHARE_PUBLIC]: false,
       },
+      [PermissionTypes.TEAMS]: {
+        [Permissions.USE]: true,
+        [Permissions.CREATE]: true,
+      },
     };
 
     const expectedPermissionsForAdmin = {
@@ -526,6 +546,10 @@ describe('updateInterfacePermissions - permissions', () => {
         [Permissions.CREATE]: true,
         [Permissions.SHARE]: true,
         [Permissions.SHARE_PUBLIC]: true,
+      },
+      [PermissionTypes.TEAMS]: {
+        [Permissions.USE]: true,
+        [Permissions.CREATE]: true,
       },
     };
 
@@ -649,6 +673,10 @@ describe('updateInterfacePermissions - permissions', () => {
         [Permissions.SHARE]: false,
         [Permissions.SHARE_PUBLIC]: false,
       },
+      [PermissionTypes.TEAMS]: {
+        [Permissions.USE]: true,
+        [Permissions.CREATE]: true,
+      },
     };
 
     const expectedPermissionsForAdmin = {
@@ -707,6 +735,10 @@ describe('updateInterfacePermissions - permissions', () => {
         [Permissions.CREATE]: true,
         [Permissions.SHARE]: true,
         [Permissions.SHARE_PUBLIC]: true,
+      },
+      [PermissionTypes.TEAMS]: {
+        [Permissions.USE]: true,
+        [Permissions.CREATE]: true,
       },
     };
 
@@ -817,6 +849,10 @@ describe('updateInterfacePermissions - permissions', () => {
         [Permissions.SHARE]: false,
         [Permissions.SHARE_PUBLIC]: false,
       },
+      [PermissionTypes.TEAMS]: {
+        [Permissions.USE]: true,
+        [Permissions.CREATE]: true,
+      },
     };
 
     const expectedPermissionsForAdmin = {
@@ -875,6 +911,10 @@ describe('updateInterfacePermissions - permissions', () => {
         [Permissions.CREATE]: true,
         [Permissions.SHARE]: true,
         [Permissions.SHARE_PUBLIC]: true,
+      },
+      [PermissionTypes.TEAMS]: {
+        [Permissions.USE]: true,
+        [Permissions.CREATE]: true,
       },
     };
 
@@ -991,6 +1031,10 @@ describe('updateInterfacePermissions - permissions', () => {
         [Permissions.SHARE]: false,
         [Permissions.SHARE_PUBLIC]: false,
       },
+      [PermissionTypes.TEAMS]: {
+        [Permissions.USE]: true,
+        [Permissions.CREATE]: true,
+      },
     };
 
     const expectedPermissionsForAdmin = {
@@ -1038,6 +1082,10 @@ describe('updateInterfacePermissions - permissions', () => {
         [Permissions.CREATE]: true,
         [Permissions.SHARE]: true,
         [Permissions.SHARE_PUBLIC]: true,
+      },
+      [PermissionTypes.TEAMS]: {
+        [Permissions.USE]: true,
+        [Permissions.CREATE]: true,
       },
     };
 
@@ -1171,6 +1219,10 @@ describe('updateInterfacePermissions - permissions', () => {
         [Permissions.SHARE]: false,
         [Permissions.SHARE_PUBLIC]: false,
       },
+      [PermissionTypes.TEAMS]: {
+        [Permissions.USE]: true,
+        [Permissions.CREATE]: true,
+      },
     };
 
     const expectedPermissionsForAdmin = {
@@ -1222,6 +1274,10 @@ describe('updateInterfacePermissions - permissions', () => {
         [Permissions.CREATE]: true,
         [Permissions.SHARE]: true,
         [Permissions.SHARE_PUBLIC]: true,
+      },
+      [PermissionTypes.TEAMS]: {
+        [Permissions.USE]: true,
+        [Permissions.CREATE]: true,
       },
     };
 

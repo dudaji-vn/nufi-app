@@ -401,6 +401,79 @@ describe('access middleware', () => {
     });
   });
 
+  describe('TEAMS permission gate', () => {
+    it('allows team creation when role has USE+CREATE', async () => {
+      const mockRole = {
+        name: 'user',
+        permissions: {
+          [PermissionTypes.TEAMS]: {
+            [Permissions.USE]: true,
+            [Permissions.CREATE]: true,
+          },
+        },
+      } as unknown as IRole;
+
+      mockGetRoleByName.mockResolvedValue(mockRole);
+
+      const checkTeamsCreate = generateCheckAccess({
+        permissionType: PermissionTypes.TEAMS,
+        permissions: [Permissions.USE, Permissions.CREATE],
+        getRoleByName: mockGetRoleByName,
+      });
+
+      await checkTeamsCreate(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(mockNext).toHaveBeenCalled();
+      expect(mockRes.status).not.toHaveBeenCalled();
+    });
+
+    it('denies team creation (403) when role lacks CREATE', async () => {
+      const mockRole = {
+        name: 'restricted',
+        permissions: {
+          [PermissionTypes.TEAMS]: {
+            [Permissions.USE]: true,
+            [Permissions.CREATE]: false,
+          },
+        },
+      } as unknown as IRole;
+
+      mockGetRoleByName.mockResolvedValue(mockRole);
+
+      const checkTeamsCreate = generateCheckAccess({
+        permissionType: PermissionTypes.TEAMS,
+        permissions: [Permissions.USE, Permissions.CREATE],
+        getRoleByName: mockGetRoleByName,
+      });
+
+      await checkTeamsCreate(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(mockNext).not.toHaveBeenCalled();
+      expect(mockRes.status).toHaveBeenCalledWith(403);
+      expect(mockRes.json).toHaveBeenCalledWith({ message: 'Forbidden: Insufficient permissions' });
+    });
+
+    it('denies team creation (403) when role has no TEAMS permission at all', async () => {
+      const mockRole = {
+        name: 'no-teams',
+        permissions: {},
+      } as unknown as IRole;
+
+      mockGetRoleByName.mockResolvedValue(mockRole);
+
+      const checkTeamsCreate = generateCheckAccess({
+        permissionType: PermissionTypes.TEAMS,
+        permissions: [Permissions.USE, Permissions.CREATE],
+        getRoleByName: mockGetRoleByName,
+      });
+
+      await checkTeamsCreate(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(mockNext).not.toHaveBeenCalled();
+      expect(mockRes.status).toHaveBeenCalledWith(403);
+    });
+  });
+
   describe('Real-world usage patterns', () => {
     it('should handle memory access patterns', async () => {
       const mockRole = {

@@ -89,7 +89,9 @@ describe('roleDefaults', () => {
           permType === PermissionTypes.MEMORIES ||
           permType === PermissionTypes.PROMPTS ||
           permType === PermissionTypes.AGENTS ||
-          permType === PermissionTypes.SKILLS;
+          permType === PermissionTypes.SKILLS ||
+          permType === PermissionTypes.FILES ||
+          permType === PermissionTypes.TEAMS;
 
         expect({
           permType,
@@ -153,6 +155,29 @@ describe('roleDefaults', () => {
         [Permissions.CREATE]: true,
         [Permissions.SHARE]: false,
         [Permissions.SHARE_PUBLIC]: false,
+      });
+    });
+  });
+
+  describe('TEAMS permission defaults', () => {
+    it('grants ADMIN USE+CREATE by default', () => {
+      const adminTeams = roleDefaults[SystemRoles.ADMIN].permissions[
+        PermissionTypes.TEAMS
+      ] as Record<string, boolean>;
+      expect(adminTeams).toEqual({
+        [Permissions.USE]: true,
+        [Permissions.CREATE]: true,
+      });
+    });
+
+    it('grants USER USE+CREATE by default', () => {
+      const userTeams = roleDefaults[SystemRoles.USER].permissions[PermissionTypes.TEAMS] as Record<
+        string,
+        boolean
+      >;
+      expect(userTeams).toEqual({
+        [Permissions.USE]: true,
+        [Permissions.CREATE]: true,
       });
     });
   });

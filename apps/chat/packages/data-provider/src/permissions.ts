@@ -68,6 +68,10 @@ export enum PermissionTypes {
    * Type for File Permissions
    */
   FILES = 'FILES',
+  /**
+   * Type for Team Permissions
+   */
+  TEAMS = 'TEAMS',
 }
 
 /**
@@ -92,6 +96,7 @@ export const PERMISSION_TYPE_INTERFACE_FIELDS: Record<PermissionTypes, string> =
   [PermissionTypes.REMOTE_AGENTS]: 'remoteAgents',
   [PermissionTypes.SKILLS]: 'skills',
   [PermissionTypes.FILES]: 'files',
+  [PermissionTypes.TEAMS]: 'teams',
 };
 
 /** Set of interface config field names that correspond to role permissions. */
@@ -244,6 +249,12 @@ export const filesPermissionsSchema = z.object({
 });
 export type TFilesPermissions = z.infer<typeof filesPermissionsSchema>;
 
+export const teamsPermissionsSchema = z.object({
+  [Permissions.USE]: z.boolean().default(true),
+  [Permissions.CREATE]: z.boolean().default(true),
+});
+export type TTeamsPermissions = z.infer<typeof teamsPermissionsSchema>;
+
 // Define a single permissions schema that holds all permission types.
 export const permissionsSchema = z.object({
   [PermissionTypes.PROMPTS]: promptPermissionsSchema,
@@ -262,4 +273,5 @@ export const permissionsSchema = z.object({
   [PermissionTypes.REMOTE_AGENTS]: remoteAgentsPermissionsSchema,
   [PermissionTypes.SKILLS]: skillPermissionsSchema,
   [PermissionTypes.FILES]: filesPermissionsSchema,
+  [PermissionTypes.TEAMS]: teamsPermissionsSchema,
 });

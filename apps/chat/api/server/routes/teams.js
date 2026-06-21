@@ -5,10 +5,13 @@ const {
   createTeamKnowledgeHandlers,
   createTeamResourceHandlers,
   checkEmailConfig,
+  generateCheckAccess,
 } = require('@librechat/api');
+const { PermissionTypes, Permissions } = require('librechat-data-provider');
 const { requireJwtAuth, checkBan } = require('~/server/middleware');
 const { sendEmail } = require('~/server/utils');
 const PermissionService = require('~/server/services/PermissionService');
+const { getRoleByName } = require('~/models');
 const db = require('~/models');
 
 const router = express.Router();
@@ -62,6 +65,12 @@ const inviteHandlers = createTeamInviteHandlers({
   sendInviteEmail,
 });
 
+const checkTeamsCreate = generateCheckAccess({
+  permissionType: PermissionTypes.TEAMS,
+  permissions: [Permissions.USE, Permissions.CREATE],
+  getRoleByName,
+});
+
 router.use(requireJwtAuth, checkBan);
 
 // Invite routes with no /:id prefix — MUST come before /:id routes to avoid collision
@@ -69,7 +78,7 @@ router.get('/invites', inviteHandlers.listMine);
 router.post('/invites/:token/accept', inviteHandlers.accept);
 router.post('/invites/:token/decline', inviteHandlers.decline);
 
-router.post('/', handlers.create);
+router.post('/', checkTeamsCreate, handlers.create);
 router.get('/', handlers.list);
 router.get('/:id', handlers.get);
 router.patch('/:id', handlers.update);
