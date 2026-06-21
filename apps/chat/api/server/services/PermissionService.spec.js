@@ -6,6 +6,7 @@ const {
   AccessRoleIds,
   PrincipalType,
   PrincipalModel,
+  PermissionBits,
 } = require('librechat-data-provider');
 const {
   bulkUpdateResourcePermissions,
@@ -15,6 +16,7 @@ const {
   getAvailableRoles,
   grantPermission,
   checkPermission,
+  removeAllPermissions,
 } = require('./PermissionService');
 const { findRoleByIdentifier, getUserPrincipals, seedDefaultRoles } = require('~/models');
 
@@ -1937,6 +1939,143 @@ describe('PermissionService', () => {
       expect(permissionsMap.get(resource1.toString())).toBe(1);
       expect(permissionsMap.get(resource2.toString())).toBe(3);
     });
+  });
+});
+
+describe('FILE + GROUP ACL integration', () => {
+  const { File, Group } = require('~/db/models');
+
+  let fileId;
+  let groupId;
+  let memberId;
+  let nonMemberId;
+  let grantorId;
+
+  beforeEach(async () => {
+    await AclEntry.deleteMany({});
+    getUserPrincipals.mockReset();
+
+    memberId = new mongoose.Types.ObjectId();
+    nonMemberId = new mongoose.Types.ObjectId();
+    grantorId = new mongoose.Types.ObjectId();
+
+    // Create a permanent File document (no expiresAt)
+    const file = await File.create({
+      user: grantorId,
+      file_id: `file-acl-test-${Date.now()}`,
+      filename: 'team-knowledge.pdf',
+      filepath: '/uploads/team-knowledge.pdf',
+      bytes: 1024,
+      type: 'application/pdf',
+      embedded: true,
+    });
+    fileId = file._id;
+
+    // Create a Group with memberId as member
+    const group = await Group.create({
+      name: 'Test Team',
+      source: 'local',
+      memberIds: [memberId],
+    });
+    groupId = group._id;
+  });
+
+  afterEach(async () => {
+    await File.deleteMany({ user: grantorId });
+    await Group.deleteMany({ name: 'Test Team' });
+  });
+
+  test('grant FILE_VIEWER to group → member inherits VIEW; non-member denied', async () => {
+    const entry = await grantPermission({
+      principalType: PrincipalType.GROUP,
+      principalId: groupId,
+      resourceType: ResourceType.FILE,
+      resourceId: fileId,
+      accessRoleId: AccessRoleIds.FILE_VIEWER,
+      grantedBy: grantorId,
+    });
+
+    expect(entry).toBeDefined();
+    expect(entry.resourceType).toBe(ResourceType.FILE);
+    expect(entry.principalType).toBe(PrincipalType.GROUP);
+
+    // member: getUserPrincipals returns user + their group
+    getUserPrincipals.mockResolvedValue([
+      { principalType: PrincipalType.USER, principalId: memberId },
+      { principalType: PrincipalType.GROUP, principalId: groupId },
+    ]);
+
+    const memberCanView = await checkPermission({
+      userId: memberId,
+      resourceType: ResourceType.FILE,
+      resourceId: fileId,
+      requiredPermission: PermissionBits.VIEW,
+    });
+    expect(memberCanView).toBe(true);
+
+    // non-member: no group membership
+    getUserPrincipals.mockResolvedValue([
+      { principalType: PrincipalType.USER, principalId: nonMemberId },
+    ]);
+
+    const nonMemberCanView = await checkPermission({
+      userId: nonMemberId,
+      resourceType: ResourceType.FILE,
+      resourceId: fileId,
+      requiredPermission: PermissionBits.VIEW,
+    });
+    expect(nonMemberCanView).toBe(false);
+  });
+
+  test('findAccessibleResources includes fileId for group member', async () => {
+    await grantPermission({
+      principalType: PrincipalType.GROUP,
+      principalId: groupId,
+      resourceType: ResourceType.FILE,
+      resourceId: fileId,
+      accessRoleId: AccessRoleIds.FILE_VIEWER,
+      grantedBy: grantorId,
+    });
+
+    getUserPrincipals.mockResolvedValue([
+      { principalType: PrincipalType.USER, principalId: memberId },
+      { principalType: PrincipalType.GROUP, principalId: groupId },
+    ]);
+
+    const accessible = await findAccessibleResources({
+      userId: memberId,
+      resourceType: ResourceType.FILE,
+      requiredPermissions: PermissionBits.VIEW,
+    });
+
+    const ids = accessible.map((id) => id.toString());
+    expect(ids).toContain(fileId.toString());
+  });
+
+  test('removeAllPermissions revokes group member access', async () => {
+    await grantPermission({
+      principalType: PrincipalType.GROUP,
+      principalId: groupId,
+      resourceType: ResourceType.FILE,
+      resourceId: fileId,
+      accessRoleId: AccessRoleIds.FILE_VIEWER,
+      grantedBy: grantorId,
+    });
+
+    await removeAllPermissions({ resourceType: ResourceType.FILE, resourceId: fileId });
+
+    getUserPrincipals.mockResolvedValue([
+      { principalType: PrincipalType.USER, principalId: memberId },
+      { principalType: PrincipalType.GROUP, principalId: groupId },
+    ]);
+
+    const memberCanView = await checkPermission({
+      userId: memberId,
+      resourceType: ResourceType.FILE,
+      resourceId: fileId,
+      requiredPermission: PermissionBits.VIEW,
+    });
+    expect(memberCanView).toBe(false);
   });
 });
 
