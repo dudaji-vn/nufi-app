@@ -18,6 +18,13 @@ const mockDeleteToolCalls = jest.fn();
 const mockDeleteUserAgents = jest.fn();
 const mockDeleteUserPrompts = jest.fn();
 const mockDeleteUserSkills = jest.fn();
+const mockGetUserTeams = jest.fn();
+const mockRemoveTeamMember = jest.fn();
+const mockTransferOwnership = jest.fn();
+const mockDeleteInvitesByGroup = jest.fn();
+const mockDeleteGroup = jest.fn();
+const mockDeleteAclEntries = jest.fn();
+const mockRemoveUserFromAllGroups = jest.fn();
 
 jest.mock('@librechat/data-schemas', () => ({
   logger: { error: jest.fn(), info: jest.fn() },
@@ -58,6 +65,11 @@ jest.mock('~/models', () => ({
   deleteUserAgents: (...args) => mockDeleteUserAgents(...args),
   deleteUserPrompts: (...args) => mockDeleteUserPrompts(...args),
   deleteUserSkills: (...args) => mockDeleteUserSkills(...args),
+  getUserTeams: (...args) => mockGetUserTeams(...args),
+  removeTeamMember: (...args) => mockRemoveTeamMember(...args),
+  transferOwnership: (...args) => mockTransferOwnership(...args),
+  deleteInvitesByGroup: (...args) => mockDeleteInvitesByGroup(...args),
+  deleteGroup: (...args) => mockDeleteGroup(...args),
   deleteTransactions: jest.fn(),
   deleteBalances: jest.fn(),
   deleteAllAgentApiKeys: jest.fn(),
@@ -66,8 +78,8 @@ jest.mock('~/models', () => ({
   deleteAllUserMemories: jest.fn(),
   deleteActions: jest.fn(),
   deleteTokens: jest.fn(),
-  removeUserFromAllGroups: jest.fn(),
-  deleteAclEntries: jest.fn(),
+  removeUserFromAllGroups: (...args) => mockRemoveUserFromAllGroups(...args),
+  deleteAclEntries: (...args) => mockDeleteAclEntries(...args),
   getSoleOwnedResourceIds: jest.fn().mockResolvedValue([]),
 }));
 
@@ -133,6 +145,13 @@ function stubDeletionMocks() {
   mockDeleteUserAgents.mockResolvedValue();
   mockDeleteUserPrompts.mockResolvedValue();
   mockDeleteUserSkills.mockResolvedValue(0);
+  mockGetUserTeams.mockResolvedValue([]);
+  mockRemoveTeamMember.mockResolvedValue();
+  mockTransferOwnership.mockResolvedValue();
+  mockDeleteInvitesByGroup.mockResolvedValue();
+  mockDeleteGroup.mockResolvedValue();
+  mockDeleteAclEntries.mockResolvedValue();
+  mockRemoveUserFromAllGroups.mockResolvedValue();
 }
 
 beforeEach(() => {
@@ -289,5 +308,84 @@ describe('deleteUserController - 2FA enforcement', () => {
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.send).toHaveBeenCalledWith({ message: 'User deleted' });
     expect(mockDeleteMessages).toHaveBeenCalled();
+  });
+});
+
+describe('deleteUserController - teams cascade', () => {
+  const userId = 'user1';
+  const req = { user: { id: userId, _id: userId, email: 'a@b.com' }, body: {} };
+
+  beforeEach(() => {
+    mockGetUserById.mockResolvedValue({ _id: userId, twoFactorEnabled: false });
+  });
+
+  it('transfers ownership to another admin and removes the deleted user when they own a team with another admin', async () => {
+    const adminUserId = 'admin2';
+    const teamId = 'team1';
+    const team = {
+      _id: teamId,
+      ownerId: { toString: () => userId },
+      members: [
+        { userId: { toString: () => userId }, role: 'owner' },
+        { userId: adminUserId, role: 'admin' },
+      ],
+    };
+    mockGetUserTeams.mockResolvedValue([team]);
+
+    const res = createRes();
+    await deleteUserController(req, res);
+
+    expect(mockTransferOwnership).toHaveBeenCalledWith({
+      groupId: teamId,
+      fromUserId: userId,
+      toUserId: adminUserId,
+    });
+    expect(mockRemoveTeamMember).toHaveBeenCalledWith({ groupId: teamId, userId });
+    expect(mockDeleteGroup).not.toHaveBeenCalled();
+    expect(mockDeleteInvitesByGroup).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('deletes the team, its invites, and its by-principal ACL entries when the owner is the sole member', async () => {
+    const teamId = 'team2';
+    const team = {
+      _id: teamId,
+      ownerId: { toString: () => userId },
+      members: [{ userId: { toString: () => userId }, role: 'owner' }],
+    };
+    mockGetUserTeams.mockResolvedValue([team]);
+
+    const res = createRes();
+    await deleteUserController(req, res);
+
+    expect(mockDeleteInvitesByGroup).toHaveBeenCalledWith({ groupId: teamId });
+    expect(mockDeleteAclEntries).toHaveBeenCalledWith({ principalId: teamId });
+    expect(mockDeleteGroup).toHaveBeenCalledWith(teamId);
+    expect(mockTransferOwnership).not.toHaveBeenCalled();
+    expect(mockRemoveTeamMember).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('removes the user from members and memberIds when they are a non-owner team member', async () => {
+    const ownerUserId = 'owner99';
+    const teamId = 'team3';
+    const team = {
+      _id: teamId,
+      ownerId: { toString: () => ownerUserId },
+      members: [
+        { userId: { toString: () => ownerUserId }, role: 'owner' },
+        { userId: { toString: () => userId }, role: 'member' },
+      ],
+    };
+    mockGetUserTeams.mockResolvedValue([team]);
+
+    const res = createRes();
+    await deleteUserController(req, res);
+
+    expect(mockRemoveTeamMember).toHaveBeenCalledWith({ groupId: teamId, userId });
+    expect(mockTransferOwnership).not.toHaveBeenCalled();
+    expect(mockDeleteGroup).not.toHaveBeenCalled();
+    expect(mockRemoveUserFromAllGroups).toHaveBeenCalledWith(userId);
+    expect(res.status).toHaveBeenCalledWith(200);
   });
 });

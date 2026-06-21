@@ -47,6 +47,12 @@ jest.mock('~/models', () => {
       const Group = _mongoose.models.Group;
       await Group.updateMany({ memberIds: userId }, { $pullAll: { memberIds: [userId] } });
     }),
+    getUserTeams: jest.fn().mockResolvedValue([]),
+    removeTeamMember: jest.fn().mockResolvedValue(undefined),
+    transferOwnership: jest.fn().mockResolvedValue(undefined),
+    deleteInvitesByGroup: jest.fn().mockResolvedValue(undefined),
+    deleteGroup: jest.fn().mockResolvedValue(undefined),
+    getSoleOwnedResourceIds: jest.fn().mockResolvedValue([]),
   };
 });
 

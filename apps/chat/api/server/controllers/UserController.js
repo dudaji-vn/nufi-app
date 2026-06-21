@@ -337,6 +337,30 @@ const deleteUserController = async (req, res) => {
     await deleteUserMcpServers(user.id);
     await db.deleteActions({ user: user.id });
     await db.deleteTokens({ userId: user.id });
+    // Teams cleanup: reassign or dissolve owned teams, and remove non-owned memberships
+    const userTeams = await db.getUserTeams({ userId: user.id });
+    for (const team of userTeams) {
+      const isOwner = team.ownerId?.toString() === user.id;
+      if (!isOwner) {
+        await db.removeTeamMember({ groupId: team._id, userId: user.id });
+        continue;
+      }
+      const admins = (team.members ?? []).filter(
+        (m) => m.role === 'admin' && m.userId.toString() !== user.id,
+      );
+      if (admins.length > 0) {
+        await db.transferOwnership({
+          groupId: team._id,
+          fromUserId: user.id,
+          toUserId: admins[0].userId,
+        });
+        await db.removeTeamMember({ groupId: team._id, userId: user.id });
+      } else {
+        await db.deleteInvitesByGroup({ groupId: team._id });
+        await db.deleteAclEntries({ principalId: team._id });
+        await db.deleteGroup(team._id);
+      }
+    }
     await db.removeUserFromAllGroups(user.id);
     await db.deleteAclEntries({ principalId: user._id });
     logger.info(`User deleted account. Email: ${user.email} ID: ${user.id}`);
