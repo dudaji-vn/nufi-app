@@ -16,6 +16,11 @@ jest.mock('~/server/middleware', () => ({
   checkBan: (_req, _res, next) => next(),
 }));
 
+jest.mock('~/server/utils', () => ({
+  ...jest.requireActual('~/server/utils'),
+  sendEmail: jest.fn().mockResolvedValue({}),
+}));
+
 let mongoServer;
 let db;
 
@@ -45,18 +50,19 @@ function makeUserId() {
 async function seedUser(overrides = {}) {
   const User = mongoose.models.User;
   const id = makeUserId();
+  const email = overrides.email ?? `user-${id}@test.com`;
   await User.create({
     _id: id,
     name: 'Test User ' + id,
-    email: `user-${id}@test.com`,
     provider: 'local',
     ...overrides,
+    email,
   });
-  return { _id: id, id: id.toString() };
+  return { _id: id, id: id.toString(), email };
 }
 
 function createApp(user) {
-  const { createTeamsHandlers } = require('@librechat/api');
+  const { createTeamsHandlers, createTeamInviteHandlers } = require('@librechat/api');
 
   const handlers = createTeamsHandlers({
     createTeam: db.createTeam,
@@ -72,6 +78,23 @@ function createApp(user) {
     findUsers: db.findUsers,
   });
 
+  const mockSendInviteEmail = jest.fn().mockResolvedValue(undefined);
+
+  const inviteHandlers = createTeamInviteHandlers({
+    createInvite: db.createInvite,
+    findInviteByToken: db.findInviteByToken,
+    listPendingInvitesForUser: db.listPendingInvitesForUser,
+    listInvitesForTeam: db.listInvitesForTeam,
+    acceptInvite: db.acceptInvite,
+    declineInvite: db.declineInvite,
+    revokeInvite: db.revokeInvite,
+    addTeamMember: db.addTeamMember,
+    findUser: db.findUser,
+    findGroupById: db.findGroupById,
+    getTeamRole: db.getTeamRole,
+    sendInviteEmail: mockSendInviteEmail,
+  });
+
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
@@ -80,6 +103,12 @@ function createApp(user) {
   });
 
   const router = express.Router();
+
+  // Invite routes with no /:id prefix — MUST come before /:id routes
+  router.get('/invites', inviteHandlers.listMine);
+  router.post('/invites/:token/accept', inviteHandlers.accept);
+  router.post('/invites/:token/decline', inviteHandlers.decline);
+
   router.post('/', handlers.create);
   router.get('/', handlers.list);
   router.get('/:id', handlers.get);
@@ -89,6 +118,11 @@ function createApp(user) {
   router.delete('/:id/members/:userId', handlers.removeMember);
   router.patch('/:id/members/:userId', handlers.changeMemberRole);
   router.post('/:id/transfer', handlers.transferOwnership);
+
+  router.post('/:id/invites', inviteHandlers.create);
+  router.get('/:id/invites', inviteHandlers.listForTeam);
+  router.delete('/:id/invites/:inviteId', inviteHandlers.revoke);
+
   app.use('/api/teams', router);
 
   return app;
@@ -329,5 +363,215 @@ describe('Teams Routes — Integration', () => {
     const outsiderApp = createApp(outsider);
     const res = await request(outsiderApp).get(`/api/teams/${teamId}/members`);
     expect([403, 404]).toContain(res.status);
+  });
+});
+
+describe('Team Invite Routes — Integration', () => {
+  async function seedUserWithEmail(email, overrides = {}) {
+    const User = mongoose.models.User;
+    const id = makeUserId();
+    await User.create({
+      _id: id,
+      name: 'Test User ' + id,
+      email,
+      provider: 'local',
+      ...overrides,
+    });
+    return { _id: id, id: id.toString(), email };
+  }
+
+  it('POST /:id/invites: admin creates invite (201 with token); non-admin gets 403', async () => {
+    const owner = await seedUser();
+    const member = await seedUser();
+    const ownerApp = createApp(owner);
+
+    const createRes = await request(ownerApp)
+      .post('/api/teams')
+      .send({ name: 'Invite Team' })
+      .expect(201);
+
+    const teamId = createRes.body.team._id;
+    await db.addTeamMember({ groupId: teamId, userId: member.id, role: 'member' });
+
+    const inviteRes = await request(ownerApp)
+      .post(`/api/teams/${teamId}/invites`)
+      .send({ email: 'invitee@example.com', role: 'member' })
+      .expect(201);
+
+    expect(inviteRes.body).toHaveProperty('invite');
+    expect(inviteRes.body.invite).toHaveProperty('token');
+    expect(inviteRes.body.invite.email).toBe('invitee@example.com');
+
+    const memberApp = createApp(member);
+    const forbiddenRes = await request(memberApp)
+      .post(`/api/teams/${teamId}/invites`)
+      .send({ email: 'other@example.com', role: 'member' });
+    expect(forbiddenRes.status).toBe(403);
+  });
+
+  it('GET /invites proves route ordering (hits listMine, not /:id handler)', async () => {
+    const inviteeEmail = `invitee-${makeUserId()}@example.com`;
+    const invitee = await seedUserWithEmail(inviteeEmail);
+    const owner = await seedUser();
+    const ownerApp = createApp(owner);
+
+    const createRes = await request(ownerApp)
+      .post('/api/teams')
+      .send({ name: 'Route Order Team' })
+      .expect(201);
+
+    const teamId = createRes.body.team._id;
+
+    await request(ownerApp)
+      .post(`/api/teams/${teamId}/invites`)
+      .send({ email: inviteeEmail, role: 'member' })
+      .expect(201);
+
+    const inviteeApp = createApp(invitee);
+    const listRes = await request(inviteeApp).get('/api/teams/invites').expect(200);
+    expect(listRes.body).toHaveProperty('invites');
+    expect(listRes.body.invites.length).toBeGreaterThanOrEqual(1);
+    const found = listRes.body.invites.find((inv) => inv.email === inviteeEmail);
+    expect(found).toBeDefined();
+    expect(found).toHaveProperty('token');
+  });
+
+  it('full flow: invite → listMine → accept → invitee is a member', async () => {
+    const inviteeEmail = `acceptee-${makeUserId()}@example.com`;
+    const invitee = await seedUserWithEmail(inviteeEmail);
+    const owner = await seedUser();
+    const ownerApp = createApp(owner);
+
+    const createRes = await request(ownerApp)
+      .post('/api/teams')
+      .send({ name: 'Accept Flow Team' })
+      .expect(201);
+
+    const teamId = createRes.body.team._id;
+
+    const inviteRes = await request(ownerApp)
+      .post(`/api/teams/${teamId}/invites`)
+      .send({ email: inviteeEmail, role: 'member' })
+      .expect(201);
+
+    const token = inviteRes.body.invite.token;
+
+    const inviteeApp = createApp(invitee);
+    const listRes = await request(inviteeApp).get('/api/teams/invites').expect(200);
+    expect(listRes.body.invites.some((inv) => inv.token === token)).toBe(true);
+
+    const acceptRes = await request(inviteeApp)
+      .post(`/api/teams/invites/${token}/accept`)
+      .expect(200);
+    expect(acceptRes.body).toHaveProperty('team');
+
+    const role = await db.getTeamRole({ groupId: teamId, userId: invitee.id });
+    expect(role).toBe('member');
+  });
+
+  it('decline path: invitee declines invite → invite no longer pending', async () => {
+    const inviteeEmail = `decliner-${makeUserId()}@example.com`;
+    const invitee = await seedUserWithEmail(inviteeEmail);
+    const owner = await seedUser();
+    const ownerApp = createApp(owner);
+
+    const createRes = await request(ownerApp)
+      .post('/api/teams')
+      .send({ name: 'Decline Flow Team' })
+      .expect(201);
+
+    const teamId = createRes.body.team._id;
+
+    const inviteRes = await request(ownerApp)
+      .post(`/api/teams/${teamId}/invites`)
+      .send({ email: inviteeEmail, role: 'member' })
+      .expect(201);
+
+    const token = inviteRes.body.invite.token;
+
+    const inviteeApp = createApp(invitee);
+    const declineRes = await request(inviteeApp)
+      .post(`/api/teams/invites/${token}/decline`)
+      .expect(200);
+    expect(declineRes.body).toHaveProperty('success', true);
+
+    const role = await db.getTeamRole({ groupId: teamId, userId: invitee.id });
+    expect(role).toBeNull();
+  });
+
+  it('revoke path: admin revokes invite → gone from GET /:id/invites', async () => {
+    const owner = await seedUser();
+    const ownerApp = createApp(owner);
+
+    const createRes = await request(ownerApp)
+      .post('/api/teams')
+      .send({ name: 'Revoke Flow Team' })
+      .expect(201);
+
+    const teamId = createRes.body.team._id;
+
+    const inviteRes = await request(ownerApp)
+      .post(`/api/teams/${teamId}/invites`)
+      .send({ email: 'revokee@example.com', role: 'member' })
+      .expect(201);
+
+    const inviteId = inviteRes.body.invite._id;
+
+    const listBefore = await request(ownerApp).get(`/api/teams/${teamId}/invites`).expect(200);
+    expect(listBefore.body.invites.some((inv) => inv._id === inviteId)).toBe(true);
+
+    await request(ownerApp).delete(`/api/teams/${teamId}/invites/${inviteId}`).expect(200);
+
+    const listAfter = await request(ownerApp).get(`/api/teams/${teamId}/invites`).expect(200);
+    expect(listAfter.body.invites.some((inv) => inv._id === inviteId)).toBe(false);
+  });
+
+  it('stolen token: different user accepting returns 403', async () => {
+    const inviteeEmail = `intended-${makeUserId()}@example.com`;
+    await seedUserWithEmail(inviteeEmail);
+    const thief = await seedUser();
+    const owner = await seedUser();
+    const ownerApp = createApp(owner);
+
+    const createRes = await request(ownerApp)
+      .post('/api/teams')
+      .send({ name: 'Stolen Token Team' })
+      .expect(201);
+
+    const teamId = createRes.body.team._id;
+
+    const inviteRes = await request(ownerApp)
+      .post(`/api/teams/${teamId}/invites`)
+      .send({ email: inviteeEmail, role: 'member' })
+      .expect(201);
+
+    const token = inviteRes.body.invite.token;
+
+    const thiefApp = createApp(thief);
+    const res = await request(thiefApp).post(`/api/teams/invites/${token}/accept`).expect(403);
+    expect(res.body).toHaveProperty('error');
+  });
+
+  it('GET /:id/invites does NOT include token field', async () => {
+    const owner = await seedUser();
+    const ownerApp = createApp(owner);
+
+    const createRes = await request(ownerApp)
+      .post('/api/teams')
+      .send({ name: 'Token Strip Team' })
+      .expect(201);
+
+    const teamId = createRes.body.team._id;
+
+    await request(ownerApp)
+      .post(`/api/teams/${teamId}/invites`)
+      .send({ email: 'striptest@example.com', role: 'member' })
+      .expect(201);
+
+    const listRes = await request(ownerApp).get(`/api/teams/${teamId}/invites`).expect(200);
+    expect(listRes.body.invites.length).toBeGreaterThan(0);
+    for (const inv of listRes.body.invites) {
+      expect(inv).not.toHaveProperty('token');
+    }
   });
 });
