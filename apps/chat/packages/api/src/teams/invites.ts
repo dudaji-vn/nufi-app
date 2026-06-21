@@ -70,7 +70,7 @@ export interface TeamInviteHandlersDeps {
 }
 
 function isCallerBound(invite: ITeamInvite, callerId: string, callerEmail: string): boolean {
-  const emailMatch = invite.email === callerEmail.toLowerCase();
+  const emailMatch = invite.email.toLowerCase() === callerEmail.toLowerCase();
   const userIdMatch = invite.invitedUserId != null && invite.invitedUserId.toString() === callerId;
   return emailMatch || userIdMatch;
 }
@@ -79,7 +79,7 @@ function isInviteValid(invite: ITeamInvite): boolean {
   return invite.status === 'pending' && invite.expiresAt > new Date();
 }
 
-type InviteWithTeamName = Omit<ITeamInvite, never> & { teamName?: string };
+type InviteWithTeamName = ITeamInvite & { teamName?: string };
 
 export function createTeamInviteHandlers(deps: TeamInviteHandlersDeps) {
   const {
@@ -165,7 +165,7 @@ export function createTeamInviteHandlers(deps: TeamInviteHandlersDeps) {
         return res.status(403).json({ error: 'Forbidden' });
       }
 
-      if (invite.status !== 'pending') {
+      if (!isInviteValid(invite)) {
         return res.status(410).json({ error: 'Invite is no longer valid' });
       }
 
@@ -216,7 +216,7 @@ export function createTeamInviteHandlers(deps: TeamInviteHandlersDeps) {
       });
 
       if (deps.sendInviteEmail) {
-        const [inviterUser] = await Promise.all([findUser({ email: req.user?.email as string })]);
+        const inviterUser = await findUser({ email: req.user?.email as string });
         try {
           await deps.sendInviteEmail({
             email: email.trim(),

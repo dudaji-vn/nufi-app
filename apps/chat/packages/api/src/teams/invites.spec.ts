@@ -416,6 +416,42 @@ describe('createTeamInviteHandlers', () => {
       expect(status).toHaveBeenCalledWith(500);
       expect(json).toHaveBeenCalledWith({ error: 'Failed to decline invite' });
     });
+
+    it('returns 410 when invite is expired (status pending but expiresAt in the past) and does not call declineInvite', async () => {
+      const invite = mockInvite({
+        status: 'pending',
+        email: 'caller@example.com',
+        expiresAt: new Date(Date.now() - 1000),
+      });
+      const deps = createDeps({ findInviteByToken: jest.fn().mockResolvedValue(invite) });
+      const handlers = createTeamInviteHandlers(deps);
+      const { req, res, status, json } = createReqRes({
+        params: { token: validToken },
+        email: 'caller@example.com',
+      });
+
+      await handlers.decline(req, res);
+
+      expect(status).toHaveBeenCalledWith(410);
+      expect(json).toHaveBeenCalledWith({ error: 'Invite is no longer valid' });
+      expect(deps.declineInvite).not.toHaveBeenCalled();
+    });
+
+    it('allows decline when invite email is mixed-case and caller email matches case-insensitively', async () => {
+      const invite = mockInvite({ email: 'User@Example.com' });
+      const deps = createDeps({ findInviteByToken: jest.fn().mockResolvedValue(invite) });
+      const handlers = createTeamInviteHandlers(deps);
+      const { req, res, status, json } = createReqRes({
+        params: { token: validToken },
+        email: 'user@example.com',
+      });
+
+      await handlers.decline(req, res);
+
+      expect(status).toHaveBeenCalledWith(200);
+      expect(json).toHaveBeenCalledWith({ success: true });
+      expect(deps.declineInvite).toHaveBeenCalledWith({ token: validToken });
+    });
   });
 
   // ── create ────────────────────────────────────────────────────────────────────
