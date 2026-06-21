@@ -1,8 +1,8 @@
 import { useParams, useNavigate, Navigate } from 'react-router-dom';
 import { ArrowLeft, Users } from 'lucide-react';
 import { Button, Spinner } from '@librechat/client';
-import { PermissionTypes, Permissions } from 'librechat-data-provider';
-import { useTeamQuery } from '~/data-provider';
+import { PermissionTypes, Permissions, SystemRoles } from 'librechat-data-provider';
+import { useTeamQuery, useGetRole } from '~/data-provider';
 import { useLocalize, useHasAccess } from '~/hooks';
 import MyInvitesInbox from '~/components/Teams/MyInvitesInbox';
 import TeamsList from '~/components/Teams/TeamsList';
@@ -42,12 +42,24 @@ function TeamDetailHeader({ teamId }: { teamId: string }) {
 }
 
 export default function TeamsView() {
+  const localize = useLocalize();
   const { teamId } = useParams<{ teamId?: string }>();
 
+  /** Wait for the role to load before deciding access, so a direct navigation
+   * or page reload to /teams doesn't redirect away while permissions resolve. */
+  const { isFetched: roleFetched } = useGetRole(SystemRoles.USER);
   const hasAccess = useHasAccess({
     permissionType: PermissionTypes.TEAMS,
     permission: Permissions.USE,
   });
+
+  if (!roleFetched) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-presentation">
+        <Spinner className="text-text-secondary" aria-label={localize('com_ui_loading')} />
+      </div>
+    );
+  }
 
   if (!hasAccess) {
     return <Navigate to="/c/new" replace />;
