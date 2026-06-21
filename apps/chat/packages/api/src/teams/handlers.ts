@@ -247,6 +247,13 @@ export function createTeamsHandlers(deps: TeamsHandlersDeps) {
         return res.status(400).json({ error: 'Invalid team ID format' });
       }
 
+      const callerId = req.user?.id as string;
+      const access = await resolveTeamAccess(id, callerId, 'admin');
+
+      if ('error' in access) {
+        return res.status(access.status).json({ error: access.error });
+      }
+
       const { name, description, avatar } = req.body as {
         name?: string;
         description?: string;
@@ -266,13 +273,6 @@ export function createTeamsHandlers(deps: TeamsHandlersDeps) {
 
       if (Object.keys(updateData).length === 0) {
         return res.status(400).json({ error: 'No valid fields to update' });
-      }
-
-      const callerId = req.user?.id as string;
-      const access = await resolveTeamAccess(id, callerId, 'admin');
-
-      if ('error' in access) {
-        return res.status(access.status).json({ error: access.error });
       }
 
       const updated = await updateGroupById(id, updateData);
@@ -404,6 +404,10 @@ export function createTeamsHandlers(deps: TeamsHandlersDeps) {
 
       const updated = await setMemberRole({ groupId: id, userId, role: newRole });
 
+      if (!updated) {
+        return res.status(404).json({ error: 'Member not found' });
+      }
+
       return res.status(200).json({ team: updated });
     } catch (error) {
       if (isDataGuardError(error)) {
@@ -441,6 +445,10 @@ export function createTeamsHandlers(deps: TeamsHandlersDeps) {
         fromUserId: callerId,
         toUserId: newOwnerId,
       });
+
+      if (!updated) {
+        return res.status(404).json({ error: 'Team not found' });
+      }
 
       return res.status(200).json({ team: updated });
     } catch (error) {

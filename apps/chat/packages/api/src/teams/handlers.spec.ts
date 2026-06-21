@@ -311,8 +311,11 @@ describe('createTeamsHandlers', () => {
       expect(json).toHaveBeenCalledWith({ error: 'Invalid team ID format' });
     });
 
-    it('returns 400 when no valid update fields provided', async () => {
-      const deps = createDeps({ getTeamRole: jest.fn().mockResolvedValue('admin') });
+    it('returns 400 when no valid update fields provided (admin caller, empty body)', async () => {
+      const deps = createDeps({
+        getTeamRole: jest.fn().mockResolvedValue('admin'),
+        findGroupById: jest.fn().mockResolvedValue(mockTeam()),
+      });
       const handlers = createTeamsHandlers(deps);
       const { req, res, status, json } = createReqRes({
         params: { id: validId },
@@ -323,6 +326,23 @@ describe('createTeamsHandlers', () => {
 
       expect(status).toHaveBeenCalledWith(400);
       expect(json).toHaveBeenCalledWith({ error: 'No valid fields to update' });
+    });
+
+    it('returns 404 (not 400) when non-member sends empty body — authz runs before body validation', async () => {
+      const deps = createDeps({
+        getTeamRole: jest.fn().mockResolvedValue(null),
+        findGroupById: jest.fn().mockResolvedValue(mockTeam()),
+      });
+      const handlers = createTeamsHandlers(deps);
+      const { req, res, status, json } = createReqRes({
+        params: { id: validId },
+        body: {},
+      });
+
+      await handlers.update(req, res);
+
+      expect(status).toHaveBeenCalledWith(404);
+      expect(json).toHaveBeenCalledWith({ error: 'Team not found' });
     });
 
     it('returns 404 when caller is not a member (hidden from outsiders)', async () => {
@@ -816,6 +836,24 @@ describe('createTeamsHandlers', () => {
       expect(status).toHaveBeenCalledWith(500);
       expect(json).toHaveBeenCalledWith({ error: 'Failed to change member role' });
     });
+
+    it('returns 404 when setMemberRole resolves null (target not a member)', async () => {
+      const deps = createDeps({
+        getTeamRole: jest.fn().mockResolvedValue('admin'),
+        findGroupById: jest.fn().mockResolvedValue(mockTeam()),
+        setMemberRole: jest.fn().mockResolvedValue(null),
+      });
+      const handlers = createTeamsHandlers(deps);
+      const { req, res, status, json } = createReqRes({
+        params: { id: validId, userId: validUserId },
+        body: { role: 'member' },
+      });
+
+      await handlers.changeMemberRole(req, res);
+
+      expect(status).toHaveBeenCalledWith(404);
+      expect(json).toHaveBeenCalledWith({ error: 'Member not found' });
+    });
   });
 
   describe('transferOwnership', () => {
@@ -941,6 +979,26 @@ describe('createTeamsHandlers', () => {
 
       expect(status).toHaveBeenCalledWith(500);
       expect(json).toHaveBeenCalledWith({ error: 'Failed to transfer team ownership' });
+    });
+
+    it('returns 404 when transferOwnership resolves null', async () => {
+      const newOwnerId = new Types.ObjectId().toString();
+      const deps = createDeps({
+        getTeamRole: jest.fn().mockResolvedValue('owner'),
+        findGroupById: jest.fn().mockResolvedValue(mockTeam()),
+        transferOwnership: jest.fn().mockResolvedValue(null),
+      });
+      const handlers = createTeamsHandlers(deps);
+      const { req, res, status, json } = createReqRes({
+        params: { id: validId },
+        body: { newOwnerId },
+        userId: validCallerId,
+      });
+
+      await handlers.transferOwnership(req, res);
+
+      expect(status).toHaveBeenCalledWith(404);
+      expect(json).toHaveBeenCalledWith({ error: 'Team not found' });
     });
   });
 });
