@@ -147,6 +147,90 @@ describe('team membership methods', () => {
   });
 });
 
+describe('team role & ownership methods', () => {
+  async function makeUser() {
+    return User.create({
+      name: 'U' + Math.random(),
+      email: `u${Math.random()}@test.com`,
+      provider: 'local',
+    });
+  }
+
+  test('getTeamRole returns the role or null', async () => {
+    const owner = await makeUser();
+    const member = await makeUser();
+    const stranger = await makeUser();
+    const team = await methods.createTeam({ name: 'T', ownerId: owner._id });
+    await methods.addTeamMember({ groupId: team._id, userId: member._id, role: 'admin' });
+    expect(await methods.getTeamRole({ groupId: team._id, userId: owner._id })).toBe('owner');
+    expect(await methods.getTeamRole({ groupId: team._id, userId: member._id })).toBe('admin');
+    expect(await methods.getTeamRole({ groupId: team._id, userId: stranger._id })).toBeNull();
+  });
+
+  test('setMemberRole flips admin<->member but refuses the owner', async () => {
+    const owner = await makeUser();
+    const member = await makeUser();
+    const team = await methods.createTeam({ name: 'T', ownerId: owner._id });
+    await methods.addTeamMember({ groupId: team._id, userId: member._id, role: 'member' });
+    await methods.setMemberRole({ groupId: team._id, userId: member._id, role: 'admin' });
+    expect(await methods.getTeamRole({ groupId: team._id, userId: member._id })).toBe('admin');
+    await expect(
+      methods.setMemberRole({ groupId: team._id, userId: owner._id, role: 'admin' }),
+    ).rejects.toThrow(/owner/i);
+  });
+
+  test('transferOwnership swaps roles and ownerId atomically', async () => {
+    const owner = await makeUser();
+    const member = await makeUser();
+    const team = await methods.createTeam({ name: 'T', ownerId: owner._id });
+    await methods.addTeamMember({ groupId: team._id, userId: member._id, role: 'admin' });
+    const updated = await methods.transferOwnership({
+      groupId: team._id,
+      fromUserId: owner._id,
+      toUserId: member._id,
+    });
+    expect(updated?.ownerId?.toString()).toBe(member._id.toString());
+    expect(await methods.getTeamRole({ groupId: team._id, userId: member._id })).toBe('owner');
+    expect(await methods.getTeamRole({ groupId: team._id, userId: owner._id })).toBe('admin');
+    const owners = updated?.members?.filter((m) => m.role === 'owner') ?? [];
+    expect(owners).toHaveLength(1);
+  });
+
+  test('transferOwnership rejects a non-owner source or non-member target', async () => {
+    const owner = await makeUser();
+    const member = await makeUser();
+    const stranger = await makeUser();
+    const team = await methods.createTeam({ name: 'T', ownerId: owner._id });
+    await methods.addTeamMember({ groupId: team._id, userId: member._id });
+    await expect(
+      methods.transferOwnership({ groupId: team._id, fromUserId: member._id, toUserId: owner._id }),
+    ).rejects.toThrow(/owner/i);
+    await expect(
+      methods.transferOwnership({
+        groupId: team._id,
+        fromUserId: owner._id,
+        toUserId: stranger._id,
+      }),
+    ).rejects.toThrow(/member/i);
+  });
+
+  test('memberIds stays consistent with members after a transfer', async () => {
+    const owner = await makeUser();
+    const member = await makeUser();
+    const team = await methods.createTeam({ name: 'T', ownerId: owner._id });
+    await methods.addTeamMember({ groupId: team._id, userId: member._id });
+    await methods.transferOwnership({
+      groupId: team._id,
+      fromUserId: owner._id,
+      toUserId: member._id,
+    });
+    const reloaded = await Group.findById(team._id).lean<t.IGroup>();
+    const memberObjectIds = (reloaded?.members ?? []).map((m) => m.userId.toString()).sort();
+    const memberIdSet = [...(reloaded?.memberIds ?? [])].sort();
+    expect(memberIdSet).toEqual(memberObjectIds);
+  });
+});
+
 describe('Group team schema', () => {
   test('defaults kind to "group" and leaves members unset for a plain group', async () => {
     const group = await Group.create({ name: 'Plain', source: 'local' });

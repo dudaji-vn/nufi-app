@@ -887,6 +887,111 @@ export function createUserGroupMethods(mongoose: typeof import('mongoose')) {
     ).lean<IGroup>();
   }
 
+  /** Get a user's role within a team, or null if not a member. */
+  async function getTeamRole(
+    params: { groupId: string | Types.ObjectId; userId: string | Types.ObjectId },
+    session?: ClientSession,
+  ): Promise<TeamRole | null> {
+    const userObjectId =
+      typeof params.userId === 'string' ? new Types.ObjectId(params.userId) : params.userId;
+    const group = await findGroupById(params.groupId, { members: 1 }, session);
+    if (!group || !group.members) {
+      return null;
+    }
+    const member = group.members.find((m) => m.userId.toString() === userObjectId.toString());
+    return member ? member.role : null;
+  }
+
+  /**
+   * Change a member's role between 'admin' and 'member'. Refuses to touch the
+   * owner (use transferOwnership) and rejects 'owner' as a target role.
+   */
+  async function setMemberRole(
+    params: {
+      groupId: string | Types.ObjectId;
+      userId: string | Types.ObjectId;
+      role: 'admin' | 'member';
+    },
+    session?: ClientSession,
+  ): Promise<IGroup | null> {
+    if (params.role !== 'admin' && params.role !== 'member') {
+      throw new Error(`Invalid role for setMemberRole: ${params.role}`);
+    }
+    const userObjectId =
+      typeof params.userId === 'string' ? new Types.ObjectId(params.userId) : params.userId;
+    const group = await findGroupById(params.groupId, {}, session);
+    if (!group) {
+      return null;
+    }
+    if (group.ownerId && group.ownerId.toString() === userObjectId.toString()) {
+      throw new Error('Cannot change the owner role; use transferOwnership');
+    }
+    const Group = mongoose.models.Group as Model<IGroup>;
+    const options = {
+      new: true,
+      arrayFilters: [{ 'elem.userId': userObjectId }],
+      ...(session ? { session } : {}),
+    };
+    return await Group.findByIdAndUpdate(
+      params.groupId,
+      { $set: { 'members.$[elem].role': params.role } },
+      options,
+    ).lean<IGroup>();
+  }
+
+  /**
+   * Transfer team ownership: the current owner is demoted to 'admin' and the
+   * target is promoted to 'owner', with ownerId updated — one atomic update.
+   */
+  async function transferOwnership(
+    params: {
+      groupId: string | Types.ObjectId;
+      fromUserId: string | Types.ObjectId;
+      toUserId: string | Types.ObjectId;
+    },
+    session?: ClientSession,
+  ): Promise<IGroup | null> {
+    const fromObjectId =
+      typeof params.fromUserId === 'string'
+        ? new Types.ObjectId(params.fromUserId)
+        : params.fromUserId;
+    const toObjectId =
+      typeof params.toUserId === 'string' ? new Types.ObjectId(params.toUserId) : params.toUserId;
+    const group = await findGroupById(params.groupId, {}, session);
+    if (!group) {
+      return null;
+    }
+    if (!group.ownerId || group.ownerId.toString() !== fromObjectId.toString()) {
+      throw new Error('fromUserId is not the current owner');
+    }
+    if (fromObjectId.toString() === toObjectId.toString()) {
+      return group;
+    }
+    const isMember = (group.members ?? []).some(
+      (m) => m.userId.toString() === toObjectId.toString(),
+    );
+    if (!isMember) {
+      throw new Error('toUserId is not a member of the team');
+    }
+    const Group = mongoose.models.Group as Model<IGroup>;
+    const options = {
+      new: true,
+      arrayFilters: [{ 'old.userId': fromObjectId }, { 'new.userId': toObjectId }],
+      ...(session ? { session } : {}),
+    };
+    return await Group.findByIdAndUpdate(
+      params.groupId,
+      {
+        $set: {
+          ownerId: toObjectId,
+          'members.$[old].role': 'admin',
+          'members.$[new].role': 'owner',
+        },
+      },
+      options,
+    ).lean<IGroup>();
+  }
+
   /** Get all team-kind groups a user is a member of. */
   async function getUserTeams(
     params: { userId: string | Types.ObjectId },
@@ -930,6 +1035,9 @@ export function createUserGroupMethods(mongoose: typeof import('mongoose')) {
     addTeamMember,
     removeTeamMember,
     getUserTeams,
+    getTeamRole,
+    setMemberRole,
+    transferOwnership,
   };
 }
 
