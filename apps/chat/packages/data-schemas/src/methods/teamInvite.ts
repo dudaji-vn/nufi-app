@@ -95,10 +95,15 @@ export function createTeamInviteMethods(mongoose: typeof import('mongoose')) {
 
   async function revokeInvite(params: {
     inviteId: string | Types.ObjectId;
+    groupId?: string | Types.ObjectId;
   }): Promise<ITeamInvite | null> {
     const TeamInvite = mongoose.models.TeamInvite as Model<ITeamInvite>;
+    const filter: FilterQuery<ITeamInvite> = { _id: params.inviteId, status: 'pending' };
+    if (params.groupId) {
+      filter.groupId = params.groupId;
+    }
     return await TeamInvite.findOneAndUpdate(
-      { _id: params.inviteId, status: 'pending' },
+      filter,
       { $set: { status: 'revoked' } },
       { new: true },
     ).lean<ITeamInvite>();

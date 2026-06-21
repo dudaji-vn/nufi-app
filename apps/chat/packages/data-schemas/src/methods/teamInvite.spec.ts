@@ -242,4 +242,42 @@ describe('TeamInvite methods', () => {
     const count = await inviteMethods.expireStaleInvites();
     expect(count).toBe(1);
   });
+
+  test('revokeInvite with matching groupId revokes the invite', async () => {
+    const gid = groupId();
+    const invite = await inviteMethods.createInvite({
+      groupId: gid,
+      email: 'revoke-with-group@test.com',
+      role: 'member',
+      invitedBy: userId(),
+    });
+    const result = await inviteMethods.revokeInvite({ inviteId: invite._id, groupId: gid });
+    expect(result?.status).toBe('revoked');
+  });
+
+  test('revokeInvite with wrong groupId returns null and invite stays pending', async () => {
+    const gid = groupId();
+    const wrongGid = groupId();
+    const invite = await inviteMethods.createInvite({
+      groupId: gid,
+      email: 'revoke-wrong-group@test.com',
+      role: 'member',
+      invitedBy: userId(),
+    });
+    const result = await inviteMethods.revokeInvite({ inviteId: invite._id, groupId: wrongGid });
+    expect(result).toBeNull();
+    const found = await inviteMethods.findInviteByToken(invite.token);
+    expect(found?.status).toBe('pending');
+  });
+
+  test('revokeInvite without groupId still revokes (backward compatible)', async () => {
+    const invite = await inviteMethods.createInvite({
+      groupId: groupId(),
+      email: 'revoke-no-group@test.com',
+      role: 'member',
+      invitedBy: userId(),
+    });
+    const result = await inviteMethods.revokeInvite({ inviteId: invite._id });
+    expect(result?.status).toBe('revoked');
+  });
 });
