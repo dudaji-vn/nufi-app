@@ -2,7 +2,7 @@ import { Types } from 'mongoose';
 import { PrincipalType } from 'librechat-data-provider';
 import type { TUser, TPrincipalSearchResult } from 'librechat-data-provider';
 import type { Model, ClientSession, FilterQuery } from 'mongoose';
-import type { IGroup, IRole, IUser } from '~/types';
+import type { TeamRole, IGroup, IRole, IUser } from '~/types';
 import { escapeRegExp } from '~/utils/string';
 
 export function createUserGroupMethods(mongoose: typeof import('mongoose')) {
@@ -776,6 +776,132 @@ export function createUserGroupMethods(mongoose: typeof import('mongoose')) {
     ).lean<IGroup>();
   }
 
+  /**
+   * Resolve the value stored in Group.memberIds for a user: the user's
+   * idOnTheSource if present, else the userId string. Mirrors addUserToGroup
+   * so ACL membership resolution stays consistent.
+   */
+  async function resolveMemberIdValue(
+    userId: string | Types.ObjectId,
+    session?: ClientSession,
+  ): Promise<string> {
+    const User = mongoose.models.User as Model<IUser>;
+    const query = User.findById(userId, 'idOnTheSource');
+    if (session) {
+      query.session(session);
+    }
+    const user = await query.lean<{ idOnTheSource?: string }>();
+    return user?.idOnTheSource || userId.toString();
+  }
+
+  /**
+   * Create a self-service team. The creator becomes the sole owner and the
+   * first member; memberIds is seeded so ACL checks work immediately.
+   */
+  async function createTeam(
+    params: {
+      name: string;
+      description?: string;
+      avatar?: string;
+      ownerId: string | Types.ObjectId;
+      tenantId?: string;
+    },
+    session?: ClientSession,
+  ): Promise<IGroup> {
+    const ownerObjectId =
+      typeof params.ownerId === 'string' ? new Types.ObjectId(params.ownerId) : params.ownerId;
+    const memberIdValue = await resolveMemberIdValue(ownerObjectId, session);
+    const Group = mongoose.models.Group as Model<IGroup>;
+    const doc: Partial<IGroup> = {
+      name: params.name,
+      description: params.description,
+      avatar: params.avatar,
+      source: 'local',
+      kind: 'team',
+      ownerId: ownerObjectId,
+      members: [{ userId: ownerObjectId, role: 'owner', joinedAt: new Date() }],
+      memberIds: [memberIdValue],
+      joinPolicy: 'invite',
+      tenantId: params.tenantId,
+    };
+    const options = session ? { session } : {};
+    return await Group.create([doc], options).then((groups) => groups[0]);
+  }
+
+  /**
+   * Add a member to a team, updating members and memberIds atomically.
+   * Rejects 'owner' (ownership moves only via transferOwnership). No-op if the
+   * user is already a member (returns null).
+   */
+  async function addTeamMember(
+    params: {
+      groupId: string | Types.ObjectId;
+      userId: string | Types.ObjectId;
+      role?: 'admin' | 'member';
+    },
+    session?: ClientSession,
+  ): Promise<IGroup | null> {
+    const role: TeamRole = params.role ?? 'member';
+    if (role !== 'admin' && role !== 'member') {
+      throw new Error(`Invalid team member role: ${role}`);
+    }
+    const userObjectId =
+      typeof params.userId === 'string' ? new Types.ObjectId(params.userId) : params.userId;
+    const memberIdValue = await resolveMemberIdValue(userObjectId, session);
+    const Group = mongoose.models.Group as Model<IGroup>;
+    const options = { new: true, ...(session ? { session } : {}) };
+    return await Group.findOneAndUpdate(
+      { _id: params.groupId, 'members.userId': { $ne: userObjectId } },
+      {
+        $push: { members: { userId: userObjectId, role, joinedAt: new Date() } },
+        $addToSet: { memberIds: memberIdValue },
+      },
+      options,
+    ).lean<IGroup>();
+  }
+
+  /**
+   * Remove a member from a team, pulling from members and memberIds atomically.
+   * Refuses to remove the current owner (transfer ownership first).
+   */
+  async function removeTeamMember(
+    params: { groupId: string | Types.ObjectId; userId: string | Types.ObjectId },
+    session?: ClientSession,
+  ): Promise<IGroup | null> {
+    const userObjectId =
+      typeof params.userId === 'string' ? new Types.ObjectId(params.userId) : params.userId;
+    const group = await findGroupById(params.groupId, {}, session);
+    if (!group) {
+      return null;
+    }
+    if (group.ownerId && group.ownerId.toString() === userObjectId.toString()) {
+      throw new Error('Cannot remove the team owner; transfer ownership first');
+    }
+    const memberIdValue = await resolveMemberIdValue(userObjectId, session);
+    const Group = mongoose.models.Group as Model<IGroup>;
+    const options = { new: true, ...(session ? { session } : {}) };
+    return await Group.findByIdAndUpdate(
+      params.groupId,
+      { $pull: { members: { userId: userObjectId }, memberIds: memberIdValue } },
+      options,
+    ).lean<IGroup>();
+  }
+
+  /** Get all team-kind groups a user is a member of. */
+  async function getUserTeams(
+    params: { userId: string | Types.ObjectId },
+    session?: ClientSession,
+  ): Promise<IGroup[]> {
+    const userObjectId =
+      typeof params.userId === 'string' ? new Types.ObjectId(params.userId) : params.userId;
+    const Group = mongoose.models.Group as Model<IGroup>;
+    const query = Group.find({ kind: 'team', 'members.userId': userObjectId });
+    if (session) {
+      query.session(session);
+    }
+    return await query.lean<IGroup[]>();
+  }
+
   return {
     findGroupById,
     findGroupByExternalId,
@@ -800,6 +926,10 @@ export function createUserGroupMethods(mongoose: typeof import('mongoose')) {
     countGroups,
     deleteGroup,
     removeMemberById,
+    createTeam,
+    addTeamMember,
+    removeTeamMember,
+    getUserTeams,
   };
 }
 
