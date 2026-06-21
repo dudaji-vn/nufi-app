@@ -155,6 +155,39 @@ cleaner-UX wrapper (the actual UI affordance is Phase 5). Resolve the path `:age
 (string ids) → Mongo `_id` for the ACL (mirror how knowledge.ts resolves file_id→_id; use the agent/promptGroup
 get-by-id methods). Reuses the knowledge.ts/invites.ts patterns.
 
+## Phase 5 decisions (frontend — UI delegated to Claude by the user)
+
+### D23 — Teams is a full-page feature (not a sidebar panel)
+Reached via a sidebar nav icon (`Users` from lucide) added in `client/src/hooks/Nav/useSideNavLinks.ts`,
+gated by `useHasAccess({ permissionType: PermissionTypes.TEAMS, permission: Permissions.USE })` (the perm
+exists from Phase 6). Full-page because a team has rich content (members, invites, knowledge, shared
+agents/prompts). Reference pattern: `InlinePromptsView` / `AgentMarketplace` (lazy route under `Root`).
+
+### D24 — Routes
+- `/teams` — my-teams list + create-team + my pending-invites inbox (authenticated, under `Root`).
+- `/teams/:teamId` — team detail with tabs: Members, Invites, Knowledge, Shared (agents/prompts).
+- `/teams/invite/:token` — public accept/decline screen, OUTSIDE `AuthLayout` (mirror `share/:shareId` → `ShareRoute`).
+
+### D25 — Component map (`client/src/components/Teams/`)
+`layouts/TeamsView.tsx` (shell, switches list vs detail by `useParams().teamId`); `TeamsList.tsx`;
+`CreateTeamDialog.tsx` (OGDialogTemplate, name/desc); `MyInvitesInbox.tsx` (current user's pending invites,
+accept/decline — on the list page); `TeamDetail.tsx` (header + role-gated actions + Tabs); `MembersTab.tsx`
+(PrincipalAvatar + role, changeRole/remove/leave/transfer; InviteByEmailDialog); `InvitesTab.tsx` (team's
+pending invites, revoke — admin); `KnowledgeTab.tsx` (list/add/remove team files); `SharedTab.tsx`
+(agents/prompts shared with the team, unshare); `route/TeamInviteRoute.tsx` (public token screen).
+Reuse `@librechat/client` primitives (OGDialog/OGDialogTemplate/Button/Input/Avatar/Spinner/useToastContext),
+`useLocalize`, and the Sharing `PrincipalAvatar`. Simple dialogs use `useState` per field (Memories pattern).
+
+### D26 — Share-with-team affordance
+For sharing an agent/prompt WITH a team, reuse the existing `GenericGrantAccessDialog` / people-picker with
+`PrincipalType.GROUP` (teams ARE groups; the ACL already supports GROUP principals — no `ResourceType.TEAM`
+needed). The convenience endpoints from Phase 4 are an alternative; the generic share dialog is the lower-effort
+surface. (Lower priority — do after the core Teams pages.)
+
+### D27 — Localization: add `com_ui_team*` keys to `client/src/locales/en/translation.json` ONLY (other locales automated per CLAUDE.md).
+
+### Build order (5b): routing+nav+TeamsView+list+create+invites-inbox → TeamDetail+MembersTab → Knowledge/Shared tabs + public invite route → share-dialog team affordance. Visual-verify with the running app (backend:dev + frontend:dev + Mongo) + playwright after each slice.
+
 <!-- Subsequent phase decisions appended below. -->
 
 
