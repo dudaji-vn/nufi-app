@@ -1,8 +1,10 @@
 import { useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { MCPIcon, AttachmentIcon, OpenAIMinimalIcon } from '@librechat/client';
 import {
   Bot,
   Brain,
+  Users,
   Bookmark,
   NotebookPen,
   ScrollText,
@@ -64,6 +66,10 @@ export default function useSideNavLinks({
     permissionType: PermissionTypes.BOOKMARKS,
     permission: Permissions.USE,
   });
+  const hasAccessToTeams = useHasAccess({
+    permissionType: PermissionTypes.TEAMS,
+    permission: Permissions.USE,
+  });
   const hasAccessToMemories = useHasAccess({
     permissionType: PermissionTypes.MEMORIES,
     permission: Permissions.USE,
@@ -89,6 +95,7 @@ export default function useSideNavLinks({
     permission: Permissions.CREATE,
   });
   const { availableMCPServers } = useMCPServerManager();
+  const navigate = useNavigate();
 
   const { agentsConfig } = useGetAgentsConfig({ endpointsConfig });
   const { skillsEnabled } = useAgentCapabilities(agentsConfig?.capabilities);
@@ -170,6 +177,16 @@ export default function useSideNavLinks({
       });
     }
 
+    if (hasAccessToTeams) {
+      links.push({
+        title: 'com_ui_teams',
+        label: '',
+        icon: Users,
+        id: 'teams',
+        onClick: () => navigate('/teams'),
+      });
+    }
+
     links.push({
       title: 'com_sidepanel_attach_files',
       label: '',
@@ -231,6 +248,8 @@ export default function useSideNavLinks({
     interfaceConfig.parameters,
     endpointType,
     hasAccessToBookmarks,
+    hasAccessToTeams,
+    navigate,
     availableMCPServers,
     hasAccessToUseMCPSettings,
     hasAccessToCreateMCP,

@@ -38,6 +38,11 @@ const loadSkillsView = () =>
     Component: m.default,
   }));
 
+const loadTeamsView = () =>
+  import('~/components/Teams/layouts/TeamsView').then((m) => ({
+    Component: m.default,
+  }));
+
 const baseEl = document.querySelector('base');
 const baseHref = baseEl?.getAttribute('href') || '/';
 
@@ -144,6 +149,14 @@ export const router = createBrowserRouter(
             {
               path: 'skills/:skillId/edit',
               lazy: loadSkillsView,
+            },
+            {
+              path: 'teams',
+              lazy: loadTeamsView,
+            },
+            {
+              path: 'teams/:teamId',
+              lazy: loadTeamsView,
             },
             {
               path: 'agents',
