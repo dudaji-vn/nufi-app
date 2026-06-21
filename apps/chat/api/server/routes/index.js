@@ -32,10 +32,12 @@ const tags = require('./tags');
 const auth = require('./auth');
 const keys = require('./keys');
 const user = require('./user');
+const teams = require('./teams');
 const mcp = require('./mcp');
 
 module.exports = {
   mcp,
+  teams,
   auth,
   adminAuth,
   adminAuditLog,
