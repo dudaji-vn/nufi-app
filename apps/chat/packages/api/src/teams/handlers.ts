@@ -4,8 +4,7 @@ import type { IGroup, IUser, TeamRole } from '@librechat/data-schemas';
 import type { Response } from 'express';
 import type { ValidationError } from '~/types/error';
 import type { ServerRequest } from '~/types/http';
-
-const RANK: Record<TeamRole, number> = { owner: 3, admin: 2, member: 1 };
+import { hasMinRole, resolveTeamAccess as resolveTeamAccessShared } from './access';
 
 const DATA_GUARD_MESSAGES: ReadonlySet<string> = new Set([
   'Cannot remove the team owner; transfer ownership first',
@@ -13,13 +12,6 @@ const DATA_GUARD_MESSAGES: ReadonlySet<string> = new Set([
   'toUserId is not a member of the team',
   'Cannot change the owner role; use transferOwnership',
 ]);
-
-function hasMinRole(role: TeamRole | null, min: TeamRole): boolean {
-  if (!role) {
-    return false;
-  }
-  return RANK[role] >= RANK[min];
-}
 
 function isDataGuardError(error: unknown): boolean {
   if (!(error instanceof Error)) {
@@ -156,20 +148,17 @@ export function createTeamsHandlers(deps: TeamsHandlersDeps) {
     callerId: string,
     minRole: TeamRole,
   ): Promise<{ team: IGroup; role: TeamRole } | { error: string; status: 400 | 403 | 404 }> {
-    const [team, role] = await Promise.all([
-      findGroupById(id),
-      getTeamRole({ groupId: id, userId: callerId }),
-    ]);
-
-    if (!team || team.kind !== 'team' || !role) {
-      return { error: 'Team not found', status: 404 };
+    const result = await resolveTeamAccessShared(
+      { getTeamRole, findGroupById },
+      id,
+      callerId,
+      minRole,
+    );
+    if (!result.ok) {
+      const error = result.status === 403 ? 'Forbidden' : 'Team not found';
+      return { error, status: result.status };
     }
-
-    if (!hasMinRole(role, minRole)) {
-      return { error: 'Forbidden', status: 403 };
-    }
-
-    return { team, role };
+    return { team: result.team, role: result.role };
   }
 
   async function createHandler(req: ServerRequest, res: Response) {
