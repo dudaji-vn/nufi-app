@@ -191,6 +191,39 @@ describe('TeamInvite methods', () => {
     expect((await inviteMethods.revokeInvite({ inviteId: b._id }))?.status).toBe('revoked');
   });
 
+  test('deleteInvitesByGroup hard-deletes all invites for a group and returns count', async () => {
+    const gidA = groupId();
+    const gidB = groupId();
+
+    await inviteMethods.createInvite({
+      groupId: gidA,
+      email: 'a1@test.com',
+      role: 'member',
+      invitedBy: userId(),
+    });
+    await inviteMethods.createInvite({
+      groupId: gidA,
+      email: 'a2@test.com',
+      role: 'admin',
+      invitedBy: userId(),
+    });
+    await inviteMethods.createInvite({
+      groupId: gidB,
+      email: 'b1@test.com',
+      role: 'member',
+      invitedBy: userId(),
+    });
+
+    const deleted = await inviteMethods.deleteInvitesByGroup({ groupId: gidA });
+    expect(deleted).toBe(2);
+
+    const remaining = await inviteMethods.listInvitesForTeam({ groupId: gidA });
+    expect(remaining).toHaveLength(0);
+
+    const bRemaining = await inviteMethods.listInvitesForTeam({ groupId: gidB });
+    expect(bRemaining).toHaveLength(1);
+  });
+
   test('expireStaleInvites flips only past-due pending invites and returns the count', async () => {
     await inviteMethods.createInvite({
       groupId: groupId(),

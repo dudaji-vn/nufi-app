@@ -113,6 +113,14 @@ export function createTeamInviteMethods(mongoose: typeof import('mongoose')) {
     return result.modifiedCount ?? 0;
   }
 
+  async function deleteInvitesByGroup(params: {
+    groupId: string | Types.ObjectId;
+  }): Promise<number> {
+    const TeamInvite = mongoose.models.TeamInvite as Model<ITeamInvite>;
+    const result = await TeamInvite.deleteMany({ groupId: params.groupId });
+    return result.deletedCount ?? 0;
+  }
+
   return {
     createInvite,
     findInviteByToken,
@@ -122,6 +130,7 @@ export function createTeamInviteMethods(mongoose: typeof import('mongoose')) {
     declineInvite,
     revokeInvite,
     expireStaleInvites,
+    deleteInvitesByGroup,
   };
 }
 
