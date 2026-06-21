@@ -34,6 +34,8 @@ export * from './group';
 export * from './config';
 /* Audit log */
 export * from './auditLog';
+/* Team invites */
+export * from './teamInvite';
 /* Admin */
 export * from './admin';
 /* Web */
