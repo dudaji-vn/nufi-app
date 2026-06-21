@@ -43,6 +43,11 @@ const loadTeamsView = () =>
     Component: m.default,
   }));
 
+const loadTeamInviteRoute = () =>
+  import('~/components/Teams/route/TeamInviteRoute').then((m) => ({
+    Component: m.default,
+  }));
+
 const baseEl = document.querySelector('base');
 const baseHref = baseEl?.getAttribute('href') || '/';
 
@@ -153,6 +158,10 @@ export const router = createBrowserRouter(
             {
               path: 'teams',
               lazy: loadTeamsView,
+            },
+            {
+              path: 'teams/invite/:token',
+              lazy: loadTeamInviteRoute,
             },
             {
               path: 'teams/:teamId',

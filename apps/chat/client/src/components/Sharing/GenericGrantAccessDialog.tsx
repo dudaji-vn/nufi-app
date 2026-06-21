@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AccessRoleIds, ResourceType } from 'librechat-data-provider';
+import { AccessRoleIds, PrincipalType, ResourceType } from 'librechat-data-provider';
 import { Share2Icon, Users, Link, CopyCheck, UserX, UserCheck } from 'lucide-react';
 import {
   Label,
@@ -21,6 +21,7 @@ import {
   useCanSharePublic,
   useLocalize,
 } from '~/hooks';
+import { useTeamsQuery } from '~/data-provider';
 import UnifiedPeopleSearch from './PeoplePicker/UnifiedPeopleSearch';
 import PeoplePickerAdminSettings from './PeoplePickerAdminSettings';
 import PublicSharingToggle from './PublicSharingToggle';
@@ -52,6 +53,7 @@ export default function GenericGrantAccessDialog({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const canSharePublic = useCanSharePublic(resourceType);
   const { hasPeoplePickerAccess, peoplePickerTypeFilter } = usePeoplePickerPermissions();
+  const { data: teamsData } = useTeamsQuery({ enabled: hasPeoplePickerAccess });
 
   /** User can use the share dialog if they have people picker access OR can share publicly */
   const canUseShareDialog = hasPeoplePickerAccess || canSharePublic;
@@ -235,7 +237,9 @@ export default function GenericGrantAccessDialog({
 
   // Error handling
   if (permissionsError) {
-    return <div className="text-sm text-status-error">{localize('com_ui_permissions_failed_load')}</div>;
+    return (
+      <div className="text-sm text-status-error">{localize('com_ui_permissions_failed_load')}</div>
+    );
   }
 
   const TriggerComponent = children ? (
@@ -294,6 +298,47 @@ export default function GenericGrantAccessDialog({
                   typeFilter={peoplePickerTypeFilter}
                   excludeIds={allShares.map((s) => s.idOnTheSource)}
                 />
+
+                {/* My teams quick-add */}
+                {teamsData && teamsData.teams.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-text-secondary">
+                      {localize('com_ui_my_teams')}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {teamsData.teams.map((team) => {
+                        const isAdded = allShares.some((s) => s.idOnTheSource === team._id);
+                        return (
+                          <button
+                            key={team._id}
+                            type="button"
+                            disabled={isAdded}
+                            onClick={() =>
+                              handleAddFromSearch([
+                                {
+                                  type: PrincipalType.GROUP,
+                                  id: team._id,
+                                  idOnTheSource: team._id,
+                                  name: team.name,
+                                  source: 'local',
+                                },
+                              ])
+                            }
+                            className={cn(
+                              'flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors',
+                              isAdded
+                                ? 'cursor-default border-border-light bg-surface-tertiary text-text-tertiary'
+                                : 'border-border-medium bg-surface-primary text-text-primary hover:bg-surface-hover',
+                            )}
+                          >
+                            <Users className="h-3 w-3" aria-hidden="true" />
+                            {team.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {/* Unified User/Group List */}
                 {(() => {
