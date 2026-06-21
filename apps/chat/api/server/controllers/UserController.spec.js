@@ -229,4 +229,55 @@ describe('deleteUserController', () => {
     expect(group.memberIds).toEqual([otherUser]);
     expect(group.memberIds).not.toContain(userIdStr);
   });
+
+  it('should still run removeUserFromAllGroups when one team cleanup throws', async () => {
+    const userId = new mongoose.Types.ObjectId();
+    const userIdStr = userId.toString();
+    const db = require('~/models');
+
+    const goodTeamId = new mongoose.Types.ObjectId();
+    const badTeamId = new mongoose.Types.ObjectId();
+
+    db.getUserTeams.mockResolvedValueOnce([
+      { _id: badTeamId, ownerId: new mongoose.Types.ObjectId(), members: [] },
+      { _id: goodTeamId, ownerId: new mongoose.Types.ObjectId(), members: [] },
+    ]);
+
+    db.removeTeamMember
+      .mockRejectedValueOnce(new Error('network error'))
+      .mockResolvedValueOnce(undefined);
+
+    const req = { user: { id: userIdStr, _id: userId, email: 'cascade@test.com' } };
+    await deleteUserController(req, mockRes);
+
+    expect(mockRes.status).toHaveBeenCalledWith(200);
+    expect(db.removeUserFromAllGroups).toHaveBeenCalledWith(userIdStr);
+    expect(db.deleteAclEntries).toHaveBeenCalledWith({ principalId: userId });
+  });
+
+  it('should continue processing remaining teams when one team transfer fails', async () => {
+    const userId = new mongoose.Types.ObjectId();
+    const userIdStr = userId.toString();
+    const db = require('~/models');
+
+    const team1 = { _id: new mongoose.Types.ObjectId(), ownerId: userId, members: [] };
+    const team2 = {
+      _id: new mongoose.Types.ObjectId(),
+      ownerId: new mongoose.Types.ObjectId(),
+      members: [],
+    };
+
+    db.getUserTeams.mockResolvedValueOnce([team1, team2]);
+
+    db.deleteInvitesByGroup.mockRejectedValueOnce(new Error('invite error'));
+    db.removeTeamMember.mockResolvedValueOnce(undefined);
+
+    const req = { user: { id: userIdStr, _id: userId, email: 'transfer-fail@test.com' } };
+    await deleteUserController(req, mockRes);
+
+    expect(mockRes.status).toHaveBeenCalledWith(200);
+    expect(db.removeUserFromAllGroups).toHaveBeenCalledWith(userIdStr);
+    expect(db.deleteAclEntries).toHaveBeenCalledWith({ principalId: userId });
+    expect(db.removeTeamMember).toHaveBeenCalledWith({ groupId: team2._id, userId: userIdStr });
+  });
 });

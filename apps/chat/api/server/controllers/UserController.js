@@ -340,25 +340,32 @@ const deleteUserController = async (req, res) => {
     // Teams cleanup: reassign or dissolve owned teams, and remove non-owned memberships
     const userTeams = await db.getUserTeams({ userId: user.id });
     for (const team of userTeams) {
-      const isOwner = team.ownerId?.toString() === user.id;
-      if (!isOwner) {
-        await db.removeTeamMember({ groupId: team._id, userId: user.id });
-        continue;
-      }
-      const admins = (team.members ?? []).filter(
-        (m) => m.role === 'admin' && m.userId.toString() !== user.id,
-      );
-      if (admins.length > 0) {
-        await db.transferOwnership({
-          groupId: team._id,
-          fromUserId: user.id,
-          toUserId: admins[0].userId,
-        });
-        await db.removeTeamMember({ groupId: team._id, userId: user.id });
-      } else {
-        await db.deleteInvitesByGroup({ groupId: team._id });
-        await db.deleteAclEntries({ principalId: team._id });
-        await db.deleteGroup(team._id);
+      try {
+        const isOwner = team.ownerId?.toString() === user.id;
+        if (!isOwner) {
+          await db.removeTeamMember({ groupId: team._id, userId: user.id });
+          continue;
+        }
+        const admins = (team.members ?? []).filter(
+          (m) => m.role === 'admin' && m.userId.toString() !== user.id,
+        );
+        if (admins.length > 0) {
+          await db.transferOwnership({
+            groupId: team._id,
+            fromUserId: user.id,
+            toUserId: admins[0].userId,
+          });
+          await db.removeTeamMember({ groupId: team._id, userId: user.id });
+        } else {
+          await db.deleteInvitesByGroup({ groupId: team._id });
+          await db.deleteAclEntries({ principalId: team._id });
+          await db.deleteGroup(team._id);
+        }
+      } catch (teamError) {
+        logger.error(
+          `[deleteUserController] Error cleaning up team ${team._id} for user ${user.id}:`,
+          teamError,
+        );
       }
     }
     await db.removeUserFromAllGroups(user.id);
