@@ -491,3 +491,53 @@ export const getAllEffectivePermissions = (resourceType: ResourceType) =>
 // SharePoint Graph API Token
 export const graphToken = (scopes: string) =>
   `${BASE_URL}/api/auth/graph-token?scopes=${encodeURIComponent(scopes)}`;
+
+/* Teams */
+const teamsRoot = `${BASE_URL}/api/teams`;
+
+export const teamsList = () => teamsRoot;
+export const teamCreate = () => teamsRoot;
+export const teamById = (teamId: string) => `${teamsRoot}/${encodeURIComponent(teamId)}`;
+export const teamUpdate = (teamId: string) => `${teamsRoot}/${encodeURIComponent(teamId)}`;
+export const teamDelete = (teamId: string) => `${teamsRoot}/${encodeURIComponent(teamId)}`;
+
+export const teamMembers = (teamId: string) => `${teamsRoot}/${encodeURIComponent(teamId)}/members`;
+export const teamMember = (teamId: string, userId: string) =>
+  `${teamsRoot}/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}`;
+export const teamMemberRole = (teamId: string, userId: string) =>
+  `${teamsRoot}/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}/role`;
+export const teamTransfer = (teamId: string) =>
+  `${teamsRoot}/${encodeURIComponent(teamId)}/transfer`;
+
+export const teamInvitesList = (teamId: string) =>
+  `${teamsRoot}/${encodeURIComponent(teamId)}/invites`;
+export const teamInviteCreate = (teamId: string) =>
+  `${teamsRoot}/${encodeURIComponent(teamId)}/invites`;
+export const teamInviteRevoke = (teamId: string, inviteId: string) =>
+  `${teamsRoot}/${encodeURIComponent(teamId)}/invites/${encodeURIComponent(inviteId)}`;
+export const myTeamInvites = () => `${teamsRoot}/invites`;
+export const teamInviteAccept = (token: string) =>
+  `${teamsRoot}/invites/${encodeURIComponent(token)}/accept`;
+export const teamInviteDecline = (token: string) =>
+  `${teamsRoot}/invites/${encodeURIComponent(token)}/decline`;
+
+export const teamKnowledgeList = (teamId: string) =>
+  `${teamsRoot}/${encodeURIComponent(teamId)}/knowledge`;
+export const teamKnowledgeAdd = (teamId: string) =>
+  `${teamsRoot}/${encodeURIComponent(teamId)}/knowledge`;
+export const teamKnowledgeRemove = (teamId: string, fileId: string) =>
+  `${teamsRoot}/${encodeURIComponent(teamId)}/knowledge/${encodeURIComponent(fileId)}`;
+
+export const teamAgentsList = (teamId: string) =>
+  `${teamsRoot}/${encodeURIComponent(teamId)}/agents`;
+export const teamAgentShare = (teamId: string, agentId: string) =>
+  `${teamsRoot}/${encodeURIComponent(teamId)}/agents/${encodeURIComponent(agentId)}`;
+export const teamAgentUnshare = (teamId: string, agentId: string) =>
+  `${teamsRoot}/${encodeURIComponent(teamId)}/agents/${encodeURIComponent(agentId)}`;
+
+export const teamPromptsList = (teamId: string) =>
+  `${teamsRoot}/${encodeURIComponent(teamId)}/prompts`;
+export const teamPromptShare = (teamId: string, promptGroupId: string) =>
+  `${teamsRoot}/${encodeURIComponent(teamId)}/prompts/${encodeURIComponent(promptGroupId)}`;
+export const teamPromptUnshare = (teamId: string, promptGroupId: string) =>
+  `${teamsRoot}/${encodeURIComponent(teamId)}/prompts/${encodeURIComponent(promptGroupId)}`;

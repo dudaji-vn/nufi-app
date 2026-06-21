@@ -740,3 +740,134 @@ export type TUpdateSkillNodeRequest = {
   parentId?: string | null;
   order?: number;
 };
+
+/* Teams */
+
+export type TeamRole = 'owner' | 'admin' | 'member';
+
+export type TTeamMember = {
+  userId: string;
+  role: TeamRole;
+  joinedAt: string;
+  name: string;
+  email: string;
+  avatar?: string;
+  username?: string;
+};
+
+export type TTeam = {
+  _id: string;
+  name: string;
+  description?: string;
+  avatar?: string;
+  ownerId: string;
+  kind: string;
+  members: TTeamMember[];
+  tenantId?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type TTeamInvite = {
+  _id: string;
+  groupId: string;
+  email: string;
+  role: 'admin' | 'member';
+  status: 'pending' | 'accepted' | 'declined' | 'revoked';
+  token?: string;
+  invitedBy: string;
+  invitedUserId?: string;
+  expiresAt: string;
+  createdAt?: string;
+  teamName?: string;
+};
+
+export type TTeamKnowledgeFile = {
+  file_id: string;
+  filename: string;
+  bytes: number;
+  type: string;
+  embedded?: boolean;
+  createdAt?: string;
+};
+
+export type TTeamAgentInfo = {
+  id: string;
+  name?: string;
+  description?: string;
+};
+
+export type TTeamPromptGroupInfo = {
+  id: string;
+  name: string;
+};
+
+/* Team request types */
+
+export type TCreateTeamRequest = {
+  name: string;
+  description?: string;
+  avatar?: string;
+};
+
+export type TUpdateTeamRequest = {
+  name?: string;
+  description?: string;
+  avatar?: string;
+};
+
+export type TCreateInviteRequest = {
+  email: string;
+  role: 'admin' | 'member';
+};
+
+export type TChangeMemberRoleRequest = {
+  teamId: string;
+  userId: string;
+  role: 'admin' | 'member';
+};
+
+export type TTransferOwnershipRequest = {
+  teamId: string;
+  newOwnerId: string;
+};
+
+export type TAddKnowledgeRequest = {
+  teamId: string;
+  fileId: string;
+};
+
+export type TShareAgentRequest = {
+  teamId: string;
+  agentId: string;
+};
+
+export type TSharePromptRequest = {
+  teamId: string;
+  promptGroupId: string;
+};
+
+export type TRemoveMemberRequest = {
+  teamId: string;
+  userId: string;
+};
+
+export type TRevokeInviteRequest = {
+  teamId: string;
+  inviteId: string;
+};
+
+export type TRemoveKnowledgeRequest = {
+  teamId: string;
+  fileId: string;
+};
+
+export type TUnshareAgentRequest = {
+  teamId: string;
+  agentId: string;
+};
+
+export type TUnsharePromptRequest = {
+  teamId: string;
+  promptGroupId: string;
+};

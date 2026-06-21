@@ -80,6 +80,15 @@ export enum QueryKeys {
   skillStates = 'skillStates',
   /* General user favorites */
   favorites = 'favorites',
+  /* Teams */
+  teams = 'teams',
+  team = 'team',
+  teamMembers = 'teamMembers',
+  teamInvites = 'teamInvites',
+  myTeamInvites = 'myTeamInvites',
+  teamKnowledge = 'teamKnowledge',
+  teamAgents = 'teamAgents',
+  teamPrompts = 'teamPrompts',
 }
 
 // Dynamic query keys that require parameters
@@ -118,4 +127,21 @@ export enum MutationKeys {
   updateSkillNode = 'updateSkillNode',
   deleteSkillNode = 'deleteSkillNode',
   updateSkillNodeContent = 'updateSkillNodeContent',
+  /* Teams */
+  createTeam = 'createTeam',
+  updateTeam = 'updateTeam',
+  deleteTeam = 'deleteTeam',
+  removeMember = 'removeMember',
+  changeMemberRole = 'changeMemberRole',
+  transferOwnership = 'transferOwnership',
+  createTeamInvite = 'createTeamInvite',
+  revokeTeamInvite = 'revokeTeamInvite',
+  acceptTeamInvite = 'acceptTeamInvite',
+  declineTeamInvite = 'declineTeamInvite',
+  addTeamKnowledge = 'addTeamKnowledge',
+  removeTeamKnowledge = 'removeTeamKnowledge',
+  shareTeamAgent = 'shareTeamAgent',
+  unshareTeamAgent = 'unshareTeamAgent',
+  shareTeamPrompt = 'shareTeamPrompt',
+  unshareTeamPrompt = 'unshareTeamPrompt',
 }

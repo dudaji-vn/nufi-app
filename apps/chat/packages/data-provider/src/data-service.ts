@@ -1278,3 +1278,135 @@ export interface ActiveJobsResponse {
 export const getActiveJobs = (): Promise<ActiveJobsResponse> => {
   return request.get(endpoints.activeJobs());
 };
+
+/* Teams */
+
+export const getTeams = (): Promise<q.TTeamsListResponse> => {
+  return request.get(endpoints.teamsList());
+};
+
+export const createTeam = (data: t.TCreateTeamRequest): Promise<{ team: t.TTeam }> => {
+  return request.post(endpoints.teamCreate(), data);
+};
+
+export const getTeam = (teamId: string): Promise<q.TTeamDetailResponse> => {
+  return request.get(endpoints.teamById(teamId));
+};
+
+export const updateTeam = (
+  teamId: string,
+  data: t.TUpdateTeamRequest,
+): Promise<{ team: t.TTeam }> => {
+  return request.patch(endpoints.teamUpdate(teamId), data);
+};
+
+export const deleteTeam = (teamId: string): Promise<{ success: boolean }> => {
+  return request.delete(endpoints.teamDelete(teamId));
+};
+
+export const getTeamMembers = (teamId: string): Promise<q.TTeamMembersListResponse> => {
+  return request.get(endpoints.teamMembers(teamId));
+};
+
+export const removeTeamMember = (teamId: string, userId: string): Promise<{ success: boolean }> => {
+  return request.delete(endpoints.teamMember(teamId, userId));
+};
+
+export const changeTeamMemberRole = (
+  teamId: string,
+  userId: string,
+  role: 'admin' | 'member',
+): Promise<{ team: t.TTeam }> => {
+  return request.patch(endpoints.teamMemberRole(teamId, userId), { role });
+};
+
+export const transferTeamOwnership = (
+  teamId: string,
+  newOwnerId: string,
+): Promise<{ team: t.TTeam }> => {
+  return request.post(endpoints.teamTransfer(teamId), { newOwnerId });
+};
+
+export const createTeamInvite = (
+  teamId: string,
+  data: t.TCreateInviteRequest,
+): Promise<{ invite: t.TTeamInvite }> => {
+  return request.post(endpoints.teamInviteCreate(teamId), data);
+};
+
+export const getTeamInvites = (teamId: string): Promise<q.TTeamInvitesListResponse> => {
+  return request.get(endpoints.teamInvitesList(teamId));
+};
+
+export const revokeTeamInvite = (
+  teamId: string,
+  inviteId: string,
+): Promise<{ success: boolean }> => {
+  return request.delete(endpoints.teamInviteRevoke(teamId, inviteId));
+};
+
+export const getMyTeamInvites = (): Promise<q.TTeamInvitesListResponse> => {
+  return request.get(endpoints.myTeamInvites());
+};
+
+export const acceptTeamInvite = (token: string): Promise<{ team: t.TTeam }> => {
+  return request.post(endpoints.teamInviteAccept(token));
+};
+
+export const declineTeamInvite = (token: string): Promise<{ success: boolean }> => {
+  return request.post(endpoints.teamInviteDecline(token));
+};
+
+export const addTeamKnowledge = (
+  teamId: string,
+  fileId: string,
+): Promise<{ success: boolean; fileId: string }> => {
+  return request.post(endpoints.teamKnowledgeAdd(teamId), { fileId });
+};
+
+export const getTeamKnowledge = (teamId: string): Promise<q.TTeamKnowledgeListResponse> => {
+  return request.get(endpoints.teamKnowledgeList(teamId));
+};
+
+export const removeTeamKnowledge = (
+  teamId: string,
+  fileId: string,
+): Promise<{ success: boolean }> => {
+  return request.delete(endpoints.teamKnowledgeRemove(teamId, fileId));
+};
+
+export const shareTeamAgent = (
+  teamId: string,
+  agentId: string,
+): Promise<{ success: boolean; id: string }> => {
+  return request.post(endpoints.teamAgentShare(teamId, agentId));
+};
+
+export const getTeamAgents = (teamId: string): Promise<q.TTeamAgentsListResponse> => {
+  return request.get(endpoints.teamAgentsList(teamId));
+};
+
+export const unshareTeamAgent = (
+  teamId: string,
+  agentId: string,
+): Promise<{ success: boolean }> => {
+  return request.delete(endpoints.teamAgentUnshare(teamId, agentId));
+};
+
+export const shareTeamPrompt = (
+  teamId: string,
+  promptGroupId: string,
+): Promise<{ success: boolean; id: string }> => {
+  return request.post(endpoints.teamPromptShare(teamId, promptGroupId));
+};
+
+export const getTeamPrompts = (teamId: string): Promise<q.TTeamPromptsListResponse> => {
+  return request.get(endpoints.teamPromptsList(teamId));
+};
+
+export const unshareTeamPrompt = (
+  teamId: string,
+  promptGroupId: string,
+): Promise<{ success: boolean }> => {
+  return request.delete(endpoints.teamPromptUnshare(teamId, promptGroupId));
+};

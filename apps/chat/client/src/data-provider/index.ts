@@ -5,6 +5,8 @@ export * from './Skills';
 export * from './Files';
 /* Memories */
 export * from './Memories';
+/* Teams */
+export * from './Teams';
 export * from './Messages';
 export * from './Misc';
 export * from './Tools';

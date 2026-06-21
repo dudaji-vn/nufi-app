@@ -216,6 +216,36 @@ export type TUserFavorite = {
   skillId?: string;
 };
 
+/* Teams */
+export type TTeamsListResponse = {
+  teams: import('../types').TTeam[];
+};
+
+export type TTeamDetailResponse = {
+  team: import('../types').TTeam;
+  members: import('../types').TTeamMember[];
+};
+
+export type TTeamMembersListResponse = {
+  members: import('../types').TTeamMember[];
+};
+
+export type TTeamInvitesListResponse = {
+  invites: import('../types').TTeamInvite[];
+};
+
+export type TTeamKnowledgeListResponse = {
+  files: import('../types').TTeamKnowledgeFile[];
+};
+
+export type TTeamAgentsListResponse = {
+  resources: import('../types').TTeamAgentInfo[];
+};
+
+export type TTeamPromptsListResponse = {
+  resources: import('../types').TTeamPromptGroupInfo[];
+};
+
 /* SharePoint Graph API Token */
 export type GraphTokenParams = {
   scopes: string;
