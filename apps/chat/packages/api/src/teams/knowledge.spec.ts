@@ -189,6 +189,71 @@ describe('createTeamKnowledgeHandlers', () => {
         error: 'File must be saved (not temporary) before sharing',
       });
     });
+
+    it('returns 403 when maxKnowledgeFilesPerTeam is configured and team is at limit', async () => {
+      const callerId = makeId();
+      const team = makeTeam(teamId);
+      const file = makeFile(callerId);
+      const existingEntry = makeAclEntry(new Types.ObjectId());
+      const deps = makeDeps({
+        findGroupById: jest.fn().mockResolvedValue(team),
+        findFileById: jest.fn().mockResolvedValue(file),
+        findEntriesByPrincipal: jest.fn().mockResolvedValue([existingEntry]),
+      });
+      const { add } = createTeamKnowledgeHandlers(deps);
+      const req = makeReq({ id: teamId }, { fileId: file.file_id }, callerId);
+      (req as unknown as Record<string, unknown>).config = {
+        config: { teams: { maxKnowledgeFilesPerTeam: 1 } },
+      };
+      const res = makeRes();
+
+      await add(req as unknown as import('~/types/http').ServerRequest, res);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect((res.json as jest.Mock).mock.calls[0][0]).toMatchObject({
+        error: 'Team knowledge limit reached',
+      });
+      expect(deps.grantPermission).not.toHaveBeenCalled();
+    });
+
+    it('proceeds when maxKnowledgeFilesPerTeam is configured and team is below limit', async () => {
+      const callerId = makeId();
+      const team = makeTeam(teamId);
+      const file = makeFile(callerId);
+      const deps = makeDeps({
+        findGroupById: jest.fn().mockResolvedValue(team),
+        findFileById: jest.fn().mockResolvedValue(file),
+        findEntriesByPrincipal: jest.fn().mockResolvedValue([]),
+      });
+      const { add } = createTeamKnowledgeHandlers(deps);
+      const req = makeReq({ id: teamId }, { fileId: file.file_id }, callerId);
+      (req as unknown as Record<string, unknown>).config = {
+        config: { teams: { maxKnowledgeFilesPerTeam: 5 } },
+      };
+      const res = makeRes();
+
+      await add(req as unknown as import('~/types/http').ServerRequest, res);
+
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(deps.grantPermission).toHaveBeenCalled();
+    });
+
+    it('proceeds when maxKnowledgeFilesPerTeam is not configured (unlimited)', async () => {
+      const callerId = makeId();
+      const team = makeTeam(teamId);
+      const file = makeFile(callerId);
+      const deps = makeDeps({
+        findGroupById: jest.fn().mockResolvedValue(team),
+        findFileById: jest.fn().mockResolvedValue(file),
+      });
+      const { add } = createTeamKnowledgeHandlers(deps);
+      const req = makeReq({ id: teamId }, { fileId: file.file_id }, callerId);
+      const res = makeRes();
+
+      await add(req as unknown as import('~/types/http').ServerRequest, res);
+
+      expect(res.status).toHaveBeenCalledWith(201);
+    });
   });
 
   describe('list (GET /:id/knowledge)', () => {

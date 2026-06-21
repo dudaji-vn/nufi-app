@@ -98,6 +98,19 @@ export function createTeamKnowledgeHandlers(deps: TeamKnowledgeHandlersDeps) {
         return res.status(409).json({ error: 'File must be saved (not temporary) before sharing' });
       }
 
+      const maxKnowledgeFilesPerTeam = req.config?.config?.teams?.maxKnowledgeFilesPerTeam;
+      if (maxKnowledgeFilesPerTeam !== undefined) {
+        const groupObjectId = new Types.ObjectId(id);
+        const existing = await findEntriesByPrincipal(
+          PrincipalType.GROUP,
+          groupObjectId,
+          ResourceType.FILE,
+        );
+        if (existing.length >= maxKnowledgeFilesPerTeam) {
+          return res.status(403).json({ error: 'Team knowledge limit reached' });
+        }
+      }
+
       await grantPermission({
         principalType: PrincipalType.GROUP,
         principalId: id,

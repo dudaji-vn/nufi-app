@@ -9,6 +9,7 @@ const {
 } = require('@librechat/api');
 const { PermissionTypes, Permissions } = require('librechat-data-provider');
 const { requireJwtAuth, checkBan } = require('~/server/middleware');
+const configMiddleware = require('~/server/middleware/config/app');
 const { sendEmail } = require('~/server/utils');
 const PermissionService = require('~/server/services/PermissionService');
 const { getRoleByName } = require('~/models');
@@ -71,7 +72,7 @@ const checkTeamsCreate = generateCheckAccess({
   getRoleByName,
 });
 
-router.use(requireJwtAuth, checkBan);
+router.use(requireJwtAuth, checkBan, configMiddleware);
 
 // Invite routes with no /:id prefix — MUST come before /:id routes to avoid collision
 router.get('/invites', inviteHandlers.listMine);

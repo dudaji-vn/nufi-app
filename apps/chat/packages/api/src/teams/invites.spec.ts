@@ -334,6 +334,88 @@ describe('createTeamInviteHandlers', () => {
       expect(status).toHaveBeenCalledWith(500);
       expect(json).toHaveBeenCalledWith({ error: 'Failed to accept invite' });
     });
+
+    it('returns 403 when maxMembersPerTeam is configured and team is at capacity', async () => {
+      const callerEmail = 'caller@example.com';
+      const invite = mockInvite({ email: callerEmail });
+      const fullTeam = mockTeam({
+        members: [
+          { userId: new Types.ObjectId(validCallerId), role: 'admin', joinedAt: new Date() },
+          { userId: new Types.ObjectId(validUserId), role: 'member', joinedAt: new Date() },
+        ],
+      });
+      const deps = createDeps({
+        findInviteByToken: jest.fn().mockResolvedValue(invite),
+        findGroupById: jest.fn().mockResolvedValue(fullTeam),
+      });
+      const handlers = createTeamInviteHandlers(deps);
+      const { req, res, status, json } = createReqRes({
+        params: { token: validToken },
+        userId: validCallerId,
+        email: callerEmail,
+      });
+      (req as unknown as Record<string, unknown>).config = {
+        config: { teams: { maxMembersPerTeam: 2 } },
+      };
+
+      await handlers.accept(req, res);
+
+      expect(status).toHaveBeenCalledWith(403);
+      expect(json).toHaveBeenCalledWith({ error: 'Team is full' });
+      expect(deps.addTeamMember).not.toHaveBeenCalled();
+    });
+
+    it('proceeds when maxMembersPerTeam is configured and team has capacity', async () => {
+      const callerEmail = 'caller@example.com';
+      const invite = mockInvite({ email: callerEmail });
+      const team = mockTeam({
+        members: [
+          { userId: new Types.ObjectId(validCallerId), role: 'admin', joinedAt: new Date() },
+        ],
+      });
+      const deps = createDeps({
+        findInviteByToken: jest.fn().mockResolvedValue(invite),
+        findGroupById: jest.fn().mockResolvedValue(team),
+        addTeamMember: jest.fn().mockResolvedValue(team),
+        acceptInvite: jest.fn().mockResolvedValue(invite),
+      });
+      const handlers = createTeamInviteHandlers(deps);
+      const { req, res, status } = createReqRes({
+        params: { token: validToken },
+        userId: validCallerId,
+        email: callerEmail,
+      });
+      (req as unknown as Record<string, unknown>).config = {
+        config: { teams: { maxMembersPerTeam: 5 } },
+      };
+
+      await handlers.accept(req, res);
+
+      expect(status).toHaveBeenCalledWith(200);
+      expect(deps.addTeamMember).toHaveBeenCalled();
+    });
+
+    it('proceeds when maxMembersPerTeam is not configured (unlimited)', async () => {
+      const callerEmail = 'caller@example.com';
+      const invite = mockInvite({ email: callerEmail });
+      const team = mockTeam();
+      const deps = createDeps({
+        findInviteByToken: jest.fn().mockResolvedValue(invite),
+        addTeamMember: jest.fn().mockResolvedValue(team),
+        acceptInvite: jest.fn().mockResolvedValue(invite),
+        findGroupById: jest.fn().mockResolvedValue(team),
+      });
+      const handlers = createTeamInviteHandlers(deps);
+      const { req, res, status } = createReqRes({
+        params: { token: validToken },
+        userId: validCallerId,
+        email: callerEmail,
+      });
+
+      await handlers.accept(req, res);
+
+      expect(status).toHaveBeenCalledWith(200);
+    });
   });
 
   // ── decline ───────────────────────────────────────────────────────────────────

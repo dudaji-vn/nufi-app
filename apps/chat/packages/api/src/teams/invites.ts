@@ -135,6 +135,14 @@ export function createTeamInviteHandlers(deps: TeamInviteHandlersDeps) {
         return res.status(410).json({ error: 'Invite is no longer valid' });
       }
 
+      const maxMembersPerTeam = req.config?.config?.teams?.maxMembersPerTeam;
+      if (maxMembersPerTeam !== undefined) {
+        const team = await findGroupById(invite.groupId.toString());
+        if ((team?.members ?? []).length >= maxMembersPerTeam) {
+          return res.status(403).json({ error: 'Team is full' });
+        }
+      }
+
       await addTeamMember({
         groupId: invite.groupId.toString(),
         userId: callerId,

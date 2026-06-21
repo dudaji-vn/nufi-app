@@ -176,6 +176,14 @@ export function createTeamsHandlers(deps: TeamsHandlersDeps) {
       const callerId = req.user?.id as string;
       const tenantId = req.user?.tenantId;
 
+      const maxTeamsPerUser = req.config?.config?.teams?.maxTeamsPerUser;
+      if (maxTeamsPerUser !== undefined) {
+        const existing = await getUserTeams({ userId: callerId });
+        if (existing.length >= maxTeamsPerUser) {
+          return res.status(403).json({ error: 'Team limit reached' });
+        }
+      }
+
       const team = await createTeam({
         name: name.trim(),
         description,

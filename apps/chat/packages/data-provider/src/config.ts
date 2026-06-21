@@ -1386,6 +1386,13 @@ export const configSchema = z.object({
     })
     .optional(),
   rateLimits: rateLimitSchema.optional(),
+  teams: z
+    .object({
+      maxTeamsPerUser: z.number().int().positive().optional(),
+      maxMembersPerTeam: z.number().int().positive().optional(),
+      maxKnowledgeFilesPerTeam: z.number().int().positive().optional(),
+    })
+    .optional(),
   fileConfig: fileConfigSchema.optional(),
   modelSpecs: specsConfigSchema.optional(),
   endpoints: z

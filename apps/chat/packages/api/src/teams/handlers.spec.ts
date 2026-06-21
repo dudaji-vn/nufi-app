@@ -156,6 +156,63 @@ describe('createTeamsHandlers', () => {
       expect(status).toHaveBeenCalledWith(500);
       expect(json).toHaveBeenCalledWith({ error: 'Failed to create team' });
     });
+
+    it('returns 403 when maxTeamsPerUser is configured and caller is at limit', async () => {
+      const existingTeam = mockTeam();
+      const deps = createDeps({
+        getUserTeams: jest.fn().mockResolvedValue([existingTeam]),
+      });
+      const handlers = createTeamsHandlers(deps);
+      const { req, res, status, json } = createReqRes({
+        body: { name: 'New Team' },
+        userId: validCallerId,
+      });
+      (req as unknown as Record<string, unknown>).config = {
+        config: { teams: { maxTeamsPerUser: 1 } },
+      };
+
+      await handlers.create(req, res);
+
+      expect(status).toHaveBeenCalledWith(403);
+      expect(json).toHaveBeenCalledWith({ error: 'Team limit reached' });
+      expect(deps.createTeam).not.toHaveBeenCalled();
+    });
+
+    it('proceeds when maxTeamsPerUser is configured and caller is below limit', async () => {
+      const team = mockTeam();
+      const deps = createDeps({
+        getUserTeams: jest.fn().mockResolvedValue([]),
+        createTeam: jest.fn().mockResolvedValue(team),
+      });
+      const handlers = createTeamsHandlers(deps);
+      const { req, res, status } = createReqRes({
+        body: { name: 'New Team' },
+        userId: validCallerId,
+      });
+      (req as unknown as Record<string, unknown>).config = {
+        config: { teams: { maxTeamsPerUser: 3 } },
+      };
+
+      await handlers.create(req, res);
+
+      expect(status).toHaveBeenCalledWith(201);
+      expect(deps.createTeam).toHaveBeenCalled();
+    });
+
+    it('proceeds when maxTeamsPerUser is not configured (unlimited)', async () => {
+      const team = mockTeam();
+      const deps = createDeps({ createTeam: jest.fn().mockResolvedValue(team) });
+      const handlers = createTeamsHandlers(deps);
+      const { req, res, status } = createReqRes({
+        body: { name: 'New Team' },
+        userId: validCallerId,
+      });
+
+      await handlers.create(req, res);
+
+      expect(status).toHaveBeenCalledWith(201);
+      expect(deps.getUserTeams).not.toHaveBeenCalled();
+    });
   });
 
   describe('list', () => {
