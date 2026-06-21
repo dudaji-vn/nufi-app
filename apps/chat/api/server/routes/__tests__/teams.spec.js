@@ -831,3 +831,293 @@ describe('Team Knowledge Routes — Integration', () => {
     expect(hasView).toBe(true);
   });
 });
+
+describe('Team Resource Routes (Agents/Prompts) — Integration', () => {
+  const { createTeamResourceHandlers } = require('@librechat/api');
+  const PermissionService = require('~/server/services/PermissionService');
+  const { PermissionBits, ResourceType, AccessRoleIds, PrincipalType } = require('librechat-data-provider');
+
+  function createResourceApp(user) {
+    const { createTeamsHandlers } = require('@librechat/api');
+
+    const handlers = createTeamsHandlers({
+      createTeam: db.createTeam,
+      getUserTeams: db.getUserTeams,
+      getTeamRole: db.getTeamRole,
+      findGroupById: db.findGroupById,
+      updateGroupById: db.updateGroupById,
+      deleteGroup: db.deleteGroup,
+      removeTeamMember: db.removeTeamMember,
+      setMemberRole: db.setMemberRole,
+      transferOwnership: db.transferOwnership,
+      deleteInvitesByGroup: db.deleteInvitesByGroup,
+      findUsers: db.findUsers,
+    });
+
+    const resourceHandlers = createTeamResourceHandlers({
+      getTeamRole: db.getTeamRole,
+      findGroupById: db.findGroupById,
+      getAgent: db.getAgent,
+      getPromptGroup: db.getPromptGroup,
+      findEntriesByPrincipal: db.findEntriesByPrincipal,
+      revokePermission: db.revokePermission,
+      grantPermission: PermissionService.grantPermission,
+      checkPermission: PermissionService.checkPermission,
+    });
+
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      req.user = user;
+      next();
+    });
+
+    const router = express.Router();
+    router.post('/', handlers.create);
+    router.get('/', handlers.list);
+    router.get('/:id', handlers.get);
+    router.post('/:id/agents/:agentId', resourceHandlers.shareAgent);
+    router.delete('/:id/agents/:agentId', resourceHandlers.revokeAgent);
+    router.get('/:id/agents', resourceHandlers.listAgents);
+    router.post('/:id/prompts/:promptGroupId', resourceHandlers.sharePromptGroup);
+    router.delete('/:id/prompts/:promptGroupId', resourceHandlers.revokePromptGroup);
+    router.get('/:id/prompts', resourceHandlers.listPromptGroups);
+
+    app.use('/api/teams', router);
+    return app;
+  }
+
+  async function seedAgent(userId, overrides = {}) {
+    const Agent = mongoose.models.Agent;
+    const agentId = `agent_${new mongoose.Types.ObjectId()}`;
+    const doc = await Agent.create({
+      id: agentId,
+      name: 'Test Agent',
+      description: 'A test agent',
+      provider: 'openai',
+      model: 'gpt-4',
+      author: new mongoose.Types.ObjectId(userId),
+      category: 'general',
+      ...overrides,
+    });
+    return doc.toObject();
+  }
+
+  async function seedPromptGroup(userId, overrides = {}) {
+    const PromptGroup = mongoose.models.PromptGroup;
+    const Prompt = mongoose.models.Prompt;
+    const promptDoc = await Prompt.create({
+      groupId: new mongoose.Types.ObjectId(),
+      author: new mongoose.Types.ObjectId(userId),
+      prompt: 'Hello {name}',
+      type: 'text',
+    });
+    const doc = await PromptGroup.create({
+      name: 'Test Prompt Group',
+      numberOfGenerations: 0,
+      oneliner: 'A test prompt group',
+      category: 'general',
+      productionId: promptDoc._id,
+      author: new mongoose.Types.ObjectId(userId),
+      authorName: 'Test Author',
+      ...overrides,
+    });
+    return doc.toObject();
+  }
+
+  async function grantShareOnAgent(userId, agentDoc) {
+    await PermissionService.grantPermission({
+      principalType: PrincipalType.USER,
+      principalId: userId,
+      resourceType: ResourceType.AGENT,
+      resourceId: agentDoc._id,
+      accessRoleId: AccessRoleIds.AGENT_OWNER,
+      grantedBy: userId,
+    });
+  }
+
+  async function grantShareOnPromptGroup(userId, pgDoc) {
+    await PermissionService.grantPermission({
+      principalType: PrincipalType.USER,
+      principalId: userId,
+      resourceType: ResourceType.PROMPTGROUP,
+      resourceId: pgDoc._id,
+      accessRoleId: AccessRoleIds.PROMPTGROUP_OWNER,
+      grantedBy: userId,
+    });
+  }
+
+  beforeAll(async () => {
+    await db.seedDefaultRoles();
+    // Ensure Agent and PromptGroup models exist
+    const { createModels } = require('@librechat/data-schemas');
+    createModels(mongoose);
+  });
+
+  afterEach(async () => {
+    const collections = ['Group', 'User', 'Agent', 'PromptGroup', 'Prompt', 'AclEntry'];
+    await Promise.all(
+      collections.map((name) => {
+        const model = mongoose.models[name];
+        return model ? model.deleteMany({}) : Promise.resolve();
+      }),
+    );
+  });
+
+  it('owner with SHARE shares an agent → 201; member GET lists it', async () => {
+    const owner = await seedUser();
+    const member = await seedUser();
+
+    const ownerApp = createResourceApp(owner);
+    const memberApp = createResourceApp(member);
+
+    const createRes = await request(ownerApp)
+      .post('/api/teams')
+      .send({ name: 'Agent Team' })
+      .expect(201);
+
+    const teamId = createRes.body.team._id;
+    await db.addTeamMember({ groupId: teamId, userId: member.id, role: 'member' });
+
+    const agent = await seedAgent(owner.id);
+    await grantShareOnAgent(owner.id, agent);
+
+    const shareRes = await request(ownerApp)
+      .post(`/api/teams/${teamId}/agents/${agent.id}`)
+      .expect(201);
+
+    expect(shareRes.body).toMatchObject({ success: true, id: agent.id });
+
+    const listRes = await request(memberApp).get(`/api/teams/${teamId}/agents`).expect(200);
+    expect(listRes.body.resources).toHaveLength(1);
+    expect(listRes.body.resources[0].id).toBe(agent.id);
+  });
+
+  it('team member (non-admin) attempting to share → 403', async () => {
+    const owner = await seedUser();
+    const member = await seedUser();
+
+    const ownerApp = createResourceApp(owner);
+    const memberApp = createResourceApp(member);
+
+    const createRes = await request(ownerApp)
+      .post('/api/teams')
+      .send({ name: 'Admin Only Team' })
+      .expect(201);
+
+    const teamId = createRes.body.team._id;
+    await db.addTeamMember({ groupId: teamId, userId: member.id, role: 'member' });
+
+    const agent = await seedAgent(member.id);
+    await grantShareOnAgent(member.id, agent);
+
+    await request(memberApp)
+      .post(`/api/teams/${teamId}/agents/${agent.id}`)
+      .expect(403);
+  });
+
+  it('non-member attempting to share → 404', async () => {
+    const owner = await seedUser();
+    const nonMember = await seedUser();
+
+    const ownerApp = createResourceApp(owner);
+    const nonMemberApp = createResourceApp(nonMember);
+
+    const createRes = await request(ownerApp)
+      .post('/api/teams')
+      .send({ name: 'Non-Member Team' })
+      .expect(201);
+
+    const teamId = createRes.body.team._id;
+
+    const agent = await seedAgent(owner.id);
+    await grantShareOnAgent(owner.id, agent);
+
+    await request(nonMemberApp)
+      .post(`/api/teams/${teamId}/agents/${agent.id}`)
+      .expect(404);
+  });
+
+  it('admin sharing an agent they have no SHARE permission on → 403', async () => {
+    const owner = await seedUser();
+    const otherOwner = await seedUser();
+
+    const ownerApp = createResourceApp(owner);
+
+    const createRes = await request(ownerApp)
+      .post('/api/teams')
+      .send({ name: 'No-Share Perm Team' })
+      .expect(201);
+
+    const teamId = createRes.body.team._id;
+
+    // Agent owned by otherOwner; owner has no SHARE on it
+    const agent = await seedAgent(otherOwner.id);
+
+    await request(ownerApp)
+      .post(`/api/teams/${teamId}/agents/${agent.id}`)
+      .expect(403);
+  });
+
+  it('revoke agent → gone from member list', async () => {
+    const owner = await seedUser();
+    const member = await seedUser();
+
+    const ownerApp = createResourceApp(owner);
+    const memberApp = createResourceApp(member);
+
+    const createRes = await request(ownerApp)
+      .post('/api/teams')
+      .send({ name: 'Revoke Agent Team' })
+      .expect(201);
+
+    const teamId = createRes.body.team._id;
+    await db.addTeamMember({ groupId: teamId, userId: member.id, role: 'member' });
+
+    const agent = await seedAgent(owner.id);
+    await grantShareOnAgent(owner.id, agent);
+
+    await request(ownerApp)
+      .post(`/api/teams/${teamId}/agents/${agent.id}`)
+      .expect(201);
+
+    const before = await request(memberApp).get(`/api/teams/${teamId}/agents`).expect(200);
+    expect(before.body.resources).toHaveLength(1);
+
+    await request(ownerApp)
+      .delete(`/api/teams/${teamId}/agents/${agent.id}`)
+      .expect(200);
+
+    const after = await request(memberApp).get(`/api/teams/${teamId}/agents`).expect(200);
+    expect(after.body.resources).toHaveLength(0);
+  });
+
+  it('owner with SHARE shares a prompt group → 201; member GET lists it', async () => {
+    const owner = await seedUser();
+    const member = await seedUser();
+
+    const ownerApp = createResourceApp(owner);
+    const memberApp = createResourceApp(member);
+
+    const createRes = await request(ownerApp)
+      .post('/api/teams')
+      .send({ name: 'Prompt Team' })
+      .expect(201);
+
+    const teamId = createRes.body.team._id;
+    await db.addTeamMember({ groupId: teamId, userId: member.id, role: 'member' });
+
+    const pg = await seedPromptGroup(owner.id);
+    await grantShareOnPromptGroup(owner.id, pg);
+
+    const shareRes = await request(ownerApp)
+      .post(`/api/teams/${teamId}/prompts/${pg._id}`)
+      .expect(201);
+
+    expect(shareRes.body).toMatchObject({ success: true });
+
+    const listRes = await request(memberApp).get(`/api/teams/${teamId}/prompts`).expect(200);
+    expect(listRes.body.resources).toHaveLength(1);
+    expect(listRes.body.resources[0].name).toBe(pg.name);
+  });
+});

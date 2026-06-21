@@ -3,6 +3,7 @@ const {
   createTeamsHandlers,
   createTeamInviteHandlers,
   createTeamKnowledgeHandlers,
+  createTeamResourceHandlers,
   checkEmailConfig,
 } = require('@librechat/api');
 const { requireJwtAuth, checkBan } = require('~/server/middleware');
@@ -95,5 +96,24 @@ const knowledgeHandlers = createTeamKnowledgeHandlers({
 router.post('/:id/knowledge', knowledgeHandlers.add);
 router.get('/:id/knowledge', knowledgeHandlers.list);
 router.delete('/:id/knowledge/:fileId', knowledgeHandlers.remove);
+
+const resourceHandlers = createTeamResourceHandlers({
+  getTeamRole: db.getTeamRole,
+  findGroupById: db.findGroupById,
+  getAgent: db.getAgent,
+  getPromptGroup: db.getPromptGroup,
+  findEntriesByPrincipal: db.findEntriesByPrincipal,
+  revokePermission: db.revokePermission,
+  grantPermission: PermissionService.grantPermission,
+  checkPermission: PermissionService.checkPermission,
+});
+
+router.post('/:id/agents/:agentId', resourceHandlers.shareAgent);
+router.delete('/:id/agents/:agentId', resourceHandlers.revokeAgent);
+router.get('/:id/agents', resourceHandlers.listAgents);
+
+router.post('/:id/prompts/:promptGroupId', resourceHandlers.sharePromptGroup);
+router.delete('/:id/prompts/:promptGroupId', resourceHandlers.revokePromptGroup);
+router.get('/:id/prompts', resourceHandlers.listPromptGroups);
 
 module.exports = router;
