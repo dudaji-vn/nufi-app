@@ -65,5 +65,51 @@ and added to this cascade then. Phase 1 adds one small data-schemas method `dele
 *add* is intentionally absent — members join via invite accept (Phase 2). `transferOwnership` real
 signature is `{ groupId, fromUserId, toUserId }`.
 
+## Phase 2 decisions
+
+### D7 — Invite handlers are a separate TS module
+`packages/api/src/teams/invites.ts` exports `createTeamInviteHandlers(deps)` (6 handlers) + unit
+tests `invites.spec.ts`, rather than bloating the already-large `handlers.ts`. Re-exported via
+`teams/index.ts`.
+
+### D8 — Email send is an injected, optional, config-gated dependency
+The JS route wraps the existing mailer: `sendInviteEmail(payload)` built in `api/server/routes/teams.js`
+using `sendEmail` (`~/server/utils`) + the existing `inviteUser.handlebars` template + link
+`${DOMAIN_CLIENT}/teams/invite/${token}`, and ONLY when `checkEmailConfig()` (from `@librechat/api`)
+is true (else a no-op). The TS handler takes `sendInviteEmail?` as an OPTIONAL dep and calls it
+after `createInvite` — so invite creation never hard-fails when email is unconfigured, and unit
+tests need no mailer. Email is sent with `throwError:false` so a transient SMTP error doesn't fail
+the request. **No real email is sent during this autonomous run** (tests use a spy; runtime depends
+on deploy env config).
+- **Token exposure:** the create response and the invitee's own `GET /api/teams/invites` include the
+  `token` (the creator/invitee legitimately hold it); the team-scoped `GET /api/teams/:id/invites`
+  (owner/admin view) EXCLUDES `token` (admins revoke by `inviteId`, not token).
+
+### D9 — Accept/decline are bound to the caller (anti-token-theft)
+`accept`/`decline` validate that the invite's `email === req.user.email` OR
+`invitedUserId === req.user.id`; otherwise 403. A stolen token alone cannot be redeemed.
+
+### D10 — `revokeInvite` gains an optional `groupId` guard
+Phase-0 `revokeInvite({inviteId})` → `revokeInvite({inviteId, groupId?})` (filter also matches
+`groupId` when provided), so a team admin can only revoke invites belonging to THEIR team. Small
+data-schemas change + test (Phase 2 T1).
+
+### D11 — Route ordering: `/invites` before `/:id`
+On the teams router, `GET /api/teams/invites`, `POST /api/teams/invites/:token/accept|decline` MUST
+be registered BEFORE the `/:id` routes, else Express matches `:id = 'invites'`. The `/:id/invites`
+routes (create/list/revoke) are unaffected (distinct prefix).
+
+### D12 — Accept composition order (robust, non-transactional)
+`accept` = (1) `findInviteByToken` + validate pending/unexpired/caller-bound → 404/403/410;
+(2) `addTeamMember({groupId, userId:caller, role})` (idempotent — existing member → null is fine);
+(3) `acceptInvite({token, userId:caller})` (atomic pending→accepted; a racing null still leaves the
+user a member — the desired end state). No cross-document transaction needed.
+
+### D13 — No scheduled expiry sweep
+No cron lib exists. `listPendingInvitesForUser`/`acceptInvite` already filter `expiresAt > now`, so
+expired invites are excluded at query time. Skip a scheduled sweep; an optional one-shot
+`runAsSystem(db.expireStaleInvites)` at boot can be added in Phase 6/7 if status-accuracy matters.
+
 <!-- Subsequent phase decisions appended below. -->
+
 
