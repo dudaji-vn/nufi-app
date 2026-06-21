@@ -1,5 +1,26 @@
 import { Schema } from 'mongoose';
-import type { IGroup } from '~/types';
+import type { IGroup, IGroupMember } from '~/types';
+
+const groupMemberSchema = new Schema<IGroupMember>(
+  {
+    userId: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+    },
+    role: {
+      type: String,
+      enum: ['owner', 'admin', 'member'],
+      default: 'member',
+      required: true,
+    },
+    joinedAt: {
+      type: Date,
+      default: Date.now,
+    },
+  },
+  { _id: false },
+);
 
 const groupSchema = new Schema<IGroup>(
   {
@@ -45,6 +66,26 @@ const groupSchema = new Schema<IGroup>(
       type: String,
       index: true,
     },
+    kind: {
+      type: String,
+      enum: ['group', 'team'],
+      default: 'group',
+      index: true,
+    },
+    ownerId: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      index: true,
+    },
+    members: {
+      type: [groupMemberSchema],
+      default: undefined,
+    },
+    joinPolicy: {
+      type: String,
+      enum: ['invite'],
+      default: 'invite',
+    },
   },
   { timestamps: true },
 );
@@ -57,5 +98,7 @@ groupSchema.index(
   },
 );
 groupSchema.index({ memberIds: 1 });
+groupSchema.index({ 'members.userId': 1 });
+groupSchema.index({ ownerId: 1, kind: 1 });
 
 export default groupSchema;

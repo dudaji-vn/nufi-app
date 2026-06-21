@@ -1,6 +1,15 @@
 import type { Document, Types } from 'mongoose';
 import { CursorPaginationParams } from '~/common';
 
+export type TeamRole = 'owner' | 'admin' | 'member';
+export type GroupKind = 'group' | 'team';
+
+export interface IGroupMember {
+  userId: Types.ObjectId;
+  role: TeamRole;
+  joinedAt: Date;
+}
+
 export interface IGroup extends Document {
   _id: Types.ObjectId;
   name: string;
@@ -15,6 +24,13 @@ export interface IGroup extends Document {
   createdAt?: Date;
   updatedAt?: Date;
   tenantId?: string;
+  /** 'team' = self-service workspace; 'group' = admin/Entra group (default). */
+  kind?: GroupKind;
+  /** The single team owner. Always equals a member whose role is 'owner'. */
+  ownerId?: Types.ObjectId;
+  /** Per-member roles for teams. Source of truth for role; kept in sync with memberIds. */
+  members?: IGroupMember[];
+  joinPolicy?: 'invite';
 }
 
 export interface CreateGroupRequest {
