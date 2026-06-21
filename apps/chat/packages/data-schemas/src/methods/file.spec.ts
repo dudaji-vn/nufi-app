@@ -166,6 +166,52 @@ describe('File Methods', () => {
     });
   });
 
+  describe('getFileByObjectId', () => {
+    it('should find a file by its MongoDB _id', async () => {
+      const fileId = uuidv4();
+      const userId = new mongoose.Types.ObjectId();
+
+      const created = await fileMethods.createFile({
+        file_id: fileId,
+        user: userId,
+        filename: 'by-objectid.txt',
+        filepath: '/uploads/by-objectid.txt',
+        type: 'text/plain',
+        bytes: 100,
+      });
+
+      expect(created).not.toBeNull();
+      const found = await fileMethods.getFileByObjectId(created!._id);
+      expect(found).not.toBeNull();
+      expect(found?.file_id).toBe(fileId);
+      expect(found?.filename).toBe('by-objectid.txt');
+    });
+
+    it('should return null for a non-existent ObjectId', async () => {
+      const randomId = new mongoose.Types.ObjectId();
+      const found = await fileMethods.getFileByObjectId(randomId);
+      expect(found).toBeNull();
+    });
+
+    it('should also accept a string ObjectId', async () => {
+      const fileId = uuidv4();
+      const userId = new mongoose.Types.ObjectId();
+
+      const created = await fileMethods.createFile({
+        file_id: fileId,
+        user: userId,
+        filename: 'string-oid.txt',
+        filepath: '/uploads/string-oid.txt',
+        type: 'text/plain',
+        bytes: 50,
+      });
+
+      const found = await fileMethods.getFileByObjectId(created!._id.toString());
+      expect(found).not.toBeNull();
+      expect(found?.file_id).toBe(fileId);
+    });
+  });
+
   describe('findFileById', () => {
     it('should find a file by file_id', async () => {
       const fileId = uuidv4();

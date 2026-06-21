@@ -47,6 +47,8 @@ function hasExplicitConfig(
       return interfaceConfig?.remoteAgents !== undefined;
     case PermissionTypes.SKILLS:
       return interfaceConfig?.skills !== undefined;
+    case PermissionTypes.FILES:
+      return false;
     default:
       return false;
   }
@@ -151,9 +153,7 @@ export async function updateInterfacePermissions({
         } else if (isMemoryDisabled) {
           logger.debug(`Role '${roleName}': Disabling memories as memory.disabled is true`);
         } else if (isMemoryReenabling) {
-          logger.debug(
-            `Role '${roleName}': Re-enabling memories due to memory configuration`,
-          );
+          logger.debug(`Role '${roleName}': Re-enabling memories due to memory configuration`);
         }
       } else {
         logger.debug(`Role '${roleName}': Preserving existing permissions for '${permType}'`);
@@ -199,6 +199,10 @@ export async function updateInterfacePermissions({
       typeof defaults.agents === 'object' ? defaults.agents?.public : undefined;
     const skillsDefaultPublic =
       typeof defaults.skills === 'object' ? defaults.skills?.public : undefined;
+    const filesDefaultUse = true;
+    const filesDefaultCreate = true;
+    const filesDefaultShare = false;
+    const filesDefaultPublic = false;
 
     const allPermissions: Partial<Record<PermissionTypes, Record<string, boolean | undefined>>> = {
       [PermissionTypes.PROMPTS]: {
@@ -474,6 +478,32 @@ export async function updateInterfacePermissions({
             }
           : {}),
       },
+      [PermissionTypes.FILES]: {
+        [Permissions.USE]: getPermissionValue(
+          undefined,
+          defaultPerms[PermissionTypes.FILES]?.[Permissions.USE],
+          filesDefaultUse,
+        ),
+        ...(!existingPermissions?.[PermissionTypes.FILES]
+          ? {
+              [Permissions.CREATE]: getPermissionValue(
+                undefined,
+                defaultPerms[PermissionTypes.FILES]?.[Permissions.CREATE],
+                filesDefaultCreate,
+              ),
+              [Permissions.SHARE]: getPermissionValue(
+                undefined,
+                defaultPerms[PermissionTypes.FILES]?.[Permissions.SHARE],
+                filesDefaultShare,
+              ),
+              [Permissions.SHARE_PUBLIC]: getPermissionValue(
+                undefined,
+                defaultPerms[PermissionTypes.FILES]?.[Permissions.SHARE_PUBLIC],
+                filesDefaultPublic,
+              ),
+            }
+          : {}),
+      },
     };
 
     // Check and add each permission type if needed
@@ -565,6 +595,21 @@ export async function updateInterfacePermissions({
             getConfigPublic(loadedInterface.skills),
             defaultPerms[PermissionTypes.SKILLS]?.[Permissions.SHARE_PUBLIC],
             skillsDefaultPublic,
+          ),
+        },
+      ],
+      [
+        PermissionTypes.FILES,
+        {
+          [Permissions.SHARE]: getPermissionValue(
+            undefined,
+            defaultPerms[PermissionTypes.FILES]?.[Permissions.SHARE],
+            filesDefaultShare,
+          ),
+          [Permissions.SHARE_PUBLIC]: getPermissionValue(
+            undefined,
+            defaultPerms[PermissionTypes.FILES]?.[Permissions.SHARE_PUBLIC],
+            filesDefaultPublic,
           ),
         },
       ],

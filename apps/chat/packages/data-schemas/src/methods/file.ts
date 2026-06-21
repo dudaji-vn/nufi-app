@@ -1,11 +1,22 @@
 import logger from '../config/winston';
 import { EToolResources, FileContext } from 'librechat-data-provider';
-import type { FilterQuery, SortOrder, Model } from 'mongoose';
+import type { FilterQuery, SortOrder, Model, Types } from 'mongoose';
 import type { IMongoFile } from '~/types/file';
 import { tenantSafeBulkWrite } from '~/utils/tenantBulkWrite';
 
 /** Factory function that takes mongoose instance and returns the file methods */
 export function createFileMethods(mongoose: typeof import('mongoose')) {
+  /**
+   * Finds a file by its MongoDB _id (ObjectId).
+   * Used by the ACL system where resourceId references _id, not file_id.
+   * @param _id - The MongoDB ObjectId of the file
+   * @returns A promise that resolves to the file document or null
+   */
+  async function getFileByObjectId(_id: string | Types.ObjectId): Promise<IMongoFile | null> {
+    const File = mongoose.models.File as Model<IMongoFile>;
+    return File.findById(_id).lean<IMongoFile>();
+  }
+
   /**
    * Finds a file by its file_id with additional query options.
    * @param file_id - The unique identifier of the file
@@ -456,6 +467,7 @@ export function createFileMethods(mongoose: typeof import('mongoose')) {
 
   return {
     findFileById,
+    getFileByObjectId,
     getFiles,
     getToolFilesByIds,
     getCodeGeneratedFiles,

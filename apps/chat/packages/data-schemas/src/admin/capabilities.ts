@@ -37,6 +37,7 @@ export const SystemCapabilities = {
   MANAGE_PROMPTS: 'manage:prompts',
   READ_SKILLS: 'read:skills',
   MANAGE_SKILLS: 'manage:skills',
+  MANAGE_FILES: 'manage:files',
   /** Reserved — not yet enforced by any middleware. */
   READ_ASSISTANTS: 'read:assistants',
   MANAGE_ASSISTANTS: 'manage:assistants',
@@ -143,6 +144,7 @@ export const ResourceCapabilityMap: Record<ResourceType, SystemCapability> = {
   [ResourceType.MCPSERVER]: SystemCapabilities.MANAGE_MCP_SERVERS,
   [ResourceType.REMOTE_AGENT]: SystemCapabilities.MANAGE_AGENTS,
   [ResourceType.SKILL]: SystemCapabilities.MANAGE_SKILLS,
+  [ResourceType.FILE]: SystemCapabilities.MANAGE_FILES,
 };
 
 /**
