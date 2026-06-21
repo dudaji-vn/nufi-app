@@ -110,6 +110,36 @@ No cron lib exists. `listPendingInvitesForUser`/`acceptInvite` already filter `e
 expired invites are excluded at query time. Skip a scheduled sweep; an optional one-shot
 `runAsSystem(db.expireStaleInvites)` at boot can be added in Phase 6/7 if status-accuracy matters.
 
+## Phase 3 decisions (shared-RAG / FILE ACL)
+
+### D14 — Split Phase 3 into 3 separately-merged sub-phases
+**3a-1** FILE ACL foundation (ResourceType.FILE end-to-end so `/api/permissions/file/:id` works);
+**3a-2** team-knowledge endpoints + make file access checks FILE-ACL-aware; **3b** RAG retrieval
+scoping. Each: spec→TDD→review→local FF-merge to fork/main. Detail/touch-points in
+[`team-workspaces-phase3-findings.md`](./team-workspaces-phase3-findings.md).
+
+### D15 — `filterFilesByAgentAccess` becomes the single FILE-ACL-aware gate
+3a-2 extends `api/server/services/Files/permissions.js` so the access filter ALSO passes files the
+caller has FILE-ACL VIEW on (direct or via a team GROUP grant), in addition to owned + agent-inherited.
+This unifies access logic: 3b's `primeFiles` only needs to UNION team file_ids into the candidate set;
+this now-ACL-aware filter validates them. No duplicate authz.
+
+### D16 — `getTeamSharedFileIds(userId, role) → file_id strings`
+Uses `findAccessibleResources({userId, role, resourceType:FILE, requiredPermissions:VIEW})` (already
+unions user+group+role+public principals, so it captures team grants) → `getFiles({_id:{$in}, embedded:true})`
+→ map to `file.file_id` strings. The `embedded:true` filter avoids querying rag_api for non-embedded files.
+
+### D17 — Knowledge grant preconditions
+`POST /api/teams/:id/knowledge` requires the file be PERMANENT (no `expiresAt` TTL) and CALLER-OWNED
+(`file.user === caller`); grants `FILE_VIEWER` to the team GROUP. (Files have a 1h TTL until made
+permanent; granting on a TTL'd file would dangle.)
+
+### D18 — 3b runtime verification deferred
+3b is unit-tested at the file_id-union + ACL-filter logic level (mocked deps). Full end-to-end RAG
+verification (real `rag_api` + embeddings, an agent run citing a team-shared doc) needs a running stack
+and the user's eyes — deferred to a session with the user. Flagged in the ledger.
+
 <!-- Subsequent phase decisions appended below. -->
+
 
 
