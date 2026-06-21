@@ -64,6 +64,8 @@ import { createAgentMethods, type AgentMethods, type AgentDeps } from './agent';
 import { createConfigMethods, type ConfigMethods } from './config';
 /* Audit log */
 import { createAuditLogMethods, type AuditLogMethods } from './auditLog';
+/* Team invites */
+import { createTeamInviteMethods, type TeamInviteMethods } from './teamInvite';
 
 export { RoleConflictError, DEFAULT_REFRESH_TOKEN_EXPIRY, DEFAULT_SESSION_EXPIRY };
 export { tokenValues, cacheTokenValues, premiumTokenValues, defaultRate };
@@ -101,7 +103,8 @@ export type AllMethods = UserMethods &
   SkillMethods &
   AgentMethods &
   ConfigMethods &
-  AuditLogMethods;
+  AuditLogMethods &
+  TeamInviteMethods;
 
 /** Dependencies injected from the api layer into createMethods */
 export interface CreateMethodsDeps {
@@ -233,6 +236,8 @@ export function createMethods(
     ...createConfigMethods(mongoose),
     /* Audit log */
     ...createAuditLogMethods(mongoose),
+    /* Team invites */
+    ...createTeamInviteMethods(mongoose),
   };
 }
 
@@ -279,4 +284,5 @@ export type {
   AgentMethods,
   ConfigMethods,
   AuditLogMethods,
+  TeamInviteMethods,
 };
