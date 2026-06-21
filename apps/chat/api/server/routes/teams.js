@@ -2,10 +2,12 @@ const express = require('express');
 const {
   createTeamsHandlers,
   createTeamInviteHandlers,
+  createTeamKnowledgeHandlers,
   checkEmailConfig,
 } = require('@librechat/api');
 const { requireJwtAuth, checkBan } = require('~/server/middleware');
 const { sendEmail } = require('~/server/utils');
+const PermissionService = require('~/server/services/PermissionService');
 const db = require('~/models');
 
 const router = express.Router();
@@ -79,5 +81,19 @@ router.post('/:id/transfer', handlers.transferOwnership);
 router.post('/:id/invites', inviteHandlers.create);
 router.get('/:id/invites', inviteHandlers.listForTeam);
 router.delete('/:id/invites/:inviteId', inviteHandlers.revoke);
+
+const knowledgeHandlers = createTeamKnowledgeHandlers({
+  getTeamRole: db.getTeamRole,
+  findGroupById: db.findGroupById,
+  findFileById: db.findFileById,
+  getFiles: db.getFiles,
+  findEntriesByPrincipal: db.findEntriesByPrincipal,
+  revokePermission: db.revokePermission,
+  grantPermission: PermissionService.grantPermission,
+});
+
+router.post('/:id/knowledge', knowledgeHandlers.add);
+router.get('/:id/knowledge', knowledgeHandlers.list);
+router.delete('/:id/knowledge/:fileId', knowledgeHandlers.remove);
 
 module.exports = router;

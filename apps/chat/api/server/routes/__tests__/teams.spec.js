@@ -21,6 +21,20 @@ jest.mock('~/server/utils', () => ({
   sendEmail: jest.fn().mockResolvedValue({}),
 }));
 
+jest.mock('~/server/services/GraphApiService', () => ({
+  entraIdPrincipalFeatureEnabled: jest.fn().mockReturnValue(false),
+  getUserOwnedEntraGroups: jest.fn().mockResolvedValue([]),
+  getUserEntraGroups: jest.fn().mockResolvedValue([]),
+  getEntraGroupDetailsBatch: jest.fn().mockResolvedValue([]),
+  getGroupMembers: jest.fn().mockResolvedValue([]),
+  getGroupOwners: jest.fn().mockResolvedValue([]),
+}));
+
+jest.mock('@librechat/data-schemas', () => ({
+  ...jest.requireActual('@librechat/data-schemas'),
+  getTransactionSupport: jest.fn().mockResolvedValue(false),
+}));
+
 let mongoServer;
 let db;
 
@@ -573,5 +587,247 @@ describe('Team Invite Routes — Integration', () => {
     for (const inv of listRes.body.invites) {
       expect(inv).not.toHaveProperty('token');
     }
+  });
+});
+
+describe('Team Knowledge Routes — Integration', () => {
+  const { createTeamKnowledgeHandlers } = require('@librechat/api');
+  const PermissionService = require('~/server/services/PermissionService');
+  const { PermissionBits, ResourceType } = require('librechat-data-provider');
+
+  function createKnowledgeApp(user) {
+    const { createTeamsHandlers } = require('@librechat/api');
+
+    const handlers = createTeamsHandlers({
+      createTeam: db.createTeam,
+      getUserTeams: db.getUserTeams,
+      getTeamRole: db.getTeamRole,
+      findGroupById: db.findGroupById,
+      updateGroupById: db.updateGroupById,
+      deleteGroup: db.deleteGroup,
+      removeTeamMember: db.removeTeamMember,
+      setMemberRole: db.setMemberRole,
+      transferOwnership: db.transferOwnership,
+      deleteInvitesByGroup: db.deleteInvitesByGroup,
+      findUsers: db.findUsers,
+    });
+
+    const knowledgeHandlers = createTeamKnowledgeHandlers({
+      getTeamRole: db.getTeamRole,
+      findGroupById: db.findGroupById,
+      findFileById: db.findFileById,
+      getFiles: db.getFiles,
+      findEntriesByPrincipal: db.findEntriesByPrincipal,
+      revokePermission: db.revokePermission,
+      grantPermission: PermissionService.grantPermission,
+    });
+
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      req.user = user;
+      next();
+    });
+
+    const router = express.Router();
+    router.post('/', handlers.create);
+    router.get('/', handlers.list);
+    router.get('/:id', handlers.get);
+    router.post('/:id/knowledge', knowledgeHandlers.add);
+    router.get('/:id/knowledge', knowledgeHandlers.list);
+    router.delete('/:id/knowledge/:fileId', knowledgeHandlers.remove);
+
+    app.use('/api/teams', router);
+    return app;
+  }
+
+  async function seedFile(userId, overrides = {}) {
+    const file = await db.createFile(
+      {
+        file_id: `file-${new mongoose.Types.ObjectId()}`,
+        user: new mongoose.Types.ObjectId(userId),
+        filename: 'test.pdf',
+        bytes: 2048,
+        type: 'application/pdf',
+        object: 'file',
+        filepath: '/uploads/test.pdf',
+        source: 'local',
+        usage: 0,
+        embedded: true,
+        ...overrides,
+      },
+      true, // disableTTL → permanent file
+    );
+    return file;
+  }
+
+  beforeAll(async () => {
+    // Seed the FILE roles so PermissionService.grantPermission can resolve FILE_VIEWER
+    await db.seedDefaultRoles();
+  });
+
+  afterEach(async () => {
+    const Group = mongoose.models.Group;
+    const User = mongoose.models.User;
+    const File = mongoose.models.File;
+    const AclEntry = mongoose.models.AclEntry;
+    await Promise.all([
+      Group.deleteMany({}),
+      User.deleteMany({}),
+      File.deleteMany({}),
+      AclEntry.deleteMany({}),
+    ]);
+  });
+
+  it('owner shares a permanent file → 201; member GET lists it; non-member → 404', async () => {
+    const owner = await seedUser();
+    const member = await seedUser();
+    const nonMember = await seedUser();
+
+    const ownerApp = createKnowledgeApp(owner);
+    const memberApp = createKnowledgeApp(member);
+    const nonMemberApp = createKnowledgeApp(nonMember);
+
+    const createRes = await request(ownerApp)
+      .post('/api/teams')
+      .send({ name: 'Knowledge Team' })
+      .expect(201);
+
+    const teamId = createRes.body.team._id;
+    await db.addTeamMember({ groupId: teamId, userId: member.id, role: 'member' });
+
+    const file = await seedFile(owner.id);
+
+    const shareRes = await request(ownerApp)
+      .post(`/api/teams/${teamId}/knowledge`)
+      .send({ fileId: file.file_id })
+      .expect(201);
+
+    expect(shareRes.body).toMatchObject({ success: true, fileId: file.file_id });
+
+    const listRes = await request(memberApp).get(`/api/teams/${teamId}/knowledge`).expect(200);
+    expect(listRes.body.files).toHaveLength(1);
+    expect(listRes.body.files[0].file_id).toBe(file.file_id);
+    expect(listRes.body.files[0]).not.toHaveProperty('user');
+    expect(listRes.body.files[0]).not.toHaveProperty('filepath');
+
+    const nonMemberRes = await request(nonMemberApp).get(`/api/teams/${teamId}/knowledge`);
+    expect(nonMemberRes.status).toBe(404);
+  });
+
+  it('sharing a TTL file (temporary) → 409', async () => {
+    const owner = await seedUser();
+    const ownerApp = createKnowledgeApp(owner);
+
+    const createRes = await request(ownerApp)
+      .post('/api/teams')
+      .send({ name: 'TTL Test Team' })
+      .expect(201);
+
+    const teamId = createRes.body.team._id;
+
+    const tmpFile = await db.createFile(
+      {
+        file_id: `file-ttl-${new mongoose.Types.ObjectId()}`,
+        user: new mongoose.Types.ObjectId(owner.id),
+        filename: 'tmp.pdf',
+        bytes: 512,
+        type: 'application/pdf',
+        object: 'file',
+        filepath: '/uploads/tmp.pdf',
+        source: 'local',
+        usage: 0,
+      },
+      false, // keep TTL
+    );
+
+    const res = await request(ownerApp)
+      .post(`/api/teams/${teamId}/knowledge`)
+      .send({ fileId: tmpFile.file_id })
+      .expect(409);
+
+    expect(res.body).toHaveProperty('error', 'File must be saved (not temporary) before sharing');
+  });
+
+  it('sharing a file you do not own → 403', async () => {
+    const owner = await seedUser();
+    const otherUser = await seedUser();
+    const ownerApp = createKnowledgeApp(owner);
+
+    const createRes = await request(ownerApp)
+      .post('/api/teams')
+      .send({ name: 'Ownership Test Team' })
+      .expect(201);
+
+    const teamId = createRes.body.team._id;
+
+    const otherFile = await seedFile(otherUser.id);
+
+    const res = await request(ownerApp)
+      .post(`/api/teams/${teamId}/knowledge`)
+      .send({ fileId: otherFile.file_id })
+      .expect(403);
+
+    expect(res.body).toHaveProperty('error');
+  });
+
+  it('revoke → file gone from member list', async () => {
+    const owner = await seedUser();
+    const member = await seedUser();
+    const ownerApp = createKnowledgeApp(owner);
+    const memberApp = createKnowledgeApp(member);
+
+    const createRes = await request(ownerApp)
+      .post('/api/teams')
+      .send({ name: 'Revoke Knowledge Team' })
+      .expect(201);
+
+    const teamId = createRes.body.team._id;
+    await db.addTeamMember({ groupId: teamId, userId: member.id, role: 'member' });
+
+    const file = await seedFile(owner.id);
+
+    await request(ownerApp)
+      .post(`/api/teams/${teamId}/knowledge`)
+      .send({ fileId: file.file_id })
+      .expect(201);
+
+    const beforeList = await request(memberApp).get(`/api/teams/${teamId}/knowledge`).expect(200);
+    expect(beforeList.body.files).toHaveLength(1);
+
+    await request(ownerApp).delete(`/api/teams/${teamId}/knowledge/${file.file_id}`).expect(200);
+
+    const afterList = await request(memberApp).get(`/api/teams/${teamId}/knowledge`).expect(200);
+    expect(afterList.body.files).toHaveLength(0);
+  });
+
+  it('after sharing, checkPermission for member VIEW on the file returns true', async () => {
+    const owner = await seedUser();
+    const member = await seedUser();
+    const ownerApp = createKnowledgeApp(owner);
+
+    const createRes = await request(ownerApp)
+      .post('/api/teams')
+      .send({ name: 'ACL Check Team' })
+      .expect(201);
+
+    const teamId = createRes.body.team._id;
+    await db.addTeamMember({ groupId: teamId, userId: member.id, role: 'member' });
+
+    const file = await seedFile(owner.id);
+
+    await request(ownerApp)
+      .post(`/api/teams/${teamId}/knowledge`)
+      .send({ fileId: file.file_id })
+      .expect(201);
+
+    const hasView = await PermissionService.checkPermission({
+      userId: member.id,
+      resourceType: ResourceType.FILE,
+      resourceId: file._id,
+      requiredPermission: PermissionBits.VIEW,
+    });
+
+    expect(hasView).toBe(true);
   });
 });
