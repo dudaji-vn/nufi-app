@@ -7,6 +7,8 @@ import { useTeamQuery } from '~/data-provider';
 import { useLocalize, useAuthContext } from '~/hooks';
 import MembersTab from './MembersTab';
 import InvitesTab from './InvitesTab';
+import KnowledgeTab from './KnowledgeTab';
+import SharedTab from './SharedTab';
 
 const roleLabelKey: Record<TeamRole, TranslationKeys> = {
   owner: 'com_ui_role_owner',
@@ -60,6 +62,8 @@ export default function TeamDetail({ teamId }: TeamDetailProps) {
           <TabsList className="mb-4 gap-1">
             <TabsTrigger value="members">{localize('com_ui_team_members')}</TabsTrigger>
             <TabsTrigger value="invites">{localize('com_ui_team_invites')}</TabsTrigger>
+            <TabsTrigger value="knowledge">{localize('com_ui_team_knowledge')}</TabsTrigger>
+            <TabsTrigger value="shared">{localize('com_ui_team_shared')}</TabsTrigger>
           </TabsList>
           <TabsContent value="members">
             <MembersTab
@@ -71,6 +75,12 @@ export default function TeamDetail({ teamId }: TeamDetailProps) {
           </TabsContent>
           <TabsContent value="invites">
             <InvitesTab teamId={teamId} callerRole={callerRole} />
+          </TabsContent>
+          <TabsContent value="knowledge">
+            <KnowledgeTab teamId={teamId} callerRole={callerRole} />
+          </TabsContent>
+          <TabsContent value="shared">
+            <SharedTab teamId={teamId} callerRole={callerRole} />
           </TabsContent>
         </Tabs>
       )}
