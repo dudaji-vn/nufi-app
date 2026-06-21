@@ -185,7 +185,7 @@ export function createTeamsHandlers(deps: TeamsHandlersDeps) {
       }
 
       const callerId = req.user?.id as string;
-      const tenantId = (req.user as { id: string; tenantId?: string })?.tenantId;
+      const tenantId = req.user?.tenantId;
 
       const team = await createTeam({
         name: name.trim(),
@@ -391,7 +391,7 @@ export function createTeamsHandlers(deps: TeamsHandlersDeps) {
         return res.status(access.status).json({ error: access.error });
       }
 
-      const { role: callerRole } = access;
+      const { role: callerRole, team } = access;
 
       const { role: newRole } = req.body as { role?: string };
       if (newRole !== 'admin' && newRole !== 'member') {
@@ -400,6 +400,11 @@ export function createTeamsHandlers(deps: TeamsHandlersDeps) {
 
       if (!hasMinRole(callerRole, 'admin')) {
         return res.status(403).json({ error: 'Forbidden' });
+      }
+
+      const isMember = (team.members ?? []).some((m) => m.userId.toString() === userId);
+      if (!isMember) {
+        return res.status(404).json({ error: 'Member not found' });
       }
 
       const updated = await setMemberRole({ groupId: id, userId, role: newRole });
@@ -426,6 +431,12 @@ export function createTeamsHandlers(deps: TeamsHandlersDeps) {
       }
 
       const callerId = req.user?.id as string;
+
+      const access = await resolveTeamAccess(id, callerId, 'owner');
+      if ('error' in access) {
+        return res.status(access.status).json({ error: access.error });
+      }
+
       const { newOwnerId } = req.body as { newOwnerId?: string };
 
       if (!newOwnerId) {
@@ -433,11 +444,6 @@ export function createTeamsHandlers(deps: TeamsHandlersDeps) {
       }
       if (!isValidObjectIdString(newOwnerId)) {
         return res.status(400).json({ error: 'Invalid newOwnerId format' });
-      }
-
-      const access = await resolveTeamAccess(id, callerId, 'owner');
-      if ('error' in access) {
-        return res.status(access.status).json({ error: access.error });
       }
 
       const updated = await transferOwnership({

@@ -714,9 +714,15 @@ describe('createTeamsHandlers', () => {
   describe('changeMemberRole', () => {
     it('changes role and returns 200 for admin', async () => {
       const updated = mockTeam();
+      const teamWithTarget = mockTeam({
+        members: [
+          { userId: new Types.ObjectId(validCallerId), role: 'admin', joinedAt: new Date() },
+          { userId: new Types.ObjectId(validUserId), role: 'member', joinedAt: new Date() },
+        ],
+      });
       const deps = createDeps({
         getTeamRole: jest.fn().mockResolvedValue('admin'),
-        findGroupById: jest.fn().mockResolvedValue(mockTeam()),
+        findGroupById: jest.fn().mockResolvedValue(teamWithTarget),
         setMemberRole: jest.fn().mockResolvedValue(updated),
       });
       const handlers = createTeamsHandlers(deps);
@@ -800,9 +806,15 @@ describe('createTeamsHandlers', () => {
 
     it('maps data-layer guard throw to 409', async () => {
       const guardErr = new Error('Cannot change the owner role; use transferOwnership');
+      const teamWithTarget = mockTeam({
+        members: [
+          { userId: new Types.ObjectId(validCallerId), role: 'admin', joinedAt: new Date() },
+          { userId: new Types.ObjectId(validUserId), role: 'member', joinedAt: new Date() },
+        ],
+      });
       const deps = createDeps({
         getTeamRole: jest.fn().mockResolvedValue('admin'),
-        findGroupById: jest.fn().mockResolvedValue(mockTeam()),
+        findGroupById: jest.fn().mockResolvedValue(teamWithTarget),
         setMemberRole: jest.fn().mockRejectedValue(guardErr),
       });
       const handlers = createTeamsHandlers(deps);
@@ -820,9 +832,15 @@ describe('createTeamsHandlers', () => {
     });
 
     it('returns 500 on unexpected error', async () => {
+      const teamWithTarget = mockTeam({
+        members: [
+          { userId: new Types.ObjectId(validCallerId), role: 'admin', joinedAt: new Date() },
+          { userId: new Types.ObjectId(validUserId), role: 'member', joinedAt: new Date() },
+        ],
+      });
       const deps = createDeps({
         getTeamRole: jest.fn().mockResolvedValue('admin'),
-        findGroupById: jest.fn().mockResolvedValue(mockTeam()),
+        findGroupById: jest.fn().mockResolvedValue(teamWithTarget),
         setMemberRole: jest.fn().mockRejectedValue(new Error('db down')),
       });
       const handlers = createTeamsHandlers(deps);
@@ -837,10 +855,16 @@ describe('createTeamsHandlers', () => {
       expect(json).toHaveBeenCalledWith({ error: 'Failed to change member role' });
     });
 
-    it('returns 404 when setMemberRole resolves null (target not a member)', async () => {
+    it('returns 404 when setMemberRole resolves null (null guard still applies for edge cases)', async () => {
+      const teamWithTarget = mockTeam({
+        members: [
+          { userId: new Types.ObjectId(validCallerId), role: 'admin', joinedAt: new Date() },
+          { userId: new Types.ObjectId(validUserId), role: 'member', joinedAt: new Date() },
+        ],
+      });
       const deps = createDeps({
         getTeamRole: jest.fn().mockResolvedValue('admin'),
-        findGroupById: jest.fn().mockResolvedValue(mockTeam()),
+        findGroupById: jest.fn().mockResolvedValue(teamWithTarget),
         setMemberRole: jest.fn().mockResolvedValue(null),
       });
       const handlers = createTeamsHandlers(deps);
@@ -853,6 +877,32 @@ describe('createTeamsHandlers', () => {
 
       expect(status).toHaveBeenCalledWith(404);
       expect(json).toHaveBeenCalledWith({ error: 'Member not found' });
+    });
+
+    it('returns 404 when target userId is not in the team members list (Fix B)', async () => {
+      const nonMemberId = new Types.ObjectId().toString();
+      const teamWithoutTarget = mockTeam({
+        members: [
+          { userId: new Types.ObjectId(validCallerId), role: 'admin', joinedAt: new Date() },
+        ],
+      });
+      const deps = createDeps({
+        getTeamRole: jest.fn().mockResolvedValue('admin'),
+        findGroupById: jest.fn().mockResolvedValue(teamWithoutTarget),
+        setMemberRole: jest.fn(),
+      });
+      const handlers = createTeamsHandlers(deps);
+      const { req, res, status, json } = createReqRes({
+        params: { id: validId, userId: nonMemberId },
+        body: { role: 'member' },
+        userId: validCallerId,
+      });
+
+      await handlers.changeMemberRole(req, res);
+
+      expect(status).toHaveBeenCalledWith(404);
+      expect(json).toHaveBeenCalledWith({ error: 'Member not found' });
+      expect(deps.setMemberRole).not.toHaveBeenCalled();
     });
   });
 
@@ -898,7 +948,10 @@ describe('createTeamsHandlers', () => {
     });
 
     it('returns 400 for invalid newOwnerId', async () => {
-      const deps = createDeps({ getTeamRole: jest.fn().mockResolvedValue('owner') });
+      const deps = createDeps({
+        getTeamRole: jest.fn().mockResolvedValue('owner'),
+        findGroupById: jest.fn().mockResolvedValue(mockTeam()),
+      });
       const handlers = createTeamsHandlers(deps);
       const { req, res, status, json } = createReqRes({
         params: { id: validId },
@@ -912,7 +965,10 @@ describe('createTeamsHandlers', () => {
     });
 
     it('returns 400 when newOwnerId missing', async () => {
-      const deps = createDeps({ getTeamRole: jest.fn().mockResolvedValue('owner') });
+      const deps = createDeps({
+        getTeamRole: jest.fn().mockResolvedValue('owner'),
+        findGroupById: jest.fn().mockResolvedValue(mockTeam()),
+      });
       const handlers = createTeamsHandlers(deps);
       const { req, res, status, json } = createReqRes({
         params: { id: validId },
