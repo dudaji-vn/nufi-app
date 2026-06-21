@@ -139,6 +139,22 @@ permanent; granting on a TTL'd file would dangle.)
 verification (real `rag_api` + embeddings, an agent run citing a team-shared doc) needs a running stack
 and the user's eyes — deferred to a session with the user. Flagged in the ledger.
 
+## Phase 4 decisions (agent/prompt team-sharing)
+
+### D19 — Convenience endpoints mirroring knowledge endpoints
+New `packages/api/src/teams/resources.ts` `createTeamResourceHandlers(deps)`. Endpoints on the teams route:
+`POST /api/teams/:id/agents/:agentId`, `DELETE /api/teams/:id/agents/:agentId`,
+`POST /api/teams/:id/prompts/:promptGroupId`, `DELETE /api/teams/:id/prompts/:promptGroupId`,
+plus `GET /api/teams/:id/agents` and `GET /api/teams/:id/prompts` (list shared, member-gated).
+Each share/unshare is **team-admin-gated** (resolveTeamAccess 'admin') AND requires the caller to hold
+**SHARE** on the resource (`checkPermission({resourceType, resourceId:_id, userId:caller, requiredPermission:SHARE})`
+→ 403 else). Grants `AGENT_VIEWER`/`PROMPTGROUP_VIEWER` to the team GROUP via `grantPermission`; revoke via
+`revokePermission(GROUP, id, resourceType, _id)`; list via `findEntriesByPrincipal(GROUP, id, resourceType)`.
+The generic `PUT /api/permissions/agent|promptGroup/:id` already supports GROUP principals — these are a
+cleaner-UX wrapper (the actual UI affordance is Phase 5). Resolve the path `:agentId`/`:promptGroupId`
+(string ids) → Mongo `_id` for the ACL (mirror how knowledge.ts resolves file_id→_id; use the agent/promptGroup
+get-by-id methods). Reuses the knowledge.ts/invites.ts patterns.
+
 <!-- Subsequent phase decisions appended below. -->
 
 
