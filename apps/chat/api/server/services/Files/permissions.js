@@ -1,6 +1,9 @@
 const { logger } = require('@librechat/data-schemas');
 const { PermissionBits, ResourceType, isEphemeralAgentId } = require('librechat-data-provider');
-const { checkPermission } = require('~/server/services/PermissionService');
+const {
+  checkPermission,
+  getResourcePermissionsMap,
+} = require('~/server/services/PermissionService');
 const { getAgent, getFiles } = require('~/models');
 
 /**
@@ -115,7 +118,8 @@ const hasAccessToFilesViaAgent = async ({ userId, role, fileIds, agentId, isDele
 };
 
 /**
- * Filter files based on user access through agents
+ * Filter files based on user access through agents or direct FILE ACL grants.
+ * Accessible set = owned ∪ agent-inherited ∪ FILE-ACL-VIEW.
  * @param {Object} params - Parameters object
  * @param {Array<MongoFile>} params.files - Array of file documents
  * @param {string} params.userId - User ID for access control
@@ -144,7 +148,7 @@ const filterFilesByAgentAccess = async ({ files, userId, role, agentId }) => {
     return ownedFiles;
   }
 
-  // Batch check access for all non-owned files
+  // Batch check agent-inherited access for all non-owned files
   const fileIds = filesToCheck.map((f) => f.file_id);
   const accessMap = await hasAccessToFilesViaAgent({
     userId,
@@ -154,10 +158,61 @@ const filterFilesByAgentAccess = async ({ files, userId, role, agentId }) => {
     files: filesToCheck,
   });
 
-  // Filter files based on access
-  const accessibleFiles = filesToCheck.filter((file) => accessMap.get(file.file_id));
+  // Separate agent-accessible from files still needing a direct ACL check
+  const agentAccessible = [];
+  const remainingFiles = [];
 
-  return [...ownedFiles, ...accessibleFiles];
+  for (const file of filesToCheck) {
+    if (accessMap.get(file.file_id)) {
+      agentAccessible.push(file);
+    } else {
+      remainingFiles.push(file);
+    }
+  }
+
+  if (remainingFiles.length === 0) {
+    return [...ownedFiles, ...agentAccessible];
+  }
+
+  // Batch-check direct FILE ACL VIEW for the remaining files
+  try {
+    const mongoose = require('mongoose');
+    const remainingIds = remainingFiles
+      .filter((f) => f._id && mongoose.Types.ObjectId.isValid(f._id))
+      .map((f) => f._id);
+
+    const aclFiles = [];
+
+    if (remainingIds.length > 0) {
+      const permissionsMap = await getResourcePermissionsMap({
+        userId,
+        role,
+        resourceType: ResourceType.FILE,
+        resourceIds: remainingIds,
+      });
+
+      const idToFile = new Map();
+      for (const file of remainingFiles) {
+        if (file._id) {
+          idToFile.set(file._id.toString(), file);
+        }
+      }
+
+      for (const [idStr, bits] of permissionsMap) {
+        if ((bits & PermissionBits.VIEW) === PermissionBits.VIEW) {
+          const file = idToFile.get(idStr);
+          if (file) {
+            aclFiles.push(file);
+          }
+        }
+      }
+    }
+
+    return [...ownedFiles, ...agentAccessible, ...aclFiles];
+  } catch (error) {
+    logger.error('[filterFilesByAgentAccess] Error checking FILE ACL:', error);
+    return [...ownedFiles, ...agentAccessible];
+  }
 };
 
 module.exports = {

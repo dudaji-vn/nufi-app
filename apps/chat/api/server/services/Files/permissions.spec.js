@@ -4,6 +4,7 @@ jest.mock('@librechat/data-schemas', () => ({
 
 jest.mock('~/server/services/PermissionService', () => ({
   checkPermission: jest.fn(),
+  getResourcePermissionsMap: jest.fn(),
 }));
 
 jest.mock('~/models', () => ({
@@ -11,9 +12,25 @@ jest.mock('~/models', () => ({
   getFiles: jest.fn(),
 }));
 
+jest.mock('mongoose', () => {
+  const actual = jest.requireActual('mongoose');
+  return {
+    ...actual,
+    Types: {
+      ObjectId: {
+        isValid: (id) =>
+          id != null && typeof id.toString === 'function' && id.toString().length > 0,
+      },
+    },
+  };
+});
+
 const { logger } = require('@librechat/data-schemas');
 const { Constants, PermissionBits, ResourceType } = require('librechat-data-provider');
-const { checkPermission } = require('~/server/services/PermissionService');
+const {
+  checkPermission,
+  getResourcePermissionsMap,
+} = require('~/server/services/PermissionService');
 const { getAgent, getFiles } = require('~/models');
 const { filterFilesByAgentAccess, hasAccessToFilesViaAgent } = require('./permissions');
 
@@ -22,8 +39,8 @@ const USER_ID = 'viewer-user-id';
 const AGENT_ID = 'agent_test-abc123';
 const AGENT_MONGO_ID = 'mongo-agent-id';
 
-function makeFile(file_id, user) {
-  return { file_id, user, filename: `${file_id}.txt` };
+function makeFile(file_id, user, _id) {
+  return { _id: _id ?? file_id, file_id, user, filename: `${file_id}.txt` };
 }
 
 function makeAgent(overrides = {}) {
@@ -47,6 +64,8 @@ beforeEach(() => {
     makeFile('attached-3', AUTHOR_ID),
     makeFile('not-attached', AUTHOR_ID),
   ]);
+  // Default: no direct ACL grants
+  getResourcePermissionsMap.mockResolvedValue(new Map());
 });
 
 describe('filterFilesByAgentAccess', () => {
@@ -286,6 +305,103 @@ describe('filterFilesByAgentAccess', () => {
       });
 
       expect(result).toEqual([]);
+    });
+  });
+
+  describe('FILE ACL VIEW fallback (D15)', () => {
+    const ACL_FILE_ID = 'acl-granted-file';
+    const ACL_MONGO_ID = 'mongo-acl-file-id';
+    const NO_GRANT_FILE_ID = 'no-grant-file';
+    const NO_GRANT_MONGO_ID = 'mongo-no-grant-id';
+
+    it('returns a file the user has a direct FILE ACL VIEW grant on even when not owned and not agent-attached', async () => {
+      const aclFile = makeFile(ACL_FILE_ID, AUTHOR_ID, ACL_MONGO_ID);
+      const noGrantFile = makeFile(NO_GRANT_FILE_ID, AUTHOR_ID, NO_GRANT_MONGO_ID);
+
+      getAgent.mockResolvedValue(makeAgent());
+      // No agent VIEW permission — agent path returns false for both
+      checkPermission.mockResolvedValue(false);
+      // FILE ACL: aclFile has VIEW bits, noGrantFile has none
+      getResourcePermissionsMap.mockResolvedValue(new Map([[ACL_MONGO_ID, PermissionBits.VIEW]]));
+
+      const result = await filterFilesByAgentAccess({
+        files: [aclFile, noGrantFile],
+        userId: USER_ID,
+        role: 'USER',
+        agentId: AGENT_ID,
+      });
+
+      expect(result).toHaveLength(1);
+      expect(result[0].file_id).toBe(ACL_FILE_ID);
+      expect(getResourcePermissionsMap).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: USER_ID,
+          role: 'USER',
+          resourceType: ResourceType.FILE,
+        }),
+      );
+    });
+
+    it('does not return a file that has no grant, is not owned, and is not agent-attached', async () => {
+      const noGrantFile = makeFile(NO_GRANT_FILE_ID, AUTHOR_ID, NO_GRANT_MONGO_ID);
+
+      getAgent.mockResolvedValue(makeAgent());
+      checkPermission.mockResolvedValue(false);
+      // No entries in permissions map
+      getResourcePermissionsMap.mockResolvedValue(new Map());
+
+      const result = await filterFilesByAgentAccess({
+        files: [noGrantFile],
+        userId: USER_ID,
+        role: 'USER',
+        agentId: AGENT_ID,
+      });
+
+      expect(result).toEqual([]);
+    });
+
+    it('includes owned + agent-accessible + ACL-granted files additively', async () => {
+      const ownedFile = makeFile('owned-1', USER_ID, 'mongo-owned-1');
+      const agentFile = makeFile('attached-1', AUTHOR_ID, 'mongo-attached-1');
+      const aclFile = makeFile(ACL_FILE_ID, AUTHOR_ID, ACL_MONGO_ID);
+
+      getAgent.mockResolvedValue(makeAgent());
+      checkPermission.mockResolvedValue(true);
+      getResourcePermissionsMap.mockResolvedValue(new Map([[ACL_MONGO_ID, PermissionBits.VIEW]]));
+
+      const result = await filterFilesByAgentAccess({
+        files: [ownedFile, agentFile, aclFile],
+        userId: USER_ID,
+        role: 'USER',
+        agentId: AGENT_ID,
+      });
+
+      const ids = result.map((f) => f.file_id);
+      expect(ids).toContain('owned-1');
+      expect(ids).toContain('attached-1');
+      expect(ids).toContain(ACL_FILE_ID);
+      expect(result).toHaveLength(3);
+    });
+
+    it('falls back gracefully (excludes ACL files) when getResourcePermissionsMap throws', async () => {
+      const aclFile = makeFile(ACL_FILE_ID, AUTHOR_ID, ACL_MONGO_ID);
+
+      getAgent.mockResolvedValue(makeAgent());
+      checkPermission.mockResolvedValue(false);
+      getResourcePermissionsMap.mockRejectedValue(new Error('DB error'));
+
+      const result = await filterFilesByAgentAccess({
+        files: [aclFile],
+        userId: USER_ID,
+        role: 'USER',
+        agentId: AGENT_ID,
+      });
+
+      expect(result).toEqual([]);
+      expect(logger.error).toHaveBeenCalledWith(
+        '[filterFilesByAgentAccess] Error checking FILE ACL:',
+        expect.any(Error),
+      );
     });
   });
 });

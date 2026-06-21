@@ -479,13 +479,13 @@ export async function updateInterfacePermissions({
           : {}),
       },
       [PermissionTypes.FILES]: {
-        [Permissions.USE]: getPermissionValue(
-          undefined,
-          defaultPerms[PermissionTypes.FILES]?.[Permissions.USE],
-          filesDefaultUse,
-        ),
         ...(!existingPermissions?.[PermissionTypes.FILES]
           ? {
+              [Permissions.USE]: getPermissionValue(
+                undefined,
+                defaultPerms[PermissionTypes.FILES]?.[Permissions.USE],
+                filesDefaultUse,
+              ),
               [Permissions.CREATE]: getPermissionValue(
                 undefined,
                 defaultPerms[PermissionTypes.FILES]?.[Permissions.CREATE],
