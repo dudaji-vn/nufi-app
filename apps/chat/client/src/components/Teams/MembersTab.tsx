@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { UserMinus, UserPlus, ArrowRightLeft } from 'lucide-react';
 import {
   Button,
@@ -51,6 +52,7 @@ function MemberInitialsAvatar({ name, email }: { name: string; email: string }) 
 function MemberRow({ member, teamId, callerRole, callerId }: MemberRowProps) {
   const localize = useLocalize();
   const { showToast } = useToastContext();
+  const navigate = useNavigate();
   const [removeOpen, setRemoveOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
 
@@ -66,6 +68,9 @@ function MemberRow({ member, teamId, callerRole, callerId }: MemberRowProps) {
         status: 'success',
       });
       setRemoveOpen(false);
+      if (isSelf) {
+        navigate('/teams');
+      }
     },
     onError: (error: Error) => {
       showToast({ message: error.message || localize('com_ui_error'), status: 'error' });

@@ -86,6 +86,7 @@ export const useRemoveMemberMutation = (
       onSuccess: (data, variables, context) => {
         queryClient.invalidateQueries([QueryKeys.teamMembers, variables.teamId]);
         queryClient.invalidateQueries([QueryKeys.team, variables.teamId]);
+        queryClient.invalidateQueries([QueryKeys.teams]);
         options?.onSuccess?.(data, variables, context);
       },
     },
@@ -147,6 +148,7 @@ export const useCreateInviteMutation = (
       ...options,
       onSuccess: (data, variables, context) => {
         queryClient.invalidateQueries([QueryKeys.teamInvites, variables.teamId]);
+        queryClient.invalidateQueries([QueryKeys.myTeamInvites]);
         options?.onSuccess?.(data, variables, context);
       },
     },

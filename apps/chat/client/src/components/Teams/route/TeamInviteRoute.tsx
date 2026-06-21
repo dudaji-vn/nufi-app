@@ -1,4 +1,4 @@
-import { useNavigate, useParams, Link } from 'react-router-dom';
+import { useNavigate, useParams, useLocation, Link, Navigate } from 'react-router-dom';
 import { Check, X, Users } from 'lucide-react';
 import { Button, Spinner, useToastContext } from '@librechat/client';
 import type { TTeamInvite } from 'librechat-data-provider';
@@ -8,6 +8,7 @@ import {
   useAcceptInviteMutation,
   useDeclineInviteMutation,
 } from '~/data-provider';
+import { useAuthContext } from '~/hooks/AuthContext';
 import { useLocalize } from '~/hooks';
 
 const inviteRoleLabelKey: Record<TTeamInvite['role'], TranslationKeys> = {
@@ -106,10 +107,8 @@ function NotFoundCard() {
   );
 }
 
-export default function TeamInviteRoute() {
-  const { token } = useParams<{ token: string }>();
+function InvitePageContent({ token }: { token: string }) {
   const { data, isLoading } = useMyTeamInvitesQuery();
-
   const invite = data?.invites.find((inv) => inv.token === token);
 
   return (
@@ -120,9 +119,21 @@ export default function TeamInviteRoute() {
             <Spinner className="h-8 w-8 text-text-secondary" />
           </div>
         )}
-        {!isLoading && invite && token && <InviteCard invite={invite} token={token} />}
+        {!isLoading && invite && <InviteCard invite={invite} token={token} />}
         {!isLoading && !invite && <NotFoundCard />}
       </div>
     </div>
   );
+}
+
+export default function TeamInviteRoute() {
+  const { token } = useParams<{ token: string }>();
+  const location = useLocation();
+  const { isAuthenticated } = useAuthContext();
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" state={{ redirect_to: location.pathname }} replace />;
+  }
+
+  return <InvitePageContent token={token ?? ''} />;
 }
