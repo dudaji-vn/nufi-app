@@ -16,6 +16,9 @@ const HANDLED_RESOURCE_TYPES = {
   [ResourceType.PROMPTGROUP]: 'deleteUserPrompts',
   [ResourceType.MCPSERVER]: 'deleteUserMcpServers',
   [ResourceType.SKILL]: 'deleteUserSkills',
+  // The user's own files are removed by deleteFiles; their FILE ACL grants
+  // (as principal) are cleared by the deleteAclEntries({ principalId }) call.
+  [ResourceType.FILE]: 'deleteFiles',
 };
 
 /**
