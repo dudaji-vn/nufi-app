@@ -116,6 +116,27 @@ describe('team membership methods', () => {
     ).rejects.toThrow(/owner/i);
   });
 
+  test('removeTeamMember pulls idOnTheSource value from memberIds', async () => {
+    const owner = await makeUser();
+    const entraUser = await makeUser('entra-rm-1');
+    const team = await methods.createTeam({ name: 'T', ownerId: owner._id });
+    await methods.addTeamMember({ groupId: team._id, userId: entraUser._id });
+    const updated = await methods.removeTeamMember({ groupId: team._id, userId: entraUser._id });
+    expect(updated?.members?.some((m) => m.userId.toString() === entraUser._id.toString())).toBe(
+      false,
+    );
+    expect(updated?.memberIds).not.toContain('entra-rm-1');
+  });
+
+  test('removeTeamMember on a non-existent group returns null', async () => {
+    expect(
+      await methods.removeTeamMember({
+        groupId: new mongoose.Types.ObjectId(),
+        userId: (await makeUser())._id,
+      }),
+    ).toBeNull();
+  });
+
   test('getUserTeams returns only team-kind groups the user belongs to', async () => {
     const owner = await makeUser();
     const team = await methods.createTeam({ name: 'T', ownerId: owner._id });
