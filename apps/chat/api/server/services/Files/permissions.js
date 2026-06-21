@@ -3,6 +3,7 @@ const { PermissionBits, ResourceType, isEphemeralAgentId } = require('librechat-
 const {
   checkPermission,
   getResourcePermissionsMap,
+  findAccessibleResources,
 } = require('~/server/services/PermissionService');
 const { getAgent, getFiles } = require('~/models');
 
@@ -215,7 +216,29 @@ const filterFilesByAgentAccess = async ({ files, userId, role, agentId }) => {
   }
 };
 
+/**
+ * Returns the string file_ids of embedded files the user can VIEW via a FILE ACL grant
+ * (captures team-shared files granted to any group the user belongs to).
+ * @param {string} userId - The user ID
+ * @param {string} [role] - Optional user role to avoid DB query
+ * @returns {Promise<string[]>} Array of file_id strings
+ */
+const getTeamSharedFileIds = async (userId, role) => {
+  const resourceIds = await findAccessibleResources({
+    userId,
+    role,
+    resourceType: ResourceType.FILE,
+    requiredPermissions: PermissionBits.VIEW,
+  });
+  if (!resourceIds.length) {
+    return [];
+  }
+  const files = await getFiles({ _id: { $in: resourceIds }, embedded: true }, null, { file_id: 1 });
+  return (files ?? []).map((f) => f.file_id);
+};
+
 module.exports = {
   hasAccessToFilesViaAgent,
   filterFilesByAgentAccess,
+  getTeamSharedFileIds,
 };

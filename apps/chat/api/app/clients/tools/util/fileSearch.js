@@ -3,7 +3,10 @@ const { logger } = require('@librechat/data-schemas');
 const { tool } = require('@librechat/agents/langchain/tools');
 const { generateShortLivedToken } = require('@librechat/api');
 const { Tools, EToolResources } = require('librechat-data-provider');
-const { filterFilesByAgentAccess } = require('~/server/services/Files/permissions');
+const {
+  filterFilesByAgentAccess,
+  getTeamSharedFileIds,
+} = require('~/server/services/Files/permissions');
 const { getFiles } = require('~/models');
 
 const fileSearchJsonSchema = {
@@ -35,8 +38,19 @@ const primeFiles = async (options) => {
   const agentResourceIds = new Set(file_ids);
   const resourceFiles = tool_resources?.[EToolResources.file_search]?.files ?? [];
 
+  let teamFileIds = [];
+  try {
+    teamFileIds = req?.user?.id ? await getTeamSharedFileIds(req.user.id, req.user.role) : [];
+  } catch (err) {
+    logger.error(
+      '[primeFiles] Failed to fetch team-shared file ids, falling back to agent files only:',
+      err,
+    );
+  }
+  const allFileIds = [...new Set([...file_ids, ...teamFileIds])];
+
   // Get all files first
-  const allFiles = (await getFiles({ file_id: { $in: file_ids } }, null, { text: 0 })) ?? [];
+  const allFiles = (await getFiles({ file_id: { $in: allFileIds } }, null, { text: 0 })) ?? [];
 
   // Filter by access if user and agent are provided
   let dbFiles;

@@ -5,6 +5,7 @@ jest.mock('@librechat/data-schemas', () => ({
 jest.mock('~/server/services/PermissionService', () => ({
   checkPermission: jest.fn(),
   getResourcePermissionsMap: jest.fn(),
+  findAccessibleResources: jest.fn(),
 }));
 
 jest.mock('~/models', () => ({
@@ -30,9 +31,14 @@ const { Constants, PermissionBits, ResourceType } = require('librechat-data-prov
 const {
   checkPermission,
   getResourcePermissionsMap,
+  findAccessibleResources,
 } = require('~/server/services/PermissionService');
 const { getAgent, getFiles } = require('~/models');
-const { filterFilesByAgentAccess, hasAccessToFilesViaAgent } = require('./permissions');
+const {
+  filterFilesByAgentAccess,
+  hasAccessToFilesViaAgent,
+  getTeamSharedFileIds,
+} = require('./permissions');
 
 const AUTHOR_ID = 'author-user-id';
 const USER_ID = 'viewer-user-id';
@@ -555,5 +561,64 @@ describe('hasAccessToFilesViaAgent', () => {
 
       expect(result.get('f1')).toBe(false);
     });
+  });
+});
+
+describe('getTeamSharedFileIds', () => {
+  const TEAM_FILE_ID = 'team-file-123';
+  const TEAM_MONGO_ID = 'mongo-team-file-id';
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    findAccessibleResources.mockResolvedValue([]);
+    getFiles.mockResolvedValue([]);
+  });
+
+  it('returns file_ids for embedded files the user has VIEW access to via FILE ACL', async () => {
+    findAccessibleResources.mockResolvedValue([TEAM_MONGO_ID]);
+    getFiles.mockResolvedValue([{ file_id: TEAM_FILE_ID }]);
+
+    const result = await getTeamSharedFileIds(USER_ID, 'USER');
+
+    expect(findAccessibleResources).toHaveBeenCalledWith({
+      userId: USER_ID,
+      role: 'USER',
+      resourceType: ResourceType.FILE,
+      requiredPermissions: PermissionBits.VIEW,
+    });
+    expect(getFiles).toHaveBeenCalledWith({ _id: { $in: [TEAM_MONGO_ID] }, embedded: true }, null, {
+      file_id: 1,
+    });
+    expect(result).toEqual([TEAM_FILE_ID]);
+  });
+
+  it('excludes granted but non-embedded files (embedded:true filter in the query)', async () => {
+    findAccessibleResources.mockResolvedValue([TEAM_MONGO_ID]);
+    // getFiles with embedded:true returns nothing — simulates a non-embedded file being excluded
+    getFiles.mockResolvedValue([]);
+
+    const result = await getTeamSharedFileIds(USER_ID, 'USER');
+
+    expect(getFiles).toHaveBeenCalledWith({ _id: { $in: [TEAM_MONGO_ID] }, embedded: true }, null, {
+      file_id: 1,
+    });
+    expect(result).toEqual([]);
+  });
+
+  it('returns [] when the user has no ACL grants', async () => {
+    findAccessibleResources.mockResolvedValue([]);
+
+    const result = await getTeamSharedFileIds(USER_ID, 'USER');
+
+    expect(getFiles).not.toHaveBeenCalled();
+    expect(result).toEqual([]);
+  });
+
+  it('returns [] when findAccessibleResources returns an empty array (no grants)', async () => {
+    findAccessibleResources.mockResolvedValue([]);
+
+    const result = await getTeamSharedFileIds('other-user', undefined);
+
+    expect(result).toEqual([]);
   });
 });
