@@ -104,7 +104,7 @@ function MemberRow({ member, teamId, callerRole, callerId }: MemberRowProps) {
   const displayName = member.name || member.email;
 
   return (
-    <li className="flex items-center justify-between gap-3 rounded-lg border border-border-light bg-surface-primary px-4 py-3">
+    <li className="flex items-center justify-between gap-3 rounded-lg border border-border-light bg-surface-primary px-3.5 py-2.5">
       <div className="flex min-w-0 flex-1 items-center gap-3">
         {member.avatar != null && member.avatar !== '' ? (
           <img
