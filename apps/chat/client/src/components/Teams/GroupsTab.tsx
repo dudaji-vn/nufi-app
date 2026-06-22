@@ -52,7 +52,7 @@ function SubgroupCard({ subgroup, teamId, canManage }: SubgroupCardProps) {
 
       <div className="flex shrink-0 items-center gap-2">
         <span className="rounded-full bg-surface-tertiary px-2 py-0.5 text-xs font-medium text-text-secondary">
-          {localize('com_ui_members_count').replace('{{0}}', String(subgroup.memberCount))}
+          {localize('com_ui_members_count', { 0: subgroup.memberCount })}
         </span>
 
         {canManage && (
@@ -125,7 +125,7 @@ interface GroupsTabProps {
 
 export default function GroupsTab({ teamId, callerRole }: GroupsTabProps) {
   const localize = useLocalize();
-  const { data, isLoading } = useSubgroupsQuery(teamId);
+  const { data, isLoading, isError } = useSubgroupsQuery(teamId);
   const canManage = callerRole !== 'member';
   const subgroups: TSubgroup[] = data?.subgroups ?? [];
 
@@ -133,6 +133,14 @@ export default function GroupsTab({ teamId, callerRole }: GroupsTabProps) {
     return (
       <div className="flex items-center justify-center py-12">
         <Spinner className="text-text-secondary" aria-label={localize('com_ui_loading')} />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <p className="text-sm text-text-secondary">{localize('com_ui_error')}</p>
       </div>
     );
   }

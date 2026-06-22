@@ -306,11 +306,7 @@ export const useUnshareAgentMutation = (
     TUnshareAgentRequest & { targetSubgroupId?: string }
   >(
     [MutationKeys.unshareTeamAgent],
-    ({
-      teamId,
-      agentId,
-      targetSubgroupId,
-    }: TUnshareAgentRequest & { targetSubgroupId?: string }) =>
+    ({ teamId, agentId, targetSubgroupId }: TUnshareAgentRequest & { targetSubgroupId?: string }) =>
       dataService.unshareTeamAgent(teamId, agentId, targetSubgroupId),
     {
       ...options,
@@ -458,6 +454,7 @@ export const useAddSubgroupMemberMutation = (
     {
       ...options,
       onSuccess: (data, variables, context) => {
+        queryClient.invalidateQueries([QueryKeys.subgroups, teamId]);
         queryClient.invalidateQueries([QueryKeys.subgroup, teamId, variables.sgId]);
         options?.onSuccess?.(data, variables, context);
       },
@@ -477,6 +474,7 @@ export const useRemoveSubgroupMemberMutation = (
     {
       ...options,
       onSuccess: (data, variables, context) => {
+        queryClient.invalidateQueries([QueryKeys.subgroups, teamId]);
         queryClient.invalidateQueries([QueryKeys.subgroup, teamId, variables.sgId]);
         options?.onSuccess?.(data, variables, context);
       },

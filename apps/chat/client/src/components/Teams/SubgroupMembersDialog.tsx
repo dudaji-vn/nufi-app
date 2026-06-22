@@ -92,7 +92,7 @@ function MemberPicker({ teamId, sgId, currentMemberIds }: MemberPickerProps) {
               size="sm"
               disabled={isLoading}
               onClick={() => addMember({ sgId, userId: member.userId })}
-              aria-label={localize('com_ui_team_add_to_group')}
+              aria-label={`${localize('com_ui_team_add_to_group')}: ${displayName}`}
             >
               {isLoading ? (
                 <Spinner className="size-3.5" />
@@ -122,7 +122,7 @@ export default function SubgroupMembersDialog({
 }: SubgroupMembersDialogProps) {
   const localize = useLocalize();
   const { showToast } = useToastContext();
-  const { data, isLoading } = useSubgroupQuery(teamId, sgId);
+  const { data, isLoading } = useSubgroupQuery(teamId, sgId, { enabled: open });
 
   const members = data?.members ?? [];
   const currentMemberIds = new Set(members.map((m) => m.userId));

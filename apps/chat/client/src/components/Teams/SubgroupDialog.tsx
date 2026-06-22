@@ -70,8 +70,9 @@ export default function SubgroupDialog({ teamId, subgroup, children }: SubgroupD
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && e.ctrlKey) {
+  const handleNameKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey && name.trim()) {
+      e.preventDefault();
       handleSave();
     }
   };
@@ -95,10 +96,9 @@ export default function SubgroupDialog({ teamId, subgroup, children }: SubgroupD
                 id="group-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                onKeyDown={handleKeyDown}
+                onKeyDown={handleNameKeyDown}
                 placeholder={localize('com_ui_team_group_name')}
                 className="w-full"
-                aria-label={localize('com_ui_team_group_name')}
               />
             </div>
             <div className="space-y-2">
@@ -109,11 +109,9 @@ export default function SubgroupDialog({ teamId, subgroup, children }: SubgroupD
                 id="group-description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                onKeyDown={handleKeyDown}
                 placeholder={localize('com_ui_team_description')}
                 className="min-h-[80px] w-full resize-none rounded-lg border border-border-light bg-transparent px-3 py-2 text-sm text-text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-border-heavy"
                 rows={3}
-                aria-label={localize('com_ui_team_description')}
               />
             </div>
           </div>
