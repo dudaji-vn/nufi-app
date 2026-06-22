@@ -8,16 +8,24 @@ import {
   OGDialogContent,
   OGDialogHeader,
   OGDialogTitle,
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
 } from '@librechat/client';
-import type { TTeamKnowledgeFile, TeamRole } from 'librechat-data-provider';
+import type { TTeamKnowledgeListResponse, TeamRole, TSubgroup } from 'librechat-data-provider';
 import type { TFile } from 'librechat-data-provider';
 import {
   useTeamKnowledgeQuery,
   useAddKnowledgeMutation,
   useRemoveKnowledgeMutation,
+  useSubgroupsQuery,
 } from '~/data-provider';
 import { useGetFiles } from '~/data-provider';
 import { useLocalize } from '~/hooks';
+
+type TTeamKnowledgeRow = TTeamKnowledgeListResponse['files'][number];
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -36,6 +44,10 @@ function FilePickerDialog({ open, onOpenChange, teamId, sharedFileIds }: FilePic
   const localize = useLocalize();
   const { showToast } = useToastContext();
   const { data: files = [] } = useGetFiles<TFile[]>();
+  const { data: subgroupsData } = useSubgroupsQuery(teamId, { enabled: open });
+  const [targetSubgroupId, setTargetSubgroupId] = useState<string | undefined>(undefined);
+
+  const subgroups: TSubgroup[] = subgroupsData?.subgroups ?? [];
 
   const { mutate: addKnowledge, isLoading } = useAddKnowledgeMutation({
     onSuccess: () => {
@@ -59,6 +71,29 @@ function FilePickerDialog({ open, onOpenChange, teamId, sharedFileIds }: FilePic
         <OGDialogHeader>
           <OGDialogTitle>{localize('com_ui_team_select_file')}</OGDialogTitle>
         </OGDialogHeader>
+        {subgroups.length > 0 && (
+          <div className="px-1 pb-2">
+            <p className="mb-1.5 text-sm font-medium text-text-primary">
+              {localize('com_ui_team_share_with')}
+            </p>
+            <Select
+              value={targetSubgroupId ?? 'team'}
+              onValueChange={(v) => setTargetSubgroupId(v === 'team' ? undefined : v)}
+            >
+              <SelectTrigger className="w-full" aria-label={localize('com_ui_team_share_with')}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="team">{localize('com_ui_team_whole_team')}</SelectItem>
+                {subgroups.map((sg) => (
+                  <SelectItem key={sg._id} value={sg._id}>
+                    {sg.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
         {availableFiles.length === 0 ? (
           <p className="py-6 text-center text-sm text-text-secondary">
             {localize('com_ui_team_no_knowledge')}
@@ -83,7 +118,7 @@ function FilePickerDialog({ open, onOpenChange, teamId, sharedFileIds }: FilePic
                   variant="outline"
                   size="sm"
                   disabled={isLoading}
-                  onClick={() => addKnowledge({ teamId, fileId: file.file_id })}
+                  onClick={() => addKnowledge({ teamId, fileId: file.file_id, targetSubgroupId })}
                   aria-label={localize('com_ui_team_add_file')}
                 >
                   {isLoading ? <Spinner className="size-3.5" /> : localize('com_ui_team_add_file')}
@@ -98,7 +133,7 @@ function FilePickerDialog({ open, onOpenChange, teamId, sharedFileIds }: FilePic
 }
 
 interface KnowledgeRowProps {
-  file: TTeamKnowledgeFile;
+  file: TTeamKnowledgeRow;
   teamId: string;
   canManage: boolean;
 }
@@ -115,6 +150,8 @@ function KnowledgeRow({ file, teamId, canManage }: KnowledgeRowProps) {
       showToast({ message: error.message || localize('com_ui_error'), status: 'error' });
     },
   });
+
+  const targetSubgroupId = file.target.type === 'subgroup' ? file.target.id : undefined;
 
   return (
     <li className="flex items-center justify-between gap-3 rounded-lg border border-border-light bg-surface-primary px-3.5 py-2.5">
@@ -133,13 +170,16 @@ function KnowledgeRow({ file, teamId, canManage }: KnowledgeRowProps) {
             )}
           </p>
         </div>
+        <span className="rounded-full bg-surface-tertiary px-2 py-0.5 text-xs text-text-secondary">
+          {file.target.type === 'subgroup' ? file.target.name : localize('com_ui_team_whole_team')}
+        </span>
       </div>
       {canManage && (
         <Button
           variant="outline"
           size="sm"
           disabled={isLoading}
-          onClick={() => removeKnowledge({ teamId, fileId: file.file_id })}
+          onClick={() => removeKnowledge({ teamId, fileId: file.file_id, targetSubgroupId })}
           aria-label={localize('com_ui_team_remove_file')}
         >
           {isLoading ? (
@@ -199,7 +239,12 @@ export default function KnowledgeTab({ teamId, callerRole }: KnowledgeTabProps) 
       ) : (
         <ul className="flex flex-col gap-2">
           {files.map((file) => (
-            <KnowledgeRow key={file.file_id} file={file} teamId={teamId} canManage={canManage} />
+            <KnowledgeRow
+              key={`${file.file_id}-${file.target.type === 'subgroup' ? file.target.id : 'team'}`}
+              file={file}
+              teamId={teamId}
+              canManage={canManage}
+            />
           ))}
         </ul>
       )}

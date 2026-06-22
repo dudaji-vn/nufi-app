@@ -8,8 +8,18 @@ import {
   OGDialogContent,
   OGDialogHeader,
   OGDialogTitle,
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
 } from '@librechat/client';
-import type { TTeamAgentInfo, TTeamPromptGroupInfo, TeamRole } from 'librechat-data-provider';
+import type {
+  TeamRole,
+  TSubgroup,
+  TTeamAgentsListResponse,
+  TTeamPromptsListResponse,
+} from 'librechat-data-provider';
 import {
   useTeamAgentsQuery,
   useTeamPromptsQuery,
@@ -19,11 +29,15 @@ import {
   useUnsharePromptMutation,
   useListAgentsQuery,
   useGetAllPromptGroups,
+  useSubgroupsQuery,
 } from '~/data-provider';
 import { useLocalize } from '~/hooks';
 
+type TTeamAgentRow = TTeamAgentsListResponse['resources'][number];
+type TTeamPromptRow = TTeamPromptsListResponse['resources'][number];
+
 interface AgentRowProps {
-  agent: TTeamAgentInfo;
+  agent: TTeamAgentRow;
   teamId: string;
   canManage: boolean;
 }
@@ -41,6 +55,8 @@ function AgentRow({ agent, teamId, canManage }: AgentRowProps) {
     },
   });
 
+  const targetSubgroupId = agent.target.type === 'subgroup' ? agent.target.id : undefined;
+
   return (
     <li className="flex items-center justify-between gap-3 rounded-lg border border-border-light bg-surface-primary px-3.5 py-2.5">
       <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -53,13 +69,18 @@ function AgentRow({ agent, teamId, canManage }: AgentRowProps) {
             <p className="truncate text-xs text-text-secondary">{agent.description}</p>
           )}
         </div>
+        <span className="rounded-full bg-surface-tertiary px-2 py-0.5 text-xs text-text-secondary">
+          {agent.target.type === 'subgroup'
+            ? agent.target.name
+            : localize('com_ui_team_whole_team')}
+        </span>
       </div>
       {canManage && (
         <Button
           variant="outline"
           size="sm"
           disabled={isLoading}
-          onClick={() => unshareAgent({ teamId, agentId: agent.id })}
+          onClick={() => unshareAgent({ teamId, agentId: agent.id, targetSubgroupId })}
           aria-label={localize('com_ui_team_unshare')}
         >
           {isLoading ? (
@@ -74,7 +95,7 @@ function AgentRow({ agent, teamId, canManage }: AgentRowProps) {
 }
 
 interface PromptRowProps {
-  prompt: TTeamPromptGroupInfo;
+  prompt: TTeamPromptRow;
   teamId: string;
   canManage: boolean;
 }
@@ -92,6 +113,8 @@ function PromptRow({ prompt, teamId, canManage }: PromptRowProps) {
     },
   });
 
+  const targetSubgroupId = prompt.target.type === 'subgroup' ? prompt.target.id : undefined;
+
   return (
     <li className="flex items-center justify-between gap-3 rounded-lg border border-border-light bg-surface-primary px-3.5 py-2.5">
       <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -99,13 +122,18 @@ function PromptRow({ prompt, teamId, canManage }: PromptRowProps) {
           <BookOpen className="size-4 text-text-secondary" aria-hidden="true" />
         </div>
         <p className="truncate text-sm font-medium text-text-primary">{prompt.name}</p>
+        <span className="rounded-full bg-surface-tertiary px-2 py-0.5 text-xs text-text-secondary">
+          {prompt.target.type === 'subgroup'
+            ? prompt.target.name
+            : localize('com_ui_team_whole_team')}
+        </span>
       </div>
       {canManage && (
         <Button
           variant="outline"
           size="sm"
           disabled={isLoading}
-          onClick={() => unsharePrompt({ teamId, promptGroupId: prompt.id })}
+          onClick={() => unsharePrompt({ teamId, promptGroupId: prompt.id, targetSubgroupId })}
           aria-label={localize('com_ui_team_unshare')}
         >
           {isLoading ? (
@@ -130,6 +158,10 @@ function AgentPickerDialog({ open, onOpenChange, teamId, sharedIds }: AgentPicke
   const localize = useLocalize();
   const { showToast } = useToastContext();
   const { data } = useListAgentsQuery(undefined, { enabled: open });
+  const { data: subgroupsData } = useSubgroupsQuery(teamId, { enabled: open });
+  const [targetSubgroupId, setTargetSubgroupId] = useState<string | undefined>(undefined);
+
+  const subgroups: TSubgroup[] = subgroupsData?.subgroups ?? [];
 
   const { mutate: shareAgent, isLoading } = useShareAgentMutation({
     onSuccess: () => {
@@ -149,6 +181,29 @@ function AgentPickerDialog({ open, onOpenChange, teamId, sharedIds }: AgentPicke
         <OGDialogHeader>
           <OGDialogTitle>{localize('com_ui_team_select_agent')}</OGDialogTitle>
         </OGDialogHeader>
+        {subgroups.length > 0 && (
+          <div className="px-1 pb-2">
+            <p className="mb-1.5 text-sm font-medium text-text-primary">
+              {localize('com_ui_team_share_with')}
+            </p>
+            <Select
+              value={targetSubgroupId ?? 'team'}
+              onValueChange={(v) => setTargetSubgroupId(v === 'team' ? undefined : v)}
+            >
+              <SelectTrigger className="w-full" aria-label={localize('com_ui_team_share_with')}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="team">{localize('com_ui_team_whole_team')}</SelectItem>
+                {subgroups.map((sg) => (
+                  <SelectItem key={sg._id} value={sg._id}>
+                    {sg.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
         {available.length === 0 ? (
           <p className="py-6 text-center text-sm text-text-secondary">
             {localize('com_ui_team_no_agents_to_share')}
@@ -170,7 +225,7 @@ function AgentPickerDialog({ open, onOpenChange, teamId, sharedIds }: AgentPicke
                   variant="outline"
                   size="sm"
                   disabled={isLoading}
-                  onClick={() => shareAgent({ teamId, agentId: agent.id })}
+                  onClick={() => shareAgent({ teamId, agentId: agent.id, targetSubgroupId })}
                   aria-label={localize('com_ui_add')}
                 >
                   {isLoading ? <Spinner className="size-3.5" /> : localize('com_ui_add')}
@@ -195,6 +250,10 @@ function PromptPickerDialog({ open, onOpenChange, teamId, sharedIds }: PromptPic
   const localize = useLocalize();
   const { showToast } = useToastContext();
   const { data } = useGetAllPromptGroups(undefined, { enabled: open });
+  const { data: subgroupsData } = useSubgroupsQuery(teamId, { enabled: open });
+  const [targetSubgroupId, setTargetSubgroupId] = useState<string | undefined>(undefined);
+
+  const subgroups: TSubgroup[] = subgroupsData?.subgroups ?? [];
 
   const { mutate: sharePrompt, isLoading } = useSharePromptMutation({
     onSuccess: () => {
@@ -214,6 +273,29 @@ function PromptPickerDialog({ open, onOpenChange, teamId, sharedIds }: PromptPic
         <OGDialogHeader>
           <OGDialogTitle>{localize('com_ui_team_select_prompt')}</OGDialogTitle>
         </OGDialogHeader>
+        {subgroups.length > 0 && (
+          <div className="px-1 pb-2">
+            <p className="mb-1.5 text-sm font-medium text-text-primary">
+              {localize('com_ui_team_share_with')}
+            </p>
+            <Select
+              value={targetSubgroupId ?? 'team'}
+              onValueChange={(v) => setTargetSubgroupId(v === 'team' ? undefined : v)}
+            >
+              <SelectTrigger className="w-full" aria-label={localize('com_ui_team_share_with')}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="team">{localize('com_ui_team_whole_team')}</SelectItem>
+                {subgroups.map((sg) => (
+                  <SelectItem key={sg._id} value={sg._id}>
+                    {sg.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
         {available.length === 0 ? (
           <p className="py-6 text-center text-sm text-text-secondary">
             {localize('com_ui_team_no_prompts_to_share')}
@@ -233,7 +315,13 @@ function PromptPickerDialog({ open, onOpenChange, teamId, sharedIds }: PromptPic
                   variant="outline"
                   size="sm"
                   disabled={isLoading}
-                  onClick={() => sharePrompt({ teamId, promptGroupId: group._id as string })}
+                  onClick={() =>
+                    sharePrompt({
+                      teamId,
+                      promptGroupId: group._id as string,
+                      targetSubgroupId,
+                    })
+                  }
                   aria-label={localize('com_ui_add')}
                 >
                   {isLoading ? <Spinner className="size-3.5" /> : localize('com_ui_add')}
@@ -305,7 +393,12 @@ export default function SharedTab({ teamId, callerRole }: SharedTabProps) {
         ) : (
           <ul className="flex flex-col gap-2">
             {agents.map((agent) => (
-              <AgentRow key={agent.id} agent={agent} teamId={teamId} canManage={canManage} />
+              <AgentRow
+                key={`${agent.id}-${agent.target.type === 'subgroup' ? agent.target.id : 'team'}`}
+                agent={agent}
+                teamId={teamId}
+                canManage={canManage}
+              />
             ))}
           </ul>
         )}
@@ -337,7 +430,12 @@ export default function SharedTab({ teamId, callerRole }: SharedTabProps) {
         ) : (
           <ul className="flex flex-col gap-2">
             {prompts.map((prompt) => (
-              <PromptRow key={prompt.id} prompt={prompt} teamId={teamId} canManage={canManage} />
+              <PromptRow
+                key={`${prompt.id}-${prompt.target.type === 'subgroup' ? prompt.target.id : 'team'}`}
+                prompt={prompt}
+                teamId={teamId}
+                canManage={canManage}
+              />
             ))}
           </ul>
         )}
