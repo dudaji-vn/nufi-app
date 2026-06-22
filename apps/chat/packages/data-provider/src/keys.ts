@@ -89,6 +89,8 @@ export enum QueryKeys {
   teamKnowledge = 'teamKnowledge',
   teamAgents = 'teamAgents',
   teamPrompts = 'teamPrompts',
+  subgroups = 'subgroups',
+  subgroup = 'subgroup',
 }
 
 // Dynamic query keys that require parameters
@@ -144,4 +146,9 @@ export enum MutationKeys {
   unshareTeamAgent = 'unshareTeamAgent',
   shareTeamPrompt = 'shareTeamPrompt',
   unshareTeamPrompt = 'unshareTeamPrompt',
+  createSubgroup = 'createSubgroup',
+  updateSubgroup = 'updateSubgroup',
+  deleteSubgroup = 'deleteSubgroup',
+  addSubgroupMember = 'addSubgroupMember',
+  removeSubgroupMember = 'removeSubgroupMember',
 }

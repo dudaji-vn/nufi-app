@@ -1360,8 +1360,9 @@ export const declineTeamInvite = (token: string): Promise<{ success: boolean }> 
 export const addTeamKnowledge = (
   teamId: string,
   fileId: string,
+  targetSubgroupId?: string,
 ): Promise<{ success: boolean; fileId: string }> => {
-  return request.post(endpoints.teamKnowledgeAdd(teamId), { fileId });
+  return request.post(endpoints.teamKnowledgeAdd(teamId), { fileId, targetSubgroupId });
 };
 
 export const getTeamKnowledge = (teamId: string): Promise<q.TTeamKnowledgeListResponse> => {
@@ -1371,15 +1372,20 @@ export const getTeamKnowledge = (teamId: string): Promise<q.TTeamKnowledgeListRe
 export const removeTeamKnowledge = (
   teamId: string,
   fileId: string,
+  targetSubgroupId?: string,
 ): Promise<{ success: boolean }> => {
-  return request.delete(endpoints.teamKnowledgeRemove(teamId, fileId));
+  const url = targetSubgroupId
+    ? `${endpoints.teamKnowledgeRemove(teamId, fileId)}?targetSubgroupId=${encodeURIComponent(targetSubgroupId)}`
+    : endpoints.teamKnowledgeRemove(teamId, fileId);
+  return request.delete(url);
 };
 
 export const shareTeamAgent = (
   teamId: string,
   agentId: string,
+  targetSubgroupId?: string,
 ): Promise<{ success: boolean; id: string }> => {
-  return request.post(endpoints.teamAgentShare(teamId, agentId));
+  return request.post(endpoints.teamAgentShare(teamId, agentId), targetSubgroupId ? { targetSubgroupId } : undefined);
 };
 
 export const getTeamAgents = (teamId: string): Promise<q.TTeamAgentsListResponse> => {
@@ -1389,15 +1395,20 @@ export const getTeamAgents = (teamId: string): Promise<q.TTeamAgentsListResponse
 export const unshareTeamAgent = (
   teamId: string,
   agentId: string,
+  targetSubgroupId?: string,
 ): Promise<{ success: boolean }> => {
-  return request.delete(endpoints.teamAgentUnshare(teamId, agentId));
+  const url = targetSubgroupId
+    ? `${endpoints.teamAgentUnshare(teamId, agentId)}?targetSubgroupId=${encodeURIComponent(targetSubgroupId)}`
+    : endpoints.teamAgentUnshare(teamId, agentId);
+  return request.delete(url);
 };
 
 export const shareTeamPrompt = (
   teamId: string,
   promptGroupId: string,
+  targetSubgroupId?: string,
 ): Promise<{ success: boolean; id: string }> => {
-  return request.post(endpoints.teamPromptShare(teamId, promptGroupId));
+  return request.post(endpoints.teamPromptShare(teamId, promptGroupId), targetSubgroupId ? { targetSubgroupId } : undefined);
 };
 
 export const getTeamPrompts = (teamId: string): Promise<q.TTeamPromptsListResponse> => {
@@ -1407,6 +1418,58 @@ export const getTeamPrompts = (teamId: string): Promise<q.TTeamPromptsListRespon
 export const unshareTeamPrompt = (
   teamId: string,
   promptGroupId: string,
+  targetSubgroupId?: string,
 ): Promise<{ success: boolean }> => {
-  return request.delete(endpoints.teamPromptUnshare(teamId, promptGroupId));
+  const url = targetSubgroupId
+    ? `${endpoints.teamPromptUnshare(teamId, promptGroupId)}?targetSubgroupId=${encodeURIComponent(targetSubgroupId)}`
+    : endpoints.teamPromptUnshare(teamId, promptGroupId);
+  return request.delete(url);
+};
+
+/* Sub-groups */
+
+export const listSubgroups = (teamId: string): Promise<q.TSubgroupListResponse> => {
+  return request.get(endpoints.teamSubgroupsList(teamId));
+};
+
+export const getSubgroup = (teamId: string, sgId: string): Promise<q.TSubgroupDetailResponse> => {
+  return request.get(endpoints.teamSubgroupById(teamId, sgId));
+};
+
+export const createSubgroup = (
+  teamId: string,
+  body: t.TCreateSubgroupRequest,
+): Promise<{ subgroup: t.TSubgroup }> => {
+  return request.post(endpoints.teamSubgroupCreate(teamId), body);
+};
+
+export const updateSubgroup = (
+  teamId: string,
+  sgId: string,
+  body: t.TUpdateSubgroupRequest,
+): Promise<{ subgroup: t.TSubgroup }> => {
+  return request.patch(endpoints.teamSubgroupUpdate(teamId, sgId), body);
+};
+
+export const deleteSubgroup = (
+  teamId: string,
+  sgId: string,
+): Promise<{ success: boolean }> => {
+  return request.delete(endpoints.teamSubgroupDelete(teamId, sgId));
+};
+
+export const addSubgroupMember = (
+  teamId: string,
+  sgId: string,
+  userId: string,
+): Promise<{ success: boolean }> => {
+  return request.post(endpoints.teamSubgroupMembers(teamId, sgId), { userId });
+};
+
+export const removeSubgroupMember = (
+  teamId: string,
+  sgId: string,
+  userId: string,
+): Promise<{ success: boolean }> => {
+  return request.delete(endpoints.teamSubgroupMember(teamId, sgId, userId));
 };

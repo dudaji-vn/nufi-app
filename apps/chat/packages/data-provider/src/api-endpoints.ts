@@ -541,3 +541,18 @@ export const teamPromptShare = (teamId: string, promptGroupId: string) =>
   `${teamsRoot}/${encodeURIComponent(teamId)}/prompts/${encodeURIComponent(promptGroupId)}`;
 export const teamPromptUnshare = (teamId: string, promptGroupId: string) =>
   `${teamsRoot}/${encodeURIComponent(teamId)}/prompts/${encodeURIComponent(promptGroupId)}`;
+
+export const teamSubgroupsList = (teamId: string) =>
+  `${teamsRoot}/${encodeURIComponent(teamId)}/subgroups`;
+export const teamSubgroupCreate = (teamId: string) =>
+  `${teamsRoot}/${encodeURIComponent(teamId)}/subgroups`;
+export const teamSubgroupById = (teamId: string, sgId: string) =>
+  `${teamsRoot}/${encodeURIComponent(teamId)}/subgroups/${encodeURIComponent(sgId)}`;
+export const teamSubgroupUpdate = (teamId: string, sgId: string) =>
+  `${teamsRoot}/${encodeURIComponent(teamId)}/subgroups/${encodeURIComponent(sgId)}`;
+export const teamSubgroupDelete = (teamId: string, sgId: string) =>
+  `${teamsRoot}/${encodeURIComponent(teamId)}/subgroups/${encodeURIComponent(sgId)}`;
+export const teamSubgroupMembers = (teamId: string, sgId: string) =>
+  `${teamsRoot}/${encodeURIComponent(teamId)}/subgroups/${encodeURIComponent(sgId)}/members`;
+export const teamSubgroupMember = (teamId: string, sgId: string, userId: string) =>
+  `${teamsRoot}/${encodeURIComponent(teamId)}/subgroups/${encodeURIComponent(sgId)}/members/${encodeURIComponent(userId)}`;

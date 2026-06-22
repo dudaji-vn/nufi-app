@@ -234,17 +234,27 @@ export type TTeamInvitesListResponse = {
   invites: import('../types').TTeamInvite[];
 };
 
+type TResourceTarget = { type: 'team' } | { type: 'subgroup'; id: string; name: string };
+
 export type TTeamKnowledgeListResponse = {
-  files: import('../types').TTeamKnowledgeFile[];
+  files: (import('../types').TTeamKnowledgeFile & { target: TResourceTarget })[];
 };
 
 export type TTeamAgentsListResponse = {
-  resources: import('../types').TTeamAgentInfo[];
+  resources: (import('../types').TTeamAgentInfo & { target: TResourceTarget })[];
 };
 
 export type TTeamPromptsListResponse = {
-  resources: import('../types').TTeamPromptGroupInfo[];
+  resources: (import('../types').TTeamPromptGroupInfo & { target: TResourceTarget })[];
 };
+
+/* Sub-groups */
+
+export type TSubgroupListResponse = {
+  subgroups: import('../types').TSubgroup[];
+};
+
+export type TSubgroupDetailResponse = import('../types').TSubgroupDetail;
 
 /* SharePoint Graph API Token */
 export type GraphTokenParams = {

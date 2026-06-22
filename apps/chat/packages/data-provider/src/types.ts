@@ -886,3 +886,15 @@ export type TUnsharePromptRequest = {
   teamId: string;
   promptGroupId: string;
 };
+
+/* Sub-group request types */
+
+export type TCreateSubgroupRequest = {
+  name: string;
+  description?: string;
+};
+
+export type TUpdateSubgroupRequest = {
+  name?: string;
+  description?: string;
+};
