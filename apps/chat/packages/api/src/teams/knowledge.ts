@@ -4,8 +4,15 @@ import { Types } from 'mongoose';
 import type { IGroup, IMongoFile, IAclEntry, TeamRole } from '@librechat/data-schemas';
 import type { Response } from 'express';
 import type { ServerRequest } from '~/types/http';
-import { resolveTeamAccess } from './access';
+import { resolveTeamAccess, hasMinRole } from './access';
 import { resolveShareTarget } from './target';
+
+type FileTarget = { type: 'team' } | { type: 'subgroup'; id: string; name: string };
+
+type AnnotatedFileInfo = Pick<
+  IMongoFile,
+  'file_id' | 'filename' | 'bytes' | 'type' | 'embedded' | 'createdAt'
+> & { target: FileTarget };
 
 interface TeamIdParams {
   id: string;
@@ -52,6 +59,7 @@ export interface TeamKnowledgeHandlersDeps {
   }) => Promise<unknown>;
   getSubgroupById: (id: string) => Promise<IGroup | null>;
   getTeamSubgroups: (parentTeamId: string | Types.ObjectId) => Promise<IGroup[]>;
+  getUserTeamPrincipals: (params: { userId: string; teamId: string }) => Promise<string[]>;
 }
 
 function toSafeFile(file: IMongoFile): SafeFileInfo {
@@ -73,6 +81,7 @@ export function createTeamKnowledgeHandlers(deps: TeamKnowledgeHandlersDeps) {
     revokePermission,
     grantPermission,
     getTeamSubgroups,
+    getUserTeamPrincipals,
   } = deps;
 
   async function add(req: ServerRequest, res: Response) {
@@ -162,23 +171,58 @@ export function createTeamKnowledgeHandlers(deps: TeamKnowledgeHandlersDeps) {
         return res.status(access.status).json({ error });
       }
 
-      const groupObjectId = new Types.ObjectId(id);
-      const entries = await findEntriesByPrincipal(
-        PrincipalType.GROUP,
-        groupObjectId,
-        ResourceType.FILE,
+      const isAdmin = hasMinRole(access.role, 'admin');
+
+      const [principalIds, subgroups] = await Promise.all([
+        isAdmin
+          ? getTeamSubgroups(id).then((sgs) => [id, ...sgs.map((sg) => sg._id.toString())])
+          : getUserTeamPrincipals({ userId: callerId, teamId: id }),
+        getTeamSubgroups(id),
+      ]);
+
+      const subgroupNameById = new Map(
+        subgroups.map((sg) => [sg._id.toString(), sg.name]),
       );
 
-      if (!entries.length) {
+      const entriesPerPrincipal = await Promise.all(
+        principalIds.map((pid) =>
+          findEntriesByPrincipal(PrincipalType.GROUP, pid, ResourceType.FILE).then((entries) =>
+            entries.map((e) => ({ entry: e, principalId: pid })),
+          ),
+        ),
+      );
+
+      const taggedEntries = entriesPerPrincipal.flat();
+
+      if (!taggedEntries.length) {
         return res.status(200).json({ files: [] });
       }
 
-      const resourceIds = entries.map((e) => e.resourceId);
+      const resourceIds = taggedEntries.map((t) => t.entry.resourceId);
       const files = await getFiles({ _id: { $in: resourceIds } });
 
-      const safeFiles: SafeFileInfo[] = (files ?? []).map(toSafeFile);
+      const fileById = new Map(
+        (files ?? []).map((f) => [(f._id as Types.ObjectId).toString(), f]),
+      );
 
-      return res.status(200).json({ files: safeFiles });
+      const annotatedFiles: AnnotatedFileInfo[] = [];
+      for (const { entry, principalId } of taggedEntries) {
+        const file = fileById.get((entry.resourceId as Types.ObjectId).toString());
+        if (!file) {
+          continue;
+        }
+        const target: FileTarget =
+          principalId === id
+            ? { type: 'team' }
+            : {
+                type: 'subgroup',
+                id: principalId,
+                name: subgroupNameById.get(principalId) ?? principalId,
+              };
+        annotatedFiles.push({ ...toSafeFile(file), target });
+      }
+
+      return res.status(200).json({ files: annotatedFiles });
     } catch (error) {
       logger.error('[knowledge] list error:', error);
       return res.status(500).json({ error: 'Failed to list team knowledge files' });

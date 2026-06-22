@@ -15,8 +15,10 @@ import type {
 } from '@librechat/data-schemas';
 import type { Response } from 'express';
 import type { ServerRequest } from '~/types/http';
-import { resolveTeamAccess } from './access';
+import { resolveTeamAccess, hasMinRole } from './access';
 import { resolveShareTarget } from './target';
+
+type ResourceTarget = { type: 'team' } | { type: 'subgroup'; id: string; name: string };
 
 interface TeamIdParams {
   id: string;
@@ -79,6 +81,8 @@ export interface TeamResourceHandlersDeps {
     requiredPermission: number;
   }) => Promise<boolean>;
   getSubgroupById: (id: string) => Promise<IGroup | null>;
+  getTeamSubgroups: (parentTeamId: string | Types.ObjectId) => Promise<IGroup[]>;
+  getUserTeamPrincipals: (params: { userId: string; teamId: string }) => Promise<string[]>;
 }
 
 interface ResourceSpec<TDoc> {
@@ -94,7 +98,14 @@ interface ResourceSpec<TDoc> {
 }
 
 function createResourceHandlers<TDoc>(deps: TeamResourceHandlersDeps, spec: ResourceSpec<TDoc>) {
-  const { findEntriesByPrincipal, revokePermission, grantPermission, checkPermission } = deps;
+  const {
+    findEntriesByPrincipal,
+    revokePermission,
+    grantPermission,
+    checkPermission,
+    getTeamSubgroups,
+    getUserTeamPrincipals,
+  } = deps;
   const {
     resourceType,
     viewerRoleId,
@@ -197,20 +208,51 @@ function createResourceHandlers<TDoc>(deps: TeamResourceHandlersDeps, spec: Reso
       return res.status(access.status).json({ error });
     }
 
-    const groupObjectId = new Types.ObjectId(id);
-    const entries = await findEntriesByPrincipal(PrincipalType.GROUP, groupObjectId, resourceType);
+    const isAdmin = hasMinRole(access.role, 'admin');
 
-    if (!entries.length) {
+    const [principalIds, subgroups] = await Promise.all([
+      isAdmin
+        ? getTeamSubgroups(id).then((sgs) => [id, ...sgs.map((sg) => sg._id.toString())])
+        : getUserTeamPrincipals({ userId: callerId, teamId: id }),
+      getTeamSubgroups(id),
+    ]);
+
+    const subgroupNameById = new Map(subgroups.map((sg) => [sg._id.toString(), sg.name]));
+
+    const entriesPerPrincipal = await Promise.all(
+      principalIds.map((pid) =>
+        findEntriesByPrincipal(PrincipalType.GROUP, pid, resourceType).then((entries) =>
+          entries.map((e) => ({ entry: e, principalId: pid })),
+        ),
+      ),
+    );
+
+    const taggedEntries = entriesPerPrincipal.flat();
+
+    if (!taggedEntries.length) {
       return res.status(200).json({ resources: [] });
     }
 
-    const settled = await Promise.all(
-      entries.map((e) => resolveByObjectId(e.resourceId as Types.ObjectId)),
+    const resolved = await Promise.all(
+      taggedEntries.map(async ({ entry, principalId }) => {
+        const doc = await resolveByObjectId(entry.resourceId as Types.ObjectId);
+        return { doc, principalId };
+      }),
     );
 
-    const resources = settled
-      .filter((doc): doc is NonNullable<typeof doc> => doc !== null)
-      .map(toSafe);
+    const resources = resolved
+      .filter((r): r is { doc: NonNullable<typeof r.doc>; principalId: string } => r.doc !== null)
+      .map(({ doc, principalId }) => {
+        const target: ResourceTarget =
+          principalId === id
+            ? { type: 'team' }
+            : {
+                type: 'subgroup',
+                id: principalId,
+                name: subgroupNameById.get(principalId) ?? principalId,
+              };
+        return { ...toSafe(doc), target };
+      });
 
     return res.status(200).json({ resources });
   }

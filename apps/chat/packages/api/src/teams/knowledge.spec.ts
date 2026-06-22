@@ -4,6 +4,10 @@ import type { IGroup, IMongoFile, IAclEntry, TeamRole } from '@librechat/data-sc
 import { Types } from 'mongoose';
 import { PrincipalType } from 'librechat-data-provider';
 
+type FileTarget =
+  | { type: 'team' }
+  | { type: 'subgroup'; id: string; name: string };
+
 function makeSubgroup(id: string, parentTeamId: string): IGroup {
   return {
     _id: new Types.ObjectId(id),
@@ -71,6 +75,7 @@ function makeDeps(overrides: Partial<TeamKnowledgeHandlersDeps> = {}): TeamKnowl
     grantPermission: jest.fn().mockResolvedValue({}),
     getSubgroupById: jest.fn().mockResolvedValue(null),
     getTeamSubgroups: jest.fn().mockResolvedValue([]),
+    getUserTeamPrincipals: jest.fn().mockResolvedValue([]),
     ...overrides,
   };
 }
@@ -372,10 +377,16 @@ describe('createTeamKnowledgeHandlers', () => {
       const callerId = makeId();
       const team = makeTeam(teamId);
       const file = makeFile(callerId);
-      const entry = makeAclEntry(file._id as Types.ObjectId);
+      const teamObjId = new Types.ObjectId(teamId);
+      const entry: IAclEntry = {
+        ...makeAclEntry(file._id as Types.ObjectId),
+        principalId: teamObjId,
+      };
       const deps = makeDeps({
         findGroupById: jest.fn().mockResolvedValue(team),
         getTeamRole: jest.fn().mockResolvedValue('member' as TeamRole),
+        getUserTeamPrincipals: jest.fn().mockResolvedValue([teamId]),
+        getTeamSubgroups: jest.fn().mockResolvedValue([]),
         findEntriesByPrincipal: jest.fn().mockResolvedValue([entry]),
         getFiles: jest.fn().mockResolvedValue([file]),
       });
@@ -415,6 +426,7 @@ describe('createTeamKnowledgeHandlers', () => {
         findGroupById: jest.fn().mockResolvedValue(team),
         getTeamRole: jest.fn().mockResolvedValue('member' as TeamRole),
         findEntriesByPrincipal: jest.fn().mockResolvedValue([]),
+        getUserTeamPrincipals: jest.fn().mockResolvedValue([teamId]),
       });
       const { list } = createTeamKnowledgeHandlers(deps);
       const req = makeReq({ id: teamId }, {}, callerId);
@@ -424,6 +436,261 @@ describe('createTeamKnowledgeHandlers', () => {
 
       expect(res.status).toHaveBeenCalledWith(200);
       expect((res.json as jest.Mock).mock.calls[0][0]).toEqual({ files: [] });
+    });
+
+    describe('access matrix — caller-scoped with target annotation', () => {
+      const ownerId = makeId();
+      const m1Id = makeId();
+      const m2Id = makeId();
+      const sgAId = makeId();
+      const sgBId = makeId();
+
+      function makeSubgroupA(): IGroup {
+        return {
+          _id: new Types.ObjectId(sgAId),
+          name: 'Sub-group A',
+          kind: 'team_subgroup',
+          parentTeamId: new Types.ObjectId(teamId),
+          members: [],
+          memberIds: [],
+        } as unknown as IGroup;
+      }
+
+      function makeSubgroupB(): IGroup {
+        return {
+          _id: new Types.ObjectId(sgBId),
+          name: 'Sub-group B',
+          kind: 'team_subgroup',
+          parentTeamId: new Types.ObjectId(teamId),
+          members: [],
+          memberIds: [],
+        } as unknown as IGroup;
+      }
+
+      function makeTeamFile(userId: string): IMongoFile {
+        return makeFile(userId, { file_id: `f-team-${userId}`, filename: 'f-team.pdf' });
+      }
+      function makeFileA(userId: string): IMongoFile {
+        return makeFile(userId, { file_id: `f-A-${userId}`, filename: 'f-A.pdf' });
+      }
+      function makeFileB(userId: string): IMongoFile {
+        return makeFile(userId, { file_id: `f-B-${userId}`, filename: 'f-B.pdf' });
+      }
+
+      function makeAclEntryForPrincipal(
+        resourceId: Types.ObjectId,
+        principalId: Types.ObjectId,
+      ): IAclEntry {
+        return {
+          _id: new Types.ObjectId(),
+          principalType: PrincipalType.GROUP,
+          principalId,
+          resourceType: 'file',
+          resourceId,
+          permBits: 1,
+          grantedBy: new Types.ObjectId(),
+          grantedAt: new Date(),
+        } as unknown as IAclEntry;
+      }
+
+      it('member m1 (in sub-group A) sees F-team and F-A but NOT F-B, each with correct target', async () => {
+        const team = makeTeam(teamId);
+        const sgA = makeSubgroupA();
+        const sgB = makeSubgroupB();
+        const fTeam = makeTeamFile(ownerId);
+        const fA = makeFileA(ownerId);
+        const fB = makeFileB(ownerId);
+
+        const teamObjId = new Types.ObjectId(teamId);
+        const sgAObjId = new Types.ObjectId(sgAId);
+        const sgBObjId = new Types.ObjectId(sgBId);
+
+        const entryTeam = makeAclEntryForPrincipal(fTeam._id as Types.ObjectId, teamObjId);
+        const entryA = makeAclEntryForPrincipal(fA._id as Types.ObjectId, sgAObjId);
+
+        const deps = makeDeps({
+          findGroupById: jest.fn().mockResolvedValue(team),
+          getTeamRole: jest.fn().mockResolvedValue('member' as TeamRole),
+          getUserTeamPrincipals: jest.fn().mockResolvedValue([teamId, sgAId]),
+          getTeamSubgroups: jest.fn().mockResolvedValue([sgA, sgB]),
+          findEntriesByPrincipal: jest
+            .fn()
+            .mockResolvedValueOnce([entryTeam])
+            .mockResolvedValueOnce([entryA]),
+          getFiles: jest.fn().mockImplementation(({ _id }: { _id: { $in: Types.ObjectId[] } }) => {
+            const allFiles = [fTeam, fA, fB];
+            return Promise.resolve(
+              allFiles.filter((f) =>
+                _id.$in.some((id: Types.ObjectId) => id.equals(f._id as Types.ObjectId)),
+              ),
+            );
+          }),
+        });
+
+        const { list } = createTeamKnowledgeHandlers(deps);
+        const req = makeReq({ id: teamId }, {}, m1Id);
+        const res = makeRes();
+
+        await list(req as unknown as import('~/types/http').ServerRequest, res);
+
+        expect(res.status).toHaveBeenCalledWith(200);
+        const body = (res.json as jest.Mock).mock.calls[0][0];
+        const fileIds = body.files.map((f: { file_id: string }) => f.file_id);
+        expect(fileIds).toContain(fTeam.file_id);
+        expect(fileIds).toContain(fA.file_id);
+        expect(fileIds).not.toContain(fB.file_id);
+
+        const fTeamEntry = body.files.find((f: { file_id: string }) => f.file_id === fTeam.file_id);
+        const fAEntry = body.files.find((f: { file_id: string }) => f.file_id === fA.file_id);
+        expect(fTeamEntry.target).toEqual({ type: 'team' });
+        expect(fAEntry.target).toEqual({ type: 'subgroup', id: sgAId, name: 'Sub-group A' });
+      });
+
+      it('member m2 (in sub-group B) sees F-team and F-B but NOT F-A, each with correct target', async () => {
+        const team = makeTeam(teamId);
+        const sgA = makeSubgroupA();
+        const sgB = makeSubgroupB();
+        const fTeam = makeTeamFile(ownerId);
+        const fA = makeFileA(ownerId);
+        const fB = makeFileB(ownerId);
+
+        const teamObjId = new Types.ObjectId(teamId);
+        const sgBObjId = new Types.ObjectId(sgBId);
+
+        const entryTeam = makeAclEntryForPrincipal(fTeam._id as Types.ObjectId, teamObjId);
+        const entryB = makeAclEntryForPrincipal(fB._id as Types.ObjectId, sgBObjId);
+
+        const deps = makeDeps({
+          findGroupById: jest.fn().mockResolvedValue(team),
+          getTeamRole: jest.fn().mockResolvedValue('member' as TeamRole),
+          getUserTeamPrincipals: jest.fn().mockResolvedValue([teamId, sgBId]),
+          getTeamSubgroups: jest.fn().mockResolvedValue([sgA, sgB]),
+          findEntriesByPrincipal: jest
+            .fn()
+            .mockResolvedValueOnce([entryTeam])
+            .mockResolvedValueOnce([entryB]),
+          getFiles: jest.fn().mockImplementation(({ _id }: { _id: { $in: Types.ObjectId[] } }) => {
+            const allFiles = [fTeam, fA, fB];
+            return Promise.resolve(
+              allFiles.filter((f) =>
+                _id.$in.some((id: Types.ObjectId) => id.equals(f._id as Types.ObjectId)),
+              ),
+            );
+          }),
+        });
+
+        const { list } = createTeamKnowledgeHandlers(deps);
+        const req = makeReq({ id: teamId }, {}, m2Id);
+        const res = makeRes();
+
+        await list(req as unknown as import('~/types/http').ServerRequest, res);
+
+        expect(res.status).toHaveBeenCalledWith(200);
+        const body = (res.json as jest.Mock).mock.calls[0][0];
+        const fileIds = body.files.map((f: { file_id: string }) => f.file_id);
+        expect(fileIds).toContain(fTeam.file_id);
+        expect(fileIds).toContain(fB.file_id);
+        expect(fileIds).not.toContain(fA.file_id);
+
+        const fTeamEntry = body.files.find((f: { file_id: string }) => f.file_id === fTeam.file_id);
+        const fBEntry = body.files.find((f: { file_id: string }) => f.file_id === fB.file_id);
+        expect(fTeamEntry.target).toEqual({ type: 'team' });
+        expect(fBEntry.target).toEqual({ type: 'subgroup', id: sgBId, name: 'Sub-group B' });
+      });
+
+      it('owner sees all three files (F-team, F-A, F-B) with correct per-grant target annotation', async () => {
+        const team = makeTeam(teamId);
+        const sgA = makeSubgroupA();
+        const sgB = makeSubgroupB();
+        const fTeam = makeTeamFile(ownerId);
+        const fA = makeFileA(ownerId);
+        const fB = makeFileB(ownerId);
+
+        const teamObjId = new Types.ObjectId(teamId);
+        const sgAObjId = new Types.ObjectId(sgAId);
+        const sgBObjId = new Types.ObjectId(sgBId);
+
+        const entryTeam = makeAclEntryForPrincipal(fTeam._id as Types.ObjectId, teamObjId);
+        const entryA = makeAclEntryForPrincipal(fA._id as Types.ObjectId, sgAObjId);
+        const entryB = makeAclEntryForPrincipal(fB._id as Types.ObjectId, sgBObjId);
+
+        const deps = makeDeps({
+          findGroupById: jest.fn().mockResolvedValue(team),
+          getTeamRole: jest.fn().mockResolvedValue('owner' as TeamRole),
+          getTeamSubgroups: jest.fn().mockResolvedValue([sgA, sgB]),
+          findEntriesByPrincipal: jest
+            .fn()
+            .mockResolvedValueOnce([entryTeam])
+            .mockResolvedValueOnce([entryA])
+            .mockResolvedValueOnce([entryB]),
+          getFiles: jest.fn().mockImplementation(({ _id }: { _id: { $in: Types.ObjectId[] } }) => {
+            const allFiles = [fTeam, fA, fB];
+            return Promise.resolve(
+              allFiles.filter((f) =>
+                _id.$in.some((id: Types.ObjectId) => id.equals(f._id as Types.ObjectId)),
+              ),
+            );
+          }),
+        });
+
+        const { list } = createTeamKnowledgeHandlers(deps);
+        const req = makeReq({ id: teamId }, {}, ownerId);
+        const res = makeRes();
+
+        await list(req as unknown as import('~/types/http').ServerRequest, res);
+
+        expect(res.status).toHaveBeenCalledWith(200);
+        const body = (res.json as jest.Mock).mock.calls[0][0];
+        const fileIds = body.files.map((f: { file_id: string }) => f.file_id);
+        expect(fileIds).toContain(fTeam.file_id);
+        expect(fileIds).toContain(fA.file_id);
+        expect(fileIds).toContain(fB.file_id);
+
+        const fTeamEntry = body.files.find((f: { file_id: string }) => f.file_id === fTeam.file_id);
+        const fAEntry = body.files.find((f: { file_id: string }) => f.file_id === fA.file_id);
+        const fBEntry = body.files.find((f: { file_id: string }) => f.file_id === fB.file_id);
+        expect(fTeamEntry.target).toEqual({ type: 'team' });
+        expect(fAEntry.target).toEqual({ type: 'subgroup', id: sgAId, name: 'Sub-group A' });
+        expect(fBEntry.target).toEqual({ type: 'subgroup', id: sgBId, name: 'Sub-group B' });
+      });
+
+      it('resource granted to both team and sub-group A appears as two rows', async () => {
+        const team = makeTeam(teamId);
+        const sgA = makeSubgroupA();
+        const sgB = makeSubgroupB();
+        const fShared = makeTeamFile(ownerId);
+
+        const teamObjId = new Types.ObjectId(teamId);
+        const sgAObjId = new Types.ObjectId(sgAId);
+
+        const entryTeam = makeAclEntryForPrincipal(fShared._id as Types.ObjectId, teamObjId);
+        const entryA = makeAclEntryForPrincipal(fShared._id as Types.ObjectId, sgAObjId);
+
+        const deps = makeDeps({
+          findGroupById: jest.fn().mockResolvedValue(team),
+          getTeamRole: jest.fn().mockResolvedValue('owner' as TeamRole),
+          getTeamSubgroups: jest.fn().mockResolvedValue([sgA, sgB]),
+          findEntriesByPrincipal: jest
+            .fn()
+            .mockResolvedValueOnce([entryTeam])
+            .mockResolvedValueOnce([entryA])
+            .mockResolvedValueOnce([]),
+          getFiles: jest.fn().mockResolvedValue([fShared]),
+        });
+
+        const { list } = createTeamKnowledgeHandlers(deps);
+        const req = makeReq({ id: teamId }, {}, ownerId);
+        const res = makeRes();
+
+        await list(req as unknown as import('~/types/http').ServerRequest, res);
+
+        expect(res.status).toHaveBeenCalledWith(200);
+        const body = (res.json as jest.Mock).mock.calls[0][0];
+        expect(body.files).toHaveLength(2);
+        const targets = body.files.map((f: { target: FileTarget }) => f.target);
+        expect(targets).toContainEqual({ type: 'team' });
+        expect(targets).toContainEqual({ type: 'subgroup', id: sgAId, name: 'Sub-group A' });
+      });
     });
   });
 

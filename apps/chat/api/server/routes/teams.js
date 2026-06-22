@@ -120,6 +120,8 @@ const resourceHandlers = createTeamResourceHandlers({
   grantPermission: PermissionService.grantPermission,
   checkPermission: PermissionService.checkPermission,
   getSubgroupById: db.getSubgroupById,
+  getTeamSubgroups: db.getTeamSubgroups,
+  getUserTeamPrincipals: db.getUserTeamPrincipals,
 });
 
 router.post('/:id/agents/:agentId', resourceHandlers.shareAgent);

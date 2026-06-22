@@ -2,7 +2,11 @@ import { Types } from 'mongoose';
 import { ResourceType, AccessRoleIds, PrincipalType, PermissionBits } from 'librechat-data-provider';
 import { createTeamResourceHandlers } from './resources';
 import type { TeamResourceHandlersDeps } from './resources';
-import type { IAgent, IGroup, IPromptGroupDocument, TeamRole } from '@librechat/data-schemas';
+import type { IAgent, IAclEntry, IGroup, IPromptGroupDocument, TeamRole } from '@librechat/data-schemas';
+
+type ResourceTarget =
+  | { type: 'team' }
+  | { type: 'subgroup'; id: string; name: string };
 
 function makeSubgroup(id: string, parentTeamId: string): IGroup {
   return {
@@ -80,6 +84,8 @@ function makeDeps(overrides: Partial<TeamResourceHandlersDeps> = {}): TeamResour
     grantPermission: jest.fn().mockResolvedValue({}),
     checkPermission: jest.fn().mockResolvedValue(true),
     getSubgroupById: jest.fn().mockResolvedValue(null),
+    getTeamSubgroups: jest.fn().mockResolvedValue([]),
+    getUserTeamPrincipals: jest.fn().mockResolvedValue([]),
     ...overrides,
   };
 }
@@ -333,6 +339,7 @@ describe('createTeamResourceHandlers', () => {
       const deps = makeDeps({
         getTeamRole: jest.fn().mockResolvedValue('member' as TeamRole),
         findEntriesByPrincipal: jest.fn().mockResolvedValue([]),
+        getUserTeamPrincipals: jest.fn().mockResolvedValue([teamId]),
       });
       const { listAgents } = createTeamResourceHandlers(deps);
 
@@ -348,9 +355,16 @@ describe('createTeamResourceHandlers', () => {
     it('returns 200 with resolved agents from ACL entries (member-gated)', async () => {
       const agent = makeAgent();
       const entry = makeAclEntry(agent._id as Types.ObjectId, ResourceType.AGENT);
+      const teamObjId = new Types.ObjectId(teamId);
+      const fullEntry: IAclEntry = {
+        ...(entry as IAclEntry),
+        principalId: teamObjId,
+      };
       const deps = makeDeps({
         getTeamRole: jest.fn().mockResolvedValue('member' as TeamRole),
-        findEntriesByPrincipal: jest.fn().mockResolvedValue([entry]),
+        getUserTeamPrincipals: jest.fn().mockResolvedValue([teamId]),
+        getTeamSubgroups: jest.fn().mockResolvedValue([]),
+        findEntriesByPrincipal: jest.fn().mockResolvedValue([fullEntry]),
         getAgent: jest.fn().mockResolvedValue(agent),
       });
       const { listAgents } = createTeamResourceHandlers(deps);
@@ -380,6 +394,159 @@ describe('createTeamResourceHandlers', () => {
       await listAgents(req as never, res as never);
 
       expect(res.status).toHaveBeenCalledWith(404);
+    });
+
+    describe('access matrix — caller-scoped with target annotation', () => {
+      const ownerId = makeId();
+      const m1Id = makeId();
+      const m2Id = makeId();
+      const sgAId = makeId();
+      const sgBId = makeId();
+
+      function makeSubgroupA(): IGroup {
+        return {
+          _id: new Types.ObjectId(sgAId),
+          name: 'Sub-group A',
+          kind: 'team_subgroup',
+          parentTeamId: new Types.ObjectId(teamId),
+          members: [],
+          memberIds: [],
+        } as unknown as IGroup;
+      }
+
+      function makeSubgroupB(): IGroup {
+        return {
+          _id: new Types.ObjectId(sgBId),
+          name: 'Sub-group B',
+          kind: 'team_subgroup',
+          parentTeamId: new Types.ObjectId(teamId),
+          members: [],
+          memberIds: [],
+        } as unknown as IGroup;
+      }
+
+      function makeAclEntryForPrincipal(
+        resourceId: Types.ObjectId,
+        principalId: Types.ObjectId,
+      ): IAclEntry {
+        return {
+          _id: makeObjectId(),
+          principalType: PrincipalType.GROUP,
+          principalId,
+          resourceType: ResourceType.AGENT,
+          resourceId,
+          accessRoleId: AccessRoleIds.AGENT_VIEWER,
+          permBits: PermissionBits.VIEW,
+        } as unknown as IAclEntry;
+      }
+
+      it('m1 (in sub-group A) sees agent-team and agent-A but NOT agent-B', async () => {
+        const agentTeam = makeAgent({ name: 'Agent-Team' });
+        const agentA = makeAgent({ name: 'Agent-A' });
+        const agentB = makeAgent({ name: 'Agent-B' });
+
+        const teamObjId = new Types.ObjectId(teamId);
+        const sgAObjId = new Types.ObjectId(sgAId);
+
+        const entryTeam = makeAclEntryForPrincipal(agentTeam._id as Types.ObjectId, teamObjId);
+        const entryA = makeAclEntryForPrincipal(agentA._id as Types.ObjectId, sgAObjId);
+
+        const sgA = makeSubgroupA();
+        const sgB = makeSubgroupB();
+
+        const agentMap = new Map([
+          [agentTeam._id.toString(), agentTeam],
+          [agentA._id.toString(), agentA],
+          [agentB._id.toString(), agentB],
+        ]);
+
+        const deps = makeDeps({
+          getTeamRole: jest.fn().mockResolvedValue('member' as TeamRole),
+          getUserTeamPrincipals: jest.fn().mockResolvedValue([teamId, sgAId]),
+          getTeamSubgroups: jest.fn().mockResolvedValue([sgA, sgB]),
+          findEntriesByPrincipal: jest
+            .fn()
+            .mockResolvedValueOnce([entryTeam])
+            .mockResolvedValueOnce([entryA]),
+          getAgent: jest.fn().mockImplementation(({ _id }: { _id: Types.ObjectId }) =>
+            Promise.resolve(agentMap.get(_id.toString()) ?? null),
+          ),
+        });
+
+        const { listAgents } = createTeamResourceHandlers(deps);
+        const req = makeReq({ id: teamId }, { id: m1Id, role: 'USER' });
+        const res = makeRes();
+
+        await listAgents(req as never, res as never);
+
+        expect(res.status).toHaveBeenCalledWith(200);
+        const body = (res.json as jest.Mock).mock.calls[0][0];
+        const ids = body.resources.map((r: { id: string }) => r.id);
+        expect(ids).toContain(agentTeam.id);
+        expect(ids).toContain(agentA.id);
+        expect(ids).not.toContain(agentB.id);
+
+        const teamEntry = body.resources.find((r: { id: string }) => r.id === agentTeam.id);
+        const aEntry = body.resources.find((r: { id: string }) => r.id === agentA.id);
+        expect(teamEntry.target).toEqual({ type: 'team' });
+        expect(aEntry.target).toEqual({ type: 'subgroup', id: sgAId, name: 'Sub-group A' });
+      });
+
+      it('owner sees all three agents each annotated with correct target', async () => {
+        const agentTeam = makeAgent({ name: 'Agent-Team' });
+        const agentA = makeAgent({ name: 'Agent-A' });
+        const agentB = makeAgent({ name: 'Agent-B' });
+
+        const teamObjId = new Types.ObjectId(teamId);
+        const sgAObjId = new Types.ObjectId(sgAId);
+        const sgBObjId = new Types.ObjectId(sgBId);
+
+        const entryTeam = makeAclEntryForPrincipal(agentTeam._id as Types.ObjectId, teamObjId);
+        const entryA = makeAclEntryForPrincipal(agentA._id as Types.ObjectId, sgAObjId);
+        const entryB = makeAclEntryForPrincipal(agentB._id as Types.ObjectId, sgBObjId);
+
+        const sgA = makeSubgroupA();
+        const sgB = makeSubgroupB();
+
+        const agentMap = new Map([
+          [agentTeam._id.toString(), agentTeam],
+          [agentA._id.toString(), agentA],
+          [agentB._id.toString(), agentB],
+        ]);
+
+        const deps = makeDeps({
+          getTeamRole: jest.fn().mockResolvedValue('owner' as TeamRole),
+          getTeamSubgroups: jest.fn().mockResolvedValue([sgA, sgB]),
+          findEntriesByPrincipal: jest
+            .fn()
+            .mockResolvedValueOnce([entryTeam])
+            .mockResolvedValueOnce([entryA])
+            .mockResolvedValueOnce([entryB]),
+          getAgent: jest.fn().mockImplementation(({ _id }: { _id: Types.ObjectId }) =>
+            Promise.resolve(agentMap.get(_id.toString()) ?? null),
+          ),
+        });
+
+        const { listAgents } = createTeamResourceHandlers(deps);
+        const req = makeReq({ id: teamId }, { id: ownerId, role: 'USER' });
+        const res = makeRes();
+
+        await listAgents(req as never, res as never);
+
+        expect(res.status).toHaveBeenCalledWith(200);
+        const body = (res.json as jest.Mock).mock.calls[0][0];
+        const ids = body.resources.map((r: { id: string }) => r.id);
+        expect(ids).toContain(agentTeam.id);
+        expect(ids).toContain(agentA.id);
+        expect(ids).toContain(agentB.id);
+
+        const teamEntry = body.resources.find((r: { id: string }) => r.id === agentTeam.id);
+        const aEntry = body.resources.find((r: { id: string }) => r.id === agentA.id);
+        const bEntry = body.resources.find((r: { id: string }) => r.id === agentB.id);
+        expect(teamEntry.target).toEqual({ type: 'team' });
+        expect(aEntry.target).toEqual({ type: 'subgroup', id: sgAId, name: 'Sub-group A' });
+        expect(bEntry.target).toEqual({ type: 'subgroup', id: sgBId, name: 'Sub-group B' });
+      });
     });
   });
 
@@ -451,6 +618,7 @@ describe('createTeamResourceHandlers', () => {
       const deps = makeDeps({
         getTeamRole: jest.fn().mockResolvedValue('member' as TeamRole),
         findEntriesByPrincipal: jest.fn().mockResolvedValue([]),
+        getUserTeamPrincipals: jest.fn().mockResolvedValue([teamId]),
       });
       const { listPromptGroups } = createTeamResourceHandlers(deps);
 
@@ -465,9 +633,15 @@ describe('createTeamResourceHandlers', () => {
 
     it('returns 200 with resolved prompt groups', async () => {
       const pg = makePromptGroup();
-      const entry = makeAclEntry(pg._id as Types.ObjectId, ResourceType.PROMPTGROUP);
+      const teamObjId = new Types.ObjectId(teamId);
+      const entry = {
+        ...makeAclEntry(pg._id as Types.ObjectId, ResourceType.PROMPTGROUP),
+        principalId: teamObjId,
+      } as IAclEntry;
       const deps = makeDeps({
         getTeamRole: jest.fn().mockResolvedValue('member' as TeamRole),
+        getUserTeamPrincipals: jest.fn().mockResolvedValue([teamId]),
+        getTeamSubgroups: jest.fn().mockResolvedValue([]),
         findEntriesByPrincipal: jest.fn().mockResolvedValue([entry]),
         getPromptGroup: jest.fn().mockResolvedValue(pg),
       });
