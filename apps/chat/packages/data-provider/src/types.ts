@@ -768,6 +768,21 @@ export type TTeam = {
   updatedAt?: string;
 };
 
+export type TSubgroup = {
+  _id: string;
+  name: string;
+  description?: string;
+  parentTeamId: string;
+  memberCount: number;
+};
+
+export type TSubgroupMember = TTeamMember;
+
+export type TSubgroupDetail = {
+  subgroup: TSubgroup;
+  members: TSubgroupMember[];
+};
+
 export type TTeamInvite = {
   _id: string;
   groupId: string;
