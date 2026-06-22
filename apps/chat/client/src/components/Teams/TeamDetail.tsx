@@ -21,6 +21,7 @@ import MembersTab from './MembersTab';
 import InvitesTab from './InvitesTab';
 import KnowledgeTab from './KnowledgeTab';
 import SharedTab from './SharedTab';
+import GroupsTab from './GroupsTab';
 
 const roleLabelKey: Record<TeamRole, TranslationKeys> = {
   owner: 'com_ui_role_owner',
@@ -142,6 +143,11 @@ export default function TeamDetail({ teamId }: TeamDetailProps) {
             <TabsTrigger value="shared" className="rounded-lg">
               {localize('com_ui_team_shared')}
             </TabsTrigger>
+            {callerRole !== 'member' && (
+              <TabsTrigger value="groups" className="rounded-lg">
+                {localize('com_ui_team_groups')}
+              </TabsTrigger>
+            )}
           </TabsList>
           <TabsContent value="members">
             <MembersTab
@@ -160,6 +166,11 @@ export default function TeamDetail({ teamId }: TeamDetailProps) {
           <TabsContent value="shared">
             <SharedTab teamId={teamId} callerRole={callerRole} />
           </TabsContent>
+          {callerRole !== 'member' && (
+            <TabsContent value="groups">
+              <GroupsTab teamId={teamId} callerRole={callerRole} />
+            </TabsContent>
+          )}
         </Tabs>
       )}
     </div>
