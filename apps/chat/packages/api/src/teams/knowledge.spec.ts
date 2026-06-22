@@ -378,10 +378,10 @@ describe('createTeamKnowledgeHandlers', () => {
       const team = makeTeam(teamId);
       const file = makeFile(callerId);
       const teamObjId = new Types.ObjectId(teamId);
-      const entry: IAclEntry = {
+      const entry = {
         ...makeAclEntry(file._id as Types.ObjectId),
         principalId: teamObjId,
-      };
+      } as unknown as IAclEntry;
       const deps = makeDeps({
         findGroupById: jest.fn().mockResolvedValue(team),
         getTeamRole: jest.fn().mockResolvedValue('member' as TeamRole),

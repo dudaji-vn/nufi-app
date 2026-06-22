@@ -356,10 +356,10 @@ describe('createTeamResourceHandlers', () => {
       const agent = makeAgent();
       const entry = makeAclEntry(agent._id as Types.ObjectId, ResourceType.AGENT);
       const teamObjId = new Types.ObjectId(teamId);
-      const fullEntry: IAclEntry = {
-        ...(entry as IAclEntry),
+      const fullEntry = {
+        ...(entry as unknown as IAclEntry),
         principalId: teamObjId,
-      };
+      } as unknown as IAclEntry;
       const deps = makeDeps({
         getTeamRole: jest.fn().mockResolvedValue('member' as TeamRole),
         getUserTeamPrincipals: jest.fn().mockResolvedValue([teamId]),
@@ -689,7 +689,7 @@ describe('createTeamResourceHandlers', () => {
       const entry = {
         ...makeAclEntry(pg._id as Types.ObjectId, ResourceType.PROMPTGROUP),
         principalId: teamObjId,
-      } as IAclEntry;
+      } as unknown as IAclEntry;
       const deps = makeDeps({
         getTeamRole: jest.fn().mockResolvedValue('member' as TeamRole),
         getUserTeamPrincipals: jest.fn().mockResolvedValue([teamId]),
