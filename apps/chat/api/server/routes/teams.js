@@ -4,6 +4,7 @@ const {
   createTeamInviteHandlers,
   createTeamKnowledgeHandlers,
   createTeamResourceHandlers,
+  createSubgroupsHandlers,
   checkEmailConfig,
   generateCheckAccess,
 } = require('@librechat/api');
@@ -125,5 +126,27 @@ router.get('/:id/agents', resourceHandlers.listAgents);
 router.post('/:id/prompts/:promptGroupId', resourceHandlers.sharePromptGroup);
 router.delete('/:id/prompts/:promptGroupId', resourceHandlers.revokePromptGroup);
 router.get('/:id/prompts', resourceHandlers.listPromptGroups);
+
+const subgroupHandlers = createSubgroupsHandlers({
+  getTeamRole: db.getTeamRole,
+  findGroupById: db.findGroupById,
+  createSubgroup: db.createSubgroup,
+  getTeamSubgroups: db.getTeamSubgroups,
+  getSubgroupById: db.getSubgroupById,
+  updateSubgroup: db.updateSubgroup,
+  deleteSubgroup: db.deleteSubgroup,
+  addSubgroupMember: db.addSubgroupMember,
+  removeSubgroupMember: db.removeSubgroupMember,
+  findUsers: db.findUsers,
+  deleteAclEntries: db.deleteAclEntries,
+});
+
+router.post('/:id/subgroups', subgroupHandlers.create);
+router.get('/:id/subgroups', subgroupHandlers.list);
+router.get('/:id/subgroups/:sgId', subgroupHandlers.get);
+router.patch('/:id/subgroups/:sgId', subgroupHandlers.update);
+router.delete('/:id/subgroups/:sgId', subgroupHandlers.remove);
+router.post('/:id/subgroups/:sgId/members', subgroupHandlers.addMember);
+router.delete('/:id/subgroups/:sgId/members/:userId', subgroupHandlers.removeMember);
 
 module.exports = router;
