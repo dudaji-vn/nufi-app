@@ -37,10 +37,10 @@ interface FilePickerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   teamId: string;
-  sharedFileIds: Set<string>;
+  sharedFiles: TTeamKnowledgeRow[];
 }
 
-function FilePickerDialog({ open, onOpenChange, teamId, sharedFileIds }: FilePickerDialogProps) {
+function FilePickerDialog({ open, onOpenChange, teamId, sharedFiles }: FilePickerDialogProps) {
   const localize = useLocalize();
   const { showToast } = useToastContext();
   const { data: files = [] } = useGetFiles<TFile[]>();
@@ -63,7 +63,11 @@ function FilePickerDialog({ open, onOpenChange, teamId, sharedFileIds }: FilePic
     },
   });
 
-  const availableFiles = files.filter((f) => !sharedFileIds.has(f.file_id));
+  const sharedKeys = new Set(
+    sharedFiles.map((r) => `${r.file_id}-${r.target.type === 'subgroup' ? r.target.id : 'team'}`),
+  );
+  const selectedKey = targetSubgroupId ?? 'team';
+  const availableFiles = files.filter((f) => !sharedKeys.has(`${f.file_id}-${selectedKey}`));
 
   return (
     <OGDialog open={open} onOpenChange={onOpenChange}>
@@ -213,7 +217,6 @@ export default function KnowledgeTab({ teamId, callerRole }: KnowledgeTabProps) 
   }
 
   const files = data?.files ?? [];
-  const sharedFileIds = new Set(files.map((f) => f.file_id));
 
   return (
     <section aria-label={localize('com_ui_team_knowledge')} className="flex flex-col gap-4">
@@ -254,7 +257,7 @@ export default function KnowledgeTab({ teamId, callerRole }: KnowledgeTabProps) 
           open={pickerOpen}
           onOpenChange={setPickerOpen}
           teamId={teamId}
-          sharedFileIds={sharedFileIds}
+          sharedFiles={files}
         />
       )}
     </section>

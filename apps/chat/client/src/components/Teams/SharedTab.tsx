@@ -151,10 +151,10 @@ interface AgentPickerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   teamId: string;
-  sharedIds: Set<string>;
+  sharedAgents: TTeamAgentRow[];
 }
 
-function AgentPickerDialog({ open, onOpenChange, teamId, sharedIds }: AgentPickerDialogProps) {
+function AgentPickerDialog({ open, onOpenChange, teamId, sharedAgents }: AgentPickerDialogProps) {
   const localize = useLocalize();
   const { showToast } = useToastContext();
   const { data } = useListAgentsQuery(undefined, { enabled: open });
@@ -173,7 +173,13 @@ function AgentPickerDialog({ open, onOpenChange, teamId, sharedIds }: AgentPicke
     },
   });
 
-  const available = (data?.data ?? []).filter((agent) => !sharedIds.has(agent.id));
+  const sharedKeys = new Set(
+    sharedAgents.map((r) => `${r.id}-${r.target.type === 'subgroup' ? r.target.id : 'team'}`),
+  );
+  const selectedKey = targetSubgroupId ?? 'team';
+  const available = (data?.data ?? []).filter(
+    (agent) => !sharedKeys.has(`${agent.id}-${selectedKey}`),
+  );
 
   return (
     <OGDialog open={open} onOpenChange={onOpenChange}>
@@ -243,10 +249,15 @@ interface PromptPickerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   teamId: string;
-  sharedIds: Set<string>;
+  sharedPrompts: TTeamPromptRow[];
 }
 
-function PromptPickerDialog({ open, onOpenChange, teamId, sharedIds }: PromptPickerDialogProps) {
+function PromptPickerDialog({
+  open,
+  onOpenChange,
+  teamId,
+  sharedPrompts,
+}: PromptPickerDialogProps) {
   const localize = useLocalize();
   const { showToast } = useToastContext();
   const { data } = useGetAllPromptGroups(undefined, { enabled: open });
@@ -265,7 +276,13 @@ function PromptPickerDialog({ open, onOpenChange, teamId, sharedIds }: PromptPic
     },
   });
 
-  const available = (data ?? []).filter((group) => group._id != null && !sharedIds.has(group._id));
+  const sharedKeys = new Set(
+    sharedPrompts.map((r) => `${r.id}-${r.target.type === 'subgroup' ? r.target.id : 'team'}`),
+  );
+  const selectedKey = targetSubgroupId ?? 'team';
+  const available = (data ?? []).filter(
+    (group) => group._id != null && !sharedKeys.has(`${group._id}-${selectedKey}`),
+  );
 
   return (
     <OGDialog open={open} onOpenChange={onOpenChange}>
@@ -351,9 +368,6 @@ export default function SharedTab({ teamId, callerRole }: SharedTabProps) {
 
   const agents = agentsData?.resources ?? [];
   const prompts = promptsData?.resources ?? [];
-
-  const sharedAgentIds = new Set(agents.map((a) => a.id));
-  const sharedPromptIds = new Set(prompts.map((p) => p.id));
 
   const isLoading = isLoadingAgents || isLoadingPrompts;
 
@@ -447,13 +461,13 @@ export default function SharedTab({ teamId, callerRole }: SharedTabProps) {
             open={agentPickerOpen}
             onOpenChange={setAgentPickerOpen}
             teamId={teamId}
-            sharedIds={sharedAgentIds}
+            sharedAgents={agents}
           />
           <PromptPickerDialog
             open={promptPickerOpen}
             onOpenChange={setPromptPickerOpen}
             teamId={teamId}
-            sharedIds={sharedPromptIds}
+            sharedPrompts={prompts}
           />
         </>
       )}
