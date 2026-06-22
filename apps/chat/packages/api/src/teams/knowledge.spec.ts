@@ -4,6 +4,17 @@ import type { IGroup, IMongoFile, IAclEntry, TeamRole } from '@librechat/data-sc
 import { Types } from 'mongoose';
 import { PrincipalType } from 'librechat-data-provider';
 
+function makeSubgroup(id: string, parentTeamId: string): IGroup {
+  return {
+    _id: new Types.ObjectId(id),
+    name: 'Sub-group Alpha',
+    kind: 'team_subgroup',
+    parentTeamId: new Types.ObjectId(parentTeamId),
+    members: [],
+    memberIds: [],
+  } as unknown as IGroup;
+}
+
 function makeId() {
   return new Types.ObjectId().toString();
 }
@@ -58,6 +69,7 @@ function makeDeps(overrides: Partial<TeamKnowledgeHandlersDeps> = {}): TeamKnowl
     findEntriesByPrincipal: jest.fn().mockResolvedValue([]),
     revokePermission: jest.fn().mockResolvedValue({}),
     grantPermission: jest.fn().mockResolvedValue({}),
+    getSubgroupById: jest.fn().mockResolvedValue(null),
     ...overrides,
   };
 }
@@ -254,6 +266,69 @@ describe('createTeamKnowledgeHandlers', () => {
 
       expect(res.status).toHaveBeenCalledWith(201);
     });
+
+    it('grants to sub-group principal when valid targetSubgroupId provided', async () => {
+      const callerId = makeId();
+      const sgId = makeId();
+      const team = makeTeam(teamId);
+      const file = makeFile(callerId);
+      const subgroup = makeSubgroup(sgId, teamId);
+      const deps = makeDeps({
+        findGroupById: jest.fn().mockResolvedValue(team),
+        findFileById: jest.fn().mockResolvedValue(file),
+        getSubgroupById: jest.fn().mockResolvedValue(subgroup),
+      });
+      const { add } = createTeamKnowledgeHandlers(deps);
+      const req = makeReq({ id: teamId }, { fileId: file.file_id, targetSubgroupId: sgId }, callerId);
+      const res = makeRes();
+
+      await add(req as unknown as import('~/types/http').ServerRequest, res);
+
+      expect(res.status).toHaveBeenCalledWith(201);
+      const call = (deps.grantPermission as jest.Mock).mock.calls[0][0];
+      expect(call.principalId).toBe(sgId);
+    });
+
+    it('returns 404 when targetSubgroupId belongs to a different team', async () => {
+      const callerId = makeId();
+      const sgId = makeId();
+      const otherTeamId = makeId();
+      const team = makeTeam(teamId);
+      const file = makeFile(callerId);
+      const subgroup = makeSubgroup(sgId, otherTeamId);
+      const deps = makeDeps({
+        findGroupById: jest.fn().mockResolvedValue(team),
+        findFileById: jest.fn().mockResolvedValue(file),
+        getSubgroupById: jest.fn().mockResolvedValue(subgroup),
+      });
+      const { add } = createTeamKnowledgeHandlers(deps);
+      const req = makeReq({ id: teamId }, { fileId: file.file_id, targetSubgroupId: sgId }, callerId);
+      const res = makeRes();
+
+      await add(req as unknown as import('~/types/http').ServerRequest, res);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(deps.grantPermission).not.toHaveBeenCalled();
+    });
+
+    it('returns 404 when targetSubgroupId does not exist', async () => {
+      const callerId = makeId();
+      const team = makeTeam(teamId);
+      const file = makeFile(callerId);
+      const deps = makeDeps({
+        findGroupById: jest.fn().mockResolvedValue(team),
+        findFileById: jest.fn().mockResolvedValue(file),
+        getSubgroupById: jest.fn().mockResolvedValue(null),
+      });
+      const { add } = createTeamKnowledgeHandlers(deps);
+      const req = makeReq({ id: teamId }, { fileId: file.file_id, targetSubgroupId: makeId() }, callerId);
+      const res = makeRes();
+
+      await add(req as unknown as import('~/types/http').ServerRequest, res);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(deps.grantPermission).not.toHaveBeenCalled();
+    });
   });
 
   describe('list (GET /:id/knowledge)', () => {
@@ -385,6 +460,64 @@ describe('createTeamKnowledgeHandlers', () => {
       await remove(req as unknown as import('~/types/http').ServerRequest, res);
 
       expect(res.status).toHaveBeenCalledWith(404);
+    });
+
+    it('revokes from sub-group principal when valid targetSubgroupId in query', async () => {
+      const callerId = makeId();
+      const sgId = makeId();
+      const team = makeTeam(teamId);
+      const file = makeFile(callerId);
+      const subgroup = makeSubgroup(sgId, teamId);
+      const deps = makeDeps({
+        findGroupById: jest.fn().mockResolvedValue(team),
+        findFileById: jest.fn().mockResolvedValue(file),
+        getSubgroupById: jest.fn().mockResolvedValue(subgroup),
+      });
+      const { remove } = createTeamKnowledgeHandlers(deps);
+      const req = {
+        params: { id: teamId, fileId: file.file_id },
+        body: {},
+        query: { targetSubgroupId: sgId },
+        user: { id: callerId },
+      };
+      const res = makeRes();
+
+      await remove(req as unknown as import('~/types/http').ServerRequest, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(deps.revokePermission).toHaveBeenCalledWith(
+        PrincipalType.GROUP,
+        sgId,
+        'file',
+        file._id,
+      );
+    });
+
+    it('returns 404 when targetSubgroupId in query does not belong to this team', async () => {
+      const callerId = makeId();
+      const sgId = makeId();
+      const otherTeamId = makeId();
+      const team = makeTeam(teamId);
+      const file = makeFile(callerId);
+      const subgroup = makeSubgroup(sgId, otherTeamId);
+      const deps = makeDeps({
+        findGroupById: jest.fn().mockResolvedValue(team),
+        findFileById: jest.fn().mockResolvedValue(file),
+        getSubgroupById: jest.fn().mockResolvedValue(subgroup),
+      });
+      const { remove } = createTeamKnowledgeHandlers(deps);
+      const req = {
+        params: { id: teamId, fileId: file.file_id },
+        body: {},
+        query: { targetSubgroupId: sgId },
+        user: { id: callerId },
+      };
+      const res = makeRes();
+
+      await remove(req as unknown as import('~/types/http').ServerRequest, res);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(deps.revokePermission).not.toHaveBeenCalled();
     });
   });
 });

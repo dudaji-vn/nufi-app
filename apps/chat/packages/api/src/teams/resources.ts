@@ -16,6 +16,7 @@ import type {
 import type { Response } from 'express';
 import type { ServerRequest } from '~/types/http';
 import { resolveTeamAccess } from './access';
+import { resolveShareTarget } from './target';
 
 interface TeamIdParams {
   id: string;
@@ -77,6 +78,7 @@ export interface TeamResourceHandlersDeps {
     resourceId: string | Types.ObjectId;
     requiredPermission: number;
   }) => Promise<boolean>;
+  getSubgroupById: (id: string) => Promise<IGroup | null>;
 }
 
 interface ResourceSpec<TDoc> {
@@ -116,6 +118,12 @@ function createResourceHandlers<TDoc>(deps: TeamResourceHandlersDeps, spec: Reso
       return res.status(access.status).json({ error });
     }
 
+    const { targetSubgroupId } = (req.body ?? {}) as { targetSubgroupId?: string };
+    const target = await resolveShareTarget(deps, id, targetSubgroupId);
+    if (!target.ok) {
+      return res.status(target.status).json({ error: 'Sub-group not found' });
+    }
+
     const resource = await resolveByPathId(pathId);
     if (!resource) {
       return res.status(404).json({ error: 'Resource not found' });
@@ -137,7 +145,7 @@ function createResourceHandlers<TDoc>(deps: TeamResourceHandlersDeps, spec: Reso
 
     await grantPermission({
       principalType: PrincipalType.GROUP,
-      principalId: id,
+      principalId: target.principalId,
       resourceType,
       resourceId: docId,
       accessRoleId: viewerRoleId,
@@ -160,12 +168,18 @@ function createResourceHandlers<TDoc>(deps: TeamResourceHandlersDeps, spec: Reso
       return res.status(access.status).json({ error });
     }
 
+    const { targetSubgroupId } = (req.query ?? {}) as { targetSubgroupId?: string };
+    const target = await resolveShareTarget(deps, id, targetSubgroupId);
+    if (!target.ok) {
+      return res.status(target.status).json({ error: 'Sub-group not found' });
+    }
+
     const resource = await resolveByPathId(pathId);
     if (!resource) {
       return res.status(404).json({ error: 'Resource not found' });
     }
 
-    await revokePermission(PrincipalType.GROUP, id, resourceType, getDocId(resource));
+    await revokePermission(PrincipalType.GROUP, target.principalId, resourceType, getDocId(resource));
 
     return res.status(200).json({ success: true });
   }

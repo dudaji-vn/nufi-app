@@ -2,7 +2,18 @@ import { Types } from 'mongoose';
 import { ResourceType, AccessRoleIds, PrincipalType, PermissionBits } from 'librechat-data-provider';
 import { createTeamResourceHandlers } from './resources';
 import type { TeamResourceHandlersDeps } from './resources';
-import type { IAgent, IPromptGroupDocument, TeamRole } from '@librechat/data-schemas';
+import type { IAgent, IGroup, IPromptGroupDocument, TeamRole } from '@librechat/data-schemas';
+
+function makeSubgroup(id: string, parentTeamId: string): IGroup {
+  return {
+    _id: new Types.ObjectId(id),
+    name: 'Sub-group Beta',
+    kind: 'team_subgroup',
+    parentTeamId: new Types.ObjectId(parentTeamId),
+    members: [],
+    memberIds: [],
+  } as unknown as IGroup;
+}
 
 function makeId() {
   return new Types.ObjectId().toString();
@@ -68,6 +79,7 @@ function makeDeps(overrides: Partial<TeamResourceHandlersDeps> = {}): TeamResour
     revokePermission: jest.fn().mockResolvedValue({ deletedCount: 1 }),
     grantPermission: jest.fn().mockResolvedValue({}),
     checkPermission: jest.fn().mockResolvedValue(true),
+    getSubgroupById: jest.fn().mockResolvedValue(null),
     ...overrides,
   };
 }
@@ -179,6 +191,47 @@ describe('createTeamResourceHandlers', () => {
 
       expect(res.status).toHaveBeenCalledWith(404);
     });
+
+    it('grants to sub-group principal when valid targetSubgroupId in body', async () => {
+      const sgId = makeId();
+      const agent = makeAgent();
+      const subgroup = makeSubgroup(sgId, teamId);
+      const deps = makeDeps({
+        getAgent: jest.fn().mockResolvedValue(agent),
+        getSubgroupById: jest.fn().mockResolvedValue(subgroup),
+      });
+      const { shareAgent } = createTeamResourceHandlers(deps);
+
+      const req = { ...makeReq({ id: teamId, agentId: agent.id }), body: { targetSubgroupId: sgId } };
+      const res = makeRes();
+
+      await shareAgent(req as never, res as never);
+
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(deps.grantPermission).toHaveBeenCalledWith(
+        expect.objectContaining({ principalId: sgId }),
+      );
+    });
+
+    it('returns 404 when targetSubgroupId in body belongs to a different team', async () => {
+      const sgId = makeId();
+      const otherTeamId = makeId();
+      const agent = makeAgent();
+      const subgroup = makeSubgroup(sgId, otherTeamId);
+      const deps = makeDeps({
+        getAgent: jest.fn().mockResolvedValue(agent),
+        getSubgroupById: jest.fn().mockResolvedValue(subgroup),
+      });
+      const { shareAgent } = createTeamResourceHandlers(deps);
+
+      const req = { ...makeReq({ id: teamId, agentId: agent.id }), body: { targetSubgroupId: sgId } };
+      const res = makeRes();
+
+      await shareAgent(req as never, res as never);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(deps.grantPermission).not.toHaveBeenCalled();
+    });
   });
 
   describe('revokeAgent', () => {
@@ -228,6 +281,50 @@ describe('createTeamResourceHandlers', () => {
       await revokeAgent(req as never, res as never);
 
       expect(res.status).toHaveBeenCalledWith(404);
+    });
+
+    it('revokes from sub-group principal when valid targetSubgroupId in query', async () => {
+      const sgId = makeId();
+      const agent = makeAgent();
+      const subgroup = makeSubgroup(sgId, teamId);
+      const deps = makeDeps({
+        getAgent: jest.fn().mockResolvedValue(agent),
+        getSubgroupById: jest.fn().mockResolvedValue(subgroup),
+      });
+      const { revokeAgent } = createTeamResourceHandlers(deps);
+
+      const req = { ...makeReq({ id: teamId, agentId: agent.id }), query: { targetSubgroupId: sgId } };
+      const res = makeRes();
+
+      await revokeAgent(req as never, res as never);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(deps.revokePermission).toHaveBeenCalledWith(
+        PrincipalType.GROUP,
+        sgId,
+        ResourceType.AGENT,
+        agent._id,
+      );
+    });
+
+    it('returns 404 when targetSubgroupId in query does not belong to this team', async () => {
+      const sgId = makeId();
+      const otherTeamId = makeId();
+      const agent = makeAgent();
+      const subgroup = makeSubgroup(sgId, otherTeamId);
+      const deps = makeDeps({
+        getAgent: jest.fn().mockResolvedValue(agent),
+        getSubgroupById: jest.fn().mockResolvedValue(subgroup),
+      });
+      const { revokeAgent } = createTeamResourceHandlers(deps);
+
+      const req = { ...makeReq({ id: teamId, agentId: agent.id }), query: { targetSubgroupId: sgId } };
+      const res = makeRes();
+
+      await revokeAgent(req as never, res as never);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(deps.revokePermission).not.toHaveBeenCalled();
     });
   });
 

@@ -8,3 +8,5 @@ export { createTeamResourceHandlers } from './resources';
 export type { TeamResourceHandlersDeps } from './resources';
 export { createSubgroupsHandlers } from './subgroups';
 export type { SubgroupsHandlersDeps } from './subgroups';
+export { resolveShareTarget } from './target';
+export type { ResolveShareTargetDeps } from './target';

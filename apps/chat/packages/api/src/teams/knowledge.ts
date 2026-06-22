@@ -5,6 +5,7 @@ import type { IGroup, IMongoFile, IAclEntry, TeamRole } from '@librechat/data-sc
 import type { Response } from 'express';
 import type { ServerRequest } from '~/types/http';
 import { resolveTeamAccess } from './access';
+import { resolveShareTarget } from './target';
 
 interface TeamIdParams {
   id: string;
@@ -49,6 +50,7 @@ export interface TeamKnowledgeHandlersDeps {
     accessRoleId: string;
     grantedBy: string | Types.ObjectId;
   }) => Promise<unknown>;
+  getSubgroupById: (id: string) => Promise<IGroup | null>;
 }
 
 function toSafeFile(file: IMongoFile): SafeFileInfo {
@@ -80,9 +82,17 @@ export function createTeamKnowledgeHandlers(deps: TeamKnowledgeHandlersDeps) {
         return res.status(access.status).json({ error });
       }
 
-      const { fileId } = req.body as { fileId?: string };
+      const { fileId, targetSubgroupId } = req.body as {
+        fileId?: string;
+        targetSubgroupId?: string;
+      };
       if (!fileId || typeof fileId !== 'string' || !fileId.trim()) {
         return res.status(400).json({ error: 'fileId is required' });
+      }
+
+      const target = await resolveShareTarget(deps, id, targetSubgroupId);
+      if (!target.ok) {
+        return res.status(target.status).json({ error: 'Sub-group not found' });
       }
 
       const file = await findFileById(fileId.trim());
@@ -113,7 +123,7 @@ export function createTeamKnowledgeHandlers(deps: TeamKnowledgeHandlersDeps) {
 
       await grantPermission({
         principalType: PrincipalType.GROUP,
-        principalId: id,
+        principalId: target.principalId,
         resourceType: ResourceType.FILE,
         resourceId: file._id as Types.ObjectId,
         accessRoleId: AccessRoleIds.FILE_VIEWER,
@@ -178,6 +188,12 @@ export function createTeamKnowledgeHandlers(deps: TeamKnowledgeHandlersDeps) {
         return res.status(access.status).json({ error });
       }
 
+      const { targetSubgroupId } = (req.query ?? {}) as { targetSubgroupId?: string };
+      const target = await resolveShareTarget(deps, id, targetSubgroupId);
+      if (!target.ok) {
+        return res.status(target.status).json({ error: 'Sub-group not found' });
+      }
+
       const file = await findFileById(fileId);
       if (!file) {
         return res.status(404).json({ error: 'File not found' });
@@ -185,7 +201,7 @@ export function createTeamKnowledgeHandlers(deps: TeamKnowledgeHandlersDeps) {
 
       await revokePermission(
         PrincipalType.GROUP,
-        id,
+        target.principalId,
         ResourceType.FILE,
         file._id as Types.ObjectId,
       );

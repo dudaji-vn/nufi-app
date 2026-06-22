@@ -102,6 +102,7 @@ const knowledgeHandlers = createTeamKnowledgeHandlers({
   findEntriesByPrincipal: db.findEntriesByPrincipal,
   revokePermission: db.revokePermission,
   grantPermission: PermissionService.grantPermission,
+  getSubgroupById: db.getSubgroupById,
 });
 
 router.post('/:id/knowledge', knowledgeHandlers.add);
@@ -117,6 +118,7 @@ const resourceHandlers = createTeamResourceHandlers({
   revokePermission: db.revokePermission,
   grantPermission: PermissionService.grantPermission,
   checkPermission: PermissionService.checkPermission,
+  getSubgroupById: db.getSubgroupById,
 });
 
 router.post('/:id/agents/:agentId', resourceHandlers.shareAgent);
