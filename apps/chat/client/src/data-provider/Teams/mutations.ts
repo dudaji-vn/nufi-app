@@ -436,6 +436,7 @@ export const useDeleteSubgroupMutation = (
       ...options,
       onSuccess: (data, sgId, context) => {
         queryClient.invalidateQueries([QueryKeys.subgroups, teamId]);
+        queryClient.invalidateQueries([QueryKeys.subgroup, teamId, sgId]);
         queryClient.invalidateQueries([QueryKeys.teamKnowledge, teamId]);
         queryClient.invalidateQueries([QueryKeys.teamAgents, teamId]);
         queryClient.invalidateQueries([QueryKeys.teamPrompts, teamId]);
