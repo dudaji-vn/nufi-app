@@ -90,7 +90,11 @@ export function createAclEntryMethods(mongoose: typeof import('mongoose')) {
     resourceType?: string,
   ): Promise<IAclEntry[]> {
     const AclEntry = mongoose.models.AclEntry as Model<IAclEntry>;
-    const query: Record<string, unknown> = { principalType, principalId };
+    const resolvedPrincipalId =
+      typeof principalId === 'string' && principalType !== PrincipalType.ROLE
+        ? new Types.ObjectId(principalId)
+        : principalId;
+    const query: Record<string, unknown> = { principalType, principalId: resolvedPrincipalId };
     if (resourceType) {
       query.resourceType = resourceType;
     }

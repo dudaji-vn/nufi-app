@@ -173,12 +173,10 @@ export function createTeamKnowledgeHandlers(deps: TeamKnowledgeHandlersDeps) {
 
       const isAdmin = hasMinRole(access.role, 'admin');
 
-      const [principalIds, subgroups] = await Promise.all([
-        isAdmin
-          ? getTeamSubgroups(id).then((sgs) => [id, ...sgs.map((sg) => sg._id.toString())])
-          : getUserTeamPrincipals({ userId: callerId, teamId: id }),
-        getTeamSubgroups(id),
-      ]);
+      const subgroups = await getTeamSubgroups(id);
+      const principalIds = isAdmin
+        ? [id, ...subgroups.map((sg) => sg._id.toString())]
+        : await getUserTeamPrincipals({ userId: callerId, teamId: id });
 
       const subgroupNameById = new Map(
         subgroups.map((sg) => [sg._id.toString(), sg.name]),
@@ -212,7 +210,7 @@ export function createTeamKnowledgeHandlers(deps: TeamKnowledgeHandlersDeps) {
           continue;
         }
         const target: FileTarget =
-          principalId === id
+          principalId === id // team principal is the route :id
             ? { type: 'team' }
             : {
                 type: 'subgroup',

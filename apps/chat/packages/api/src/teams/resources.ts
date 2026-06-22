@@ -210,12 +210,10 @@ function createResourceHandlers<TDoc>(deps: TeamResourceHandlersDeps, spec: Reso
 
     const isAdmin = hasMinRole(access.role, 'admin');
 
-    const [principalIds, subgroups] = await Promise.all([
-      isAdmin
-        ? getTeamSubgroups(id).then((sgs) => [id, ...sgs.map((sg) => sg._id.toString())])
-        : getUserTeamPrincipals({ userId: callerId, teamId: id }),
-      getTeamSubgroups(id),
-    ]);
+    const subgroups = await getTeamSubgroups(id);
+    const principalIds = isAdmin
+      ? [id, ...subgroups.map((sg) => sg._id.toString())]
+      : await getUserTeamPrincipals({ userId: callerId, teamId: id });
 
     const subgroupNameById = new Map(subgroups.map((sg) => [sg._id.toString(), sg.name]));
 
@@ -244,7 +242,7 @@ function createResourceHandlers<TDoc>(deps: TeamResourceHandlersDeps, spec: Reso
       .filter((r): r is { doc: NonNullable<typeof r.doc>; principalId: string } => r.doc !== null)
       .map(({ doc, principalId }) => {
         const target: ResourceTarget =
-          principalId === id
+          principalId === id // team principal is the route :id
             ? { type: 'team' }
             : {
                 type: 'subgroup',

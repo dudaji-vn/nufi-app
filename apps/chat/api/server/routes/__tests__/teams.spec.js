@@ -622,6 +622,7 @@ describe('Team Knowledge Routes — Integration', () => {
       grantPermission: PermissionService.grantPermission,
       getSubgroupById: db.getSubgroupById,
       getTeamSubgroups: db.getTeamSubgroups,
+      getUserTeamPrincipals: db.getUserTeamPrincipals,
     });
 
     const app = express();
@@ -865,6 +866,9 @@ describe('Team Resource Routes (Agents/Prompts) — Integration', () => {
       revokePermission: db.revokePermission,
       grantPermission: PermissionService.grantPermission,
       checkPermission: PermissionService.checkPermission,
+      getSubgroupById: db.getSubgroupById,
+      getTeamSubgroups: db.getTeamSubgroups,
+      getUserTeamPrincipals: db.getUserTeamPrincipals,
     });
 
     const app = express();

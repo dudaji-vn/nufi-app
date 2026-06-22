@@ -104,6 +104,7 @@ const knowledgeHandlers = createTeamKnowledgeHandlers({
   grantPermission: PermissionService.grantPermission,
   getSubgroupById: db.getSubgroupById,
   getTeamSubgroups: db.getTeamSubgroups,
+  getUserTeamPrincipals: db.getUserTeamPrincipals,
 });
 
 router.post('/:id/knowledge', knowledgeHandlers.add);

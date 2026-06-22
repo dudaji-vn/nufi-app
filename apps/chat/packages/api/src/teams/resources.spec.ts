@@ -492,6 +492,58 @@ describe('createTeamResourceHandlers', () => {
         expect(aEntry.target).toEqual({ type: 'subgroup', id: sgAId, name: 'Sub-group A' });
       });
 
+      it('m2 (in sub-group B) sees agent-team and agent-B but NOT agent-A', async () => {
+        const agentTeam = makeAgent({ name: 'Agent-Team' });
+        const agentA = makeAgent({ name: 'Agent-A' });
+        const agentB = makeAgent({ name: 'Agent-B' });
+
+        const teamObjId = new Types.ObjectId(teamId);
+        const sgBObjId = new Types.ObjectId(sgBId);
+
+        const entryTeam = makeAclEntryForPrincipal(agentTeam._id as Types.ObjectId, teamObjId);
+        const entryB = makeAclEntryForPrincipal(agentB._id as Types.ObjectId, sgBObjId);
+
+        const sgA = makeSubgroupA();
+        const sgB = makeSubgroupB();
+
+        const agentMap = new Map([
+          [agentTeam._id.toString(), agentTeam],
+          [agentA._id.toString(), agentA],
+          [agentB._id.toString(), agentB],
+        ]);
+
+        const deps = makeDeps({
+          getTeamRole: jest.fn().mockResolvedValue('member' as TeamRole),
+          getUserTeamPrincipals: jest.fn().mockResolvedValue([teamId, sgBId]),
+          getTeamSubgroups: jest.fn().mockResolvedValue([sgA, sgB]),
+          findEntriesByPrincipal: jest
+            .fn()
+            .mockResolvedValueOnce([entryTeam])
+            .mockResolvedValueOnce([entryB]),
+          getAgent: jest.fn().mockImplementation(({ _id }: { _id: Types.ObjectId }) =>
+            Promise.resolve(agentMap.get(_id.toString()) ?? null),
+          ),
+        });
+
+        const { listAgents } = createTeamResourceHandlers(deps);
+        const req = makeReq({ id: teamId }, { id: m2Id, role: 'USER' });
+        const res = makeRes();
+
+        await listAgents(req as never, res as never);
+
+        expect(res.status).toHaveBeenCalledWith(200);
+        const body = (res.json as jest.Mock).mock.calls[0][0];
+        const ids = body.resources.map((r: { id: string }) => r.id);
+        expect(ids).toContain(agentTeam.id);
+        expect(ids).toContain(agentB.id);
+        expect(ids).not.toContain(agentA.id);
+
+        const teamEntry = body.resources.find((r: { id: string }) => r.id === agentTeam.id);
+        const bEntry = body.resources.find((r: { id: string }) => r.id === agentB.id);
+        expect(teamEntry.target).toEqual({ type: 'team' });
+        expect(bEntry.target).toEqual({ type: 'subgroup', id: sgBId, name: 'Sub-group B' });
+      });
+
       it('owner sees all three agents each annotated with correct target', async () => {
         const agentTeam = makeAgent({ name: 'Agent-Team' });
         const agentA = makeAgent({ name: 'Agent-A' });

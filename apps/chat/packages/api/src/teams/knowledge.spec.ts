@@ -503,7 +503,6 @@ describe('createTeamKnowledgeHandlers', () => {
 
         const teamObjId = new Types.ObjectId(teamId);
         const sgAObjId = new Types.ObjectId(sgAId);
-        const sgBObjId = new Types.ObjectId(sgBId);
 
         const entryTeam = makeAclEntryForPrincipal(fTeam._id as Types.ObjectId, teamObjId);
         const entryA = makeAclEntryForPrincipal(fA._id as Types.ObjectId, sgAObjId);
