@@ -1,9 +1,11 @@
 import { logger, isValidObjectIdString } from '@librechat/data-schemas';
+import type { DeleteResult, FilterQuery } from 'mongoose';
 import type { Types } from 'mongoose';
-import type { IGroup, TeamRole } from '@librechat/data-schemas';
+import type { IGroup, IUser, TeamRole } from '@librechat/data-schemas';
 import type { Response } from 'express';
 import type { ServerRequest } from '~/types/http';
 import { resolveTeamAccess } from './access';
+import { enrichMembers } from './handlers';
 
 interface TeamIdParams {
   id: string;
@@ -48,11 +50,13 @@ export interface SubgroupsHandlersDeps {
     subgroupId: string | Types.ObjectId;
     userId: string;
   }) => Promise<IGroup>;
-  getUserSubgroups: (params: {
-    userId: string;
-    parentTeamId: string | Types.ObjectId;
-  }) => Promise<IGroup[]>;
-  deleteAclEntries: (filter: Record<string, unknown>) => Promise<unknown>;
+  findUsers: (
+    searchCriteria: FilterQuery<IUser>,
+    fieldsToSelect?: string | string[] | null,
+  ) => Promise<IUser[]>;
+  deleteAclEntries: (filter: {
+    principalId: string | Types.ObjectId;
+  }) => Promise<DeleteResult | void>;
 }
 
 function toSubgroupDTO(sg: IGroup, memberCount: number) {
@@ -71,12 +75,12 @@ function isSubgroupOfTeam(sg: IGroup, teamId: string): boolean {
 }
 
 export function createSubgroupsHandlers(deps: SubgroupsHandlersDeps) {
-  const { getTeamRole, findGroupById } = deps;
+  const { getTeamRole, findGroupById, findUsers } = deps;
 
   async function resolveAdmin(
     id: string,
     callerId: string,
-  ): Promise<{ team: IGroup; role: TeamRole } | { error: string; status: 400 | 403 | 404 }> {
+  ): Promise<{ team: IGroup; role: TeamRole } | { error: string; status: 403 | 404 }> {
     const result = await resolveTeamAccess({ getTeamRole, findGroupById }, id, callerId, 'admin');
     if (!result.ok) {
       const error = result.status === 403 ? 'Forbidden' : 'Team not found';
@@ -163,11 +167,7 @@ export function createSubgroupsHandlers(deps: SubgroupsHandlersDeps) {
         return res.status(404).json({ error: 'Sub-group not found' });
       }
 
-      const members = (sg.members ?? []).map((m) => ({
-        userId: m.userId.toString(),
-        role: m.role,
-        joinedAt: m.joinedAt,
-      }));
+      const members = await enrichMembers(sg, findUsers);
 
       return res.status(200).json({
         subgroup: toSubgroupDTO(sg, (sg.memberIds ?? []).length),
@@ -203,7 +203,11 @@ export function createSubgroupsHandlers(deps: SubgroupsHandlersDeps) {
       const { name, description } = req.body as { name?: string; description?: string };
       const updates: { name?: string; description?: string } = {};
       if (name !== undefined) {
-        updates.name = typeof name === 'string' ? name.trim() : name;
+        const trimmed = typeof name === 'string' ? name.trim() : name;
+        if (!trimmed) {
+          return res.status(400).json({ error: 'name cannot be empty' });
+        }
+        updates.name = trimmed;
       }
       if (description !== undefined) {
         updates.description = description;

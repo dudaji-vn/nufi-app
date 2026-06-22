@@ -90,7 +90,7 @@ describe('createSubgroupsHandlers', () => {
       deleteSubgroup: jest.fn().mockResolvedValue(undefined),
       addSubgroupMember: jest.fn().mockResolvedValue(mockSubgroup()),
       removeSubgroupMember: jest.fn().mockResolvedValue(mockSubgroup()),
-      getUserSubgroups: jest.fn().mockResolvedValue([]),
+      findUsers: jest.fn().mockResolvedValue([]),
       deleteAclEntries: jest.fn().mockResolvedValue({ deletedCount: 0 }),
       ...overrides,
     };
@@ -314,13 +314,17 @@ describe('createSubgroupsHandlers', () => {
   });
 
   describe('get', () => {
-    it('returns sub-group detail for admin', async () => {
+    it('returns sub-group detail for admin with enriched member name and email', async () => {
       const team = mockTeam();
-      const sg = mockSubgroup({ memberIds: [callerId], members: [{ userId: new Types.ObjectId(callerId), role: 'member', joinedAt: new Date() }] });
+      const memberObjId = new Types.ObjectId(callerId);
+      const sg = mockSubgroup({ memberIds: [callerId], members: [{ userId: memberObjId, role: 'member', joinedAt: new Date() }] });
       const deps = createDeps({
         getTeamRole: jest.fn().mockResolvedValue('admin'),
         findGroupById: jest.fn().mockResolvedValue(team),
         getSubgroupById: jest.fn().mockResolvedValue(sg),
+        findUsers: jest.fn().mockResolvedValue([
+          { _id: memberObjId, name: 'Alice', email: 'alice@example.com' },
+        ]),
       });
       const handlers = createSubgroupsHandlers(deps);
       const { req, res, status, json } = createReqRes({ params: { id: teamId, sgId } });
@@ -330,7 +334,9 @@ describe('createSubgroupsHandlers', () => {
       expect(status).toHaveBeenCalledWith(200);
       const body = json.mock.calls[0][0];
       expect(body.subgroup).toBeDefined();
-      expect(body.members).toBeDefined();
+      expect(Array.isArray(body.members)).toBe(true);
+      expect(body.members[0].name).toBe('Alice');
+      expect(body.members[0].email).toBe('alice@example.com');
     });
 
     it('returns 404 when sgId belongs to a different team (cross-team guard)', async () => {
@@ -426,6 +432,27 @@ describe('createSubgroupsHandlers', () => {
 
       expect(status).toHaveBeenCalledWith(400);
       expect(json).toHaveBeenCalledWith({ error: 'No valid fields to update' });
+    });
+
+    it('returns 400 when name is whitespace-only', async () => {
+      const team = mockTeam();
+      const sg = mockSubgroup();
+      const deps = createDeps({
+        getTeamRole: jest.fn().mockResolvedValue('admin'),
+        findGroupById: jest.fn().mockResolvedValue(team),
+        getSubgroupById: jest.fn().mockResolvedValue(sg),
+      });
+      const handlers = createSubgroupsHandlers(deps);
+      const { req, res, status, json } = createReqRes({
+        params: { id: teamId, sgId },
+        body: { name: '   ' },
+      });
+
+      await handlers.update(req, res);
+
+      expect(status).toHaveBeenCalledWith(400);
+      expect(json).toHaveBeenCalledWith({ error: 'name cannot be empty' });
+      expect(deps.updateSubgroup).not.toHaveBeenCalled();
     });
 
     it('returns 403 for plain member', async () => {

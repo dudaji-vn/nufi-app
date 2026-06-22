@@ -84,7 +84,7 @@ export interface TeamsHandlersDeps {
   ) => Promise<IUser[]>;
 }
 
-interface EnrichedMember {
+export interface EnrichedMember {
   userId: string;
   role: TeamRole;
   joinedAt: Date;
@@ -94,7 +94,7 @@ interface EnrichedMember {
   username?: string;
 }
 
-async function enrichMembers(
+export async function enrichMembers(
   team: IGroup,
   findUsers: TeamsHandlersDeps['findUsers'],
 ): Promise<EnrichedMember[]> {
