@@ -1007,6 +1007,147 @@ export function createUserGroupMethods(mongoose: typeof import('mongoose')) {
     return await query.lean<IGroup[]>();
   }
 
+  /** Create a sub-group scoped to a parent team. */
+  async function createSubgroup(params: {
+    parentTeamId: string | Types.ObjectId;
+    name: string;
+    description?: string;
+    ownerId: string | Types.ObjectId;
+    tenantId?: string;
+    session?: ClientSession;
+  }): Promise<IGroup> {
+    const { parentTeamId, name, description, ownerId, tenantId, session } = params;
+    const ownerObjectId =
+      typeof ownerId === 'string' ? new Types.ObjectId(ownerId) : ownerId;
+    const parentTeamObjectId =
+      typeof parentTeamId === 'string' ? new Types.ObjectId(parentTeamId) : parentTeamId;
+    return createGroup(
+      {
+        name,
+        description,
+        kind: 'team_subgroup',
+        parentTeamId: parentTeamObjectId,
+        ownerId: ownerObjectId,
+        source: 'local',
+        memberIds: [],
+        members: [],
+        tenantId,
+      },
+      session,
+    );
+  }
+
+  /** List all sub-groups belonging to a team. */
+  async function getTeamSubgroups(
+    parentTeamId: string | Types.ObjectId,
+  ): Promise<IGroup[]> {
+    const Group = mongoose.models.Group as Model<IGroup>;
+    return Group.find({ parentTeamId, kind: 'team_subgroup' }).lean<IGroup[]>();
+  }
+
+  /** Find a sub-group by its ID. */
+  async function getSubgroupById(
+    subgroupId: string | Types.ObjectId,
+  ): Promise<IGroup | null> {
+    const Group = mongoose.models.Group as Model<IGroup>;
+    return Group.findById(subgroupId).lean<IGroup>();
+  }
+
+  /** Patch a sub-group's name and/or description. */
+  async function updateSubgroup(
+    subgroupId: string | Types.ObjectId,
+    updates: { name?: string; description?: string },
+  ): Promise<IGroup | null> {
+    const Group = mongoose.models.Group as Model<IGroup>;
+    return Group.findByIdAndUpdate(
+      subgroupId,
+      { $set: updates },
+      { new: true },
+    ).lean<IGroup>();
+  }
+
+  /** Delete a sub-group document. */
+  async function deleteSubgroup(
+    subgroupId: string | Types.ObjectId,
+    session?: ClientSession,
+  ): Promise<void> {
+    const Group = mongoose.models.Group as Model<IGroup>;
+    const options = session ? { session } : {};
+    await Group.deleteOne({ _id: subgroupId }, options);
+  }
+
+  /**
+   * Add a user to a sub-group.
+   * Enforces the team-subset invariant: the user must already be in the parent
+   * team's memberIds. Dual-writes memberIds (string ACL) + members (role list).
+   */
+  async function addSubgroupMember(params: {
+    subgroupId: string | Types.ObjectId;
+    userId: string;
+    session?: ClientSession;
+  }): Promise<IGroup> {
+    const { subgroupId, userId, session } = params;
+    const Group = mongoose.models.Group as Model<IGroup>;
+    const sg = await Group.findById(subgroupId);
+    if (!sg) {
+      throw new Error('Sub-group not found');
+    }
+    const team = await Group.findById(sg.parentTeamId).lean<IGroup>();
+    if (!team || !(team.memberIds ?? []).includes(userId)) {
+      throw new Error('User is not a member of the team');
+    }
+    if (!sg.memberIds?.includes(userId)) {
+      const userObjectId = new Types.ObjectId(userId);
+      sg.memberIds = [...(sg.memberIds ?? []), userId];
+      sg.members = [
+        ...(sg.members ?? []),
+        { userId: userObjectId, role: 'member', joinedAt: new Date() },
+      ];
+      await sg.save({ session });
+    }
+    return sg.toObject() as IGroup;
+  }
+
+  /**
+   * Remove a user from a sub-group, pulling from both memberIds and members.
+   */
+  async function removeSubgroupMember(params: {
+    subgroupId: string | Types.ObjectId;
+    userId: string;
+    session?: ClientSession;
+  }): Promise<IGroup> {
+    const { subgroupId, userId, session } = params;
+    const Group = mongoose.models.Group as Model<IGroup>;
+    const userObjectId = new Types.ObjectId(userId);
+    const options = { new: true, ...(session ? { session } : {}) };
+    const updated = await Group.findByIdAndUpdate(
+      subgroupId,
+      { $pull: { memberIds: userId, members: { userId: userObjectId } } },
+      options,
+    ).lean<IGroup>();
+    if (!updated) {
+      throw new Error('Sub-group not found');
+    }
+    return updated;
+  }
+
+  /**
+   * Return sub-groups (of a given parent team) that the user belongs to.
+   * Queries by parentTeamId + kind + memberIds so only the user's own memberships
+   * are returned, excluding sub-groups they are not in.
+   */
+  async function getUserSubgroups(params: {
+    userId: string;
+    parentTeamId: string | Types.ObjectId;
+  }): Promise<IGroup[]> {
+    const Group = mongoose.models.Group as Model<IGroup>;
+    return Group.find({
+      parentTeamId: params.parentTeamId,
+      kind: 'team_subgroup',
+      memberIds: params.userId,
+    }).lean<IGroup[]>();
+  }
+
   return {
     findGroupById,
     findGroupByExternalId,
@@ -1038,6 +1179,14 @@ export function createUserGroupMethods(mongoose: typeof import('mongoose')) {
     getTeamRole,
     setMemberRole,
     transferOwnership,
+    createSubgroup,
+    getTeamSubgroups,
+    getSubgroupById,
+    updateSubgroup,
+    deleteSubgroup,
+    addSubgroupMember,
+    removeSubgroupMember,
+    getUserSubgroups,
   };
 }
 
