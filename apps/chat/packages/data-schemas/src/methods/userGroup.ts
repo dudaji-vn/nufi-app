@@ -1157,6 +1157,15 @@ export function createUserGroupMethods(mongoose: typeof import('mongoose')) {
    * Queries by parentTeamId + kind + memberIds so only the user's own memberships
    * are returned, excluding sub-groups they are not in.
    */
+  /**
+   * Sub-groups (of a team) the user belongs to. The P2 union helper for
+   * agent/prompt listing — not yet wired to any handler/route in P1.
+   *
+   * FOOTGUN (resolve before wiring in P2): `memberIds` stores the resolved id
+   * (`idOnTheSource || _id`, see `resolveMemberIdValue`/`addSubgroupMember`),
+   * so an Entra-synced user's `_id` will NOT match. Callers passing a raw `_id`
+   * here must resolve it first, or Entra users silently get zero sub-groups.
+   */
   async function getUserSubgroups(params: {
     userId: string;
     parentTeamId: string | Types.ObjectId;
