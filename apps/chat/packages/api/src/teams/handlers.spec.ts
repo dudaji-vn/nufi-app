@@ -578,6 +578,7 @@ describe('createTeamsHandlers', () => {
       expect(deleteSubgroup).toHaveBeenCalledWith(sg1._id);
       expect(deleteAclEntries).toHaveBeenCalledWith({ principalId: sg2._id });
       expect(deleteSubgroup).toHaveBeenCalledWith(sg2._id);
+      expect(deleteAclEntries).toHaveBeenCalledWith({ principalId: validId });
       expect(deleteGroup).toHaveBeenCalledWith(validId);
       expect(status).toHaveBeenCalledWith(200);
       expect(json).toHaveBeenCalledWith({ success: true });
@@ -585,13 +586,19 @@ describe('createTeamsHandlers', () => {
 
     it('still deletes the team even if one subgroup cleanup throws', async () => {
       const sg1 = { _id: new Types.ObjectId(), name: 'SG1', kind: 'subgroup' } as unknown as IGroup;
+      const deleteAclEntries = jest.fn((filter) => {
+        if (filter.principalId.toString() === sg1._id.toString()) {
+          return Promise.reject(new Error('acl fail'));
+        }
+        return Promise.resolve(undefined);
+      });
       const deleteGroup = jest.fn().mockResolvedValue(mockTeam());
       const deps = createDeps({
         getTeamRole: jest.fn().mockResolvedValue('owner'),
         findGroupById: jest.fn().mockResolvedValue(mockTeam()),
         deleteInvitesByGroup: jest.fn().mockResolvedValue(0),
         getTeamSubgroups: jest.fn().mockResolvedValue([sg1]),
-        deleteAclEntries: jest.fn().mockRejectedValue(new Error('acl fail')),
+        deleteAclEntries,
         deleteSubgroup: jest.fn().mockResolvedValue(undefined),
         deleteGroup,
       });
@@ -600,6 +607,8 @@ describe('createTeamsHandlers', () => {
 
       await handlers.remove(req, res);
 
+      expect(deleteAclEntries).toHaveBeenCalledWith({ principalId: sg1._id });
+      expect(deleteAclEntries).toHaveBeenCalledWith({ principalId: validId });
       expect(deleteGroup).toHaveBeenCalledWith(validId);
       expect(status).toHaveBeenCalledWith(200);
     });

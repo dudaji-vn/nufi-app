@@ -319,6 +319,7 @@ export function createTeamsHandlers(deps: TeamsHandlersDeps) {
           logger.error('[teams] subgroup cleanup failed', e);
         }
       }
+      await deleteAclEntries({ principalId: id });
       await deleteGroup(id);
 
       return res.status(200).json({ success: true });
