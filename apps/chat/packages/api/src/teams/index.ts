@@ -6,3 +6,5 @@ export { createTeamKnowledgeHandlers } from './knowledge';
 export type { TeamKnowledgeHandlersDeps } from './knowledge';
 export { createTeamResourceHandlers } from './resources';
 export type { TeamResourceHandlersDeps } from './resources';
+export { createSubgroupsHandlers } from './subgroups';
+export type { SubgroupsHandlersDeps } from './subgroups';
