@@ -1153,29 +1153,52 @@ export function createUserGroupMethods(mongoose: typeof import('mongoose')) {
   }
 
   /**
-   * Return sub-groups (of a given parent team) that the user belongs to.
-   * Queries by parentTeamId + kind + memberIds so only the user's own memberships
-   * are returned, excluding sub-groups they are not in.
-   */
-  /**
-   * Sub-groups (of a team) the user belongs to. The P2 union helper for
-   * agent/prompt listing — not yet wired to any handler/route in P1.
-   *
-   * FOOTGUN (resolve before wiring in P2): `memberIds` stores the resolved id
-   * (`idOnTheSource || _id`, see `resolveMemberIdValue`/`addSubgroupMember`),
-   * so an Entra-synced user's `_id` will NOT match. Callers passing a raw `_id`
-   * here must resolve it first, or Entra users silently get zero sub-groups.
+   * Sub-groups (of a team) the user belongs to.
+   * Resolves the member id via `resolveMemberIdValue` so Entra-synced users
+   * (whose `memberIds` entry is `idOnTheSource`, not their raw `_id`) are
+   * correctly matched.
    */
   async function getUserSubgroups(params: {
     userId: string;
     parentTeamId: string | Types.ObjectId;
   }): Promise<IGroup[]> {
     const Group = mongoose.models.Group as Model<IGroup>;
+    const resolvedId = await resolveMemberIdValue(new Types.ObjectId(params.userId));
     return Group.find({
       parentTeamId: params.parentTeamId,
       kind: 'team_subgroup',
-      memberIds: params.userId,
+      memberIds: resolvedId,
     }).lean<IGroup[]>();
+  }
+
+  /**
+   * Returns the principal-id set a user has within a team: the team id (if the
+   * user is a member) plus every `kind:'team_subgroup'` of that team the user
+   * belongs to. Resolves the id via `resolveMemberIdValue` so Entra-synced
+   * users are handled correctly.
+   */
+  async function getUserTeamPrincipals(params: {
+    userId: string;
+    teamId: string | Types.ObjectId;
+  }): Promise<string[]> {
+    const Group = mongoose.models.Group as Model<IGroup>;
+    const resolvedId = await resolveMemberIdValue(new Types.ObjectId(params.userId));
+    const [team, subs] = await Promise.all([
+      Group.findOne({ _id: params.teamId, kind: 'team', memberIds: resolvedId })
+        .select('_id')
+        .lean<IGroup | null>(),
+      Group.find({ parentTeamId: params.teamId, kind: 'team_subgroup', memberIds: resolvedId })
+        .select('_id')
+        .lean<IGroup[]>(),
+    ]);
+    const ids: string[] = [];
+    if (team) {
+      ids.push(team._id.toString());
+    }
+    for (const s of subs) {
+      ids.push(s._id.toString());
+    }
+    return ids;
   }
 
   return {
@@ -1217,6 +1240,7 @@ export function createUserGroupMethods(mongoose: typeof import('mongoose')) {
     addSubgroupMember,
     removeSubgroupMember,
     getUserSubgroups,
+    getUserTeamPrincipals,
   };
 }
 

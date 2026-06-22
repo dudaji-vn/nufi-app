@@ -231,4 +231,84 @@ describe('sub-group CRUD + membership methods', () => {
     expect(updated.memberIds).not.toContain(entraUser._id.toString());
     expect(updated.members?.some((m) => m.userId.toString() === entraUser._id.toString())).toBe(true);
   });
+
+  // Entra id carry-over fix for getUserSubgroups
+  test('[entra] getUserSubgroups returns sub-groups for an Entra user whose memberIds entry is the GUID', async () => {
+    const entraGuid = 'entra-sg-guid-' + Math.random().toString(36).slice(2);
+    const entraUser = await makeUser(entraGuid);
+    const owner = await makeUser();
+    const team = await methods.createTeam({ name: 'EntraSGTeam', ownerId: owner._id });
+
+    // Simulate Entra sync: team memberIds holds the GUID, not the raw _id
+    await Group.findByIdAndUpdate(team._id, { $addToSet: { memberIds: entraGuid } });
+    await Group.findByIdAndUpdate(team._id, {
+      $push: { members: { userId: entraUser._id, role: 'member', joinedAt: new Date() } },
+    });
+
+    const sg = await methods.createSubgroup({ parentTeamId: team._id, name: 'EntraSubG', ownerId: owner._id.toString() });
+    // Add the Entra user to the sub-group (stores GUID in memberIds via resolveMemberIdValue)
+    await methods.addSubgroupMember({ subgroupId: sg._id, userId: entraUser._id.toString() });
+
+    // Pass raw _id — getUserSubgroups must resolve it to the GUID before querying
+    const got = await methods.getUserSubgroups({ userId: entraUser._id.toString(), parentTeamId: team._id });
+    expect(got.map((g) => g._id.toString())).toContain(sg._id.toString());
+  });
+
+  // getUserTeamPrincipals tests
+  describe('getUserTeamPrincipals', () => {
+    async function setupEntraTeamWithSubgroup() {
+      const entraGuid = 'tp-guid-' + Math.random().toString(36).slice(2);
+      const entraUser = await makeUser(entraGuid);
+      const owner = await makeUser();
+      const team = await methods.createTeam({ name: 'PrincipalTeam', ownerId: owner._id });
+
+      // Simulate Entra sync: team memberIds holds the GUID
+      await Group.findByIdAndUpdate(team._id, { $addToSet: { memberIds: entraGuid } });
+      await Group.findByIdAndUpdate(team._id, {
+        $push: { members: { userId: entraUser._id, role: 'member', joinedAt: new Date() } },
+      });
+
+      const sgA = await methods.createSubgroup({ parentTeamId: team._id, name: 'SgA', ownerId: owner._id.toString() });
+      await methods.addSubgroupMember({ subgroupId: sgA._id, userId: entraUser._id.toString() });
+
+      return { team, entraUser, sgA, owner };
+    }
+
+    test('returns [teamId, sgAId] for a user who is a team member and belongs to sub-group A', async () => {
+      const { team, entraUser, sgA } = await setupEntraTeamWithSubgroup();
+      const principals = await methods.getUserTeamPrincipals({
+        userId: entraUser._id.toString(),
+        teamId: team._id,
+      });
+      expect(principals).toContain(team._id.toString());
+      expect(principals).toContain(sgA._id.toString());
+      expect(principals).toHaveLength(2);
+    });
+
+    test('returns [teamId] for a team member who belongs to no sub-group', async () => {
+      const owner = await makeUser();
+      const plainMember = await makeUser();
+      const team = await methods.createTeam({ name: 'PlainTeam', ownerId: owner._id });
+      await methods.addTeamMember({ groupId: team._id, userId: plainMember._id });
+
+      const principals = await methods.getUserTeamPrincipals({
+        userId: plainMember._id.toString(),
+        teamId: team._id,
+      });
+      expect(principals).toContain(team._id.toString());
+      expect(principals).toHaveLength(1);
+    });
+
+    test('returns [] for a user who is not a member of the team', async () => {
+      const owner = await makeUser();
+      const nonMember = await makeUser();
+      const team = await methods.createTeam({ name: 'NopeTeam', ownerId: owner._id });
+
+      const principals = await methods.getUserTeamPrincipals({
+        userId: nonMember._id.toString(),
+        teamId: team._id,
+      });
+      expect(principals).toHaveLength(0);
+    });
+  });
 });

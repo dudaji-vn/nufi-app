@@ -30,6 +30,7 @@ let Agent: mongoose.Model<unknown>;
 let AclEntry: mongoose.Model<unknown>;
 let AccessRole: mongoose.Model<unknown>;
 let User: mongoose.Model<unknown>;
+let Group: mongoose.Model<unknown>;
 let methods: ReturnType<typeof createMethods>;
 let aclMethods: ReturnType<typeof createAclEntryMethods>;
 
@@ -47,6 +48,7 @@ describe('File Access Control', () => {
     AclEntry = mongoose.models.AclEntry;
     AccessRole = mongoose.models.AccessRole;
     User = mongoose.models.User;
+    Group = mongoose.models.Group;
 
     methods = createMethods(mongoose);
     aclMethods = createAclEntryMethods(mongoose);
@@ -69,6 +71,7 @@ describe('File Access Control', () => {
     await Agent.deleteMany({});
     await AclEntry.deleteMany({});
     await User.deleteMany({});
+    await Group.deleteMany({});
   });
 
   describe('File ACL entry operations', () => {
@@ -400,6 +403,117 @@ describe('File Access Control', () => {
 
       const files = await methods.getFiles({ user: userId });
       expect(files).toHaveLength(2);
+    });
+  });
+
+  /**
+   * RAG sub-group union confirmation (Phase 2, Task 1).
+   *
+   * Proves that a file granted to a `kind:'team_subgroup'` principal is
+   * included in the `findAccessibleResources` result for a user who belongs
+   * to that sub-group — and is excluded for a user who does not.
+   *
+   * This is the lowest-possible-friction, highest-fidelity test: it exercises
+   * the real ACL grant + principal-lookup chain that `getTeamSharedFileIds`
+   * delegates to, without needing the full api-layer PermissionService stack.
+   */
+  describe('RAG sub-group union: file granted to sub-group reaches member, not non-member', () => {
+    it('includes the file_id for a user in the sub-group and excludes it for a non-member', async () => {
+      const owner = await User.create({
+        email: 'owner@test.com',
+        emailVerified: true,
+        provider: 'local',
+        name: 'Owner',
+      });
+      const member = await User.create({
+        email: 'member@test.com',
+        emailVerified: true,
+        provider: 'local',
+        name: 'Member',
+      });
+      const nonMember = await User.create({
+        email: 'stranger@test.com',
+        emailVerified: true,
+        provider: 'local',
+        name: 'Stranger',
+      });
+
+      // Build team + sub-group via methods so memberIds is always resolved correctly
+      const team = await methods.createTeam({ name: 'RagTeam', ownerId: owner._id as Types.ObjectId });
+      await methods.addTeamMember({ groupId: team._id as Types.ObjectId, userId: member._id as Types.ObjectId });
+
+      const sg = await methods.createSubgroup({
+        parentTeamId: team._id as Types.ObjectId,
+        name: 'RagSub',
+        ownerId: (owner._id as Types.ObjectId).toString(),
+      });
+      await methods.addSubgroupMember({
+        subgroupId: sg._id as Types.ObjectId,
+        userId: (member._id as Types.ObjectId).toString(),
+      });
+
+      // Create an embedded file (mirrors what getTeamSharedFileIds filters on)
+      const fileId = uuidv4();
+      const fileDoc = await methods.createFile(
+        {
+          file_id: fileId,
+          user: owner._id as Types.ObjectId,
+          filename: 'rag-test.txt',
+          filepath: '/uploads/rag-test.txt',
+          embedded: true,
+        },
+        true, // disableTTL so the document persists
+      );
+
+      // Look up the FILE_VIEWER role to get its permBits
+      const fileViewerRole = (await AccessRole.findOne({
+        accessRoleId: AccessRoleIds.FILE_VIEWER,
+      }).lean()) as (TAccessRole & { _id: Types.ObjectId }) | null;
+      expect(fileViewerRole).not.toBeNull();
+
+      // Grant FILE VIEW to the sub-group (not the team, not any user directly)
+      await aclMethods.grantPermission(
+        PrincipalType.GROUP,
+        sg._id as Types.ObjectId,
+        ResourceType.FILE,
+        (fileDoc as { _id: Types.ObjectId })._id,
+        fileViewerRole!.permBits,
+        owner._id as Types.ObjectId,
+        undefined,
+        fileViewerRole!._id,
+      );
+
+      // Member's principals include the sub-group → file must be visible
+      const memberPrincipals = await methods.getUserPrincipals({ userId: member._id as Types.ObjectId });
+      const memberSubgroupIds = memberPrincipals
+        .filter((p) => p.principalType === PrincipalType.GROUP)
+        .map((p) => p.principalId?.toString());
+      expect(memberSubgroupIds).toContain((sg._id as Types.ObjectId).toString());
+
+      const memberAccessible = await methods.findAccessibleResources(
+        memberPrincipals,
+        ResourceType.FILE,
+        PermissionBits.VIEW,
+      );
+      expect(memberAccessible.map((id) => id.toString())).toContain(
+        (fileDoc as { _id: Types.ObjectId })._id.toString(),
+      );
+
+      // Non-member's principals do NOT include the sub-group → file must NOT be visible
+      const nonMemberPrincipals = await methods.getUserPrincipals({ userId: nonMember._id as Types.ObjectId });
+      const nonMemberSubgroupIds = nonMemberPrincipals
+        .filter((p) => p.principalType === PrincipalType.GROUP)
+        .map((p) => p.principalId?.toString());
+      expect(nonMemberSubgroupIds).not.toContain((sg._id as Types.ObjectId).toString());
+
+      const nonMemberAccessible = await methods.findAccessibleResources(
+        nonMemberPrincipals,
+        ResourceType.FILE,
+        PermissionBits.VIEW,
+      );
+      expect(nonMemberAccessible.map((id) => id.toString())).not.toContain(
+        (fileDoc as { _id: Types.ObjectId })._id.toString(),
+      );
     });
   });
 });
