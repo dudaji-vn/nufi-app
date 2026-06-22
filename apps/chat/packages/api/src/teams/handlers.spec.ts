@@ -83,6 +83,10 @@ describe('createTeamsHandlers', () => {
       updateGroupById: jest.fn().mockResolvedValue(null),
       deleteGroup: jest.fn().mockResolvedValue(null),
       findUsers: jest.fn().mockResolvedValue([]),
+      getTeamSubgroups: jest.fn().mockResolvedValue([]),
+      deleteSubgroup: jest.fn().mockResolvedValue(undefined),
+      deleteAclEntries: jest.fn().mockResolvedValue(undefined),
+      removeSubgroupMember: jest.fn().mockResolvedValue(mockTeam()),
       ...overrides,
     };
   }
@@ -547,6 +551,58 @@ describe('createTeamsHandlers', () => {
       expect(status).toHaveBeenCalledWith(500);
       expect(json).toHaveBeenCalledWith({ error: 'Failed to delete team' });
     });
+
+    it('cascades subgroup cleanup (deleteAclEntries + deleteSubgroup per subgroup) before deleting team', async () => {
+      const sg1 = { _id: new Types.ObjectId(), name: 'SG1', kind: 'subgroup' } as unknown as IGroup;
+      const sg2 = { _id: new Types.ObjectId(), name: 'SG2', kind: 'subgroup' } as unknown as IGroup;
+      const deleteAclEntries = jest.fn().mockResolvedValue(undefined);
+      const deleteSubgroup = jest.fn().mockResolvedValue(undefined);
+      const getTeamSubgroups = jest.fn().mockResolvedValue([sg1, sg2]);
+      const deleteGroup = jest.fn().mockResolvedValue(mockTeam());
+      const deps = createDeps({
+        getTeamRole: jest.fn().mockResolvedValue('owner'),
+        findGroupById: jest.fn().mockResolvedValue(mockTeam()),
+        deleteInvitesByGroup: jest.fn().mockResolvedValue(0),
+        getTeamSubgroups,
+        deleteAclEntries,
+        deleteSubgroup,
+        deleteGroup,
+      });
+      const handlers = createTeamsHandlers(deps);
+      const { req, res, status, json } = createReqRes({ params: { id: validId } });
+
+      await handlers.remove(req, res);
+
+      expect(getTeamSubgroups).toHaveBeenCalledWith(validId);
+      expect(deleteAclEntries).toHaveBeenCalledWith({ principalId: sg1._id });
+      expect(deleteSubgroup).toHaveBeenCalledWith(sg1._id);
+      expect(deleteAclEntries).toHaveBeenCalledWith({ principalId: sg2._id });
+      expect(deleteSubgroup).toHaveBeenCalledWith(sg2._id);
+      expect(deleteGroup).toHaveBeenCalledWith(validId);
+      expect(status).toHaveBeenCalledWith(200);
+      expect(json).toHaveBeenCalledWith({ success: true });
+    });
+
+    it('still deletes the team even if one subgroup cleanup throws', async () => {
+      const sg1 = { _id: new Types.ObjectId(), name: 'SG1', kind: 'subgroup' } as unknown as IGroup;
+      const deleteGroup = jest.fn().mockResolvedValue(mockTeam());
+      const deps = createDeps({
+        getTeamRole: jest.fn().mockResolvedValue('owner'),
+        findGroupById: jest.fn().mockResolvedValue(mockTeam()),
+        deleteInvitesByGroup: jest.fn().mockResolvedValue(0),
+        getTeamSubgroups: jest.fn().mockResolvedValue([sg1]),
+        deleteAclEntries: jest.fn().mockRejectedValue(new Error('acl fail')),
+        deleteSubgroup: jest.fn().mockResolvedValue(undefined),
+        deleteGroup,
+      });
+      const handlers = createTeamsHandlers(deps);
+      const { req, res, status } = createReqRes({ params: { id: validId } });
+
+      await handlers.remove(req, res);
+
+      expect(deleteGroup).toHaveBeenCalledWith(validId);
+      expect(status).toHaveBeenCalledWith(200);
+    });
   });
 
   describe('listMembers', () => {
@@ -765,6 +821,55 @@ describe('createTeamsHandlers', () => {
 
       expect(status).toHaveBeenCalledWith(500);
       expect(json).toHaveBeenCalledWith({ error: 'Failed to remove team member' });
+    });
+
+    it('removes the member from each team subgroup after team removal', async () => {
+      const sg1 = { _id: new Types.ObjectId(), name: 'SG1', kind: 'subgroup' } as unknown as IGroup;
+      const removeSubgroupMember = jest.fn().mockResolvedValue(mockTeam());
+      const getTeamSubgroups = jest.fn().mockResolvedValue([sg1]);
+      const deps = createDeps({
+        getTeamRole: jest.fn().mockResolvedValue('admin'),
+        findGroupById: jest.fn().mockResolvedValue(mockTeam()),
+        removeTeamMember: jest.fn().mockResolvedValue(mockTeam()),
+        getTeamSubgroups,
+        removeSubgroupMember,
+      });
+      const handlers = createTeamsHandlers(deps);
+      const { req, res, status, json } = createReqRes({
+        params: { id: validId, userId: validUserId },
+        userId: validCallerId,
+      });
+
+      await handlers.removeMember(req, res);
+
+      expect(getTeamSubgroups).toHaveBeenCalledWith(validId);
+      expect(removeSubgroupMember).toHaveBeenCalledWith({
+        subgroupId: sg1._id,
+        userId: validUserId,
+      });
+      expect(status).toHaveBeenCalledWith(200);
+      expect(json).toHaveBeenCalledWith({ success: true });
+    });
+
+    it('still returns 200 if subgroup member removal throws', async () => {
+      const sg1 = { _id: new Types.ObjectId(), name: 'SG1', kind: 'subgroup' } as unknown as IGroup;
+      const deps = createDeps({
+        getTeamRole: jest.fn().mockResolvedValue('admin'),
+        findGroupById: jest.fn().mockResolvedValue(mockTeam()),
+        removeTeamMember: jest.fn().mockResolvedValue(mockTeam()),
+        getTeamSubgroups: jest.fn().mockResolvedValue([sg1]),
+        removeSubgroupMember: jest.fn().mockRejectedValue(new Error('not a member')),
+      });
+      const handlers = createTeamsHandlers(deps);
+      const { req, res, status, json } = createReqRes({
+        params: { id: validId, userId: validUserId },
+        userId: validCallerId,
+      });
+
+      await handlers.removeMember(req, res);
+
+      expect(status).toHaveBeenCalledWith(200);
+      expect(json).toHaveBeenCalledWith({ success: true });
     });
   });
 

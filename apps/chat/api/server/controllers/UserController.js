@@ -344,6 +344,14 @@ const deleteUserController = async (req, res) => {
         const isOwner = team.ownerId?.toString() === user.id;
         if (!isOwner) {
           await db.removeTeamMember({ groupId: team._id, userId: user.id });
+          const subs = await db.getTeamSubgroups(team._id);
+          for (const sg of subs) {
+            try {
+              await db.removeSubgroupMember({ subgroupId: sg._id, userId: user.id });
+            } catch (e) {
+              logger.error(`[deleteUserController] Error removing user from subgroup ${sg._id}:`, e);
+            }
+          }
           continue;
         }
         const admins = (team.members ?? []).filter(
@@ -356,7 +364,24 @@ const deleteUserController = async (req, res) => {
             toUserId: admins[0].userId,
           });
           await db.removeTeamMember({ groupId: team._id, userId: user.id });
+          const subs = await db.getTeamSubgroups(team._id);
+          for (const sg of subs) {
+            try {
+              await db.removeSubgroupMember({ subgroupId: sg._id, userId: user.id });
+            } catch (e) {
+              logger.error(`[deleteUserController] Error removing user from subgroup ${sg._id}:`, e);
+            }
+          }
         } else {
+          const subs = await db.getTeamSubgroups(team._id);
+          for (const sg of subs) {
+            try {
+              await db.deleteAclEntries({ principalId: sg._id });
+              await db.deleteSubgroup(sg._id);
+            } catch (e) {
+              logger.error(`[deleteUserController] Error deleting subgroup ${sg._id}:`, e);
+            }
+          }
           await db.deleteInvitesByGroup({ groupId: team._id });
           await db.deleteAclEntries({ principalId: team._id });
           await db.deleteGroup(team._id);

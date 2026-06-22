@@ -1,5 +1,5 @@
 import { logger, isValidObjectIdString } from '@librechat/data-schemas';
-import type { Types, FilterQuery, ClientSession } from 'mongoose';
+import type { Types, FilterQuery, ClientSession, DeleteResult } from 'mongoose';
 import type { IGroup, IUser, TeamRole } from '@librechat/data-schemas';
 import type { Response } from 'express';
 import type { ValidationError } from '~/types/error';
@@ -82,6 +82,10 @@ export interface TeamsHandlersDeps {
     searchCriteria: FilterQuery<IUser>,
     fieldsToSelect?: string | string[] | null,
   ) => Promise<IUser[]>;
+  getTeamSubgroups: (parentTeamId: string | Types.ObjectId) => Promise<IGroup[]>;
+  deleteSubgroup: (subgroupId: string | Types.ObjectId) => Promise<void>;
+  deleteAclEntries: (filter: { principalId: string | Types.ObjectId }) => Promise<DeleteResult | void>;
+  removeSubgroupMember: (params: { subgroupId: string | Types.ObjectId; userId: string }) => Promise<IGroup>;
 }
 
 export interface EnrichedMember {
@@ -141,6 +145,10 @@ export function createTeamsHandlers(deps: TeamsHandlersDeps) {
     updateGroupById,
     deleteGroup,
     findUsers,
+    getTeamSubgroups,
+    deleteSubgroup,
+    deleteAclEntries,
+    removeSubgroupMember,
   } = deps;
 
   async function resolveTeamAccess(
@@ -302,6 +310,15 @@ export function createTeamsHandlers(deps: TeamsHandlersDeps) {
       }
 
       await deleteInvitesByGroup({ groupId: id });
+      const subgroups = await getTeamSubgroups(id);
+      for (const sg of subgroups) {
+        try {
+          await deleteAclEntries({ principalId: sg._id });
+          await deleteSubgroup(sg._id);
+        } catch (e) {
+          logger.error('[teams] subgroup cleanup failed', e);
+        }
+      }
       await deleteGroup(id);
 
       return res.status(200).json({ success: true });
@@ -360,6 +377,14 @@ export function createTeamsHandlers(deps: TeamsHandlersDeps) {
       }
 
       await removeTeamMember({ groupId: id, userId });
+      const subgroups = await getTeamSubgroups(id);
+      for (const sg of subgroups) {
+        try {
+          await removeSubgroupMember({ subgroupId: sg._id, userId });
+        } catch (e) {
+          logger.error('[teams] subgroup member cleanup failed', e);
+        }
+      }
 
       return res.status(200).json({ success: true });
     } catch (error) {

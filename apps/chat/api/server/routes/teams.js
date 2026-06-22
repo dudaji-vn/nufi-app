@@ -50,6 +50,10 @@ const handlers = createTeamsHandlers({
   transferOwnership: db.transferOwnership,
   deleteInvitesByGroup: db.deleteInvitesByGroup,
   findUsers: db.findUsers,
+  getTeamSubgroups: db.getTeamSubgroups,
+  deleteSubgroup: db.deleteSubgroup,
+  deleteAclEntries: db.deleteAclEntries,
+  removeSubgroupMember: db.removeSubgroupMember,
 });
 
 const inviteHandlers = createTeamInviteHandlers({

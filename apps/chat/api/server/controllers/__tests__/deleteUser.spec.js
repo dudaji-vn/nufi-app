@@ -25,6 +25,9 @@ const mockDeleteInvitesByGroup = jest.fn();
 const mockDeleteGroup = jest.fn();
 const mockDeleteAclEntries = jest.fn();
 const mockRemoveUserFromAllGroups = jest.fn();
+const mockGetTeamSubgroups = jest.fn();
+const mockDeleteSubgroup = jest.fn();
+const mockRemoveSubgroupMember = jest.fn();
 
 jest.mock('@librechat/data-schemas', () => ({
   logger: { error: jest.fn(), info: jest.fn() },
@@ -80,6 +83,9 @@ jest.mock('~/models', () => ({
   deleteTokens: jest.fn(),
   removeUserFromAllGroups: (...args) => mockRemoveUserFromAllGroups(...args),
   deleteAclEntries: (...args) => mockDeleteAclEntries(...args),
+  getTeamSubgroups: (...args) => mockGetTeamSubgroups(...args),
+  deleteSubgroup: (...args) => mockDeleteSubgroup(...args),
+  removeSubgroupMember: (...args) => mockRemoveSubgroupMember(...args),
   getSoleOwnedResourceIds: jest.fn().mockResolvedValue([]),
 }));
 
@@ -152,6 +158,9 @@ function stubDeletionMocks() {
   mockDeleteGroup.mockResolvedValue();
   mockDeleteAclEntries.mockResolvedValue();
   mockRemoveUserFromAllGroups.mockResolvedValue();
+  mockGetTeamSubgroups.mockResolvedValue([]);
+  mockDeleteSubgroup.mockResolvedValue();
+  mockRemoveSubgroupMember.mockResolvedValue();
 }
 
 beforeEach(() => {
@@ -386,6 +395,75 @@ describe('deleteUserController - teams cascade', () => {
     expect(mockTransferOwnership).not.toHaveBeenCalled();
     expect(mockDeleteGroup).not.toHaveBeenCalled();
     expect(mockRemoveUserFromAllGroups).toHaveBeenCalledWith(userId);
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('deletes subgroups before deleting sole-owner team', async () => {
+    const teamId = 'team-sole';
+    const sgId = 'sg-1';
+    const team = {
+      _id: teamId,
+      ownerId: { toString: () => userId },
+      members: [{ userId: { toString: () => userId }, role: 'owner' }],
+    };
+    mockGetUserTeams.mockResolvedValue([team]);
+    mockGetTeamSubgroups.mockResolvedValue([{ _id: sgId }]);
+
+    const res = createRes();
+    await deleteUserController(req, res);
+
+    expect(mockGetTeamSubgroups).toHaveBeenCalledWith(teamId);
+    expect(mockDeleteAclEntries).toHaveBeenCalledWith({ principalId: sgId });
+    expect(mockDeleteSubgroup).toHaveBeenCalledWith(sgId);
+    expect(mockDeleteInvitesByGroup).toHaveBeenCalledWith({ groupId: teamId });
+    expect(mockDeleteGroup).toHaveBeenCalledWith(teamId);
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('removes user from subgroups when they are a non-owner member', async () => {
+    const ownerUserId = 'owner99';
+    const teamId = 'team-member';
+    const sgId = 'sg-2';
+    const team = {
+      _id: teamId,
+      ownerId: { toString: () => ownerUserId },
+      members: [
+        { userId: { toString: () => ownerUserId }, role: 'owner' },
+        { userId: { toString: () => userId }, role: 'member' },
+      ],
+    };
+    mockGetUserTeams.mockResolvedValue([team]);
+    mockGetTeamSubgroups.mockResolvedValue([{ _id: sgId }]);
+
+    const res = createRes();
+    await deleteUserController(req, res);
+
+    expect(mockGetTeamSubgroups).toHaveBeenCalledWith(teamId);
+    expect(mockRemoveSubgroupMember).toHaveBeenCalledWith({ subgroupId: sgId, userId });
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('removes user from subgroups after ownership transfer', async () => {
+    const adminUserId = 'admin2';
+    const teamId = 'team-transfer';
+    const sgId = 'sg-3';
+    const team = {
+      _id: teamId,
+      ownerId: { toString: () => userId },
+      members: [
+        { userId: { toString: () => userId }, role: 'owner' },
+        { userId: adminUserId, role: 'admin' },
+      ],
+    };
+    mockGetUserTeams.mockResolvedValue([team]);
+    mockGetTeamSubgroups.mockResolvedValue([{ _id: sgId }]);
+
+    const res = createRes();
+    await deleteUserController(req, res);
+
+    expect(mockGetTeamSubgroups).toHaveBeenCalledWith(teamId);
+    expect(mockRemoveSubgroupMember).toHaveBeenCalledWith({ subgroupId: sgId, userId });
+    expect(mockTransferOwnership).toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(200);
   });
 });
