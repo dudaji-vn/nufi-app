@@ -1,9 +1,21 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Users } from 'lucide-react';
-import { Button, Spinner, Tabs, TabsList, TabsTrigger, TabsContent } from '@librechat/client';
+import { ArrowLeft, Users, Trash2 } from 'lucide-react';
+import {
+  Button,
+  Spinner,
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+  OGDialog,
+  OGDialogTrigger,
+  OGDialogTemplate,
+  useToastContext,
+} from '@librechat/client';
 import type { TeamRole } from 'librechat-data-provider';
 import type { TranslationKeys } from '~/hooks';
-import { useTeamQuery } from '~/data-provider';
+import { useTeamQuery, useDeleteTeamMutation } from '~/data-provider';
 import { useLocalize, useAuthContext } from '~/hooks';
 import MembersTab from './MembersTab';
 import InvitesTab from './InvitesTab';
@@ -18,6 +30,59 @@ const roleLabelKey: Record<TeamRole, TranslationKeys> = {
 
 interface TeamDetailProps {
   teamId: string;
+}
+
+function DeleteTeamButton({ teamId }: { teamId: string }) {
+  const localize = useLocalize();
+  const navigate = useNavigate();
+  const { showToast } = useToastContext();
+  const [open, setOpen] = useState(false);
+
+  const { mutate: deleteTeam, isLoading } = useDeleteTeamMutation({
+    onSuccess: () => {
+      showToast({ message: localize('com_ui_team_deleted'), status: 'success' });
+      setOpen(false);
+      navigate('/teams');
+    },
+    onError: (error: Error) => {
+      showToast({ message: error.message || localize('com_ui_error'), status: 'error' });
+    },
+  });
+
+  return (
+    <OGDialog open={open} onOpenChange={setOpen}>
+      <OGDialogTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5 text-text-secondary hover:text-red-500"
+          aria-label={localize('com_ui_team_delete')}
+        >
+          <Trash2 className="size-4" aria-hidden="true" />
+          <span className="hidden sm:inline">{localize('com_ui_team_delete')}</span>
+        </Button>
+      </OGDialogTrigger>
+      <OGDialogTemplate
+        title={localize('com_ui_team_delete')}
+        showCloseButton={false}
+        className="w-11/12 md:max-w-md"
+        main={
+          <p className="text-sm text-text-secondary">{localize('com_ui_team_delete_confirm')}</p>
+        }
+        buttons={
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={() => deleteTeam(teamId)}
+            disabled={isLoading}
+            aria-label={localize('com_ui_confirm')}
+          >
+            {isLoading ? <Spinner className="size-4" /> : localize('com_ui_delete')}
+          </Button>
+        }
+      />
+    </OGDialog>
+  );
 }
 
 export default function TeamDetail({ teamId }: TeamDetailProps) {
@@ -55,15 +120,28 @@ export default function TeamDetail({ teamId }: TeamDetailProps) {
             </div>
           )}
         </div>
+        {!isLoading && callerRole === 'owner' && (
+          <div className="ml-auto">
+            <DeleteTeamButton teamId={teamId} />
+          </div>
+        )}
       </div>
 
       {!isLoading && (
         <Tabs defaultValue="members" className="w-full">
-          <TabsList className="mb-4 gap-1">
-            <TabsTrigger value="members">{localize('com_ui_team_members')}</TabsTrigger>
-            <TabsTrigger value="invites">{localize('com_ui_team_invites')}</TabsTrigger>
-            <TabsTrigger value="knowledge">{localize('com_ui_team_knowledge')}</TabsTrigger>
-            <TabsTrigger value="shared">{localize('com_ui_team_shared')}</TabsTrigger>
+          <TabsList className="mb-4 gap-1 rounded-lg">
+            <TabsTrigger value="members" className="rounded-lg">
+              {localize('com_ui_team_members')}
+            </TabsTrigger>
+            <TabsTrigger value="invites" className="rounded-lg">
+              {localize('com_ui_team_invites')}
+            </TabsTrigger>
+            <TabsTrigger value="knowledge" className="rounded-lg">
+              {localize('com_ui_team_knowledge')}
+            </TabsTrigger>
+            <TabsTrigger value="shared" className="rounded-lg">
+              {localize('com_ui_team_shared')}
+            </TabsTrigger>
           </TabsList>
           <TabsContent value="members">
             <MembersTab
