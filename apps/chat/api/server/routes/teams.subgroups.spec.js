@@ -5,16 +5,22 @@ const { MongoMemoryServer } = require('mongodb-memory-server');
 const { createModels, createMethods } = require('@librechat/data-schemas');
 
 /**
- * Integration test for the sub-group routes wired onto the teams router.
+ * Integration test for sub-group routes wired onto the REAL teams.js router.
  *
- * Auth middleware is bypassed so we can inject req.user directly.
- * All DB operations run against a real in-memory MongoDB instance.
+ * This test mounts the actual `api/server/routes/teams.js` router so that
+ * deleting any of the 7 `router.*` sub-group lines from teams.js will cause
+ * these tests to receive 404 responses and FAIL.
+ *
+ * Auth/config middleware is bypassed via jest.mock so we can inject req.user
+ * directly. All DB operations run against a real in-memory MongoDB instance.
  */
 
 jest.mock('~/server/middleware', () => ({
   requireJwtAuth: (_req, _res, next) => next(),
   checkBan: (_req, _res, next) => next(),
 }));
+
+jest.mock('~/server/middleware/config/app', () => (_req, _res, next) => next());
 
 jest.mock('~/server/utils', () => ({
   ...jest.requireActual('~/server/utils'),
@@ -30,10 +36,72 @@ jest.mock('~/server/services/GraphApiService', () => ({
   getGroupOwners: jest.fn().mockResolvedValue([]),
 }));
 
+jest.mock('~/server/services/PermissionService', () => ({
+  grantPermission: jest.fn().mockResolvedValue({}),
+  checkPermission: jest.fn().mockResolvedValue(true),
+}));
+
 jest.mock('@librechat/data-schemas', () => ({
   ...jest.requireActual('@librechat/data-schemas'),
   getTransactionSupport: jest.fn().mockResolvedValue(false),
 }));
+
+// Mock ~/models — teams.js imports it for db methods + getRoleByName.
+// getRoleByName must return a role with full TEAMS permissions so checkTeamsCreate passes.
+jest.mock('~/models', () => {
+  const { PermissionTypes, Permissions } = require('librechat-data-provider');
+  const fullTeamsRole = {
+    permissions: {
+      [PermissionTypes.TEAMS]: {
+        [Permissions.USE]: true,
+        [Permissions.CREATE]: true,
+      },
+    },
+  };
+
+  // Placeholder — real db methods injected after MongoMemoryServer starts.
+  const placeholder = () => {
+    throw new Error('db not yet initialised');
+  };
+
+  return {
+    getRoleByName: jest.fn().mockResolvedValue(fullTeamsRole),
+    createTeam: placeholder,
+    getUserTeams: placeholder,
+    getTeamRole: placeholder,
+    findGroupById: placeholder,
+    updateGroupById: placeholder,
+    deleteGroup: placeholder,
+    removeTeamMember: placeholder,
+    setMemberRole: placeholder,
+    transferOwnership: placeholder,
+    deleteInvitesByGroup: placeholder,
+    findUsers: placeholder,
+    createInvite: placeholder,
+    findInviteByToken: placeholder,
+    listPendingInvitesForUser: placeholder,
+    listInvitesForTeam: placeholder,
+    acceptInvite: placeholder,
+    declineInvite: placeholder,
+    revokeInvite: placeholder,
+    addTeamMember: placeholder,
+    findUser: placeholder,
+    findFileById: placeholder,
+    getFiles: placeholder,
+    findEntriesByPrincipal: placeholder,
+    revokePermission: placeholder,
+    getAgent: placeholder,
+    getPromptGroup: placeholder,
+    createSubgroup: placeholder,
+    getTeamSubgroups: placeholder,
+    getSubgroupById: placeholder,
+    updateSubgroup: placeholder,
+    deleteSubgroup: placeholder,
+    addSubgroupMember: placeholder,
+    removeSubgroupMember: placeholder,
+    deleteAclEntries: placeholder,
+  };
+});
 
 let mongoServer;
 let db;
@@ -43,6 +111,50 @@ beforeAll(async () => {
   await mongoose.connect(mongoServer.getUri());
   createModels(mongoose);
   db = createMethods(mongoose);
+
+  // Patch the ~/models mock with real db methods now that the in-memory DB is ready.
+  const modelsModule = require('~/models');
+  const fields = [
+    'createTeam',
+    'getUserTeams',
+    'getTeamRole',
+    'findGroupById',
+    'updateGroupById',
+    'deleteGroup',
+    'removeTeamMember',
+    'setMemberRole',
+    'transferOwnership',
+    'deleteInvitesByGroup',
+    'findUsers',
+    'createInvite',
+    'findInviteByToken',
+    'listPendingInvitesForUser',
+    'listInvitesForTeam',
+    'acceptInvite',
+    'declineInvite',
+    'revokeInvite',
+    'addTeamMember',
+    'findUser',
+    'findFileById',
+    'getFiles',
+    'findEntriesByPrincipal',
+    'revokePermission',
+    'getAgent',
+    'getPromptGroup',
+    'createSubgroup',
+    'getTeamSubgroups',
+    'getSubgroupById',
+    'updateSubgroup',
+    'deleteSubgroup',
+    'addSubgroupMember',
+    'removeSubgroupMember',
+    'deleteAclEntries',
+  ];
+  for (const field of fields) {
+    if (db[field]) {
+      modelsModule[field] = db[field];
+    }
+  }
 });
 
 afterAll(async () => {
@@ -52,12 +164,14 @@ afterAll(async () => {
 
 afterEach(async () => {
   const Group = mongoose.models.Group;
+  const TeamInvite = mongoose.models.TeamInvite;
   const User = mongoose.models.User;
   const AclEntry = mongoose.models.AclEntry;
   await Promise.all([
     Group.deleteMany({}),
+    TeamInvite ? TeamInvite.deleteMany({}) : Promise.resolve(),
     User.deleteMany({}),
-    AclEntry && AclEntry.deleteMany({}),
+    AclEntry ? AclEntry.deleteMany({}) : Promise.resolve(),
   ]);
 });
 
@@ -69,50 +183,26 @@ async function seedUser(overrides = {}) {
   const User = mongoose.models.User;
   const id = makeUserId();
   const email = overrides.email ?? `user-${id}@test.com`;
+  const role = overrides.role ?? 'USER';
   await User.create({
     _id: id,
     name: 'Test User ' + id,
     provider: 'local',
     ...overrides,
     email,
+    role,
   });
-  return { _id: id, id: id.toString(), email };
+  return { _id: id, id: id.toString(), email, role };
 }
 
 /**
- * Build a minimal express app wiring both the teams handlers and the
- * subgroup handlers onto the same router, mirroring what teams.js does.
+ * Build an Express test app that mounts the REAL teams.js router.
+ * Injecting req.user before the router runs so requireJwtAuth (bypassed)
+ * still has a user to work with.
  */
 function createApp(user) {
-  const { createTeamsHandlers, createSubgroupsHandlers } = require('@librechat/api');
-
-  const handlers = createTeamsHandlers({
-    createTeam: db.createTeam,
-    getUserTeams: db.getUserTeams,
-    getTeamRole: db.getTeamRole,
-    findGroupById: db.findGroupById,
-    updateGroupById: db.updateGroupById,
-    deleteGroup: db.deleteGroup,
-    removeTeamMember: db.removeTeamMember,
-    setMemberRole: db.setMemberRole,
-    transferOwnership: db.transferOwnership,
-    deleteInvitesByGroup: db.deleteInvitesByGroup,
-    findUsers: db.findUsers,
-  });
-
-  const subgroupHandlers = createSubgroupsHandlers({
-    getTeamRole: db.getTeamRole,
-    findGroupById: db.findGroupById,
-    createSubgroup: db.createSubgroup,
-    getTeamSubgroups: db.getTeamSubgroups,
-    getSubgroupById: db.getSubgroupById,
-    updateSubgroup: db.updateSubgroup,
-    deleteSubgroup: db.deleteSubgroup,
-    addSubgroupMember: db.addSubgroupMember,
-    removeSubgroupMember: db.removeSubgroupMember,
-    findUsers: db.findUsers,
-    deleteAclEntries: db.deleteAclEntries,
-  });
+  // Re-require each time so the user injector is per-request, not shared.
+  const teamsRouter = require('./teams');
 
   const app = express();
   app.use(express.json());
@@ -120,33 +210,11 @@ function createApp(user) {
     req.user = user;
     next();
   });
-
-  const router = express.Router();
-
-  router.post('/', handlers.create);
-  router.get('/', handlers.list);
-  router.get('/:id', handlers.get);
-  router.patch('/:id', handlers.update);
-  router.delete('/:id', handlers.remove);
-  router.get('/:id/members', handlers.listMembers);
-  router.delete('/:id/members/:userId', handlers.removeMember);
-  router.patch('/:id/members/:userId', handlers.changeMemberRole);
-  router.post('/:id/transfer', handlers.transferOwnership);
-
-  // Sub-group routes — must come after member routes
-  router.post('/:id/subgroups', subgroupHandlers.create);
-  router.get('/:id/subgroups', subgroupHandlers.list);
-  router.get('/:id/subgroups/:sgId', subgroupHandlers.get);
-  router.patch('/:id/subgroups/:sgId', subgroupHandlers.update);
-  router.delete('/:id/subgroups/:sgId', subgroupHandlers.remove);
-  router.post('/:id/subgroups/:sgId/members', subgroupHandlers.addMember);
-  router.delete('/:id/subgroups/:sgId/members/:userId', subgroupHandlers.removeMember);
-
-  app.use('/api/teams', router);
+  app.use('/api/teams', teamsRouter);
   return app;
 }
 
-describe('Sub-group Routes — Integration', () => {
+describe('Sub-group Routes — Real Router Integration', () => {
   it('owner creates a sub-group → 201 with subgroup DTO', async () => {
     const owner = await seedUser();
     const app = createApp(owner);
@@ -313,9 +381,7 @@ describe('Sub-group Routes — Integration', () => {
 
     const sgId = sgRes.body.subgroup._id;
 
-    const getRes = await request(app)
-      .get(`/api/teams/${teamId}/subgroups/${sgId}`)
-      .expect(200);
+    const getRes = await request(app).get(`/api/teams/${teamId}/subgroups/${sgId}`).expect(200);
 
     expect(getRes.body).toHaveProperty('subgroup');
     expect(getRes.body).toHaveProperty('members');
