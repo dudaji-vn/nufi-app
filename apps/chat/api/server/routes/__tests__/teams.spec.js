@@ -620,6 +620,8 @@ describe('Team Knowledge Routes — Integration', () => {
       findEntriesByPrincipal: db.findEntriesByPrincipal,
       revokePermission: db.revokePermission,
       grantPermission: PermissionService.grantPermission,
+      getSubgroupById: db.getSubgroupById,
+      getTeamSubgroups: db.getTeamSubgroups,
     });
 
     const app = express();

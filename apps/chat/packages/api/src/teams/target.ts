@@ -1,3 +1,4 @@
+import { isValidObjectIdString } from '@librechat/data-schemas';
 import type { IGroup } from '@librechat/data-schemas';
 
 export interface ResolveShareTargetDeps {
@@ -8,8 +9,9 @@ export interface ResolveShareTargetDeps {
  * Resolves the ACL principal for a share/unshare operation.
  *
  * - No `targetSubgroupId` → grant/revoke to the whole team (`teamId`).
+ * - Malformed `targetSubgroupId` (not a valid ObjectId) → 400, no DB call.
  * - Valid `targetSubgroupId` that belongs to this team → grant/revoke to the sub-group.
- * - Invalid / missing / cross-team `targetSubgroupId` → 404.
+ * - Non-existent or cross-team `targetSubgroupId` → 404.
  */
 export async function resolveShareTarget(
   deps: ResolveShareTargetDeps,
@@ -18,6 +20,10 @@ export async function resolveShareTarget(
 ): Promise<{ ok: true; principalId: string } | { ok: false; status: 400 | 404 }> {
   if (!targetSubgroupId) {
     return { ok: true, principalId: teamId };
+  }
+
+  if (!isValidObjectIdString(targetSubgroupId)) {
+    return { ok: false, status: 400 };
   }
 
   const sg = await deps.getSubgroupById(targetSubgroupId);

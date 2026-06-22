@@ -508,5 +508,59 @@ describe('createTeamResourceHandlers', () => {
         pg._id,
       );
     });
+
+    it('grants to sub-group principal when valid targetSubgroupId in body', async () => {
+      const sgId = makeId();
+      const pg = makePromptGroup();
+      const subgroup = makeSubgroup(sgId, teamId);
+      const deps = makeDeps({
+        getPromptGroup: jest.fn().mockResolvedValue(pg),
+        getSubgroupById: jest.fn().mockResolvedValue(subgroup),
+      });
+      const { sharePromptGroup } = createTeamResourceHandlers(deps);
+
+      const req = {
+        ...makeReq({ id: teamId, promptGroupId: pg._id.toString() }),
+        body: { targetSubgroupId: sgId },
+      };
+      const res = makeRes();
+
+      await sharePromptGroup(req as never, res as never);
+
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(deps.grantPermission).toHaveBeenCalledWith(
+        expect.objectContaining({
+          principalId: sgId,
+          resourceType: ResourceType.PROMPTGROUP,
+        }),
+      );
+    });
+
+    it('revokes from sub-group principal when valid targetSubgroupId in query', async () => {
+      const sgId = makeId();
+      const pg = makePromptGroup();
+      const subgroup = makeSubgroup(sgId, teamId);
+      const deps = makeDeps({
+        getPromptGroup: jest.fn().mockResolvedValue(pg),
+        getSubgroupById: jest.fn().mockResolvedValue(subgroup),
+      });
+      const { revokePromptGroup } = createTeamResourceHandlers(deps);
+
+      const req = {
+        ...makeReq({ id: teamId, promptGroupId: pg._id.toString() }),
+        query: { targetSubgroupId: sgId },
+      };
+      const res = makeRes();
+
+      await revokePromptGroup(req as never, res as never);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(deps.revokePermission).toHaveBeenCalledWith(
+        PrincipalType.GROUP,
+        sgId,
+        ResourceType.PROMPTGROUP,
+        pg._id,
+      );
+    });
   });
 });

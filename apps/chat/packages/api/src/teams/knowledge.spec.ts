@@ -70,6 +70,7 @@ function makeDeps(overrides: Partial<TeamKnowledgeHandlersDeps> = {}): TeamKnowl
     revokePermission: jest.fn().mockResolvedValue({}),
     grantPermission: jest.fn().mockResolvedValue({}),
     getSubgroupById: jest.fn().mockResolvedValue(null),
+    getTeamSubgroups: jest.fn().mockResolvedValue([]),
     ...overrides,
   };
 }
@@ -210,6 +211,7 @@ describe('createTeamKnowledgeHandlers', () => {
       const deps = makeDeps({
         findGroupById: jest.fn().mockResolvedValue(team),
         findFileById: jest.fn().mockResolvedValue(file),
+        getTeamSubgroups: jest.fn().mockResolvedValue([]),
         findEntriesByPrincipal: jest.fn().mockResolvedValue([existingEntry]),
       });
       const { add } = createTeamKnowledgeHandlers(deps);
@@ -235,6 +237,7 @@ describe('createTeamKnowledgeHandlers', () => {
       const deps = makeDeps({
         findGroupById: jest.fn().mockResolvedValue(team),
         findFileById: jest.fn().mockResolvedValue(file),
+        getTeamSubgroups: jest.fn().mockResolvedValue([]),
         findEntriesByPrincipal: jest.fn().mockResolvedValue([]),
       });
       const { add } = createTeamKnowledgeHandlers(deps);
@@ -248,6 +251,39 @@ describe('createTeamKnowledgeHandlers', () => {
 
       expect(res.status).toHaveBeenCalledWith(201);
       expect(deps.grantPermission).toHaveBeenCalled();
+    });
+
+    it('counts sub-group grants toward per-team total cap', async () => {
+      const callerId = makeId();
+      const sgId = makeId();
+      const team = makeTeam(teamId);
+      const file = makeFile(callerId);
+      const subgroup = makeSubgroup(sgId, teamId);
+      const existingSubgroupEntry = makeAclEntry(new Types.ObjectId());
+      const deps = makeDeps({
+        findGroupById: jest.fn().mockResolvedValue(team),
+        findFileById: jest.fn().mockResolvedValue(file),
+        getTeamSubgroups: jest.fn().mockResolvedValue([subgroup]),
+        // Team principal has 0 grants; sub-group has 1 — total = 1 = limit → reject
+        findEntriesByPrincipal: jest
+          .fn()
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([existingSubgroupEntry]),
+      });
+      const { add } = createTeamKnowledgeHandlers(deps);
+      const req = makeReq({ id: teamId }, { fileId: file.file_id }, callerId);
+      (req as unknown as Record<string, unknown>).config = {
+        config: { teams: { maxKnowledgeFilesPerTeam: 1 } },
+      };
+      const res = makeRes();
+
+      await add(req as unknown as import('~/types/http').ServerRequest, res);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect((res.json as jest.Mock).mock.calls[0][0]).toMatchObject({
+        error: 'Team knowledge limit reached',
+      });
+      expect(deps.grantPermission).not.toHaveBeenCalled();
     });
 
     it('proceeds when maxKnowledgeFilesPerTeam is not configured (unlimited)', async () => {
@@ -510,6 +546,30 @@ describe('createTeamKnowledgeHandlers', () => {
         params: { id: teamId, fileId: file.file_id },
         body: {},
         query: { targetSubgroupId: sgId },
+        user: { id: callerId },
+      };
+      const res = makeRes();
+
+      await remove(req as unknown as import('~/types/http').ServerRequest, res);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(deps.revokePermission).not.toHaveBeenCalled();
+    });
+
+    it('returns 404 when targetSubgroupId in query does not exist (null from db)', async () => {
+      const callerId = makeId();
+      const team = makeTeam(teamId);
+      const file = makeFile(callerId);
+      const deps = makeDeps({
+        findGroupById: jest.fn().mockResolvedValue(team),
+        findFileById: jest.fn().mockResolvedValue(file),
+        getSubgroupById: jest.fn().mockResolvedValue(null),
+      });
+      const { remove } = createTeamKnowledgeHandlers(deps);
+      const req = {
+        params: { id: teamId, fileId: file.file_id },
+        body: {},
+        query: { targetSubgroupId: makeId() },
         user: { id: callerId },
       };
       const res = makeRes();

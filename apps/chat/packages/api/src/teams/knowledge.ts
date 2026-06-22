@@ -51,6 +51,7 @@ export interface TeamKnowledgeHandlersDeps {
     grantedBy: string | Types.ObjectId;
   }) => Promise<unknown>;
   getSubgroupById: (id: string) => Promise<IGroup | null>;
+  getTeamSubgroups: (parentTeamId: string | Types.ObjectId) => Promise<IGroup[]>;
 }
 
 function toSafeFile(file: IMongoFile): SafeFileInfo {
@@ -65,8 +66,14 @@ function toSafeFile(file: IMongoFile): SafeFileInfo {
 }
 
 export function createTeamKnowledgeHandlers(deps: TeamKnowledgeHandlersDeps) {
-  const { findFileById, getFiles, findEntriesByPrincipal, revokePermission, grantPermission } =
-    deps;
+  const {
+    findFileById,
+    getFiles,
+    findEntriesByPrincipal,
+    revokePermission,
+    grantPermission,
+    getTeamSubgroups,
+  } = deps;
 
   async function add(req: ServerRequest, res: Response) {
     try {
@@ -110,13 +117,17 @@ export function createTeamKnowledgeHandlers(deps: TeamKnowledgeHandlersDeps) {
 
       const maxKnowledgeFilesPerTeam = req.config?.config?.teams?.maxKnowledgeFilesPerTeam;
       if (maxKnowledgeFilesPerTeam !== undefined) {
-        const groupObjectId = new Types.ObjectId(id);
-        const existing = await findEntriesByPrincipal(
-          PrincipalType.GROUP,
-          groupObjectId,
-          ResourceType.FILE,
+        // Per-team TOTAL: count FILE grants across the team principal and all its sub-groups.
+        const subgroups = await getTeamSubgroups(id);
+        const subgroupIds = subgroups.map((sg) => sg._id.toString());
+        const principalIds = [id, ...subgroupIds];
+        const counts = await Promise.all(
+          principalIds.map((pid) =>
+            findEntriesByPrincipal(PrincipalType.GROUP, pid, ResourceType.FILE),
+          ),
         );
-        if (existing.length >= maxKnowledgeFilesPerTeam) {
+        const total = counts.reduce((sum, entries) => sum + entries.length, 0);
+        if (total >= maxKnowledgeFilesPerTeam) {
           return res.status(403).json({ error: 'Team knowledge limit reached' });
         }
       }
