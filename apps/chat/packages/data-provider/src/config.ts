@@ -1391,6 +1391,7 @@ export const configSchema = z.object({
       maxTeamsPerUser: z.number().int().positive().optional(),
       maxMembersPerTeam: z.number().int().positive().optional(),
       maxKnowledgeFilesPerTeam: z.number().int().positive().optional(),
+      maxSubgroupsPerTeam: z.number().int().positive().optional(),
     })
     .optional(),
   fileConfig: fileConfigSchema.optional(),

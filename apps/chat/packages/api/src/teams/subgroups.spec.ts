@@ -245,6 +245,57 @@ describe('createSubgroupsHandlers', () => {
       expect(status).toHaveBeenCalledWith(500);
       expect(json).toHaveBeenCalledWith({ error: 'Failed to create sub-group' });
     });
+
+    it('returns 403 when maxSubgroupsPerTeam limit is reached', async () => {
+      const team = mockTeam();
+      const existingSg = mockSubgroup({ name: 'Existing' });
+      const getTeamSubgroups = jest.fn().mockResolvedValue([existingSg]);
+      const createSubgroup = jest.fn();
+      const deps = createDeps({
+        getTeamRole: jest.fn().mockResolvedValue('owner'),
+        findGroupById: jest.fn().mockResolvedValue(team),
+        getTeamSubgroups,
+        createSubgroup,
+      });
+      const handlers = createSubgroupsHandlers(deps);
+      const { req, res, status, json } = createReqRes({
+        params: { id: teamId },
+        body: { name: 'Second' },
+      });
+      (req as unknown as Record<string, unknown>).config = {
+        config: { teams: { maxSubgroupsPerTeam: 1 } },
+      };
+
+      await handlers.create(req, res);
+
+      expect(status).toHaveBeenCalledWith(403);
+      expect(json).toHaveBeenCalledWith({ error: 'Sub-group limit reached' });
+      expect(createSubgroup).not.toHaveBeenCalled();
+    });
+
+    it('allows creation when maxSubgroupsPerTeam is unset (unlimited)', async () => {
+      const team = mockTeam();
+      const existingSg = mockSubgroup({ name: 'Existing' });
+      const getTeamSubgroups = jest.fn().mockResolvedValue([existingSg]);
+      const sg = mockSubgroup({ name: 'Second' });
+      const createSubgroup = jest.fn().mockResolvedValue(sg);
+      const deps = createDeps({
+        getTeamRole: jest.fn().mockResolvedValue('owner'),
+        findGroupById: jest.fn().mockResolvedValue(team),
+        getTeamSubgroups,
+        createSubgroup,
+      });
+      const handlers = createSubgroupsHandlers(deps);
+      const { req, res, status } = createReqRes({
+        params: { id: teamId },
+        body: { name: 'Second' },
+      });
+
+      await handlers.create(req, res);
+
+      expect(status).toHaveBeenCalledWith(201);
+      expect(createSubgroup).toHaveBeenCalled();
+    });
   });
 
   describe('list', () => {

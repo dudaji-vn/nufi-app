@@ -107,6 +107,14 @@ export function createSubgroupsHandlers(deps: SubgroupsHandlersDeps) {
         return res.status(400).json({ error: 'name is required' });
       }
 
+      const maxSubgroupsPerTeam = req.config?.config?.teams?.maxSubgroupsPerTeam;
+      if (maxSubgroupsPerTeam !== undefined) {
+        const existing = await deps.getTeamSubgroups(id);
+        if (existing.length >= maxSubgroupsPerTeam) {
+          return res.status(403).json({ error: 'Sub-group limit reached' });
+        }
+      }
+
       const { team } = access;
       const sg = await deps.createSubgroup({
         parentTeamId: team._id,
