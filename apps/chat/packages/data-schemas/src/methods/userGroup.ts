@@ -1045,41 +1045,45 @@ export function createUserGroupMethods(mongoose: typeof import('mongoose')) {
     return Group.find({ parentTeamId, kind: 'team_subgroup' }).lean<IGroup[]>();
   }
 
-  /** Find a sub-group by its ID. */
+  /** Find a sub-group by its ID. Filters by kind:'team_subgroup' to prevent reading team docs. */
   async function getSubgroupById(
     subgroupId: string | Types.ObjectId,
   ): Promise<IGroup | null> {
     const Group = mongoose.models.Group as Model<IGroup>;
-    return Group.findById(subgroupId).lean<IGroup>();
+    return Group.findOne({ _id: subgroupId, kind: 'team_subgroup' }).lean<IGroup | null>();
   }
 
-  /** Patch a sub-group's name and/or description. */
+  /** Patch a sub-group's name and/or description. Filters by kind:'team_subgroup'. */
   async function updateSubgroup(
     subgroupId: string | Types.ObjectId,
     updates: { name?: string; description?: string },
   ): Promise<IGroup | null> {
     const Group = mongoose.models.Group as Model<IGroup>;
-    return Group.findByIdAndUpdate(
-      subgroupId,
+    return Group.findOneAndUpdate(
+      { _id: subgroupId, kind: 'team_subgroup' },
       { $set: updates },
       { new: true },
-    ).lean<IGroup>();
+    ).lean<IGroup | null>();
   }
 
-  /** Delete a sub-group document. */
+  /** Delete a sub-group document. Filters by kind:'team_subgroup' to prevent deleting teams. */
   async function deleteSubgroup(
     subgroupId: string | Types.ObjectId,
     session?: ClientSession,
   ): Promise<void> {
     const Group = mongoose.models.Group as Model<IGroup>;
     const options = session ? { session } : {};
-    await Group.deleteOne({ _id: subgroupId }, options);
+    const result = await Group.deleteOne({ _id: subgroupId, kind: 'team_subgroup' }, options);
+    if (result.deletedCount === 0) {
+      throw new Error('Sub-group not found');
+    }
   }
 
   /**
    * Add a user to a sub-group.
    * Enforces the team-subset invariant: the user must already be in the parent
-   * team's memberIds. Dual-writes memberIds (string ACL) + members (role list).
+   * team's memberIds. Uses resolved memberId (mirrors addTeamMember) and
+   * performs an atomic findOneAndUpdate to avoid race conditions on duplicate adds.
    */
   async function addSubgroupMember(params: {
     subgroupId: string | Types.ObjectId;
@@ -1088,28 +1092,44 @@ export function createUserGroupMethods(mongoose: typeof import('mongoose')) {
   }): Promise<IGroup> {
     const { subgroupId, userId, session } = params;
     const Group = mongoose.models.Group as Model<IGroup>;
-    const sg = await Group.findById(subgroupId);
+
+    const sg = await Group.findOne({ _id: subgroupId, kind: 'team_subgroup' }).lean<IGroup | null>();
     if (!sg) {
       throw new Error('Sub-group not found');
     }
-    const team = await Group.findById(sg.parentTeamId).lean<IGroup>();
-    if (!team || !(team.memberIds ?? []).includes(userId)) {
+
+    const userObjectId = new Types.ObjectId(userId);
+    const resolvedId = await resolveMemberIdValue(userObjectId, session);
+
+    const team = await Group.findById(sg.parentTeamId).lean<IGroup | null>();
+    if (!team || !(team.memberIds ?? []).includes(resolvedId)) {
       throw new Error('User is not a member of the team');
     }
-    if (!sg.memberIds?.includes(userId)) {
-      const userObjectId = new Types.ObjectId(userId);
-      sg.memberIds = [...(sg.memberIds ?? []), userId];
-      sg.members = [
-        ...(sg.members ?? []),
-        { userId: userObjectId, role: 'member', joinedAt: new Date() },
-      ];
-      await sg.save({ session });
+
+    const options = { new: true, ...(session ? { session } : {}) };
+    const updated = await Group.findOneAndUpdate(
+      { _id: subgroupId, kind: 'team_subgroup', memberIds: { $ne: resolvedId } },
+      {
+        $addToSet: { memberIds: resolvedId },
+        $push: { members: { userId: userObjectId, role: 'member', joinedAt: new Date() } },
+      },
+      options,
+    ).lean<IGroup | null>();
+
+    if (updated) {
+      return updated;
     }
-    return sg.toObject() as IGroup;
+    // No doc matched: user already a member — fetch and return current state
+    const current = await Group.findOne({ _id: subgroupId, kind: 'team_subgroup' }).lean<IGroup | null>();
+    if (!current) {
+      throw new Error('Sub-group not found');
+    }
+    return current;
   }
 
   /**
    * Remove a user from a sub-group, pulling from both memberIds and members.
+   * Filters by kind:'team_subgroup' to prevent patching team docs.
    */
   async function removeSubgroupMember(params: {
     subgroupId: string | Types.ObjectId;
@@ -1119,12 +1139,13 @@ export function createUserGroupMethods(mongoose: typeof import('mongoose')) {
     const { subgroupId, userId, session } = params;
     const Group = mongoose.models.Group as Model<IGroup>;
     const userObjectId = new Types.ObjectId(userId);
+    const resolvedId = await resolveMemberIdValue(userObjectId, session);
     const options = { new: true, ...(session ? { session } : {}) };
-    const updated = await Group.findByIdAndUpdate(
-      subgroupId,
-      { $pull: { memberIds: userId, members: { userId: userObjectId } } },
+    const updated = await Group.findOneAndUpdate(
+      { _id: subgroupId, kind: 'team_subgroup' },
+      { $pull: { memberIds: resolvedId, members: { userId: userObjectId } } },
       options,
-    ).lean<IGroup>();
+    ).lean<IGroup | null>();
     if (!updated) {
       throw new Error('Sub-group not found');
     }

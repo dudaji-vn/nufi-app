@@ -58,18 +58,24 @@ describe('sub-group CRUD + membership methods', () => {
     };
   }
 
-  test('createSubgroup stores kind/parentTeamId and inherits tenantId', async () => {
-    const { team, ownerId } = await setupTeamWithMembers();
+  test('createSubgroup stores kind/parentTeamId and inherits tenantId from parent', async () => {
+    const owner = await makeUser();
+    const team = await methods.createTeam({
+      name: 'TenantTeam',
+      ownerId: owner._id,
+      tenantId: 'tenant-abc',
+    });
     const sg = await methods.createSubgroup({
       parentTeamId: team._id,
       name: 'Eng',
-      ownerId,
-      tenantId: 'tenant-abc',
+      ownerId: owner._id.toString(),
+      tenantId: team.tenantId,
     });
     expect(sg.kind).toBe('team_subgroup');
     expect(sg.parentTeamId?.toString()).toBe(team._id.toString());
     expect(sg.name).toBe('Eng');
     expect(sg.tenantId).toBe('tenant-abc');
+    expect(sg.tenantId).toBe(team.tenantId);
   });
 
   test('addSubgroupMember adds a team member (dual-writes memberIds + members)', async () => {
@@ -84,8 +90,9 @@ describe('sub-group CRUD + membership methods', () => {
   test('addSubgroupMember REJECTS a non-team-member', async () => {
     const { team, ownerId } = await setupTeamWithMembers();
     const sg = await methods.createSubgroup({ parentTeamId: team._id, name: 'Eng', ownerId });
+    const stranger = new mongoose.Types.ObjectId().toString();
     await expect(
-      methods.addSubgroupMember({ subgroupId: sg._id, userId: 'stranger' }),
+      methods.addSubgroupMember({ subgroupId: sg._id, userId: stranger }),
     ).rejects.toThrow(/not a member of the team/i);
   });
 
@@ -187,5 +194,41 @@ describe('sub-group CRUD + membership methods', () => {
     await methods.deleteSubgroup(sg._id);
     const after = await Group.findById(sg._id).lean();
     expect(after).toBeNull();
+  });
+
+  // Guard for fix #2: deleteSubgroup with a team's _id must NOT delete the team
+  test('[guard #2] deleteSubgroup with a team id throws and does NOT delete the team', async () => {
+    const { team } = await setupTeamWithMembers();
+    await expect(methods.deleteSubgroup(team._id)).rejects.toThrow(/sub-group not found/i);
+    const still = await Group.findById(team._id).lean();
+    expect(still).not.toBeNull();
+    expect(still?.kind).toBe('team');
+  });
+
+  // Guard for fix #1: an Entra-style member (idOnTheSource != _id string) can be added to a subgroup
+  test('[guard #1] addSubgroupMember accepts an Entra-synced team member resolved via idOnTheSource', async () => {
+    const entraGuid = 'entra-guid-' + Math.random().toString(36).slice(2);
+    const entraUser = await makeUser(entraGuid);
+    const owner = await makeUser();
+    const team = await methods.createTeam({ name: 'EntraTeam', ownerId: owner._id });
+    // Manually seed memberIds with entraGuid to simulate Entra sync
+    await Group.findByIdAndUpdate(team._id, { $addToSet: { memberIds: entraGuid } });
+    await Group.findByIdAndUpdate(team._id, {
+      $push: { members: { userId: entraUser._id, role: 'member', joinedAt: new Date() } },
+    });
+
+    const sg = await methods.createSubgroup({
+      parentTeamId: team._id,
+      name: 'EntraSub',
+      ownerId: owner._id.toString(),
+    });
+    const updated = await methods.addSubgroupMember({
+      subgroupId: sg._id,
+      userId: entraUser._id.toString(),
+    });
+    // The stored memberId must be the Entra GUID, not the raw Mongo _id
+    expect(updated.memberIds).toContain(entraGuid);
+    expect(updated.memberIds).not.toContain(entraUser._id.toString());
+    expect(updated.members?.some((m) => m.userId.toString() === entraUser._id.toString())).toBe(true);
   });
 });
