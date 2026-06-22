@@ -18,6 +18,9 @@ import type {
   TRemoveKnowledgeRequest,
   TUnshareAgentRequest,
   TUnsharePromptRequest,
+  TSubgroup,
+  TCreateSubgroupRequest,
+  TUpdateSubgroupRequest,
 } from 'librechat-data-provider';
 
 export const useCreateTeamMutation = (
@@ -208,12 +211,21 @@ export const useDeclineInviteMutation = (
 };
 
 export const useAddKnowledgeMutation = (
-  options?: UseMutationOptions<{ success: boolean; fileId: string }, Error, TAddKnowledgeRequest>,
+  options?: UseMutationOptions<
+    { success: boolean; fileId: string },
+    Error,
+    TAddKnowledgeRequest & { targetSubgroupId?: string }
+  >,
 ) => {
   const queryClient = useQueryClient();
-  return useMutation<{ success: boolean; fileId: string }, Error, TAddKnowledgeRequest>(
+  return useMutation<
+    { success: boolean; fileId: string },
+    Error,
+    TAddKnowledgeRequest & { targetSubgroupId?: string }
+  >(
     [MutationKeys.addTeamKnowledge],
-    ({ teamId, fileId }: TAddKnowledgeRequest) => dataService.addTeamKnowledge(teamId, fileId),
+    ({ teamId, fileId, targetSubgroupId }: TAddKnowledgeRequest & { targetSubgroupId?: string }) =>
+      dataService.addTeamKnowledge(teamId, fileId, targetSubgroupId),
     {
       ...options,
       onSuccess: (data, variables, context) => {
@@ -225,13 +237,25 @@ export const useAddKnowledgeMutation = (
 };
 
 export const useRemoveKnowledgeMutation = (
-  options?: UseMutationOptions<{ success: boolean }, Error, TRemoveKnowledgeRequest>,
+  options?: UseMutationOptions<
+    { success: boolean },
+    Error,
+    TRemoveKnowledgeRequest & { targetSubgroupId?: string }
+  >,
 ) => {
   const queryClient = useQueryClient();
-  return useMutation<{ success: boolean }, Error, TRemoveKnowledgeRequest>(
+  return useMutation<
+    { success: boolean },
+    Error,
+    TRemoveKnowledgeRequest & { targetSubgroupId?: string }
+  >(
     [MutationKeys.removeTeamKnowledge],
-    ({ teamId, fileId }: TRemoveKnowledgeRequest) =>
-      dataService.removeTeamKnowledge(teamId, fileId),
+    ({
+      teamId,
+      fileId,
+      targetSubgroupId,
+    }: TRemoveKnowledgeRequest & { targetSubgroupId?: string }) =>
+      dataService.removeTeamKnowledge(teamId, fileId, targetSubgroupId),
     {
       ...options,
       onSuccess: (data, variables, context) => {
@@ -243,12 +267,21 @@ export const useRemoveKnowledgeMutation = (
 };
 
 export const useShareAgentMutation = (
-  options?: UseMutationOptions<{ success: boolean; id: string }, Error, TShareAgentRequest>,
+  options?: UseMutationOptions<
+    { success: boolean; id: string },
+    Error,
+    TShareAgentRequest & { targetSubgroupId?: string }
+  >,
 ) => {
   const queryClient = useQueryClient();
-  return useMutation<{ success: boolean; id: string }, Error, TShareAgentRequest>(
+  return useMutation<
+    { success: boolean; id: string },
+    Error,
+    TShareAgentRequest & { targetSubgroupId?: string }
+  >(
     [MutationKeys.shareTeamAgent],
-    ({ teamId, agentId }: TShareAgentRequest) => dataService.shareTeamAgent(teamId, agentId),
+    ({ teamId, agentId, targetSubgroupId }: TShareAgentRequest & { targetSubgroupId?: string }) =>
+      dataService.shareTeamAgent(teamId, agentId, targetSubgroupId),
     {
       ...options,
       onSuccess: (data, variables, context) => {
@@ -260,12 +293,25 @@ export const useShareAgentMutation = (
 };
 
 export const useUnshareAgentMutation = (
-  options?: UseMutationOptions<{ success: boolean }, Error, TUnshareAgentRequest>,
+  options?: UseMutationOptions<
+    { success: boolean },
+    Error,
+    TUnshareAgentRequest & { targetSubgroupId?: string }
+  >,
 ) => {
   const queryClient = useQueryClient();
-  return useMutation<{ success: boolean }, Error, TUnshareAgentRequest>(
+  return useMutation<
+    { success: boolean },
+    Error,
+    TUnshareAgentRequest & { targetSubgroupId?: string }
+  >(
     [MutationKeys.unshareTeamAgent],
-    ({ teamId, agentId }: TUnshareAgentRequest) => dataService.unshareTeamAgent(teamId, agentId),
+    ({
+      teamId,
+      agentId,
+      targetSubgroupId,
+    }: TUnshareAgentRequest & { targetSubgroupId?: string }) =>
+      dataService.unshareTeamAgent(teamId, agentId, targetSubgroupId),
     {
       ...options,
       onSuccess: (data, variables, context) => {
@@ -277,13 +323,25 @@ export const useUnshareAgentMutation = (
 };
 
 export const useSharePromptMutation = (
-  options?: UseMutationOptions<{ success: boolean; id: string }, Error, TSharePromptRequest>,
+  options?: UseMutationOptions<
+    { success: boolean; id: string },
+    Error,
+    TSharePromptRequest & { targetSubgroupId?: string }
+  >,
 ) => {
   const queryClient = useQueryClient();
-  return useMutation<{ success: boolean; id: string }, Error, TSharePromptRequest>(
+  return useMutation<
+    { success: boolean; id: string },
+    Error,
+    TSharePromptRequest & { targetSubgroupId?: string }
+  >(
     [MutationKeys.shareTeamPrompt],
-    ({ teamId, promptGroupId }: TSharePromptRequest) =>
-      dataService.shareTeamPrompt(teamId, promptGroupId),
+    ({
+      teamId,
+      promptGroupId,
+      targetSubgroupId,
+    }: TSharePromptRequest & { targetSubgroupId?: string }) =>
+      dataService.shareTeamPrompt(teamId, promptGroupId, targetSubgroupId),
     {
       ...options,
       onSuccess: (data, variables, context) => {
@@ -295,17 +353,130 @@ export const useSharePromptMutation = (
 };
 
 export const useUnsharePromptMutation = (
-  options?: UseMutationOptions<{ success: boolean }, Error, TUnsharePromptRequest>,
+  options?: UseMutationOptions<
+    { success: boolean },
+    Error,
+    TUnsharePromptRequest & { targetSubgroupId?: string }
+  >,
 ) => {
   const queryClient = useQueryClient();
-  return useMutation<{ success: boolean }, Error, TUnsharePromptRequest>(
+  return useMutation<
+    { success: boolean },
+    Error,
+    TUnsharePromptRequest & { targetSubgroupId?: string }
+  >(
     [MutationKeys.unshareTeamPrompt],
-    ({ teamId, promptGroupId }: TUnsharePromptRequest) =>
-      dataService.unshareTeamPrompt(teamId, promptGroupId),
+    ({
+      teamId,
+      promptGroupId,
+      targetSubgroupId,
+    }: TUnsharePromptRequest & { targetSubgroupId?: string }) =>
+      dataService.unshareTeamPrompt(teamId, promptGroupId, targetSubgroupId),
     {
       ...options,
       onSuccess: (data, variables, context) => {
         queryClient.invalidateQueries([QueryKeys.teamPrompts, variables.teamId]);
+        options?.onSuccess?.(data, variables, context);
+      },
+    },
+  );
+};
+
+export const useCreateSubgroupMutation = (
+  teamId: string,
+  options?: UseMutationOptions<{ subgroup: TSubgroup }, Error, TCreateSubgroupRequest>,
+) => {
+  const queryClient = useQueryClient();
+  return useMutation<{ subgroup: TSubgroup }, Error, TCreateSubgroupRequest>(
+    [MutationKeys.createSubgroup],
+    (body: TCreateSubgroupRequest) => dataService.createSubgroup(teamId, body),
+    {
+      ...options,
+      onSuccess: (data, variables, context) => {
+        queryClient.invalidateQueries([QueryKeys.subgroups, teamId]);
+        options?.onSuccess?.(data, variables, context);
+      },
+    },
+  );
+};
+
+export const useUpdateSubgroupMutation = (
+  teamId: string,
+  options?: UseMutationOptions<
+    { subgroup: TSubgroup },
+    Error,
+    TUpdateSubgroupRequest & { sgId: string }
+  >,
+) => {
+  const queryClient = useQueryClient();
+  return useMutation<{ subgroup: TSubgroup }, Error, TUpdateSubgroupRequest & { sgId: string }>(
+    [MutationKeys.updateSubgroup],
+    ({ sgId, ...body }: TUpdateSubgroupRequest & { sgId: string }) =>
+      dataService.updateSubgroup(teamId, sgId, body),
+    {
+      ...options,
+      onSuccess: (data, variables, context) => {
+        queryClient.invalidateQueries([QueryKeys.subgroups, teamId]);
+        queryClient.invalidateQueries([QueryKeys.subgroup, teamId, variables.sgId]);
+        options?.onSuccess?.(data, variables, context);
+      },
+    },
+  );
+};
+
+export const useDeleteSubgroupMutation = (
+  teamId: string,
+  options?: UseMutationOptions<{ success: boolean }, Error, string>,
+) => {
+  const queryClient = useQueryClient();
+  return useMutation<{ success: boolean }, Error, string>(
+    [MutationKeys.deleteSubgroup],
+    (sgId: string) => dataService.deleteSubgroup(teamId, sgId),
+    {
+      ...options,
+      onSuccess: (data, sgId, context) => {
+        queryClient.invalidateQueries([QueryKeys.subgroups, teamId]);
+        queryClient.invalidateQueries([QueryKeys.teamKnowledge, teamId]);
+        queryClient.invalidateQueries([QueryKeys.teamAgents, teamId]);
+        queryClient.invalidateQueries([QueryKeys.teamPrompts, teamId]);
+        options?.onSuccess?.(data, sgId, context);
+      },
+    },
+  );
+};
+
+export const useAddSubgroupMemberMutation = (
+  teamId: string,
+  options?: UseMutationOptions<{ success: boolean }, Error, { sgId: string; userId: string }>,
+) => {
+  const queryClient = useQueryClient();
+  return useMutation<{ success: boolean }, Error, { sgId: string; userId: string }>(
+    [MutationKeys.addSubgroupMember],
+    ({ sgId, userId }: { sgId: string; userId: string }) =>
+      dataService.addSubgroupMember(teamId, sgId, userId),
+    {
+      ...options,
+      onSuccess: (data, variables, context) => {
+        queryClient.invalidateQueries([QueryKeys.subgroup, teamId, variables.sgId]);
+        options?.onSuccess?.(data, variables, context);
+      },
+    },
+  );
+};
+
+export const useRemoveSubgroupMemberMutation = (
+  teamId: string,
+  options?: UseMutationOptions<{ success: boolean }, Error, { sgId: string; userId: string }>,
+) => {
+  const queryClient = useQueryClient();
+  return useMutation<{ success: boolean }, Error, { sgId: string; userId: string }>(
+    [MutationKeys.removeSubgroupMember],
+    ({ sgId, userId }: { sgId: string; userId: string }) =>
+      dataService.removeSubgroupMember(teamId, sgId, userId),
+    {
+      ...options,
+      onSuccess: (data, variables, context) => {
+        queryClient.invalidateQueries([QueryKeys.subgroup, teamId, variables.sgId]);
         options?.onSuccess?.(data, variables, context);
       },
     },

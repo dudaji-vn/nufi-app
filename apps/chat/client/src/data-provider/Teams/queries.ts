@@ -10,6 +10,8 @@ import type {
   TTeamKnowledgeListResponse,
   TTeamAgentsListResponse,
   TTeamPromptsListResponse,
+  TSubgroupListResponse,
+  TSubgroupDetailResponse,
 } from 'librechat-data-provider';
 
 export const useTeamsQuery = (
@@ -128,6 +130,41 @@ export const useTeamPromptsQuery = (
     () => dataService.getTeamPrompts(id),
     {
       enabled: !!id,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      refetchOnMount: false,
+      ...config,
+    },
+  );
+};
+
+export const useSubgroupsQuery = (
+  teamId: string,
+  config?: UseQueryOptions<TSubgroupListResponse>,
+): QueryObserverResult<TSubgroupListResponse> => {
+  return useQuery<TSubgroupListResponse>(
+    [QueryKeys.subgroups, teamId],
+    () => dataService.listSubgroups(teamId),
+    {
+      enabled: !!teamId,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      refetchOnMount: false,
+      ...config,
+    },
+  );
+};
+
+export const useSubgroupQuery = (
+  teamId: string,
+  sgId: string,
+  config?: UseQueryOptions<TSubgroupDetailResponse>,
+): QueryObserverResult<TSubgroupDetailResponse> => {
+  return useQuery<TSubgroupDetailResponse>(
+    [QueryKeys.subgroup, teamId, sgId],
+    () => dataService.getSubgroup(teamId, sgId),
+    {
+      enabled: !!teamId && !!sgId,
       refetchOnWindowFocus: false,
       refetchOnReconnect: false,
       refetchOnMount: false,
