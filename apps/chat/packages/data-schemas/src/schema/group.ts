@@ -68,8 +68,13 @@ const groupSchema = new Schema<IGroup>(
     },
     kind: {
       type: String,
-      enum: ['group', 'team'],
+      enum: ['group', 'team', 'team_subgroup'],
       default: 'group',
+      index: true,
+    },
+    parentTeamId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Group',
       index: true,
     },
     ownerId: {

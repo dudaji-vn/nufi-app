@@ -2,7 +2,7 @@ import type { Document, Types } from 'mongoose';
 import { CursorPaginationParams } from '~/common';
 
 export type TeamRole = 'owner' | 'admin' | 'member';
-export type GroupKind = 'group' | 'team';
+export type GroupKind = 'group' | 'team' | 'team_subgroup';
 
 export interface IGroupMember {
   userId: Types.ObjectId;
@@ -24,10 +24,12 @@ export interface IGroup extends Document {
   createdAt?: Date;
   updatedAt?: Date;
   tenantId?: string;
-  /** 'team' = self-service workspace; 'group' = admin/Entra group (default). */
+  /** 'team' = self-service workspace; 'group' = admin/Entra group (default); 'team_subgroup' = sub-group within a team. */
   kind?: GroupKind;
   /** The single team owner. Always equals a member whose role is 'owner'. */
   ownerId?: Types.ObjectId;
+  /** Parent team ID for sub-groups (kind='team_subgroup'). */
+  parentTeamId?: Types.ObjectId;
   /** Per-member roles for teams. Source of truth for role; kept in sync with memberIds. */
   members?: IGroupMember[];
   joinPolicy?: 'invite';
