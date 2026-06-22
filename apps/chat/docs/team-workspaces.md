@@ -132,6 +132,94 @@ When a limit is reached, the relevant request returns **403 Forbidden**.
 
 ---
 
+## Sub-groups (RBAC)
+
+Sub-groups let you scope shared resources to a named subset of team members — for example, giving an Engineering group access to engineering docs while Legal sees only legal docs. Resources can still be shared with the whole team (the existing behavior) or with one or more specific sub-groups. Access is always additive: more group memberships mean more access, never less.
+
+### Data model
+
+A sub-group is a `Group` document with:
+
+- `kind: 'team_subgroup'` — distinguishes it from the parent team (`kind: 'team'`) and admin-managed groups (`kind: 'group'`).
+- `parentTeamId` — references the parent team Group.
+
+Sub-groups are **flat** (one level; no nesting). Membership is **binary** (in or out; no per-sub-group roles). A user may belong to multiple sub-groups within the same team, and their accessible resource set is the union of all matching grants. Sub-group membership must be a **subset** of the parent team's membership — adding a user who is not a team member is rejected.
+
+### API
+
+#### Sub-group management
+
+All sub-group management routes require at least `admin` role within the team.
+
+| Method | Path | Body | Behavior |
+|---|---|---|---|
+| `POST` | `/api/teams/:id/subgroups` | `{name, description?}` | Create a sub-group. 201 returns `{subgroup}` with `_id`, `name`, `description`, `parentTeamId`, `memberCount`. Enforces `maxSubgroupsPerTeam` if configured (403 when limit reached). |
+| `GET` | `/api/teams/:id/subgroups` | — | List all sub-groups with member counts. Admin/owner only. |
+| `GET` | `/api/teams/:id/subgroups/:sgId` | — | Sub-group detail: metadata + enriched member list (name, email, avatar). |
+| `PATCH` | `/api/teams/:id/subgroups/:sgId` | `{name?, description?}` | Rename or update description. At least one field required. |
+| `DELETE` | `/api/teams/:id/subgroups/:sgId` | — | Delete sub-group; revokes all ACL grants made to it. 200 `{success:true}`. |
+| `POST` | `/api/teams/:id/subgroups/:sgId/members` | `{userId}` | Add a team member to the sub-group. Rejects if the user is not already a team member. |
+| `DELETE` | `/api/teams/:id/subgroups/:sgId/members/:userId` | — | Remove a member from the sub-group. 200 `{success:true}`. |
+
+#### Targeted sharing
+
+The existing share endpoints accept an optional `targetSubgroupId` to scope a grant to a sub-group instead of the whole team:
+
+| Method | Path | Target param | Behavior |
+|---|---|---|---|
+| `POST` | `/:id/knowledge` | `targetSubgroupId` in request body | Share a file with the whole team (omitted) or a specific sub-group. |
+| `DELETE` | `/:id/knowledge/:fileId` | `targetSubgroupId` as query param | Revoke the grant for the specified target (team or sub-group). |
+| `POST` | `/:id/agents/:agentId` | `targetSubgroupId` in request body | Share an agent with the whole team or a specific sub-group. |
+| `DELETE` | `/:id/agents/:agentId` | `targetSubgroupId` as query param | Revoke for the specified target. |
+| `POST` | `/:id/prompts/:promptGroupId` | `targetSubgroupId` in request body | Share a prompt group with the whole team or a specific sub-group. |
+| `DELETE` | `/:id/prompts/:promptGroupId` | `targetSubgroupId` as query param | Revoke for the specified target. |
+
+When `targetSubgroupId` is omitted, behavior is unchanged from today (grant or revoke against the team principal). When provided, it must be a valid ObjectId that belongs to the given team, else 400/404.
+
+#### List responses — `target` annotation
+
+Every item in `GET /:id/knowledge`, `GET /:id/agents`, and `GET /:id/prompts` includes a `target` field indicating which principal holds the grant:
+
+```json
+{ "type": "team" }
+{ "type": "subgroup", "id": "<sgId>", "name": "Engineering" }
+```
+
+**Members** see only resources granted to the team or to a sub-group they belong to (caller-scoped). **Owner/admin** see all grants across the team and every sub-group, each annotated with its target — for management purposes.
+
+### Access semantics
+
+- **Union, no deny.** A member's visible resource set is the union of team-wide grants and the grants of every sub-group they belong to. There are no negative/deny rules.
+- **Members** cannot see sub-group structure (that is owner/admin-only). They simply see the resources they have access to.
+- **RAG (file-search) path:** `findAccessibleResources` already resolves the caller's full principal set (user + every group they belong to), so a file granted to a sub-group is automatically included in that member's RAG scope. No special handling is required in the file-search hot path.
+
+### Configuration limit
+
+Add `maxSubgroupsPerTeam` to the `teams` block in `librechat.yaml` to cap how many sub-groups a team may have. Omitting it means no limit.
+
+```yaml
+teams:
+  maxTeamsPerUser: 5
+  maxMembersPerTeam: 50
+  maxKnowledgeFilesPerTeam: 100
+  maxSubgroupsPerTeam: 20   # Optional. Unlimited if unset.
+```
+
+When the limit is reached, `POST /:id/subgroups` returns **403 Forbidden**.
+
+### Cascade behavior
+
+| Trigger | Effect on sub-groups |
+|---|---|
+| Delete a sub-group | All ACL grants made to that sub-group are revoked immediately. |
+| Remove a member from the team | The member is also removed from every sub-group of that team. |
+| Delete the team | All sub-groups are deleted and their grants revoked (extends the existing team-delete cascade). |
+| Delete a user | The user's sub-group memberships are cleaned up across all teams; for teams where the user is the sole owner with no other admins, the team and its sub-groups are deleted. |
+
+Existing teams with no sub-groups behave exactly as before — all existing ACL grants remain on the team principal and are visible to every member.
+
+---
+
 ## Lifecycle Notes
 
 - **Invite expiry** — invites expire after 7 days by default. Expired invites are excluded at query time; no periodic cleanup job is required.
