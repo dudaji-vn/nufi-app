@@ -149,7 +149,7 @@ export default function TeamDetail({ teamId }: TeamDetailProps) {
               </TabsTrigger>
             )}
           </TabsList>
-          <TabsContent value="members">
+          <TabsContent value="members" className="p-0">
             <MembersTab
               teamId={teamId}
               members={members}
@@ -157,17 +157,17 @@ export default function TeamDetail({ teamId }: TeamDetailProps) {
               callerId={user?.id ?? ''}
             />
           </TabsContent>
-          <TabsContent value="invites">
+          <TabsContent value="invites" className="p-0">
             <InvitesTab teamId={teamId} callerRole={callerRole} />
           </TabsContent>
-          <TabsContent value="knowledge">
+          <TabsContent value="knowledge" className="p-0">
             <KnowledgeTab teamId={teamId} callerRole={callerRole} />
           </TabsContent>
-          <TabsContent value="shared">
+          <TabsContent value="shared" className="p-0">
             <SharedTab teamId={teamId} callerRole={callerRole} />
           </TabsContent>
           {callerRole !== 'member' && (
-            <TabsContent value="groups">
+            <TabsContent value="groups" className="p-0">
               <GroupsTab teamId={teamId} callerRole={callerRole} />
             </TabsContent>
           )}

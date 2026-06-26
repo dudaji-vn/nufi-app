@@ -91,7 +91,7 @@ export default function InviteByEmailDialog({ teamId, children }: InviteByEmailD
                 >
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-[200]">
                   {roleOptions.map((opt) => (
                     <SelectItem key={opt.value} value={opt.value}>
                       {localize(opt.labelKey)}

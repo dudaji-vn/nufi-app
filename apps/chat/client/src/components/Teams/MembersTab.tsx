@@ -136,7 +136,7 @@ function MemberRow({ member, teamId, callerRole, callerId }: MemberRowProps) {
             disabled={isPending}
           >
             <SelectTrigger
-              className="h-7 w-[90px] text-xs"
+              className="h-7 w-[90px] text-xs text-text-primary"
               aria-label={localize('com_ui_team_change_role')}
             >
               <SelectValue />

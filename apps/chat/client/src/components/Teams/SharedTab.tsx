@@ -199,7 +199,7 @@ function AgentPickerDialog({ open, onOpenChange, teamId, sharedAgents }: AgentPi
               <SelectTrigger className="w-full" aria-label={localize('com_ui_team_share_with')}>
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="z-[200]">
                 <SelectItem value="team">{localize('com_ui_team_whole_team')}</SelectItem>
                 {subgroups.map((sg) => (
                   <SelectItem key={sg._id} value={sg._id}>
@@ -302,7 +302,7 @@ function PromptPickerDialog({
               <SelectTrigger className="w-full" aria-label={localize('com_ui_team_share_with')}>
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="z-[200]">
                 <SelectItem value="team">{localize('com_ui_team_whole_team')}</SelectItem>
                 {subgroups.map((sg) => (
                   <SelectItem key={sg._id} value={sg._id}>
