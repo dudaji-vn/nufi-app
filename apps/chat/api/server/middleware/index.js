@@ -21,8 +21,10 @@ const uaParser = require('./uaParser');
 const checkBan = require('./checkBan');
 const noIndex = require('./noIndex');
 const roles = require('./roles');
+const guardrails = require('./guardrails');
 
 module.exports = {
+  ...guardrails,
   ...abortMiddleware,
   ...validate,
   ...limiters,
