@@ -38,6 +38,31 @@ const INJECTION_PATTERNS = [
     id: 'vi_tiet_lo',
     re: /(?:tiết\s*lộ|cho\s+(?:tôi\s+)?xem|in\s+ra|hiển\s*thị)\s+.*(?:system\s*prompt|prompt\s+hệ\s+thống|chỉ\s*thị\s+hệ\s+thống|câu\s*lệnh\s+hệ\s+thống)/i,
   },
+  // Other languages — common "ignore previous instructions" / "reveal the
+  // system prompt" phrasings so the instant heuristic catches multilingual
+  // injection without paying for an AI call (see GUARDRAIL_INJECTION_MODE).
+  { id: 'ko_ignore', re: /(?:이전|모든)\s*(?:지시|명령|지침)[^\n]{0,10}?무시/ },
+  { id: 'ko_reveal', re: /시스템\s*프롬프트[^\n]{0,12}?(?:보여|공개|출력|알려)/ },
+  { id: 'ja_ignore', re: /(?:前|以前|これまで)[^\n]{0,8}?(?:指示|命令)[^\n]{0,8}?無視/ },
+  { id: 'ja_reveal', re: /システムプロンプト[^\n]{0,10}?(?:見せ|表示|教え|出力)/ },
+  {
+    id: 'zh_ignore',
+    re: /忽[略视][^\n]{0,12}?(?:之前|先前|上面|所有)?[^\n]{0,6}?(?:指令|指示|命令|提示)/,
+  },
+  { id: 'zh_reveal', re: /(?:显示|展示|输出|告诉我)[^\n]{0,8}?(?:系统提示|系统提示词|系统指令)/ },
+  {
+    id: 'fr_ignore',
+    re: /ignore[zr]?\s+(?:les\s+|toutes\s+les\s+)?instructions\s+(?:précédentes|antérieures)/i,
+  },
+  {
+    id: 'es_ignore',
+    re: /ignora\s+(?:las\s+|todas\s+las\s+)?instrucciones\s+(?:anteriores|previas)/i,
+  },
+  {
+    id: 'de_ignore',
+    re: /ignoriere\s+(?:die\s+|alle\s+)?(?:vorherigen|vorigen|obigen)\s+anweisungen/i,
+  },
+  { id: 'ru_ignore', re: /игнорируй[^\n]{0,12}?(?:предыдущие|все)\s+инструкции/i },
 ];
 
 // PII rules. Ordered by priority — earlier entries win when spans overlap, so

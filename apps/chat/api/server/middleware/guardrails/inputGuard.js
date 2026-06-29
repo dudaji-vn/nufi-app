@@ -49,12 +49,12 @@ async function inputGuard(req, res, next) {
     let verdict = { injection: false, message: '', language: '', source: 'none' };
 
     if (mode === 'ai') {
-      verdict = await judgeInjection(text);
+      verdict = await judgeInjection(text, { model: req.body?.model });
     } else if (detectInjection(text).detected) {
       verdict =
         mode === 'heuristic'
           ? { injection: true, message: FALLBACK_BLOCK_MESSAGE, language: '', source: 'heuristic' }
-          : await judgeInjection(text); // hybrid: confirm + localize on a heuristic hit
+          : await judgeInjection(text, { model: req.body?.model }); // hybrid: confirm + localize on a heuristic hit
     }
 
     if (verdict.injection) {

@@ -34,9 +34,11 @@ async function runOutputGuard(response, endpointOption, userText) {
     if (agent && typeof agent.then === 'function') {
       agent = await agent.catch(() => null);
     }
+    const chatModel =
+      endpointOption?.model_parameters?.model || endpointOption?.modelOptions?.model;
     await applyOutputGuard(response, {
       usedRag: agentUsesFileSearch(agent),
-      localize: () => localizeRedactMessage(userText),
+      localize: () => localizeRedactMessage(userText, { model: chatModel }),
     });
   } catch (err) {
     logger.warn('[guardrail] output guard skipped due to error:', err);

@@ -71,19 +71,22 @@ const trimSlash = (s) => String(s || '').replace(/\/+$/, '');
 const guardBaseURL = () =>
   trimSlash(process.env.GUARDRAIL_LLM_BASE_URL || process.env.BACKEND_BASE_URL);
 const guardApiKey = () => process.env.GUARDRAIL_LLM_API_KEY || process.env.BACKEND_API_KEY || '';
-const guardModel = () => process.env.GUARDRAIL_LLM_MODEL || '';
+// The guard model defaults to whatever model the chat is already using
+// (`fallbackModel`, e.g. req.body.model) so no extra env is needed; an explicit
+// GUARDRAIL_LLM_MODEL overrides it (e.g. to pin a smaller/faster guard model).
+const resolveGuardModel = (fallbackModel) => process.env.GUARDRAIL_LLM_MODEL || fallbackModel || '';
 const guardTimeoutMs = () => Number(process.env.GUARDRAIL_LLM_TIMEOUT_MS || 6000);
 
 /**
  * Call the guard model's chat-completions endpoint and return the reply text.
  * Returns '' when the model is not configured or the call fails/times out.
  * @param {Array<{role:string,content:string}>} messages
- * @param {{ maxTokens?: number, temperature?: number }} [opts]
+ * @param {{ model?: string, maxTokens?: number, temperature?: number }} [opts]
  * @returns {Promise<string>}
  */
 async function callGuardModel(messages, opts = {}) {
   const base = guardBaseURL();
-  const model = guardModel();
+  const model = opts.model;
   if (!base || !model) {
     return '';
   }
@@ -127,15 +130,16 @@ extra text, no translation.`;
  * to the configured / default message.
  *
  * @param {string} userText - the user's prompt for this turn (drives language).
+ * @param {{ model?: string }} [opts] - chat model to use when GUARDRAIL_LLM_MODEL is unset.
  * @returns {Promise<string>}
  */
-async function localizeRedactMessage(userText) {
+async function localizeRedactMessage(userText, { model } = {}) {
   const content = await callGuardModel(
     [
       { role: 'system', content: REDACT_LOCALIZE_SYSTEM },
       { role: 'user', content: String(userText ?? '') },
     ],
-    { maxTokens: 120, temperature: 0.2 },
+    { model: resolveGuardModel(model), maxTokens: 120, temperature: 0.2 },
   );
   return typeof content === 'string' ? content.trim() : '';
 }
@@ -146,9 +150,10 @@ async function localizeRedactMessage(userText) {
  * not configured or the call fails/times out, so chat never breaks on an outage.
  *
  * @param {string} userText
+ * @param {{ model?: string }} [opts] - chat model to use when GUARDRAIL_LLM_MODEL is unset.
  * @returns {Promise<{ injection: boolean, message: string, language: string, source: 'ai'|'fallback' }>}
  */
-async function judgeInjection(userText) {
+async function judgeInjection(userText, { model } = {}) {
   const fallback = () => {
     const detected = detectInjection(userText).detected;
     return {
@@ -159,11 +164,13 @@ async function judgeInjection(userText) {
     };
   };
 
-  if (!guardBaseURL() || !guardModel()) {
+  const effectiveModel = resolveGuardModel(model);
+  if (!guardBaseURL() || !effectiveModel) {
     return fallback();
   }
 
   const content = await callGuardModel(buildJudgeMessages(userText), {
+    model: effectiveModel,
     maxTokens: 200,
     temperature: 0,
   });
