@@ -1,5 +1,35 @@
 const applyOutputGuard = require('./outputGuard');
-const { agentUsesFileSearch } = require('./outputGuard');
+const { agentUsesFileSearch, shouldBufferOutput } = require('./outputGuard');
+
+describe('shouldBufferOutput', () => {
+  afterEach(() => {
+    delete process.env.GUARDRAIL_ENABLED;
+    delete process.env.GUARDRAIL_PII_OUTPUT_MODE;
+    delete process.env.GUARDRAIL_BUFFER_OUTPUT;
+  });
+
+  it('buffers when guardrails are enabled and output redaction is active', () => {
+    process.env.GUARDRAIL_ENABLED = 'true';
+    expect(shouldBufferOutput()).toBe(true);
+  });
+
+  it('does not buffer when the master switch is off', () => {
+    process.env.GUARDRAIL_ENABLED = 'false';
+    expect(shouldBufferOutput()).toBe(false);
+  });
+
+  it('does not buffer when output PII mode is off', () => {
+    process.env.GUARDRAIL_ENABLED = 'true';
+    process.env.GUARDRAIL_PII_OUTPUT_MODE = 'off';
+    expect(shouldBufferOutput()).toBe(false);
+  });
+
+  it('can be disabled explicitly via GUARDRAIL_BUFFER_OUTPUT=false', () => {
+    process.env.GUARDRAIL_ENABLED = 'true';
+    process.env.GUARDRAIL_BUFFER_OUTPUT = 'false';
+    expect(shouldBufferOutput()).toBe(false);
+  });
+});
 
 describe('agentUsesFileSearch', () => {
   it('is true when tools include file_search as a string', () => {
