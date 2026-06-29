@@ -1,7 +1,8 @@
 const { isEnabled } = require('@librechat/api');
 const { logger } = require('@librechat/data-schemas');
 const denyRequest = require('~/server/middleware/denyRequest');
-const { detectInjection, detectPII } = require('./detect');
+const { detectPII } = require('./detect');
+const { judgeInjection } = require('./judge');
 
 const DEFAULT_INJECTION_MESSAGE =
   '⚠️ Yêu cầu của bạn đã bị chặn bởi bộ lọc bảo mật vì có dấu hiệu can thiệp hệ thống (prompt injection). Vui lòng diễn đạt lại theo cách khác.';
@@ -36,15 +37,19 @@ async function inputGuard(req, res, next) {
 
   const userId = req.user?.id;
 
-  // ① Prompt-injection — block. On by default unless explicitly disabled.
+  // ① Prompt-injection — AI judge (LLM-as-judge, multilingual) with a heuristic
+  // fallback when the guard model is unavailable. Block on a positive verdict;
+  // the refusal message is the judge's localized one (in the user's language).
   if (process.env.GUARDRAIL_INJECTION_ENABLED !== 'false') {
-    const injection = detectInjection(text);
-    if (injection.detected) {
-      logger.warn(`[guardrail] blocked prompt injection (rule: ${injection.rule}) user=${userId}`);
+    const verdict = await judgeInjection(text);
+    if (verdict.injection) {
+      logger.warn(
+        `[guardrail] blocked prompt injection (source: ${verdict.source}, lang: ${verdict.language || '?'}) user=${userId}`,
+      );
       return denyRequest(
         req,
         res,
-        process.env.GUARDRAIL_INJECTION_MESSAGE || DEFAULT_INJECTION_MESSAGE,
+        verdict.message || process.env.GUARDRAIL_INJECTION_MESSAGE || DEFAULT_INJECTION_MESSAGE,
       );
     }
   }

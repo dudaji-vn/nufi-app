@@ -104,8 +104,10 @@ function applyOutputGuard(response, ctx = {}) {
 /**
  * Whether the stream subscriber should buffer-then-release the response — i.e.
  * suppress live content chunks and deliver only the final (redacted) message —
- * so a model-leaked PII value never flashes before it is redacted. On whenever
- * output redaction is active; disable with GUARDRAIL_BUFFER_OUTPUT=false.
+ * so a model-leaked PII value never flashes before it is redacted.
+ *
+ * OFF by default so live "typing" is preserved; opt in with
+ * GUARDRAIL_BUFFER_OUTPUT=true when a zero-flash render is preferred over typing.
  *
  * @returns {boolean}
  */
@@ -113,7 +115,7 @@ function shouldBufferOutput() {
   return (
     isEnabled(process.env.GUARDRAIL_ENABLED) &&
     (process.env.GUARDRAIL_PII_OUTPUT_MODE || 'redact_ungrounded').toLowerCase() !== 'off' &&
-    process.env.GUARDRAIL_BUFFER_OUTPUT !== 'false'
+    process.env.GUARDRAIL_BUFFER_OUTPUT === 'true'
   );
 }
 

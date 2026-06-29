@@ -8,25 +8,27 @@ describe('shouldBufferOutput', () => {
     delete process.env.GUARDRAIL_BUFFER_OUTPUT;
   });
 
-  it('buffers when guardrails are enabled and output redaction is active', () => {
+  it('does NOT buffer by default (typing preserved) even when guardrails are enabled', () => {
     process.env.GUARDRAIL_ENABLED = 'true';
+    expect(shouldBufferOutput()).toBe(false);
+  });
+
+  it('buffers only when explicitly opted in via GUARDRAIL_BUFFER_OUTPUT=true', () => {
+    process.env.GUARDRAIL_ENABLED = 'true';
+    process.env.GUARDRAIL_BUFFER_OUTPUT = 'true';
     expect(shouldBufferOutput()).toBe(true);
   });
 
   it('does not buffer when the master switch is off', () => {
     process.env.GUARDRAIL_ENABLED = 'false';
+    process.env.GUARDRAIL_BUFFER_OUTPUT = 'true';
     expect(shouldBufferOutput()).toBe(false);
   });
 
   it('does not buffer when output PII mode is off', () => {
     process.env.GUARDRAIL_ENABLED = 'true';
     process.env.GUARDRAIL_PII_OUTPUT_MODE = 'off';
-    expect(shouldBufferOutput()).toBe(false);
-  });
-
-  it('can be disabled explicitly via GUARDRAIL_BUFFER_OUTPUT=false', () => {
-    process.env.GUARDRAIL_ENABLED = 'true';
-    process.env.GUARDRAIL_BUFFER_OUTPUT = 'false';
+    process.env.GUARDRAIL_BUFFER_OUTPUT = 'true';
     expect(shouldBufferOutput()).toBe(false);
   });
 });
