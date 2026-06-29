@@ -4,6 +4,7 @@ const { PermissionTypes, Permissions, PermissionBits } = require('librechat-data
 const {
   moderateText,
   // validateModel,
+  inputGuard,
   validateConvoAccess,
   buildEndpointOption,
   canAccessAgentFromBody,
@@ -26,6 +27,9 @@ const checkAgentResourceAccess = canAccessAgentFromBody({
 });
 
 router.use(moderateText);
+// Application-layer LLM-security input guardrail: blocks prompt-injection and
+// warns/logs PII (prompt is never mutated). Toggled by GUARDRAIL_* env vars.
+router.use(inputGuard);
 router.use(checkAgentAccess);
 router.use(checkAgentResourceAccess);
 router.use(validateConvoAccess);
