@@ -10,7 +10,12 @@ const {
   checkAndIncrementPendingRequest,
 } = require('@librechat/api');
 const { disposeClient, clientRegistry, requestDataMap } = require('~/server/cleanup');
-const { handleAbortError, applyOutputGuard, agentUsesFileSearch } = require('~/server/middleware');
+const {
+  handleAbortError,
+  applyOutputGuard,
+  agentUsesFileSearch,
+  localizeRedactMessage,
+} = require('~/server/middleware');
 const { logViolation } = require('~/cache');
 const { saveMessage, getConvo } = require('~/models');
 
@@ -23,13 +28,16 @@ const { saveMessage, getConvo } = require('~/models');
  * @param {Object} response
  * @param {Object} endpointOption
  */
-async function runOutputGuard(response, endpointOption) {
+async function runOutputGuard(response, endpointOption, userText) {
   try {
     let agent = endpointOption?.agent;
     if (agent && typeof agent.then === 'function') {
       agent = await agent.catch(() => null);
     }
-    applyOutputGuard(response, { usedRag: agentUsesFileSearch(agent) });
+    await applyOutputGuard(response, {
+      usedRag: agentUsesFileSearch(agent),
+      localize: () => localizeRedactMessage(userText),
+    });
   } catch (err) {
     logger.warn('[guardrail] output guard skipped due to error:', err);
   }
@@ -318,7 +326,7 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
 
         // Application-layer LLM-security output guardrail (redacts ungrounded
         // PII; skips RAG turns). Toggled by GUARDRAIL_* env vars.
-        await runOutputGuard(response, endpointOption);
+        await runOutputGuard(response, endpointOption, text);
 
         const databasePromise = response.databasePromise;
         delete response.databasePromise;
@@ -710,7 +718,7 @@ const _LegacyAgentController = async (req, res, next, initializeClient, addTitle
 
     // Application-layer LLM-security output guardrail (redacts ungrounded PII;
     // skips RAG turns). Toggled by GUARDRAIL_* env vars.
-    await runOutputGuard(response, endpointOption);
+    await runOutputGuard(response, endpointOption, text);
 
     // Store database promise locally
     const databasePromise = response.databasePromise;

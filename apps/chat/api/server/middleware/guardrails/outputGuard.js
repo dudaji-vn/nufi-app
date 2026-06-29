@@ -37,10 +37,12 @@ function agentUsesFileSearch(agent) {
  * runs; see the design doc for the buffer-then-release / non-stream handling.
  *
  * @param {Object} response - the assistant response (has `.text` and/or `.content`).
- * @param {{ usedRag?: boolean }} [ctx]
- * @returns {Object} the same response object, possibly redacted.
+ * @param {{ usedRag?: boolean, localize?: () => Promise<string> }} [ctx] - `localize`
+ *   resolves the redaction message in the user's language (called only when PII
+ *   is actually being redacted and no explicit message is configured).
+ * @returns {Promise<Object>} the same response object, possibly redacted.
  */
-function applyOutputGuard(response, ctx = {}) {
+async function applyOutputGuard(response, ctx = {}) {
   if (!response || !isEnabled(process.env.GUARDRAIL_ENABLED)) {
     return response;
   }
@@ -55,7 +57,6 @@ function applyOutputGuard(response, ctx = {}) {
     return response; // trust the user's own retrieved documents
   }
 
-  const message = process.env.GUARDRAIL_REDACT_MESSAGE || undefined;
   const style = (process.env.GUARDRAIL_PII_OUTPUT_STYLE || 'message').toLowerCase();
 
   // Gather every piece of assistant text to decide whether redaction is needed.
@@ -70,26 +71,41 @@ function applyOutputGuard(response, ctx = {}) {
       }
     }
   }
+  const combined = parts.join('\n');
 
-  const probe = redactOutput(parts.join('\n'), { message, style });
-  if (!probe.redacted) {
+  // Detect first (the placeholder message is irrelevant to detection).
+  if (!redactOutput(combined, { message: '_', style }).redacted) {
     return response;
   }
 
+  // Resolve the redaction message only now that we know we will redact:
+  // an explicit GUARDRAIL_REDACT_MESSAGE wins; otherwise localize it to the
+  // user's language via the AI (ctx.localize); a failed/absent localization
+  // falls through to redactOutput's built-in default.
+  let message = process.env.GUARDRAIL_REDACT_MESSAGE || '';
+  if (!message && typeof ctx.localize === 'function') {
+    try {
+      message = (await ctx.localize()) || '';
+    } catch {
+      message = '';
+    }
+  }
+  const opts = { message: message || undefined, style };
+
   if (style === 'inline') {
     if (typeof response.text === 'string') {
-      response.text = redactOutput(response.text, { message, style }).text;
+      response.text = redactOutput(response.text, opts).text;
     }
     if (Array.isArray(response.content)) {
       response.content = response.content.map((part) =>
         part && part.type === 'text' && typeof part.text === 'string'
-          ? { ...part, text: redactOutput(part.text, { message, style }).text }
+          ? { ...part, text: redactOutput(part.text, opts).text }
           : part,
       );
     }
   } else {
     // Whole-message replacement: the entire answer becomes the security message.
-    const msg = probe.text;
+    const msg = redactOutput(combined, opts).text;
     if (typeof response.text === 'string' || response.text == null) {
       response.text = msg;
     }

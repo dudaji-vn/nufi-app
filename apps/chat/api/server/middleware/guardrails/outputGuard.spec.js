@@ -66,59 +66,76 @@ describe('applyOutputGuard', () => {
     delete process.env.GUARDRAIL_PII_OUTPUT_MODE;
     delete process.env.GUARDRAIL_PII_OUTPUT_SKIP_RAG;
     delete process.env.GUARDRAIL_PII_OUTPUT_STYLE;
+    delete process.env.GUARDRAIL_REDACT_MESSAGE;
   });
 
-  it('redacts ungrounded PII in a plain-chat response (text + content)', () => {
+  it('redacts ungrounded PII in a plain-chat response (text + content)', async () => {
     const response = {
       text: 'His email is john@example.com',
       content: [{ type: 'text', text: 'His email is john@example.com' }],
     };
-    const out = applyOutputGuard(response, { usedRag: false });
+    const out = await applyOutputGuard(response, { usedRag: false });
     expect(out.text).not.toContain('john@example.com');
     expect(out.content[0].text).not.toContain('john@example.com');
   });
 
-  it('SKIPS redaction when the turn used RAG (returns the real email)', () => {
+  it('SKIPS redaction when the turn used RAG (returns the real email)', async () => {
     const response = {
       text: 'The vendor email is vendor@corp.com',
       content: [{ type: 'text', text: 'The vendor email is vendor@corp.com' }],
     };
-    const out = applyOutputGuard(response, { usedRag: true });
+    const out = await applyOutputGuard(response, { usedRag: true });
     expect(out.text).toContain('vendor@corp.com');
   });
 
-  it('is a no-op when the master switch is off', () => {
+  it('is a no-op when the master switch is off', async () => {
     process.env.GUARDRAIL_ENABLED = 'false';
     const response = { text: 'email john@example.com' };
-    const out = applyOutputGuard(response, { usedRag: false });
+    const out = await applyOutputGuard(response, { usedRag: false });
     expect(out.text).toContain('john@example.com');
   });
 
-  it('is a no-op when output mode is off', () => {
+  it('is a no-op when output mode is off', async () => {
     process.env.GUARDRAIL_PII_OUTPUT_MODE = 'off';
     const response = { text: 'email john@example.com' };
-    const out = applyOutputGuard(response, { usedRag: false });
+    const out = await applyOutputGuard(response, { usedRag: false });
     expect(out.text).toContain('john@example.com');
   });
 
-  it('still redacts on RAG turns when GUARDRAIL_PII_OUTPUT_SKIP_RAG=false', () => {
+  it('still redacts on RAG turns when GUARDRAIL_PII_OUTPUT_SKIP_RAG=false', async () => {
     process.env.GUARDRAIL_PII_OUTPUT_SKIP_RAG = 'false';
     const response = { text: 'email john@example.com' };
-    const out = applyOutputGuard(response, { usedRag: true });
+    const out = await applyOutputGuard(response, { usedRag: true });
     expect(out.text).not.toContain('john@example.com');
   });
 
-  it('leaves a clean response untouched', () => {
+  it('leaves a clean response untouched', async () => {
     const response = { text: 'Paris is the capital of France' };
-    const out = applyOutputGuard(response, { usedRag: false });
+    const out = await applyOutputGuard(response, { usedRag: false });
     expect(out.text).toBe('Paris is the capital of France');
   });
 
-  it('uses GUARDRAIL_REDACT_MESSAGE when provided (whole-message style)', () => {
+  it('uses GUARDRAIL_REDACT_MESSAGE when provided (no AI localization call)', async () => {
     process.env.GUARDRAIL_REDACT_MESSAGE = 'CUSTOM-SECURITY-MSG';
+    const localize = jest.fn();
     const response = { text: 'ssn 123-45-6789' };
-    const out = applyOutputGuard(response, { usedRag: false });
+    const out = await applyOutputGuard(response, { usedRag: false, localize });
     expect(out.text).toBe('CUSTOM-SECURITY-MSG');
-    delete process.env.GUARDRAIL_REDACT_MESSAGE;
+    expect(localize).not.toHaveBeenCalled(); // explicit message wins, no AI call
+  });
+
+  it('localizes the redaction message via ctx.localize when no explicit message is set', async () => {
+    const localize = jest.fn().mockResolvedValue('보안 정책으로 표시할 수 없습니다.');
+    const response = { text: 'email john@example.com' };
+    const out = await applyOutputGuard(response, { usedRag: false, localize });
+    expect(localize).toHaveBeenCalledTimes(1);
+    expect(out.text).toBe('보안 정책으로 표시할 수 없습니다.');
+  });
+
+  it('does NOT call ctx.localize for a clean response (no redaction needed)', async () => {
+    const localize = jest.fn();
+    const response = { text: 'Paris is the capital of France' };
+    await applyOutputGuard(response, { usedRag: false, localize });
+    expect(localize).not.toHaveBeenCalled();
   });
 });

@@ -1,8 +1,8 @@
 const { isEnabled } = require('@librechat/api');
 const { logger } = require('@librechat/data-schemas');
 const denyRequest = require('~/server/middleware/denyRequest');
-const { detectPII } = require('./detect');
-const { judgeInjection } = require('./judge');
+const { detectInjection, detectPII } = require('./detect');
+const { judgeInjection, FALLBACK_BLOCK_MESSAGE } = require('./judge');
 
 const DEFAULT_INJECTION_MESSAGE =
   '⚠️ Yêu cầu của bạn đã bị chặn bởi bộ lọc bảo mật vì có dấu hiệu can thiệp hệ thống (prompt injection). Vui lòng diễn đạt lại theo cách khác.';
@@ -37,14 +37,29 @@ async function inputGuard(req, res, next) {
 
   const userId = req.user?.id;
 
-  // ① Prompt-injection — AI judge (LLM-as-judge, multilingual) with a heuristic
-  // fallback when the guard model is unavailable. Block on a positive verdict;
-  // the refusal message is the judge's localized one (in the user's language).
+  // ① Prompt-injection. The mode keeps the NORMAL chat experience unchanged:
+  //   - 'hybrid' (default): the instant heuristic runs on every message; the AI
+  //     judge (multilingual, localized refusal) is consulted ONLY when the
+  //     heuristic flags something — so a normal chat never pays the AI latency.
+  //   - 'ai': AI judge on every message (broadest multilingual detection, but
+  //     adds one model call of latency per message).
+  //   - 'heuristic': heuristic only, no AI (bilingual refusal).
   if (process.env.GUARDRAIL_INJECTION_ENABLED !== 'false') {
-    const verdict = await judgeInjection(text);
+    const mode = (process.env.GUARDRAIL_INJECTION_MODE || 'hybrid').toLowerCase();
+    let verdict = { injection: false, message: '', language: '', source: 'none' };
+
+    if (mode === 'ai') {
+      verdict = await judgeInjection(text);
+    } else if (detectInjection(text).detected) {
+      verdict =
+        mode === 'heuristic'
+          ? { injection: true, message: FALLBACK_BLOCK_MESSAGE, language: '', source: 'heuristic' }
+          : await judgeInjection(text); // hybrid: confirm + localize on a heuristic hit
+    }
+
     if (verdict.injection) {
       logger.warn(
-        `[guardrail] blocked prompt injection (source: ${verdict.source}, lang: ${verdict.language || '?'}) user=${userId}`,
+        `[guardrail] blocked prompt injection (mode: ${mode}, source: ${verdict.source}, lang: ${verdict.language || '?'}) user=${userId}`,
       );
       return denyRequest(
         req,

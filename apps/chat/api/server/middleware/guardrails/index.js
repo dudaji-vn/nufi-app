@@ -3,7 +3,7 @@ const applyOutputGuard = require('./outputGuard');
 const { agentUsesFileSearch, shouldBufferOutput } = require('./outputGuard');
 const { detectInjection, detectPII } = require('./detect');
 const { redactOutput } = require('./redact');
-const { judgeInjection } = require('./judge');
+const { judgeInjection, localizeRedactMessage } = require('./judge');
 
 module.exports = {
   inputGuard,
@@ -14,4 +14,5 @@ module.exports = {
   detectPII,
   redactOutput,
   judgeInjection,
+  localizeRedactMessage,
 };

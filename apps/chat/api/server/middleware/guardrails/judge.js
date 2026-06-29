@@ -75,6 +75,72 @@ const guardModel = () => process.env.GUARDRAIL_LLM_MODEL || '';
 const guardTimeoutMs = () => Number(process.env.GUARDRAIL_LLM_TIMEOUT_MS || 6000);
 
 /**
+ * Call the guard model's chat-completions endpoint and return the reply text.
+ * Returns '' when the model is not configured or the call fails/times out.
+ * @param {Array<{role:string,content:string}>} messages
+ * @param {{ maxTokens?: number, temperature?: number }} [opts]
+ * @returns {Promise<string>}
+ */
+async function callGuardModel(messages, opts = {}) {
+  const base = guardBaseURL();
+  const model = guardModel();
+  if (!base || !model) {
+    return '';
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), guardTimeoutMs());
+  try {
+    const res = await fetch(`${base}/chat/completions`, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${guardApiKey()}` },
+      body: JSON.stringify({
+        model,
+        messages,
+        temperature: opts.temperature ?? 0,
+        max_tokens: opts.maxTokens ?? 200,
+        stream: false,
+      }),
+    });
+    if (!res.ok) {
+      throw new Error(`guard model HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    return data?.choices?.[0]?.message?.content ?? '';
+  } catch (err) {
+    logger.warn(`[guardrail] guard model call failed: ${err.message}`);
+    return '';
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const REDACT_LOCALIZE_SYSTEM = `You write a single short, polite sentence for a chat UI.
+Given the user's message, reply IN THE SAME LANGUAGE as the user with ONE sentence telling them
+you cannot display specific sensitive personal information (such as email addresses, phone
+numbers, or ID numbers) due to a security policy. Output ONLY that sentence — no quotes, no
+extra text, no translation.`;
+
+/**
+ * Produce the output-PII redaction message in the user's own language (AI).
+ * Returns '' when the guard model is unavailable, so the caller can fall back
+ * to the configured / default message.
+ *
+ * @param {string} userText - the user's prompt for this turn (drives language).
+ * @returns {Promise<string>}
+ */
+async function localizeRedactMessage(userText) {
+  const content = await callGuardModel(
+    [
+      { role: 'system', content: REDACT_LOCALIZE_SYSTEM },
+      { role: 'user', content: String(userText ?? '') },
+    ],
+    { maxTokens: 120, temperature: 0.2 },
+  );
+  return typeof content === 'string' ? content.trim() : '';
+}
+
+/**
  * Classify a user prompt for injection via an LLM-as-judge (multilingual,
  * context-aware). Falls back to the heuristic detector when the guard model is
  * not configured or the call fails/times out, so chat never breaks on an outage.
@@ -83,9 +149,6 @@ const guardTimeoutMs = () => Number(process.env.GUARDRAIL_LLM_TIMEOUT_MS || 6000
  * @returns {Promise<{ injection: boolean, message: string, language: string, source: 'ai'|'fallback' }>}
  */
 async function judgeInjection(userText) {
-  const base = guardBaseURL();
-  const model = guardModel();
-
   const fallback = () => {
     const detected = detectInjection(userText).detected;
     return {
@@ -96,49 +159,32 @@ async function judgeInjection(userText) {
     };
   };
 
-  if (!base || !model) {
+  if (!guardBaseURL() || !guardModel()) {
     return fallback();
   }
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), guardTimeoutMs());
-  try {
-    const res = await fetch(`${base}/chat/completions`, {
-      method: 'POST',
-      signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${guardApiKey()}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages: buildJudgeMessages(userText),
-        temperature: 0,
-        max_tokens: 200,
-        stream: false,
-      }),
-    });
-    if (!res.ok) {
-      throw new Error(`judge HTTP ${res.status}`);
-    }
-    const data = await res.json();
-    const content = data?.choices?.[0]?.message?.content;
-    const verdict = parseJudgeResponse(content);
-    if (!verdict) {
-      throw new Error('unparseable judge response');
-    }
-    return {
-      injection: verdict.injection,
-      message: verdict.injection ? verdict.message || FALLBACK_BLOCK_MESSAGE : '',
-      language: verdict.language,
-      source: 'ai',
-    };
-  } catch (err) {
-    logger.warn(`[guardrail] AI judge unavailable, using heuristic fallback: ${err.message}`);
+  const content = await callGuardModel(buildJudgeMessages(userText), {
+    maxTokens: 200,
+    temperature: 0,
+  });
+  const verdict = parseJudgeResponse(content);
+  if (!verdict) {
+    // call failed / non-JSON reply — fall back to the heuristic so we never
+    // let a possible injection through on a guard-model hiccup.
     return fallback();
-  } finally {
-    clearTimeout(timer);
   }
+  return {
+    injection: verdict.injection,
+    message: verdict.injection ? verdict.message || FALLBACK_BLOCK_MESSAGE : '',
+    language: verdict.language,
+    source: 'ai',
+  };
 }
 
-module.exports = { buildJudgeMessages, parseJudgeResponse, judgeInjection, FALLBACK_BLOCK_MESSAGE };
+module.exports = {
+  buildJudgeMessages,
+  parseJudgeResponse,
+  judgeInjection,
+  localizeRedactMessage,
+  FALLBACK_BLOCK_MESSAGE,
+};
