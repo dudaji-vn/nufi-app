@@ -1,5 +1,6 @@
+const crypto = require('crypto');
 const { logger } = require('@librechat/data-schemas');
-const { Constants, ViolationTypes } = require('librechat-data-provider');
+const { Constants, ViolationTypes, getResponseSender } = require('librechat-data-provider');
 const {
   sendEvent,
   getViolationInfo,
@@ -42,6 +43,79 @@ async function runOutputGuard(response, endpointOption, userText) {
     });
   } catch (err) {
     logger.warn('[guardrail] output guard skipped due to error:', err);
+  }
+}
+
+/**
+ * Deliver an input-guardrail block as a normal streamed assistant message via the
+ * resumable job, instead of a hard middleware response (which would leave the
+ * client spinning). Saves the user + block messages and emits the final event.
+ *
+ * @param {Object} params
+ * @param {import('express').Request} params.req
+ * @param {string} params.streamId
+ * @param {string} params.conversationId
+ * @param {string} params.message - the (localized) block message to show.
+ */
+async function emitGuardrailBlock({ req, streamId, conversationId, message }) {
+  const userId = req.user.id;
+  const { text, endpoint } = req.body;
+  const parentMessageId = req.body.parentMessageId ?? Constants.NO_PARENT;
+  const userMessageId = req.body.messageId || crypto.randomUUID();
+  const responseMessageId = crypto.randomUUID();
+  const reqCtx = {
+    userId,
+    isTemporary: req?.body?.isTemporary,
+    interfaceConfig: req?.config?.interfaceConfig,
+  };
+
+  const userMessage = {
+    messageId: userMessageId,
+    parentMessageId,
+    conversationId,
+    sender: 'User',
+    text,
+    isCreatedByUser: true,
+    user: userId,
+    endpoint,
+  };
+  const responseMessage = {
+    messageId: responseMessageId,
+    parentMessageId: userMessageId,
+    conversationId,
+    sender: getResponseSender(req.body) || 'Assistant',
+    text: message,
+    content: [{ type: 'text', text: message }],
+    isCreatedByUser: false,
+    error: false,
+    unfinished: false,
+    endpoint,
+    user: userId,
+  };
+
+  // Emit first so the block renders immediately (emitDone caches the final event
+  // for the late-subscribing client); do NOT completeJob — that would delete the
+  // cached event before the client connects. Persist after, best-effort.
+  const conversation = { conversationId, title: 'New Chat', endpoint };
+  await GenerationJobManager.emitDone(streamId, {
+    final: true,
+    conversation,
+    title: conversation.title,
+    requestMessage: sanitizeMessageForTransmit(userMessage),
+    responseMessage: { ...responseMessage },
+  });
+
+  try {
+    await saveMessage(reqCtx, userMessage, {
+      context: 'agents/request.js - guardrail block user message',
+    });
+    await saveMessage(
+      reqCtx,
+      { ...responseMessage, user: userId },
+      { context: 'agents/request.js - guardrail block response message' },
+    );
+  } catch (err) {
+    logger.warn('[guardrail] failed to persist block messages:', err);
   }
 }
 
@@ -157,6 +231,25 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
     res.json({ streamId, conversationId, status: 'started' });
 
     await attachConversationCreatedAt(req, { userId, conversationId, isNewConvo });
+
+    // Application-layer input guardrail: deliver the refusal as a normal streamed
+    // assistant message via the job, then stop — the model is never called.
+    if (req.guardrailBlock) {
+      // The client opens its SSE subscription right after it receives this
+      // streamId. Give it a brief moment to connect, then emit the single final
+      // (block) event live and complete the job. (readyPromise can't be used —
+      // it is pre-resolved at job creation for latency.)
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      await emitGuardrailBlock({
+        req,
+        streamId,
+        conversationId,
+        message: req.guardrailBlock.message,
+      });
+      await GenerationJobManager.completeJob(streamId);
+      await decrementPendingRequest(userId);
+      return;
+    }
 
     // Note: We no longer use res.on('close') to abort since we send JSON immediately.
     // The response closes normally after res.json(), which is not an abort condition.

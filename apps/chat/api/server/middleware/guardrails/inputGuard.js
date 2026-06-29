@@ -1,6 +1,5 @@
 const { isEnabled } = require('@librechat/api');
 const { logger } = require('@librechat/data-schemas');
-const denyRequest = require('~/server/middleware/denyRequest');
 const { detectInjection, detectPII } = require('./detect');
 const { judgeInjection, FALLBACK_BLOCK_MESSAGE } = require('./judge');
 
@@ -61,11 +60,15 @@ async function inputGuard(req, res, next) {
       logger.warn(
         `[guardrail] blocked prompt injection (mode: ${mode}, source: ${verdict.source}, lang: ${verdict.language || '?'}) user=${userId}`,
       );
-      return denyRequest(
-        req,
-        res,
-        verdict.message || process.env.GUARDRAIL_INJECTION_MESSAGE || DEFAULT_INJECTION_MESSAGE,
-      );
+      // Flag the request instead of responding here: the resumable agents
+      // controller turns this into a normal streamed assistant message (a hard
+      // response from middleware would leave the client spinning forever).
+      req.guardrailBlock = {
+        type: 'injection',
+        message:
+          verdict.message || process.env.GUARDRAIL_INJECTION_MESSAGE || DEFAULT_INJECTION_MESSAGE,
+      };
+      return next();
     }
   }
 
@@ -79,11 +82,11 @@ async function inputGuard(req, res, next) {
         `[guardrail] PII detected in input (${types}) user=${userId} — prompt forwarded unchanged`,
       );
       if (piiMode === 'block') {
-        return denyRequest(
-          req,
-          res,
-          process.env.GUARDRAIL_PII_BLOCK_MESSAGE || DEFAULT_PII_BLOCK_MESSAGE,
-        );
+        req.guardrailBlock = {
+          type: 'pii',
+          message: process.env.GUARDRAIL_PII_BLOCK_MESSAGE || DEFAULT_PII_BLOCK_MESSAGE,
+        };
+        return next();
       }
     }
   }
