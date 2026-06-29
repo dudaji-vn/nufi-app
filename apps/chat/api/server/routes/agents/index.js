@@ -8,6 +8,7 @@ const {
   messageIpLimiter,
   configMiddleware,
   messageUserLimiter,
+  shouldBufferOutput,
 } = require('~/server/middleware');
 const { saveMessage } = require('~/models');
 const responses = require('./responses');
@@ -109,13 +110,22 @@ router.get('/chat/stream/:streamId', async (req, res) => {
     }
   };
 
+  // Buffer-then-release for the LLM-security output guardrail: when output
+  // guarding is active, suppress live content chunks so a model-leaked PII
+  // value never flashes on screen before the redacted final message. The
+  // client receives only the final (redacted) event via onDone. Trades the
+  // live "typing" effect for a guaranteed no-PII-flash render. Disable with
+  // GUARDRAIL_BUFFER_OUTPUT=false.
+  const bufferOutput = shouldBufferOutput();
+  const emitChunk = bufferOutput ? () => {} : writeEvent;
+
   let result;
 
   if (isResume) {
     const { subscription, resumeState, pendingEvents } =
-      await GenerationJobManager.subscribeWithResume(streamId, writeEvent, onDone, onError);
+      await GenerationJobManager.subscribeWithResume(streamId, emitChunk, onDone, onError);
 
-    if (!res.writableEnded) {
+    if (!bufferOutput && !res.writableEnded) {
       if (resumeState) {
         res.write(
           `event: message\ndata: ${JSON.stringify({ sync: true, resumeState, pendingEvents })}\n\n`,
@@ -139,7 +149,7 @@ router.get('/chat/stream/:streamId', async (req, res) => {
 
     result = subscription;
   } else {
-    result = await GenerationJobManager.subscribe(streamId, writeEvent, onDone, onError);
+    result = await GenerationJobManager.subscribe(streamId, emitChunk, onDone, onError);
   }
 
   if (!result) {

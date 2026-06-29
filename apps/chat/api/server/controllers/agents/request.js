@@ -10,9 +10,40 @@ const {
   checkAndIncrementPendingRequest,
 } = require('@librechat/api');
 const { disposeClient, clientRegistry, requestDataMap } = require('~/server/cleanup');
-const { handleAbortError } = require('~/server/middleware');
+const {
+  handleAbortError,
+  applyOutputGuard,
+  agentUsesFileSearch,
+  localizeRedactMessage,
+} = require('~/server/middleware');
 const { logViolation } = require('~/cache');
 const { saveMessage, getConvo } = require('~/models');
+
+/**
+ * Apply the application-layer output guardrail to a finished assistant response
+ * (in place). Resolves the (possibly promised) agent to decide whether the turn
+ * used File Search / RAG — when it did, output PII redaction is skipped so the
+ * user's own documents are not censored. Never throws into the response path.
+ *
+ * @param {Object} response
+ * @param {Object} endpointOption
+ */
+async function runOutputGuard(response, endpointOption, userText) {
+  try {
+    let agent = endpointOption?.agent;
+    if (agent && typeof agent.then === 'function') {
+      agent = await agent.catch(() => null);
+    }
+    const chatModel =
+      endpointOption?.model_parameters?.model || endpointOption?.modelOptions?.model;
+    await applyOutputGuard(response, {
+      usedRag: agentUsesFileSearch(agent),
+      localize: () => localizeRedactMessage(userText, { model: chatModel }),
+    });
+  } catch (err) {
+    logger.warn('[guardrail] output guard skipped due to error:', err);
+  }
+}
 
 function createCloseHandler(abortController) {
   return function (manual) {
@@ -294,6 +325,10 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
         const messageId = response.messageId;
         const endpoint = endpointOption.endpoint;
         response.endpoint = endpoint;
+
+        // Application-layer LLM-security output guardrail (redacts ungrounded
+        // PII; skips RAG turns). Toggled by GUARDRAIL_* env vars.
+        await runOutputGuard(response, endpointOption, text);
 
         const databasePromise = response.databasePromise;
         delete response.databasePromise;
@@ -682,6 +717,10 @@ const _LegacyAgentController = async (req, res, next, initializeClient, addTitle
     const messageId = response.messageId;
     const endpoint = endpointOption.endpoint;
     response.endpoint = endpoint;
+
+    // Application-layer LLM-security output guardrail (redacts ungrounded PII;
+    // skips RAG turns). Toggled by GUARDRAIL_* env vars.
+    await runOutputGuard(response, endpointOption, text);
 
     // Store database promise locally
     const databasePromise = response.databasePromise;
