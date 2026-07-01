@@ -7,6 +7,8 @@ export interface AuditLogQuery {
   search?: string;
   /** Exact action key filter, e.g. 'grant_assigned'. */
   action?: string;
+  /** 'admin' excludes guardrail_* actions; 'security' includes only them. */
+  category?: 'admin' | 'security' | string;
   /** ISO date — inclusive lower bound on createdAt. */
   from?: string;
   /** ISO date — inclusive upper bound on createdAt (extended to end-of-day). */
@@ -18,11 +20,15 @@ export interface AuditLogQuery {
 }
 
 export function createAuditLogMethods(mongoose: typeof import('mongoose')) {
-  function buildFilter({ search, action, from, to }: AuditLogQuery): FilterQuery<IAuditLog> {
+  function buildFilter({ search, action, category, from, to }: AuditLogQuery): FilterQuery<IAuditLog> {
     const filter: FilterQuery<IAuditLog> = {};
 
     if (action) {
       filter.action = action;
+    } else if (category === 'security') {
+      filter.action = { $regex: /^guardrail_/ };
+    } else if (category === 'admin') {
+      filter.action = { $not: /^guardrail_/ };
     }
 
     if (from || to) {
@@ -79,7 +85,21 @@ export function createAuditLogMethods(mongoose: typeof import('mongoose')) {
     return AuditLog.countDocuments(buildFilter(query));
   }
 
-  return { createAuditLog, getAuditLogs, countAuditLogs };
+  /** Count entries grouped by action within the filter (for summary strips). */
+  async function getAuditLogCounts(query: AuditLogQuery = {}): Promise<Record<string, number>> {
+    const AuditLog = mongoose.models.AuditLog as Model<IAuditLog>;
+    const rows = await AuditLog.aggregate<{ _id: string; count: number }>([
+      { $match: buildFilter(query) },
+      { $group: { _id: '$action', count: { $sum: 1 } } },
+    ]);
+    const counts: Record<string, number> = {};
+    for (const row of rows) {
+      counts[row._id] = row.count;
+    }
+    return counts;
+  }
+
+  return { createAuditLog, getAuditLogs, countAuditLogs, getAuditLogCounts };
 }
 
 export type AuditLogMethods = ReturnType<typeof createAuditLogMethods>;

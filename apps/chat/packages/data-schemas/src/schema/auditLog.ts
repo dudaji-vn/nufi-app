@@ -57,6 +57,9 @@ const auditLogSchema = new Schema<IAuditLog>(
     statusCode: {
       type: Number,
     },
+    metadata: {
+      type: Schema.Types.Mixed,
+    },
   },
   { timestamps: true },
 );
