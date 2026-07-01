@@ -8,6 +8,7 @@ import {
   LogOut,
   ScrollText,
   Settings,
+  ShieldAlert,
   ShieldCheck,
   Users as UsersIcon,
 } from 'lucide-react';
@@ -52,6 +53,12 @@ const navItems: t.NavItem[] = [
     labelKey: 'com_nav_audit_log',
     path: '/audit-log',
     icon: ScrollText,
+    capability: SystemCapabilities.ACCESS_ADMIN,
+  },
+  {
+    labelKey: 'com_nav_security',
+    path: '/security',
+    icon: ShieldAlert,
     capability: SystemCapabilities.ACCESS_ADMIN,
   },
   { labelKey: 'com_nav_help', path: '/help', icon: LifeBuoy },
