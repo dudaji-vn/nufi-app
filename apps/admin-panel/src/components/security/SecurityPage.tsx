@@ -79,7 +79,11 @@ export function SecurityPage() {
 
       <div className="flex flex-1 flex-col gap-4 overflow-auto">
         <div className="flex items-center justify-between gap-3">
-          <div className="flex flex-1 flex-wrap items-center gap-3" role="group">
+          <div
+            className="flex flex-1 flex-wrap items-center gap-3"
+            role="group"
+            aria-label={localize('com_a11y_filters')}
+          >
             <SearchInput
               value={search}
               onChange={setSearch}
