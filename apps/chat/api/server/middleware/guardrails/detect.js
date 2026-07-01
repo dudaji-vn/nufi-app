@@ -62,4 +62,19 @@ function detectPII(text) {
   return result;
 }
 
-module.exports = { detectInjection, detectPII };
+/**
+ * Tally PII matches into a per-type count, e.g. [{type:'email'},{type:'email'}]
+ * → { email: 2 }. Values are never retained — only the types and how many.
+ *
+ * @param {Array<{ type: string }>} matches
+ * @returns {Record<string, number>}
+ */
+function piiTypeCounts(matches) {
+  const counts = {};
+  for (const m of matches || []) {
+    counts[m.type] = (counts[m.type] || 0) + 1;
+  }
+  return counts;
+}
+
+module.exports = { detectInjection, detectPII, piiTypeCounts };

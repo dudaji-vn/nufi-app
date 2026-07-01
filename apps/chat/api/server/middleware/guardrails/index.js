@@ -4,6 +4,8 @@ const { agentUsesFileSearch, shouldBufferOutput } = require('./outputGuard');
 const { detectInjection, detectPII } = require('./detect');
 const { redactOutput } = require('./redact');
 const { judgeInjection, localizeRedactMessage } = require('./judge');
+const { recordGuardrailEvent } = require('./audit');
+const { piiTypeCounts } = require('./detect');
 
 module.exports = {
   inputGuard,
@@ -15,4 +17,6 @@ module.exports = {
   redactOutput,
   judgeInjection,
   localizeRedactMessage,
+  recordGuardrailEvent,
+  piiTypeCounts,
 };
