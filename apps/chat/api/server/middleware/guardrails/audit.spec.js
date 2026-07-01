@@ -45,4 +45,12 @@ describe('recordGuardrailEvent', () => {
     });
     expect(() => recordGuardrailEvent({ type: 'injection', req })).not.toThrow();
   });
+
+  it('does not throw when called with no arguments', () => {
+    expect(() => recordGuardrailEvent()).not.toThrow();
+  });
+
+  it('does not throw when req has no user', () => {
+    expect(() => recordGuardrailEvent({ type: 'injection', req: {} })).not.toThrow();
+  });
 });

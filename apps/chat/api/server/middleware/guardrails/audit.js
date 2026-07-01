@@ -55,7 +55,7 @@ function compact(obj) {
  * @param {string|null} [params.rule] - matched heuristic rule id (injection)
  * @param {Record<string, number>} [params.piiTypes]
  */
-function recordGuardrailEvent({ type, req, model, source, language, mode, rule, piiTypes }) {
+function recordGuardrailEvent({ type, req, model, source, language, mode, rule, piiTypes } = {}) {
   try {
     if (process.env.GUARDRAIL_AUDIT_ENABLED === 'false') {
       return;
