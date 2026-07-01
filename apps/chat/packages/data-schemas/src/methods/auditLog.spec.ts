@@ -80,4 +80,17 @@ describe('audit log category filtering + counts', () => {
       guardrail_pii_output_redacted: 1,
     });
   });
+
+  it('explicit action overrides category', async () => {
+    await seed();
+    const logs = await methods.getAuditLogs({ action: 'user_created', category: 'security' });
+    expect(logs).toHaveLength(1);
+    expect(logs[0].action).toBe('user_created');
+  });
+
+  it('getAuditLogCounts respects category=admin', async () => {
+    await seed();
+    const counts = await methods.getAuditLogCounts({ category: 'admin' });
+    expect(counts).toEqual({ user_created: 1, grant_assigned: 1 });
+  });
 });
