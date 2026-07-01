@@ -51,6 +51,7 @@ export const getSecurityEventsFn = createServerFn({ method: 'GET' })
     };
   });
 
+/** Returns the full result ({ entries, total, countsByAction }); the Security page needs countsByAction for its summary strip. */
 export const securityEventsQueryOptions = (filters: SecurityFilters = {}) =>
   queryOptions<SecurityEventsResult>({
     queryKey: ['securityEvents', filters],

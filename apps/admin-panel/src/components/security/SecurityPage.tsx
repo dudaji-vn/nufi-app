@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useState, useMemo, useCallback } from 'react';
 import { EmptyState, LoadingState, SearchInput } from '@/components/shared';
 import { securityEventsQueryOptions, exportSecurityEventsCsvFn } from '@/server';
+import type { GuardrailAction } from '@/types';
 import {
   GUARDRAIL_ACTIONS,
   eventBadgeClass,
@@ -13,11 +14,12 @@ import {
 import { useLocalize } from '@/hooks';
 import { cn } from '@/utils';
 
-const SUMMARY = [
-  { action: 'guardrail_injection_blocked', key: 'com_security_summary_injection' },
-  { action: 'guardrail_pii_input_blocked', key: 'com_security_summary_pii_input' },
-  { action: 'guardrail_pii_output_redacted', key: 'com_security_summary_pii_output' },
-] as const;
+/** Exhaustive: adding a 4th GuardrailAction is a compile error until its label is added here. */
+const SUMMARY_KEY_BY_ACTION: Record<GuardrailAction, string> = {
+  guardrail_injection_blocked: 'com_security_summary_injection',
+  guardrail_pii_input_blocked: 'com_security_summary_pii_input',
+  guardrail_pii_output_redacted: 'com_security_summary_pii_output',
+};
 
 export function SecurityPage() {
   const localize = useLocalize();
@@ -37,9 +39,23 @@ export function SecurityPage() {
     [search, action, dateFrom, dateTo],
   );
 
-  const { data, isLoading } = useQuery(securityEventsQueryOptions(filters));
-  const entries = data?.entries ?? [];
-  const counts = data?.countsByAction ?? {};
+  // Deliberately omits `action` so the summary strip always reflects the
+  // date/search range, independent of the event-type filter. When action is
+  // 'all' this produces the same query key as `filters` and React Query
+  // dedupes to a single request.
+  const countsFilters = useMemo(
+    () => ({
+      search: search || undefined,
+      from: dateFrom || undefined,
+      to: dateTo || undefined,
+    }),
+    [search, dateFrom, dateTo],
+  );
+
+  const { data: listData, isLoading } = useQuery(securityEventsQueryOptions(filters));
+  const { data: countsData } = useQuery(securityEventsQueryOptions(countsFilters));
+  const entries = listData?.entries ?? [];
+  const counts = countsData?.countsByAction ?? {};
 
   const handleExport = useCallback(async () => {
     setExporting(true);
@@ -68,11 +84,17 @@ export function SecurityPage() {
         <p className="text-sm text-muted-foreground">{localize('com_security_subtitle')}</p>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
-        {SUMMARY.map(({ action: a, key }) => (
+      <div
+        className="grid grid-cols-3 gap-3"
+        role="group"
+        aria-label={localize('com_security_title')}
+      >
+        {GUARDRAIL_ACTIONS.map((a) => (
           <div key={a} className="rounded-lg border border-border bg-card px-4 py-3">
             <div className="text-2xl font-semibold text-foreground">{counts[a] ?? 0}</div>
-            <div className="text-xs text-muted-foreground">{localize(key)}</div>
+            <div className="text-xs text-muted-foreground">
+              {localize(SUMMARY_KEY_BY_ACTION[a])}
+            </div>
           </div>
         ))}
       </div>

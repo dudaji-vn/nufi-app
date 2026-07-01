@@ -8,7 +8,10 @@ export interface GuardrailMetadata {
   language?: string;
   mode?: string;
   rule?: string | null;
-  /** Per-type counts, e.g. { email: 2 }. Never contains PII values. */
+  /**
+   * Per-type counts with UPPERCASE type keys as emitted by the backend
+   * detector, e.g. { EMAIL: 2 }. Never contains PII values.
+   */
   piiTypes?: Record<string, number>;
 }
 
