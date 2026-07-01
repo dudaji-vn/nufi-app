@@ -1,5 +1,6 @@
 export * from './auth';
 export * from './auditLog';
+export * from './securityEvents';
 export * from './capabilities';
 export * from './config';
 export * from './groups';
