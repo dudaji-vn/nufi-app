@@ -65,6 +65,10 @@ function recordGuardrailEvent({ type, req, model, source, language, mode, rule, 
       return;
     }
     const userId = req?.user?.id;
+    const safeLanguage =
+      typeof language === 'string' && /^[a-z-]{2,8}$/i.test(language)
+        ? language.toLowerCase()
+        : undefined;
     const entry = {
       action,
       actorName: 'system:guardrail',
@@ -72,7 +76,7 @@ function recordGuardrailEvent({ type, req, model, source, language, mode, rule, 
       targetId: userId ? String(userId) : undefined,
       targetName: req?.user?.name || req?.user?.email || undefined,
       details: buildDetails(type, { source, piiTypes }),
-      metadata: compact({ model, source, language, mode, rule, piiTypes }),
+      metadata: compact({ model, source, language: safeLanguage, mode, rule, piiTypes }),
       status: 'success',
     };
     // Fire-and-forget: do not await (no chat latency); createAuditLog is itself
