@@ -138,4 +138,25 @@ describe('applyOutputGuard', () => {
     await applyOutputGuard(response, { usedRag: false, localize });
     expect(localize).not.toHaveBeenCalled();
   });
+
+  it('invokes ctx.onRedact with piiTypes when it redacts ungrounded PII', async () => {
+    process.env.GUARDRAIL_ENABLED = 'true';
+    delete process.env.GUARDRAIL_PII_OUTPUT_MODE; // default: redact_ungrounded
+    const onRedact = jest.fn();
+    const response = { text: 'Reach me at john@example.com' };
+    await applyOutputGuard(response, { usedRag: false, onRedact });
+    // detectPII (./detect + ./patterns) tags matches with uppercase type keys
+    // (EMAIL, SSN, CREDIT_CARD, IP, PHONE) — assert against the real output shape.
+    expect(onRedact).toHaveBeenCalledWith({ piiTypes: { EMAIL: 1 } });
+  });
+
+  it('does NOT invoke ctx.onRedact when there is no PII to redact', async () => {
+    process.env.GUARDRAIL_ENABLED = 'true';
+    const onRedact = jest.fn();
+    await applyOutputGuard(
+      { text: 'The capital of France is Paris.' },
+      { usedRag: false, onRedact },
+    );
+    expect(onRedact).not.toHaveBeenCalled();
+  });
 });
