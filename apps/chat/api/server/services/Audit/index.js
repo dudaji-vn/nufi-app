@@ -21,6 +21,7 @@ function toAuditLogEntry(doc) {
     details: doc.details,
     ipAddress: doc.ipAddress,
     status: doc.status,
+    metadata: doc.metadata,
     timestamp: createdAt || '',
   };
 }
