@@ -17,6 +17,7 @@ const ROUTE_TITLE_KEYS: Record<string, string> = {
   '/access': 'com_access_title',
   '/grants': 'com_grants_title',
   '/audit-log': 'com_audit_title',
+  '/security': 'com_security_title',
   '/help': 'com_help_title',
 };
 

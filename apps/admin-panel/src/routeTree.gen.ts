@@ -13,6 +13,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppUsersRouteImport } from './routes/_app/users'
+import { Route as AppSecurityRouteImport } from './routes/_app/security'
 import { Route as AppHelpRouteImport } from './routes/_app/help'
 import { Route as AppGrantsRouteImport } from './routes/_app/grants'
 import { Route as AppAuditLogRouteImport } from './routes/_app/audit-log'
@@ -37,6 +38,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
 const AppUsersRoute = AppUsersRouteImport.update({
   id: '/users',
   path: '/users',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSecurityRoute = AppSecurityRouteImport.update({
+  id: '/security',
+  path: '/security',
   getParentRoute: () => AppRoute,
 } as any)
 const AppHelpRoute = AppHelpRouteImport.update({
@@ -77,6 +83,7 @@ export interface FileRoutesByFullPath {
   '/audit-log': typeof AppAuditLogRoute
   '/grants': typeof AppGrantsRoute
   '/help': typeof AppHelpRoute
+  '/security': typeof AppSecurityRoute
   '/users': typeof AppUsersRoute
   '/auth/openid/callback': typeof AuthOpenidCallbackRoute
   '/configuration/': typeof AppConfigurationIndexRoute
@@ -87,6 +94,7 @@ export interface FileRoutesByTo {
   '/audit-log': typeof AppAuditLogRoute
   '/grants': typeof AppGrantsRoute
   '/help': typeof AppHelpRoute
+  '/security': typeof AppSecurityRoute
   '/users': typeof AppUsersRoute
   '/': typeof AppIndexRoute
   '/auth/openid/callback': typeof AuthOpenidCallbackRoute
@@ -100,6 +108,7 @@ export interface FileRoutesById {
   '/_app/audit-log': typeof AppAuditLogRoute
   '/_app/grants': typeof AppGrantsRoute
   '/_app/help': typeof AppHelpRoute
+  '/_app/security': typeof AppSecurityRoute
   '/_app/users': typeof AppUsersRoute
   '/_app/': typeof AppIndexRoute
   '/auth/openid/callback': typeof AuthOpenidCallbackRoute
@@ -114,6 +123,7 @@ export interface FileRouteTypes {
     | '/audit-log'
     | '/grants'
     | '/help'
+    | '/security'
     | '/users'
     | '/auth/openid/callback'
     | '/configuration/'
@@ -124,6 +134,7 @@ export interface FileRouteTypes {
     | '/audit-log'
     | '/grants'
     | '/help'
+    | '/security'
     | '/users'
     | '/'
     | '/auth/openid/callback'
@@ -136,6 +147,7 @@ export interface FileRouteTypes {
     | '/_app/audit-log'
     | '/_app/grants'
     | '/_app/help'
+    | '/_app/security'
     | '/_app/users'
     | '/_app/'
     | '/auth/openid/callback'
@@ -176,6 +188,13 @@ declare module '@tanstack/react-router' {
       path: '/users'
       fullPath: '/users'
       preLoaderRoute: typeof AppUsersRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/security': {
+      id: '/_app/security'
+      path: '/security'
+      fullPath: '/security'
+      preLoaderRoute: typeof AppSecurityRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/help': {
@@ -228,6 +247,7 @@ interface AppRouteChildren {
   AppAuditLogRoute: typeof AppAuditLogRoute
   AppGrantsRoute: typeof AppGrantsRoute
   AppHelpRoute: typeof AppHelpRoute
+  AppSecurityRoute: typeof AppSecurityRoute
   AppUsersRoute: typeof AppUsersRoute
   AppIndexRoute: typeof AppIndexRoute
   AppConfigurationIndexRoute: typeof AppConfigurationIndexRoute
@@ -238,6 +258,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAuditLogRoute: AppAuditLogRoute,
   AppGrantsRoute: AppGrantsRoute,
   AppHelpRoute: AppHelpRoute,
+  AppSecurityRoute: AppSecurityRoute,
   AppUsersRoute: AppUsersRoute,
   AppIndexRoute: AppIndexRoute,
   AppConfigurationIndexRoute: AppConfigurationIndexRoute,
