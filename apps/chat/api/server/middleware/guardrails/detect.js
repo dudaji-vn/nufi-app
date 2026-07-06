@@ -4,18 +4,20 @@ const { INJECTION_PATTERNS, PII_PATTERNS } = require('./patterns');
  * Detect a prompt-injection / jailbreak attempt in a piece of text.
  *
  * @param {string} text - The user text to scan.
- * @returns {{ detected: boolean, rule: string|null }}
+ * @returns {{ detected: boolean, rule: string|null, hard: boolean }} `hard` marks
+ *   an unambiguous jailbreak signature the input guard blocks without an AI-judge
+ *   veto (see patterns.js).
  */
 function detectInjection(text) {
   if (typeof text !== 'string' || text.length === 0) {
-    return { detected: false, rule: null };
+    return { detected: false, rule: null, hard: false };
   }
-  for (const { id, re } of INJECTION_PATTERNS) {
+  for (const { id, re, hard } of INJECTION_PATTERNS) {
     if (re.test(text)) {
-      return { detected: true, rule: id };
+      return { detected: true, rule: id, hard: !!hard };
     }
   }
-  return { detected: false, rule: null };
+  return { detected: false, rule: null, hard: false };
 }
 
 /**

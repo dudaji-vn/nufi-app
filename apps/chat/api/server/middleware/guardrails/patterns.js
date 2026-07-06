@@ -9,29 +9,66 @@
 // Prompt-injection / jailbreak rules (English + Vietnamese), case-insensitive.
 // Kept non-global so `.test()` is stateless across calls.
 const INJECTION_PATTERNS = [
+  // `hard: true` marks an unambiguous jailbreak signature — one that essentially
+  // never appears in benign chat. The input guard blocks these outright (the AI
+  // judge is used only to localize the refusal, never to veto), because a small
+  // judge model sometimes under-flags a known jailbreak. Rules WITHOUT `hard`
+  // are ambiguous (e.g. "show me the instructions"); in hybrid mode the AI judge
+  // still confirms them, preserving false-positive protection.
   {
     id: 'ignore_previous',
+    hard: true,
     re: /ignore\s+(?:all\s+|the\s+|any\s+|your\s+)*(?:previous|prior|above|preceding|earlier)\s+(?:instructions?|prompts?|rules?|directions?|messages?)/i,
   },
   {
     id: 'disregard_previous',
+    hard: true,
     re: /disregard\s+(?:all\s+|the\s+|any\s+)*(?:previous|prior|above|preceding|earlier)\s+(?:instructions?|prompts?|rules?|directions?)/i,
   },
   {
+    // Explicit request for the system/initial instructions — unambiguous, hard.
+    // MUST precede the softer `reveal_system_prompt` so the qualified ("your
+    // system instructions") form is classified hard, not shadowed by the soft rule.
+    id: 'reveal_system_instructions',
+    hard: true,
+    re: /(?:output|reveal|print|dump|repeat|show|give|expose|leak)\s+(?:me\s+)?(?:your\s+|the\s+)?(?:initial|original|system)\s+(?:system\s+)?(?:instructions?|prompt|message|rules?)/i,
+  },
+  {
+    // Ambiguous ("show me the instructions") — kept SOFT so the AI judge confirms.
     id: 'reveal_system_prompt',
     re: /(?:reveal|show|print|repeat|expose|display|tell\s+me)\s+(?:me\s+)?(?:your\s+|the\s+)?(?:system\s+|initial\s+|original\s+)?(?:prompt|instructions?|rules?)/i,
   },
-  { id: 'dan_jailbreak', re: /you\s+are\s+now\s+(?:dan\b|developer\s+mode|do\s+anything)/i },
-  { id: 'do_anything_now', re: /\bdo\s+anything\s+now\b/i },
-  { id: 'developer_mode', re: /\bdeveloper\s+mode\s+(?:enabled|on)\b/i },
+  { id: 'dan_jailbreak', hard: true, re: /you\s+are\s+now\s+(?:in\s+|into\s+)?(?:dan\b|developer\s+mode|do\s+anything)/i },
+  { id: 'do_anything_now', hard: true, re: /\bdo\s+anything\s+now\b/i },
+  { id: 'developer_mode', hard: true, re: /\bdeveloper\s+mode\s+(?:enabled|on)\b/i },
   { id: 'jailbreak_word', re: /\bjailbreak\b/i },
   {
     id: 'pretend_no_rules',
+    hard: true,
     re: /pretend\s+(?:you\s+have\s+no|there\s+are\s+no)\s+(?:rules?|restrictions?|guidelines?)/i,
+  },
+  {
+    // "forget your guidelines / previous instructions" addressed to the assistant.
+    id: 'forget_rules',
+    hard: true,
+    re: /forget\s+(?:your\s+|all\s+your\s+|your\s+previous\s+|the\s+previous\s+)?(?:rules?|guidelines?|instructions?|guardrails?|restrictions?|policies|directives?)/i,
+  },
+  {
+    // "bypass your guardrails / safety filters / restrictions".
+    id: 'bypass_rules',
+    hard: true,
+    re: /bypass\s+(?:\w+\s+){0,3}?(?:rules?|guidelines?|guardrails?|filters?|restrictions?|safety|security|policies|limitations?|controls?)/i,
+  },
+  {
+    // Fake "### SYSTEM:" role-marker injection (a markdown heading with a colon).
+    id: 'role_marker',
+    hard: true,
+    re: /(?:^|\n)\s*#{2,}\s*system\s*:/i,
   },
   // Vietnamese
   {
     id: 'vi_bo_qua',
+    hard: true,
     re: /bỏ\s+qua\s+(?:mọi|tất\s*cả|các|những)?\s*(?:hướng\s*dẫn|chỉ\s*dẫn|chỉ\s*thị|quy\s*tắc|quy\s*định|yêu\s*cầu|lệnh)/i,
   },
   {
