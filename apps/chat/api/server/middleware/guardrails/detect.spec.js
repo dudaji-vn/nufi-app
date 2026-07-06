@@ -1,4 +1,4 @@
-const { detectInjection, detectPII } = require('./detect');
+const { detectInjection, detectPII, piiTypeCounts } = require('./detect');
 
 describe('detectInjection', () => {
   it('flags an English "ignore previous instructions" jailbreak', () => {
@@ -95,5 +95,22 @@ describe('detectPII', () => {
         index: expect.any(Number),
       }),
     );
+  });
+});
+
+describe('piiTypeCounts', () => {
+  it('tallies types and ignores values', () => {
+    expect(
+      piiTypeCounts([
+        { type: 'email', value: 'a@b.com' },
+        { type: 'email', value: 'c@d.com' },
+        { type: 'phone', value: '123' },
+      ]),
+    ).toEqual({ email: 2, phone: 1 });
+  });
+
+  it('returns {} for empty or undefined input', () => {
+    expect(piiTypeCounts([])).toEqual({});
+    expect(piiTypeCounts(undefined)).toEqual({});
   });
 });
