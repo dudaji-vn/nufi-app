@@ -30,20 +30,26 @@ const isNumberish = (ch) => /[\d()+\-.]/.test(ch);
 // instead of buffering to the end. The full-`raw` detected-match clamp below is
 // the real backstop; this only governs not-yet-detected partial numeric tails.
 const MAX_PII_HOLD = 32;
+// Upper bound on a single PII match length (email max is 254). Detection scans
+// only raw.slice(committed - MAX_MATCH_LEN), so any match that could straddle
+// the commit boundary is still seen — this keeps per-push work bounded (O(n)
+// total) instead of re-scanning the whole prefix every token (O(n²)).
+const MAX_MATCH_LEN = 256;
 
 /** Pull the commit boundary left over a trailing whitespace-separated run of
- *  number-ish tokens (bounded by MAX_PII_HOLD), so a phone/card streamed in
- *  space-separated groups is never partially committed before it is complete. */
-function holdTrailingNumberish(raw, start) {
-  const limit = Math.max(0, start - MAX_PII_HOLD);
+ *  number-ish tokens (bounded by MAX_PII_HOLD, floored at `floor`), so a
+ *  phone/card streamed in space-separated groups is never partially committed
+ *  before it is complete. */
+function holdTrailingNumberish(raw, start, floor) {
+  const limit = Math.max(floor, start - MAX_PII_HOLD);
   let i = start;
   for (;;) {
     let j = i;
-    while (j > 0 && isWs(raw[j - 1])) {
+    while (j > floor && isWs(raw[j - 1])) {
       j--; // skip whitespace before the token
     }
     let k = j;
-    while (k > 0 && isNumberish(raw[k - 1])) {
+    while (k > floor && isNumberish(raw[k - 1])) {
       k--; // scan the token
     }
     // Hold the token only if it starts within MAX_PII_HOLD of the boundary; a
@@ -57,67 +63,65 @@ function holdTrailingNumberish(raw, start) {
   }
 }
 
-function safeCommitLength(raw, final) {
+/** The raw length that is safe to redact+emit given what is already `committed`. */
+function safeCommitLength(raw, committed, final) {
   const L = raw.length;
   if (final) {
     return L;
   }
-  if (L === 0) {
-    return 0;
+  if (L <= committed) {
+    return committed;
   }
-  // Hold the in-progress word: commit only up to (and including) the last space.
+  // Hold the in-progress word: commit only up to the last whitespace in the
+  // not-yet-committed tail.
   let b = -1;
-  for (let i = L - 1; i >= 0; i--) {
+  for (let i = L - 1; i >= committed; i--) {
     if (isWs(raw[i])) {
       b = i + 1;
       break;
     }
   }
   if (b < 0) {
-    return 0; // still on the very first word — hold everything
+    return committed; // no whitespace in the tail yet — hold it
   }
-  b = holdTrailingNumberish(raw, b);
-  // Never cut across a detected PII match (redact it whole, or hold it whole).
-  for (const m of detectPII(raw)) {
-    const end = m.index + m.value.length;
-    if (m.index < b && end > b) {
-      b = m.index;
+  b = holdTrailingNumberish(raw, b, committed);
+  // Never cut across a detected PII match. Scan only a bounded window near the
+  // tail so this stays cheap; a match that could straddle `b` starts no earlier
+  // than b - MAX_MATCH_LEN ≥ windowStart, so it is always seen.
+  const windowStart = Math.max(0, committed - MAX_MATCH_LEN);
+  for (const m of detectPII(raw.slice(windowStart))) {
+    const start = windowStart + m.index;
+    const end = start + m.value.length;
+    if (start < b && end > b) {
+      b = start;
     }
   }
-  return Math.max(0, b);
+  return Math.max(committed, b);
 }
 
-/*
- * WIRING NOTES (must be addressed when this is hooked into routes/agents/index.js):
- *  1. PERF: `step()` re-runs detectPII + redactOutput over the whole committed
- *     prefix on every push → O(n²) for a long streamed message. Before wiring,
- *     make it incremental (scan only raw.slice(prevBoundary - MAX_MATCH_LEN,
- *     boundary) and append only the new redacted delta), or the redaction CPU
- *     will block the event loop on long responses.
- *  2. STYLE/RAG PARITY: this hardcodes { style: 'inline' } and knows nothing of
- *     GUARDRAIL_PII_OUTPUT_STYLE or the RAG-skip rule. `applyOutputGuard`
- *     defaults to whole-message 'message' style and SKIPS redaction on
- *     file_search/RAG turns. The wiring MUST pass the configured style through
- *     and bypass this redactor entirely on RAG turns, or the streamed view and
- *     the saved message will disagree (and RAG PII would be masked live but kept
- *     in the transcript — an unfixable mismatch since the client only appends).
+/**
+ * Style/RAG parity (handled by the WIRING, not this module): the streaming
+ * redactor always masks INLINE. The route only uses it when
+ * GUARDRAIL_PII_OUTPUT_STYLE is 'inline' and the turn is NOT a file_search/RAG
+ * turn (see `shouldStreamRedact` in outputGuard.js); the whole-message 'message'
+ * style and RAG-skip keep using the existing buffer/passthrough path, so the
+ * streamed view and the final saved message always agree.
  */
 function createStreamingRedactor() {
   let raw = '';
-  let emitted = ''; // redacted text already returned to the caller
+  let committed = 0; // raw offset already redacted and returned
 
   const step = (final) => {
-    const boundary = safeCommitLength(raw, final);
-    const redactedCommitted = redactOutput(raw.slice(0, boundary), { style: 'inline' }).text;
-    // Emission must be prefix-stable (append-only). If it isn't (should not
-    // happen), emit nothing now and let a later step / flush reconcile — this
-    // keeps us from ever un-saying or leaking text.
-    if (redactedCommitted.length >= emitted.length && redactedCommitted.startsWith(emitted)) {
-      const out = redactedCommitted.slice(emitted.length);
-      emitted = redactedCommitted;
-      return out;
+    const boundary = safeCommitLength(raw, committed, final);
+    if (boundary <= committed) {
+      return '';
     }
-    return '';
+    // [committed, boundary) never straddles a PII match (word-hold, numeric-hold
+    // and the match clamp guarantee it), so it can be redacted independently and
+    // the concatenation equals a single-shot inline redaction of the full text.
+    const out = redactOutput(raw.slice(committed, boundary), { style: 'inline' }).text;
+    committed = boundary;
+    return out;
   };
 
   return {
@@ -133,4 +137,35 @@ function createStreamingRedactor() {
   };
 }
 
-module.exports = { createStreamingRedactor, safeCommitLength };
+/**
+ * Transform one streamed SSE event through a redactor. Returns the event to
+ * write to the client — with the message-delta text masked inline — or `null`
+ * when this delta is held back (write nothing this tick). Any event that is not
+ * a message-delta (run steps, tool calls, reasoning, done) passes through
+ * unchanged. `messageDeltaType` is the event name that carries assistant text
+ * (GraphEvents.ON_MESSAGE_DELTA), passed in so this module stays dependency-free.
+ *
+ * @param {any} event
+ * @param {{ push: (s: string) => string }} redactor
+ * @param {string} messageDeltaType
+ * @returns {any|null}
+ */
+function redactStreamEvent(event, redactor, messageDeltaType) {
+  if (event && event.event === messageDeltaType) {
+    const delta = event.data && event.data.delta;
+    const content = delta && delta.content;
+    const part = Array.isArray(content) ? content[0] : content;
+    if (part && typeof part.text === 'string') {
+      const safe = redactor.push(part.text);
+      if (!safe) {
+        return null; // held back this tick — nothing safe to show yet
+      }
+      const newPart = { ...part, text: safe };
+      const newContent = Array.isArray(content) ? [newPart, ...content.slice(1)] : newPart;
+      return { ...event, data: { ...event.data, delta: { ...delta, content: newContent } } };
+    }
+  }
+  return event;
+}
+
+module.exports = { createStreamingRedactor, safeCommitLength, redactStreamEvent };

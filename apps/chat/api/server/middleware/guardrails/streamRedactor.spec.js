@@ -1,4 +1,4 @@
-const { createStreamingRedactor } = require('./streamRedactor');
+const { createStreamingRedactor, redactStreamEvent } = require('./streamRedactor');
 const { redactOutput } = require('./redact');
 
 /**
@@ -110,4 +110,60 @@ describe('createStreamingRedactor — PII at the very end of the stream', () => 
       expect(final.includes(c.secret)).toBe(false);
     });
   }
+});
+
+describe('redactStreamEvent — SSE wiring (route emitter)', () => {
+  const DELTA = 'on_message_delta';
+  const mkDelta = (id, text) => ({
+    event: DELTA,
+    data: { id, delta: { content: [{ type: 'text', text }] } },
+  });
+
+  // Reconstruct what the client sees by concatenating emitted delta texts (the
+  // client appends delta.content[0].text), skipping held (null) ticks.
+  function streamThrough(fullText, chunkSize) {
+    const r = createStreamingRedactor();
+    let cum = '';
+    const frames = [];
+    for (let i = 0; i < fullText.length; i += chunkSize) {
+      const out = redactStreamEvent(mkDelta('m1', fullText.slice(i, i + chunkSize)), r, DELTA);
+      if (out !== null) {
+        cum += out.data.delta.content[0].text;
+        frames.push(cum);
+      }
+    }
+    return { streamed: cum, frames };
+  }
+
+  it('passes non-message-delta events through unchanged (identity)', () => {
+    const r = createStreamingRedactor();
+    const other = { event: 'on_run_step', data: { foo: 1 } };
+    expect(redactStreamEvent(other, r, DELTA)).toBe(other);
+    const done = { final: true, responseMessage: { text: 'x' } };
+    expect(redactStreamEvent(done, r, DELTA)).toBe(done);
+  });
+
+  it('masks PII inline across deltas and never leaks a raw value', () => {
+    const text = 'His email is john.doe@example.com and phone (123) 456-7890 thanks';
+    const secrets = ['john.doe@example.com', '(123) 456-7890'];
+    for (const size of [1, 3, 8]) {
+      const { streamed, frames } = streamThrough(text, size);
+      for (const f of frames) {
+        for (const s of secrets) {
+          expect(f.includes(s)).toBe(false);
+        }
+      }
+      // What streamed live is always a safe prefix of the final inline-redacted
+      // message (the held tail is delivered by the final event), so the streamed
+      // view and the saved message agree.
+      expect(inline(text).startsWith(streamed)).toBe(true);
+    }
+  });
+
+  it('leaves a PII-free delta stream byte-identical', () => {
+    const text = 'The capital of Vietnam is Hanoi and the food is great.';
+    const { streamed } = streamThrough(text, 2);
+    expect(inline(text).startsWith(streamed)).toBe(true);
+    expect(text.startsWith(streamed)).toBe(true);
+  });
 });
