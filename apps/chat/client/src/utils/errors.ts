@@ -19,3 +19,19 @@ export const getResponseStatus = (error: unknown): number | undefined => {
 };
 
 export const isNotFoundError = (error: unknown): boolean => getResponseStatus(error) === 404;
+
+/**
+ * Extracts a human-readable message from an error, preferring the server-provided
+ * `error`/`message` field on the HTTP response body over the generic Axios message
+ * (e.g. "Request failed with status code 409").
+ */
+export const getResponseErrorMessage = (error: unknown, fallback?: string): string | undefined => {
+  if (axios.isAxiosError(error)) {
+    const data = error.response?.data as { error?: string; message?: string } | undefined;
+    return data?.error ?? data?.message ?? error.message ?? fallback;
+  }
+  if (error instanceof Error) {
+    return error.message || fallback;
+  }
+  return fallback;
+};

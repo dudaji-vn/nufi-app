@@ -20,7 +20,6 @@ export const useTeamsQuery = (
   return useQuery<TTeamsListResponse>([QueryKeys.teams], () => dataService.getTeams(), {
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
-    refetchOnMount: false,
     ...config,
   });
 };
@@ -33,7 +32,6 @@ export const useTeamQuery = (
     enabled: !!id,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
-    refetchOnMount: false,
     ...config,
   });
 };
@@ -49,7 +47,6 @@ export const useTeamMembersQuery = (
       enabled: !!id,
       refetchOnWindowFocus: false,
       refetchOnReconnect: false,
-      refetchOnMount: false,
       ...config,
     },
   );
@@ -66,7 +63,6 @@ export const useTeamInvitesQuery = (
       enabled: !!id,
       refetchOnWindowFocus: false,
       refetchOnReconnect: false,
-      refetchOnMount: false,
       ...config,
     },
   );
@@ -81,7 +77,6 @@ export const useMyTeamInvitesQuery = (
     {
       refetchOnWindowFocus: false,
       refetchOnReconnect: false,
-      refetchOnMount: false,
       ...config,
     },
   );
@@ -98,7 +93,6 @@ export const useTeamKnowledgeQuery = (
       enabled: !!id,
       refetchOnWindowFocus: false,
       refetchOnReconnect: false,
-      refetchOnMount: false,
       ...config,
     },
   );
@@ -115,7 +109,6 @@ export const useTeamAgentsQuery = (
       enabled: !!id,
       refetchOnWindowFocus: false,
       refetchOnReconnect: false,
-      refetchOnMount: false,
       ...config,
     },
   );
@@ -132,7 +125,6 @@ export const useTeamPromptsQuery = (
       enabled: !!id,
       refetchOnWindowFocus: false,
       refetchOnReconnect: false,
-      refetchOnMount: false,
       ...config,
     },
   );
@@ -149,7 +141,6 @@ export const useSubgroupsQuery = (
       enabled: !!teamId,
       refetchOnWindowFocus: false,
       refetchOnReconnect: false,
-      refetchOnMount: false,
       ...config,
     },
   );
@@ -167,7 +158,6 @@ export const useSubgroupQuery = (
       enabled: !!teamId && !!sgId,
       refetchOnWindowFocus: false,
       refetchOnReconnect: false,
-      refetchOnMount: false,
       ...config,
     },
   );
