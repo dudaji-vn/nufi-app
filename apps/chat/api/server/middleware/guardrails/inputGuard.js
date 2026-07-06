@@ -1,7 +1,7 @@
 const { isEnabled } = require('@librechat/api');
 const { logger } = require('@librechat/data-schemas');
 const { detectInjection, detectPII, piiTypeCounts } = require('./detect');
-const { judgeInjection, FALLBACK_BLOCK_MESSAGE } = require('./judge');
+const { judgeInjection, FALLBACK_BLOCK_MESSAGE, localizedBlockMessage, detectLang } = require('./judge');
 const { recordGuardrailEvent } = require('./audit');
 
 const DEFAULT_INJECTION_MESSAGE =
@@ -55,10 +55,23 @@ async function inputGuard(req, res, next) {
       const det = detectInjection(text);
       if (det.detected) {
         heuristicRule = det.rule;
-        verdict =
-          mode === 'heuristic'
-            ? { injection: true, message: FALLBACK_BLOCK_MESSAGE, language: '', source: 'heuristic' }
-            : await judgeInjection(text, { model: req.body?.model }); // hybrid: confirm + localize
+        if (mode === 'heuristic') {
+          verdict = { injection: true, message: FALLBACK_BLOCK_MESSAGE, language: '', source: 'heuristic' };
+        } else if (det.hard) {
+          // hybrid + unambiguous jailbreak signature: block immediately without
+          // an AI-judge veto (a small judge model sometimes under-flags a known
+          // jailbreak). Localize the refusal locally — no model call, no latency.
+          verdict = {
+            injection: true,
+            message: localizedBlockMessage(text),
+            language: detectLang(text),
+            source: 'heuristic',
+          };
+        } else {
+          // hybrid + ambiguous signature: let the AI judge confirm so benign
+          // phrasings ("show me the instructions") are not blocked.
+          verdict = await judgeInjection(text, { model: req.body?.model });
+        }
       }
     }
 
