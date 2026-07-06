@@ -184,10 +184,15 @@ export const useAcceptInviteMutation = (
     (token: string) => dataService.acceptTeamInvite(token),
     {
       ...options,
-      onSuccess: (...params) => {
+      onSuccess: (data, variables, context) => {
         queryClient.invalidateQueries([QueryKeys.teams]);
         queryClient.invalidateQueries([QueryKeys.myTeamInvites]);
-        options?.onSuccess?.(...params);
+        const teamId = data?.team?._id;
+        if (teamId) {
+          queryClient.invalidateQueries([QueryKeys.team, teamId]);
+          queryClient.invalidateQueries([QueryKeys.teamMembers, teamId]);
+        }
+        options?.onSuccess?.(data, variables, context);
       },
     },
   );

@@ -16,6 +16,7 @@ import {
 } from '@librechat/client';
 import type { TranslationKeys } from '~/hooks';
 import { useCreateInviteMutation } from '~/data-provider';
+import { getResponseErrorMessage } from '~/utils';
 import { useLocalize } from '~/hooks';
 
 interface InviteByEmailDialogProps {
@@ -44,7 +45,10 @@ export default function InviteByEmailDialog({ teamId, children }: InviteByEmailD
       setRole('member');
     },
     onError: (error: Error) => {
-      showToast({ message: error.message || localize('com_ui_error'), status: 'error' });
+      showToast({
+        message: getResponseErrorMessage(error) || localize('com_ui_error'),
+        status: 'error',
+      });
     },
   });
 

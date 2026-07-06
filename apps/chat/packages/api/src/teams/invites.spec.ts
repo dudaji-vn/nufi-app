@@ -167,7 +167,7 @@ describe('createTeamInviteHandlers', () => {
 
   // ── accept ────────────────────────────────────────────────────────────────────
   describe('accept', () => {
-    it('happy path: addTeamMember called before acceptInvite, returns 200 {team}', async () => {
+    it('happy path: acceptInvite claimed before addTeamMember, returns 200 {team}', async () => {
       const invite = mockInvite({ invitedUserId: new Types.ObjectId(validCallerId) });
       const team = mockTeam();
       const deps = createDeps({
@@ -196,7 +196,7 @@ describe('createTeamInviteHandlers', () => {
 
       expect(status).toHaveBeenCalledWith(200);
       expect(json.mock.calls[0][0]).toHaveProperty('team');
-      expect(addTeamMemberOrder).toEqual(['addTeamMember', 'acceptInvite']);
+      expect(addTeamMemberOrder).toEqual(['acceptInvite', 'addTeamMember']);
     });
 
     it('returns 404 when invite not found', async () => {
@@ -416,6 +416,55 @@ describe('createTeamInviteHandlers', () => {
 
       expect(status).toHaveBeenCalledWith(200);
     });
+
+    it('returns 410 and does not add the member when acceptInvite loses the race (returns null)', async () => {
+      const callerEmail = 'caller@example.com';
+      const invite = mockInvite({ email: callerEmail });
+      const deps = createDeps({
+        findInviteByToken: jest.fn().mockResolvedValue(invite),
+        acceptInvite: jest.fn().mockResolvedValue(null),
+      });
+      const handlers = createTeamInviteHandlers(deps);
+      const { req, res, status, json } = createReqRes({
+        params: { token: validToken },
+        userId: validCallerId,
+        email: callerEmail,
+      });
+
+      await handlers.accept(req, res);
+
+      expect(status).toHaveBeenCalledWith(410);
+      expect(json).toHaveBeenCalledWith({ error: 'Invite is no longer valid' });
+      expect(deps.addTeamMember).not.toHaveBeenCalled();
+    });
+
+    it('claims the invite before adding the member (acceptInvite runs before addTeamMember)', async () => {
+      const callerEmail = 'caller@example.com';
+      const invite = mockInvite({ email: callerEmail });
+      const callOrder: string[] = [];
+      const deps = createDeps({
+        findInviteByToken: jest.fn().mockResolvedValue(invite),
+        acceptInvite: jest.fn().mockImplementation(async () => {
+          callOrder.push('accept');
+          return mockInvite({ status: 'accepted' });
+        }),
+        addTeamMember: jest.fn().mockImplementation(async () => {
+          callOrder.push('addMember');
+          return mockTeam();
+        }),
+      });
+      const handlers = createTeamInviteHandlers(deps);
+      const { req, res, status } = createReqRes({
+        params: { token: validToken },
+        userId: validCallerId,
+        email: callerEmail,
+      });
+
+      await handlers.accept(req, res);
+
+      expect(status).toHaveBeenCalledWith(200);
+      expect(callOrder).toEqual(['accept', 'addMember']);
+    });
   });
 
   // ── decline ───────────────────────────────────────────────────────────────────
@@ -533,6 +582,24 @@ describe('createTeamInviteHandlers', () => {
       expect(status).toHaveBeenCalledWith(200);
       expect(json).toHaveBeenCalledWith({ success: true });
       expect(deps.declineInvite).toHaveBeenCalledWith({ token: validToken });
+    });
+
+    it('returns 410 when declineInvite loses the race (returns null)', async () => {
+      const invite = mockInvite({ email: 'caller@example.com' });
+      const deps = createDeps({
+        findInviteByToken: jest.fn().mockResolvedValue(invite),
+        declineInvite: jest.fn().mockResolvedValue(null),
+      });
+      const handlers = createTeamInviteHandlers(deps);
+      const { req, res, status, json } = createReqRes({
+        params: { token: validToken },
+        email: 'caller@example.com',
+      });
+
+      await handlers.decline(req, res);
+
+      expect(status).toHaveBeenCalledWith(410);
+      expect(json).toHaveBeenCalledWith({ error: 'Invite is no longer valid' });
     });
   });
 
@@ -792,6 +859,84 @@ describe('createTeamInviteHandlers', () => {
 
       expect(status).toHaveBeenCalledWith(500);
       expect(json).toHaveBeenCalledWith({ error: 'Failed to create invite' });
+    });
+
+    it('returns 409 when the invited user is already a team member', async () => {
+      const invitedUser = mockUser({
+        _id: new Types.ObjectId(validUserId),
+        email: 'invitee@example.com',
+      });
+      const team = mockTeam({
+        members: [
+          { userId: new Types.ObjectId(validCallerId), role: 'admin', joinedAt: new Date() },
+          { userId: new Types.ObjectId(validUserId), role: 'member', joinedAt: new Date() },
+        ],
+      });
+      const deps = createDeps({
+        getTeamRole: jest.fn().mockResolvedValue('admin'),
+        findGroupById: jest.fn().mockResolvedValue(team),
+        findUser: jest.fn().mockResolvedValue(invitedUser),
+      });
+      const handlers = createTeamInviteHandlers(deps);
+      const { req, res, status, json } = createReqRes({
+        params: { id: validId },
+        body: { email: 'invitee@example.com', role: 'member' },
+        userId: validCallerId,
+      });
+
+      await handlers.create(req, res);
+
+      expect(status).toHaveBeenCalledWith(409);
+      expect(json).toHaveBeenCalledWith({ error: 'User is already a team member' });
+      expect(deps.createInvite).not.toHaveBeenCalled();
+    });
+
+    it('returns 409 when a pending invite already exists for the email', async () => {
+      const team = mockTeam();
+      const existing = mockInvite({ email: 'invitee@example.com', status: 'pending' });
+      const deps = createDeps({
+        getTeamRole: jest.fn().mockResolvedValue('admin'),
+        findGroupById: jest.fn().mockResolvedValue(team),
+        findUser: jest.fn().mockResolvedValue(null),
+        listInvitesForTeam: jest.fn().mockResolvedValue([existing]),
+      });
+      const handlers = createTeamInviteHandlers(deps);
+      const { req, res, status, json } = createReqRes({
+        params: { id: validId },
+        body: { email: 'Invitee@Example.com', role: 'member' },
+        userId: validCallerId,
+      });
+
+      await handlers.create(req, res);
+
+      expect(status).toHaveBeenCalledWith(409);
+      expect(json).toHaveBeenCalledWith({
+        error: 'A pending invite already exists for this email',
+      });
+      expect(deps.createInvite).not.toHaveBeenCalled();
+    });
+
+    it('allows the invite when a pending invite exists only for a different email', async () => {
+      const team = mockTeam();
+      const otherInvite = mockInvite({ email: 'someone-else@example.com', status: 'pending' });
+      const deps = createDeps({
+        getTeamRole: jest.fn().mockResolvedValue('admin'),
+        findGroupById: jest.fn().mockResolvedValue(team),
+        findUser: jest.fn().mockResolvedValue(null),
+        listInvitesForTeam: jest.fn().mockResolvedValue([otherInvite]),
+        createInvite: jest.fn().mockResolvedValue(mockInvite()),
+      });
+      const handlers = createTeamInviteHandlers(deps);
+      const { req, res, status } = createReqRes({
+        params: { id: validId },
+        body: { email: 'invitee@example.com', role: 'member' },
+        userId: validCallerId,
+      });
+
+      await handlers.create(req, res);
+
+      expect(status).toHaveBeenCalledWith(201);
+      expect(deps.createInvite).toHaveBeenCalled();
     });
   });
 

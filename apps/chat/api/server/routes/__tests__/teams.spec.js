@@ -90,6 +90,10 @@ function createApp(user) {
     transferOwnership: db.transferOwnership,
     deleteInvitesByGroup: db.deleteInvitesByGroup,
     findUsers: db.findUsers,
+    getTeamSubgroups: db.getTeamSubgroups,
+    deleteSubgroup: db.deleteSubgroup,
+    deleteAclEntries: db.deleteAclEntries,
+    removeSubgroupMember: db.removeSubgroupMember,
   });
 
   const mockSendInviteEmail = jest.fn().mockResolvedValue(undefined);
