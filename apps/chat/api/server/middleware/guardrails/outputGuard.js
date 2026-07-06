@@ -146,6 +146,28 @@ function shouldBufferOutput() {
   );
 }
 
+/**
+ * Whether the stream subscriber should redact PII INLINE *while* streaming
+ * (Tier-2) instead of buffering the whole message. Enabled only when the
+ * configured output style is 'inline' (whole-message 'message' style can't be
+ * streamed incrementally, so it keeps using the buffer/passthrough path) and the
+ * turn is NOT a file_search/RAG turn (which `applyOutputGuard` intentionally
+ * leaves un-redacted). This keeps the streamed view identical to the final saved
+ * message, which `applyOutputGuard` redacts with the same inline style.
+ *
+ * @param {boolean} [usedRag] - whether this turn used file_search/RAG retrieval.
+ * @returns {boolean}
+ */
+function shouldStreamRedact(usedRag) {
+  return (
+    isEnabled(process.env.GUARDRAIL_ENABLED) &&
+    (process.env.GUARDRAIL_PII_OUTPUT_MODE || 'redact_ungrounded').toLowerCase() !== 'off' &&
+    (process.env.GUARDRAIL_PII_OUTPUT_STYLE || 'message').toLowerCase() === 'inline' &&
+    !(usedRag && process.env.GUARDRAIL_PII_OUTPUT_SKIP_RAG !== 'false')
+  );
+}
+
 module.exports = applyOutputGuard;
 module.exports.agentUsesFileSearch = agentUsesFileSearch;
 module.exports.shouldBufferOutput = shouldBufferOutput;
+module.exports.shouldStreamRedact = shouldStreamRedact;

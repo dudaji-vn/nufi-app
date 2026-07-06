@@ -344,6 +344,14 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
       GenerationJobManager.updateMetadata(streamId, { sender: client.sender });
     }
 
+    // Record whether this turn is grounded in the user's own files (RAG) so the
+    // stream route can decide whether to inline-redact PII while streaming
+    // (Tier-2). RAG turns are left un-redacted, matching applyOutputGuard's
+    // grounded-aware skip, so the streamed view and the saved message agree.
+    GenerationJobManager.updateMetadata(streamId, {
+      usedRag: agentUsesFileSearch(client?.options?.agent),
+    });
+
     // Store reference to client's contentParts - graph will be set when run is created
     if (client?.contentParts) {
       GenerationJobManager.setContentParts(streamId, client.contentParts);
