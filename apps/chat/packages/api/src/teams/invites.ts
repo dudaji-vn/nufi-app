@@ -143,12 +143,16 @@ export function createTeamInviteHandlers(deps: TeamInviteHandlersDeps) {
         }
       }
 
+      const accepted = await acceptInvite({ token, userId: callerId });
+      if (!accepted) {
+        return res.status(410).json({ error: 'Invite is no longer valid' });
+      }
+
       await addTeamMember({
         groupId: invite.groupId.toString(),
         userId: callerId,
         role: invite.role,
       });
-      await acceptInvite({ token, userId: callerId });
 
       const team = await findGroupById(invite.groupId.toString());
       return res.status(200).json({ team });
@@ -177,7 +181,10 @@ export function createTeamInviteHandlers(deps: TeamInviteHandlersDeps) {
         return res.status(410).json({ error: 'Invite is no longer valid' });
       }
 
-      await declineInvite({ token });
+      const declined = await declineInvite({ token });
+      if (!declined) {
+        return res.status(410).json({ error: 'Invite is no longer valid' });
+      }
       return res.status(200).json({ success: true });
     } catch (error) {
       logger.error('[invites] decline error:', error);
@@ -213,6 +220,24 @@ export function createTeamInviteHandlers(deps: TeamInviteHandlersDeps) {
 
       const invitedUser = await findUser({ email: email.trim() });
       const invitedUserId = invitedUser?._id ?? null;
+
+      if (invitedUserId) {
+        const alreadyMember = (access.team.members ?? []).some(
+          (member) => member.userId?.toString() === invitedUserId.toString(),
+        );
+        if (alreadyMember) {
+          return res.status(409).json({ error: 'User is already a team member' });
+        }
+      }
+
+      const normalizedEmail = email.trim().toLowerCase();
+      const pendingInvites = await listInvitesForTeam({ groupId: id, status: 'pending' });
+      const duplicateInvite = pendingInvites.some(
+        (pending) => pending.email.toLowerCase() === normalizedEmail,
+      );
+      if (duplicateInvite) {
+        return res.status(409).json({ error: 'A pending invite already exists for this email' });
+      }
 
       const invite = await createInvite({
         groupId: id,
