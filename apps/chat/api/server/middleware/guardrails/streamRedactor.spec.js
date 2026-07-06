@@ -82,4 +82,32 @@ describe('createStreamingRedactor — preserves & streams normal text', () => {
       expect(runStream(text, size).final).toBe(inline(text));
     }
   });
+
+  it('streams a long numeric sequence instead of buffering it all', () => {
+    // Regression: an unbounded numeric hold-back used to buffer the ENTIRE
+    // response (zero output until flush) for space-separated number runs.
+    // Use 2-digit numbers so detectPII's phone rule does not match them.
+    const text = Array.from({ length: 60 }, (_, i) => i + 10).join(' ') + ' done';
+    const { final, snapshots } = runStream(text, 1);
+    expect(final).toBe(text); // PII-free → unchanged
+    const beforeFlush = snapshots[snapshots.length - 2];
+    // Most of it should have streamed before the final flush (bounded hold-back).
+    expect(beforeFlush.length).toBeGreaterThan(text.length / 2);
+  });
+});
+
+describe('createStreamingRedactor — PII at the very end of the stream', () => {
+  const tail = [
+    { name: 'email, no trailing char', text: 'his email is john.doe@example.com', secret: 'john.doe@example.com' },
+    { name: 'phone with parens, no trailing char', text: 'call (123) 456-7890', secret: '(123) 456-7890' },
+    { name: 'credit card, no trailing char', text: 'card 4111 1111 1111 1111', secret: '4111 1111 1111 1111' },
+  ];
+  for (const c of tail) {
+    it(`never leaks and redacts on flush: ${c.name}`, () => {
+      const { final, snapshots } = runStream(c.text, 1);
+      assertNeverLeaks(snapshots, [c.secret]);
+      expect(final).toBe(inline(c.text));
+      expect(final.includes(c.secret)).toBe(false);
+    });
+  }
 });

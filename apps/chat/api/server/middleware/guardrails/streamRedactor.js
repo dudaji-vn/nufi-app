@@ -22,10 +22,20 @@ const { redactOutput } = require('./redact');
 const isWs = (ch) => /\s/.test(ch);
 const isNumberish = (ch) => /[\d()+\-.]/.test(ch);
 
-/** Pull the commit boundary left over any trailing whitespace-separated run of
- *  number-ish tokens, so a phone/card streamed in space-separated groups is
- *  never partially committed before it is complete. */
+// Longest space-containing PII pattern is a 4-group credit card ("4111 1111
+// 1111 1111" = 19 chars); phones with spaces are shorter. We hold a trailing
+// numeric run only within this many chars of the commit boundary — enough that
+// an in-progress spaced phone/card is never partially committed, but bounded so
+// a long PII-free numeric response (tables, stats, ID lists) still STREAMS
+// instead of buffering to the end. The full-`raw` detected-match clamp below is
+// the real backstop; this only governs not-yet-detected partial numeric tails.
+const MAX_PII_HOLD = 32;
+
+/** Pull the commit boundary left over a trailing whitespace-separated run of
+ *  number-ish tokens (bounded by MAX_PII_HOLD), so a phone/card streamed in
+ *  space-separated groups is never partially committed before it is complete. */
 function holdTrailingNumberish(raw, start) {
+  const limit = Math.max(0, start - MAX_PII_HOLD);
   let i = start;
   for (;;) {
     let j = i;
@@ -36,8 +46,11 @@ function holdTrailingNumberish(raw, start) {
     while (k > 0 && isNumberish(raw[k - 1])) {
       k--; // scan the token
     }
-    if (k < j && /\d/.test(raw.slice(k, j))) {
-      i = k; // token is number-ish (has a digit) → hold it and keep walking left
+    // Hold the token only if it starts within MAX_PII_HOLD of the boundary; a
+    // token older than that cannot be part of a PII match reaching the tail, so
+    // commit it (keeps numeric-heavy text streaming instead of buffering).
+    if (k < j && k >= limit && /\d/.test(raw.slice(k, j))) {
+      i = k; // number-ish token within range → hold it and keep walking left
     } else {
       return i;
     }
@@ -74,6 +87,21 @@ function safeCommitLength(raw, final) {
   return Math.max(0, b);
 }
 
+/*
+ * WIRING NOTES (must be addressed when this is hooked into routes/agents/index.js):
+ *  1. PERF: `step()` re-runs detectPII + redactOutput over the whole committed
+ *     prefix on every push → O(n²) for a long streamed message. Before wiring,
+ *     make it incremental (scan only raw.slice(prevBoundary - MAX_MATCH_LEN,
+ *     boundary) and append only the new redacted delta), or the redaction CPU
+ *     will block the event loop on long responses.
+ *  2. STYLE/RAG PARITY: this hardcodes { style: 'inline' } and knows nothing of
+ *     GUARDRAIL_PII_OUTPUT_STYLE or the RAG-skip rule. `applyOutputGuard`
+ *     defaults to whole-message 'message' style and SKIPS redaction on
+ *     file_search/RAG turns. The wiring MUST pass the configured style through
+ *     and bypass this redactor entirely on RAG turns, or the streamed view and
+ *     the saved message will disagree (and RAG PII would be masked live but kept
+ *     in the transcript — an unfixable mismatch since the client only appends).
+ */
 function createStreamingRedactor() {
   let raw = '';
   let emitted = ''; // redacted text already returned to the caller
