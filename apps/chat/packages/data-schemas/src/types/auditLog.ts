@@ -38,6 +38,8 @@ export interface IAuditLog extends Document {
   status: AuditStatus;
   /** HTTP status code returned to the client. */
   statusCode?: number;
+  /** Structured, non-PII context for guardrail events (model, source, piiTypes counts). */
+  metadata?: Record<string, unknown>;
   createdAt?: Date;
   updatedAt?: Date;
 }

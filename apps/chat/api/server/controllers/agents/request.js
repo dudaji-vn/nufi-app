@@ -16,6 +16,7 @@ const {
   applyOutputGuard,
   agentUsesFileSearch,
   localizeRedactMessage,
+  recordGuardrailEvent,
 } = require('~/server/middleware');
 const { logViolation } = require('~/cache');
 const { saveMessage, getConvo } = require('~/models');
@@ -29,7 +30,7 @@ const { saveMessage, getConvo } = require('~/models');
  * @param {Object} response
  * @param {Object} endpointOption
  */
-async function runOutputGuard(response, endpointOption, userText) {
+async function runOutputGuard(response, endpointOption, userText, req) {
   try {
     let agent = endpointOption?.agent;
     if (agent && typeof agent.then === 'function') {
@@ -40,6 +41,8 @@ async function runOutputGuard(response, endpointOption, userText) {
     await applyOutputGuard(response, {
       usedRag: agentUsesFileSearch(agent),
       localize: () => localizeRedactMessage(userText, { model: chatModel }),
+      onRedact: ({ piiTypes }) =>
+        recordGuardrailEvent({ type: 'pii_output', req, model: chatModel, piiTypes }),
     });
   } catch (err) {
     logger.warn('[guardrail] output guard skipped due to error:', err);
@@ -421,7 +424,7 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
 
         // Application-layer LLM-security output guardrail (redacts ungrounded
         // PII; skips RAG turns). Toggled by GUARDRAIL_* env vars.
-        await runOutputGuard(response, endpointOption, text);
+        await runOutputGuard(response, endpointOption, text, req);
 
         const databasePromise = response.databasePromise;
         delete response.databasePromise;
@@ -813,7 +816,7 @@ const _LegacyAgentController = async (req, res, next, initializeClient, addTitle
 
     // Application-layer LLM-security output guardrail (redacts ungrounded PII;
     // skips RAG turns). Toggled by GUARDRAIL_* env vars.
-    await runOutputGuard(response, endpointOption, text);
+    await runOutputGuard(response, endpointOption, text, req);
 
     // Store database promise locally
     const databasePromise = response.databasePromise;

@@ -1,5 +1,6 @@
 const { isEnabled } = require('@librechat/api');
 const { redactOutput } = require('./redact');
+const { detectPII, piiTypeCounts } = require('./detect');
 
 /**
  * Whether an agent uses File Search (RAG) — i.e. the turn's answer may be
@@ -37,7 +38,7 @@ function agentUsesFileSearch(agent) {
  * runs; see the design doc for the buffer-then-release / non-stream handling.
  *
  * @param {Object} response - the assistant response (has `.text` and/or `.content`).
- * @param {{ usedRag?: boolean, localize?: () => Promise<string> }} [ctx] - `localize`
+ * @param {{ usedRag?: boolean, localize?: () => Promise<string>, onRedact?: (info: { piiTypes: Record<string, number> }) => void }} [ctx] - `localize`
  *   resolves the redaction message in the user's language (called only when PII
  *   is actually being redacted and no explicit message is configured).
  * @returns {Promise<Object>} the same response object, possibly redacted.
@@ -76,6 +77,16 @@ async function applyOutputGuard(response, ctx = {}) {
   // Detect first (the placeholder message is irrelevant to detection).
   if (!redactOutput(combined, { message: '_', style }).redacted) {
     return response;
+  }
+
+  // Notify the caller (metadata-only) that a redaction is happening, so it can
+  // record an audit event. Best-effort — never block or throw into redaction.
+  if (typeof ctx.onRedact === 'function') {
+    try {
+      ctx.onRedact({ piiTypes: piiTypeCounts(detectPII(combined)) });
+    } catch {
+      /* ignore */
+    }
   }
 
   // Resolve the redaction message only now that we know we will redact:

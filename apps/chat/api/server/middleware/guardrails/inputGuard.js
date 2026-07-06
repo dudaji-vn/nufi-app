@@ -1,7 +1,8 @@
 const { isEnabled } = require('@librechat/api');
 const { logger } = require('@librechat/data-schemas');
-const { detectInjection, detectPII } = require('./detect');
+const { detectInjection, detectPII, piiTypeCounts } = require('./detect');
 const { judgeInjection, FALLBACK_BLOCK_MESSAGE } = require('./judge');
+const { recordGuardrailEvent } = require('./audit');
 
 const DEFAULT_INJECTION_MESSAGE =
   '⚠️ Yêu cầu của bạn đã bị chặn bởi bộ lọc bảo mật vì có dấu hiệu can thiệp hệ thống (prompt injection). Vui lòng diễn đạt lại theo cách khác.';
@@ -46,14 +47,19 @@ async function inputGuard(req, res, next) {
   if (process.env.GUARDRAIL_INJECTION_ENABLED !== 'false') {
     const mode = (process.env.GUARDRAIL_INJECTION_MODE || 'hybrid').toLowerCase();
     let verdict = { injection: false, message: '', language: '', source: 'none' };
+    let heuristicRule = null;
 
     if (mode === 'ai') {
       verdict = await judgeInjection(text, { model: req.body?.model });
-    } else if (detectInjection(text).detected) {
-      verdict =
-        mode === 'heuristic'
-          ? { injection: true, message: FALLBACK_BLOCK_MESSAGE, language: '', source: 'heuristic' }
-          : await judgeInjection(text, { model: req.body?.model }); // hybrid: confirm + localize on a heuristic hit
+    } else {
+      const det = detectInjection(text);
+      if (det.detected) {
+        heuristicRule = det.rule;
+        verdict =
+          mode === 'heuristic'
+            ? { injection: true, message: FALLBACK_BLOCK_MESSAGE, language: '', source: 'heuristic' }
+            : await judgeInjection(text, { model: req.body?.model }); // hybrid: confirm + localize
+      }
     }
 
     if (verdict.injection) {
@@ -68,6 +74,15 @@ async function inputGuard(req, res, next) {
         message:
           verdict.message || process.env.GUARDRAIL_INJECTION_MESSAGE || DEFAULT_INJECTION_MESSAGE,
       };
+      recordGuardrailEvent({
+        type: 'injection',
+        req,
+        model: req.body?.model,
+        source: verdict.source,
+        language: verdict.language,
+        mode,
+        rule: heuristicRule,
+      });
       return next();
     }
   }
@@ -86,6 +101,12 @@ async function inputGuard(req, res, next) {
           type: 'pii',
           message: process.env.GUARDRAIL_PII_BLOCK_MESSAGE || DEFAULT_PII_BLOCK_MESSAGE,
         };
+        recordGuardrailEvent({
+          type: 'pii_input',
+          req,
+          model: req.body?.model,
+          piiTypes: piiTypeCounts(pii),
+        });
         return next();
       }
     }

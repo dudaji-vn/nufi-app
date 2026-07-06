@@ -18,6 +18,7 @@ function parseFilters(query) {
   return {
     search: query.search || undefined,
     action: query.action || undefined,
+    category: query.category === 'security' ? 'security' : 'admin',
     from: query.from || undefined,
     to: query.to || undefined,
     limit: Number.isFinite(limit) ? limit : undefined,
@@ -30,7 +31,11 @@ router.get('/', async (req, res) => {
   try {
     const filters = parseFilters(req.query);
     const [logs, total] = await Promise.all([db.getAuditLogs(filters), db.countAuditLogs(filters)]);
-    res.json({ entries: logs.map(toAuditLogEntry), total });
+    const body = { entries: logs.map(toAuditLogEntry), total };
+    if (filters.category === 'security') {
+      body.countsByAction = await db.getAuditLogCounts(filters);
+    }
+    res.json(body);
   } catch (error) {
     logger.error('[GET /api/admin/audit-log] Failed to load audit log', error);
     res.status(500).json({ error: 'Failed to load audit log' });
