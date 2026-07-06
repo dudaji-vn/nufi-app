@@ -1339,6 +1339,38 @@ describe('AgentClient - titleConvo', () => {
       expect(client.options.agent.instructions).toContain('Base agent instructions');
     });
 
+    it('is a no-op on agent instructions when GUARDRAIL_ENABLED is off (Tier-1 guard)', async () => {
+      delete process.env.GUARDRAIL_ENABLED;
+      const { DEFAULT_SECURITY_SYSTEM_PROMPT } = require('~/server/middleware/guardrails/systemPrompt');
+      const messages = [
+        { messageId: 'msg-1', parentMessageId: null, sender: 'User', text: 'Hello', isCreatedByUser: true },
+      ];
+      await client.buildMessages(messages, null, {
+        instructions: 'Base instructions',
+        additional_instructions: null,
+      });
+      expect(client.options.agent.instructions).not.toContain(DEFAULT_SECURITY_SYSTEM_PROMPT);
+      expect(client.options.agent.instructions).toContain('Base agent instructions');
+    });
+
+    it('prepends the security preamble to agent instructions when GUARDRAIL_ENABLED is on (Tier-1 guard)', async () => {
+      process.env.GUARDRAIL_ENABLED = 'true';
+      try {
+        const { DEFAULT_SECURITY_SYSTEM_PROMPT } = require('~/server/middleware/guardrails/systemPrompt');
+        const messages = [
+          { messageId: 'msg-1', parentMessageId: null, sender: 'User', text: 'Hello', isCreatedByUser: true },
+        ];
+        await client.buildMessages(messages, null, {
+          instructions: 'Base instructions',
+          additional_instructions: null,
+        });
+        expect(client.options.agent.instructions).toContain(DEFAULT_SECURITY_SYSTEM_PROMPT);
+        expect(client.options.agent.instructions).toContain('Base agent instructions');
+      } finally {
+        delete process.env.GUARDRAIL_ENABLED;
+      }
+    });
+
     it('should handle MCP instructions with ephemeral agent', async () => {
       // Set specific return value for this test
       mockFormatInstructions.mockResolvedValue(
