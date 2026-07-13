@@ -14,7 +14,9 @@ import { dirname, join } from 'node:path';
 import { mkdir } from 'node:fs/promises';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const OUT_DIR = join(__dirname, '..', 'public', 'screenshots');
+// Defaults to public/screenshots; override with NUFI_SHOT_DIR to test a run
+// without overwriting the committed images.
+const OUT_DIR = process.env.NUFI_SHOT_DIR || join(__dirname, '..', 'public', 'screenshots');
 
 const EMAIL = process.env.NUFI_EMAIL;
 const PASSWORD = process.env.NUFI_PASSWORD;
@@ -89,6 +91,137 @@ async function clickShot(page, name, file, { after = 1300, close = true } = {}) 
   }
 }
 
+/** Collapse the chat-history sidebar for a cleaner, feature-focused shot. */
+async function collapseSidebar(page) {
+  const btn = page.getByRole('button', { name: /close sidebar/i });
+  if (await btn.count()) {
+    await btn.click().catch(() => {});
+    await page.waitForTimeout(600);
+  }
+}
+
+/**
+ * Redact people's names and emails in team member/invite views so a
+ * regenerated screenshot never leaks a real teammate's personal data.
+ * Generic — it keys off email nodes, so it doesn't hard-code anyone.
+ */
+async function redactPeople(page) {
+  await page.evaluate(() => {
+    const emailRe = /[\w.+-]+@[\w.-]+\.\w{2,}/;
+    const placeholders = [
+      ['Alex Kim', 'alex@example.com'],
+      ['Sam Lee', 'sam@example.com'],
+      ['Jordan Diaz', 'jordan@example.com'],
+      ['Riley Cho', 'riley@example.com'],
+    ];
+    const roleWords = new Set(['owner', 'admin', 'member']);
+    // Find the smallest element wrapping each email — that's a person row.
+    const rows = new Set();
+    document.querySelectorAll('*').forEach((el) => {
+      if (el.children.length === 0) return;
+      const t = el.textContent || '';
+      if (emailRe.test(t) && t.length < 120) rows.add(el);
+    });
+    let i = 0;
+    for (const row of rows) {
+      // Only rewrite the innermost matching row.
+      if ([...row.querySelectorAll('*')].some((c) => rows.has(c))) continue;
+      const [name, email] = placeholders[i % placeholders.length];
+      i += 1;
+      const walk = (node) => {
+        if (node.nodeType === 3) {
+          const v = node.nodeValue.trim();
+          if (!v) return;
+          if (emailRe.test(v)) node.nodeValue = email;
+          else if (!roleWords.has(v.toLowerCase()) && v.length > 1) node.nodeValue = name;
+        } else {
+          node.childNodes.forEach(walk);
+        }
+      };
+      walk(row);
+    }
+  });
+}
+
+/** Agent Builder — the knowledge (RAG / File Search) flow. */
+async function captureKnowledgeAgent(page) {
+  await page.getByRole('button', { name: /^agent builder$/i }).first().click().catch(() => {});
+  await page.waitForTimeout(3500);
+  // Give the sample knowledge file a neutral, illustrative name for the docs.
+  await page.evaluate(() => {
+    document.querySelectorAll('*').forEach((el) => {
+      if (el.children.length) return;
+      const t = (el.textContent || '').trim();
+      if (/\.pdf$/i.test(t) && t.length < 60) el.textContent = 'Employee Handbook.pdf';
+    });
+  });
+  await shot(page, 'chat-agent-knowledge');
+
+  await page.getByRole('button', { name: /create new agent/i }).first().click().catch(() => {});
+  await page.waitForTimeout(1800);
+  // Scroll the builder drawer so the File Search capability is in view.
+  await page.evaluate(() => {
+    const label = [...document.querySelectorAll('*')].find(
+      (e) => /Capabilities/.test(e.textContent) && e.children.length < 3,
+    );
+    let el = label;
+    while (el) {
+      const s = getComputedStyle(el);
+      if ((s.overflowY === 'auto' || s.overflowY === 'scroll') && el.scrollHeight > el.clientHeight) {
+        el.scrollTop = el.scrollHeight;
+        break;
+      }
+      el = el.parentElement;
+    }
+  });
+  await page.waitForTimeout(1000);
+  await shot(page, 'chat-agent-new');
+}
+
+/** Teams — the shared workspace: members, invites, sharing, groups. */
+async function captureTeams(page) {
+  await collapseSidebar(page);
+  await page.getByRole('button', { name: /^teams$/i }).first().click().catch(() => {});
+  await page.waitForURL('**/teams', { timeout: 20000 }).catch(() => {});
+  await page.waitForTimeout(2500);
+  await shot(page, 'chat-teams-list');
+
+  await clickShot(page, /create team/i, 'chat-team-create');
+
+  // Open the first team card, then walk its tabs.
+  await page.locator('div', { hasText: /team/i }).last().click().catch(() => {});
+  await page.waitForTimeout(2500);
+
+  const tab = async (name) => {
+    await page.getByRole('tab', { name, exact: true }).click().catch(() => {});
+    await page.waitForTimeout(1600);
+  };
+
+  await tab('Members');
+  await redactPeople(page);
+  await shot(page, 'chat-team-members');
+
+  await page.getByRole('button', { name: /invite member/i }).first().click().catch(() => {});
+  await page.waitForTimeout(1300);
+  await redactPeople(page);
+  await shot(page, 'chat-team-invite');
+  await page.keyboard.press('Escape').catch(() => {});
+  await page.waitForTimeout(500);
+
+  await tab('Knowledge');
+  await page.getByRole('button', { name: /add file/i }).first().click().catch(() => {});
+  await page.waitForTimeout(1300);
+  await shot(page, 'chat-team-knowledge');
+  await page.keyboard.press('Escape').catch(() => {});
+  await page.waitForTimeout(500);
+
+  await tab('Shared');
+  await shot(page, 'chat-team-shared');
+
+  await tab('Groups');
+  await shot(page, 'chat-team-groups');
+}
+
 const captures = {
   async chat(context) {
     const page = await context.newPage();
@@ -137,6 +270,14 @@ const captures = {
     // Left-rail panels referenced by the docs.
     await clickShot(page, /^skills$/i, 'chat-skills');
     await clickShot(page, /account settings/i, 'chat-account-menu');
+
+    // Knowledge (RAG) and Teams surfaces.
+    await captureKnowledgeAgent(page).catch((err) =>
+      console.error(`  ✗ knowledge agent skipped: ${err.message.split('\n')[0]}`),
+    );
+    await captureTeams(page).catch((err) =>
+      console.error(`  ✗ teams skipped: ${err.message.split('\n')[0]}`),
+    );
 
     await page.close();
   },
@@ -211,7 +352,12 @@ async function main() {
   console.log(`\nDone. Screenshots in public/screenshots/`);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+// Exported for focused testing; only auto-runs when invoked directly.
+export { login, shot, redactPeople, captureTeams, captureKnowledgeAgent, VIEWPORT, URLS };
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

@@ -10,6 +10,8 @@
     "models-and-presets",
     "files-and-images",
     "agents",
+    "knowledge",
+    "teams",
     "web-search",
     "speech",
     "api-keys"
