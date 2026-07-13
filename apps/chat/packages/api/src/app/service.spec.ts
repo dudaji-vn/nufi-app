@@ -151,6 +151,43 @@ describe('createAppConfigService', () => {
       expect(deps.getApplicableConfigs).toHaveBeenCalledTimes(1);
     });
 
+    it('applies applyEndpointRewrite on the merged branch and caches/returns its result', async () => {
+      const applyEndpointRewrite = jest
+        .fn()
+        .mockImplementation(async (config: TestConfig) => ({ ...config, rewritten: true }));
+      const deps = createDeps({
+        getApplicableConfigs: jest
+          .fn()
+          .mockResolvedValue([{ priority: 10, overrides: { x: 1 }, isActive: true }]),
+        applyEndpointRewrite,
+      });
+      const { getAppConfig } = createAppConfigService(deps);
+
+      const config = (await getAppConfig({ role: 'ADMIN', tenantId: 't1' })) as TestConfig & {
+        rewritten?: boolean;
+      };
+
+      expect(applyEndpointRewrite).toHaveBeenCalledTimes(1);
+      expect(applyEndpointRewrite.mock.calls[0][1]).toEqual({ tenantId: 't1' });
+      expect(config.rewritten).toBe(true);
+      // second call served from cache — rewrite not re-run
+      await getAppConfig({ role: 'ADMIN', tenantId: 't1' });
+      expect(applyEndpointRewrite).toHaveBeenCalledTimes(1);
+    });
+
+    it('does NOT call applyEndpointRewrite when there are no overrides (base branch)', async () => {
+      const applyEndpointRewrite = jest.fn();
+      const deps = createDeps({
+        getApplicableConfigs: jest.fn().mockResolvedValue([]),
+        applyEndpointRewrite,
+      });
+      const { getAppConfig } = createAppConfigService(deps);
+
+      await getAppConfig({ role: 'ADMIN' });
+
+      expect(applyEndpointRewrite).not.toHaveBeenCalled();
+    });
+
     it('uses separate cache keys per userId (no cross-user contamination)', async () => {
       const deps = createDeps({
         getApplicableConfigs: jest

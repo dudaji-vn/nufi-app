@@ -23,7 +23,7 @@ import {
   Account,
 } from './SettingsTabs';
 import usePersonalizationAccess from '~/hooks/usePersonalizationAccess';
-import { useLocalize, TranslationKeys } from '~/hooks';
+import { useLocalize, useUIMode, TranslationKeys } from '~/hooks';
 import { useGetStartupConfig } from '~/data-provider';
 import { cn } from '~/utils';
 
@@ -31,6 +31,7 @@ export default function Settings({ open, onOpenChange }: TDialogProps) {
   const isSmallScreen = useMediaQuery('(max-width: 767px)');
   const { data: startupConfig } = useGetStartupConfig();
   const localize = useLocalize();
+  const { isAdvanced } = useUIMode();
   const [activeTab, setActiveTab] = useState(SettingsTabValues.GENERAL);
   const tabRefs = useRef({});
   const { hasAnyPersonalizationFeature, hasMemoryOptOut } = usePersonalizationAccess();
@@ -38,8 +39,7 @@ export default function Settings({ open, onOpenChange }: TDialogProps) {
   const handleKeyDown = (event: React.KeyboardEvent) => {
     const tabs: SettingsTabValues[] = [
       SettingsTabValues.GENERAL,
-      SettingsTabValues.CHAT,
-      SettingsTabValues.COMMANDS,
+      ...(isAdvanced ? [SettingsTabValues.CHAT, SettingsTabValues.COMMANDS] : []),
       SettingsTabValues.SPEECH,
       ...(hasAnyPersonalizationFeature ? [SettingsTabValues.PERSONALIZATION] : []),
       SettingsTabValues.DATA,
@@ -78,16 +78,20 @@ export default function Settings({ open, onOpenChange }: TDialogProps) {
       icon: <GearIcon />,
       label: 'com_nav_setting_general',
     },
-    {
-      value: SettingsTabValues.CHAT,
-      icon: <MessageSquare className="icon-sm" aria-hidden="true" />,
-      label: 'com_nav_setting_chat',
-    },
-    {
-      value: SettingsTabValues.COMMANDS,
-      icon: <Command className="icon-sm" aria-hidden="true" />,
-      label: 'com_nav_commands',
-    },
+    ...(isAdvanced
+      ? [
+          {
+            value: SettingsTabValues.CHAT,
+            icon: <MessageSquare className="icon-sm" aria-hidden="true" />,
+            label: 'com_nav_setting_chat' as TranslationKeys,
+          },
+          {
+            value: SettingsTabValues.COMMANDS,
+            icon: <Command className="icon-sm" aria-hidden="true" />,
+            label: 'com_nav_commands' as TranslationKeys,
+          },
+        ]
+      : ([] as { value: SettingsTabValues; icon: React.JSX.Element; label: TranslationKeys }[])),
     {
       value: SettingsTabValues.SPEECH,
       icon: <SpeechIcon className="icon-sm" aria-hidden="true" />,
@@ -223,12 +227,16 @@ export default function Settings({ open, onOpenChange }: TDialogProps) {
                     <Tabs.Content value={SettingsTabValues.GENERAL} tabIndex={-1}>
                       <General />
                     </Tabs.Content>
-                    <Tabs.Content value={SettingsTabValues.CHAT} tabIndex={-1}>
-                      <Chat />
-                    </Tabs.Content>
-                    <Tabs.Content value={SettingsTabValues.COMMANDS} tabIndex={-1}>
-                      <Commands />
-                    </Tabs.Content>
+                    {isAdvanced && (
+                      <Tabs.Content value={SettingsTabValues.CHAT} tabIndex={-1}>
+                        <Chat />
+                      </Tabs.Content>
+                    )}
+                    {isAdvanced && (
+                      <Tabs.Content value={SettingsTabValues.COMMANDS} tabIndex={-1}>
+                        <Commands />
+                      </Tabs.Content>
+                    )}
                     <Tabs.Content value={SettingsTabValues.SPEECH} tabIndex={-1}>
                       <Speech />
                     </Tabs.Content>

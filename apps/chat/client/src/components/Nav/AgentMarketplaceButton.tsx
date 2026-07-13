@@ -2,7 +2,7 @@ import React, { useCallback } from 'react';
 import { LayoutGrid } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { TooltipAnchor, Button } from '@librechat/client';
-import { useLocalize, useShowMarketplace } from '~/hooks';
+import { useLocalize, useShowMarketplace, useUIMode } from '~/hooks';
 
 interface AgentMarketplaceButtonProps {
   isSmallScreen?: boolean;
@@ -16,6 +16,7 @@ export default function AgentMarketplaceButton({
   const navigate = useNavigate();
   const localize = useLocalize();
   const showAgentMarketplace = useShowMarketplace();
+  const { isAdvanced } = useUIMode();
 
   const handleAgentMarketplace = useCallback(() => {
     navigate('/agents');
@@ -24,7 +25,7 @@ export default function AgentMarketplaceButton({
     }
   }, [navigate, isSmallScreen, toggleNav]);
 
-  if (!showAgentMarketplace) {
+  if (!isAdvanced || !showAgentMarketplace) {
     return null;
   }
 

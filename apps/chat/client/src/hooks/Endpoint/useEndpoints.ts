@@ -18,7 +18,7 @@ import type {
 import type { Endpoint } from '~/common';
 import { useGetEndpointsQuery } from '~/data-provider';
 import { mapEndpoints, getIconKey } from '~/utils';
-import { useHasAccess } from '~/hooks';
+import { useHasAccess, useUIMode } from '~/hooks';
 import { icons } from './Icons';
 
 const defaultInterface = getConfigDefaults().interface;
@@ -37,6 +37,7 @@ export const useEndpoints = ({
   const modelsQuery = useGetModelsQuery();
   const { data: endpoints = [] } = useGetEndpointsQuery({ select: mapEndpoints });
   const interfaceConfig = startupConfig?.interface ?? defaultInterface;
+  const { isBasic } = useUIMode();
   const includedEndpoints = useMemo(
     () => new Set(startupConfig?.modelSpecs?.addedEndpoints ?? []),
     [startupConfig?.modelSpecs?.addedEndpoints],
@@ -58,7 +59,7 @@ export const useEndpoints = ({
   );
 
   const filteredEndpoints = useMemo(() => {
-    if (!interfaceConfig.modelSelect) {
+    if (!interfaceConfig.modelSelect || isBasic) {
       return [];
     }
     const result: EModelEndpoint[] = [];
@@ -73,7 +74,7 @@ export const useEndpoints = ({
     }
 
     return result;
-  }, [endpoints, hasAgentAccess, includedEndpoints, interfaceConfig.modelSelect]);
+  }, [endpoints, hasAgentAccess, includedEndpoints, interfaceConfig.modelSelect, isBasic]);
 
   const endpointRequiresUserKey = useCallback(
     (ep: string) => {

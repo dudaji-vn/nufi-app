@@ -26,6 +26,7 @@ import {
   useMCPServerManager,
   useGetAgentsConfig,
   useHasAccess,
+  useUIMode,
 } from '~/hooks';
 import MCPBuilderPanel from '~/components/SidePanel/MCPBuilder/MCPBuilderPanel';
 import AgentPanelSwitch from '~/components/SidePanel/Agents/AgentPanelSwitch';
@@ -99,11 +100,13 @@ export default function useSideNavLinks({
 
   const { agentsConfig } = useGetAgentsConfig({ endpointsConfig });
   const { skillsEnabled } = useAgentCapabilities(agentsConfig?.capabilities);
+  const { isAdvanced } = useUIMode();
 
   const Links = useMemo(() => {
     const links: NavLink[] = [];
 
     if (
+      isAdvanced &&
       endpointsConfig?.[EModelEndpoint.agents] &&
       hasAccessToAgents &&
       hasAccessToCreateAgents &&
@@ -119,6 +122,7 @@ export default function useSideNavLinks({
     }
 
     if (
+      isAdvanced &&
       isAssistantsEndpoint(endpoint) &&
       ((endpoint === EModelEndpoint.assistants &&
         endpointsConfig?.[EModelEndpoint.assistants] &&
@@ -137,7 +141,7 @@ export default function useSideNavLinks({
       });
     }
 
-    if (hasAccessToSkills && skillsEnabled) {
+    if (isAdvanced && hasAccessToSkills && skillsEnabled) {
       links.push({
         title: 'com_ui_skills',
         label: '',
@@ -147,7 +151,7 @@ export default function useSideNavLinks({
       });
     }
 
-    if (hasAccessToPrompts) {
+    if (isAdvanced && hasAccessToPrompts) {
       links.push({
         title: 'com_ui_prompts',
         label: '',
@@ -157,7 +161,7 @@ export default function useSideNavLinks({
       });
     }
 
-    if (hasAccessToMemories && hasAccessToReadMemories) {
+    if (isAdvanced && hasAccessToMemories && hasAccessToReadMemories) {
       links.push({
         title: 'com_ui_memories',
         label: '',
@@ -167,7 +171,7 @@ export default function useSideNavLinks({
       });
     }
 
-    if (hasAccessToBookmarks) {
+    if (isAdvanced && hasAccessToBookmarks) {
       links.push({
         title: 'com_sidepanel_conversation_tags',
         label: '',
@@ -177,7 +181,7 @@ export default function useSideNavLinks({
       });
     }
 
-    if (hasAccessToTeams) {
+    if (isAdvanced && hasAccessToTeams) {
       links.push({
         title: 'com_ui_teams',
         label: '',
@@ -187,15 +191,18 @@ export default function useSideNavLinks({
       });
     }
 
-    links.push({
-      title: 'com_sidepanel_attach_files',
-      label: '',
-      icon: AttachmentIcon,
-      id: 'files',
-      Component: FilesPanel,
-    });
+    if (isAdvanced) {
+      links.push({
+        title: 'com_sidepanel_attach_files',
+        label: '',
+        icon: AttachmentIcon,
+        id: 'files',
+        Component: FilesPanel,
+      });
+    }
 
     if (
+      isAdvanced &&
       interfaceConfig.parameters === true &&
       isParamEndpoint(endpoint ?? '', endpointType ?? '') === true &&
       !isAgentsEndpoint(endpoint) &&
@@ -211,8 +218,9 @@ export default function useSideNavLinks({
     }
 
     if (
-      (hasAccessToUseMCPSettings && availableMCPServers && availableMCPServers.length > 0) ||
-      hasAccessToCreateMCP
+      isAdvanced &&
+      ((hasAccessToUseMCPSettings && availableMCPServers && availableMCPServers.length > 0) ||
+        hasAccessToCreateMCP)
     ) {
       links.push({
         title: 'com_nav_setting_mcp',
@@ -235,6 +243,7 @@ export default function useSideNavLinks({
 
     return links;
   }, [
+    isAdvanced,
     endpoint,
     endpointsConfig,
     keyProvided,

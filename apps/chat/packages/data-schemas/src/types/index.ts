@@ -34,6 +34,8 @@ export * from './group';
 export * from './config';
 /* Audit log */
 export * from './auditLog';
+/* LiteLLM gateway sync */
+export * from './litellmSync';
 /* Team invites */
 export * from './teamInvite';
 /* Admin */

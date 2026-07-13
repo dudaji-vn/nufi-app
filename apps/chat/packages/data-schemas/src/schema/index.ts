@@ -27,4 +27,5 @@ export { default as groupSchema } from './group';
 export { default as systemGrantSchema } from './systemGrant';
 export { default as configSchema } from './config';
 export { default as auditLogSchema } from './auditLog';
+export { default as litellmSyncSchema } from './litellmSync';
 export { default as teamInviteSchema } from './teamInvite';

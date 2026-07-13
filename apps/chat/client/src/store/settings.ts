@@ -74,6 +74,10 @@ const localStorageAtoms = {
 
   // Account settings
   UsernameDisplay: atomWithLocalStorage('UsernameDisplay', true),
+
+  // UI mode
+  uiMode: atomWithLocalStorage<'basic' | 'advanced'>('uiMode', 'basic'),
+  uiModeIntroSeen: atomWithLocalStorage<boolean>('uiModeIntroSeen', false),
 };
 
 export default { ...staticAtoms, ...localStorageAtoms };
