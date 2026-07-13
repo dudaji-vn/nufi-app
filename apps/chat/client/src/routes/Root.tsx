@@ -27,6 +27,7 @@ import { Banner } from '~/components/Banners';
 export default function Root() {
   const [showTerms, setShowTerms] = useState(false);
   const [bannerHeight, setBannerHeight] = useState(0);
+  const [introBannerHeight, setIntroBannerHeight] = useState(0);
   const sidebarExpanded = useRecoilValue(store.sidebarExpanded);
   const isSmallScreen = useMediaQuery('(max-width: 768px)');
 
@@ -70,9 +71,12 @@ export default function Root() {
         <AssistantsMapContext.Provider value={assistantsMap}>
           <AgentsMapContext.Provider value={agentsMap}>
             <PromptGroupsProvider>
-              <UIModeIntroBanner />
+              <UIModeIntroBanner onHeightChange={setIntroBannerHeight} />
               <Banner onHeightChange={setBannerHeight} />
-              <div className="flex" style={{ height: `calc(100dvh - ${bannerHeight}px)` }}>
+              <div
+                className="flex"
+                style={{ height: `calc(100dvh - ${bannerHeight + introBannerHeight}px)` }}
+              >
                 <div className="relative z-0 flex h-full w-full overflow-hidden">
                   <UnifiedSidebar />
                   <div

@@ -35,4 +35,23 @@ describe('UIModeIntroBanner', () => {
     expect(screen.getByTestId('ui-mode-intro-dismiss')).toBeInTheDocument();
     expect(screen.getByRole('status').textContent).toBeTruthy();
   });
+
+  it('reports its rendered height and resets to 0 on dismiss', () => {
+    const onHeightChange = jest.fn();
+    renderWithProviders(<UIModeIntroBanner onHeightChange={onHeightChange} />);
+
+    expect(onHeightChange).toHaveBeenCalledWith(expect.any(Number));
+    onHeightChange.mockClear();
+
+    fireEvent.click(screen.getByTestId('ui-mode-intro-dismiss'));
+    expect(onHeightChange).toHaveBeenCalledWith(0);
+  });
+
+  it('does not report a height when already seen', () => {
+    localStorage.setItem('uiModeIntroSeen', JSON.stringify(true));
+    const onHeightChange = jest.fn();
+    renderWithProviders(<UIModeIntroBanner onHeightChange={onHeightChange} />);
+
+    expect(onHeightChange).not.toHaveBeenCalled();
+  });
 });
