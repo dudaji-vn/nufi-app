@@ -1,6 +1,6 @@
 import { renderHook, act } from '@testing-library/react';
 import { RecoilRoot } from 'recoil';
-import useUIMode from './useUIMode';
+import useUIMode from '../useUIMode';
 
 const wrapper = ({ children }: { children: React.ReactNode }) => (
   <RecoilRoot>{children}</RecoilRoot>
