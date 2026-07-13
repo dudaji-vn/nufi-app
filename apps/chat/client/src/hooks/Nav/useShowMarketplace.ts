@@ -1,6 +1,7 @@
 import { useContext, useMemo } from 'react';
 import { PermissionTypes, Permissions } from 'librechat-data-provider';
 import { useHasAccess, AuthContext } from '~/hooks';
+import useUIMode from '~/hooks/useUIMode';
 
 /**
  * Hook to determine if the Agent Marketplace should be shown.
@@ -8,10 +9,12 @@ import { useHasAccess, AuthContext } from '~/hooks';
  * - Auth readiness (avoid race conditions)
  * - Access to Agents permission
  * - Access to Marketplace permission
+ * - UI mode (Marketplace is an Advanced-only surface)
  *
  * @returns Whether the Agent Marketplace should be displayed
  */
 export default function useShowMarketplace(): boolean {
+  const { isAdvanced } = useUIMode();
   const authContext = useContext(AuthContext);
 
   const hasAccessToAgents = useHasAccess({
@@ -33,5 +36,6 @@ export default function useShowMarketplace(): boolean {
   );
 
   // Show agent marketplace when marketplace permission is enabled, auth is ready, and user has access to agents
-  return authReady && hasAccessToAgents && hasAccessToMarketplace;
+  // Marketplace is an Advanced-only surface, so Basic mode always hides it.
+  return authReady && hasAccessToAgents && hasAccessToMarketplace && isAdvanced;
 }
