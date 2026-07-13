@@ -8,6 +8,7 @@ const {
 const { getAppConfig, invalidateConfigCaches } = require('~/server/services/Config');
 const { requireJwtAuth } = require('~/server/middleware');
 const recordAdminAction = require('~/server/middleware/audit/recordAdminAction');
+const litellmGateway = require('~/server/services/LiteLLM');
 const db = require('~/models');
 
 const router = express.Router();
@@ -25,6 +26,7 @@ const handlers = createAdminConfigHandlers({
   hasConfigCapability,
   getAppConfig,
   invalidateConfigCaches,
+  reconcileLiteLLM: litellmGateway.reconcileLiteLLM,
 });
 
 router.use(requireJwtAuth, requireAdminAccess);

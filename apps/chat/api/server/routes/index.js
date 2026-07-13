@@ -4,6 +4,7 @@ const categories = require('./categories');
 const adminAuth = require('./admin/auth');
 const adminAuditLog = require('./admin/auditLog');
 const adminConfig = require('./admin/config');
+const adminLiteLLM = require('./admin/litellm');
 const adminGrants = require('./admin/grants');
 const adminGroups = require('./admin/groups');
 const adminRoles = require('./admin/roles');
@@ -42,6 +43,7 @@ module.exports = {
   adminAuth,
   adminAuditLog,
   adminConfig,
+  adminLiteLLM,
   adminGrants,
   adminGroups,
   adminRoles,

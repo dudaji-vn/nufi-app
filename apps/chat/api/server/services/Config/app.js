@@ -7,6 +7,7 @@ const loadCustomConfig = require('./loadCustomConfig');
 const getLogStores = require('~/cache/getLogStores');
 const paths = require('~/config/paths');
 const db = require('~/models');
+const litellmGateway = require('~/server/services/LiteLLM');
 
 const loadBaseConfig = async () => {
   /** @type {TCustomConfig} */
@@ -27,6 +28,9 @@ const { getAppConfig, clearAppConfigCache, clearOverrideCache } = createAppConfi
   cacheKeys: CacheKeys,
   getApplicableConfigs: db.getApplicableConfigs,
   getUserPrincipals: db.getUserPrincipals,
+  // Rewrite admin-managed custom endpoints to route through the LiteLLM gateway
+  // (no-op unless LITELLM_SYNC_ENABLED=true).
+  applyEndpointRewrite: litellmGateway.applyEndpointRewrite,
 });
 
 /**

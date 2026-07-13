@@ -111,6 +111,12 @@ export interface AdminConfigDeps {
   }) => Promise<AppConfig>;
   /** Invalidate all config-related caches after a mutation. */
   invalidateConfigCaches?: (tenantId?: string) => Promise<void>;
+  /**
+   * Fire-and-forget LiteLLM reconcile after a write that touches
+   * `endpoints.custom`. Registers/updates/tears down the endpoints' models +
+   * virtual keys in the central LiteLLM gateway. No-op when the feature is off.
+   */
+  reconcileLiteLLM?: (params: { tenantId?: string; customEndpoints: unknown[] }) => Promise<void>;
 }
 
 // ── Validation helpers ───────────────────────────────────────────────
@@ -168,7 +174,27 @@ export function createAdminConfigHandlers(deps: AdminConfigDeps) {
     hasConfigCapability,
     getAppConfig,
     invalidateConfigCaches,
+    reconcileLiteLLM,
   } = deps;
+
+  /** Extract the custom-endpoints array from a saved config override. */
+  function customEndpointsOf(config?: IConfig | null): unknown[] {
+    const custom = (config?.overrides as { endpoints?: { custom?: unknown[] } } | undefined)
+      ?.endpoints?.custom;
+    return Array.isArray(custom) ? custom : [];
+  }
+
+  /** True if any of these dot-paths targets the endpoints section. */
+  function touchesEndpoints(paths: string[]): boolean {
+    return paths.some((p) => getTopLevelSection(p) === 'endpoints');
+  }
+
+  /** Fire-and-forget: converge LiteLLM to the given endpoints for this tenant. */
+  function fireReconcile(user: CapabilityUser, customEndpoints: unknown[]): void {
+    reconcileLiteLLM?.({ tenantId: user.tenantId, customEndpoints })?.catch((err) =>
+      logger.error('[adminConfig] LiteLLM reconcile failed:', err),
+    );
+  }
 
   /**
    * GET / — List all active config overrides.
@@ -360,6 +386,9 @@ export function createAdminConfigHandlers(deps: AdminConfigDeps) {
       invalidateConfigCaches?.(user.tenantId)?.catch((err) =>
         logger.error('[adminConfig] Cache invalidation failed after upsert:', err),
       );
+      if ('endpoints' in filteredOverrides) {
+        fireReconcile(user, customEndpointsOf(config));
+      }
       return res.status(config?.configVersion === 1 ? 201 : 200).json({ config });
     } catch (error) {
       logger.error('[adminConfig] upsertConfigOverrides error:', error);
@@ -469,6 +498,9 @@ export function createAdminConfigHandlers(deps: AdminConfigDeps) {
       invalidateConfigCaches?.(user.tenantId)?.catch((err) =>
         logger.error('[adminConfig] Cache invalidation failed after patch:', err),
       );
+      if (touchesEndpoints(Object.keys(fields))) {
+        fireReconcile(user, customEndpointsOf(config));
+      }
       return res.status(200).json({ config });
     } catch (error) {
       logger.error('[adminConfig] patchConfigField error:', error);
@@ -527,6 +559,9 @@ export function createAdminConfigHandlers(deps: AdminConfigDeps) {
       invalidateConfigCaches?.(user.tenantId)?.catch((err) =>
         logger.error('[adminConfig] Cache invalidation failed after field delete:', err),
       );
+      if (section === 'endpoints') {
+        fireReconcile(user, customEndpointsOf(config));
+      }
       return res.status(200).json({ config });
     } catch (error) {
       logger.error('[adminConfig] deleteConfigField error:', error);
@@ -565,6 +600,10 @@ export function createAdminConfigHandlers(deps: AdminConfigDeps) {
       invalidateConfigCaches?.(user.tenantId)?.catch((err) =>
         logger.error('[adminConfig] Cache invalidation failed after config delete:', err),
       );
+      // The whole override is gone; if it had custom endpoints, tear them down.
+      if (customEndpointsOf(config).length > 0) {
+        fireReconcile(user, []);
+      }
       return res.status(200).json({ success: true });
     } catch (error) {
       logger.error('[adminConfig] deleteConfigOverrides error:', error);
