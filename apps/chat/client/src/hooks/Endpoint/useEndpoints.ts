@@ -42,6 +42,13 @@ export const useEndpoints = ({
     () => new Set(startupConfig?.modelSpecs?.addedEndpoints ?? []),
     [startupConfig?.modelSpecs?.addedEndpoints],
   );
+  // Basic mode narrows the selector to admin-curated modelSpecs, but only when specs
+  // exist. Without them there is nothing to fall back to, so keep the raw endpoints
+  // visible — otherwise Basic users get an empty selector and cannot pick any model.
+  const hasModelSpecs = useMemo(
+    () => (startupConfig?.modelSpecs?.list?.length ?? 0) > 0,
+    [startupConfig?.modelSpecs?.list],
+  );
 
   const hasAgentAccess = useHasAccess({
     permissionType: PermissionTypes.AGENTS,
@@ -59,7 +66,7 @@ export const useEndpoints = ({
   );
 
   const filteredEndpoints = useMemo(() => {
-    if (!interfaceConfig.modelSelect || isBasic) {
+    if (!interfaceConfig.modelSelect || (isBasic && hasModelSpecs)) {
       return [];
     }
     const result: EModelEndpoint[] = [];
@@ -74,7 +81,14 @@ export const useEndpoints = ({
     }
 
     return result;
-  }, [endpoints, hasAgentAccess, includedEndpoints, interfaceConfig.modelSelect, isBasic]);
+  }, [
+    endpoints,
+    hasAgentAccess,
+    includedEndpoints,
+    interfaceConfig.modelSelect,
+    isBasic,
+    hasModelSpecs,
+  ]);
 
   const endpointRequiresUserKey = useCallback(
     (ep: string) => {
