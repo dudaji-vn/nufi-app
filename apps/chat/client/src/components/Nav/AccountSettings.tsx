@@ -1,16 +1,17 @@
 import { useState, memo, useRef } from 'react';
 import * as Menu from '@ariakit/react/menu';
-import { FileText, LayoutDashboard, LogOut } from 'lucide-react';
+import { FileText, LayoutDashboard, LogOut, SlidersHorizontal } from 'lucide-react';
 import { LinkIcon, GearIcon, DropdownMenuSeparator, Avatar } from '@librechat/client';
 import { MyFilesModal } from '~/components/Chat/Input/Files/MyFilesModal';
 import { useGetStartupConfig, useGetUserBalance } from '~/data-provider';
 import { useAuthContext } from '~/hooks/AuthContext';
-import { useLocalize } from '~/hooks';
+import { useLocalize, useUIMode } from '~/hooks';
 import Settings from './Settings';
 
 function AccountSettings({ collapsed = false }: { collapsed?: boolean }) {
   const localize = useLocalize();
   const { user, isAuthenticated, logout } = useAuthContext();
+  const { isAdvanced, setMode } = useUIMode();
   const { data: startupConfig } = useGetStartupConfig();
   const balanceQuery = useGetUserBalance({
     enabled: !!isAuthenticated && startupConfig?.balance?.enabled,
@@ -103,6 +104,14 @@ function AccountSettings({ collapsed = false }: { collapsed?: boolean }) {
         <Menu.MenuItem onClick={() => setShowSettings(true)} className="select-item text-sm">
           <GearIcon className="icon-md" aria-hidden="true" />
           {localize('com_nav_settings')}
+        </Menu.MenuItem>
+        <Menu.MenuItem
+          onClick={() => setMode(isAdvanced ? 'basic' : 'advanced')}
+          className="select-item text-sm"
+          data-testid="account-ui-mode-toggle"
+        >
+          <SlidersHorizontal className="icon-md" aria-hidden="true" />
+          {localize(isAdvanced ? 'com_nav_ui_mode_basic' : 'com_nav_ui_mode_advanced')}
         </Menu.MenuItem>
         <DropdownMenuSeparator />
         <Menu.MenuItem onClick={() => logout()} className="select-item text-sm">
