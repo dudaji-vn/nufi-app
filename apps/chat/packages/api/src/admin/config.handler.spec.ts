@@ -55,6 +55,7 @@ function createHandlers(overrides = {}) {
     hasConfigCapability: jest.fn().mockResolvedValue(true),
 
     getAppConfig: jest.fn().mockResolvedValue({ interface: { modelSelect: true } }),
+    reconcileLiteLLM: jest.fn().mockResolvedValue(undefined),
     ...overrides,
   };
   const handlers = createAdminConfigHandlers(deps);
@@ -768,6 +769,67 @@ describe('createAdminConfigHandlers', () => {
 
       expect(res.statusCode).toBe(200);
       expect(res.body!.config).toEqual({ interface: { modelSelect: true } });
+    });
+  });
+
+  describe('LiteLLM reconcile hook', () => {
+    const flush = () => new Promise((r) => setImmediate(r));
+
+    it('fires reconcileLiteLLM with the custom endpoints when patching endpoints.custom', async () => {
+      const custom = [{ name: 'OpenAI', baseURL: 'https://x/v1', apiKey: 'sk', models: { default: ['gpt-4o'] } }];
+      const { handlers, deps } = createHandlers({
+        patchConfigFields: jest.fn().mockResolvedValue({ _id: 'c1', overrides: { endpoints: { custom } } }),
+      });
+      const req = mockReq({
+        params: { principalType: 'role', principalId: '__base__' },
+        body: { entries: [{ fieldPath: 'endpoints.custom', value: custom }] },
+      });
+      const res = mockRes();
+
+      await handlers.patchConfigField(req, res);
+      await flush();
+
+      expect(res.statusCode).toBe(200);
+      expect(deps.reconcileLiteLLM).toHaveBeenCalledTimes(1);
+      expect(deps.reconcileLiteLLM).toHaveBeenCalledWith({ tenantId: undefined, customEndpoints: custom });
+    });
+
+    it('does NOT fire reconcileLiteLLM for an unrelated field patch', async () => {
+      const { handlers, deps } = createHandlers({
+        patchConfigFields: jest
+          .fn()
+          .mockResolvedValue({ _id: 'c1', overrides: { registration: { enabled: false } } }),
+      });
+      const req = mockReq({
+        params: { principalType: 'role', principalId: '__base__' },
+        body: { entries: [{ fieldPath: 'registration.enabled', value: false }] },
+      });
+      const res = mockRes();
+
+      await handlers.patchConfigField(req, res);
+      await flush();
+
+      expect(res.statusCode).toBe(200);
+      expect(deps.reconcileLiteLLM).not.toHaveBeenCalled();
+    });
+
+    it('still responds 200 when reconcileLiteLLM rejects (fire-and-forget)', async () => {
+      const custom = [{ name: 'OpenAI', baseURL: 'https://x/v1', apiKey: 'sk', models: { default: ['gpt-4o'] } }];
+      const { handlers, deps } = createHandlers({
+        patchConfigFields: jest.fn().mockResolvedValue({ _id: 'c1', overrides: { endpoints: { custom } } }),
+        reconcileLiteLLM: jest.fn().mockRejectedValue(new Error('litellm down')),
+      });
+      const req = mockReq({
+        params: { principalType: 'role', principalId: '__base__' },
+        body: { entries: [{ fieldPath: 'endpoints.custom', value: custom }] },
+      });
+      const res = mockRes();
+
+      await handlers.patchConfigField(req, res);
+      await flush();
+
+      expect(res.statusCode).toBe(200);
+      expect(deps.reconcileLiteLLM).toHaveBeenCalledTimes(1);
     });
   });
 });

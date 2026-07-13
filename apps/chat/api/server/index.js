@@ -168,6 +168,7 @@ const startServer = async () => {
   app.use('/api/admin', routes.adminAuth);
   app.use('/api/admin/audit-log', routes.adminAuditLog);
   app.use('/api/admin/config', routes.adminConfig);
+  app.use('/api/admin/litellm', routes.adminLiteLLM);
   app.use('/api/admin/grants', routes.adminGrants);
   app.use('/api/admin/groups', routes.adminGroups);
   app.use('/api/admin/roles', routes.adminRoles);
