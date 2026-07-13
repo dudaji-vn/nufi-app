@@ -24,24 +24,40 @@ async function getRawCustomEndpoints() {
 }
 
 /**
+ * Build the gateway lazily so that requiring this module has NO side effects.
+ * Constructing it eagerly at module load breaks any test that mocks
+ * `@librechat/api` (createLiteLLMGateway would be undefined) and transitively
+ * requires this module (e.g. via Config/app.js).
+ */
+let _gateway;
+function gateway() {
+  if (!_gateway) {
+    _gateway = createLiteLLMGateway({
+      db: {
+        findLiteLLMSyncByEndpointName: db.findLiteLLMSyncByEndpointName,
+        findLiteLLMSyncByEndpointNames: db.findLiteLLMSyncByEndpointNames,
+        listLiteLLMSync: db.listLiteLLMSync,
+        upsertLiteLLMSync: db.upsertLiteLLMSync,
+        deleteLiteLLMSyncByEndpointName: db.deleteLiteLLMSyncByEndpointName,
+      },
+      encrypt: encryptV3,
+      decrypt: decryptV3,
+      runInTenant,
+      getRawCustomEndpoints,
+    });
+  }
+  return _gateway;
+}
+
+/**
  * The LiteLLM gateway seams consumed by the fork:
  *  - reconcileLiteLLM: admin-config write hook
  *  - applyEndpointRewrite: getAppConfig runtime rewrite
  *  - resyncAll: manual recovery route
  * All no-op unless LITELLM_SYNC_ENABLED=true (+ base URL + master key).
  */
-const gateway = createLiteLLMGateway({
-  db: {
-    findLiteLLMSyncByEndpointName: db.findLiteLLMSyncByEndpointName,
-    findLiteLLMSyncByEndpointNames: db.findLiteLLMSyncByEndpointNames,
-    listLiteLLMSync: db.listLiteLLMSync,
-    upsertLiteLLMSync: db.upsertLiteLLMSync,
-    deleteLiteLLMSyncByEndpointName: db.deleteLiteLLMSyncByEndpointName,
-  },
-  encrypt: encryptV3,
-  decrypt: decryptV3,
-  runInTenant,
-  getRawCustomEndpoints,
-});
-
-module.exports = gateway;
+module.exports = {
+  reconcileLiteLLM: (params) => gateway().reconcileLiteLLM(params),
+  applyEndpointRewrite: (config, opts) => gateway().applyEndpointRewrite(config, opts),
+  resyncAll: (params) => gateway().resyncAll(params),
+};
