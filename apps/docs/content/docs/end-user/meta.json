@@ -5,6 +5,7 @@
   "icon": "MessageSquare",
   "pages": [
     "index",
+    "guides",
     "sign-in",
     "chat",
     "models-and-presets",
