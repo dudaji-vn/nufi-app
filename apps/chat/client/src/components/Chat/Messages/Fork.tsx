@@ -6,7 +6,7 @@ import { GitFork, InfoIcon } from 'lucide-react';
 import { useToastContext } from '@librechat/client';
 import { ForkOptions } from 'librechat-data-provider';
 import { GitCommit, GitBranchPlus, ListTree } from 'lucide-react';
-import { TranslationKeys, useLocalize, useNavigateToConvo } from '~/hooks';
+import { TranslationKeys, useLocalize, useNavigateToConvo, useUIMode } from '~/hooks';
 import { useForkConvoMutation } from '~/data-provider';
 import { cn } from '~/utils';
 import store from '~/store';
@@ -214,6 +214,7 @@ export default function Fork({
 }) {
   const localize = useLocalize();
   const { showToast } = useToastContext();
+  const { isAdvanced } = useUIMode();
   const [remember, setRemember] = useState(false);
   const { navigateToConvo } = useNavigateToConvo();
   const [isActive, setIsActive] = useState(false);
@@ -266,7 +267,7 @@ export default function Fork({
   });
 
   const conversationId = _convoId ?? '';
-  if (!forkingSupported || !conversationId || !messageId) {
+  if (!isAdvanced || !forkingSupported || !conversationId || !messageId) {
     return null;
   }
 

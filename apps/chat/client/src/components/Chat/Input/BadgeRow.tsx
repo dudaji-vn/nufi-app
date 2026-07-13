@@ -15,7 +15,7 @@ import CodeInterpreter from './CodeInterpreter';
 import { BadgeRowProvider } from '~/Providers';
 import ToolsDropdown from './ToolsDropdown';
 import type { BadgeItem } from '~/common';
-import { useChatBadges } from '~/hooks';
+import { useChatBadges, useUIMode } from '~/hooks';
 import ToolDialogs from './ToolDialogs';
 import FileSearch from './FileSearch';
 import Artifacts from './Artifacts';
@@ -166,6 +166,7 @@ function BadgeRow({
 
   const allBadges = useChatBadges();
   const isEditing = useRecoilValue(store.isEditingBadges);
+  const { isAdvanced } = useUIMode();
 
   const badges = useMemo(
     () => allBadges.filter((badge) => badge.isAvailable !== false),
@@ -329,57 +330,67 @@ function BadgeRow({
       isSubmitting={isSubmitting}
     >
       <div ref={containerRef} className="relative flex flex-wrap items-center gap-2">
-        {showEphemeralBadges === true && <ToolsDropdown />}
-        {tempBadges.map((badge, index) => (
-          <React.Fragment key={badge.id}>
-            {dragState.draggedBadge && dragState.insertIndex === index && ghostBadge && (
-              <div className="badge-icon h-full">
-                <Badge
-                  id={ghostBadge.id}
-                  icon={ghostBadge.icon as LucideIcon}
-                  label={ghostBadge.label}
-                  isActive={dragState.draggedBadgeActive}
+        {showEphemeralBadges === true && isAdvanced && <ToolsDropdown />}
+        {isAdvanced && (
+          <>
+            {tempBadges.map((badge, index) => (
+              <React.Fragment key={badge.id}>
+                {dragState.draggedBadge && dragState.insertIndex === index && ghostBadge && (
+                  <div className="badge-icon h-full">
+                    <Badge
+                      id={ghostBadge.id}
+                      icon={ghostBadge.icon as LucideIcon}
+                      label={ghostBadge.label}
+                      isActive={dragState.draggedBadgeActive}
+                      isEditing={isEditing}
+                      isAvailable={ghostBadge.isAvailable}
+                      isInChat={isInChat}
+                    />
+                  </div>
+                )}
+                <BadgeWrapper
+                  badge={badge}
                   isEditing={isEditing}
-                  isAvailable={ghostBadge.isAvailable}
                   isInChat={isInChat}
+                  onToggle={handleBadgeToggle}
+                  onDelete={handleDelete}
+                  onMouseDown={handleMouseDown}
+                  badgeRefs={badgeRefs}
                 />
-              </div>
-            )}
-            <BadgeWrapper
-              badge={badge}
-              isEditing={isEditing}
-              isInChat={isInChat}
-              onToggle={handleBadgeToggle}
-              onDelete={handleDelete}
-              onMouseDown={handleMouseDown}
-              badgeRefs={badgeRefs}
-            />
-          </React.Fragment>
-        ))}
-        {dragState.draggedBadge && dragState.insertIndex === tempBadges.length && ghostBadge && (
-          <div className="badge-icon h-full">
-            <Badge
-              id={ghostBadge.id}
-              icon={ghostBadge.icon as LucideIcon}
-              label={ghostBadge.label}
-              isActive={dragState.draggedBadgeActive}
-              isEditing={isEditing}
-              isAvailable={ghostBadge.isAvailable}
-              isInChat={isInChat}
-            />
-          </div>
+              </React.Fragment>
+            ))}
+            {dragState.draggedBadge &&
+              dragState.insertIndex === tempBadges.length &&
+              ghostBadge && (
+                <div className="badge-icon h-full">
+                  <Badge
+                    id={ghostBadge.id}
+                    icon={ghostBadge.icon as LucideIcon}
+                    label={ghostBadge.label}
+                    isActive={dragState.draggedBadgeActive}
+                    isEditing={isEditing}
+                    isAvailable={ghostBadge.isAvailable}
+                    isInChat={isInChat}
+                  />
+                </div>
+              )}
+          </>
         )}
         {showEphemeralBadges === true && (
           <>
             <WebSearch />
-            <CodeInterpreter />
-            <FileSearch />
-            <Skills />
-            <Artifacts />
-            <MCPSelect />
+            {isAdvanced && (
+              <>
+                <CodeInterpreter />
+                <FileSearch />
+                <Skills />
+                <Artifacts />
+                <MCPSelect />
+              </>
+            )}
           </>
         )}
-        {ghostBadge && (
+        {isAdvanced && ghostBadge && (
           <div
             className="ghost-badge h-full"
             style={{

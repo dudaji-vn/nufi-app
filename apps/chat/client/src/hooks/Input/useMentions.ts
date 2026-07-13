@@ -23,6 +23,7 @@ import { useAgentsMapContext } from '~/Providers/AgentsMapContext';
 import { mapEndpoints, getPresetTitle } from '~/utils';
 import { EndpointIcon } from '~/components/Endpoints';
 import useHasAccess from '~/hooks/Roles/useHasAccess';
+import { useUIMode } from '~/hooks';
 
 const defaultInterface = getConfigDefaults().interface;
 
@@ -58,6 +59,7 @@ export default function useMentions({
   assistantMap: TAssistantsMap;
   includeAssistants: boolean;
 }) {
+  const { isBasic } = useUIMode();
   const hasAgentAccess = useHasAccess({
     permissionType: PermissionTypes.AGENTS,
     permission: Permissions.USE,
@@ -152,6 +154,10 @@ export default function useMentions({
   }, [startupConfig, agentsMap]);
 
   const options: MentionOption[] = useMemo(() => {
+    if (isBasic) {
+      return [];
+    }
+
     let validEndpoints = endpoints;
     if (!includeAssistants) {
       validEndpoints = endpoints.filter((endpoint) => !isAssistantsEndpoint(endpoint));
@@ -240,6 +246,7 @@ export default function useMentions({
 
     return mentions;
   }, [
+    isBasic,
     presets,
     endpoints,
     modelSpecs,
