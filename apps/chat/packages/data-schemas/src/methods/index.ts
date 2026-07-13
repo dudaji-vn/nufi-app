@@ -64,6 +64,8 @@ import { createAgentMethods, type AgentMethods, type AgentDeps } from './agent';
 import { createConfigMethods, type ConfigMethods } from './config';
 /* Audit log */
 import { createAuditLogMethods, type AuditLogMethods } from './auditLog';
+/* LiteLLM gateway sync */
+import { createLiteLLMSyncMethods, type LiteLLMSyncMethods } from './litellmSync';
 /* Team invites */
 import { createTeamInviteMethods, type TeamInviteMethods } from './teamInvite';
 
@@ -104,6 +106,7 @@ export type AllMethods = UserMethods &
   AgentMethods &
   ConfigMethods &
   AuditLogMethods &
+  LiteLLMSyncMethods &
   TeamInviteMethods;
 
 /** Dependencies injected from the api layer into createMethods */
@@ -236,6 +239,8 @@ export function createMethods(
     ...createConfigMethods(mongoose),
     /* Audit log */
     ...createAuditLogMethods(mongoose),
+    /* LiteLLM gateway sync */
+    ...createLiteLLMSyncMethods(mongoose),
     /* Team invites */
     ...createTeamInviteMethods(mongoose),
   };
@@ -284,5 +289,6 @@ export type {
   AgentMethods,
   ConfigMethods,
   AuditLogMethods,
+  LiteLLMSyncMethods,
   TeamInviteMethods,
 };

@@ -31,6 +31,7 @@ import { createSystemGrantModel } from './systemGrant';
 import { createAuditLogModel } from './auditLog';
 import { createGroupModel } from './group';
 import { createConfigModel } from './config';
+import { createLiteLLMSyncModel } from './litellmSync';
 import { createTeamInviteModel } from './teamInvite';
 
 /**
@@ -71,6 +72,7 @@ export function createModels(mongoose: typeof import('mongoose')) {
     Group: createGroupModel(mongoose),
     Config: createConfigModel(mongoose),
     AuditLog: createAuditLogModel(mongoose),
+    LiteLLMSync: createLiteLLMSyncModel(mongoose),
     TeamInvite: createTeamInviteModel(mongoose),
   };
 }
