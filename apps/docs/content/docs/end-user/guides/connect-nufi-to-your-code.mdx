@@ -1,0 +1,85 @@
+---
+title: Connect NUFI to your code
+description: Create an API key in the console and make your first request from your own app.
+---
+
+Want to call NUFI from a script, an internal tool, or an integration? Create an
+API key in the console and use it with anything that speaks the OpenAI API
+format. This guide gets you from zero to a first working request.
+
+## What you'll need
+
+- Access to the console at `console.nufi.me` (you sign in at the app first — the
+  console reads the same login).
+- A way to run `curl`, or an OpenAI-compatible SDK in your language.
+
+## Steps
+
+<Steps>
+<Step>
+Sign in at the app, then open the **console** from the avatar menu
+(bottom-left) → **Console**, or go straight to `console.nufi.me`.
+
+![The developer console](/screenshots/console-home.png)
+</Step>
+<Step>
+Open the **API keys** tab, click **Generate**, give the key a name (e.g.
+`laptop`), and copy it — the full key is shown **once**.
+</Step>
+<Step>
+Note the base URL and a model name: the endpoint is `https://api.nufi.me/v1`
+and a model is e.g. `qwen2.5-7b`.
+</Step>
+<Step>
+Make your first request. From the command line:
+
+```bash
+curl https://api.nufi.me/v1/chat/completions \
+  -H "Authorization: Bearer sk-nufi-…" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen2.5-7b",
+    "messages": [{"role": "user", "content": "hello"}]
+  }'
+```
+
+Or from Python with the OpenAI SDK:
+
+```python
+from openai import OpenAI
+
+client = OpenAI(base_url="https://api.nufi.me/v1", api_key="sk-nufi-…")
+print(client.chat.completions.create(
+    model="qwen2.5-7b",
+    messages=[{"role": "user", "content": "hello"}],
+).choices[0].message.content)
+```
+</Step>
+<Step>
+Watch usage and budget in the console's **Usage** tab — every call is logged
+with model, time, and tokens spent.
+</Step>
+</Steps>
+
+## What you get
+
+Programmatic access to NUFI from your own code, with the same OpenAI-compatible
+parameters you already know (`stream`, `tools`, `temperature`, `max_tokens`).
+
+## Make it better
+
+- **Keep keys secret** — use environment variables, never commit them to git.
+- **One key per app** so you can revoke it cleanly when you retire the app.
+- **Rotate keys** periodically, and set **tight per-key budgets** for unattended
+  scripts.
+
+## Related
+
+<Cards>
+  <Card title="API keys" href="/docs/end-user/api-keys">
+    Full reference: generate, use, revoke, budgets, and best practices.
+  </Card>
+  <Card title="Overview" href="/docs/overview">
+    How NUFI fits together.
+  </Card>
+</Cards>
