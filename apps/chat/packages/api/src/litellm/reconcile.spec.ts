@@ -34,11 +34,11 @@ function makeClient() {
   return {
     modelInfo: jest.fn(async () => []),
     modelNew: jest.fn(async ({ modelName }: { modelName: string }) => ({ modelId: `id-${modelName}` })),
-    modelUpdate: jest.fn(async () => undefined),
-    modelDelete: jest.fn(async () => undefined),
-    keyGenerate: jest.fn(async () => ({ key: 'sk-virtual' })),
-    keyUpdate: jest.fn(async () => undefined),
-    keyDelete: jest.fn(async () => undefined),
+    modelUpdate: jest.fn(async (_p: Record<string, unknown>) => undefined),
+    modelDelete: jest.fn(async (_id: string) => undefined),
+    keyGenerate: jest.fn(async (_p: Record<string, unknown>) => ({ key: 'sk-virtual' })),
+    keyUpdate: jest.fn(async (_p: { key: string; models: string[] }) => undefined),
+    keyDelete: jest.fn(async (_key: string) => undefined),
   };
 }
 

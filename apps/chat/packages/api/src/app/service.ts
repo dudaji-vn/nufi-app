@@ -46,6 +46,16 @@ export interface AppConfigServiceDeps {
   }) => Promise<Array<{ principalType: string; principalId?: string | Types.ObjectId }>>;
   /** TTL in ms for per-user/role merged config caches. Defaults to 60 000. */
   overrideCacheTtl?: number;
+  /**
+   * Optional: rewrite admin-managed custom endpoints to route through the
+   * LiteLLM gateway (baseURL/apiKey/models). No-op when unset or the feature is
+   * off. Applied only to the merged branch — admin-created endpoints (DB
+   * overrides) can only appear there — before the merged config is cached.
+   */
+  applyEndpointRewrite?: (
+    config: AppConfig,
+    opts: { tenantId?: string },
+  ) => Promise<AppConfig>;
 }
 
 export interface GetAppConfigOptions {
@@ -97,6 +107,7 @@ export function createAppConfigService(deps: AppConfigServiceDeps) {
     getApplicableConfigs,
     getUserPrincipals,
     overrideCacheTtl = DEFAULT_OVERRIDE_CACHE_TTL,
+    applyEndpointRewrite,
   } = deps;
 
   const cache = getCache(cacheKeys.APP_CONFIG);
@@ -200,8 +211,14 @@ export function createAppConfigService(deps: AppConfigServiceDeps) {
       }
 
       const merged = mergeConfigOverrides(baseConfig, configs);
-      await cache.set(cacheKey, merged, overrideCacheTtl);
-      return merged;
+      // Managed custom endpoints (admin-created DB overrides) only ever appear in
+      // this merged branch, so the LiteLLM rewrite is applied here — before the
+      // merged config is cached, so the cached value is already rewritten.
+      const finalConfig = applyEndpointRewrite
+        ? await applyEndpointRewrite(merged, { tenantId })
+        : merged;
+      await cache.set(cacheKey, finalConfig, overrideCacheTtl);
+      return finalConfig;
     } catch (error) {
       logger.error('[getAppConfig] Error resolving config overrides, falling back to base:', error);
       return baseConfig;
