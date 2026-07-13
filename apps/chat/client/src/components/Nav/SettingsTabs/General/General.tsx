@@ -2,9 +2,9 @@ import React, { useContext, useCallback } from 'react';
 import Cookies from 'js-cookie';
 import { useRecoilState } from 'recoil';
 import { Dropdown, ThemeContext } from '@librechat/client';
+import { useLocalize, useUIMode } from '~/hooks';
 import ArchivedChats from './ArchivedChats';
 import ToggleSwitch from '../ToggleSwitch';
-import { useLocalize } from '~/hooks';
 import store from '~/store';
 
 const toggleSwitchConfigs = [
@@ -37,6 +37,30 @@ const toggleSwitchConfigs = [
     key: 'newChatSwitchToHistory',
   },
 ];
+
+export const UIModeSelector = () => {
+  const localize = useLocalize();
+  const { mode, setMode } = useUIMode();
+  const labelId = 'ui-mode-selector-label';
+  const options = [
+    { value: 'basic', label: localize('com_nav_ui_mode_basic') },
+    { value: 'advanced', label: localize('com_nav_ui_mode_advanced') },
+  ];
+  return (
+    <div className="flex items-center justify-between">
+      <div id={labelId}>{localize('com_nav_ui_mode')}</div>
+      <Dropdown
+        value={mode}
+        onChange={(value: string) => setMode(value as 'basic' | 'advanced')}
+        options={options}
+        sizeClasses="w-[180px]"
+        testId="ui-mode-selector"
+        className="z-50"
+        aria-labelledby={labelId}
+      />
+    </div>
+  );
+};
 
 export const ThemeSelector = ({
   theme,
@@ -180,6 +204,9 @@ function General() {
 
   return (
     <div className="flex flex-col gap-3 p-1 text-sm text-text-primary">
+      <div className="pb-3">
+        <UIModeSelector />
+      </div>
       <div className="pb-3">
         <ThemeSelector theme={theme} onChange={changeTheme} />
       </div>
