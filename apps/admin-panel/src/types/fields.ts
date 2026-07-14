@@ -111,6 +111,8 @@ export interface ArrayObjectFieldProps {
   renderFields: CollectionRenderFields;
   /** When set, each entry card gets an id of `{entryIdPrefix}-{index}` for TOC scroll targets. */
   entryIdPrefix?: string;
+  /** Optional per-entry header accessory (e.g. a sync-status badge + action). */
+  renderEntryHeaderExtra?: (item: ConfigValue, index: number) => React.ReactNode;
 }
 
 export interface RecordObjectFieldProps {
@@ -145,6 +147,8 @@ export interface ObjectEntryCardProps {
   disabled?: boolean;
   defaultExpanded?: boolean;
   renderFields: CollectionRenderFields;
+  /** Optional node rendered in the card header (e.g. a sync-status badge + action). */
+  headerExtra?: React.ReactNode;
 }
 
 export interface SwitchObjectFieldProps {

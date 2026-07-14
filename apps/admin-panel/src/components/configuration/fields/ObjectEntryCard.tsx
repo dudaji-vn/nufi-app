@@ -17,6 +17,7 @@ export function ObjectEntryCard({
   disabled,
   defaultExpanded = false,
   renderFields,
+  headerExtra,
 }: t.ObjectEntryCardProps) {
   const localize = useLocalize();
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
@@ -176,6 +177,7 @@ export function ObjectEntryCard({
             <span className="truncate text-xs text-muted-foreground">{summary}</span>
           )}
         </span>
+        {headerExtra}
         {!disabled && hasAddField && (
           <button
             type="button"
