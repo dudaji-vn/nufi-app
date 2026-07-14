@@ -148,3 +148,80 @@ test('resyncAll re-reconciles from raw base-config endpoints', async () => {
   expect(getRawCustomEndpoints).toHaveBeenCalled();
   expect(db._store.get('OpenAI').status).toBe('active');
 });
+
+test('getStatus returns enabled:false when the feature is off', async () => {
+  process.env.LITELLM_SYNC_ENABLED = 'false';
+  const db = fakeDb();
+  const gw = createLiteLLMGateway({ db: db as any, encrypt, decrypt, runInTenant });
+  expect(await gw.getStatus({ tenantId: 't1' })).toEqual({ enabled: false, statuses: {} });
+  expect(db.listLiteLLMSync).not.toHaveBeenCalled();
+});
+
+test('getStatus returns sanitized per-endpoint status without secrets', async () => {
+  enable();
+  const db = fakeDb();
+  db._store.set('OpenAI', {
+    endpointName: 'OpenAI',
+    status: 'active',
+    virtualKey: 'E:sk-secret',
+    models: [{ sourceModel: 'gpt-4o', litellmModelName: 'OpenAI/gpt-4o', litellmModelId: 'id1' }],
+    lastError: null,
+    lastSyncedAt: new Date('2026-07-14T00:00:00.000Z'),
+  });
+  db._store.set('Broken', {
+    endpointName: 'Broken',
+    status: 'failed',
+    models: [],
+    lastError: 'boom',
+  });
+  const gw = createLiteLLMGateway({ db: db as any, encrypt, decrypt, runInTenant });
+  const { enabled, statuses } = await gw.getStatus({ tenantId: 't1' });
+  expect(enabled).toBe(true);
+  expect(statuses.OpenAI).toEqual({
+    status: 'active',
+    modelCount: 1,
+    lastError: null,
+    lastSyncedAt: '2026-07-14T00:00:00.000Z',
+  });
+  expect(statuses.Broken).toEqual({
+    status: 'failed',
+    modelCount: 0,
+    lastError: 'boom',
+    lastSyncedAt: null,
+  });
+  // never leaks the virtual key
+  expect(JSON.stringify(statuses)).not.toContain('sk-secret');
+});
+
+test('resyncEndpoint re-syncs only the named endpoint and does NOT prune others', async () => {
+  enable();
+  const db = fakeDb();
+  // an existing managed endpoint that must be left untouched
+  db._store.set('Other', {
+    endpointName: 'Other',
+    status: 'active',
+    virtualKey: 'E:sk-other',
+    models: [{ sourceModel: 'm', litellmModelName: 'Other/m', litellmModelId: 'idO' }],
+  });
+  const getRawCustomEndpoints = jest.fn(async () => [
+    { name: 'OpenAI', baseURL: 'https://api.openai.com/v1', apiKey: 'sk-real', models: { default: ['gpt-4o'], fetch: false } },
+    { name: 'Other', baseURL: 'https://other/v1', apiKey: 'sk-o', models: { default: ['m'], fetch: false } },
+  ]);
+  const gw = createLiteLLMGateway({ db: db as any, encrypt, decrypt, runInTenant, getRawCustomEndpoints });
+
+  await gw.resyncEndpoint({ tenantId: 't1', name: 'OpenAI' });
+
+  expect(db._store.get('OpenAI').status).toBe('active'); // the target got synced
+  expect(db._store.has('Other')).toBe(true); // NOT torn down (prune:false)
+});
+
+test('resyncEndpoint is a no-op for an unknown endpoint name', async () => {
+  enable();
+  const db = fakeDb();
+  const getRawCustomEndpoints = jest.fn(async () => [
+    { name: 'OpenAI', baseURL: 'https://api.openai.com/v1', apiKey: 'sk-real', models: { default: ['gpt-4o'], fetch: false } },
+  ]);
+  const gw = createLiteLLMGateway({ db: db as any, encrypt, decrypt, runInTenant, getRawCustomEndpoints });
+  await gw.resyncEndpoint({ tenantId: 't1', name: 'Nope' });
+  expect(db._store.size).toBe(0);
+});

@@ -118,9 +118,14 @@ export function createReconciler(deps: ReconcilerDeps) {
   /**
    * Converge LiteLLM to the given set of endpoints. Best-effort per endpoint:
    * a failure marks that endpoint `failed` (fail-closed) and does not abort the
-   * others. Endpoints previously synced but absent here are torn down.
+   * others. When `prune` is not false, endpoints previously synced but absent
+   * here are torn down — pass `prune: false` for a single-endpoint resync so the
+   * other managed endpoints are left untouched.
    */
-  async function reconcileEndpoints(params: { customEndpoints: EndpointInput[] }): Promise<void> {
+  async function reconcileEndpoints(params: {
+    customEndpoints: EndpointInput[];
+    prune?: boolean;
+  }): Promise<void> {
     const endpoints = params.customEndpoints ?? [];
     for (const ep of endpoints) {
       try {
@@ -135,7 +140,9 @@ export function createReconciler(deps: ReconcilerDeps) {
           .catch(() => undefined);
       }
     }
-    await unsyncMissing(endpoints.map((e) => e.name));
+    if (params.prune !== false) {
+      await unsyncMissing(endpoints.map((e) => e.name));
+    }
   }
 
   /** Tear down one endpoint's LiteLLM models + virtual key, then drop its record. */
