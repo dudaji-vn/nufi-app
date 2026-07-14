@@ -6,4 +6,5 @@ export * from './config';
 export * from './groups';
 export * from './roles';
 export * from './scopes';
+export * from './sync';
 export * from './users';

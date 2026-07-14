@@ -15,17 +15,20 @@
  */
 
 import { useMemo, useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@clickhouse/click-ui';
 import { ChevronRight } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type * as t from '@/types';
 import { FieldRenderer, NestedGroup, renderInlineField } from '../FieldRenderer';
 import { CreateCustomEndpointDialog } from './CreateCustomEndpointDialog';
+import { LiteLLMSyncBadge } from './LiteLLMSyncBadge';
 import { useCollapsibleSection } from '../useCollapsibleSection';
 import { ArrayObjectField } from '../fields/ArrayObjectField';
 import { countConfigured, hasDescendant } from '../utils';
 import { renderCollapsible } from '../renderCollapsible';
 import { ConfigSection } from '../ConfigSection';
+import { endpointSyncStatusOptions, resyncEndpointFn } from '@/server';
 import { useLocalize } from '@/hooks';
 import { cn } from '@/utils';
 
@@ -586,6 +589,14 @@ export function CustomEndpointsRenderer(props: t.FieldRendererProps) {
     [disabled],
   );
 
+  // LiteLLM gateway sync status (empty/enabled:false when the feature is off).
+  const queryClient = useQueryClient();
+  const { data: syncData } = useQuery(endpointSyncStatusOptions);
+  const resync = useMutation({
+    mutationFn: (name: string) => resyncEndpointFn({ data: { name } }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['endpointSyncStatus'] }),
+  });
+
   const customField = fields.find((f) => f.key === 'custom');
   if (!customField) return null;
 
@@ -600,6 +611,28 @@ export function CustomEndpointsRenderer(props: t.FieldRendererProps) {
   const handleCreate = (entry: Record<string, t.ConfigValue>) => {
     onChange(path, [...items, entry]);
   };
+
+  // Only render the sync badge/action when the gateway feature is enabled.
+  const renderEntryHeaderExtra = syncData?.enabled
+    ? (item: t.ConfigValue): ReactNode => {
+        const name =
+          item && typeof item === 'object' && !Array.isArray(item)
+            ? (item as Record<string, t.ConfigValue>).name
+            : undefined;
+        if (typeof name !== 'string' || !name) {
+          return null;
+        }
+        return (
+          <LiteLLMSyncBadge
+            status={syncData.statuses[name]}
+            endpointName={name}
+            onResync={() => resync.mutate(name)}
+            isResyncing={resync.isPending && resync.variables === name}
+            disabled={disabled}
+          />
+        );
+      }
+    : undefined;
 
   return (
     <div className="flex flex-col gap-2">
@@ -624,6 +657,7 @@ export function CustomEndpointsRenderer(props: t.FieldRendererProps) {
         hideAddButton
         renderFields={renderGroupedEndpointFields}
         entryIdPrefix={`section-${path.split('.')[0]}-custom`}
+        renderEntryHeaderExtra={renderEntryHeaderExtra}
       />
       <CreateCustomEndpointDialog
         open={createOpen}
