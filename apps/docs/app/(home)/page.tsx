@@ -12,25 +12,37 @@ const cards: Card[] = [
     title: 'Overview',
     href: '/docs/overview',
     desc: 'What NUFI is and how it works. Read this first if you are new.',
-    icon: '📖',
+    icon: '🧭',
   },
   {
-    title: 'Use the app',
+    title: 'Using the app',
     href: '/docs/end-user',
-    desc: 'Sign in, pick a model, work with agents, files, and presets.',
+    desc: 'Sign in, pick a model, work with agents, files, and teams.',
     icon: '💬',
   },
   {
-    title: 'Manage NUFI',
+    title: 'Administer',
     href: '/docs/admin',
     desc: 'Configure the platform, manage users, roles, groups, and observe usage.',
     icon: '🛠️',
   },
   {
+    title: 'Deploy & operate',
+    href: '/docs/deployment',
+    desc: 'Stand up a production instance, then monitor, back up, and troubleshoot.',
+    icon: '🚀',
+  },
+  {
+    title: 'Develop',
+    href: '/docs/developer',
+    desc: 'Run the stack locally, work in the codebases, add models, and ship.',
+    icon: '🧑‍💻',
+  },
+  {
     title: 'Reference',
     href: '/docs/reference',
     desc: 'Flat lookup tables — every port, environment variable, glossary.',
-    icon: '📚',
+    icon: '📖',
   },
 ];
 

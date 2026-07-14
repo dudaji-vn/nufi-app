@@ -21,9 +21,7 @@ export const baseOptions: BaseLayoutProps = {
       </>
     ),
   },
-  links: [
-    { text: 'Documentation', url: '/docs', active: 'nested-url' },
-    { text: 'App', url: '/docs/end-user', active: 'nested-url' },
-    { text: 'Admin', url: '/docs/admin', active: 'nested-url' },
-  ],
+  // Section navigation lives in the sidebar tab switcher, so the top nav
+  // only carries a link out to the live app (avoids duplicating the tabs).
+  links: [{ text: 'Open App', url: 'https://chat.nufi.me', external: true }],
 };

@@ -1,8 +1,8 @@
 {
   "title": "Overview",
-  "description": "Start here — architecture, components, and quick start",
+  "description": "What NUFI is and how it works",
   "root": true,
-  "icon": "BookOpen",
+  "icon": "Compass",
   "pages": [
     "index",
     "architecture",

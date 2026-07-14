@@ -2,6 +2,6 @@
   "title": "Reference",
   "description": "Tables you look up",
   "root": true,
-  "icon": "List",
+  "icon": "BookMarked",
   "pages": ["index", "ports", "env-vars", "glossary"]
 }
