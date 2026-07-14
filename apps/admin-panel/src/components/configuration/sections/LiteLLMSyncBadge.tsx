@@ -1,6 +1,6 @@
 import { RefreshCw } from 'lucide-react';
 import type * as t from '@/types';
-import { Badge, Button } from '@/components/ui';
+import { Badge } from '@/components/ui';
 import { useLocalize } from '@/hooks/useLocalize';
 import { cn } from '@/utils';
 
@@ -62,11 +62,8 @@ export function LiteLLMSyncBadge({
       role="status"
     >
       {badge}
-      <Button
+      <button
         type="button"
-        variant="ghost"
-        size="icon"
-        className="h-6 w-6"
         disabled={disabled || isResyncing}
         onClick={(e) => {
           e.stopPropagation();
@@ -74,9 +71,10 @@ export function LiteLLMSyncBadge({
         }}
         aria-label={localize('com_litellm_resync_aria', { name: endpointName })}
         title={localize('com_litellm_resync')}
+        className="inline-flex shrink-0 cursor-pointer items-center rounded border-none bg-transparent p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
       >
         <RefreshCw className={cn('h-3.5 w-3.5', isResyncing && 'animate-spin')} />
-      </Button>
+      </button>
     </span>
   );
 }
