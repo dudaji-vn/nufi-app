@@ -60,4 +60,6 @@ module.exports = {
   reconcileLiteLLM: (params) => gateway().reconcileLiteLLM(params),
   applyEndpointRewrite: (config, opts) => gateway().applyEndpointRewrite(config, opts),
   resyncAll: (params) => gateway().resyncAll(params),
+  resyncEndpoint: (params) => gateway().resyncEndpoint(params),
+  getStatus: (params) => gateway().getStatus(params),
 };

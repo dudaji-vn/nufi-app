@@ -32,6 +32,20 @@ interface RawEndpoint {
   models?: { default?: unknown; fetch?: unknown } & Record<string, unknown>;
 }
 
+/** Per-endpoint sync status surfaced to the admin panel (no secrets). */
+export interface EndpointSyncStatus {
+  status: 'pending' | 'active' | 'failed';
+  modelCount: number;
+  lastError: string | null;
+  /** ISO timestamp of the last successful sync, or null. */
+  lastSyncedAt: string | null;
+}
+
+export interface LiteLLMStatusResult {
+  enabled: boolean;
+  statuses: Record<string, EndpointSyncStatus>;
+}
+
 async function defaultDiscoverModels(baseURL: string, apiKey: string): Promise<string[]> {
   try {
     const res = await fetch(`${baseURL.replace(/\/+$/, '')}/models`, {
@@ -80,16 +94,24 @@ export function createLiteLLMGateway(deps: LiteLLMGatewayDeps) {
     return inputs;
   }
 
+  /** Build a reconciler bound to the live LiteLLM config, or null when off. */
+  function buildReconciler() {
+    const cfg = getLiteLLMConfig();
+    if (!cfg) {
+      return null;
+    }
+    const client = createLiteLLMClient(cfg);
+    return createReconciler({ client, db, encrypt, decrypt });
+  }
+
   async function reconcileLiteLLM(params: {
     tenantId?: string;
     customEndpoints: unknown[];
   }): Promise<void> {
-    const cfg = getLiteLLMConfig();
-    if (!cfg) {
+    const reconciler = buildReconciler();
+    if (!reconciler) {
       return;
     }
-    const client = createLiteLLMClient(cfg);
-    const reconciler = createReconciler({ client, db, encrypt, decrypt });
     await runInTenant(params.tenantId, async () => {
       const inputs = await toInputs(params.customEndpoints);
       await reconciler.reconcileEndpoints({ customEndpoints: inputs });
@@ -121,7 +143,46 @@ export function createLiteLLMGateway(deps: LiteLLMGatewayDeps) {
     await reconcileLiteLLM({ tenantId: params.tenantId, customEndpoints: raw });
   }
 
-  return { reconcileLiteLLM, applyEndpointRewrite, resyncAll };
+  /** Re-sync a single endpoint by name, leaving other managed endpoints untouched. */
+  async function resyncEndpoint(params: { tenantId?: string; name: string }): Promise<void> {
+    const reconciler = buildReconciler();
+    if (!reconciler || !getRawCustomEndpoints) {
+      return;
+    }
+    await runInTenant(params.tenantId, async () => {
+      const raw = await getRawCustomEndpoints({ tenantId: params.tenantId });
+      const match = (raw ?? []).find((e) => (e as RawEndpoint)?.name === params.name);
+      if (!match) {
+        return;
+      }
+      const input = await mapToEndpointInput(match as RawEndpoint);
+      if (!input) {
+        return;
+      }
+      await reconciler.reconcileEndpoints({ customEndpoints: [input], prune: false });
+    });
+  }
+
+  /** Per-endpoint sync status for the admin panel. Secrets are never included. */
+  async function getStatus(params: { tenantId?: string }): Promise<LiteLLMStatusResult> {
+    const cfg = getLiteLLMConfig();
+    if (!cfg) {
+      return { enabled: false, statuses: {} };
+    }
+    const records = await runInTenant(params.tenantId, () => db.listLiteLLMSync());
+    const statuses: Record<string, EndpointSyncStatus> = {};
+    for (const r of records) {
+      statuses[r.endpointName] = {
+        status: r.status,
+        modelCount: r.models?.length ?? 0,
+        lastError: r.lastError ?? null,
+        lastSyncedAt: r.lastSyncedAt ? new Date(r.lastSyncedAt).toISOString() : null,
+      };
+    }
+    return { enabled: true, statuses };
+  }
+
+  return { reconcileLiteLLM, applyEndpointRewrite, resyncAll, resyncEndpoint, getStatus };
 }
 
 export type LiteLLMGateway = ReturnType<typeof createLiteLLMGateway>;

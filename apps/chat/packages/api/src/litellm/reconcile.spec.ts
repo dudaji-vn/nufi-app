@@ -156,6 +156,22 @@ describe('reconcileEndpoints', () => {
     expect(db._store.get('OpenAI').lastError).toMatch(/no models/i);
   });
 
+  it('with prune:false, does NOT tear down endpoints absent from the set', async () => {
+    const db = makeDb();
+    const client = makeClient();
+    const r = createReconciler({ client: client as any, db: db as any, encrypt, decrypt });
+
+    await r.reconcileEndpoints({ customEndpoints: [ep({ name: 'A', models: ['gpt-4o'] }), ep({ name: 'B', models: ['gpt-4o'] })] });
+    client.modelDelete.mockClear();
+
+    // resync only A, prune:false — B must survive
+    await r.reconcileEndpoints({ customEndpoints: [ep({ name: 'A', models: ['gpt-4o'] })], prune: false });
+
+    expect(client.modelDelete).not.toHaveBeenCalled();
+    expect(db._store.has('A')).toBe(true);
+    expect(db._store.has('B')).toBe(true);
+  });
+
   it('tears down endpoints that disappear from the set', async () => {
     const db = makeDb();
     const client = makeClient();
