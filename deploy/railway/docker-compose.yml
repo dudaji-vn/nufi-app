@@ -43,6 +43,11 @@ services:
       # Enables the RAG file-upload UI for end users. Points at the rag_api
       # service below; LibreChat embeds uploaded docs and retrieves from them.
       RAG_API_URL: http://rag_api:${RAG_PORT:-8000}
+      # LiteLLM gateway sync — route all admin-created custom endpoints through a
+      # central LiteLLM proxy. OFF by default; nothing changes until enabled.
+      LITELLM_SYNC_ENABLED: ${LITELLM_SYNC_ENABLED:-false}
+      LITELLM_BASE_URL: ${LITELLM_BASE_URL:-}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-}
     volumes:
       - ./librechat.yaml:/app/librechat.yaml:ro
 
