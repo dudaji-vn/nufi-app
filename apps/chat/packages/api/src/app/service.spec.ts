@@ -163,16 +163,90 @@ describe('createAppConfigService', () => {
       });
       const { getAppConfig } = createAppConfigService(deps);
 
-      const config = (await getAppConfig({ role: 'ADMIN', tenantId: 't1' })) as TestConfig & {
-        rewritten?: boolean;
-      };
+      const config = (await getAppConfig({
+        role: 'ADMIN',
+        tenantId: 't1',
+        resolveManagedEndpoints: true,
+      })) as TestConfig & { rewritten?: boolean };
 
       expect(applyEndpointRewrite).toHaveBeenCalledTimes(1);
       expect(applyEndpointRewrite.mock.calls[0][1]).toEqual({ tenantId: 't1' });
       expect(config.rewritten).toBe(true);
       // second call served from cache — rewrite not re-run
-      await getAppConfig({ role: 'ADMIN', tenantId: 't1' });
+      await getAppConfig({ role: 'ADMIN', tenantId: 't1', resolveManagedEndpoints: true });
       expect(applyEndpointRewrite).toHaveBeenCalledTimes(1);
+    });
+
+    it('does NOT rewrite endpoints unless the caller opts in', async () => {
+      // Regression: the rewrite used to run for every caller, so read-only paths
+      // such as GET /api/admin/config/base served decrypted gateway credentials,
+      // which the admin panel then wrote back into the stored config.
+      const applyEndpointRewrite = jest
+        .fn()
+        .mockImplementation(async (config: TestConfig) => ({ ...config, rewritten: true }));
+      const deps = createDeps({
+        getApplicableConfigs: jest
+          .fn()
+          .mockResolvedValue([{ priority: 10, overrides: { x: 1 }, isActive: true }]),
+        applyEndpointRewrite,
+      });
+      const { getAppConfig } = createAppConfigService(deps);
+
+      const config = (await getAppConfig({ role: 'ADMIN', tenantId: 't1' })) as TestConfig & {
+        rewritten?: boolean;
+      };
+
+      expect(applyEndpointRewrite).not.toHaveBeenCalled();
+      expect(config.rewritten).toBeUndefined();
+    });
+
+    it('never serves a rewritten config to a caller that did not opt in', async () => {
+      // The two variants must not share a cache entry, or whichever caller
+      // misses first decides what the other sees for the rest of the TTL.
+      const applyEndpointRewrite = jest
+        .fn()
+        .mockImplementation(async (config: TestConfig) => ({ ...config, rewritten: true }));
+      const deps = createDeps({
+        getApplicableConfigs: jest
+          .fn()
+          .mockResolvedValue([{ priority: 10, overrides: { x: 1 }, isActive: true }]),
+        applyEndpointRewrite,
+      });
+      const { getAppConfig } = createAppConfigService(deps);
+
+      const runtime = (await getAppConfig({
+        role: 'ADMIN',
+        tenantId: 't1',
+        resolveManagedEndpoints: true,
+      })) as TestConfig & { rewritten?: boolean };
+      const adminRead = (await getAppConfig({ role: 'ADMIN', tenantId: 't1' })) as TestConfig & {
+        rewritten?: boolean;
+      };
+
+      expect(runtime.rewritten).toBe(true);
+      expect(adminRead.rewritten).toBeUndefined();
+    });
+
+    it('never serves an un-rewritten config to a runtime caller (reverse poisoning)', async () => {
+      const applyEndpointRewrite = jest
+        .fn()
+        .mockImplementation(async (config: TestConfig) => ({ ...config, rewritten: true }));
+      const deps = createDeps({
+        getApplicableConfigs: jest
+          .fn()
+          .mockResolvedValue([{ priority: 10, overrides: { x: 1 }, isActive: true }]),
+        applyEndpointRewrite,
+      });
+      const { getAppConfig } = createAppConfigService(deps);
+
+      await getAppConfig({ role: 'ADMIN', tenantId: 't1' });
+      const runtime = (await getAppConfig({
+        role: 'ADMIN',
+        tenantId: 't1',
+        resolveManagedEndpoints: true,
+      })) as TestConfig & { rewritten?: boolean };
+
+      expect(runtime.rewritten).toBe(true);
     });
 
     it('does NOT call applyEndpointRewrite when there are no overrides (base branch)', async () => {
