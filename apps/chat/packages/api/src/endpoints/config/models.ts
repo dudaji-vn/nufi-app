@@ -22,7 +22,11 @@ interface ResolvedEndpoint {
 }
 
 export interface LoadConfigModelsDeps {
-  getAppConfig: (params: { role?: string | null; tenantId?: string }) => Promise<AppConfig>;
+  getAppConfig: (params: {
+    role?: string | null;
+    tenantId?: string;
+    resolveManagedEndpoints?: boolean;
+  }) => Promise<AppConfig>;
   getUserKeyValues: GetUserKeyValuesFunction;
   fetchModels?: (params: FetchModelsParams) => Promise<string[]>;
 }
@@ -34,6 +38,9 @@ export function createLoadConfigModels(deps: LoadConfigModelsDeps) {
     const appConfig = await getAppConfig({
       role: req.user?.role,
       tenantId: req.user?.tenantId,
+      // Model discovery calls the provider directly with these credentials, so
+      // managed endpoints must resolve to their gateway routing here.
+      resolveManagedEndpoints: true,
     });
     if (!appConfig) {
       return {};
