@@ -130,7 +130,7 @@ again pointing at the same env vars.
 Use `./scripts/add-model.sh` (interactive or via flags) to register any
 OpenAI-compatible model — Ollama, vLLM, OpenAI, Together, Anthropic, your
 teammate's custom server, etc. The script edits `litellm/config.yaml`
-and `librechat/librechat.yaml`, restarts the proxy + chat UI, and runs a
+and `librechat.yaml`, restarts the proxy + chat UI, and runs a
 test chat completion against the new model.
 
 ```bash
@@ -158,7 +158,7 @@ LiteLLM also lets you add models from its admin dashboard at
 
 **But the new model won't appear in the LibreChat dropdown until you bounce
 LibreChat.** LibreChat fetches `/v1/models` once at startup and caches the
-list (`fetch: true` + `cache: true` in `librechat/librechat.yaml`):
+list (`fetch: true` + `cache: true` in `librechat.yaml`):
 
 ```bash
 docker compose restart librechat   # flushes the cached model list
@@ -306,7 +306,7 @@ LibreChat is forked at https://github.com/dudaji-vn/LibreChat
 (branch `npuops/main`, pinned to upstream `v0.7.5`). The fork's CI builds and
 publishes a multi-arch image to `ghcr.io/dudaji-vn/librechat:npuops-v0.7.5-N`,
 which this repo pulls via the `image:` line in `docker-compose.yml`. There
-is no local LibreChat source in this repo — only `librechat/librechat.yaml`
+is no local LibreChat source in this repo — only `librechat.yaml`
 runtime config, mounted into the container.
 
 **One-time auth (every contributor + every deploy host):**

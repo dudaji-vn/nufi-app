@@ -734,8 +734,8 @@ EOF
       ' litellm/config.yaml
       # Match add-model.sh's dedup posture (`| unique`) so a re-run can't create
       # a duplicate entry in the LibreChat fallback list.
-      yq eval -i '.endpoints.custom[0].models.default = ((.endpoints.custom[0].models.default + [strenv(mock_name)]) | unique)' librechat/librechat.yaml
-      ok "wrote ${mock_name} to litellm/config.yaml + librechat/librechat.yaml"
+      yq eval -i '.endpoints.custom[0].models.default = ((.endpoints.custom[0].models.default + [strenv(mock_name)]) | unique)' librechat.yaml
+      ok "wrote ${mock_name} to litellm/config.yaml + librechat.yaml"
       restart_stack
     fi
     MODEL_NAME="$mock_name"

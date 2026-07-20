@@ -8,7 +8,7 @@
 
 **Tech Stack:** git filter-repo (installed: `/opt/homebrew/bin/git-filter-repo`), gh CLI, GitHub Actions, Bun, Docker.
 
-**Spec:** `docs/superpowers/specs/2026-07-20-nufi-app-monorepo-design.md`
+**Spec:** `docs/2026-07-20-nufi-app-monorepo-design.md`
 
 ## Global Constraints
 

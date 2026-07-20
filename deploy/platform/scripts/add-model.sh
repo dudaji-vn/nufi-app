@@ -546,14 +546,14 @@ else
 fi
 
 # -----------------------------------------------------------------------------
-# update librechat/librechat.yaml
+# update librechat.yaml
 # -----------------------------------------------------------------------------
-if [ "$ADD_TO_LIBRECHAT" -eq 1 ] && [ -f librechat/librechat.yaml ]; then
-  step "Updating librechat/librechat.yaml"
+if [ "$ADD_TO_LIBRECHAT" -eq 1 ] && [ -f librechat.yaml ]; then
+  step "Updating librechat.yaml"
   # Append + dedupe in one shot. The dedupe self-heals any duplicates left
   # behind by earlier runs (the litellm uniqueness check protects model_list
   # but the dropdown was previously append-only).
-  yq eval -i '.endpoints.custom[0].models.default = ((.endpoints.custom[0].models.default + [strenv(NAME)]) | unique)' librechat/librechat.yaml
+  yq eval -i '.endpoints.custom[0].models.default = ((.endpoints.custom[0].models.default + [strenv(NAME)]) | unique)' librechat.yaml
   ok "added to LibreChat dropdown"
 fi
 
@@ -666,7 +666,7 @@ cat <<EOF
   ${BOLD}'${NAME}' is now registered.${RESET}
   • LibreChat:  http://localhost:3080  (refresh — '${NAME}' in the model dropdown)
   • Langfuse:   http://localhost:3000  (traces tagged hardware_id=${HARDWARE_ID})
-  • To remove:  edit litellm/config.yaml and librechat/librechat.yaml directly,
+  • To remove:  edit litellm/config.yaml and librechat.yaml directly,
                 then restart with docker compose restart litellm-proxy librechat
 
 EOF

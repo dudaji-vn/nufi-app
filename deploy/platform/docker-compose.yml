@@ -336,7 +336,7 @@ services:
       # Used by librechat.yaml endpoint config to authenticate against LiteLLM
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
     volumes:
-      - ./librechat/librechat.yaml:/app/librechat.yaml:ro
+      - ./librechat.yaml:/app/librechat.yaml:ro
     healthcheck:
       test:
         [
