@@ -131,3 +131,4 @@ LiteLLM key metadata, spend rows, and Langfuse traces.
 
 - [npuops-platform](https://github.com/dudaji-vn/npuops-platform) — docker compose stack that runs this console alongside LiteLLM, LibreChat, Langfuse, and monitoring.
 - [LibreChat fork](https://github.com/dudaji-vn/LibreChat) — chat UI that issues the JWT this console verifies.
+
