@@ -1,0 +1,8 @@
+.env
+*.log
+data/
+logs/
+.DS_Store
+# host-specific override (e.g. symlink to docker-compose.shared-network.yml)
+docker-compose.override.yml
+docker-compose.override.yaml

@@ -1,0 +1,77 @@
+version: 1.3.11
+cache: true
+
+interface:
+  customWelcome: "Welcome to Nufi Chat."
+  # Must be visible so users can switch to the Agents endpoint (where RAG /
+  # File Search lives). With it hidden, agents are unreachable.
+  endpointsMenu: true
+  modelSelect: true
+  parameters: true
+  sidePanel: true
+  presets: true
+  prompts: true
+  bookmarks: true
+  multiConvo: true
+  temporaryChat: true
+  # RAG file upload for end users is an Agents feature (File Search). Enabling
+  # agents surfaces the agent builder where a user attaches documents that get
+  # embedded via rag_api into pgvector and retrieved during chat.
+  agents: true
+  # Adds a "Console" entry to the Account Settings dropdown. The api container
+  # interpolates ${CONSOLE_URL} at startup (see resolveExternalUrl). Leave the
+  # env var empty to hide the entry.
+  customConsole:
+    externalUrl: "${CONSOLE_URL}"
+    openNewTab: true
+
+endpoints:
+  # Agents endpoint — hosts the File Search (RAG) capability. A user creates an
+  # agent backed by the Nufi model, enables File Search, and uploads documents;
+  # those are embedded via rag_api (RAG_API_URL) into pgvector and retrieved at
+  # chat time. Scoped to file_search only to keep the demo focused (no code
+  # interpreter / web search buttons that need extra services).
+  agents:
+    capabilities:
+      - "file_search"
+
+  custom:
+    # Single OpenAI-compatible endpoint. Works with any backend that speaks the
+    # OpenAI Chat Completions API: LiteLLM, vLLM, TGI, OpenAI itself, OpenRouter,
+    # Together, Groq, Anthropic via a proxy, etc. Both values are interpolated
+    # from the api container's env at runtime.
+    - name: "Nufi"
+      apiKey: "${BACKEND_API_KEY}"
+      baseURL: "${BACKEND_BASE_URL}"
+      models:
+        fetch: true
+        # Schema requires at least one entry (Zod min(1)) — a placeholder is
+        # enough. When `fetch: true` returns a non-empty list, it overrides
+        # this default (see loadConfigModels.js). The placeholder only shows
+        # in the dropdown if the upstream models endpoint is unreachable.
+        default: ["loading..."]
+      titleConvo: true
+      titleModel: "current_model"
+      modelDisplayLabel: "Nufi"
+      forcePrompt: false
+      summarize: false
+
+fileConfig:
+  endpoints:
+    Nufi:
+      fileLimit: 5
+      fileSizeLimit: 20
+      totalSizeLimit: 50
+      supportedMimeTypes:
+        - "image/png"
+        - "image/jpeg"
+        - "image/webp"
+        - "image/gif"
+        # Document types for RAG file upload. Uploading one of these embeds it
+        # via rag_api so the model can retrieve from it during the chat.
+        - "application/pdf"
+        - "text/plain"
+        - "text/markdown"
+        - "text/csv"
+        - "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        - "application/json"

@@ -1,0 +1,105 @@
+name: nufi-chat
+
+volumes:
+  mongo-data:
+  pgdata:
+
+services:
+  api:
+    image: ghcr.io/dudaji-vn/nufichat:${IMAGE_TAG:-main}
+    container_name: nufi-chat-api
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+      rag_api:
+        condition: service_started
+    ports:
+      - "3081:3081"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3081
+      MONGO_URI: mongodb://mongo:27017/LibreChat
+      DOMAIN_CLIENT: ${DOMAIN_CLIENT}
+      DOMAIN_SERVER: ${DOMAIN_SERVER}
+      APP_TITLE: ${APP_TITLE:-Nufi Chat}
+      ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-true}
+      ALLOW_EMAIL_LOGIN: ${ALLOW_EMAIL_LOGIN:-true}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      CREDS_KEY: ${CREDS_KEY}
+      CREDS_IV: ${CREDS_IV}
+      # Set both to share the session cookie with sibling subdomain apps
+      # (e.g. console.nufi.me reading auth set by chat.nufi.me).
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
+      COOKIE_SAMESITE: ${COOKIE_SAMESITE:-strict}
+      ENDPOINTS: custom
+      # Both consumed by librechat.yaml via ${VAR} interpolation.
+      BACKEND_API_KEY: ${BACKEND_API_KEY}
+      BACKEND_BASE_URL: ${BACKEND_BASE_URL}
+      # Surfaces the "Console" link in the Account Settings dropdown. Leave
+      # unset to hide it. Consumed by librechat.yaml via ${VAR} interpolation.
+      CONSOLE_URL: ${CONSOLE_URL:-}
+      # Enables the RAG file-upload UI for end users. Points at the rag_api
+      # service below; LibreChat embeds uploaded docs and retrieves from them.
+      RAG_API_URL: http://rag_api:${RAG_PORT:-8000}
+      # LiteLLM gateway sync — route all admin-created custom endpoints through a
+      # central LiteLLM proxy. OFF by default; nothing changes until enabled.
+      LITELLM_SYNC_ENABLED: ${LITELLM_SYNC_ENABLED:-false}
+      LITELLM_BASE_URL: ${LITELLM_BASE_URL:-}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-}
+    volumes:
+      - ./librechat.yaml:/app/librechat.yaml:ro
+
+  mongo:
+    # 4.4 is the last release that runs on CPUs without AVX.
+    image: mongo:4.4
+    container_name: nufi-chat-mongo
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongo", "--quiet", "--eval", "db.adminCommand({ping: 1}).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # --- RAG stack -----------------------------------------------------------
+  # pgvector stores document embeddings; rag_api does the chunking/embedding/
+  # retrieval. Together they power the end-user file-upload RAG UI in the chat.
+  vectordb:
+    image: pgvector/pgvector:0.8.0-pg15-trixie
+    container_name: nufi-chat-vectordb
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: mydatabase
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+      # Init into a subdirectory so a mounted volume's lost+found dir doesn't
+      # make Postgres refuse to initialize (Railway mounts include lost+found).
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  rag_api:
+    image: ghcr.io/danny-avila/librechat-rag-api-dev-lite:latest
+    container_name: nufi-chat-rag-api
+    restart: unless-stopped
+    depends_on:
+      - vectordb
+    environment:
+      RAG_PORT: ${RAG_PORT:-8000}
+      # Bind IPv6 dual-stack so Railway's IPv6-only private network can reach
+      # it (default 0.0.0.0 is IPv4-only). Also accepts IPv4, so fine locally.
+      RAG_HOST: "::"
+      DB_HOST: vectordb
+      DB_PORT: 5432
+      POSTGRES_DB: mydatabase
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+      # Embeddings via Google Gemini (AI Studio). Just needs a Gemini API key.
+      # See .env for the key; default model is gemini-embedding-001.
+      EMBEDDINGS_PROVIDER: ${EMBEDDINGS_PROVIDER:-google_genai}
+      EMBEDDINGS_MODEL: ${EMBEDDINGS_MODEL:-gemini-embedding-001}
+      RAG_GOOGLE_API_KEY: ${RAG_GOOGLE_API_KEY:-}
