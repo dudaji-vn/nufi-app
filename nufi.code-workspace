@@ -1,0 +1,10 @@
+{
+  "folders": [
+    { "name": "chat", "path": "apps/chat" },
+    { "name": "console", "path": "apps/console" },
+    { "name": "admin-panel", "path": "apps/admin-panel" },
+    { "name": "docs", "path": "apps/docs" },
+    { "name": "deploy", "path": "deploy" },
+    { "name": "∙ root", "path": "." }
+  ]
+}
