@@ -1,0 +1,175 @@
+import { useMemo, useState } from 'react';
+import { Plus } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import type * as t from '@/types';
+import { Button } from '@/components/ui';
+import {
+  LoadingState,
+  Pagination,
+  SearchInput,
+  EmptyState,
+  TrashButton,
+} from '@/components/shared';
+import { deleteRoleFn, allRolesQueryOptions, ROLES_PAGE_SIZE } from '@/server';
+import { useCapabilities, useLocalize } from '@/hooks';
+import { EditRoleDialog } from './EditRoleDialog';
+import { SystemCapabilities } from '@/constants';
+import { ConfirmDialog } from './ConfirmDialog';
+
+export function RolesTab({ onCreateRole }: t.RolesTabProps) {
+  const localize = useLocalize();
+  const queryClient = useQueryClient();
+  const { hasCapability } = useCapabilities();
+  const canManage = hasCapability(SystemCapabilities.MANAGE_ROLES);
+  const [editTarget, setEditTarget] = useState<t.Role | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<t.Role | null>(null);
+  const [deleteError, setDeleteError] = useState('');
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+
+  const { data: allRoles = [], isLoading, isError } = useQuery(allRolesQueryOptions);
+
+  const filtered = useMemo(() => {
+    if (!search) return allRoles;
+    const q = search.toLowerCase();
+    return allRoles.filter(
+      (role) => role.name.toLowerCase().includes(q) || role.description.toLowerCase().includes(q),
+    );
+  }, [allRoles, search]);
+
+  const totalPages = Math.ceil(filtered.length / ROLES_PAGE_SIZE);
+  const paged = useMemo(
+    () => filtered.slice((page - 1) * ROLES_PAGE_SIZE, page * ROLES_PAGE_SIZE),
+    [filtered, page],
+  );
+
+  const handleSearchChange = (value: string) => {
+    setSearch(value);
+    setPage(1);
+  };
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteRoleFn({ data: { id } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['roles'] });
+      queryClient.invalidateQueries({ queryKey: ['availableScopes'] });
+      queryClient.invalidateQueries({ queryKey: ['roleAssignments'] });
+      queryClient.invalidateQueries({ queryKey: ['roleMembers'] });
+      setDeleteTarget(null);
+      setDeleteError('');
+      if (paged.length === 1) {
+        setPage((prev) => (prev > 1 ? prev - 1 : prev));
+      }
+    },
+    onError: (err: Error) => setDeleteError(err.message),
+  });
+
+  if (isLoading) {
+    return <LoadingState />;
+  }
+
+  if (isError) {
+    return <EmptyState message={localize('com_access_roles_error')} />;
+  }
+
+  return (
+    <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-1 py-2">
+      <div className="flex items-center justify-between gap-3">
+        <SearchInput
+          value={search}
+          onChange={handleSearchChange}
+          placeholder={localize('com_access_search_roles')}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onCreateRole}
+          disabled={!canManage}
+          aria-disabled={!canManage || undefined}
+          title={
+            !canManage
+              ? localize('com_cap_no_permission', { cap: SystemCapabilities.MANAGE_ROLES })
+              : undefined
+          }
+        >
+          <Plus />
+          {localize('com_access_create_role')}
+        </Button>
+      </div>
+
+      {paged.length === 0 ? (
+        <EmptyState
+          message={
+            search
+              ? localize('com_access_no_results')
+              : localize('com_access_roles_empty')
+          }
+        />
+      ) : (
+        <div className="flex flex-col">
+          {paged.map((role) => (
+            <div
+              key={role.id}
+              className="mb-2 flex items-center gap-3 rounded-lg border border-border bg-card px-3 py-3"
+            >
+              <button
+                type="button"
+                onClick={() => setEditTarget(role)}
+                className="-my-2 -ml-2 min-w-0 flex-1 cursor-pointer rounded py-3 pl-3 text-left outline-none focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-ring"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-foreground hover:underline">
+                    {role.name}
+                  </span>
+                  {role.isSystemRole && (
+                    <span className="inline-block rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-foreground">
+                      {localize('com_access_system_role')}
+                    </span>
+                  )}
+                </div>
+                {role.description && (
+                  <div className="truncate text-xs text-muted-foreground">
+                    {role.description}
+                  </div>
+                )}
+              </button>
+
+              {canManage && !role.isSystemRole && (
+                <TrashButton
+                  onClick={() => setDeleteTarget(role)}
+                  ariaLabel={`${localize('com_ui_delete')} ${role.name}`}
+                />
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
+
+      <EditRoleDialog
+        key={editTarget?.id}
+        role={editTarget}
+        canManage={canManage}
+        onClose={() => setEditTarget(null)}
+      />
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title={localize('com_access_delete_role_title')}
+        description={localize('com_access_delete_role_desc', { name: deleteTarget?.name ?? '' })}
+        confirmLabel={localize('com_ui_delete')}
+        saving={deleteMutation.isPending}
+        error={deleteError}
+        onConfirm={() => {
+          setDeleteError('');
+          if (deleteTarget) deleteMutation.mutate(deleteTarget.id);
+        }}
+        onCancel={() => {
+          setDeleteTarget(null);
+          setDeleteError('');
+        }}
+      />
+    </div>
+  );
+}
