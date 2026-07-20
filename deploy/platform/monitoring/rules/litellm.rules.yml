@@ -1,0 +1,51 @@
+# Alert rules for the LiteLLM proxy.
+#
+# Tuning notes:
+#   - `for:` keeps short blips from paging; bump it before the threshold
+#     when an alert is too noisy.
+#   - Severity labels feed into Alertmanager routing later (warning/critical
+#     can route to different channels or escalation paths).
+
+groups:
+  - name: litellm
+    interval: 30s
+    rules:
+      - alert: LiteLLMDown
+        expr: up{job="litellm"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: litellm
+        annotations:
+          summary: "LiteLLM proxy is down"
+          description: "Prometheus has been unable to scrape litellm-proxy:4000 for >1 minute."
+
+      - alert: LiteLLMHighErrorRate
+        # 4xx + 5xx as a fraction of total requests, both rates over 5 minutes.
+        # clamp_min on the denominator avoids division-by-zero alarms during
+        # idle periods.
+        expr: |
+          sum(rate(litellm_proxy_total_requests_metric_total{status_code=~"4..|5.."}[5m]))
+            /
+          clamp_min(sum(rate(litellm_proxy_total_requests_metric_total[5m])), 1e-10)
+            > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          service: litellm
+        annotations:
+          summary: "LiteLLM error rate above 5% for 5 minutes"
+          description: "Current error rate: {{ $value | humanizePercentage }}. Check the proxy logs and the latest model deploys."
+
+      - alert: LiteLLMHighLatencyP95
+        expr: histogram_quantile(0.95, sum by (le) (rate(litellm_request_total_latency_metric_bucket[5m]))) > 10
+        for: 5m
+        labels:
+          severity: warning
+          service: litellm
+        annotations:
+          summary: "LiteLLM p95 latency above 10s for 5 minutes"
+          description: >-
+            Current p95: {{ $value | humanizeDuration }}.
+            Likely culprits: backend saturation, network to upstream,
+            or a slow model added recently.

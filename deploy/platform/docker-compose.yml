@@ -1,0 +1,559 @@
+name: npuops
+
+networks:
+  npuops:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:
+  clickhouse-data:
+  minio-data:
+  mongodb-data:
+  prometheus-data:
+  grafana-data:
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: npuops-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/postgres-init.sh:/docker-entrypoint-initdb.d/10-langfuse-db.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [npuops]
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: npuops-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [npuops]
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    container_name: npuops-clickhouse
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      # Use 127.0.0.1 explicitly — `localhost` can resolve to IPv6 (::1) first,
+      # but Docker Desktop disables IPv6 so ClickHouse only binds IPv4.
+      test:
+        [
+          "CMD-SHELL",
+          "wget --no-verbose --tries=1 --spider http://127.0.0.1:8123/ping || exit 1",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    networks: [npuops]
+
+  minio:
+    image: minio/minio:RELEASE.2025-01-20T14-49-07Z
+    container_name: npuops-minio
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "mc ready local || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks: [npuops]
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-01-17T23-25-50Z
+    container_name: npuops-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+        mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"
+        mc mb --ignore-existing local/langfuse
+        echo "minio bucket ready"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    networks: [npuops]
+    restart: "no"
+
+  langfuse-worker:
+    image: langfuse/langfuse-worker:3
+    container_name: npuops-langfuse-worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/langfuse
+      SALT: ${LANGFUSE_SALT}
+      ENCRYPTION_KEY: ${LANGFUSE_ENCRYPTION_KEY}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+    networks: [npuops]
+
+  langfuse-web:
+    image: langfuse/langfuse:3
+    container_name: npuops-langfuse-web
+    restart: unless-stopped
+    depends_on:
+      langfuse-worker:
+        condition: service_started
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/langfuse
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET}
+      NEXTAUTH_URL: ${LANGFUSE_NEXTAUTH_URL}
+      SALT: ${LANGFUSE_SALT}
+      ENCRYPTION_KEY: ${LANGFUSE_ENCRYPTION_KEY}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+      TELEMETRY_ENABLED: "false"
+      LANGFUSE_INIT_ORG_ID: npuops
+      LANGFUSE_INIT_ORG_NAME: NPUOps
+      LANGFUSE_INIT_PROJECT_ID: npuops-default
+      LANGFUSE_INIT_PROJECT_NAME: npuops-default
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_USER_EMAIL}
+      LANGFUSE_INIT_USER_NAME: ${LANGFUSE_INIT_USER_NAME}
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD}
+    networks: [npuops]
+
+  litellm-proxy:
+    image: ghcr.io/berriai/litellm:main-stable
+    container_name: npuops-litellm
+    restart: unless-stopped
+    extra_hosts:
+      # Lets the proxy reach host-installed Ollama on Linux native Docker.
+      # No-op on Docker Desktop (already provided by default).
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      langfuse-web:
+        condition: service_started
+      presidio-analyzer:
+        condition: service_healthy
+      presidio-anonymizer:
+        condition: service_healthy
+      llm-guard-api:
+        condition: service_healthy
+    # `env_file` loads the whole .env so any cloud-provider key referenced from
+    # litellm/config.yaml (GEMINI_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY, …)
+    # reaches the proxy without a docker-compose edit per provider. The explicit
+    # `environment` entries below still take precedence — keep them for the vars
+    # that need defaulting (`:-`) or renaming.
+    env_file:
+      - .env
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      # Local backend URLs/keys (added via ./scripts/add-model.sh with
+      # --base-url-env / --api-key-env). Defaulted so the proxy boots even when
+      # no local backend is configured yet.
+      GPU_BACKEND_BASE_URL: ${GPU_BACKEND_BASE_URL:-}
+      GPU_BACKEND_API_KEY: ${GPU_BACKEND_API_KEY:-}
+      NPU_BACKEND_BASE_URL: ${NPU_BACKEND_BASE_URL:-}
+      NPU_BACKEND_API_KEY: ${NPU_BACKEND_API_KEY:-}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      LANGFUSE_HOST: ${LANGFUSE_HOST}
+      # Presidio guardrail (W5.1) — both services live on the npuops network.
+      PRESIDIO_ANALYZER_API_BASE: http://presidio-analyzer:3000
+      PRESIDIO_ANONYMIZER_API_BASE: http://presidio-anonymizer:3000
+      # LLM Guard sidecar — read by callbacks/prompt_injection.py.
+      LLM_GUARD_API_BASE: http://llm-guard-api:8000
+      LLM_GUARD_AUTH_TOKEN: ${LLM_GUARD_AUTH_TOKEN}
+      LLM_GUARD_TIMEOUT_S: "5.0"
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml:ro
+      - ./litellm/callbacks:/app/callbacks:ro
+    command:
+      ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "1"]
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - 'python -c ''import urllib.request; urllib.request.urlopen("http://localhost:4000/health/liveliness")'' || exit 1'
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks: [npuops]
+
+  mongodb:
+    image: mongo:4.4
+    container_name: npuops-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+    volumes:
+      - mongodb-data:/data/db
+    healthcheck:
+      # mongo 4.4 ships the legacy `mongo` shell (no `mongosh`); needed because
+      # the target VM lacks AVX, so we can't run mongo 5+.
+      test:
+        ["CMD", "mongo", "--quiet", "--eval", "db.adminCommand({ping: 1}).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks: [npuops]
+
+  # End-to-end smoke test for W2 Task 2.2. Runs python in-network so it can
+  # address librechat / langfuse-web by service name. Lives behind the `e2e`
+  # profile so it never starts on a default `docker compose up -d` — invoke via
+  # `./scripts/e2e-smoke-test.sh` instead.
+  e2e-test:
+    profiles: ["e2e"]
+    build:
+      context: ./scripts/e2e
+    container_name: npuops-e2e-test
+    depends_on:
+      librechat:
+        condition: service_healthy
+      langfuse-web:
+        condition: service_started
+    environment:
+      LIBRECHAT_URL: http://librechat:3080
+      LANGFUSE_URL: http://langfuse-web:3000
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      E2E_USER_EMAIL: ${E2E_USER_EMAIL:-e2e@npuops.local}
+      E2E_USER_PASSWORD: ${E2E_USER_PASSWORD:-}
+      E2E_USER_NAME: ${E2E_USER_NAME:-E2E Bot}
+      E2E_MODEL: ${E2E_MODEL:-qwen2.5-3b}
+      E2E_EXPECTED_HARDWARE_ID: ${E2E_EXPECTED_HARDWARE_ID:-mac-local}
+      E2E_ENDPOINT_NAME: ${E2E_ENDPOINT_NAME:-NPUOps}
+    networks: [npuops]
+
+  librechat:
+    image: ghcr.io/dudaji-vn/librechat:npuops-main
+    container_name: npuops-librechat
+    restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      litellm-proxy:
+        condition: service_healthy
+    ports:
+      - "3080:3080"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3080
+      MONGO_URI: ${MONGO_URI}
+      DOMAIN_CLIENT: http://localhost:3080
+      DOMAIN_SERVER: http://localhost:3080
+      APP_TITLE: ${APP_TITLE}
+      ALLOW_REGISTRATION: ${ALLOW_REGISTRATION}
+      ALLOW_EMAIL_LOGIN: ${ALLOW_EMAIL_LOGIN}
+      CUSTOM_FOOTER: ${CUSTOM_FOOTER:-}
+      HELP_AND_FAQ_URL: ${HELP_AND_FAQ_URL:-}
+      PRIVACY_POLICY_URL: ${PRIVACY_POLICY_URL:-}
+      TERMS_OF_SERVICE_URL: ${TERMS_OF_SERVICE_URL:-}
+      CONSOLE_URL: ${CONSOLE_URL:-}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      CREDS_KEY: ${CREDS_KEY}
+      CREDS_IV: ${CREDS_IV}
+      ENDPOINTS: custom
+      # Used by librechat.yaml endpoint config to authenticate against LiteLLM
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+    volumes:
+      - ./librechat/librechat.yaml:/app/librechat.yaml:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget --quiet --tries=1 --spider http://127.0.0.1:3080/api/health || exit 1",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    networks: [npuops]
+
+  console:
+    image: ghcr.io/dudaji-vn/nufi-console:${NUFI_CONSOLE_TAG:-main}
+    container_name: npuops-console
+    restart: unless-stopped
+    depends_on:
+      litellm-proxy:
+        condition: service_healthy
+    ports:
+      - "3001:3000"
+    environment:
+      PORT: 3000
+      LITELLM_BASE_URL: http://litellm-proxy:4000
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      LANGFUSE_HOST: http://langfuse-web:3000
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      LIBRECHAT_URL: ${LIBRECHAT_URL:-http://localhost:3080}
+      DEFAULT_USER_BUDGET: ${DEFAULT_USER_BUDGET:-10}
+      DEFAULT_BUDGET_DURATION: ${DEFAULT_BUDGET_DURATION:-30d}
+      DEFAULT_TPM_LIMIT: ${DEFAULT_TPM_LIMIT:-10000}
+      DEFAULT_RPM_LIMIT: ${DEFAULT_RPM_LIMIT:-60}
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget --quiet --tries=1 --spider http://127.0.0.1:3000/_health || exit 1",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks: [npuops]
+
+  # --- Monitoring (W5.2) ---------------------------------------------------
+  # Prometheus scrapes /metrics on litellm-proxy plus the postgres / redis
+  # exporters. Grafana auto-provisions Prometheus as a datasource and loads
+  # any dashboard JSON dropped into ./monitoring/grafana/dashboards/.
+  # Alertmanager is a stub on Day 1; Slack receiver lands on Day 2.
+
+  prometheus:
+    image: prom/prometheus:v3.0.1
+    container_name: npuops-prometheus
+    restart: unless-stopped
+    depends_on:
+      litellm-proxy:
+        condition: service_healthy
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/rules:/etc/prometheus/rules:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      # Allow `curl -X POST http://localhost:9090/-/reload` so we don't have
+      # to bounce the container when iterating on alert rules.
+      - "--web.enable-lifecycle"
+    healthcheck:
+      test:
+        ["CMD-SHELL", "wget -q -O- http://127.0.0.1:9090/-/healthy || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks: [npuops]
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: npuops-grafana
+    restart: unless-stopped
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    # Host port 3030 — host 3000 is taken by langfuse-web.
+    ports:
+      - "3030:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    healthcheck:
+      test:
+        ["CMD-SHELL", "wget -q -O- http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks: [npuops]
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: npuops-alertmanager
+    restart: unless-stopped
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      # Slack webhook URL lives in monitoring/secrets/slack-webhook (gitignored).
+      # The directory is always mounted so the path is stable; if the file is
+      # absent, alertmanager only fails when an alert actually tries to fire,
+      # which is fine while route.receiver is still `noop`.
+      - ./monitoring/secrets:/etc/alertmanager/secrets:ro
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+    healthcheck:
+      test:
+        ["CMD-SHELL", "wget -q -O- http://127.0.0.1:9093/-/healthy || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks: [npuops]
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.16.0
+    container_name: npuops-postgres-exporter
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable"
+    networks: [npuops]
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.66.0
+    container_name: npuops-redis-exporter
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_ADDR: "redis://redis:6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    networks: [npuops]
+
+  # --- Guardrails (W5.1) ---------------------------------------------------
+  # LiteLLM calls these two services over HTTP for PII detection + masking.
+  # Internal port 3000 on each container; no host ports — cluster-internal.
+
+  presidio-analyzer:
+    image: mcr.microsoft.com/presidio-analyzer:2.2.362
+    container_name: npuops-presidio-analyzer
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'python -c ''import urllib.request; urllib.request.urlopen("http://localhost:3000/health")'' || exit 1',
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      # First boot loads spaCy en_core_web_lg (~600 MB) — give it room.
+      start_period: 90s
+    networks: [npuops]
+
+  presidio-anonymizer:
+    image: mcr.microsoft.com/presidio-anonymizer:2.2.362
+    container_name: npuops-presidio-anonymizer
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'python -c ''import urllib.request; urllib.request.urlopen("http://localhost:3000/health")'' || exit 1',
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks: [npuops]
+
+  # Prompt-injection scanner — sidecar API server from Protect AI / Laiyer.
+  # CPU variant; first boot loads a DeBERTa classifier (~400 MB), so the
+  # start_period is generous. Custom pre-call hook in
+  # litellm/callbacks/prompt_injection.py POSTs each user prompt to
+  # /scan/prompt and fails-closed when is_valid is false.
+  llm-guard-api:
+    image: laiyer/llm-guard-api:0.3.16
+    container_name: npuops-llm-guard-api
+    restart: unless-stopped
+    environment:
+      AUTH_TOKEN: ${LLM_GUARD_AUTH_TOKEN}
+      # The default config ships with too many aggressive scanners
+      # (BanSubstrings on "test", competitor blocklist, etc.). We mount our
+      # own minimal one — see llm-guard/scanners.yml for rationale.
+      CONFIG_FILE: /home/user/app/config/scanners.yml
+    volumes:
+      - ./llm-guard/scanners.yml:/home/user/app/config/scanners.yml:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'python -c ''import urllib.request; urllib.request.urlopen("http://localhost:8000/healthz")'' || exit 1',
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 180s
+    networks: [npuops]

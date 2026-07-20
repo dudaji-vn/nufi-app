@@ -1,0 +1,52 @@
+# LLM Guard scanner config for NPUOps.
+#
+# Mounted into the container at /home/user/app/config/scanners.yml,
+# overriding the verbose default that ships with laiyer/llm-guard-api:0.3.16.
+#
+# We only run PromptInjection here — Presidio already handles PII (Anonymize),
+# and the rest of the default scanners (BanSubstrings on "test", BanTopics
+# on "violence", BanCompetitors on "facebook", Toxicity, Gibberish, etc.) are
+# overly aggressive defaults that block legitimate prompts in dev. Enable
+# more scanners as policy hardens — see the sample config in the upstream
+# repo for the full list.
+#
+# Auth: http_bearer with AUTH_TOKEN env var, sent from the LiteLLM
+# pre-call hook in litellm/callbacks/prompt_injection.py.
+
+app:
+  name: ${APP_NAME:LLM Guard API}
+  log_level: ${LOG_LEVEL:INFO}
+  log_json: ${LOG_JSON:true}
+  scan_fail_fast: ${SCAN_FAIL_FAST:true}     # stop on first block — saves CPU
+  scan_prompt_timeout: ${SCAN_PROMPT_TIMEOUT:10}
+  scan_output_timeout: ${SCAN_OUTPUT_TIMEOUT:10}
+  lazy_load: ${LAZY_LOAD:true}
+
+rate_limit:
+  enabled: ${RATE_LIMIT_ENABLED:false}
+  limit: ${RATE_LIMIT_LIMIT:100/minute}
+
+auth:
+  type: http_bearer
+  token: ${AUTH_TOKEN:}
+
+tracing:
+  exporter: ${TRACING_EXPORTER:console}
+  endpoint: ${TRACING_OTEL_ENDPOINT:}
+
+metrics:
+  exporter: ${METRICS_TYPE:prometheus}
+  endpoint: ${METRICS_ENDPOINT:}
+
+# Only the prompt-injection classifier on input. Everything else is empty
+# and intentionally so — Presidio sidecars already handle PII.
+input_scanners:
+  - type: PromptInjection
+    params:
+      threshold: 0.92
+      match_type: truncate_head_tail
+      model_max_length: 256
+
+# Output scanning is off in W5.1 day 2. Enable specific scanners here when we
+# need to mask model leakage of secrets / PII / banned topics.
+output_scanners: []

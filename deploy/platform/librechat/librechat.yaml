@@ -1,0 +1,68 @@
+# =============================================================================
+# librechat.yaml — LibreChat configuration
+# Reference: https://www.librechat.ai/docs/configuration/librechat_yaml
+# =============================================================================
+
+version: 1.2.1
+# Cache parsed config in memory (faster restarts).
+cache: true
+# UI / branding overrides. App name, logo and favicon come from env / assets.
+interface:
+  customWelcome: "Welcome to NPUOps — chat routes through LiteLLM to GPU/NPU backends."
+  # One endpoint (LiteLLM); the dropdown is noise. Keep model select.
+  endpointsMenu: false
+  modelSelect: true
+  parameters: true
+  sidePanel: true
+  presets: true
+  prompts: true
+  bookmarks: true
+  multiConvo: true
+  temporaryChat: true
+  # Key/budget/team management lives in the console app.
+  agents: false
+  privacyPolicy:
+    externalUrl: ${PRIVACY_POLICY_URL}
+    openNewTab: true
+  termsOfService:
+    externalUrl: ${TERMS_OF_SERVICE_URL}
+    openNewTab: true
+  customConsole:
+    externalUrl: ${CONSOLE_URL}
+    openNewTab: true
+# Endpoints — single custom endpoint that routes everything through LiteLLM.
+endpoints:
+  custom:
+    - name: "NPUOps"
+      # ${LITELLM_MASTER_KEY} is interpolated at runtime from the container env
+      apiKey: "${LITELLM_MASTER_KEY}"
+      # Internal compose hostname; the proxy listens on :4000
+      baseURL: "http://litellm-proxy:4000/v1"
+      models:
+        # `fetch: true` populates the dropdown from LiteLLM's /v1/models, so
+        # the script's only job is to register the model in litellm/config.yaml
+        # and restart the two services. `default` is just a fallback list used
+        # if the fetch fails — keep it empty so we never serve stale entries.
+        # `./scripts/add-model.sh` appends to this list automatically.
+        fetch: true
+        default: []
+      titleConvo: true
+      # Use whatever model the user is chatting with to title the conversation,
+      # so this works regardless of which models are registered.
+      titleModel: "current_model"
+      modelDisplayLabel: "NPUOps"
+      forcePrompt: false
+      summarize: false
+# File uploads. Required for the multimodal flow (drag-drop a vision-capable
+# model's image into the chat → forwarded to LiteLLM as image_url content).
+fileConfig:
+  endpoints:
+    NPUOps:
+      fileLimit: 5
+      fileSizeLimit: 20 # MB per file
+      totalSizeLimit: 50 # MB per request
+      supportedMimeTypes:
+        - "image/png"
+        - "image/jpeg"
+        - "image/webp"
+        - "image/gif"

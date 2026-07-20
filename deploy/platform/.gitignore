@@ -1,0 +1,42 @@
+# Secrets
+.env
+*.key
+*.pem
+
+# Data
+postgres-data/
+redis-data/
+langfuse-data/
+litellm-data/
+open-webui-data/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node
+node_modules/
+.next/
+dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.code-workspace
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+
+# Claude Code (giữ shared config, ignore personal)
+.claude/local/
+
+

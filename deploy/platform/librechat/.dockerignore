@@ -1,0 +1,10 @@
+source/.git
+source/node_modules
+source/**/node_modules
+source/client/dist
+source/api/logs
+source/data-node
+source/meili_data*
+**/.DS_Store
+**/.vscode
+**/.editorconfig
