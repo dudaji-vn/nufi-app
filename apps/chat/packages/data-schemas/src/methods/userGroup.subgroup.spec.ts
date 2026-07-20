@@ -1,0 +1,314 @@
+import mongoose from 'mongoose';
+import { MongoMemoryServer } from 'mongodb-memory-server';
+import type * as t from '~/types';
+import { createUserGroupMethods } from './userGroup';
+import groupSchema from '~/schema/group';
+import userSchema from '~/schema/user';
+
+jest.mock('~/config/winston', () => ({
+  error: jest.fn(),
+  info: jest.fn(),
+  debug: jest.fn(),
+}));
+
+let mongoServer: MongoMemoryServer;
+let Group: mongoose.Model<t.IGroup>;
+let User: mongoose.Model<t.IUser>;
+let methods: ReturnType<typeof createUserGroupMethods>;
+
+beforeAll(async () => {
+  mongoServer = await MongoMemoryServer.create();
+  await mongoose.connect(mongoServer.getUri());
+  Group = mongoose.models.Group || mongoose.model<t.IGroup>('Group', groupSchema);
+  User = mongoose.models.User || mongoose.model<t.IUser>('User', userSchema);
+  methods = createUserGroupMethods(mongoose);
+});
+
+afterAll(async () => {
+  await mongoose.disconnect();
+  await mongoServer.stop();
+});
+
+beforeEach(async () => {
+  await mongoose.connection.dropDatabase();
+});
+
+describe('sub-group CRUD + membership methods', () => {
+  async function makeUser(idOnTheSource?: string) {
+    return User.create({
+      name: 'U' + Math.random(),
+      email: `u${Math.random()}@test.com`,
+      provider: 'local',
+      ...(idOnTheSource ? { idOnTheSource } : {}),
+    });
+  }
+
+  async function setupTeamWithMembers() {
+    const owner = await makeUser();
+    const u1 = await makeUser();
+    const u2 = await makeUser();
+    const team = await methods.createTeam({ name: 'TestTeam', ownerId: owner._id });
+    await methods.addTeamMember({ groupId: team._id, userId: u1._id });
+    await methods.addTeamMember({ groupId: team._id, userId: u2._id });
+    return {
+      team,
+      ownerId: owner._id.toString(),
+      u1: u1._id.toString(),
+      u2: u2._id.toString(),
+    };
+  }
+
+  test('createSubgroup stores kind/parentTeamId and inherits tenantId from parent', async () => {
+    const owner = await makeUser();
+    const team = await methods.createTeam({
+      name: 'TenantTeam',
+      ownerId: owner._id,
+      tenantId: 'tenant-abc',
+    });
+    const sg = await methods.createSubgroup({
+      parentTeamId: team._id,
+      name: 'Eng',
+      ownerId: owner._id.toString(),
+      tenantId: team.tenantId,
+    });
+    expect(sg.kind).toBe('team_subgroup');
+    expect(sg.parentTeamId?.toString()).toBe(team._id.toString());
+    expect(sg.name).toBe('Eng');
+    expect(sg.tenantId).toBe('tenant-abc');
+    expect(sg.tenantId).toBe(team.tenantId);
+  });
+
+  test('addSubgroupMember adds a team member (dual-writes memberIds + members)', async () => {
+    const { team, ownerId, u1 } = await setupTeamWithMembers();
+    const sg = await methods.createSubgroup({ parentTeamId: team._id, name: 'Eng', ownerId });
+    const updated = await methods.addSubgroupMember({ subgroupId: sg._id, userId: u1 });
+    expect(updated.memberIds).toContain(u1);
+    expect(updated.members?.find((m) => m.userId.toString() === u1)).toBeTruthy();
+    expect(updated.members?.find((m) => m.userId.toString() === u1)?.role).toBe('member');
+  });
+
+  test('addSubgroupMember REJECTS a non-team-member', async () => {
+    const { team, ownerId } = await setupTeamWithMembers();
+    const sg = await methods.createSubgroup({ parentTeamId: team._id, name: 'Eng', ownerId });
+    const stranger = new mongoose.Types.ObjectId().toString();
+    await expect(
+      methods.addSubgroupMember({ subgroupId: sg._id, userId: stranger }),
+    ).rejects.toThrow(/not a member of the team/i);
+  });
+
+  test('addSubgroupMember is a no-op if user already in subgroup', async () => {
+    const { team, ownerId, u1 } = await setupTeamWithMembers();
+    const sg = await methods.createSubgroup({ parentTeamId: team._id, name: 'Eng', ownerId });
+    const first = await methods.addSubgroupMember({ subgroupId: sg._id, userId: u1 });
+    const second = await methods.addSubgroupMember({ subgroupId: sg._id, userId: u1 });
+    // memberIds should not have duplicates
+    expect(second.memberIds?.filter((id) => id === u1)).toHaveLength(1);
+  });
+
+  test('getUserSubgroups returns only the subgroups the user belongs to', async () => {
+    const { team, ownerId, u1 } = await setupTeamWithMembers();
+    const a = await methods.createSubgroup({ parentTeamId: team._id, name: 'A', ownerId });
+    const b = await methods.createSubgroup({ parentTeamId: team._id, name: 'B', ownerId });
+    await methods.addSubgroupMember({ subgroupId: a._id, userId: u1 });
+    const got = await methods.getUserSubgroups({ userId: u1, parentTeamId: team._id });
+    expect(got.map((g) => g._id.toString())).toEqual([a._id.toString()]);
+    // b is excluded because u1 is not in it
+    expect(got.map((g) => g._id.toString())).not.toContain(b._id.toString());
+  });
+
+  test('getUserSubgroups excludes subgroups of a different team', async () => {
+    const { team: team1, ownerId: ownerId1, u1 } = await setupTeamWithMembers();
+    const owner2 = await makeUser();
+    const team2 = await methods.createTeam({ name: 'Team2', ownerId: owner2._id });
+    await methods.addTeamMember({ groupId: team2._id, userId: u1 });
+
+    const sg1 = await methods.createSubgroup({ parentTeamId: team1._id, name: 'SG1', ownerId: ownerId1 });
+    const sg2 = await methods.createSubgroup({
+      parentTeamId: team2._id,
+      name: 'SG2',
+      ownerId: owner2._id.toString(),
+    });
+    await methods.addSubgroupMember({ subgroupId: sg1._id, userId: u1 });
+    await methods.addSubgroupMember({ subgroupId: sg2._id, userId: u1 });
+
+    const got = await methods.getUserSubgroups({ userId: u1, parentTeamId: team1._id });
+    expect(got).toHaveLength(1);
+    expect(got[0]._id.toString()).toBe(sg1._id.toString());
+  });
+
+  test('removeSubgroupMember pulls from memberIds and members', async () => {
+    const { team, ownerId, u1 } = await setupTeamWithMembers();
+    const sg = await methods.createSubgroup({ parentTeamId: team._id, name: 'Eng', ownerId });
+    await methods.addSubgroupMember({ subgroupId: sg._id, userId: u1 });
+    const updated = await methods.removeSubgroupMember({ subgroupId: sg._id, userId: u1 });
+    expect(updated.memberIds).not.toContain(u1);
+    expect(updated.members?.find((m) => m.userId.toString() === u1)).toBeFalsy();
+  });
+
+  test('getTeamSubgroups lists all subgroups of a team', async () => {
+    const { team, ownerId } = await setupTeamWithMembers();
+    const owner2 = await makeUser();
+    const otherTeam = await methods.createTeam({ name: 'OtherTeam', ownerId: owner2._id });
+
+    const sg1 = await methods.createSubgroup({ parentTeamId: team._id, name: 'A', ownerId });
+    const sg2 = await methods.createSubgroup({ parentTeamId: team._id, name: 'B', ownerId });
+    // subgroup of a different team — must not appear
+    await methods.createSubgroup({
+      parentTeamId: otherTeam._id,
+      name: 'Other',
+      ownerId: owner2._id.toString(),
+    });
+
+    const sgs = await methods.getTeamSubgroups(team._id);
+    expect(sgs).toHaveLength(2);
+    const ids = sgs.map((sg) => sg._id.toString());
+    expect(ids).toContain(sg1._id.toString());
+    expect(ids).toContain(sg2._id.toString());
+  });
+
+  test('getSubgroupById returns the subgroup or null', async () => {
+    const { team, ownerId } = await setupTeamWithMembers();
+    const sg = await methods.createSubgroup({ parentTeamId: team._id, name: 'Eng', ownerId });
+    const found = await methods.getSubgroupById(sg._id);
+    expect(found).not.toBeNull();
+    expect(found?._id.toString()).toBe(sg._id.toString());
+
+    const missing = await methods.getSubgroupById(new mongoose.Types.ObjectId());
+    expect(missing).toBeNull();
+  });
+
+  test('updateSubgroup patches name and description', async () => {
+    const { team, ownerId } = await setupTeamWithMembers();
+    const sg = await methods.createSubgroup({ parentTeamId: team._id, name: 'Old', ownerId });
+    const updated = await methods.updateSubgroup(sg._id, {
+      name: 'New',
+      description: 'Updated desc',
+    });
+    expect(updated?.name).toBe('New');
+    expect(updated?.description).toBe('Updated desc');
+  });
+
+  test('deleteSubgroup removes the document', async () => {
+    const { team, ownerId } = await setupTeamWithMembers();
+    const sg = await methods.createSubgroup({ parentTeamId: team._id, name: 'Doomed', ownerId });
+    await methods.deleteSubgroup(sg._id);
+    const after = await Group.findById(sg._id).lean();
+    expect(after).toBeNull();
+  });
+
+  // Guard for fix #2: deleteSubgroup with a team's _id must NOT delete the team
+  test('[guard #2] deleteSubgroup with a team id throws and does NOT delete the team', async () => {
+    const { team } = await setupTeamWithMembers();
+    await expect(methods.deleteSubgroup(team._id)).rejects.toThrow(/sub-group not found/i);
+    const still = await Group.findById(team._id).lean();
+    expect(still).not.toBeNull();
+    expect(still?.kind).toBe('team');
+  });
+
+  // Guard for fix #1: an Entra-style member (idOnTheSource != _id string) can be added to a subgroup
+  test('[guard #1] addSubgroupMember accepts an Entra-synced team member resolved via idOnTheSource', async () => {
+    const entraGuid = 'entra-guid-' + Math.random().toString(36).slice(2);
+    const entraUser = await makeUser(entraGuid);
+    const owner = await makeUser();
+    const team = await methods.createTeam({ name: 'EntraTeam', ownerId: owner._id });
+    // Manually seed memberIds with entraGuid to simulate Entra sync
+    await Group.findByIdAndUpdate(team._id, { $addToSet: { memberIds: entraGuid } });
+    await Group.findByIdAndUpdate(team._id, {
+      $push: { members: { userId: entraUser._id, role: 'member', joinedAt: new Date() } },
+    });
+
+    const sg = await methods.createSubgroup({
+      parentTeamId: team._id,
+      name: 'EntraSub',
+      ownerId: owner._id.toString(),
+    });
+    const updated = await methods.addSubgroupMember({
+      subgroupId: sg._id,
+      userId: entraUser._id.toString(),
+    });
+    // The stored memberId must be the Entra GUID, not the raw Mongo _id
+    expect(updated.memberIds).toContain(entraGuid);
+    expect(updated.memberIds).not.toContain(entraUser._id.toString());
+    expect(updated.members?.some((m) => m.userId.toString() === entraUser._id.toString())).toBe(true);
+  });
+
+  // Entra id carry-over fix for getUserSubgroups
+  test('[entra] getUserSubgroups returns sub-groups for an Entra user whose memberIds entry is the GUID', async () => {
+    const entraGuid = 'entra-sg-guid-' + Math.random().toString(36).slice(2);
+    const entraUser = await makeUser(entraGuid);
+    const owner = await makeUser();
+    const team = await methods.createTeam({ name: 'EntraSGTeam', ownerId: owner._id });
+
+    // Simulate Entra sync: team memberIds holds the GUID, not the raw _id
+    await Group.findByIdAndUpdate(team._id, { $addToSet: { memberIds: entraGuid } });
+    await Group.findByIdAndUpdate(team._id, {
+      $push: { members: { userId: entraUser._id, role: 'member', joinedAt: new Date() } },
+    });
+
+    const sg = await methods.createSubgroup({ parentTeamId: team._id, name: 'EntraSubG', ownerId: owner._id.toString() });
+    // Add the Entra user to the sub-group (stores GUID in memberIds via resolveMemberIdValue)
+    await methods.addSubgroupMember({ subgroupId: sg._id, userId: entraUser._id.toString() });
+
+    // Pass raw _id — getUserSubgroups must resolve it to the GUID before querying
+    const got = await methods.getUserSubgroups({ userId: entraUser._id.toString(), parentTeamId: team._id });
+    expect(got.map((g) => g._id.toString())).toContain(sg._id.toString());
+  });
+
+  // getUserTeamPrincipals tests
+  describe('getUserTeamPrincipals', () => {
+    async function setupEntraTeamWithSubgroup() {
+      const entraGuid = 'tp-guid-' + Math.random().toString(36).slice(2);
+      const entraUser = await makeUser(entraGuid);
+      const owner = await makeUser();
+      const team = await methods.createTeam({ name: 'PrincipalTeam', ownerId: owner._id });
+
+      // Simulate Entra sync: team memberIds holds the GUID
+      await Group.findByIdAndUpdate(team._id, { $addToSet: { memberIds: entraGuid } });
+      await Group.findByIdAndUpdate(team._id, {
+        $push: { members: { userId: entraUser._id, role: 'member', joinedAt: new Date() } },
+      });
+
+      const sgA = await methods.createSubgroup({ parentTeamId: team._id, name: 'SgA', ownerId: owner._id.toString() });
+      await methods.addSubgroupMember({ subgroupId: sgA._id, userId: entraUser._id.toString() });
+
+      return { team, entraUser, sgA, owner };
+    }
+
+    test('returns [teamId, sgAId] for a user who is a team member and belongs to sub-group A', async () => {
+      const { team, entraUser, sgA } = await setupEntraTeamWithSubgroup();
+      const principals = await methods.getUserTeamPrincipals({
+        userId: entraUser._id.toString(),
+        teamId: team._id,
+      });
+      expect(principals).toContain(team._id.toString());
+      expect(principals).toContain(sgA._id.toString());
+      expect(principals).toHaveLength(2);
+    });
+
+    test('returns [teamId] for a team member who belongs to no sub-group', async () => {
+      const owner = await makeUser();
+      const plainMember = await makeUser();
+      const team = await methods.createTeam({ name: 'PlainTeam', ownerId: owner._id });
+      await methods.addTeamMember({ groupId: team._id, userId: plainMember._id });
+
+      const principals = await methods.getUserTeamPrincipals({
+        userId: plainMember._id.toString(),
+        teamId: team._id,
+      });
+      expect(principals).toContain(team._id.toString());
+      expect(principals).toHaveLength(1);
+    });
+
+    test('returns [] for a user who is not a member of the team', async () => {
+      const owner = await makeUser();
+      const nonMember = await makeUser();
+      const team = await methods.createTeam({ name: 'NopeTeam', ownerId: owner._id });
+
+      const principals = await methods.getUserTeamPrincipals({
+        userId: nonMember._id.toString(),
+        teamId: team._id,
+      });
+      expect(principals).toHaveLength(0);
+    });
+  });
+});

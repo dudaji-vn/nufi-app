@@ -1,0 +1,244 @@
+const { logger } = require('@librechat/data-schemas');
+const { PermissionBits, ResourceType, isEphemeralAgentId } = require('librechat-data-provider');
+const {
+  checkPermission,
+  getResourcePermissionsMap,
+  findAccessibleResources,
+} = require('~/server/services/PermissionService');
+const { getAgent, getFiles } = require('~/models');
+
+/**
+ * @param {Object} agent - The agent document (lean)
+ * @returns {Set<string>} All file IDs attached across all resource types
+ */
+function getAttachedFileIds(agent) {
+  const attachedFileIds = new Set();
+  if (agent.tool_resources) {
+    for (const resource of Object.values(agent.tool_resources)) {
+      if (resource?.file_ids && Array.isArray(resource.file_ids)) {
+        for (const fileId of resource.file_ids) {
+          attachedFileIds.add(fileId);
+        }
+      }
+    }
+  }
+  return attachedFileIds;
+}
+
+function getFilesById(files) {
+  const filesById = new Map();
+  for (const file of files ?? []) {
+    if (file?.file_id) {
+      filesById.set(file.file_id, file);
+    }
+  }
+  return filesById;
+}
+
+/**
+ * Checks if a user has access to multiple files through a shared agent (batch operation).
+ * Access is scoped to files attached to the agent and owned by the agent author.
+ * @param {Object} params - Parameters object
+ * @param {string} params.userId - The user ID to check access for
+ * @param {string} [params.role] - Optional user role to avoid DB query
+ * @param {string[]} params.fileIds - Array of file IDs to check
+ * @param {string} params.agentId - The agent ID that might grant access
+ * @param {boolean} [params.isDelete] - Whether the operation is a delete operation
+ * @param {Array<{ file_id: string, user: string }>} [params.files] - Pre-fetched file documents
+ * @returns {Promise<Map<string, boolean>>} Map of fileId to access status
+ */
+const hasAccessToFilesViaAgent = async ({ userId, role, fileIds, agentId, isDelete, files }) => {
+  const accessMap = new Map();
+
+  fileIds.forEach((fileId) => accessMap.set(fileId, false));
+
+  try {
+    const agent = await getAgent({ id: agentId });
+
+    if (!agent) {
+      return accessMap;
+    }
+
+    const attachedFileIds = getAttachedFileIds(agent);
+    const agentAuthorId = agent.author?.toString();
+    const filesById =
+      files != null
+        ? getFilesById(files)
+        : getFilesById(
+            await getFiles({ file_id: { $in: fileIds } }, null, { file_id: 1, user: 1 }),
+          );
+    const canInheritFromAgent = (fileId) =>
+      attachedFileIds.has(fileId) && filesById.get(fileId)?.user?.toString() === agentAuthorId;
+
+    if (agentAuthorId === userId.toString()) {
+      fileIds.forEach((fileId) => {
+        if (canInheritFromAgent(fileId)) {
+          accessMap.set(fileId, true);
+        }
+      });
+      return accessMap;
+    }
+
+    const hasViewPermission = await checkPermission({
+      userId,
+      role,
+      resourceType: ResourceType.AGENT,
+      resourceId: agent._id,
+      requiredPermission: PermissionBits.VIEW,
+    });
+
+    if (!hasViewPermission) {
+      return accessMap;
+    }
+
+    if (isDelete) {
+      const hasEditPermission = await checkPermission({
+        userId,
+        role,
+        resourceType: ResourceType.AGENT,
+        resourceId: agent._id,
+        requiredPermission: PermissionBits.EDIT,
+      });
+
+      if (!hasEditPermission) {
+        return accessMap;
+      }
+    }
+
+    fileIds.forEach((fileId) => {
+      if (canInheritFromAgent(fileId)) {
+        accessMap.set(fileId, true);
+      }
+    });
+
+    return accessMap;
+  } catch (error) {
+    logger.error('[hasAccessToFilesViaAgent] Error checking file access:', error);
+    return accessMap;
+  }
+};
+
+/**
+ * Filter files based on user access through agents or direct FILE ACL grants.
+ * Accessible set = owned ∪ agent-inherited ∪ FILE-ACL-VIEW.
+ * @param {Object} params - Parameters object
+ * @param {Array<MongoFile>} params.files - Array of file documents
+ * @param {string} params.userId - User ID for access control
+ * @param {string} [params.role] - Optional user role to avoid DB query
+ * @param {string} params.agentId - Agent ID that might grant access to files
+ * @returns {Promise<Array<MongoFile>>} Filtered array of accessible files
+ */
+const filterFilesByAgentAccess = async ({ files, userId, role, agentId }) => {
+  if (!userId || !agentId || !files || files.length === 0 || isEphemeralAgentId(agentId)) {
+    return files;
+  }
+
+  // Separate owned files from files that need access check
+  const filesToCheck = [];
+  const ownedFiles = [];
+
+  for (const file of files) {
+    if (file.user && file.user.toString() === userId.toString()) {
+      ownedFiles.push(file);
+    } else {
+      filesToCheck.push(file);
+    }
+  }
+
+  if (filesToCheck.length === 0) {
+    return ownedFiles;
+  }
+
+  // Batch check agent-inherited access for all non-owned files
+  const fileIds = filesToCheck.map((f) => f.file_id);
+  const accessMap = await hasAccessToFilesViaAgent({
+    userId,
+    role,
+    fileIds,
+    agentId,
+    files: filesToCheck,
+  });
+
+  // Separate agent-accessible from files still needing a direct ACL check
+  const agentAccessible = [];
+  const remainingFiles = [];
+
+  for (const file of filesToCheck) {
+    if (accessMap.get(file.file_id)) {
+      agentAccessible.push(file);
+    } else {
+      remainingFiles.push(file);
+    }
+  }
+
+  if (remainingFiles.length === 0) {
+    return [...ownedFiles, ...agentAccessible];
+  }
+
+  // Batch-check direct FILE ACL VIEW for the remaining files
+  try {
+    const mongoose = require('mongoose');
+    const remainingIds = remainingFiles
+      .filter((f) => f._id && mongoose.Types.ObjectId.isValid(f._id))
+      .map((f) => f._id);
+
+    const aclFiles = [];
+
+    if (remainingIds.length > 0) {
+      const permissionsMap = await getResourcePermissionsMap({
+        userId,
+        role,
+        resourceType: ResourceType.FILE,
+        resourceIds: remainingIds,
+      });
+
+      const idToFile = new Map();
+      for (const file of remainingFiles) {
+        if (file._id) {
+          idToFile.set(file._id.toString(), file);
+        }
+      }
+
+      for (const [idStr, bits] of permissionsMap) {
+        if ((bits & PermissionBits.VIEW) === PermissionBits.VIEW) {
+          const file = idToFile.get(idStr);
+          if (file) {
+            aclFiles.push(file);
+          }
+        }
+      }
+    }
+
+    return [...ownedFiles, ...agentAccessible, ...aclFiles];
+  } catch (error) {
+    logger.error('[filterFilesByAgentAccess] Error checking FILE ACL:', error);
+    return [...ownedFiles, ...agentAccessible];
+  }
+};
+
+/**
+ * Returns the string file_ids of embedded files the user can VIEW via a FILE ACL grant
+ * (captures team-shared files granted to any group the user belongs to).
+ * @param {string} userId - The user ID
+ * @param {string} [role] - Optional user role to avoid DB query
+ * @returns {Promise<string[]>} Array of file_id strings
+ */
+const getTeamSharedFileIds = async (userId, role) => {
+  const resourceIds = await findAccessibleResources({
+    userId,
+    role,
+    resourceType: ResourceType.FILE,
+    requiredPermissions: PermissionBits.VIEW,
+  });
+  if (!resourceIds.length) {
+    return [];
+  }
+  const files = await getFiles({ _id: { $in: resourceIds }, embedded: true }, null, { file_id: 1 });
+  return (files ?? []).map((f) => f.file_id);
+};
+
+module.exports = {
+  hasAccessToFilesViaAgent,
+  filterFilesByAgentAccess,
+  getTeamSharedFileIds,
+};

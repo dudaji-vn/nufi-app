@@ -1,0 +1,74 @@
+import { extractEnvVariable, removeNullishValues } from 'librechat-data-provider';
+import type { TCustomConfig, TConfigDefaults } from 'librechat-data-provider';
+import type { AppConfig } from '~/types/app';
+import { isMemoryEnabled } from './memory';
+
+// LibreChat only env-interpolates `${VAR}` in endpoint fields. Apply the same
+// treatment to interface URLs so librechat.yaml can reference env vars (e.g.
+// CONSOLE_URL) without requiring a rebuild.
+function resolveExternalUrl<T extends { externalUrl?: string }>(
+  obj: T | undefined,
+): T | undefined {
+  if (!obj || typeof obj.externalUrl !== 'string') return obj;
+  return { ...obj, externalUrl: extractEnvVariable(obj.externalUrl) } as T;
+}
+
+/**
+ * Loads the default interface object.
+ * @param params - The loaded custom configuration.
+ * @param params.config - The loaded custom configuration.
+ * @param params.configDefaults - The custom configuration default values.
+ * @returns default interface object.
+ */
+export async function loadDefaultInterface({
+  config,
+  configDefaults,
+}: {
+  config?: Partial<TCustomConfig>;
+  configDefaults: TConfigDefaults;
+}): Promise<AppConfig['interfaceConfig']> {
+  const { interface: interfaceConfig } = config ?? {};
+  const { interface: defaults } = configDefaults;
+  const hasModelSpecs = (config?.modelSpecs?.list?.length ?? 0) > 0;
+  const includesAddedEndpoints = (config?.modelSpecs?.addedEndpoints?.length ?? 0) > 0;
+
+  const memoryConfig = config?.memory;
+  const memoryEnabled = isMemoryEnabled(memoryConfig);
+  /** Only disable memories if memory config is present and explicitly disabled */
+  const shouldDisableMemories = memoryConfig && !memoryEnabled;
+
+  const loadedInterface: AppConfig['interfaceConfig'] = removeNullishValues({
+    // UI elements - use schema defaults
+    modelSelect:
+      interfaceConfig?.modelSelect ??
+      (hasModelSpecs ? includesAddedEndpoints : defaults.modelSelect),
+    parameters: interfaceConfig?.parameters ?? (hasModelSpecs ? false : defaults.parameters),
+    presets: interfaceConfig?.presets ?? (hasModelSpecs ? false : defaults.presets),
+    privacyPolicy: resolveExternalUrl(interfaceConfig?.privacyPolicy) ?? defaults.privacyPolicy,
+    termsOfService:
+      resolveExternalUrl(interfaceConfig?.termsOfService) ?? defaults.termsOfService,
+    customConsole: resolveExternalUrl(interfaceConfig?.customConsole),
+    mcpServers: interfaceConfig?.mcpServers ?? defaults.mcpServers,
+    customWelcome: interfaceConfig?.customWelcome ?? defaults.customWelcome,
+    autoSubmitFromUrl: interfaceConfig?.autoSubmitFromUrl ?? defaults.autoSubmitFromUrl,
+
+    // Permissions and related settings - only include if explicitly configured
+    bookmarks: interfaceConfig?.bookmarks,
+    memories: shouldDisableMemories ? false : interfaceConfig?.memories,
+    prompts: interfaceConfig?.prompts,
+    multiConvo: interfaceConfig?.multiConvo,
+    agents: interfaceConfig?.agents,
+    temporaryChat: interfaceConfig?.temporaryChat,
+    temporaryChatRetention: interfaceConfig?.temporaryChatRetention,
+    runCode: interfaceConfig?.runCode,
+    webSearch: interfaceConfig?.webSearch,
+    fileSearch: interfaceConfig?.fileSearch,
+    fileCitations: interfaceConfig?.fileCitations,
+    peoplePicker: interfaceConfig?.peoplePicker,
+    marketplace: interfaceConfig?.marketplace,
+    remoteAgents: interfaceConfig?.remoteAgents,
+    skills: interfaceConfig?.skills,
+  });
+
+  return loadedInterface;
+}

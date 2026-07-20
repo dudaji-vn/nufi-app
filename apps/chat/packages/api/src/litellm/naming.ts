@@ -1,0 +1,54 @@
+import { createHash } from 'crypto';
+
+/**
+ * Public LiteLLM model alias for a given endpoint + raw model. Namespaced by the
+ * endpoint name so two endpoints exposing the same provider model (e.g. both
+ * "gpt-4o") never collide into one load-balanced LiteLLM deployment.
+ */
+export function litellmModelName(endpointName: string, model: string): string {
+  return `${endpointName}/${model}`;
+}
+
+/** LiteLLM provider model string. Every custom endpoint is OpenAI-compatible. */
+export function providerModel(model: string): string {
+  return `openai/${model}`;
+}
+
+/**
+ * Opaque fingerprint of the upstream credentials (baseURL + apiKey). Stored on
+ * the sync record so a later reconcile can detect that the admin changed the
+ * upstream URL or key and issue /model/update — without persisting the secret.
+ */
+export function credFingerprint(baseURL: string, apiKey: string): string {
+  return createHash('sha256').update(`${baseURL}\0${apiKey}`).digest('hex');
+}
+
+/**
+ * True when two URLs point at the same host. Used to detect a custom endpoint
+ * that already targets the LiteLLM gateway, so it is not proxied through the
+ * gateway a second time. Compares host only: the endpoint carries a `/v1`
+ * suffix the gateway config does not.
+ */
+export function isSameHost(a: string, b: string): boolean {
+  try {
+    return new URL(a).host.toLowerCase() === new URL(b).host.toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
+/** Virtual-key alias in LiteLLM for an endpoint (for humans reading LiteLLM UI). */
+export function keyAlias(endpointName: string): string {
+  const slug = endpointName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return `nufi-ep-${slug || 'endpoint'}`;
+}
+
+/**
+ * A deliberately-invalid virtual key served fail-closed for endpoints whose sync
+ * is pending/failed. LiteLLM rejects it → the user gets a clear auth error and
+ * the request never reaches the real provider.
+ */
+export const SENTINEL_VIRTUAL_KEY = 'sk-litellm-sync-unavailable-do-not-use';
