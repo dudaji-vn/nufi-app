@@ -65,6 +65,19 @@ export interface GetAppConfigOptions {
   refresh?: boolean;
   /** When true, return only the YAML-derived base config — no DB override queries. */
   baseOnly?: boolean;
+  /**
+   * When true, admin-managed custom endpoints are resolved to their gateway
+   * routing: `baseURL` points at LiteLLM and `apiKey` is the decrypted virtual
+   * key. Those are live credentials, so this is **opt-in** — only callers that
+   * are about to open a provider connection may ask for it.
+   *
+   * Every other caller (admin panel reads, `/api/endpoints`, auth strategies)
+   * gets the stored values untouched. This defaults to off deliberately: it was
+   * previously applied to every caller, which leaked decrypted virtual keys
+   * through `GET /api/admin/config/base` and let the admin panel write the
+   * rewritten endpoints back into the stored config.
+   */
+  resolveManagedEndpoints?: boolean;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -82,18 +95,27 @@ export function _resetOverrideStrictCache(): void {
   _warnedNoTenantInStrictMode = false;
 }
 
-function overrideCacheKey(role?: string, userId?: string, tenantId?: string): string {
+function overrideCacheKey(
+  role?: string,
+  userId?: string,
+  tenantId?: string,
+  resolveManagedEndpoints?: boolean,
+): string {
   const tenant = tenantId || '__default__';
+  // The rewritten and un-rewritten configs differ in their endpoint credentials,
+  // so they must never share a cache entry — otherwise whichever caller misses
+  // first decides what the other sees for the rest of the TTL.
+  const suffix = resolveManagedEndpoints ? ':managed' : '';
   if (userId && role) {
-    return `_OVERRIDE_:${tenant}:${role}:${userId}`;
+    return `_OVERRIDE_:${tenant}:${role}:${userId}${suffix}`;
   }
   if (userId) {
-    return `_OVERRIDE_:${tenant}:${userId}`;
+    return `_OVERRIDE_:${tenant}:${userId}${suffix}`;
   }
   if (role) {
-    return `_OVERRIDE_:${tenant}:${role}`;
+    return `_OVERRIDE_:${tenant}:${role}${suffix}`;
   }
-  return `_OVERRIDE_:${tenant}:${BASE_CONFIG_PRINCIPAL_ID}`;
+  return `_OVERRIDE_:${tenant}:${BASE_CONFIG_PRINCIPAL_ID}${suffix}`;
 }
 
 // ── Service factory ──────────────────────────────────────────────────
@@ -161,7 +183,7 @@ export function createAppConfigService(deps: AppConfigServiceDeps) {
    * Use this for startup, auth strategies, and other pre-tenant code paths.
    */
   async function getAppConfig(options: GetAppConfigOptions = {}): Promise<AppConfig> {
-    const { role, userId, tenantId, refresh, baseOnly } = options;
+    const { role, userId, tenantId, refresh, baseOnly, resolveManagedEndpoints } = options;
 
     const baseConfig = await ensureBaseConfig(refresh);
 
@@ -169,7 +191,7 @@ export function createAppConfigService(deps: AppConfigServiceDeps) {
       return baseConfig;
     }
 
-    const cacheKey = overrideCacheKey(role, userId, tenantId);
+    const cacheKey = overrideCacheKey(role, userId, tenantId, resolveManagedEndpoints);
     if (!refresh) {
       const cachedMerged = (await cache.get(cacheKey)) as AppConfig | undefined;
       if (cachedMerged) {
@@ -212,11 +234,12 @@ export function createAppConfigService(deps: AppConfigServiceDeps) {
 
       const merged = mergeConfigOverrides(baseConfig, configs);
       // Managed custom endpoints (admin-created DB overrides) only ever appear in
-      // this merged branch, so the LiteLLM rewrite is applied here — before the
-      // merged config is cached, so the cached value is already rewritten.
-      const finalConfig = applyEndpointRewrite
-        ? await applyEndpointRewrite(merged, { tenantId })
-        : merged;
+      // this merged branch, so the LiteLLM rewrite belongs here — but only for
+      // callers that asked for live credentials. See `resolveManagedEndpoints`.
+      const finalConfig =
+        resolveManagedEndpoints && applyEndpointRewrite
+          ? await applyEndpointRewrite(merged, { tenantId })
+          : merged;
       await cache.set(cacheKey, finalConfig, overrideCacheTtl);
       return finalConfig;
     } catch (error) {
