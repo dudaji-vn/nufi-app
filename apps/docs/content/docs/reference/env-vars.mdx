@@ -1,0 +1,161 @@
+---
+title: Environment variables
+description: Single flat table you can grep — see Deployment for the longer-form explanation.
+---
+
+For prose around how to set these, see
+[Deployment → Environment variables](/docs/deployment/environment-variables).
+This page is the flat reference.
+
+## npuops-platform (`.env`)
+
+```bash
+# --- Secrets (regenerate per environment) ---
+POSTGRES_USER=
+POSTGRES_PASSWORD=
+POSTGRES_DB=
+CLICKHOUSE_USER=
+CLICKHOUSE_PASSWORD=
+REDIS_HOST=redis
+REDIS_PORT=6379
+REDIS_PASSWORD=
+MINIO_ROOT_USER=
+MINIO_ROOT_PASSWORD=
+
+MONGO_INITDB_ROOT_USERNAME=
+MONGO_INITDB_ROOT_PASSWORD=
+MONGO_URI=mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongodb:27017/LibreChat?authSource=admin
+
+LITELLM_MASTER_KEY=
+LITELLM_SALT_KEY=
+DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/litellm
+
+JWT_SECRET=
+JWT_REFRESH_SECRET=
+CREDS_KEY=
+CREDS_IV=
+
+LANGFUSE_SALT=
+LANGFUSE_ENCRYPTION_KEY=
+LANGFUSE_NEXTAUTH_SECRET=
+LANGFUSE_NEXTAUTH_URL=
+LANGFUSE_HOST=http://langfuse-web:3000
+LANGFUSE_PUBLIC_KEY=
+LANGFUSE_SECRET_KEY=
+LANGFUSE_INIT_USER_EMAIL=
+LANGFUSE_INIT_USER_NAME=
+LANGFUSE_INIT_USER_PASSWORD=
+
+LLM_GUARD_AUTH_TOKEN=
+
+GRAFANA_ADMIN_USER=admin
+GRAFANA_ADMIN_PASSWORD=
+
+# --- Public URLs ---
+APP_TITLE=Nufi Chat
+ALLOW_REGISTRATION=true
+ALLOW_EMAIL_LOGIN=true
+LIBRECHAT_URL=http://localhost:3080
+CONSOLE_URL=http://localhost:3001
+CUSTOM_FOOTER=
+HELP_AND_FAQ_URL=
+PRIVACY_POLICY_URL=
+TERMS_OF_SERVICE_URL=
+
+# --- LLM backends (filled by add-model.sh) ---
+GPU_BACKEND_BASE_URL=
+GPU_BACKEND_API_KEY=
+NPU_BACKEND_BASE_URL=
+NPU_BACKEND_API_KEY=
+# Plus any provider key referenced from litellm/config.yaml:
+# OPENAI_API_KEY=, ANTHROPIC_API_KEY=, TOGETHER_API_KEY=, …
+
+# --- Console JIT defaults ---
+DEFAULT_USER_BUDGET=10
+DEFAULT_BUDGET_DURATION=30d
+DEFAULT_TPM_LIMIT=10000
+DEFAULT_RPM_LIMIT=60
+KEY_DEFAULT_DURATION=90d
+
+# --- E2E smoke test ---
+E2E_USER_EMAIL=e2e@npuops.local
+E2E_USER_PASSWORD=
+E2E_USER_NAME=E2E Bot
+E2E_MODEL=qwen2.5-3b
+E2E_EXPECTED_HARDWARE_ID=mac-local
+E2E_ENDPOINT_NAME=NPUOps
+
+# --- Image pinning (production) ---
+NUFI_CONSOLE_TAG=main
+```
+
+## nufi-chat (`.env`)
+
+```bash
+IMAGE_TAG=main
+DOMAIN_CLIENT=
+DOMAIN_SERVER=
+APP_TITLE=Nufi Chat
+ALLOW_REGISTRATION=true
+ALLOW_EMAIL_LOGIN=true
+COOKIE_DOMAIN=
+COOKIE_SAMESITE=strict      # 'lax' if COOKIE_DOMAIN is set
+CONSOLE_URL=
+
+JWT_SECRET=
+JWT_REFRESH_SECRET=
+CREDS_KEY=
+CREDS_IV=
+
+BACKEND_BASE_URL=
+BACKEND_API_KEY=
+
+SHARED_DOCKER_NETWORK=
+```
+
+## nufi-console (`.env`)
+
+```bash
+PORT=3000
+JWT_SECRET=
+JWT_REFRESH_SECRET=
+LITELLM_BASE_URL=http://localhost:4000
+LITELLM_MASTER_KEY=
+LANGFUSE_HOST=http://localhost:3000
+LANGFUSE_PUBLIC_KEY=
+LANGFUSE_SECRET_KEY=
+VITE_LIBRECHAT_URL=http://localhost:3080
+
+DEFAULT_USER_BUDGET=10
+DEFAULT_BUDGET_DURATION=30d
+DEFAULT_TPM_LIMIT=10000
+DEFAULT_RPM_LIMIT=60
+KEY_DEFAULT_DURATION=90d
+
+SERVE_DIST=true             # production
+```
+
+## nufichat-admin-panel (`.env`)
+
+```bash
+PORT=3000
+SESSION_SECRET=             # min 32 chars
+VITE_API_BASE_URL=http://localhost:3080
+ADMIN_SSO_ONLY=false
+ADMIN_SESSION_IDLE_TIMEOUT_MS=1800000
+ADMIN_PANEL_METRICS_SECRET=
+ADMIN_PANEL_STATIC_CACHE_MAX_AGE=172800
+ADMIN_PANEL_INDEX_CACHE_CONTROL=no-cache
+```
+
+## How to generate
+
+```bash
+openssl rand -hex 32        # JWT_SECRET, CREDS_KEY, LITELLM_MASTER_KEY, …
+openssl rand -hex 16        # CREDS_IV
+openssl rand -base64 32     # POSTGRES_PASSWORD, MINIO_ROOT_PASSWORD, …
+openssl rand -base64 24     # LANGFUSE_PUBLIC_KEY
+```
+
+The bootstrap script in each repo handles this for you. Re-running
+the script is idempotent — only missing values are filled.

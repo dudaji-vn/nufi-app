@@ -1,0 +1,138 @@
+---
+title: Console dev
+description: Local development of the self-service developer console.
+---
+
+[`dudaji-vn/nufi-console`](https://github.com/dudaji-vn/nufi-console) is
+the developer console. Single container — Hono on Bun serves both the
+Vite-built React SPA and the oRPC API from one origin.
+
+## Set up
+
+```bash
+git clone https://github.com/dudaji-vn/nufi-console.git
+cd nufi-console
+bun install
+bun run dev
+# Vite at :5173, Hono at :3000. Vite proxies /rpc and /_health.
+```
+
+The dev server expects the rest of the platform stack to be up. Keep
+`npuops-platform` running.
+
+## Env vars
+
+| Variable                  | Default                   | Purpose                                                  |
+|---------------------------|---------------------------|----------------------------------------------------------|
+| `PORT`                    | `3000`                    | Hono listen port                                         |
+| `JWT_SECRET`              | — (required)              | Shared with LibreChat                                    |
+| `JWT_REFRESH_SECRET`      | — (required)              | Shared with LibreChat                                    |
+| `LITELLM_BASE_URL`        | `http://localhost:4000`   | LiteLLM admin API                                        |
+| `LITELLM_MASTER_KEY`      | — (required)              | LiteLLM master key                                       |
+| `LANGFUSE_HOST`           | `http://localhost:3000`   | Langfuse base URL                                        |
+| `LANGFUSE_PUBLIC_KEY`     | — (required)              | Langfuse credentials for usage panels                    |
+| `LANGFUSE_SECRET_KEY`     | — (required)              | Langfuse credentials for usage panels                    |
+| `VITE_LIBRECHAT_URL`      | `http://localhost:3080`   | Build-time: inlined into SPA for the unauthorized page   |
+| `DEFAULT_USER_BUDGET`     | `10`                      | USD — applied on JIT-provision                           |
+| `DEFAULT_BUDGET_DURATION` | `30d`                     | Refresh interval                                         |
+| `DEFAULT_TPM_LIMIT`       | `10000`                   | Tokens per minute                                        |
+| `DEFAULT_RPM_LIMIT`       | `60`                      | Requests per minute                                      |
+| `KEY_DEFAULT_DURATION`    | `90d`                     | Issued-key TTL                                           |
+| `SERVE_DIST`              | `true` in prod            | Hono serves the built SPA from `/dist`                   |
+
+The easiest dev workflow: copy the secrets from `npuops-platform/.env`
+into `nufi-console/.env`.
+
+## Layout
+
+```
+nufi-console/
+├── server/                       Bun + Hono + oRPC
+│   ├── index.ts                  Hono app
+│   ├── orpc.ts                   base oRPC instance
+│   ├── middleware/auth.ts        JWT verification (LibreChat token)
+│   ├── lib/
+│   │   ├── litellm.ts            LiteLLM admin client
+│   │   ├── jit-provision.ts      create LiteLLM user on first visit
+│   │   └── serve-public.ts
+│   └── router/
+│       ├── index.ts              AppRouter type
+│       ├── me.ts                 me.get
+│       ├── keys.ts               list / create / remove / info
+│       ├── usage.ts              daily / summary / byModel / byHardware
+│       └── ping.ts
+└── src/                          React SPA
+    ├── routes/
+    │   ├── __root.tsx
+    │   ├── index.tsx             profile
+    │   ├── keys.tsx              key management
+    │   ├── usage.tsx             analytics
+    │   └── unauthorized.tsx
+    ├── components/
+    │   ├── KeyTable.tsx
+    │   ├── KeyGenerateModal.tsx
+    │   ├── KeyRevealOnceModal.tsx
+    │   ├── ConfirmDialog.tsx
+    │   └── ui/                   shadcn primitives
+    ├── lib/
+    │   ├── orpc.ts               client + TanStack Query bindings
+    │   ├── format.ts
+    │   └── utils.ts
+    └── stores/ui.ts              Zustand
+```
+
+## Common tasks
+
+| Task                  | Command                                  |
+|-----------------------|------------------------------------------|
+| Type-check            | `bun run typecheck`                      |
+| Build SPA             | `bun run build`                          |
+| Run prod server       | `bun run start`                          |
+| Regen route tree      | `bunx @tanstack/router-cli generate`     |
+| Add a shadcn primitive| `bunx --bun shadcn@latest add <name>`    |
+| Smoke test            | `bun run smoke`                          |
+
+## Adding a new RPC procedure
+
+1. Add it under `server/router/<resource>.ts` with `o.handler(...)`
+   and `.input(zod)` if it takes args.
+2. Re-export from `server/router/index.ts`.
+3. Use it on the client:
+   ```ts
+   useQuery(api.<resource>.<proc>.queryOptions(...))
+   ```
+   The `AppRouter` type carries the contract — no manual types, no
+   fetch wrappers.
+
+## Auth model
+
+The middleware accepts the JWT in two places:
+
+- `Authorization: Bearer <access_token>` — verified with
+  `JWT_SECRET` (HS256).
+- `refreshToken` cookie — verified with `JWT_REFRESH_SECRET` (HS256).
+
+The browser path is automatic: LibreChat sets the cookie on the
+parent domain, so `localhost:3080` and `localhost:3001` share it.
+
+Any verification failure → 401, redirect to `/unauthorized`. The
+unauthorized page deep-links to LibreChat sign-in (the URL inlined
+at build time from `VITE_LIBRECHAT_URL`).
+
+## JIT provisioning
+
+`server/lib/jit-provision.ts` runs on the first request from a new
+user:
+
+1. Read `userId` from the JWT.
+2. Try to fetch the LiteLLM internal-user row.
+3. If 404, create one with the deployment default budget + limits.
+4. Cache the result for the session.
+
+The function is idempotent.
+
+## Release
+
+CI publishes `ghcr.io/dudaji-vn/nufi-console` on push to
+`develop`/`main` and on `nufi-console-v*` tags. Pin a tag in the
+platform via `NUFI_CONSOLE_TAG=v0.2.0`.

@@ -1,0 +1,115 @@
+---
+title: nufi-chat (standalone)
+description: The smallest deployment — LibreChat + MongoDB pointed at any OpenAI-compatible endpoint.
+---
+
+[`dudaji-vn/nufi-chat`](https://github.com/dudaji-vn/nufi-chat) is the
+single-tenant chat deployment. It ships:
+
+- The LibreChat fork image
+  (`ghcr.io/dudaji-vn/nufichat:${IMAGE_TAG:-main}`)
+- A MongoDB sidecar (4.4 — the last release that runs on CPUs without
+  AVX)
+- A `librechat.yaml` that defines a single `Nufi` custom endpoint
+
+That is it — no LiteLLM, no Langfuse, no monitoring. Use it when you
+already have a gateway and just want a branded chat.
+
+## Set up
+
+```bash
+git clone https://github.com/dudaji-vn/nufi-chat.git
+cd nufi-chat
+./bootstrap.sh
+```
+
+The bootstrap asks for:
+
+1. `IMAGE_TAG` (defaults to `main` for the rolling tag; pin to e.g.
+   `nufi-v0.0.5` for a stable release).
+2. `DOMAIN_CLIENT` — public URL clients see (`https://chat.nufi.me`).
+3. `DOMAIN_SERVER` — public URL for emails / OAuth callbacks (often
+   the same as `DOMAIN_CLIENT`).
+4. `APP_TITLE` — brand title shown in the UI.
+5. `BACKEND_BASE_URL` — your gateway's OpenAI-compatible URL.
+6. `BACKEND_API_KEY` — the bearer token (auto-detected from a sibling
+   `npuops-platform/.env` if present).
+7. Optional shared-network mode (only if `BACKEND_BASE_URL` uses a
+   Docker service name, not a public URL).
+
+Re-running bootstrap is safe — it only fills missing values.
+
+Non-interactive flags:
+
+```bash
+./bootstrap.sh --yes      # accept defaults / auto-detected, no prompts
+./bootstrap.sh --no-up    # configure .env only, don't `compose up`
+```
+
+## Env vars
+
+| Variable                   | Purpose                                                       |
+|----------------------------|---------------------------------------------------------------|
+| `IMAGE_TAG`                | GHCR tag of the chat image                                    |
+| `DOMAIN_CLIENT`            | Public URL                                                    |
+| `DOMAIN_SERVER`            | Public URL for emails / OAuth                                 |
+| `APP_TITLE`                | Brand title                                                   |
+| `ALLOW_REGISTRATION`       | `true` / `false`                                              |
+| `ALLOW_EMAIL_LOGIN`        | `true` / `false`                                              |
+| `COOKIE_DOMAIN`            | e.g. `.nufi.me` — set when sharing cookies with the console   |
+| `COOKIE_SAMESITE`          | `lax` if `COOKIE_DOMAIN` is set, otherwise `strict`           |
+| `CONSOLE_URL`              | If set, the chat shows a "Console" link in the avatar menu    |
+| `JWT_SECRET`               | hex-32 (`openssl rand -hex 32`)                               |
+| `JWT_REFRESH_SECRET`       | hex-32                                                        |
+| `CREDS_KEY`                | hex-32                                                        |
+| `CREDS_IV`                 | hex-16                                                        |
+| `BACKEND_BASE_URL`         | OpenAI-compatible endpoint                                    |
+| `BACKEND_API_KEY`          | Bearer token for the endpoint                                 |
+| `SHARED_DOCKER_NETWORK`    | Name of an external network when shared-network mode is on    |
+
+## Shared-network mode
+
+When `BACKEND_BASE_URL` uses a Docker **service name** (e.g.
+`http://litellm-proxy:4000/v1`), the API container needs to join the
+network that hosts the gateway. Bootstrap handles this; manually:
+
+```bash
+ln -sf docker-compose.shared-network.yml docker-compose.override.yml
+# SHARED_DOCKER_NETWORK must already exist (compose won't create
+# external networks)
+docker compose up -d
+```
+
+To leave shared-network mode:
+
+```bash
+rm docker-compose.override.yml
+docker compose up -d --force-recreate
+```
+
+## Verify
+
+```bash
+docker compose ps
+curl http://localhost:3081/api/health
+docker compose exec api wget -qO- $BACKEND_BASE_URL/models | head
+```
+
+Open `http://localhost:3081`, register, pick a model, send a message.
+
+## Common commands
+
+```bash
+docker compose logs -f api                       # tail logs
+docker compose pull && docker compose up -d      # apply image updates
+docker compose down -v                           # stop and drop mongo data
+```
+
+## When to use this vs npuops-platform
+
+| Need                                              | Pick                  |
+|---------------------------------------------------|-----------------------|
+| Branded chat in front of an existing gateway      | nufi-chat             |
+| Branded chat + self-service keys + observability  | npuops-platform       |
+| Demo / single-user single-host                    | nufi-chat             |
+| Pilot / production / multi-tenant                 | npuops-platform       |

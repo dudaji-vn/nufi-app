@@ -1,0 +1,122 @@
+---
+title: Monitoring and alerts
+description: Prometheus + Grafana + Alertmanager — the operational signal layer.
+---
+
+Three containers, one job: tell you when the platform is unhappy.
+
+## Prometheus
+
+Scrapes `/metrics` from:
+
+- **The gateway** (metrics endpoint) — the primary signal.
+- **postgres-exporter** — connection count, slow queries.
+- **redis-exporter** — hit rate, memory, slow ops.
+
+Retention is **15 days** by default
+(`--storage.tsdb.retention.time=15d`). Bump in compose if you need
+more history.
+
+Reload alert rules without restarting:
+
+```bash
+$EDITOR monitoring/rules/litellm.rules.yml
+curl -X POST http://localhost:9090/-/reload
+```
+
+## Default alerts
+
+| Alert                       | Trigger                                | Severity   |
+|-----------------------------|----------------------------------------|------------|
+| `GatewayDown`               | `up{job="gateway"} == 0` for 1 min     | critical   |
+| `GatewayHighErrorRate`      | error rate > 5 % for 5 min             | warning    |
+| `GatewayHighLatencyP95`     | P95 latency > 10 s for 5 min           | warning    |
+
+Add your own in `monitoring/rules/`. The directory is gitignored only
+for `secrets/`, so your rules ship with the repo.
+
+## Routing alerts to Slack
+
+By default alerts route to a `noop` receiver — Alertmanager swallows
+them. Real wiring:
+
+```bash
+cp monitoring/secrets/slack-webhook.example monitoring/secrets/slack-webhook
+$EDITOR monitoring/secrets/slack-webhook        # paste the webhook URL
+$EDITOR monitoring/alertmanager.yml             # change route.receiver
+docker compose restart alertmanager
+```
+
+The webhook file is gitignored. Keep it that way.
+
+## Grafana dashboards
+
+Provisioned dashboards:
+
+- **Gateway Overview** — RPS, error rate, P50/P95/P99, top models,
+  top users.
+- **Postgres** — connections, slow queries, replication.
+- **Redis** — hit rate, memory.
+
+Add your own JSON to `monitoring/grafana/dashboards/` — Grafana picks
+it up on next reload.
+
+## Sign-in
+
+Defaults from `.env`:
+
+```bash
+GRAFANA_ADMIN_USER=admin
+GRAFANA_ADMIN_PASSWORD=<random>
+```
+
+In production, also disable sign-ups:
+
+```bash
+GF_USERS_ALLOW_SIGN_UP=false     # already the default in compose
+```
+
+…and front Grafana with the reverse proxy on `grafana.nufi.me` so it
+shares the rest of your auth posture.
+
+## What to alert on
+
+Beyond the defaults, useful additions:
+
+- **Postgres connection saturation** —
+  `pg_stat_database_numbackends / pg_settings_max_connections > 0.8`
+- **MongoDB disk usage > 80 %** — via the `mongodb_exporter` if you
+  add it.
+- **ClickHouse disk usage > 70 %** — fastest-growing volume.
+- **MinIO bucket size > 80 % of allocated disk** — second-fastest.
+- **Cloudflare tunnel down** — via the Cloudflare API; out of scope
+  here but worth pairing with.
+
+## Inspection without UI
+
+```bash
+# Active alerts
+curl -s http://localhost:9090/api/v1/alerts | jq
+
+# Current targets and their up/down status
+curl -s http://localhost:9090/api/v1/targets | jq
+
+# Alertmanager routing decision for a synthetic alert
+curl -X POST http://localhost:9093/api/v2/alerts -d '...'
+```
+
+## Retention sizing
+
+- Prometheus: 15 days at this stack size ≈ 2–5 GB on disk.
+- ClickHouse (Langfuse traces): grows fastest — assume ~50 MB per
+  1000 traces.
+- MinIO (Langfuse blobs): proportional to ClickHouse.
+
+Plan to expand the disk when ClickHouse + MinIO together cross
+100 GB; the reference build alerts at 60 % of a 256 GB SSD.
+
+## See also
+
+- [Admin → Grafana](/docs/admin/grafana) — day-to-day usage.
+- [Backup and restore](/docs/deployment/backup-restore) — what to
+  back up and how often.

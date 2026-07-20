@@ -1,0 +1,96 @@
+---
+title: Models and presets
+description: Switch between AI models, tune the response style, and save presets.
+---
+
+NUFI can offer several AI models. You choose which one answers each
+conversation, and you can fine-tune how it replies.
+
+> **Guide:** See [Draft, refine, and translate writing](/docs/end-user/guides/draft-and-refine-writing)
+> for presets and saved prompts in action.
+
+## Pick a model
+
+<Steps>
+<Step>Click the **model name** at the top-left of the conversation
+(in the screenshot below it reads *gemini*).</Step>
+<Step>A menu opens listing the model groups available to you —
+for example **Nufi** and **Sun LLM**. Use the **Search models…** box
+to filter when the list is long.</Step>
+<Step>Click a group, then pick a model from it. The conversation now
+uses that model. A ✓ marks the one currently selected.</Step>
+</Steps>
+
+![The model picker open, showing the available model groups](/screenshots/chat-model-menu.png)
+
+The list updates automatically — when your admin adds a new model,
+refreshing the page is enough to see it. Newer or larger models are
+usually more capable but slower and cost more against your budget;
+smaller models are faster and cheaper. Try a few and see what fits.
+
+## Tune the response style
+
+Open **Parameters** from the left icon rail. A panel slides out where
+you can shape how the model behaves:
+
+![The Parameters panel with model settings](/screenshots/chat-parameters.png)
+
+The settings you'll actually reach for:
+
+- **Custom Instructions** — what the model should know before your
+  first message: a persona, a tone, standing rules. This steers the
+  whole conversation. *("You are a concise assistant. Reply in
+  Vietnamese.")*
+- **Temperature** — low (near 0) for precise, repeatable answers
+  (code, summaries, data). High (near 1) for creative, varied answers
+  (brainstorming, copy-writing).
+- **Max Output Tokens** — caps how long a single reply can be.
+- **Web Search** — toggle live web lookups for this conversation (see
+  [Web search](/docs/end-user/web-search)).
+
+The advanced controls (Top P, frequency / presence penalty, reasoning
+effort) are sampling knobs — leave them alone unless you know what you
+want. Click **Reset Model Parameters** at the bottom to go back to
+defaults.
+
+Settings apply to the **current conversation only**. Start a new chat
+to reset, or save your favourite combination as a **preset**.
+
+## Presets
+
+A preset is a saved bundle of `{ model, parameters, instructions }`
+under a name.
+
+![The Presets menu](/screenshots/chat-presets-menu.png)
+
+- **See your presets** — click **Presets** in the top bar. When you
+  have none yet it says *"No presets yet, use the settings button to
+  create one."*
+- **Create one** — set up a model and its parameters the way you like,
+  then save it from the settings/parameters panel and give it a clear
+  name (e.g. *"Code review"*, *"Translation EN→VN"*, *"Friendly
+  reply"*).
+- **Use one** — pick it from the **Presets** menu; new conversations
+  start with all its settings applied.
+- **Import / Clear all** — bring in a preset someone exported, or wipe
+  your list, from the same menu.
+
+## Saved prompts
+
+A **saved prompt** is lighter than a preset — just a chunk of text you
+reuse often, with no model or parameters attached.
+
+Manage them under **Prompts** in the left icon rail. Insert one
+mid-conversation by typing `/` at the start of the message box and
+picking from the list. Good candidates: frequently-used personas,
+tedious boilerplate, tone modifiers like *"Rewrite in plain English,
+no jargon."*
+
+## If the model menu is empty
+
+- Refresh the page once.
+- If it's still empty, the platform can't reach the AI provider — ask
+  your admin; they have monitoring that tells them what's wrong.
+- If models appear but every reply errors with *"unauthorised"*, open
+  the [console](/docs/end-user/api-keys) once. The first visit sets up
+  your account automatically.

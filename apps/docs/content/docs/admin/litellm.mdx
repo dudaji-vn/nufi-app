@@ -1,0 +1,82 @@
+---
+title: Gateway admin
+description: Add models, issue API keys, set budgets, watch spend.
+---
+
+The **NUFI AI Gateway** is the single chokepoint every AI request
+passes through. Its admin UI lives at `api.nufi.me/ui` and is the
+source of truth for **models**, **API keys**, **budgets**, and
+**routing rules**.
+
+Sign in with the gateway master key (set during install).
+
+## What lives where
+
+There are two ways to register a new AI model.
+
+1. **In configuration files** (version-controlled, replayed on
+   every restart). Use the `add-model` helper script.
+2. **In the admin UI** (persisted to the gateway's own database).
+   Faster for one-off experiments — but not in version control and
+   not visible to the `add-model` script.
+
+Prefer the script for anything that ships. Use the UI for "let me
+try this model for a day and see if it works".
+
+When you add a model from the UI, the chat caches the model list at
+startup. To make a UI-added model show up in the chat dropdown,
+ask your operator to restart the chat application.
+
+## Required model metadata
+
+Every model must carry two fields:
+
+- `backend_type` — `gpu`, `npu`, or `cloud`. Used by reporting.
+- `hardware_id` — a free-form string like `dgx-a100-01`,
+  `together-cloud`, `mac-local`. Reports aggregate by this.
+
+The UI lets you leave both blank, which means the model exists but
+is invisible to dashboards. Always fill them in.
+
+## API keys (virtual keys)
+
+A virtual key is what end users present when calling NUFI from
+their own code. It carries:
+
+- The owning user identity.
+- Budget cap, budget refresh duration.
+- Per-minute token and request limits.
+- A model allow-list (or `*` for any).
+- A team (optional, for tiered plans).
+
+End users issue their own keys from the
+[console](/docs/end-user/api-keys). You can also issue keys from
+the gateway admin UI directly when you need a key not bound to a
+user — e.g. a CI job's service key.
+
+## Teams (tiered plans)
+
+**Teams** let you bucket users by plan (`free`, `pro`, `premium`).
+Each team has its own budget, rate limits, and model allow-list.
+Moving a user between teams is the upgrade flow:
+
+1. Create the teams with the limits you want.
+2. The platform attaches new users to a default team (the
+   organisation's free tier).
+3. On payment / approval, move the user to the next team.
+4. The user sees the new caps on their next request.
+
+## Watching spend
+
+The admin UI's **Usage** page is the live view. For longer
+retention and per-trace detail, use the [trace viewer](/docs/admin/langfuse).
+
+## Routing
+
+The gateway can define routing groups — e.g. send `qwen2.5-*` to
+your local GPU, fall back to a cloud provider on failure. The
+gateway handles retries and fallbacks transparently.
+
+The canary slider feature uses this mechanism to split traffic
+between two providers by percentage, which is useful for safely
+rolling out a new model.

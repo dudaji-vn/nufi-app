@@ -1,0 +1,95 @@
+---
+title: Adding a model
+description: Use add-model.sh to register a new LLM with the gateway.
+---
+
+The gateway only routes to models it knows about. To add one, use
+[`./scripts/add-model.sh`](https://github.com/dudaji-vn/npuops-platform/blob/main/scripts/add-model.sh)
+in the `npuops-platform` repo. It edits `litellm/config.yaml` and
+`librechat/librechat.yaml`, restarts the proxy + chat, and runs a test
+chat completion.
+
+## Interactive
+
+```bash
+cd npuops-platform
+./scripts/add-model.sh
+```
+
+Walks you through:
+
+1. **Display name** — e.g. `qwen2.5-7b`. This is what users see in the
+   LibreChat dropdown.
+2. **Upstream model id** — e.g. `openai/Qwen/Qwen2.5-7B-Instruct`.
+   Prefix with `openai/` for OpenAI-compatible upstream, even when
+   the upstream is not OpenAI.
+3. **Base URL** — `https://api.together.xyz/v1`,
+   `http://host.docker.internal:11434/v1` (Ollama), etc.
+4. **API key** — either a literal value or the name of an env var
+   (`TOGETHER_API_KEY`). Env-var form is preferred — secrets stay in
+   `.env`, not in YAML.
+5. **`backend_type`** — `gpu`, `npu`, or `cloud`. Required.
+6. **`hardware_id`** — free-form. Required.
+7. **Costs** — optional, but enables cost columns in Langfuse and the
+   console.
+
+The script is idempotent. Re-running with the same display name
+updates the existing entry instead of creating a duplicate.
+
+## Non-interactive
+
+For CI or scripting:
+
+```bash
+./scripts/add-model.sh \
+  --name mixtral-8x7b \
+  --model 'openai/mistralai/Mixtral-8x7B-Instruct-v0.1' \
+  --base-url https://api.together.xyz/v1 \
+  --api-key-env TOGETHER_API_KEY \
+  --backend-type cloud \
+  --hardware-id together-cloud
+```
+
+Useful flags:
+
+- `--no-restart` — batch mode. The caller is responsible for
+  restarting `litellm-proxy` and `librechat` once at the end.
+- `--no-test` — skip the test chat completion.
+- `--vision` — mark the model as multimodal so LibreChat surfaces the
+  image-upload UI.
+- `--base-url-env <NAME>` — same as `--base-url` but reads the value
+  from `.env`.
+
+Run `./scripts/add-model.sh --help` for the full list.
+
+## Adding from the LiteLLM admin UI
+
+LiteLLM also exposes a model registration UI at
+`http://localhost:4000/ui`. Models added there are persisted to
+Postgres (`store_model_in_db: true` is on in `litellm/config.yaml`).
+
+Two caveats:
+
+1. **Not in version control.** UI-added models live only in the DB.
+   They survive LiteLLM restarts but `add-model.sh` doesn't see them
+   and a fresh checkout won't recreate them.
+2. **Restart LibreChat to refresh the chat dropdown.** LibreChat
+   caches `/v1/models` at startup:
+   ```bash
+   docker compose restart librechat
+   ```
+3. **Fill in `backend_type` and `hardware_id`** under "Model Info".
+   The UI lets you skip them but the W6 reports become blind.
+
+Prefer the script for anything that should ship. Reserve the UI for
+"let me try this model for a day".
+
+## Removing a model
+
+```bash
+./scripts/remove-model.sh --name <display-name>
+```
+
+Drops it from both YAMLs and restarts the relevant services. The
+script preserves any virtual keys that referenced the model — they
+just stop working until you re-add or migrate them.

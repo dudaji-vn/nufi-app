@@ -1,0 +1,81 @@
+---
+title: Analyze data and images
+description: Turn a screenshot, table, or CSV into structured data, charts, and calculations.
+---
+
+Got a screenshot of a table, a messy CSV, or a photo of a receipt? NUFI can
+read it, turn it into clean structured data, and — with the code tool on — run
+the numbers and draw a chart.
+
+## What you'll need
+
+- A **vision-capable** model if you're uploading an image or photo.
+- **Run Code** (and **Artifacts**) enabled in the **Tools** menu for
+  calculations and charts.
+
+## Steps
+
+<Steps>
+<Step>
+Upload a screenshot/photo of a table, or a CSV file, using the **paperclip** or
+by dragging it in.
+
+![Attaching a file](/screenshots/chat-attach-menu.png)
+</Step>
+<Step>
+Ask NUFI to read it into a clean shape:
+
+> Read this table and turn it into Markdown.
+
+> Extract the rows as JSON with columns date, item, amount.
+</Step>
+<Step>
+For maths or charts, open the **Tools** menu and turn on **Run Code** (and
+**Artifacts**).
+
+![The Tools menu with Run Code and Artifacts](/screenshots/chat-tools-menu.png)
+</Step>
+<Step>
+Ask for the analysis:
+
+> Compute the monthly totals and plot them as a bar chart.
+
+NUFI writes and runs the code, then shows the result and chart.
+</Step>
+<Step>
+Iterate:
+
+> Sort by revenue, highest first.
+
+> Export the cleaned table as CSV.
+</Step>
+</Steps>
+
+## What you get
+
+Clean, structured data plus a chart or artifact — for example:
+
+| Month | Total |
+|-------|-------|
+| Jan   | 12,400 |
+| Feb   | 14,900 |
+| …     | …      |
+
+## Make it better
+
+- **Tell it what the columns mean** — units, currency, date format — so it
+  doesn't guess.
+- **Sanity-check extracted numbers** against the source before you trust them.
+- **Use Run Code** for anything numeric rather than relying on the model to do
+  arithmetic in its head.
+
+## Related
+
+<Cards>
+  <Card title="Files and images" href="/docs/end-user/files-and-images">
+    Uploading files and reading images.
+  </Card>
+  <Card title="Chat" href="/docs/end-user/chat">
+    Follow-ups, editing, and branching.
+  </Card>
+</Cards>

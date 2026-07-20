@@ -1,0 +1,106 @@
+---
+title: Glossary
+description: Terms used throughout this manual.
+---
+
+**Admin panel**
+The browser-based management surface at `admin.nufi.me`. Where
+admins configure NUFI, manage users, roles, groups, and capability
+grants.
+
+**Agent**
+A saved AI assistant with its own name, instructions, tools, and
+knowledge files. NUFI's equivalent of a "custom GPT".
+
+**Backend**
+The actual AI provider behind a model — OpenAI, Anthropic, Google,
+a self-hosted vLLM server, etc. The gateway routes to it.
+
+**`backend_type`**
+A required label on every registered model — `gpu`, `npu`, or
+`cloud`. Used by reporting and the canary slider.
+
+**Bootstrap**
+The setup script that fills in `.env` secrets, pulls images, and
+starts the stack on first install. Idempotent — re-running is
+safe.
+
+**Budget**
+Spend cap, in USD, on a user or API key. Refreshes on the
+configured interval (default 30 days).
+
+**Capability**
+The unit of authorisation inside the admin panel. Constants like
+`MANAGE_USERS`, `MANAGE_CONFIG`, `IMPERSONATE`. Roles bundle
+capabilities; users inherit capabilities via roles.
+
+**Chat**
+The conversational surface end users interact with — at
+`chat.nufi.me` in production. The default NUFI experience.
+
+**Console**
+The self-service developer UI at `console.nufi.me`. Where users
+generate API keys, watch their usage, and tune their per-key
+limits.
+
+**Conversation**
+A single chat thread, with one or more messages. Stored in NUFI's
+database under the user's account.
+
+**Endpoint**
+A named integration with one or more models. The default NUFI
+deployment exposes its models through one endpoint named "Nufi".
+
+**Gateway**
+The single chokepoint every AI request goes through. Handles
+routing, authentication, budgets, rate limits, and trace
+emission. Reachable at `api.nufi.me` for API users.
+
+**`hardware_id`**
+A free-form label on every registered model identifying which
+piece of hardware serves it — e.g. `dgx-a100-01`,
+`together-cloud`, `mac-local`. Reports aggregate by this.
+
+**Override**
+A scoped config value that beats the base config for a specific
+role, group, or user. Resolved by priority — see
+[Scoped overrides](/docs/admin/scoped-overrides).
+
+**Preset**
+A saved bundle of `{model, parameters, system prompt}` with a
+name. Users start new conversations from a preset.
+
+**Profile (in the config editor)**
+A scoped override on a configuration field — has a `principalType`
+(role / group / user) and a `priority`. The admin panel's "Field
+Profile Popover" lists every profile on a field, sorted by
+priority.
+
+**Resumable streams**
+The feature where assistant replies automatically reconnect and
+resume if the user's connection drops. Backed by Redis. Required
+for multi-instance chat deployments.
+
+**Safety filters**
+The pre-call hooks the gateway runs on every prompt — personal
+data detection and prompt-injection scanning. Block or mask the
+prompt before it reaches the AI provider.
+
+**SKILL.md**
+A reusable instruction bundle that can be attached to an agent or
+called manually via `/skill-name`. A lighter-weight unit than an
+agent.
+
+**Trace**
+A top-level event in the trace viewer (usually one chat
+completion). Inside a trace, **observations** record nested calls
+(one per AI call, tool call, or guardrail decision).
+
+**Trace viewer**
+The observability surface at `langfuse.nufi.me`. Records every AI
+request with the prompt, reply, cost, and labels.
+
+**Virtual key (API key)**
+A NUFI API key issued to a specific user (or service account)
+with its own budget, rate limits, and model allow-list. Users
+self-issue them from the console.

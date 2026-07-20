@@ -1,0 +1,112 @@
+---
+title: Admin panel dev
+description: Local development of the admin panel SPA.
+---
+
+[`dudaji-vn/nufichat-admin-panel`](https://github.com/dudaji-vn/nufichat-admin-panel)
+is the admin panel — a Vite + React 19 + TanStack Router SPA with a
+small Bun / Hono server for sessions.
+
+## Set up
+
+```bash
+git clone https://github.com/dudaji-vn/nufichat-admin-panel.git
+cd nufichat-admin-panel
+cp .env.example .env
+# Edit .env — set VITE_API_BASE_URL and SESSION_SECRET.
+bun install
+bun dev          # http://localhost:3000
+```
+
+## Env vars
+
+| Variable                          | Required          | Default                          | Purpose                                                       |
+|-----------------------------------|-------------------|----------------------------------|---------------------------------------------------------------|
+| `PORT`                            | No                | `3000`                           | Listen port                                                   |
+| `SESSION_SECRET`                  | Yes in Docker     | Dev fallback                     | Encrypts the panel session cookie (min 32 chars)              |
+| `VITE_API_BASE_URL`               | Yes               | `http://localhost:3080`          | LibreChat API base URL — `host.docker.internal` in Docker     |
+| `ADMIN_SSO_ONLY`                  | No                | `false`                          | Hide email/password, SSO redirect only                        |
+| `ADMIN_SESSION_IDLE_TIMEOUT_MS`   | No                | `1800000` (30 min)               | Session idle timeout                                          |
+| `ADMIN_PANEL_METRICS_SECRET`      | No                | —                                | Token required to read `/metrics`                             |
+| `ADMIN_PANEL_STATIC_CACHE_MAX_AGE`| No                | 2 days                           | Cache header for static assets                                |
+| `ADMIN_PANEL_INDEX_CACHE_CONTROL` | No                | `no-cache`                       | Cache header for `index.html`                                 |
+
+## Layout
+
+```
+nufichat-admin-panel/
+├── src/
+│   ├── routes/              # TanStack Router file-based routes
+│   ├── components/
+│   │   ├── access/          # roles, groups, members
+│   │   ├── configuration/   # schema-driven config editor
+│   │   │   └── fields/      # individual field renderers
+│   │   ├── grants/          # capability grants + audit
+│   │   ├── shared/
+│   │   └── users/
+│   ├── server/              # createServerFn handlers
+│   ├── hooks/
+│   ├── locales/             # i18n
+│   ├── types/
+│   └── utils/
+├── server.ts                # Bun + Hono entry
+└── Dockerfile               # multi-stage Vite build → Bun runtime
+```
+
+## Common tasks
+
+```bash
+bun run typecheck             # tsc
+bun run build                 # production build
+bun run test                  # vitest
+bun run test:e2e              # playwright
+bunx @tanstack/router-cli generate   # regen the route tree
+bunx --bun shadcn@latest add <name>  # add a shadcn primitive
+```
+
+## Connecting to LibreChat
+
+The panel hits LibreChat's `/api/admin/*` endpoints. In dev:
+
+- Run `npuops-platform` (so LibreChat is at `http://localhost:3080`).
+- Or run the LibreChat fork locally (same port).
+- Set `VITE_API_BASE_URL=http://localhost:3080`.
+
+The panel auth requires a LibreChat user with `role=ADMIN`. Register
+one in the chat first.
+
+## Adding a new field renderer
+
+The configuration editor is schema-driven. To support a new field
+type from `@librechat/data-schemas`:
+
+1. Add a component in `src/components/configuration/fields/`.
+2. Register it in the `FieldRenderer` switch.
+3. The new field type is picked up automatically next time you build.
+
+## Conventions
+
+- TypeScript strict, no `any`.
+- Single-word file names; group multi-word concerns under a directory.
+- Barrel imports: `@/types`, `@/hooks`, `@/utils`, `@/server`,
+  `@/components/shared`. No sub-path imports.
+- Always `import type` standalone — never inline `type` in a value
+  import.
+- Use `@clickhouse/click-ui` components — `Button`, `Icon`, `Dialog`,
+  `TextField`. Avoid raw HTML primitives.
+- `useLocalize()` for every user-facing string.
+
+Full guide: `CLAUDE.md` in the repo.
+
+## Release
+
+This repo ships its own Docker image:
+
+```bash
+git tag v<x.y.z>
+git push origin v<x.y.z>
+# CI publishes ghcr.io/dudaji-vn/librechat-admin-panel:<tag>
+```
+
+In production, run the panel behind the same reverse proxy as the
+chat — typically `admin.nufi.me`.

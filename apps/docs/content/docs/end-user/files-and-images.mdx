@@ -1,0 +1,117 @@
+---
+title: Files and images
+description: Upload documents, send images, and ask the AI questions about them.
+---
+
+You can attach files to a message and ask the AI about them — read a
+PDF, describe a photo, turn a screenshot into a table.
+
+> **Guides:** Prefer a walkthrough? See
+> [Chat with a document](/docs/end-user/guides/chat-with-a-document),
+> [Analyze data & images](/docs/end-user/guides/analyze-data-and-images), and
+> [Generate images](/docs/end-user/guides/generate-images).
+
+## Attach a file
+
+<Steps>
+<Step>Click the **paperclip** (Attach File) at the bottom-left of the
+message box. You can also just **drag a file** onto the conversation.</Step>
+<Step>Choose how to send it:
+**Upload to Provider** (sends the file to the model — best for images
+and rich documents) or **Upload as Text** (pulls the text out and adds
+it to your prompt).</Step>
+<Step>Type your question and press **Enter**. The file rides along with
+the message.</Step>
+</Steps>
+
+![The attach menu with Upload to Provider and Upload as Text](/screenshots/chat-attach-menu.png)
+
+You can attach more than one file to a single message.
+
+## Search across your files
+
+Open the **Tools** menu (the sliders icon next to the paperclip) and
+turn on **File Search**. The AI can then look through the files you've
+uploaded and pull in the relevant parts when it answers — you don't
+have to paste the contents yourself.
+
+![The Tools menu — File Search, Web Search, Skills, Run Code, Artifacts](/screenshots/chat-tools-menu.png)
+
+> Want documents that stay available across every chat (and can be
+> shared with a team)? Build a knowledge agent instead — see
+> [Knowledge and document chat](/docs/end-user/knowledge).
+
+## Talk to a document
+
+Upload a PDF, then ask questions about it:
+
+> Summarise the main findings of this report in 5 bullets.
+
+> What does section 3.2 say about pricing?
+
+> Translate the conclusion into Vietnamese.
+
+NUFI feeds the relevant parts to the model and answers in context.
+
+## Look at an image
+
+Upload an image, then ask:
+
+> What is in this photo?
+
+> Read the text in this screenshot and turn it into a table.
+
+> Suggest three improvements to this UI design.
+
+This needs a **vision-capable** model. If the model can't read the
+image, switch models from the [model picker](/docs/end-user/models-and-presets#pick-a-model).
+
+## What works
+
+| Type     | Examples                              |
+|----------|---------------------------------------|
+| Images   | PNG, JPEG, WebP, GIF                  |
+| Docs     | PDF, plain text, Markdown             |
+| Code     | `.py`, `.ts`, `.go`, `.md`, …         |
+
+Typical limits per message (your admin can change these):
+
+| Limit          | Default |
+|----------------|---------|
+| Files / msg    | 5       |
+| Per file size  | 20 MB   |
+| Total          | 50 MB   |
+
+## Generate and edit images
+
+If image generation is enabled for your team, you can create images
+from a description. Turn on the image tool from the **Tools** menu (or
+type `/image` at the start of the box if your deployment uses that),
+then describe what you want:
+
+```
+a watercolour fox reading a book in a cosy library,
+soft pastel colours, dawn lighting
+```
+
+The image appears in the conversation and is saved to your account. To
+change it, describe the edit in your next message ("make the sky
+purple and add a moon") — you keep both versions.
+
+> If you don't see an image tool, your organisation hasn't turned on
+> image generation. Ask your admin.
+
+## Storage and privacy
+
+Files you upload are saved to your account and visible only to you
+(plus anyone you explicitly share a conversation with). Your own files
+are listed under the avatar menu → **My Files**. Deleting a
+conversation also deletes the files attached to it.
+
+## Errors you might see
+
+- **"File too large"** — over the per-file cap. Compress or split it.
+- **"Out of budget"** — image generation costs more than text. Check
+  your usage in the [console](/docs/end-user/api-keys).
+- **"Please slow down"** — too many requests in a short window. Wait a
+  few seconds.

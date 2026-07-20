@@ -1,0 +1,118 @@
+---
+title: Release flow
+description: How a new chat image goes from a commit on the fork to a running container in production.
+---
+
+The NUFI chat image (`ghcr.io/dudaji-vn/nufichat`) is the deliverable.
+Every other component pulls a versioned tag of it.
+
+## The pipeline
+
+```
+1. Code lands on dudaji-vn/LibreChat:develop
+2. Maintainer merges develop → fork/main (npuops/main)
+3. Maintainer tags nufi-vX.Y.Z on fork/main
+4. CI builds + pushes ghcr.io/dudaji-vn/nufichat:nufi-vX.Y.Z
+5. CI also pushes ghcr.io/dudaji-vn/nufichat:main (rolling)
+6. Maintainer bumps IMAGE_TAG in nufi-chat and/or
+   npuops-platform/docker-compose.yml
+7. Deploy hosts pull the new tag
+```
+
+## The `nufi-release` skill
+
+The repo ships a Claude-Code skill that automates steps 2–4. Trigger
+it with:
+
+```
+/nufi-release
+```
+
+…or pass a specific version:
+
+```
+/nufi-release v0.0.6
+```
+
+The skill:
+
+1. Reads the most recent `nufi-v*` tag from the fork.
+2. Auto-bumps the patch version (`v0.0.5` → `v0.0.6`) unless a version
+   was passed explicitly.
+3. Switches to `fork/main`, fast-forwards from `develop`, and pushes.
+4. Tags `nufi-vX.Y.Z` and pushes the tag.
+5. Polls the GHCR workflow until the image is published.
+6. Verifies the new tag is pullable.
+
+It does **not** auto-bump consumers — that step is intentional, so a
+human reviews `nufi-chat` and `npuops-platform` PRs before the new
+tag rolls out.
+
+## After the image lands
+
+Two consumers need the bump:
+
+### `nufi-chat`
+
+```bash
+# In .env
+IMAGE_TAG=nufi-v0.0.6
+
+docker compose pull && docker compose up -d
+```
+
+Or with bootstrap:
+
+```bash
+./bootstrap.sh    # prompts for the new tag, keeps everything else
+```
+
+### `npuops-platform`
+
+```yaml
+# docker-compose.yml
+librechat:
+  image: ghcr.io/dudaji-vn/librechat:npuops-v0.7.5-N    # bump trailing N
+```
+
+Then:
+
+```bash
+docker compose pull librechat
+docker compose up -d librechat
+```
+
+(The platform tracks the **`librechat`** image from a different tag
+sequence — `npuops-v0.7.5-N` — because it pre-dates the unified
+`nufichat` image. They are converging.)
+
+## Image versioning
+
+| Image                                                            | Tag scheme                       |
+|------------------------------------------------------------------|----------------------------------|
+| `ghcr.io/dudaji-vn/nufichat`                                     | `nufi-vX.Y.Z` + rolling `main`   |
+| `ghcr.io/dudaji-vn/librechat` *(legacy alias)*                   | `npuops-v0.7.5-N`                |
+| `ghcr.io/dudaji-vn/nufi-console`                                 | `nufi-console-vX.Y.Z` + `main`   |
+| `ghcr.io/dudaji-vn/librechat-admin-panel`                        | `vX.Y.Z` + `main`                |
+
+Pin specific tags in production. Rolling `main` is fine in dev.
+
+## Rolling back
+
+```yaml
+librechat:
+  image: ghcr.io/dudaji-vn/nufichat:nufi-v0.0.5    # previous good tag
+```
+
+```bash
+docker compose pull librechat && docker compose up -d librechat
+```
+
+The MongoDB schema is forward-compatible across patch versions, so
+rollback is safe within a minor series. For major version rollbacks,
+check the LibreChat upstream changelog for breaking schema changes.
+
+## See also
+
+- [Upgrade LibreChat](/docs/operations/upgrade-librechat) — bumping
+  the upstream LibreChat version inside the fork.

@@ -1,0 +1,13 @@
+{
+  "title": "Overview",
+  "description": "What NUFI is and how it works",
+  "root": true,
+  "icon": "Compass",
+  "pages": [
+    "index",
+    "architecture",
+    "components",
+    "data-flow",
+    "rag-integration"
+  ]
+}

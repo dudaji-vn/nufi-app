@@ -1,0 +1,61 @@
+---
+title: Capabilities (Grants)
+description: Grant each role the set of admin capabilities it should hold.
+---
+
+The **Grants** page lists every role and the capabilities it holds.
+Capabilities are the unit of authorisation — you don't hand out
+individual permissions, you grant a role a bundle of capabilities,
+then add people to that role on the [Access](/docs/admin/roles-and-groups)
+page.
+
+![The Grants page — capability counts per role](/screenshots/admin-grants.png)
+
+Each row shows a role, how many capabilities it holds, and its status.
+Out of the box:
+
+- **`ADMIN`** — holds **all** capabilities (20), **Active**.
+- **`USER`** — **no** capabilities, **Active**.
+
+## Edit a role's capabilities
+
+<Steps>
+<Step>Open the **Grants** page.</Step>
+<Step>Click the role you want to change.</Step>
+<Step>Tick the capabilities it should hold (untick the rest).</Step>
+<Step>Save. The change takes effect on each member's next request.</Step>
+</Steps>
+
+> You can also reach the same controls from the **Permissions** tab of
+> a role on the [Access](/docs/admin/roles-and-groups) page.
+
+## What capabilities cover
+
+Capabilities map to areas of the admin panel — broadly:
+
+| Area | Lets the role… |
+|------|----------------|
+| **Users / members** | View, and add or remove members of roles and groups |
+| **Roles** | View and define roles |
+| **Groups** | View and manage groups and their members |
+| **Configuration** | View, and edit base configuration |
+| **Scoped overrides** | Attach config overrides to roles / groups / users |
+| **Tools / agents** | Manage connected tools and shared agents |
+
+The exact names and the full set are defined by NUFI's authorisation
+schema, so the precise list can grow as NUFI adds features. The
+`ADMIN` role always bundles all of them, so you only need to touch
+this page when carving out a **constrained sub-admin** role.
+
+## How enforcement works
+
+Capabilities are checked **on the server**, not just in the UI. Hiding
+a button only suppresses the UI — the server independently verifies
+the caller holds the required capability before changing anything. So
+a custom role is safe even if a screen forgets to hide a control.
+
+## Custom capabilities
+
+You can't invent new capabilities from the panel — they're part of
+NUFI's schema. If you need one that doesn't exist, request it from the
+NUFI team.

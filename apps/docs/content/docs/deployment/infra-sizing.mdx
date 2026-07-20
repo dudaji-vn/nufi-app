@@ -1,0 +1,108 @@
+---
+title: Infra sizing
+description: Reference VM for a single-server pilot, growth signals, license-debt risks.
+---
+
+## Reference VM (single-server alpha)
+
+The platform fits in one VM for the pilot phase:
+
+| Resource     | Sizing                        | Notes                                                  |
+|--------------|-------------------------------|--------------------------------------------------------|
+| vCPU         | 12 cores                      | Burst usage during e2e tests                           |
+| RAM          | 32 GB                         | Trace store + gateway + databases     |
+| Disk         | 256 GB SSD                    | Growth alert at 60 % (150 GB)                          |
+| OS           | Ubuntu 22.04 LTS              | Anything with modern Docker works                      |
+
+This carries roughly **50 active users at 100 prompts each per day**
+without strain. Past that, split.
+
+## Per-service caps
+
+Compose declares CPU and memory caps so one runaway service does not
+starve the rest. Reference defaults:
+
+| Service            | CPU cap   | RAM cap   |
+|--------------------|-----------|-----------|
+| ClickHouse         | 2 vCPU    | 4 GB      |
+| LLM Guard          | 1 vCPU    | 2 GB      |
+| Presidio Analyzer  | 1 vCPU    | 1.5 GB    |
+| Gateway            | 2 vCPU    | 2 GB      |
+| Chat               | 2 vCPU    | 2 GB      |
+| Langfuse worker    | 2 vCPU    | 2 GB      |
+| Langfuse web       | 1 vCPU    | 1 GB      |
+| Postgres           | 1 vCPU    | 1 GB      |
+| MongoDB            | 1 vCPU    | 1 GB      |
+
+Tune in `docker-compose.yml` under each service's `deploy.resources`.
+
+## Disk allocation (per service)
+
+| Volume             | Initial allocation | Notes                                              |
+|--------------------|--------------------|----------------------------------------------------|
+| `postgres-data`    | 10 GB              | Gateway keys + trace metadata                   |
+| `mongodb-data`     | 20 GB              | Conversations grow linearly with usage             |
+| `clickhouse-data`  | 50 GB              | **Fastest grower** — ~50 MB / 1000 traces          |
+| `minio-data`       | 30 GB              | Langfuse blob payloads                             |
+| `prometheus-data`  | 20 GB              | 15-day retention                                   |
+| `grafana-data`     | 5 GB               | State + user-uploaded JSON                         |
+
+Alert at 60 % disk. Expand to 500 GB when ClickHouse + MinIO together
+cross 100 GB.
+
+## When to split off
+
+You have one VM. When do you start adding more?
+
+- **ClickHouse + MinIO crossing 100 GB** — move them to their own
+  data VM with a larger disk.
+- **More than 100 concurrent active users** — split the chat behind
+  a load balancer; The chat has resumable-streams support for
+  multi-instance setups (`REDIS_*` env vars enable it).
+- **Gateway CPU saturated** — add more gateway replicas. Postgres +
+  Redis are shared.
+- **Trace latency lag** — split Langfuse worker into N replicas.
+
+## License debt
+
+A handful of dependencies have non-permissive licences that limit
+commercial re-distribution:
+
+| Component   | License          | Risk                                                 |
+|-------------|------------------|------------------------------------------------------|
+| MongoDB     | SSPL             | Cannot resell hosted MongoDB-as-a-service             |
+| MinIO       | AGPLv3           | AGPL viral if you redistribute MinIO + extensions    |
+| Redis       | RSALv2           | Cannot resell Redis-as-a-service                     |
+
+For an internal run on your own infrastructureed deployment, all three are fine. If the
+platform is ever distributed externally, swap in:
+
+- **FerretDB** for MongoDB (compatible wire protocol).
+- **SeaweedFS** for MinIO (S3-compatible).
+- **Valkey** for Redis (Apache-2.0 fork).
+
+W9 of the roadmap tracks this swap as the license-debt resolution
+milestone.
+
+## Networking
+
+- Outbound — model providers (OpenAI, Anthropic, …), Langfuse self-
+  hosted obviously not outbound.
+- Inbound — only the reverse proxy's 80/443.
+- East-west — entirely within the `npuops` Docker network.
+
+If you front everything through Cloudflare tunnel, there is **no
+inbound** at all. See [Cloudflare tunnel](/docs/deployment/cloudflare-tunnel).
+
+## Cost benchmark
+
+The reference VM at AWS-style prices is approximately:
+
+- VM (12 vCPU / 32 GB / 256 GB SSD) — ~$120-180/month
+- Outbound bandwidth — ~$10/month at pilot scale
+- Cloudflare tunnel + Access — free up to 50 users
+- Backups (S3 or B2) — ~$5/month for daily snapshots, 30-day
+  retention
+
+So **under $200/month** to host the platform; the LLM inference cost
+sits on top and varies wildly by backend.

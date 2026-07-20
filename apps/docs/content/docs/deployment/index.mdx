@@ -1,0 +1,57 @@
+---
+title: Deploying NUFI
+description: From "I have a server" to "users are chatting on it" — the production path.
+---
+
+This section is for the operator standing up a production instance.
+
+## What you need
+
+- A Linux host (Ubuntu 22.04 LTS in the reference build).
+- Docker Engine 24+ with Compose v2.
+- Ports 80 and 443 free for the reverse proxy.
+- A domain you control (or a Cloudflare tunnel if you do not have a
+  public IP).
+- A GHCR PAT with `read:packages`.
+- ~32 GB RAM, 12 vCPU, 256 GB SSD as a starting point — see
+  [Infra sizing](/docs/deployment/infra-sizing).
+
+## Path A — public IP + reverse proxy
+
+You have a server with a public IP and DNS records you control. Run
+Caddy (or Traefik) on the host, proxy traffic to the compose services.
+
+→ [Docker Compose](/docs/deployment/docker-compose) +
+[SSO and reverse proxy](/docs/deployment/sso-reverse-proxy).
+
+## Path B — no public IP, Cloudflare tunnel
+
+The server lives inside an office network with no inbound access.
+Outbound Cloudflare tunnel exposes it as `nufi.me`
+without opening any ports.
+
+→ [Cloudflare tunnel](/docs/deployment/cloudflare-tunnel).
+
+Both paths share:
+
+- [Environment variables](/docs/deployment/environment-variables)
+- [GHCR images](/docs/deployment/ghcr-images)
+- [Monitoring and alerts](/docs/deployment/monitoring-alerts)
+- [Backup and restore](/docs/deployment/backup-restore)
+
+## Checklist before you go live
+
+- [ ] `.env` has every secret randomly generated (no defaults).
+- [ ] `ALLOW_REGISTRATION` is `false` (you pre-create users) or your
+      registration policy is intentional.
+- [ ] `COOKIE_DOMAIN` and `COOKIE_SAMESITE` are set so chat and
+      console share auth.
+- [ ] HTTPS is on (Let's Encrypt via Caddy, or Cloudflare proxy).
+- [ ] At least one admin user exists; you have their credentials.
+- [ ] Backups are scheduled — Mongo + Postgres at minimum.
+- [ ] Prometheus alert rules route to Slack (or your incident channel).
+- [ ] You ran `./scripts/e2e-smoke-test.sh` and it passed.
+- [ ] You documented somewhere the host's `docker login ghcr.io`
+      credentials so a teammate can pull images during an incident.
+- [ ] You picked a [release pinning](/docs/developer/release-flow)
+      policy — rolling `main` is fine for staging, never for prod.

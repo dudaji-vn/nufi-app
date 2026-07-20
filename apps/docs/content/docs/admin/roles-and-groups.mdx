@@ -1,0 +1,78 @@
+---
+title: Roles and groups
+description: Manage who can do what (roles) and who sees what (groups) on the Access page.
+---
+
+The **Access** page is where you manage **roles** and **groups** and
+assign people to them. It has two tabs — **Roles** and **Groups**.
+
+![Access management — the Roles tab with the built-in ADMIN and USER roles](/screenshots/admin-access.png)
+
+Roles and groups are separate ideas:
+
+| Concept | Attaches | Used for |
+|---------|----------|----------|
+| **Role** | Capability grants | Who can perform which admin action |
+| **Group** | Config overrides | Which features and limits a user sees |
+
+## Roles
+
+A role is a named bundle of capabilities. Two **System** roles ship
+built in and can't be deleted:
+
+- **`ADMIN`** — every capability.
+- **`USER`** — ordinary app access, no admin powers.
+
+### Create a role
+
+<Steps>
+<Step>On **Access → Roles**, click **Create role**.</Step>
+<Step>Give it a **Name** and an optional **Description**.</Step>
+<Step>Save. Then assign its capabilities on the
+[Grants](/docs/admin/capabilities) page.</Step>
+</Steps>
+
+### Edit a role and its members
+
+Click a role to open the **Edit role** dialog. It has three tabs:
+
+![The Edit role dialog with Details, Permissions, and Members tabs](/screenshots/admin-role-detail.png)
+
+- **Details** — the name and description.
+- **Permissions** — the capabilities the role grants (also editable
+  from [Grants](/docs/admin/capabilities)).
+- **Members** — **who is in the role**. This is where you add or
+  remove the people who hold it. Changes take effect on the member's
+  next request.
+
+> System roles (`ADMIN`, `USER`) show a **System** badge and can't be
+> renamed or deleted, but you can still manage their members.
+
+## Groups
+
+A group is a named set of people that exists so you can attach
+**config overrides** to them without editing each person individually.
+Examples:
+
+- `power-users` — higher file-size and rate-limit caps.
+- `beta-features` — see flags that are off for everyone else.
+
+### Create a group and add members
+
+<Steps>
+<Step>On **Access → Groups**, create a group and name it.</Step>
+<Step>Open it and add members — takes effect immediately, no sign-out
+needed.</Step>
+<Step>Give the group a different setting by adding a scoped override
+for it in [Configuration](/docs/admin/configuration). See
+[Scoped overrides](/docs/admin/scoped-overrides).</Step>
+</Steps>
+
+## Roles vs groups — which do I use?
+
+- Use a **role** to control **admin capabilities** (who can edit
+  config, manage members, etc.).
+- Use a **group** to control **what the app shows** a set of people
+  (models, features, limits) via config overrides.
+
+A person can be in one role and any number of groups.

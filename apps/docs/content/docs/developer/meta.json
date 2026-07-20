@@ -1,0 +1,23 @@
+{
+  "title": "Develop",
+  "description": "Run the stack locally and ship to it",
+  "root": true,
+  "icon": "Code",
+  "pages": [
+    "index",
+    "---Get started---",
+    "../getting-started/prerequisites",
+    "../getting-started/quick-start",
+    "../getting-started/verify-install",
+    "---Run locally---",
+    "local-stack",
+    "---Codebases---",
+    "nufi-chat",
+    "librechat-fork",
+    "admin-panel-dev",
+    "console-dev",
+    "---Extend & ship---",
+    "adding-models",
+    "release-flow"
+  ]
+}

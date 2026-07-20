@@ -1,0 +1,59 @@
+---
+title: Configuration editor
+description: A schema-driven UI for every NUFI setting — no file editing, no restarts.
+---
+
+NUFI's behaviour comes from a single configuration tree (rooted in
+`librechat.yaml`). The **Configuration** page lets you edit every
+value from the browser. The UI is generated from the schema, so when
+a new feature ships its settings appear here automatically.
+
+![The Configuration page — provider settings under the Base scope](/screenshots/admin-configuration.png)
+
+## The tabs
+
+Settings are grouped across the tabs at the top of the page. The small
+number on each tab counts how many values you've configured there:
+
+| Tab | What it holds |
+|-----|---------------|
+| **AI providers** | Credentials and options per provider — OpenAI, Google, Anthropic, Azure OpenAI, Bedrock, Assistants, Agents, … |
+| **Custom endpoints** | Your own OpenAI-compatible endpoints (e.g. a self-hosted gateway) |
+| **Model specs** | Curated model entries shown to users |
+| **MCP** | Model Context Protocol servers / connected tools |
+| **Features** | Feature flags — agents, presets, web search, speech, and so on |
+| **Files & storage** | Storage backend, allowed file types, size caps |
+| **System** | Server-level settings |
+
+Within a tab, expand a section (e.g. **Anthropic**) to see its fields.
+**Expand all / Collapse all** and **Show configured only** at the top
+help you focus, and the **Search** box (`⌘K`) jumps to any field.
+
+## Edit a value
+
+<Steps>
+<Step>Open the tab, expand the section, and find the field.</Step>
+<Step>Type or toggle the new value.</Step>
+<Step>Save. Changes apply on NUFI's next request — no restart needed.</Step>
+</Steps>
+
+## Scopes — base vs overrides
+
+The **scope selector** at the top (it reads **Base configuration** by
+default) controls *who* the values you're editing apply to:
+
+- **Base configuration** — the default for everyone. This is where you
+  set the org-wide value.
+- **A scoped override** — create one for a specific **role**, **group**,
+  or **user** to give just them a different value. More specific scopes
+  win over the base. See [Scoped overrides](/docs/admin/scoped-overrides).
+
+To work on an override, open the scope selector, pick or **Create** the
+scope, then edit fields the same way — the values you change apply only
+within that scope.
+
+## Import YAML
+
+The **Import YAML** button (top-right) lets you paste or upload a
+`librechat.yaml`-style document to apply many settings at once instead
+of editing field by field. Review the diff before applying.

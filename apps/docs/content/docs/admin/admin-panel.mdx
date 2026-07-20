@@ -1,0 +1,74 @@
+---
+title: Admin panel basics
+description: Sign in, find your way around, and understand the capability model behind every action.
+---
+
+The admin panel is the web app at `admin.nufi.me` where you manage
+NUFI for your organisation — configuration, roles, groups, members,
+and capability grants.
+
+![The admin panel dashboard with quick links](/screenshots/admin-home.png)
+
+## Sign in
+
+![The admin panel sign-in screen](/screenshots/admin-sign-in.png)
+
+<Steps>
+<Step>Open `admin.nufi.me`. The admin panel does **not** auto-SSO from
+the app — it has its own sign-in.</Step>
+<Step>Enter the **email and password** of a NUFI account whose role is
+`ADMIN`, then click **Sign in**. (If single sign-on is configured, use
+that instead.)</Step>
+<Step>If your account has two-factor enabled, type the 6-digit code
+when prompted.</Step>
+</Steps>
+
+When SSO-only mode is enabled, the email/password form is hidden and
+visitors are redirected to the identity provider.
+
+## Find your way around
+
+The left sidebar has five destinations:
+
+| Section | What it's for |
+|---------|---------------|
+| **Dashboard** | The home screen with quick links to every area |
+| **Configuration** | Every setting NUFI reads — providers, models, features, files, system. See [Configuration](/docs/admin/configuration) |
+| **Access** | Define **roles** and **groups**, and assign **members**. See [Roles and groups](/docs/admin/roles-and-groups) |
+| **Grants** | Choose which **capabilities** each role holds. See [Capabilities](/docs/admin/capabilities) |
+| **Help** | Links to documentation and support |
+
+Your account avatar sits at the bottom-left; the **Command menu**
+(`⌘K` / search) at the top-right jumps to any page.
+
+## The capability model
+
+Every admin action is gated by a **capability**. You don't hand out
+individual permissions — you grant a **role** a bundle of
+capabilities (on the [Grants](/docs/admin/capabilities) page), then put
+people into that role (on the [Access](/docs/admin/roles-and-groups)
+page).
+
+Out of the box there are two **System** roles:
+
+- **`ADMIN`** — holds every capability (20 of them).
+- **`USER`** — holds none; ordinary app access only.
+
+To create a constrained sub-admin, make a new role, grant it just the
+capabilities it needs, and add the relevant people as members.
+
+## A typical workflow
+
+<Steps>
+<Step>A teammate needs limited admin powers. On **Access → Roles**,
+click **Create role** and name it (e.g. `SUPPORT`).</Step>
+<Step>On **Grants**, open that role and tick only the capabilities it
+should have.</Step>
+<Step>Back on **Access**, open the role's **Members** tab and add the
+teammate.</Step>
+<Step>Need a group to see a particular model or higher limit? Create a
+**Group** under Access, add members, then add a scoped override for it
+in **Configuration** (see [Scoped overrides](/docs/admin/scoped-overrides)).</Step>
+</Steps>
+
+The next pages walk through each area in detail.

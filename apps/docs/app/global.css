@@ -1,0 +1,18 @@
+@import 'tailwindcss';
+@import 'fumadocs-ui/css/neutral.css';
+@import 'fumadocs-ui/css/preset.css';
+
+@source '../node_modules/fumadocs-ui/dist/**/*.js';
+
+:root {
+  --color-fd-primary: oklch(0.62 0.21 268);
+}
+
+.dark {
+  --color-fd-primary: oklch(0.78 0.15 268);
+}
+
+/* Make the docs landing prose slightly more breathable. */
+.prose {
+  --tw-prose-body: var(--color-fd-foreground);
+}

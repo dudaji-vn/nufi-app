@@ -1,0 +1,130 @@
+---
+title: Docker Compose
+description: "The compose stack — services, volumes, networks, profiles."
+---
+
+The full platform is one Compose file (`docker-compose.yml` in the
+`npuops-platform` repo). Every service runs inside the `npuops`
+bridge network.
+
+## Services at a glance
+
+```
+postgres ─┬─► langfuse-worker ─┐
+          ├─► langfuse-web ────┼─► litellm-proxy ─► librechat
+          └─► litellm-proxy    │                  └─► console
+                               │
+clickhouse ──► langfuse-worker │
+redis ───────► litellm-proxy   │
+minio ──┬─► minio-init ────────┘
+        └─► langfuse-{worker,web}
+
+presidio-analyzer  ─┐
+presidio-anonymizer ┼─► litellm-proxy (guardrails)
+llm-guard-api ──────┘
+
+prometheus → grafana
+prometheus → alertmanager
+postgres-exporter, redis-exporter → prometheus
+```
+
+## Volumes
+
+Persisted Docker volumes:
+
+- `postgres-data` — Gateway keys, trace metadata.
+- `mongodb-data` — chat conversations.
+- `clickhouse-data` — Langfuse traces (largest).
+- `minio-data` — Langfuse blob payloads.
+- `redis-data` — rate-limit counters.
+- `prometheus-data` — 15 days of metrics.
+- `grafana-data` — Grafana state.
+
+Back up the first four — they hold platform data.
+
+## Networks
+
+Only one — `npuops` bridge. Every service joins it. Services reach
+each other by service name (e.g. `http://litellm-proxy:4000`).
+
+If you also run [`nufi-chat`](/docs/developer/nufi-chat) on the same
+host and want it to reach the gateway by name, enable shared-
+network mode (see the nufi-chat repo).
+
+## Host port bindings
+
+| Host port | Service       | Behind reverse proxy?     |
+|-----------|---------------|---------------------------|
+| 3080      | librechat     | Yes — `chat.nufi.me`        |
+| 3001      | console       | Yes — `console.nufi.me`     |
+| 3000      | langfuse-web  | Yes — `langfuse.nufi.me`    |
+| 3030      | grafana       | Yes — `grafana.nufi.me`     |
+| 4000      | litellm-proxy | Yes — `api.nufi.me`         |
+| 9090      | prometheus    | No — admin SSH tunnel     |
+| 9093      | alertmanager  | No — admin SSH tunnel     |
+
+In production you front them with Caddy/Traefik and drop the host port
+bindings for the admin-only services (Prometheus, Alertmanager).
+SSH-tunnel them when you need to look in.
+
+## Profiles
+
+The compose file uses one Docker profile:
+
+- **`e2e`** — the `e2e-test` service that runs the end-to-end smoke
+  test. Never starts on a default `docker compose up`; invoke via
+  `./scripts/e2e-smoke-test.sh`.
+
+## Healthchecks
+
+Every long-running service has a healthcheck. `service_healthy`
+dependencies enforce ordering — e.g. the gateway waits for
+Postgres, Redis, Langfuse, and all three guardrails before starting.
+
+If a deploy gets stuck "Starting", `docker compose ps` will show
+which service is unhealthy. Tail its logs:
+
+```bash
+docker compose logs -f <service>
+```
+
+## Common ops
+
+```bash
+# Apply a config change without rebuilding
+docker compose restart litellm-proxy
+
+# Bump an image (after editing the tag in docker-compose.yml)
+docker compose pull librechat
+docker compose up -d librechat
+
+# Take everything down, keep data
+docker compose down
+
+# Take everything down AND drop data (destructive!)
+docker compose down -v
+```
+
+## Layout reminder
+
+```
+npuops-platform/
+├── docker-compose.yml
+├── .env                       # gitignored
+├── litellm/
+│   ├── config.yaml
+│   ├── callbacks/
+│   └── Dockerfile             # only if rebuilding the gateway with custom hooks
+├── librechat/
+│   └── librechat.yaml         # mounted into the chat container
+├── monitoring/
+│   ├── prometheus.yml
+│   ├── alertmanager.yml
+│   ├── rules/
+│   ├── secrets/slack-webhook  # gitignored
+│   └── grafana/{dashboards,provisioning}/
+└── scripts/
+```
+
+See [Environment variables](/docs/deployment/environment-variables)
+for what goes in `.env`.

@@ -1,0 +1,101 @@
+---
+title: Architecture
+description: How NUFI is organised — the four surfaces and how they connect.
+---
+
+NUFI is a layered platform. Users talk to a chat UI or a developer
+console; both go through a single AI gateway that handles routing,
+budgets, and audit; the gateway calls the actual AI models.
+
+## At a glance
+
+```
+                ┌─────────────────────────────────────────────────┐
+                │                  Your users                     │
+                └───────────────┬─────────────────────┬───────────┘
+                                │                     │
+                          chat.nufi.me          console.nufi.me
+                                │                     │
+                                ▼                     ▼
+                  ┌──────────────────────┐ ┌──────────────────────┐
+                  │  NUFI Chat           │ │  NUFI Console        │
+                  │  conversations,      │ │  manage your own     │
+                  │  agents, files       │ │  API keys & usage    │
+                  └─────────┬────────────┘ └──────────┬───────────┘
+                            │   shared sign-in (one cookie)        │
+                            ▼                                       ▼
+                  ┌──────────────────────────────────────────────────┐
+                  │              NUFI AI Gateway                     │
+                  │  routing · per-user keys · budgets · audit       │
+                  └─────────┬────────────────────────┬───────────────┘
+                            │                        │
+                            ▼                        ▼
+                  ┌──────────────────┐     ┌─────────────────────────┐
+                  │ Safety filters   │     │ AI providers            │
+                  │ PII detection,   │     │ OpenAI, Anthropic,      │
+                  │ prompt safety    │     │ Google, Meta, Mistral,  │
+                  └──────────────────┘     │ self-hosted models, …   │
+                                           └─────────────────────────┘
+
+  Observability:   trace store · request metrics · spend dashboards
+  Admin surface:   admin.nufi.me — configure features, users, roles
+```
+
+## What sits where
+
+- **Your users** open the chat at `chat.nufi.me`. They sign in and
+  pick a model from the dropdown.
+- **Developers** also open the console at `console.nufi.me` to
+  generate API keys for their own apps. They sign in once at the
+  chat — the console reads the same login. No second password.
+- Every AI conversation — whether from the chat UI or from someone's
+  own code — goes through the **NUFI AI Gateway**. The gateway
+  enforces per-user budgets, rate limits, and routing rules.
+- Before the prompt reaches the AI provider, **safety filters**
+  scan it for sensitive personal data and prompt-injection attempts.
+- The **AI provider** can be anything: OpenAI, Anthropic, Google,
+  open-source models on your own hardware. NUFI does not care which
+  one — you pick per model.
+- Every request is **logged** (prompt, reply, cost, latency) so
+  admins can answer "what did the AI say to user X yesterday?"
+  and "how much did our team spend this month, by model?".
+
+## Admin surface
+
+A separate web app at `admin.nufi.me` is where platform admins live:
+
+- Turn features on or off (web search, agents, file upload, …).
+- Manage users, roles, and groups.
+- Apply scoped overrides — e.g. higher file-size limits for the
+  design team, lower rate limits for read-only accounts.
+- Watch spend and request volume across the whole organisation.
+
+End users do not need to know this exists.
+
+## Sign-in across surfaces
+
+NUFI uses one sign-in across the chat, the console, and the admin
+panel. When you sign in to one, you are signed in to all three (as
+long as you have permission to use them).
+
+## Networking
+
+For a typical deployment, you will see these public hostnames:
+
+| Hostname              | What                              | Who uses it           |
+|-----------------------|-----------------------------------|------------------------|
+| `chat.nufi.me`        | Chat UI                           | Everyone               |
+| `console.nufi.me`     | Developer console                 | Developers             |
+| `admin.nufi.me`       | Admin panel                       | Admins only            |
+| `api.nufi.me`         | AI Gateway endpoint               | Developers' code       |
+
+Internal services (the trace store, dashboards, monitoring) are not
+exposed publicly. Admins reach them through admin-only links inside
+the admin panel.
+
+## What is next
+
+- [Components](/docs/overview/components) — every service that runs
+  behind the scenes.
+- [Data flow](/docs/overview/data-flow) — what happens when you
+  press Enter on a message.

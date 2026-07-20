@@ -1,0 +1,111 @@
+---
+title: GHCR images
+description: Authenticating to the GitHub Container Registry, pinning tags, troubleshooting pulls.
+---
+
+Every NUFI image lives on
+[ghcr.io](https://github.com/orgs/dudaji-vn/packages). They are
+private until the org publishes — assume private and authenticate.
+
+## One-time login (every contributor, every host)
+
+1. Create a **Personal Access Token** at
+   [github.com/settings/tokens/new](https://github.com/settings/tokens/new). Scope: `read:packages`
+   only. Note: e.g. `nufi-ghcr-read`.
+2. Log in once:
+   ```bash
+   echo ghp_xxxxxxxxxxxxxxxxxxxx | docker login ghcr.io \
+     -u <your-gh-username> --password-stdin
+   ```
+3. Credentials live in `~/.docker/config.json` until you rotate the
+   token.
+
+If pulls fail with `denied: denied`, your login expired or your token
+lacks `read:packages`. Re-run step 2.
+
+## The images
+
+| Image                                                | What it is                            |
+|------------------------------------------------------|---------------------------------------|
+| `ghcr.io/dudaji-vn/nufichat`                         | the NUFI Chat application                        |
+| `ghcr.io/dudaji-vn/librechat`                        | Legacy alias of the chat fork         |
+| `ghcr.io/dudaji-vn/nufi-console`                     | Self-service console                  |
+| `ghcr.io/dudaji-vn/librechat-admin-panel`            | Admin panel                           |
+
+All three are multi-arch (`linux/amd64`, `linux/arm64`). M-series Macs
+pull the arm64 variant transparently.
+
+## Tag conventions
+
+- `main` — rolling tag, built on every push to the default branch.
+  Fine in dev. Never in production.
+- `nufi-vX.Y.Z` (chat) / `nufi-console-vX.Y.Z` (console) /
+  `vX.Y.Z` (admin panel) — immutable release tags.
+- `npuops-v0.7.5-N` — legacy chat tag scheme, still produced by the
+  fork CI. Used by `npuops-platform/docker-compose.yml`.
+
+## Pinning in production
+
+Always pin a tag for production deployments. Two ways:
+
+### Inline in compose
+
+```yaml
+librechat:
+  image: ghcr.io/dudaji-vn/nufichat:nufi-v0.0.5
+console:
+  image: ghcr.io/dudaji-vn/nufi-console:nufi-console-v0.2.0
+```
+
+### Through env vars
+
+```yaml
+console:
+  image: ghcr.io/dudaji-vn/nufi-console:${NUFI_CONSOLE_TAG:-main}
+```
+
+```bash
+NUFI_CONSOLE_TAG=nufi-console-v0.2.0
+```
+
+The env-var form keeps tag bumps as one-line `.env` edits rather than
+compose edits.
+
+## Pulling a new tag
+
+```bash
+docker compose pull librechat
+docker compose up -d librechat
+```
+
+`pull` is a no-op if you are already on the same tag. `up -d` is a
+no-op if the running container already matches.
+
+## Common pull issues
+
+- **`denied: denied`** — not logged in, or token lacks
+  `read:packages`. Re-run `docker login ghcr.io`.
+- **`manifest unknown`** — the tag does not exist. Check the spelling
+  and confirm CI actually published it (Actions tab on the source
+  repo).
+- **`net/http: TLS handshake timeout`** — ghcr.io is rate-limiting you.
+  Wait a minute, retry, or rotate the PAT.
+
+## Image lifecycle
+
+GHCR retains untagged images for 90 days. Tagged images live until
+you delete them. There is no automatic cleanup — review the package
+versions periodically in the org Packages tab and delete obsolete
+ones.
+
+For deployments offline from the internet, push a mirror to your
+internal registry:
+
+```bash
+docker pull ghcr.io/dudaji-vn/nufichat:nufi-v0.0.5
+docker tag ghcr.io/dudaji-vn/nufichat:nufi-v0.0.5 \
+  registry.nufi.me/nufichat:nufi-v0.0.5
+docker push registry.nufi.me/nufichat:nufi-v0.0.5
+```
+
+Then change the `image:` line in compose to point at the mirror.

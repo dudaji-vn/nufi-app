@@ -1,0 +1,80 @@
+---
+title: Sign in
+description: Create your account, log in, enable two-factor, sign out.
+---
+
+![The NUFI app sign-in screen](/screenshots/chat-sign-in.png)
+
+## Create your account
+
+<Steps>
+<Step>Open `chat.nufi.me`.</Step>
+<Step>Click **Sign up** (under *"Don't have an account?"*).</Step>
+<Step>Enter your name, email, and a strong password, then submit.</Step>
+</Steps>
+
+Depending on how your organisation set NUFI up, you might instead see
+a **Continue with Google** (or Microsoft / company SSO) button. Use
+that — you won't need a separate password. If neither option appears,
+your administrator creates accounts for everyone; ask them.
+
+## Sign in
+
+On the **Welcome back** screen, enter your **email address** and
+**password** and click **Continue** — or use **Continue with Google**
+if your organisation set up single sign-on.
+
+Once signed in, you stay signed in for several days. You also get into
+the **console** (`console.nufi.me`) automatically — no second login.
+
+## Two-factor authentication
+
+Two-factor (**2FA**) adds a code from your phone on top of your
+password. Strongly recommended.
+
+<Steps>
+<Step>Open the **avatar menu** at the **bottom-left** → **Settings**.</Step>
+<Step>Go to the **Account** section and click **Enable two-factor**.</Step>
+<Step>Scan the QR code with an authenticator app (Google
+Authenticator, 1Password, Authy, Microsoft Authenticator — any work).</Step>
+<Step>Type the 6-digit code from the app to confirm.</Step>
+<Step>**Save the backup codes** somewhere safe — you'll need them if
+you lose your phone.</Step>
+</Steps>
+
+Next time you sign in, NUFI asks for the 6-digit code after your
+password.
+
+## Reset your password
+
+Click **Forgot password** on the sign-in screen. If your organisation
+has email delivery configured, a reset link arrives within a minute.
+If it doesn't, ask your administrator to reset it for you.
+
+## Your account menu
+
+Click your **avatar at the bottom-left** of the app to open the
+account menu:
+
+![The account menu — My Files, Help & FAQ, Console, Settings, Log out](/screenshots/chat-account-menu.png)
+
+From here you can open **My Files**, jump to the **Console** to manage
+[API keys](/docs/end-user/api-keys), open **Settings** (display name,
+avatar, password, two-factor, active sessions), or **Log out**.
+
+## Sign out
+
+Avatar menu (bottom-left) → **Log out**. This signs you out everywhere
+your account is open.
+
+## Common issues
+
+- **"Registration is disabled"** — your organisation only allows
+  admin-created accounts. Ask your admin to invite you.
+- **"Loop between chat and console"** — sign out fully, clear cookies
+  for `nufi.me`, then sign in again at the app.
+- **2FA code rejected** — your phone clock and the server clock are
+  out of sync. Open your phone settings → Date & Time → toggle
+  **Set automatically** on.
+- **Forgot the email you used** — your admin can tell you (or merge
+  duplicate accounts).

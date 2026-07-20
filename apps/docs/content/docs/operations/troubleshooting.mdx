@@ -1,0 +1,164 @@
+---
+title: Troubleshooting
+description: The most common failure modes and how to recover.
+---
+
+## "Model dropdown is empty / stuck on loading…"
+
+The chat could not reach the gateway, or the gateway has zero models.
+
+```bash
+# 1. Is the gateway up?
+docker compose ps litellm-proxy
+curl -s http://localhost:4000/health/liveliness
+
+# 2. Does the gateway know about any models?
+curl -s -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
+  http://localhost:4000/v1/models | jq '.data | length'
+
+# 3. Can the chat reach the gateway from inside the network?
+docker compose exec librechat \
+  wget -qO- http://litellm-proxy:4000/health/liveliness
+```
+
+If (2) returns 0, register a model with
+[`./scripts/add-model.sh`](/docs/developer/adding-models).
+
+If (3) returns `bad address`, the Docker network is broken — restart
+the stack: `docker compose down && docker compose up -d`.
+
+## "Server listening" never appears in chat logs
+
+Missing or malformed `.env`. Stop the stack, re-run `./bootstrap.sh`,
+restart.
+
+```bash
+docker compose down
+./scripts/bootstrap.sh
+docker compose logs -f librechat
+```
+
+## Login works on chat, console redirects to /unauthorized
+
+The session cookie is not reaching the console origin.
+
+Check, in order:
+
+1. `COOKIE_DOMAIN` is set in `.env` (e.g. `.nufi.me`).
+2. `COOKIE_SAMESITE=lax` (Strict blocks cross-subdomain).
+3. The reverse proxy is rewriting `Set-Cookie` with `Domain=.nufi.me`.
+4. Both chat and console are HTTPS, not mixed.
+5. The shared `JWT_REFRESH_SECRET` is identical in the chat and
+   console env.
+
+See [SSO + reverse proxy](/docs/deployment/sso-reverse-proxy).
+
+## `network <name> not found` (nufi-chat shared-network mode)
+
+Shared-network mode is on but the named external network does not
+exist. Either:
+
+- Create the network (or its owning stack).
+- Change `SHARED_DOCKER_NETWORK` in `.env` to a network that does
+  exist.
+- Disable shared-network mode: `rm docker-compose.override.yml &&
+  docker compose up -d`.
+
+## `denied: denied` when pulling images
+
+Not logged in to GHCR, or your PAT expired.
+
+```bash
+echo <new-pat> | docker login ghcr.io -u <gh-username> --password-stdin
+docker compose pull
+```
+
+## Gateway healthcheck never green
+
+```bash
+docker compose logs litellm-proxy --tail 200
+```
+
+Common causes:
+
+- **Postgres still warming up** — wait 30 seconds and retry. If it
+  persists, check `docker compose logs postgres` for crashes.
+- **Bad model in `litellm/config.yaml`** — typo in `model:`, missing
+  env var. The gateway logs the offending entry.
+- **`LLM_GUARD_API_BASE` unreachable** — LLM Guard took longer than
+  expected to come up (DeBERTa cold-start). Wait, or set
+  `start_period: 180s` on its healthcheck.
+
+## Langfuse traces stop appearing
+
+```bash
+docker compose logs langfuse-worker --tail 200
+```
+
+Usually one of:
+
+- ClickHouse out of disk.
+- MinIO out of disk.
+- The gateway not configured to emit (check `LANGFUSE_*` env on
+  the gateway).
+
+## High RAM, OOM kills
+
+ClickHouse and Langfuse worker are the heavy hitters. Cap them in
+compose (`deploy.resources.limits.memory`). If you cap ClickHouse, you
+may also want to lower its `max_memory_usage` and
+`max_bytes_before_external_group_by` query settings.
+
+## Disk filling fast
+
+ClickHouse and MinIO grow with traffic. Plan for ~50 MB per 1000
+traces. See [Backup and restore](/docs/deployment/backup-restore) for
+the retention story and [Infra sizing](/docs/deployment/infra-sizing)
+for split points.
+
+## Admin panel sessions keep expiring
+
+Default idle timeout is 30 minutes. Raise it via
+`ADMIN_SESSION_IDLE_TIMEOUT_MS` in the admin-panel container env. The
+session revalidates against the chat backend every 60 s — if the upstream
+the chat backend is briefly unhealthy, the revalidation fails and the panel
+signs the user out. Check `docker compose logs chat`.
+
+## "Conversation not found" after an upgrade
+
+Usually a chat schema change. Tail the chat logs while loading
+the conversation:
+
+```bash
+docker compose logs -f librechat
+```
+
+If you see schema-migration errors, you crossed a major NUFI
+version. See [Upgrade chat backend](/docs/operations/upgrade-librechat).
+Worst case: restore the previous MongoDB backup and re-do the upgrade
+following the upstream migration notes.
+
+## Console JIT-provision fails
+
+```bash
+docker compose logs console --tail 100 | grep -i provision
+```
+
+Common causes:
+
+- Master key mismatch between console env and gateway env.
+- The gateway is down or unhealthy.
+- The gateway database connection lost (look in the gateway logs).
+
+JIT-provision is idempotent — once the gateway is back, the next console
+visit completes the provision.
+
+## Where to look first
+
+Three commands cover 80 % of incidents:
+
+```bash
+docker compose ps                       # any service unhealthy?
+docker compose logs -f --tail 200       # last lines of every service
+curl -s http://localhost:9090/api/v1/alerts | jq    # firing alerts
+```

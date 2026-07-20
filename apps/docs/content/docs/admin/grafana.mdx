@@ -1,0 +1,76 @@
+---
+title: Dashboards
+description: Operational dashboards for request rate, errors, latency, and host health.
+---
+
+The dashboards at `grafana.nufi.me` show the operational side of
+NUFI — request rate, error rate, latency percentiles, host health.
+
+Where the [trace viewer](/docs/admin/langfuse) shows **what** the
+AI said, the dashboards show **how the platform held up while it
+was saying it**.
+
+## Sign in
+
+Use the dashboard credentials set during install. In production,
+front the dashboards with your reverse proxy so they share the
+same SSO posture as the rest of NUFI.
+
+## Pre-loaded dashboards
+
+NUFI ships with:
+
+- **Gateway Overview** — request rate, error rate, latency P50 /
+  P95 / P99, top models by request count, top users by request
+  count.
+- **Database health** — connection count, slow queries, replication
+  lag.
+- **Cache** — hit rate, memory usage, slow operations.
+
+All three load on first visit. Click the dashboard name in the
+left rail to switch.
+
+## Add a panel
+
+Dashboards are queries against a metrics database. To add a panel:
+
+1. Pick a dashboard → **Add → Visualisation**.
+2. Pick the metrics datasource.
+3. Write a query, e.g.
+   `sum by (model) (rate(nufi_total_requests[5m]))`.
+4. Save.
+
+## Alerts
+
+NUFI ships with three default alert rules:
+
+| Alert                       | Trigger                                | Severity   |
+|-----------------------------|----------------------------------------|------------|
+| `GatewayDown`               | Gateway not responding for 1 min       | critical   |
+| `HighErrorRate`             | Error rate > 5 % for 5 min             | warning    |
+| `HighLatencyP95`            | P95 latency > 10 s for 5 min           | warning    |
+
+Your operator can edit these in the alert rules file and reload
+without restarting the metrics service.
+
+## Routing alerts to your incident channel
+
+By default, alerts route to a no-op receiver — they are recorded
+but no notification is sent. To wire Slack, Teams, or PagerDuty,
+ask your operator to configure the alert routing.
+
+## Retention
+
+Metrics retention is 15 days by default. Past that, you have raw
+counts in the metrics database but not per-second resolution. If
+you need longer history, ask your operator to extend retention.
+
+## When to look here vs the trace viewer
+
+- **Dashboards** — is the platform up? Are we slow? Is there an
+  error storm right now?
+- **Trace viewer** — what exactly did the AI see and produce for
+  user X at time T?
+
+You usually start in the dashboards (you noticed something), then
+jump to the trace viewer (to inspect a representative request).

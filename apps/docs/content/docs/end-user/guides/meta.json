@@ -1,0 +1,17 @@
+{
+  "title": "Guides",
+  "icon": "Compass",
+  "pages": [
+    "index",
+    "chat-with-a-document",
+    "research-with-web-search",
+    "draft-and-refine-writing",
+    "analyze-data-and-images",
+    "generate-images",
+    "build-a-knowledge-assistant",
+    "set-up-a-team-workspace",
+    "automate-with-agents-and-prompts",
+    "hands-free-with-voice",
+    "connect-nufi-to-your-code"
+  ]
+}

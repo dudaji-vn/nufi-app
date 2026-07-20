@@ -1,0 +1,67 @@
+---
+title: Scoped overrides
+description: Give a role, group, or user different settings without changing the base config.
+---
+
+Most fields in [Configuration](/docs/admin/configuration) can take a
+**scoped override** on top of the base value. An override applies only
+to the people in its scope — everyone else keeps the base value.
+
+This is how you do things like *"the `power-users` group gets a 200 MB
+upload cap"* or *"the `beta` group sees an extra model"* without
+touching the org-wide default.
+
+## The scopes
+
+| Scope | Applies to |
+|-------|------------|
+| **Base** | Everyone — the default |
+| **Role** | People who hold that role |
+| **Group** | People in that group |
+| **User** | One specific person |
+
+A more specific scope wins over a broader one: **User → Group → Role →
+Base**. So a single user's override beats their group's, which beats
+their role's, which beats the base.
+
+## Add an override
+
+<Steps>
+<Step>Open [Configuration](/docs/admin/configuration).</Step>
+<Step>Click the **scope selector** at the top (it reads **Base
+configuration** by default) and **Create** — or pick — a scope for the
+role, group, or user you want to target.</Step>
+<Step>With that scope selected, edit the field(s). The values you
+change now apply only to that scope.</Step>
+<Step>Save. Affected users pick up the change on their next request.</Step>
+</Steps>
+
+## A quick example
+
+Upload size per conversation:
+
+- **Base** → 50 MB (everyone).
+- **Group `power-users`** → 200 MB.
+- **User `alice@org`** → 1 GB.
+
+Then:
+
+- **Alice** gets **1 GB** (her user override is the most specific).
+- A `power-users` member who has no personal override gets **200 MB**.
+- Everyone else gets the base **50 MB**.
+
+## When to use which scope
+
+- **Role** — broad defaults that follow people as their role changes.
+- **Group** — a capability or capacity bump for a known set of people.
+- **User** — one-off exceptions.
+
+If you find yourself adding the same **User** override for many people,
+that's the signal to make a **Group** and set it once.
+
+## Remove an override
+
+Switch to the scope, clear the field (or delete the scope's override),
+and save. Removal takes effect immediately. To check *why* a particular
+person sees a particular value, compare the base value with the
+overrides on the scopes they belong to.

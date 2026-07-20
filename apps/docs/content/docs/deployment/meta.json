@@ -1,0 +1,22 @@
+{
+  "title": "Deploy & operate",
+  "description": "Deploy, monitor, troubleshoot",
+  "root": true,
+  "icon": "Rocket",
+  "pages": [
+    "index",
+    "---Deploy---",
+    "docker-compose",
+    "environment-variables",
+    "ghcr-images",
+    "sso-reverse-proxy",
+    "cloudflare-tunnel",
+    "infra-sizing",
+    "---Operate---",
+    "monitoring-alerts",
+    "backup-restore",
+    "../operations/troubleshooting",
+    "../operations/upgrade-librechat",
+    "../operations/faq"
+  ]
+}

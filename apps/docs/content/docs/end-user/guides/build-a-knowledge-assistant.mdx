@@ -1,0 +1,79 @@
+---
+title: Build a knowledge assistant
+description: Create an agent that answers from your own documents (RAG) — and share it with your team.
+---
+
+Instead of re-uploading the same PDF into every chat, build it once into an
+**agent**. The agent searches your documents and answers from them — grounded,
+with citations — and you can share it so the whole team asks the same source.
+This is retrieval-augmented generation (RAG), no setup required.
+
+## What you'll need
+
+- The documents you want answers to come from.
+- Permission to create agents.
+- A team, if you plan to share it (see
+  [Set up a team workspace](/docs/end-user/guides/set-up-a-team-workspace)).
+
+## Steps
+
+<Steps>
+<Step>
+Open **Agent Builder** from the left icon rail and click **Create New Agent**.
+Give it a name and clear instructions, for example: *"Answer only from the
+handbook. Cite the section. If it isn't covered, say you don't know."*
+
+![The Agent Builder](/screenshots/chat-agent-new.png)
+</Step>
+<Step>
+Under **Capabilities → File Search**, enable File Search. Then **create/save
+the agent** — you must save it *before* you can add documents (a common
+gotcha).
+</Step>
+<Step>
+Click **Upload for File Search** and add your knowledge files. Each one is
+processed for retrieval and appears as a card in the agent's knowledge.
+
+![Adding knowledge files to an agent](/screenshots/chat-agent-knowledge.png)
+</Step>
+<Step>
+Chat with the agent. Its answers are now grounded in your documents — in this
+and every future conversation with it. Ask it to cite where each answer came
+from.
+</Step>
+<Step>
+Share it. Add the agent (or the underlying knowledge files) to a **team** so
+everyone works from the same source instead of their own copies.
+
+![Sharing knowledge with a team](/screenshots/chat-team-knowledge.png)
+</Step>
+</Steps>
+
+## What you get
+
+A reusable, grounded assistant. Ask *"How many days of paid leave do new joiners
+get?"* and it answers from the handbook — *"New employees receive 18 days…"* —
+pointing at the section it used, rather than guessing.
+
+## Make it better
+
+- **Keep the documents focused** — a tight, relevant set beats a huge dump.
+- **Tell it to say "I don't know"** when the answer isn't in the files, so it
+  doesn't invent one.
+- **Refresh files** as things change; the agent uses whatever is currently
+  uploaded.
+- **Scope sensitive documents** with a **group** rather than the whole team.
+
+## Related
+
+<Cards>
+  <Card title="Knowledge and document chat" href="/docs/end-user/knowledge">
+    How grounding and citations work.
+  </Card>
+  <Card title="Teams and sharing" href="/docs/end-user/teams">
+    Roles, knowledge, and groups.
+  </Card>
+  <Card title="Set up a team workspace" href="/docs/end-user/guides/set-up-a-team-workspace">
+    Create the team you'll share the assistant with.
+  </Card>
+</Cards>
