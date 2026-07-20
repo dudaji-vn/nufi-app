@@ -1,0 +1,89 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+/* shadcn/ui design tokens (Tailwind v4 style — defined as CSS vars in @theme) */
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+}
+
+/* NUFI brand palette — mirrors super-llm/dashboard (DudajiVN company UI lib). */
+:root {
+  --radius: 0.75rem;
+  --background: hsl(0 0% 100%);
+  --foreground: hsl(224 71.4% 4.1%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(224 71.4% 4.1%);
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(224 71.4% 4.1%);
+  --primary: hsl(262.1 83.3% 57.8%);
+  --primary-foreground: hsl(210 20% 98%);
+  --secondary: hsl(220 14.3% 95.9%);
+  --secondary-foreground: hsl(220.9 39.3% 11%);
+  --muted: hsl(220 14.3% 95.9%);
+  --muted-foreground: hsl(220 8.9% 46.1%);
+  --accent: hsl(220 14.3% 95.9%);
+  --accent-foreground: hsl(220.9 39.3% 11%);
+  --destructive: hsl(0 84.2% 60.2%);
+  --destructive-foreground: hsl(210 20% 98%);
+  --border: hsl(220 13% 91%);
+  --input: hsl(220 13% 91%);
+  --ring: hsl(262.1 83.3% 57.8%);
+}
+
+/* NUFI Cyber-Grid — Deep Void palette (dark) */
+.dark {
+  --background: hsl(240 22% 5%); /* #080810 near-black main area */
+  --foreground: hsl(240 20% 92%); /* #e8e8f0 near-white text */
+  --card: hsl(230 22% 10%); /* #111620 card surface (navy tint) */
+  --card-foreground: hsl(240 20% 92%);
+  --popover: hsl(230 22% 9%);
+  --popover-foreground: hsl(240 20% 92%);
+  --primary: hsl(236 80% 75%); /* #7b82f0 periwinkle accent */
+  --primary-foreground: hsl(236 42% 12%);
+  --secondary: hsl(10 75% 70%); /* #e8967f salmon, logo-matched */
+  --secondary-foreground: hsl(10 30% 18%);
+  --muted: hsl(235 18% 13%); /* #151823 subtle surface */
+  --muted-foreground: hsl(240 8% 52%); /* #7d7d8a subdued text */
+  --accent: hsl(235 16% 17%); /* #1a1e2a hover surface */
+  --accent-foreground: hsl(240 20% 92%);
+  --destructive: hsl(3 85% 68%);
+  --destructive-foreground: hsl(0 0% 100%);
+  --border: hsl(235 16% 16%); /* #181d28 subtle border */
+  --input: hsl(230 22% 10%);
+  --ring: hsl(236 80% 75%);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+  }
+}
