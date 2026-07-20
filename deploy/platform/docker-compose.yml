@@ -304,7 +304,9 @@ services:
     networks: [npuops]
 
   librechat:
-    image: ghcr.io/dudaji-vn/librechat:npuops-main
+    # nufichat:main is the only maintained build (chat-release workflow);
+    # the old librechat:npuops-main image is frozen since the fork was archived.
+    image: ghcr.io/dudaji-vn/nufichat:main
     container_name: npuops-librechat
     restart: unless-stopped
     depends_on:
