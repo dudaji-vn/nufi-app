@@ -225,3 +225,104 @@ test('resyncEndpoint is a no-op for an unknown endpoint name', async () => {
   await gw.resyncEndpoint({ tenantId: 't1', name: 'Nope' });
   expect(db._store.size).toBe(0);
 });
+
+type GatewayDeps = Parameters<typeof createLiteLLMGateway>[0];
+
+test('skips an endpoint that already points at the gateway instead of double-proxying it', async () => {
+  // Regression: the production "Nufi" endpoint's baseURL already resolved to the
+  // gateway, so syncing it registered a model whose upstream was LiteLLM itself.
+  enable();
+  const db = fakeDb();
+  const gw = createLiteLLMGateway({
+    db: db as unknown as GatewayDeps['db'],
+    encrypt,
+    decrypt,
+    runInTenant,
+  });
+
+  await gw.reconcileLiteLLM({
+    customEndpoints: [
+      {
+        name: 'Self',
+        baseURL: 'https://api.codechi.me/v1',
+        apiKey: 'k',
+        models: { default: ['m'] },
+      },
+    ],
+  });
+
+  expect(db.upsertLiteLLMSync).not.toHaveBeenCalled();
+  // Unmanaged endpoints must pass through the rewriter untouched.
+  const cfg = {
+    endpoints: { custom: [{ name: 'Self', baseURL: 'https://api.codechi.me/v1', apiKey: 'k' }] },
+  } as unknown as AppConfig;
+  const out = await gw.applyEndpointRewrite(cfg, {});
+  expect((out.endpoints!.custom as Array<{ apiKey?: string }>)[0].apiKey).toBe('k');
+});
+
+test('never registers the "loading..." placeholder as a model', async () => {
+  // Regression: this took the production "Nufi" endpoint down — its only
+  // registered model was literally named "loading...".
+  enable();
+  const db = fakeDb();
+  const gw = createLiteLLMGateway({
+    db: db as unknown as GatewayDeps['db'],
+    encrypt,
+    decrypt,
+    runInTenant,
+  });
+
+  await gw.reconcileLiteLLM({
+    customEndpoints: [
+      {
+        name: 'Ep',
+        baseURL: 'https://upstream.example/v1',
+        apiKey: 'k',
+        models: { fetch: true, default: ['loading...'] },
+      },
+    ],
+  });
+
+  const record = db._store.get('Ep');
+  expect(record.status).toBe('active');
+  const registered = record.models.map((m: { sourceModel: string }) => m.sourceModel);
+  expect(registered).not.toContain('loading...');
+  expect(registered).toEqual(['discovered-model']);
+});
+
+test('drops non-chat models returned by provider discovery', async () => {
+  enable();
+  (mockFetch as jest.Mock).mockImplementation(async (url: string | URL | Request) => {
+    const u = String(url);
+    if (u.endsWith('/model/new')) return ok({ model_info: { id: 'mid' } });
+    if (u.endsWith('/key/generate')) return ok({ key: 'sk-virtual' });
+    if (u.endsWith('/models')) {
+      return ok({
+        data: [
+          { id: 'models/gemini-2.5-flash' },
+          { id: 'models/gemini-embedding-001' },
+          { id: 'models/veo-3.1-generate-preview' },
+          { id: 'models/imagen-4.0-generate-001' },
+        ],
+      });
+    }
+    return ok({});
+  });
+  const db = fakeDb();
+  const gw = createLiteLLMGateway({
+    db: db as unknown as GatewayDeps['db'],
+    encrypt,
+    decrypt,
+    runInTenant,
+  });
+
+  await gw.reconcileLiteLLM({
+    customEndpoints: [
+      { name: 'Ep', baseURL: 'https://upstream.example/v1', apiKey: 'k', models: { fetch: true } },
+    ],
+  });
+
+  expect(db._store.get('Ep').models.map((m: { sourceModel: string }) => m.sourceModel)).toEqual([
+    'models/gemini-2.5-flash',
+  ]);
+});

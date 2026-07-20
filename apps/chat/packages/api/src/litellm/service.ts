@@ -4,6 +4,8 @@ import type { AppConfig, ILiteLLMSync } from '@librechat/data-schemas';
 import { getLiteLLMConfig, createLiteLLMClient } from './client';
 import { createReconciler, type EndpointInput, type ReconcilerDb } from './reconcile';
 import { createEndpointRewriter } from './rewrite';
+import { isSameHost } from './naming';
+import { selectSyncModels } from './models';
 
 /**
  * Wires the LiteLLM client + reconciler + rewriter into the three seams the
@@ -74,12 +76,22 @@ export function createLiteLLMGateway(deps: LiteLLMGatewayDeps) {
     if (!name || !baseURL || !apiKey) {
       return null;
     }
-    let models = Array.isArray(raw.models?.default)
+    // An endpoint already pointing at the gateway must not be proxied through
+    // the gateway a second time — that only adds a hop and makes LiteLLM call
+    // itself. Returning null leaves it unmanaged, so the rewriter passes it
+    // through untouched, which is already the routing we want.
+    const cfg = getLiteLLMConfig();
+    if (cfg && isSameHost(baseURL, cfg.baseURL)) {
+      logger.info(`[litellm] endpoint "${name}" already targets the gateway — skipping sync.`);
+      return null;
+    }
+
+    const declared = Array.isArray(raw.models?.default)
       ? (raw.models!.default as unknown[]).filter((m): m is string => typeof m === 'string')
       : [];
-    if (models.length === 0 && raw.models?.fetch !== false) {
-      models = await discoverModels(baseURL, apiKey);
-    }
+    const shouldFetch = raw.models?.fetch !== false;
+    const discovered = shouldFetch ? await discoverModels(baseURL, apiKey) : [];
+    const models = selectSyncModels({ declared, discovered, fetch: shouldFetch });
     return { name, baseURL, apiKey, models };
   }
 
