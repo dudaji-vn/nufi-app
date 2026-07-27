@@ -3032,6 +3032,8 @@ git commit -m "feat(guardrails): add secret, system-echo and exfiltration patter
 Create `deploy/platform/tests/test_audit.py`:
 
 ```python
+import json
+
 from guardrails.audit import build_event, new_event_id, record
 from guardrails.types import Action, Decision, Finding, SpanSource
 
@@ -3081,6 +3083,41 @@ def test_event_records_finding_detail_without_the_raw_text():
     assert event["findings"][0]["score"] == 0.97
     assert event["findings"][0]["source"] == "untrusted"
     assert "text" not in event["findings"][0]
+
+
+def test_reason_never_carries_text_from_a_finding_bearing_decision():
+    """The no-leak rule is enforced here, not assumed of the caller.
+
+    A decision whose reason names a matched value must not put that value in the
+    event — otherwise the control that redacts an email writes the email into a
+    log the same people can read.
+    """
+    secret = "sun@dudaji.com"
+    finding = Finding(
+        risk="LLM02", detector="presidio", score=0.97,
+        source=SpanSource.UNTRUSTED, start=11, end=25, entity="EMAIL_ADDRESS",
+    )
+    decision = Decision(
+        action=Action.REDACT, control="G2b", risk="LLM02",
+        findings=(finding,), reason=f"presidio=0.97 matched {secret}",
+    )
+
+    event = build_event(decision, (), {}, True)
+
+    assert secret not in json.dumps(event)
+    # ...and the event is still complete, so this cannot pass on an empty dict.
+    assert event["control"] == "G2b"
+    assert event["reason"] == "presidio=0.97 on untrusted span"
+    assert event["findings"][0]["entity"] == "EMAIL_ADDRESS"
+
+
+def test_reason_passes_through_when_there_are_no_findings():
+    decision = Decision(
+        action=Action.ALLOW, control="G1", risk="LLM01",
+        findings=(), reason="no finding crossed threshold",
+    )
+
+    assert build_event(decision, (), {}, False)["reason"] == "no finding crossed threshold"
 
 
 def test_record_attaches_the_event_to_request_metadata():
@@ -3154,6 +3191,25 @@ def new_event_id() -> str:
     return f"grd_{raw[:26]}"
 
 
+def _safe_reason(decision: Decision) -> str:
+    """Rebuild the reason from structured fields instead of copying free text.
+
+    This module states that an event never carries matched text, but copying
+    `decision.reason` verbatim only honoured that because `policy.decide` happens
+    to format from a fixed template today. A later, more descriptive reason —
+    naming the entity value, quoting the span — would leak silently through a
+    control whose entire job is redaction, into a log the same people can read.
+
+    The invariant is enforced here, where it is stated, rather than depending on
+    a convention in another module. Finding-free decisions pass through: their
+    reasons are a closed set of literals in `policy.decide`.
+    """
+    if not decision.findings:
+        return decision.reason
+    top = max(decision.findings, key=lambda finding: finding.score)
+    return f"{top.detector}={top.score:.2f} on {top.source.value} span"
+
+
 def build_event(
     decision: Decision,
     transforms: tuple[str, ...],
@@ -3165,7 +3221,7 @@ def build_event(
         "control": decision.control,
         "risk": decision.risk,
         "action": decision.action.value,
-        "reason": decision.reason,
+        "reason": _safe_reason(decision),
         "enforced": enforced,
         "transforms": list(transforms),
         "findings": [
