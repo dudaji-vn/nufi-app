@@ -21,6 +21,7 @@ from typing import Any
 
 import httpx
 from fastapi import HTTPException
+
 from litellm.integrations.custom_logger import CustomLogger
 
 LLM_GUARD_API_BASE = os.environ.get("LLM_GUARD_API_BASE", "http://llm-guard-api:8000")
@@ -91,7 +92,7 @@ class PromptInjectionLogger(CustomLogger):
             raise HTTPException(
                 status_code=503,
                 detail=f"prompt-injection guardrail unavailable: {exc!s}",
-            )
+            ) from exc
 
         is_valid = bool(body.get("is_valid", False))
         scanners: dict[str, float] = body.get("scanners") or {}
