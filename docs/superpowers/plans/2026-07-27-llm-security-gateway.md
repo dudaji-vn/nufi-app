@@ -3111,6 +3111,65 @@ def test_reason_never_carries_text_from_a_finding_bearing_decision():
     assert event["findings"][0]["entity"] == "EMAIL_ADDRESS"
 
 
+@pytest.mark.parametrize(
+    "field",
+    ["control", "risk", "detector", "entity", "transform"],
+    ids=["control", "risk", "detector", "entity", "transform"],
+)
+def test_no_string_field_can_smuggle_matched_text_into_an_event(field):
+    """The guard is structural, not per-field.
+
+    Rebuilding `reason` closed one route and left five resting on a convention
+    in another module. A scanner that one day sets `entity` to the matched
+    substring rather than its category would leak through the control whose
+    whole job is redaction, so every copied label must be identifier-shaped.
+    """
+    secret = "sun@dudaji.com is the contact"
+    finding = Finding(
+        risk="LLM02",
+        detector=secret if field == "detector" else "presidio",
+        score=0.9,
+        source=SpanSource.UNTRUSTED,
+        start=0,
+        end=5,
+        entity=secret if field == "entity" else "EMAIL_ADDRESS",
+    )
+    decision = Decision(
+        action=Action.REDACT,
+        control=secret if field == "control" else "G2b",
+        risk=secret if field == "risk" else "LLM02",
+        findings=(finding,),
+        reason="presidio=0.90 on untrusted span",
+    )
+    transforms = (secret,) if field == "transform" else ("homoglyph",)
+
+    event = build_event(decision, transforms, {}, True)
+
+    assert secret not in json.dumps(event)
+    # ...and the event is still complete, so this cannot pass on an empty dict.
+    assert event["action"] == "redact"
+    assert event["findings"][0]["score"] == 0.9
+
+
+def test_ordinary_labels_pass_through_unchanged():
+    finding = Finding(
+        risk="LLM02", detector="presidio", score=0.9, source=SpanSource.UNTRUSTED,
+        start=0, end=5, entity="EMAIL_ADDRESS",
+    )
+    decision = Decision(
+        action=Action.REDACT, control="G2b", risk="LLM02",
+        findings=(finding,), reason="presidio=0.90 on untrusted span",
+    )
+
+    event = build_event(decision, ("homoglyph",), {}, True)
+
+    assert event["control"] == "G2b"
+    assert event["risk"] == "LLM02"
+    assert event["transforms"] == ["homoglyph"]
+    assert event["findings"][0]["entity"] == "EMAIL_ADDRESS"
+    assert event["findings"][0]["detector"] == "presidio"
+
+
 def test_reason_passes_through_when_there_are_no_findings():
     decision = Decision(
         action=Action.ALLOW, control="G1", risk="LLM01",
@@ -3157,6 +3216,7 @@ from __future__ import annotations
 
 import base64
 import os
+import re
 from typing import Any
 
 from prometheus_client import Counter, Gauge, Histogram
@@ -3191,6 +3251,29 @@ def new_event_id() -> str:
     return f"grd_{raw[:26]}"
 
 
+_LABEL_SHAPE = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")
+
+
+def _safe_label(value: str | None) -> str | None:
+    """Accept only identifier-shaped values into an event.
+
+    Every string this module copies — control, risk, detector, entity, each
+    transform — is meant to be a short label from a bounded vocabulary, never
+    request-derived text. That was true of `reason` too, right up until it was
+    not, and the fix there rebuilt it rather than trusting the producer.
+
+    Applying that reasoning to one field and not the others left five routes
+    resting on a convention in another module: a scanner that one day sets
+    `entity` to the matched substring instead of its category would leak through
+    the control whose entire job is redaction. A matched secret is not
+    identifier-shaped, so requiring that shape closes the class structurally
+    instead of one field at a time.
+    """
+    if value is None:
+        return None
+    return value if _LABEL_SHAPE.match(value) else "UNSAFE_LABEL"
+
+
 def _safe_reason(decision: Decision) -> str:
     """Rebuild the reason from structured fields instead of copying free text.
 
@@ -3218,20 +3301,20 @@ def build_event(
 ) -> dict[str, Any]:
     return {
         "event_id": new_event_id(),
-        "control": decision.control,
-        "risk": decision.risk,
+        "control": _safe_label(decision.control),
+        "risk": _safe_label(decision.risk),
         "action": decision.action.value,
         "reason": _safe_reason(decision),
         "enforced": enforced,
-        "transforms": list(transforms),
+        "transforms": [_safe_label(item) for item in transforms],
         "findings": [
             {
-                "detector": finding.detector,
+                "detector": _safe_label(finding.detector),
                 "score": finding.score,
                 "source": finding.source.value,
                 "start": finding.start,
                 "end": finding.end,
-                "entity": finding.entity,
+                "entity": _safe_label(finding.entity),
             }
             for finding in decision.findings
         ],
