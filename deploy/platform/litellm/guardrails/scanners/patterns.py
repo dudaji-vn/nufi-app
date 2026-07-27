@@ -29,8 +29,17 @@ _SECRETS: list[tuple[str, re.Pattern[str]]] = [
     ("PRIVATE_KEY", re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |PGP )?PRIVATE KEY-----")),
 ]
 
-_MD_IMAGE = re.compile(r"!\[[^\]]*\]\(\s*(?P<url>[^)\s]+)")
-_MD_LINK = re.compile(r"(?<!!)\[[^\]]*\]\(\s*(?P<url>[^)\s]+)")
+# The `<...>` alternative comes first so a CommonMark angle-bracket
+# destination is captured whole, including any internal whitespace
+# (`< https://x/y >` is standard CommonMark and renders to a live `<img
+# src>`). Without it, `[^)\s]+` alone stops at the first internal space and
+# captures only the leading "<" — confirmed by running the brief's original
+# regex against `< https://attacker.example/log >`: it captured "<", which
+# `_normalise_url` cannot recognise as bracketed (doesn't end with ">"), so
+# the destination fell through unnormalised and unflagged. The plain
+# `[^)\s]+` branch still handles the common unbracketed case.
+_MD_IMAGE = re.compile(r"!\[[^\]]*\]\(\s*(?P<url><[^<>]*>|[^)\s]+)")
+_MD_LINK = re.compile(r"(?<!!)\[[^\]]*\]\(\s*(?P<url><[^<>]*>|[^)\s]+)")
 _RAW_HTML = re.compile(r"<\s*(script|iframe|object|embed)\b", re.IGNORECASE)
 
 _MIN_SYSTEM_PROMPT_WORDS = 8
@@ -140,8 +149,62 @@ def scan_system_echo(output: str, system_prompt: str, n: int = 8) -> list[Findin
     ]
 
 
+def _normalise_url(url: str) -> str:
+    r"""Reduce a markdown destination to what a browser would actually fetch.
+
+    Normalisation happens ONCE, here, before either gate below inspects the
+    URL. The previous shape folded backslashes inside `_host_allowed` but
+    not in `_is_external`: `_is_external` ran first, rejected
+    `https:\\attacker.example\log` as "not external" on its literal
+    ("http://", "https://", "//") prefix check, and `_host_allowed` — whose
+    backslash handling was otherwise correct — never got a chance to see it.
+    Fixing the same class of bug inside one gate at a time guarantees the
+    next gate added later reopens it; a single choke point that every gate
+    reads from is what actually closes it.
+
+    Handles, in order:
+
+    - ASCII tab/newline/carriage-return, anywhere in the string, not just at
+      the edges — the WHATWG URL spec's own first normalisation step is
+      "remove all ASCII tab or newline from input", applied to the whole
+      string before any scheme/host parsing happens. Confirmed as a live
+      gap, not a theoretical one: `htt<TAB>ps://attacker.example/log` and
+      `java<TAB>script:alert(1)` both previously produced zero findings —
+      the literal prefix checks in `_is_external` and the `javascript:`
+      link check never saw a string starting with a recognised scheme,
+      exactly the way a browser would after stripping the tab.
+    - CommonMark angle-bracket destinations, `<url>` — standard markdown,
+      renders to a live `<img src>` exactly like the unbracketed form.
+      `![x](<https://attacker.example/log>)` previously produced zero
+      findings: `_MD_IMAGE`'s capture included the brackets, so neither the
+      scheme-prefix check nor `urlparse` recognised the string.
+    - Backslashes — not valid URL characters (RFC 3986), but a browser's
+      WHATWG-compliant URL parser treats an unescaped backslash exactly
+      like a forward slash wherever it appears before the path ends.
+      Python's `urlparse` does not, so both `https:\\host\log` (a bare
+      backslash where `://` belongs) and `//host\log` /
+      `\\host\log` (backslash instead of the leading forward slashes) read
+      as something other than an external URL, or resolve to the wrong
+      host, unless folded first.
+
+    Order matters: tab/newline removal runs first so a tab hidden inside
+    `< ... >` or adjacent to a backslash doesn't survive into either of the
+    later steps (`< h\ttps:\\host >` must end up fully normalised, not
+    partially).
+    """
+    cleaned = re.sub(r"[\t\n\r]", "", url).strip()
+    if cleaned.startswith("<") and cleaned.endswith(">"):
+        cleaned = cleaned[1:-1].strip()
+    return cleaned.replace("\\", "/")
+
+
 def _is_external(url: str) -> bool:
     """Does this URL leave the page's own origin?
+
+    Expects `url` already run through `_normalise_url` — this function does
+    not fold backslashes or strip angle brackets itself; see
+    `_normalise_url`'s docstring for why that responsibility lives in one
+    place rather than being re-implemented at every gate.
 
     Protocol-relative URLs are the trap: a browser resolves `//host/log`
     against the page's current scheme and fetches it exactly like an
@@ -157,19 +220,11 @@ def _is_external(url: str) -> bool:
 
 
 def _host_allowed(url: str, allowlist: list[str]) -> bool:
-    # Backslashes are not valid URL characters (RFC 3986), but a browser's
-    # WHATWG-compliant URL parser treats an unescaped backslash exactly like
-    # a forward slash when it appears before the path begins. Python's
-    # urlparse does not: "https://evil.com\\@cdn.nufi.me/x" comes back from
-    # urlparse with hostname "cdn.nufi.me" (the text after the last literal
-    # "@"), while a real browser rendering the same markdown normalises the
-    # backslash first and fetches from "evil.com". Left unnormalised, an
-    # allowlisted host after the LAST "@" would clear the check below while
-    # the request a client actually issues goes to the attacker's host —
-    # the allowlist would wave through the exact exfiltration this scanner
-    # exists to catch. Normalising first keeps our notion of "host" aligned
-    # with what the client that renders this markdown will actually request.
-    host = (urlparse(url.replace("\\", "/")).hostname or "").lower()
+    """Expects `url` already run through `_normalise_url` — see that
+    function's docstring for why backslash-folding lives there now rather
+    than here (it used to live only here, one gate too late for
+    `_is_external` to benefit from it)."""
+    host = (urlparse(url).hostname or "").lower()
     if not host:
         # A URL we cannot attribute to any host is not verified safe. Ex:
         # "https:///log?d=x" (empty authority) or "https://:8080/x" (no
@@ -191,12 +246,19 @@ def scan_exfil(output: str, allowlist: list[str]) -> list[Finding]:
     instant the markdown renders, with no click). That asymmetry is
     intentional, not a gap.
 
-    Image URLs are checked via `_is_external`, which also catches
-    protocol-relative URLs (`![x](//attacker.example/log)`) — an earlier
-    draft matched only an explicit `http://`/`https://` prefix, so this
-    exact G4-closing vector produced no finding while working end to end in
-    a real browser (a client resolves `//host` against the current page's
-    scheme, no scheme prefix required). Fixed; see `_is_external`.
+    Image URLs are run through `_normalise_url` and then checked via
+    `_is_external`, which also catches protocol-relative URLs
+    (`![x](//attacker.example/log)`) — an earlier draft matched only an
+    explicit `http://`/`https://` prefix, so this exact G4-closing vector
+    produced no finding while working end to end in a real browser (a
+    client resolves `//host` against the current page's scheme, no scheme
+    prefix required). `_normalise_url` additionally closes CommonMark
+    angle-bracket destinations (`![x](<https://attacker.example/log>)`),
+    backslash-based host confusion, and ASCII tab/newline hidden inside a
+    scheme (`htt<TAB>ps://...`, `java<TAB>script:...`) — all three
+    previously bypassed detection entirely. See `_normalise_url`'s
+    docstring for the full account, including why normalisation happens
+    exactly once rather than being re-implemented inside each gate.
 
     Known, unfixed coverage gaps — a silent `[]` on any of these is not
     proof the output is clean, only that it does not match what this
@@ -209,9 +271,30 @@ def scan_exfil(output: str, allowlist: list[str]) -> list[Finding]:
       `<img onerror=...>`, `<svg onload=...>`, `<link rel=prefetch>`,
       `<meta http-equiv=refresh>` and CSS `url(...)` are not covered.
     - A JAVASCRIPT_URL finding requires the literal token "javascript:" in
-      the URL text (case-insensitively); HTML-entity or whitespace-obscured
-      variants (`javascript&colon;alert(1)`, embedded control characters)
-      are not decoded first and so are not matched.
+      the (now tab/newline-stripped) URL text, case-insensitively. HTML-entity
+      encoded variants (`javascript&colon;alert(1)`, `&#106;avascript:`) are
+      not decoded first and so are not matched — whitespace obscuring is
+      closed, entity obscuring is not.
+    - `javascript:` is only checked on link destinations (`_MD_LINK`), not
+      image destinations (`_MD_IMAGE`) — the same host/link asymmetry
+      documented above for `EXTERNAL_IMAGE` cuts the other way here:
+      `![x](javascript:...)` produces no JAVASCRIPT_URL finding. In
+      practice this is low-severity (a `javascript:` URI in an `<img src>`
+      does not execute in any current mainstream renderer), but it is an
+      asymmetry this scanner does not currently check for, not one proven safe.
+    - `_host_allowed` matches on hostname only; a host on the allowlist with
+      a non-standard port (`https://cdn.nufi.me:4444/log`) is allowed,
+      exactly as if the port were the default. If a deployment ever relies
+      on port-scoping to separate a trusted image host from an untrusted
+      service on the same domain, this scanner does not enforce that
+      boundary.
+    - `data:` and `blob:` image destinations never reach `_is_external`'s
+      `http`/`https`/`//` check and so never produce a finding. This is
+      intentional, not an oversight: neither scheme is a network request —
+      `data:` is the image bytes inlined directly in the markdown, `blob:`
+      resolves to same-origin memory the page itself created — so there is
+      no egress for either to close. They are recorded here because the
+      absence is easy to mistake for a gap rather than a correct exclusion.
 
     These are recorded, not silently implied away by an empty return.
     """
@@ -231,12 +314,12 @@ def scan_exfil(output: str, allowlist: list[str]) -> list[Finding]:
         )
 
     for match in _MD_IMAGE.finditer(output):
-        url = match.group("url")
+        url = _normalise_url(match.group("url"))
         if _is_external(url) and not _host_allowed(url, allowlist):
             add("EXTERNAL_IMAGE", match.start(), match.end())
 
     for match in _MD_LINK.finditer(output):
-        if match.group("url").lower().startswith("javascript:"):
+        if _normalise_url(match.group("url")).lower().startswith("javascript:"):
             add("JAVASCRIPT_URL", match.start(), match.end())
 
     for match in _RAW_HTML.finditer(output):
