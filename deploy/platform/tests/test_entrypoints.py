@@ -1784,10 +1784,18 @@ def test_enabled_gauge_is_zero_for_a_control_that_is_on_but_only_logging(policy_
     Prometheus returns 0.0 for a label pair that was never written, so a
     constructor that stopped touching the gauge entirely would pass. The
     sentinel closes that, and the enforcing half proves the write still happens.
+
+    Both halves also set the mode explicitly with `with_mode`, rather than one
+    of them leaning on whatever `policy.yaml` ships. A test asserting the
+    shipping file is still in shadow turns red the moment an operator performs
+    the documented enforce action — a test punishing the rollout this whole
+    plan exists to enable, not a test of this behaviour.
     """
     shadow_policy = Policy.load(policy_path)
     assert shadow_policy.control("G4").enabled
-    assert shadow_policy.control("G4").mode == "logging_only"
+    shadow_policy.controls["G4"] = shadow_policy.controls["G4"].with_mode(
+        "logging_only"
+    )
     shadow = GUARDRAIL_ENABLED.labels(control="G4", mode="logging_only")
     shadow.set(-1)
 

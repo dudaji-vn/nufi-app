@@ -143,7 +143,11 @@ class BaseNufiGuardrail(CustomGuardrail):
         return self._control
 
     def _enforcing(self) -> bool:
-        return self._control.enabled and self._control.mode != "logging_only"
+        # Delegates rather than restating: `ControlConfig.enforcing` is the one
+        # definition, shared with `health.guardrail_status` and
+        # `health.assert_controls`. Kept as a method because the request path
+        # calls it in a dozen places and several tests patch `_control` under it.
+        return self._control.enforcing
 
     def _context(self, data: dict[str, Any], key: Any) -> dict[str, Any]:
         """Build `audit.build_event`'s `request_context`.

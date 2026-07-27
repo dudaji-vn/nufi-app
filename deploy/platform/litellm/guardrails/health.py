@@ -52,11 +52,13 @@ def guardrail_status(policy: Policy) -> dict[str, Any]:
     what makes it usable both as a startup log line and as a unit-testable
     building block independent of the rest of the proxy wiring.
 
-    `enforcing` mirrors the exact formula `BaseNufiGuardrail._enforcing()`
-    uses at request time (`enabled and mode != "logging_only"`) — a control
-    can be `enabled: true` and still not enforcing anything because it is in
+    `enforcing` is `ControlConfig.enforcing`, the same property the request
+    path consults through `BaseNufiGuardrail._enforcing()` — a control can be
+    `enabled: true` and still not enforcing anything because it is in
     `logging_only` mode, which is a distinct, equally important fact for an
-    operator to see: "on and watching" is not "on and blocking".
+    operator to see: "on and watching" is not "on and blocking". Reading the
+    shared property rather than restating its formula is deliberate: the copy
+    of it that had no test was the one that was wrong for three tasks.
     """
     return {
         "policy_version": policy.version,
@@ -69,7 +71,7 @@ def guardrail_status(policy: Policy) -> dict[str, Any]:
                 "mode": control.mode,
                 "mandatory": control.mandatory,
                 "fail": control.fail,
-                "enforcing": control.enabled and control.mode != "logging_only",
+                "enforcing": control.enforcing,
             }
             for control in policy.controls.values()
         },
@@ -107,7 +109,7 @@ def assert_controls(policy: Policy) -> list[str]:
 
     for control in policy.controls.values():
         audit.GUARDRAIL_ENABLED.labels(control=control.id, mode=control.mode).set(
-            1 if control.enabled and control.mode != "logging_only" else 0
+            1 if control.enforcing else 0
         )
 
     for message in violations:

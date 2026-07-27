@@ -64,6 +64,27 @@ class ControlConfig:
     def fails_closed(self) -> bool:
         return self.fail == "closed"
 
+    @property
+    def enforcing(self) -> bool:
+        """Is this control able to change what happens to a request?
+
+        `enabled` alone does not answer that: a control can be enabled: true
+        and still be watching rather than acting, because `logging_only` is a
+        mode, not a disabled state. "On and watching" is not "on and blocking",
+        and conflating them is what published
+        `nufi_guardrail_enabled{control="G4",mode="logging_only"} 1.0` from a
+        proxy where nothing could block (Task 15).
+
+        This formula had three literal copies -- the request path's
+        `BaseNufiGuardrail._enforcing`, `health.guardrail_status`'s `enforcing`
+        field, and `health.assert_controls`'s gauge write. Each was pinned by
+        its own test, so they could not drift silently; but the one copy that
+        had no test was the one that was wrong for three tasks. Living here,
+        beside `fails_closed`, a fourth caller inherits correctness instead of
+        having to earn it.
+        """
+        return self.enabled and self.mode != "logging_only"
+
 
 class Policy:
     def __init__(self, raw: str) -> None:
