@@ -186,6 +186,13 @@ def scan_spans(request: ScanRequest) -> ScanResponse:
     if not request.spans:
         return ScanResponse(model=MODEL_ID, results=[])
 
+    # Clock starts HERE, not at the scoring loop. Windowing and trimming cost
+    # 2.6-2.8 s on a 30-span request — measured — and timing only the scoring
+    # phase let the total reach 8.6-8.9 s against an 8 s caller budget. The
+    # caller then fails closed and the coverage report never arrives, which
+    # defeats the whole reason for reporting coverage instead of blocking.
+    started = time.monotonic()
+
     spans = request.spans
     windowed = [_windows(span.text[:MAX_CHARS]) for span in spans]
     per_span = [item[0] for item in windowed]
@@ -229,9 +236,8 @@ def scan_spans(request: ScanRequest) -> ScanResponse:
     flat = [window for windows in per_span for window in windows]
     owners = [index for index, windows in enumerate(per_span) for _ in windows]
 
-    # Score in batches against a deadline. Whatever is not reached is reported,
-    # never assumed clean.
-    started = time.monotonic()
+    # Score in batches against the deadline set at entry. Whatever is not
+    # reached is reported, never assumed clean.
     raw: list[dict[str, Any]] = []
     for offset in range(0, len(flat), _BATCH):
         if offset and time.monotonic() - started > _DEADLINE_S:
