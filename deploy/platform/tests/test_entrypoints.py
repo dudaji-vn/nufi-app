@@ -1,9 +1,9 @@
 import pytest
 from guardrails.audit import GUARDRAIL_DECISIONS, GUARDRAIL_DEGRADED
-from guardrails.entrypoints import G1Injection, GuardrailBlocked
+from guardrails.entrypoints import G1Injection, G2aPiiInput, G2bPiiOutput, GuardrailBlocked
 from guardrails.policy import Policy
 from guardrails.scanners.base import ScannerUnavailable
-from guardrails.types import Finding
+from guardrails.types import Finding, SpanSource
 
 
 def _decisions_counter(*, control: str, risk: str, action: str, enforced: bool) -> float:
@@ -410,3 +410,371 @@ async def test_audit_failure_does_not_break_shadow_mode_traffic(policy_path):
     result = await guard.async_pre_call_hook(FakeKey(), None, data, "acompletion")
 
     assert result["messages"]
+
+
+# =============================================================================
+# Task 11 — G2a (input PII, detect-and-log-only) / G2b (output PII, redact)
+# =============================================================================
+
+
+class FakePii:
+    name = "presidio"
+
+    def __init__(
+        self, entities: list[tuple[int, int, str]] | None = None, fail: bool = False
+    ) -> None:
+        self._entities = entities or []
+        self._fail = fail
+        self.calls = 0
+
+    async def scan(self, spans):
+        self.calls += 1
+        if self._fail:
+            raise ScannerUnavailable("presidio down")
+        return [
+            Finding(
+                risk="LLM02", detector="presidio", score=0.9, source=span.source,
+                start=s, end=e, entity=t,
+            )
+            for span in spans
+            for (s, e, t) in self._entities
+        ]
+
+
+class BrokenPii:
+    """Raises something other than `ScannerUnavailable` — the only type
+    `Scanner.scan` is documented to raise. Proves G2a/G2b do not trust that
+    contract absolutely, mirroring `WrongExceptionScanner` above for G1."""
+
+    name = "presidio"
+
+    async def scan(self, spans):
+        raise RuntimeError("presidio bug, not ScannerUnavailable")
+
+
+def _g2a(policy_path, scanner, mode="pre_call"):
+    policy = Policy.load(policy_path)
+    guard = G2aPiiInput(policy=policy, scanner=scanner)
+    guard._control = policy.control("G2a").with_mode(mode)
+    return guard
+
+
+def _g2b(policy_path, scanner, mode="post_call"):
+    policy = Policy.load(policy_path)
+    guard = G2bPiiOutput(policy=policy, scanner=scanner)
+    guard._control = policy.control("G2b").with_mode(mode)
+    return guard
+
+
+@pytest.mark.asyncio
+async def test_g2a_never_mutates_the_prompt(policy_path):
+    guard = _g2a(policy_path, FakePii([(11, 25, "EMAIL_ADDRESS")]))
+    data = _data("mail me at sun@dudaji.com")
+    original = data["messages"][0]["content"]
+
+    result = await guard.async_pre_call_hook(FakeKey(), None, data, "acompletion")
+
+    assert result["messages"][0]["content"] == original
+
+
+@pytest.mark.asyncio
+async def test_g2a_records_a_log_event(policy_path):
+    guard = _g2a(policy_path, FakePii([(11, 25, "EMAIL_ADDRESS")]))
+    data = _data("mail me at sun@dudaji.com")
+
+    result = await guard.async_pre_call_hook(FakeKey(), None, data, "acompletion")
+
+    assert result["metadata"]["guardrail_information"][0]["action"] == "log"
+
+
+@pytest.mark.asyncio
+async def test_g2a_fails_open_when_presidio_is_down(policy_path):
+    guard = _g2a(policy_path, FakePii(fail=True))
+    data = _data("hi")
+    # A plain str, captured by value -- NOT `data["messages"]` itself, which
+    # would just alias the same mutable list `result["messages"]` also
+    # points to, making an `==` comparison against it true even if the hook
+    # mutated the list in place.
+    original_content = data["messages"][0]["content"]
+
+    result = await guard.async_pre_call_hook(FakeKey(), None, data, "acompletion")
+
+    # Not just truthy (a mutated-but-non-empty list would still pass that):
+    # the request must reach the model completely unchanged.
+    assert result["messages"][0]["content"] == original_content
+
+
+# --- Added beyond the brief: an outage invisible to the audit trail --------
+# The brief's own reference G2a sets GUARDRAIL_DEGRADED on a scanner outage
+# and returns — the same Task 10 blind spot (a fleet-wide gauge an operator
+# cannot attach to any one request). Fixed by routing the outage through the
+# same _emit() path G1Injection uses.
+
+
+@pytest.mark.asyncio
+async def test_g2a_records_an_audit_event_on_outage(policy_path):
+    guard = _g2a(policy_path, FakePii(fail=True))
+    data = _data("hi")
+
+    before = GUARDRAIL_DECISIONS.labels(
+        control="G2a", risk="LLM02", action="block", enforced="true"
+    )._value.get()
+
+    result = await guard.async_pre_call_hook(FakeKey(), None, data, "acompletion")
+
+    after = GUARDRAIL_DECISIONS.labels(
+        control="G2a", risk="LLM02", action="block", enforced="true"
+    )._value.get()
+    assert after == before + 1
+    assert result["metadata"]["guardrail_information"][0]["control"] == "G2a"
+    assert GUARDRAIL_DEGRADED.labels(control="G2a")._value.get() == 1
+
+
+@pytest.mark.asyncio
+async def test_g2a_survives_a_scanner_raising_the_wrong_exception_type(policy_path):
+    guard = _g2a(policy_path, BrokenPii())
+    data = _data("hi")
+    # By value, not `data["messages"]` -- `_on_outage` returns the SAME dict
+    # it was given, so comparing against `data["messages"]` after the call
+    # would just compare the list to itself and pass regardless of mutation.
+    original_content = data["messages"][0]["content"]
+
+    result = await guard.async_pre_call_hook(FakeKey(), None, data, "acompletion")
+
+    assert result["messages"][0]["content"] == original_content
+    assert result["metadata"]["guardrail_information"][0]["reason"].startswith(
+        "guardrail unavailable"
+    )
+
+
+@pytest.mark.asyncio
+async def test_g2a_survives_a_malformed_messages_shape(policy_path):
+    guard = _g2a(policy_path, FakePii())
+    data = {"messages": "not-a-list", "model": "nufi"}
+
+    result = await guard.async_pre_call_hook(FakeKey(), None, data, "acompletion")
+
+    assert result["messages"] == "not-a-list"
+    assert result["metadata"]["guardrail_information"][0]["control"] == "G2a"
+
+
+def test_g2b_redact_replaces_spans_back_to_front(policy_path):
+    guard = _g2b(policy_path, FakePii())
+    findings = [
+        Finding(
+            risk="LLM02", detector="presidio", score=0.9, source=SpanSource.UNTRUSTED,
+            start=0, end=3, entity="PERSON",
+        ),
+        Finding(
+            risk="LLM02", detector="presidio", score=0.9, source=SpanSource.UNTRUSTED,
+            start=9, end=23, entity="EMAIL_ADDRESS",
+        ),
+    ]
+
+    assert guard.redact("Sun sent sun@dudaji.com", findings) == "[PERSON] sent [EMAIL_ADDRESS]"
+
+
+def test_g2b_redact_leaves_clean_text_untouched(policy_path):
+    guard = _g2b(policy_path, FakePii())
+
+    assert guard.redact("nothing here", []) == "nothing here"
+
+
+# --- Added beyond the brief: overlapping findings and out-of-bounds offsets -
+# Two independent detectors (Presidio, the secrets regex list) scan the same
+# text and can report overlapping spans. Naive back-to-front slicing that
+# trusts each finding's ORIGINAL offsets in isolation would re-slice a region
+# an earlier (higher-start) replacement already shortened — corrupting
+# adjacent text or silently leaving a fragment of PII exposed. Neither
+# failure raises, so both are asserted directly, and the surrounding text is
+# checked too — a `redact` that always returns "" would otherwise pass a
+# naive "the secret is gone" assertion.
+
+
+def test_g2b_redact_handles_overlapping_findings_without_leaking_the_email(policy_path):
+    guard = _g2b(policy_path, FakePii())
+    text = "contact sun@dudaji.com now"
+    findings = [
+        # A finding spanning the whole email …
+        Finding(
+            risk="LLM02", detector="presidio", score=0.9, source=SpanSource.UNTRUSTED,
+            start=8, end=22, entity="EMAIL_ADDRESS",
+        ),
+        # … and a second, narrower one nested entirely inside it (e.g. the
+        # secrets scanner and Presidio both flagging overlapping substrings).
+        Finding(
+            risk="LLM02", detector="secrets", score=1.0, source=SpanSource.UNTRUSTED,
+            start=8, end=15, entity="EMAIL_ADDRESS",
+        ),
+    ]
+
+    out = guard.redact(text, findings)
+
+    # Exact match, not just "the secret is gone": naive back-to-front
+    # slicing that trusts each finding's ORIGINAL offsets (no clamping to
+    # the not-yet-redacted region) still removes the email here — it just
+    # leaves a mangled `"contact [EMAIL_ADDRESS]ADDRESS] now"` behind, which
+    # a looser "secret absent" + "starts/ends with" assertion would not
+    # catch (both still hold against the mangled string).
+    assert out == "contact [EMAIL_ADDRESS] now"
+
+
+def test_g2b_redact_clamps_offsets_that_do_not_fit_the_text(policy_path):
+    guard = _g2b(policy_path, FakePii())
+    # start=-2 deliberately avoids the coincidence where a negative start
+    # equal to -len(text) means the same thing as 0 under Python's own
+    # negative-index wraparound (out[:-5] on a 5-char string is already "");
+    # -2 would keep "sho" unredacted if the implementation trusted the
+    # offset instead of clamping it to 0.
+    findings = [
+        Finding(
+            risk="LLM02", detector="presidio", score=0.9, source=SpanSource.UNTRUSTED,
+            start=-2, end=999, entity="EMAIL_ADDRESS",
+        ),
+    ]
+
+    assert guard.redact("short", findings) == "[EMAIL_ADDRESS]"
+
+
+def test_g2b_redact_falls_back_to_a_generic_label_when_entity_is_none(policy_path):
+    """`Finding.entity` is `str | None` -- injection/coverage_gap findings
+    never set one. `redact` is a general-purpose reusable helper (not only
+    fed by PiiScanner/scan_secrets, which always set a real entity string),
+    so an `entity=None` finding must not produce the literal, confusing
+    placeholder text "[None]"."""
+    guard = _g2b(policy_path, FakePii())
+    findings = [
+        Finding(
+            risk="LLM02", detector="presidio", score=0.9, source=SpanSource.UNTRUSTED,
+            start=0, end=5, entity=None,
+        ),
+    ]
+
+    assert guard.redact("short", findings) == "[REDACTED]"
+
+
+@pytest.mark.asyncio
+async def test_g2b_honours_the_verified_grounded_flag(policy_path):
+    guard = _g2b(policy_path, FakePii([(0, 14, "EMAIL_ADDRESS")]))
+    request = {"metadata": {"nufi_grounded_verified": True}}
+
+    result = await guard.apply_guardrail("sun@dudaji.com is the contact", request_data=request)
+
+    assert result == "sun@dudaji.com is the contact"
+
+
+@pytest.mark.asyncio
+async def test_g2b_ignores_an_unverified_client_hint(policy_path):
+    guard = _g2b(policy_path, FakePii([(0, 14, "EMAIL_ADDRESS")]))
+    request = {"metadata": {"nufi_grounded": True}}
+
+    result = await guard.apply_guardrail("sun@dudaji.com is the contact", request_data=request)
+
+    assert result.startswith("[EMAIL_ADDRESS]")
+
+
+@pytest.mark.asyncio
+async def test_g2b_redacts_when_no_grounded_verdict_was_recorded(policy_path):
+    guard = _g2b(policy_path, FakePii([(0, 14, "EMAIL_ADDRESS")]))
+
+    result = await guard.apply_guardrail("sun@dudaji.com is the contact", request_data={})
+
+    assert result.startswith("[EMAIL_ADDRESS]")
+
+
+@pytest.mark.asyncio
+async def test_g2b_redacts_when_grounded_verdict_is_explicitly_false(policy_path):
+    """Absent and explicit-False must behave identically — both mean
+    "not verified", never a lesser-but-still-honoured hint."""
+    guard = _g2b(policy_path, FakePii([(0, 14, "EMAIL_ADDRESS")]))
+    request = {"metadata": {"nufi_grounded_verified": False}}
+
+    result = await guard.apply_guardrail("sun@dudaji.com is the contact", request_data=request)
+
+    assert result.startswith("[EMAIL_ADDRESS]")
+
+
+# --- Added beyond the brief: apply_guardrail with a malformed request_data -
+
+
+@pytest.mark.asyncio
+async def test_g2b_apply_guardrail_survives_request_data_none(policy_path):
+    guard = _g2b(policy_path, FakePii([(0, 14, "EMAIL_ADDRESS")]))
+
+    result = await guard.apply_guardrail("sun@dudaji.com is the contact", request_data=None)
+
+    assert result.startswith("[EMAIL_ADDRESS]")
+
+
+@pytest.mark.asyncio
+async def test_g2b_apply_guardrail_survives_request_data_not_a_dict(policy_path):
+    guard = _g2b(policy_path, FakePii([(0, 14, "EMAIL_ADDRESS")]))
+
+    result = await guard.apply_guardrail(
+        "sun@dudaji.com is the contact", request_data="not-a-dict"
+    )
+
+    assert result.startswith("[EMAIL_ADDRESS]")
+
+
+# --- Added beyond the brief: an output PII outage must not leak silently ---
+# The brief's own reference G2b sets GUARDRAIL_DEGRADED on a scanner outage
+# and returns `text` unmodified — the highest-stakes version of the Task 10
+# blind spot, since here "invisible" also means "unredacted PII reached the
+# client with no per-request record of why". Fixed by routing the outage
+# through the same _emit() path as a normal decision.
+
+
+@pytest.mark.asyncio
+async def test_g2b_fails_open_and_records_an_audit_event_on_outage(policy_path):
+    guard = _g2b(policy_path, FakePii(fail=True))
+    request: dict = {}
+
+    before = GUARDRAIL_DECISIONS.labels(
+        control="G2b", risk="LLM02", action="block", enforced="false"
+    )._value.get()
+
+    result = await guard.apply_guardrail("sun@dudaji.com is the contact", request_data=request)
+
+    after = GUARDRAIL_DECISIONS.labels(
+        control="G2b", risk="LLM02", action="block", enforced="false"
+    )._value.get()
+    assert result == "sun@dudaji.com is the contact"
+    assert after == before + 1
+    assert request["metadata"]["guardrail_information"][0]["enforced"] is False
+    assert GUARDRAIL_DEGRADED.labels(control="G2b")._value.get() == 1
+
+
+@pytest.mark.asyncio
+async def test_g2b_survives_a_scanner_raising_the_wrong_exception_type(policy_path):
+    guard = _g2b(policy_path, BrokenPii())
+
+    result = await guard.apply_guardrail("sun@dudaji.com is the contact", request_data={})
+
+    assert result == "sun@dudaji.com is the contact"
+
+
+@pytest.mark.asyncio
+async def test_g2b_disabled_control_returns_text_unchanged(policy_path):
+    scanner = FakePii([(0, 14, "EMAIL_ADDRESS")])
+    guard = _g2b(policy_path, scanner)
+    guard._control = guard._control.with_enabled(False)
+
+    result = await guard.apply_guardrail("sun@dudaji.com is the contact", request_data={})
+
+    assert result == "sun@dudaji.com is the contact"
+    # `policy.decide()` also returns ALLOW when the control is disabled, so
+    # asserting only the return value doesn't prove the early-return branch
+    # itself does anything -- it's a redundant safety net either way. This
+    # is the discriminating half: a disabled control must not even dial out
+    # to the scanner.
+    assert scanner.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_g2b_empty_text_returns_unchanged(policy_path):
+    guard = _g2b(policy_path, FakePii([(0, 14, "EMAIL_ADDRESS")]))
+
+    result = await guard.apply_guardrail("", request_data={})
+
+    assert result == ""

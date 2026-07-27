@@ -10,8 +10,10 @@ from guardrails import audit
 from guardrails.canonical import canonicalize
 from guardrails.policy import ControlConfig, Policy, decide
 from guardrails.scanners.injection import InjectionScanner
+from guardrails.scanners.patterns import scan_secrets
+from guardrails.scanners.pii import PiiScanner
 from guardrails.spans import extract_spans
-from guardrails.types import Action, Decision
+from guardrails.types import Action, Decision, Span, SpanSource
 from litellm._logging import verbose_proxy_logger
 from litellm.integrations.custom_guardrail import CustomGuardrail
 
@@ -359,4 +361,309 @@ class G1Injection(BaseNufiGuardrail):
         return data
 
 
+PRESIDIO_API_BASE = os.environ.get(
+    "PRESIDIO_ANALYZER_API_BASE", "http://presidio-analyzer:3000"
+)
+PRESIDIO_TIMEOUT_S = float(os.environ.get("PRESIDIO_TIMEOUT_S", "5.0"))
+PII_ENTITIES = [
+    "EMAIL_ADDRESS",
+    "PHONE_NUMBER",
+    "CREDIT_CARD",
+    "US_SSN",
+    "IBAN_CODE",
+    "IP_ADDRESS",
+    "PERSON",
+    "LOCATION",
+]
+
+
+def _default_pii_scanner() -> PiiScanner:
+    return PiiScanner(
+        base_url=PRESIDIO_API_BASE,
+        timeout_s=PRESIDIO_TIMEOUT_S,
+        entities=PII_ENTITIES,
+        language=os.environ.get("PRESIDIO_LANGUAGE", "en"),
+    )
+
+
+class G2aPiiInput(BaseNufiGuardrail):
+    """Detects PII in the prompt. Logs only — the prompt is never rewritten.
+
+    Not an oversight to be "improved" later: the previous system masked PII
+    on input and the model began answering the placeholder instead of the
+    question — a user asking about `sun@dudaji.com` got a reply about
+    `<PERSON>`. `data` is never touched by this control, in any mode, on
+    any finding. See policy.yaml's G2a for the recorded rationale.
+    """
+
+    control_id = "G2a"
+
+    def __init__(
+        self, policy: Policy | None = None, scanner: Any | None = None, **kwargs: Any
+    ) -> None:
+        super().__init__(policy=policy, **kwargs)
+        self._scanner = scanner or _default_pii_scanner()
+
+    async def async_pre_call_hook(
+        self, user_api_key_dict: Any, cache: Any, data: dict[str, Any], call_type: str
+    ) -> dict[str, Any]:
+        if call_type not in _CHAT_CALL_TYPES or not self._control.enabled:
+            return data
+
+        messages = data.get("messages")
+        if messages is not None and (
+            not isinstance(messages, list)
+            or any(not isinstance(message, dict) for message in messages)
+        ):
+            # Same malformed-shape risk `G1Injection` guards against, and for
+            # the same reason: `extract_spans` assumes a list of dict messages
+            # and is off limits to modify here. Left unguarded, a
+            # non-conforming `messages` shape would raise AttributeError deep
+            # inside it — an exception type this "detect and log only, never
+            # break traffic" control does not expect, and uncaught, WOULD
+            # break traffic: the exact contract this control exists to
+            # uphold. Routed through the same outage path as a scanner
+            # failure rather than reimplemented here.
+            return self._on_outage(
+                data, user_api_key_dict, TypeError("'messages' is not a list of dicts")
+            )
+
+        spans = extract_spans(messages)
+        if not spans:
+            return data
+
+        started = time.perf_counter()
+        try:
+            findings = await self._scanner.scan(spans) + scan_secrets(spans)
+        except Exception as exc:
+            # Caught broadly, not just `ScannerUnavailable`, matching
+            # `G1Injection`: `PiiScanner.scan` is documented to raise only
+            # `ScannerUnavailable`, and `scan_secrets` is documented to never
+            # raise at all (it is pure) — but trusting either contract
+            # absolutely is one bug away from turning a shadow-mode
+            # measurement, or this control's own fail-open guarantee, into a
+            # broken live request.
+            return self._on_outage(data, user_api_key_dict, exc)
+        finally:
+            audit.GUARDRAIL_LATENCY.labels(control=self.control_id).observe(
+                time.perf_counter() - started
+            )
+
+        audit.GUARDRAIL_DEGRADED.labels(control=self.control_id).set(0)
+
+        # `grounded` never affects this control's own decision: G2a has no
+        # `respect_grounded_hint` option in policy.yaml (only G2b does), so
+        # `policy.decide`'s `grounded and control.options.get(...)` branch
+        # can never fire here regardless of the value passed. Hardcoded
+        # rather than resolved from the request: G1 is the sole, mandatory
+        # pre_call control responsible for recording the verified verdict
+        # (`resolve_grounded`) for every *other* control to read; G2a does
+        # not need it for itself and must not re-derive it from the raw,
+        # attacker-controllable client hint.
+        decision = decide(self._control, findings, grounded=False)
+        if decision.action is not Action.ALLOW:
+            self._emit(data, decision, (), user_api_key_dict, self._enforcing())
+        return data
+
+    def _on_outage(self, data: dict[str, Any], key: Any, exc: Exception) -> dict[str, Any]:
+        """Record the outage so it is visible, then let the request continue.
+
+        A `GUARDRAIL_DEGRADED` gauge flip alone is a fleet-wide signal, not a
+        per-request one: an operator investigating one specific "PII went
+        through unnoticed" report needs an `event_id` in the audit trail to
+        confirm "G2a could not see this particular request", not just "the
+        gauge was elevated at some point". This is the same blind spot Task
+        10 found and fixed in `G1Injection._on_outage` — reproduced here
+        because a control that only sets a gauge on outage leaves
+        `GUARDRAIL_DECISIONS` unable to distinguish "no PII in traffic" from
+        "PII detection was blind for this request".
+
+        `enforced` reuses this control's own `_enforcing()`, the same value
+        the non-outage path below passes to `_emit` — NOT
+        `fails_closed and _enforcing()` as `G1Injection._on_outage` computes
+        it. G1's formula answers "would this outage have actually blocked
+        the request"; G2a has no such branch to answer for — it always
+        returns `data` unchanged, in every mode, regardless of `fail`. Reusing
+        G1's formula here would make `enforced` claim an effect (blocking)
+        this control can never have.
+        """
+        verbose_proxy_logger.warning(
+            "guardrail %s could not scan request (%s): %s",
+            self.control_id,
+            type(exc).__name__,
+            exc,
+        )
+        audit.GUARDRAIL_DEGRADED.labels(control=self.control_id).set(1)
+        decision = Decision(
+            action=Action.BLOCK,
+            control=self.control_id,
+            risk=self._control.risk,
+            findings=(),
+            reason=f"guardrail unavailable: {type(exc).__name__}",
+        )
+        self._emit(data, decision, (), key, self._enforcing())
+        return data
+
+
+class G2bPiiOutput(BaseNufiGuardrail):
+    """Redacts PII and secrets in the model's response.
+
+    Honours the grounded hint, but only the *verified* verdict `G1Injection`
+    recorded during `pre_call` — read via `verified_grounded`, never the raw
+    client claim `data["metadata"]["nufi_grounded"]`, which is
+    attacker-controllable. A user asking about an email address inside their
+    own (grounded) document gets the real address back.
+    """
+
+    control_id = "G2b"
+
+    def __init__(
+        self, policy: Policy | None = None, scanner: Any | None = None, **kwargs: Any
+    ) -> None:
+        super().__init__(policy=policy, **kwargs)
+        self._scanner = scanner or _default_pii_scanner()
+
+    @staticmethod
+    def redact(text: str, findings: list[Any]) -> str:
+        """Replace each finding's span with `[ENTITY]`, back to front.
+
+        Findings are processed in DESCENDING `start` order so every
+        earlier (lower-start) replacement slices into a suffix of `text`
+        that has not been touched yet — its own `start`/`end` stay valid
+        character offsets even as the string shortens from replacements
+        already made further to the right. `PiiScanner` confirms Presidio's
+        offsets are character offsets matching Python `str` indexing
+        (verified against Vietnamese in NFC and NFD, and an astral-plane
+        emoji), which is what makes this front-to-back invariant hold at
+        all.
+
+        Each finding's offsets are additionally clamped to `[0, len(text)]`
+        and to the region not yet consumed by a previously-processed
+        (higher-start) finding. Two independent detectors — Presidio and
+        the secrets regex list — scan the same text and can report
+        overlapping spans; re-slicing an overlapping finding with its
+        ORIGINAL offsets against the ALREADY-SHORTENED string would index
+        into the wrong characters, either corrupting adjacent text or
+        leaving a fragment of the original PII exposed — and neither
+        failure raises, so it would look exactly like a clean redaction.
+        Clamping to the not-yet-redacted region is what keeps this correct
+        when findings overlap, instead of trusting each finding's offsets
+        in isolation.
+        """
+        if not findings:
+            return text
+        length = len(text)
+        out = text
+        redacted_from = length
+        for finding in sorted(findings, key=lambda f: f.start, reverse=True):
+            start = max(0, min(finding.start, length))
+            end = max(start, min(finding.end, length))
+            end = min(end, redacted_from)
+            if start >= end:
+                # Fully inside a region a higher-start finding already
+                # redacted (or an offset that does not fit `text` at all) —
+                # nothing left here to act on.
+                continue
+            label = finding.entity or "REDACTED"
+            out = out[:start] + f"[{label}]" + out[end:]
+            redacted_from = start
+        return out
+
+    async def apply_guardrail(
+        self,
+        text: str,
+        language: str | None = None,
+        entities: list[str] | None = None,
+        request_data: dict[str, Any] | None = None,
+    ) -> str:
+        # NAMING NOTE: `CustomGuardrail.apply_guardrail` (litellm==1.83.10) is
+        # a real base-class hook —
+        # `apply_guardrail(self, inputs: GenericGuardrailAPIInputs, request_data: dict,
+        # input_type: Literal["request", "response"], logging_obj=None)` — and
+        # LiteLLM's own dispatch (`"apply_guardrail" in type(cb).__dict__`,
+        # verified against litellm/proxy/common_request_processing.py and
+        # litellm/proxy/guardrails/guardrail_hooks/unified_guardrail/unified_guardrail.py)
+        # special-cases ANY guardrail that defines a method of this name,
+        # routing it through `unified_guardrail`'s translation layer for BOTH
+        # the non-streaming (`process_output_response`) and end-of-stream
+        # streaming (`process_output_streaming_response`) paths — the "used
+        # by both hooks" character this method is built around. This
+        # override's signature intentionally matches this plan's own
+        # text-in/text-out convention (shared with G3/G4) rather than
+        # litellm's real `GenericGuardrailAPIInputs` shape. Registering
+        # `g2b_pii_output` directly as a litellm `custom_guardrail` callback
+        # WITHOUT a translation adapter between the two shapes will raise a
+        # `TypeError` on every real request. That adapter is an integration
+        # concern for whichever task wires this module into litellm's proxy
+        # config — recorded here so it is not silently discovered in
+        # production instead.
+        if not self._control.enabled or not text:
+            return text
+
+        spans = [Span(text=text, source=SpanSource.UNTRUSTED, message_index=0)]
+        started = time.perf_counter()
+        try:
+            findings = await self._scanner.scan(spans) + scan_secrets(spans)
+        except Exception as exc:
+            # Caught broadly for the same reason as `G2aPiiInput`: neither
+            # `PiiScanner.scan` nor `scan_secrets`'s documented contract
+            # should be trusted absolutely by the one control whose entire
+            # job is not letting PII pass unredacted.
+            return self._on_outage(text, request_data, exc)
+        finally:
+            audit.GUARDRAIL_LATENCY.labels(control=self.control_id).observe(
+                time.perf_counter() - started
+            )
+
+        audit.GUARDRAIL_DEGRADED.labels(control=self.control_id).set(0)
+
+        data = request_data if isinstance(request_data, dict) else {}
+        decision = decide(self._control, findings, self.verified_grounded(data))
+        if decision.action is not Action.REDACT:
+            return text
+
+        enforced = self._enforcing()
+        self._emit(data, decision, (), None, enforced)
+        return self.redact(text, list(decision.findings)) if enforced else text
+
+    def _on_outage(self, text: str, request_data: Any, exc: Exception) -> str:
+        """Record the outage, then fail open: return `text` unredacted.
+
+        G2b's policy is `fail: open` (policy.yaml), matching G2a's own
+        rationale: an outage must not withhold or corrupt a response the
+        model already produced. But an outage that silently returns
+        unredacted PII is the highest-stakes version of the Task 10 blind
+        spot this project keeps closing — with no signal beyond the
+        fleet-wide `GUARDRAIL_DEGRADED` gauge, an operator investigating one
+        specific PII-leak report has no per-request `event_id` to confirm
+        "G2b could not redact this one" versus "there was nothing to
+        redact". `enforced` is always `False`: this control has no mechanism
+        to withhold a response at all (unlike `G1Injection`, it never raises
+        `GuardrailBlocked`), so recording anything else would claim an
+        effect that never happened. If a future policy ever sets G2b's
+        `fail: closed`, this method still fails open — there is no
+        response-blocking mechanism for this control to invoke, and adding
+        one is a larger design decision this task does not make silently.
+        """
+        verbose_proxy_logger.warning(
+            "guardrail %s could not scan response (%s): %s",
+            self.control_id,
+            type(exc).__name__,
+            exc,
+        )
+        audit.GUARDRAIL_DEGRADED.labels(control=self.control_id).set(1)
+        data = request_data if isinstance(request_data, dict) else {}
+        decision = Decision(
+            action=Action.BLOCK,
+            control=self.control_id,
+            risk=self._control.risk,
+            findings=(),
+            reason=f"guardrail unavailable: {type(exc).__name__}",
+        )
+        self._emit(data, decision, (), None, False)
+        return text
+
+
 g1_injection = G1Injection()
+g2a_pii_input = G2aPiiInput()
+g2b_pii_output = G2bPiiOutput()
