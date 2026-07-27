@@ -25,8 +25,12 @@ MODEL_ID = os.environ.get(
 MODEL_REVISION = os.environ.get(
     "SCANNER_MODEL_REVISION", "90c9989b1a342275dd0d1a95aad283c04e075671"
 )
-# Work budget, not a detection boundary — `_MAX_CHUNKS` is the real bound.
-MAX_CHARS = int(os.environ.get("SCANNER_MAX_CHARS", "64000"))
+# Hard input guard only. The real coverage bound is the window budget below,
+# and the two used to disagree: a comment claimed _MAX_CHUNKS was the true limit
+# while MAX_CHARS admitted spans nearly 12k tokens longer than the windows could
+# reach, so the tail of a 54k-character span was structurally unscored. Coverage
+# is now reported per span instead of being implied by a constant.
+MAX_CHARS = int(os.environ.get("SCANNER_MAX_CHARS", "200000"))
 
 # Measured on the pinned model: an injection appended after ~640 tokens of
 # ordinary prose scores SAFE with high confidence, and six long spans converged
@@ -75,27 +79,54 @@ def _assert_labels_understood() -> None:
 _assert_labels_understood()
 
 
-def _windows(text: str) -> list[str]:
-    """Split a span into overlapping windows the model can actually attend to.
+def _window_starts(total: int, budget: int) -> list[int]:
+    """Choose which windows to score when a span needs more than the budget.
 
-    Every window is scored and the span takes the maximum, so a payload buried
-    anywhere in a long document is still seen. Overlap keeps an injection that
-    straddles a boundary intact.
+    Head and tail are ALWAYS scored. That is the whole point: the classic attack
+    is pad-then-append, and a sequential scan that runs out of budget leaves the
+    tail structurally unscored — which is how the previous version moved its
+    blind spot from 2,500 characters to 52,000 rather than removing it. The
+    remaining budget is spread evenly over the middle, so a buried payload faces
+    sampled coverage rather than a guaranteed gap.
+    """
+    step = _CHUNK_TOKENS - _CHUNK_OVERLAP
+    sequential = list(range(0, max(total - _CHUNK_OVERLAP, 1), step))
+    if len(sequential) <= budget:
+        return sequential
+
+    last = sequential[-1]
+    if budget == 1:
+        return [last]
+    if budget == 2:
+        return [0, last]
+
+    interior = sequential[1:-1]
+    take = budget - 2
+    stride = len(interior) / take
+    sampled = [interior[int(index * stride)] for index in range(take)]
+    return [0, *sampled, last]
+
+
+def _windows(text: str) -> tuple[list[str], bool]:
+    """Split a span into overlapping windows, returning (windows, complete).
+
+    `complete` is False when the span needed more windows than the budget
+    allowed. Incomplete coverage is reported rather than hidden: a scanner that
+    silently examines part of its input is exactly the fail-open shape this
+    design exists to remove.
     """
     ids = _tokenizer.encode(text, add_special_tokens=False)
     if len(ids) <= _CHUNK_TOKENS:
-        return [text]
+        return [text], True
 
+    starts = _window_starts(len(ids), _MAX_CHUNKS)
     step = _CHUNK_TOKENS - _CHUNK_OVERLAP
-    windows: list[str] = []
-    for start in range(0, len(ids), step):
-        window = ids[start : start + _CHUNK_TOKENS]
-        if not window:
-            break
-        windows.append(_tokenizer.decode(window, skip_special_tokens=True))
-        if len(windows) >= _MAX_CHUNKS or start + _CHUNK_TOKENS >= len(ids):
-            break
-    return windows
+    complete = len(starts) == len(range(0, max(len(ids) - _CHUNK_OVERLAP, 1), step))
+    windows = [
+        _tokenizer.decode(ids[start : start + _CHUNK_TOKENS], skip_special_tokens=True)
+        for start in starts
+    ]
+    return windows, complete
 
 
 def _injection_score(label: str, score: float) -> float:
@@ -121,6 +152,9 @@ class ScanRequest(BaseModel):
 class SpanResult(BaseModel):
     score: float
     label: str
+    # False when the span was longer than the window budget allowed. The caller
+    # turns this into a policy input; it must never be silently discarded.
+    complete: bool = True
 
 
 class ScanResponse(BaseModel):
@@ -138,18 +172,40 @@ def scan_spans(request: ScanRequest) -> ScanResponse:
     if not request.spans:
         return ScanResponse(model=MODEL_ID, results=[])
 
-    per_span = [_windows(span.text[:MAX_CHARS]) for span in request.spans]
+    spans = request.spans
+    windowed = [_windows(span.text[:MAX_CHARS]) for span in spans]
+    per_span = [item[0] for item in windowed]
+    complete = [item[1] for item in windowed]
 
-    # Cap windows per REQUEST, not just per span. Measured: ~200 ms per window,
-    # so a RAG turn carrying several long documents would otherwise blow past
-    # the caller's timeout — and G1 fails closed, which turns a slow scan into a
-    # 503 for the user. Windows are dropped from the tail of the longest spans
-    # first, so every span keeps its head and no span goes entirely unscored.
+    # Budget windows per REQUEST, not just per span. Measured: ~200 ms per
+    # window, so a RAG turn carrying several long documents would otherwise
+    # blow past the caller's timeout — and G1 fails closed, which turns a slow
+    # scan into a 503 for the user.
+    #
+    # Untrusted spans are served first. That is the threat model: a jailbreak
+    # string inside a retrieved document is near-certain attack, while the same
+    # words typed by a user may be a question about the topic. Spending the last
+    # windows on user text would starve the source we most need to see.
+    #
+    # A shrunk span is re-windowed rather than truncated, so it keeps head and
+    # tail. Dropping from the tail is what let a payload hide at the end.
+    order = sorted(
+        range(len(spans)),
+        key=lambda index: (spans[index].source != "untrusted", -len(per_span[index])),
+    )
     while sum(len(w) for w in per_span) > _MAX_WINDOWS_PER_REQUEST:
-        longest = max(range(len(per_span)), key=lambda index: len(per_span[index]))
-        if len(per_span[longest]) <= 1:
+        victim = next(
+            (index for index in reversed(order) if len(per_span[index]) > 1), None
+        )
+        if victim is None:
             break
-        per_span[longest].pop()
+        ids = _tokenizer.encode(spans[victim].text[:MAX_CHARS], add_special_tokens=False)
+        starts = _window_starts(len(ids), len(per_span[victim]) - 1)
+        per_span[victim] = [
+            _tokenizer.decode(ids[start : start + _CHUNK_TOKENS], skip_special_tokens=True)
+            for start in starts
+        ]
+        complete[victim] = False
 
     flat = [window for windows in per_span for window in windows]
     raw = _classifier(flat) if flat else []
@@ -158,15 +214,21 @@ def scan_spans(request: ScanRequest) -> ScanResponse:
 
     results: list[SpanResult] = []
     cursor = 0
-    for windows in per_span:
+    for index_of_span, windows in enumerate(per_span):
         count = len(windows)
         span_scores = scored[cursor : cursor + count]
         span_labels = labels[cursor : cursor + count]
         cursor += count
         if not span_scores:
-            results.append(SpanResult(score=0.0, label="EMPTY"))
+            results.append(SpanResult(score=0.0, label="EMPTY", complete=False))
             continue
         best = max(range(count), key=lambda index: span_scores[index])
-        results.append(SpanResult(score=span_scores[best], label=span_labels[best]))
+        results.append(
+            SpanResult(
+                score=span_scores[best],
+                label=span_labels[best],
+                complete=complete[index_of_span],
+            )
+        )
 
     return ScanResponse(model=MODEL_ID, results=results)
