@@ -124,9 +124,19 @@ class BaseNufiGuardrail(CustomGuardrail):
         super().__init__(**kwargs)
         self._policy = policy or Policy.load(POLICY_PATH)
         self._control = self._policy.control(self.control_id)
+        # `nufi_guardrail_enabled` is declared as "1 when a control is enabled
+        # AND enforcing" (audit.py) and `health.assert_controls` writes exactly
+        # that. This constructor is the gauge's other writer, so it must use the
+        # identical formula -- `_enforcing()`, the same one the request path
+        # consults. It previously wrote `1 if enabled`, ignoring mode, and the
+        # two writers raced: LiteLLM re-executes this module once per registered
+        # guardrail, so the last constructor to run (G4) left
+        # `nufi_guardrail_enabled{control="G4",mode="logging_only"} 1.0` on
+        # /metrics while every control was in shadow and enforcing nothing.
+        # Observed on the live stack, 2026-07-27.
         audit.GUARDRAIL_ENABLED.labels(
             control=self.control_id, mode=self._control.mode
-        ).set(1 if self._control.enabled else 0)
+        ).set(1 if self._enforcing() else 0)
 
     @property
     def control(self) -> ControlConfig:

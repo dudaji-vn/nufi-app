@@ -2,7 +2,7 @@ from dataclasses import replace
 
 import pytest
 from guardrails import entrypoints
-from guardrails.audit import GUARDRAIL_DECISIONS, GUARDRAIL_DEGRADED
+from guardrails.audit import GUARDRAIL_DECISIONS, GUARDRAIL_DEGRADED, GUARDRAIL_ENABLED
 from guardrails.entrypoints import (
     G1Injection,
     G2aPiiInput,
@@ -1763,3 +1763,45 @@ async def test_g4_one_texts_outage_does_not_discard_another_texts_strip(policy_p
     # The failing text fails open (unstripped), not silently dropped either.
     assert result["texts"][1] == "this one will TRIGGER_FAIL during scanning"
     assert GUARDRAIL_DEGRADED.labels(control="G4")._value.get() == 1
+
+
+# --- The enabled gauge has two writers; they must agree ----------------------
+# `nufi_guardrail_enabled` is declared "1 when a control is enabled and
+# enforcing" and written from two places: `health.assert_controls` and
+# `BaseNufiGuardrail.__init__`. LiteLLM loads `guardrails/entrypoints.py` once
+# per registered guardrail (get_instance_fn resolves it by file path, which does
+# not populate sys.modules), so both writers run repeatedly and interleave. When
+# the constructor used `1 if enabled` and ignored mode, the last one to run left
+# `nufi_guardrail_enabled{control="G4",mode="logging_only"} 1.0` on a live
+# proxy where nothing was enforcing — observed on the stack, 2026-07-27, not
+# reasoned about.
+
+
+def test_enabled_gauge_is_zero_for_a_control_that_is_on_but_only_logging(policy_path):
+    """The gauge must read 0 for enabled-but-shadow, and 1 only when enforcing.
+
+    Both halves are load-bearing. Asserting only the 0 would be vacuous:
+    Prometheus returns 0.0 for a label pair that was never written, so a
+    constructor that stopped touching the gauge entirely would pass. The
+    sentinel closes that, and the enforcing half proves the write still happens.
+    """
+    shadow_policy = Policy.load(policy_path)
+    assert shadow_policy.control("G4").enabled
+    assert shadow_policy.control("G4").mode == "logging_only"
+    shadow = GUARDRAIL_ENABLED.labels(control="G4", mode="logging_only")
+    shadow.set(-1)
+
+    G4OutputHandling(policy=shadow_policy)
+
+    assert shadow._value.get() == 0
+
+    enforcing_policy = Policy.load(policy_path)
+    enforcing_policy.controls["G4"] = enforcing_policy.controls["G4"].with_mode(
+        "post_call"
+    )
+    enforcing = GUARDRAIL_ENABLED.labels(control="G4", mode="post_call")
+    enforcing.set(-1)
+
+    G4OutputHandling(policy=enforcing_policy)
+
+    assert enforcing._value.get() == 1
