@@ -5083,6 +5083,70 @@ Assembles everything into a running stack in shadow mode.
 
 - [ ] **Step 1: Write the derived image**
 
+Read this whole step before writing the Dockerfile. An earlier draft of it
+would have silently broken the proxy, and the corrected version asks you to
+verify rather than transcribe.
+
+**The trap.** The obvious derived image is `FROM litellm` + `pip install -r
+requirements.txt` + `COPY guardrails`. That `pip install` is wrong here.
+`litellm/requirements.txt` currently pins:
+
+```
+httpx==0.27.2
+prometheus-client==0.21.1
+PyYAML==6.0.2
+```
+
+and `litellm==1.83.10` itself declares (verified against the installed package,
+not the docs):
+
+```
+httpx==0.28.1                                  <- hard pin, top level
+pyyaml==6.0.3            ; extra == 'proxy'
+prometheus-client==0.20.0 ; extra == 'proxy-runtime'
+```
+
+All three conflict, and `httpx` is a top-level `==` pin. Installing our file
+over the base image **downgrades httpx underneath LiteLLM**, breaking its own
+declared requirement. pip will do this and keep going, printing a resolver
+warning into build output nobody reads — a build step that reports success
+while degrading a dependency the entire proxy depends on. That is the failure
+shape this project exists to end, and it would have shipped in the image that
+carries the guardrails.
+
+**Why the install is unnecessary at all.** The guardrail package's only
+third-party imports are `httpx`, `prometheus_client`, `yaml` and `litellm`
+itself. Every one of them is already a dependency of `litellm`, so the proxy
+image necessarily carries them. Our requirements file adds no capability; it
+only picks a fight with the base image.
+
+**What to do — verify first, then write.** Do not take the paragraph above on
+faith either. Run the base image and read the actual versions:
+
+```bash
+docker run --rm --entrypoint python ghcr.io/berriai/litellm:v1.83.10-stable -c \
+  "import httpx, prometheus_client, yaml, litellm; \
+   print('httpx', httpx.__version__); \
+   print('prometheus_client', prometheus_client.__version__); \
+   print('yaml', yaml.__version__); \
+   print('litellm', litellm.__version__)"
+```
+
+Record the real output in your report. Then:
+
+- If all four import cleanly, **omit the `pip install` and the `COPY
+  requirements.txt` entirely.** Add a comment in the Dockerfile saying why the
+  install is deliberately absent, naming the httpx conflict, so the next person
+  does not "fix" its omission.
+- If any import fails, do **not** install our pinned file on top. Install only
+  the missing distribution, unpinned or pinned to the version the base image's
+  own metadata asks for, and say so in your report.
+
+Then delete `deploy/platform/litellm/requirements.txt` if nothing else consumes
+it — check first with `grep -rn "requirements.txt" deploy/platform` (the local
+test venv and CI may install from it, in which case it stays and gains a
+comment explaining it is for the test environment only, never for the image).
+
 Create `deploy/platform/litellm/Dockerfile`:
 
 ```dockerfile
@@ -5092,17 +5156,29 @@ Create `deploy/platform/litellm/Dockerfile`:
 # Pinned rather than :main-stable, per the project's "pin every image" rule.
 # v1.83.10 is what api.codechi.me already runs, so on-prem and production now
 # share one base. Verified present on GHCR 2026-07-27.
+#
+# There is deliberately NO `pip install` here. The guardrail package's only
+# third-party imports -- httpx, prometheus_client, yaml -- are already
+# dependencies of litellm itself, and litellm pins httpx==0.28.1 at the top
+# level. Installing litellm/requirements.txt over this image downgrades httpx
+# underneath the proxy and prints only a resolver warning. That file is for the
+# test venv, not for this image.
 FROM ghcr.io/berriai/litellm:v1.83.10-stable
 
 WORKDIR /app
-
-COPY requirements.txt /app/guardrail-requirements.txt
-RUN pip install --no-cache-dir -r /app/guardrail-requirements.txt
 
 COPY guardrails /app/guardrails
 COPY callbacks /app/callbacks
 COPY config.yaml /app/config.yaml
 ```
+
+**Confirm the import path resolves.** `config.yaml` refers to the entrypoints as
+`guardrails.entrypoints.g1_injection`, which requires `/app` on `sys.path`. The
+existing `callbacks.hardware_metadata.proxy_handler_instance` entry already
+resolves this way from the same directory in the current stack, so the pattern
+is proven here — but confirm it for the new package once the stack is up in
+Step 7, and treat an `ImportError` in the proxy logs as a Step 1 defect, not a
+Step 7 one.
 
 - [ ] **Step 2: Replace the callbacks hack in the proxy config**
 
