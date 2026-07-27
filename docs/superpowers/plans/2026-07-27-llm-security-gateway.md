@@ -3813,7 +3813,11 @@ class G1Injection(BaseNufiGuardrail):
         the control whose job is to make control state visible.
         """
         audit.GUARDRAIL_DEGRADED.labels(control=self.control_id).set(1)
-        enforced = self._control.fails_closed and self._enforcing()
+        enforced = (
+            self._control.fails_closed
+            and self._enforcing()
+            and getattr(self, "outage_can_enforce", True)
+        )
         decision = Decision(
             action=Action.BLOCK,
             control=self.control_id,
@@ -3952,6 +3956,42 @@ def test_g2b_redact_replaces_spans_back_to_front(policy_path):
     assert guard.redact("Sun sent sun@dudaji.com", findings) == "[PERSON] sent [EMAIL_ADDRESS]"
 
 
+@pytest.mark.asyncio
+async def test_g2a_outage_never_claims_to_have_enforced(policy_path):
+    """G2a cannot block, so its outage event must not say it did.
+
+    `nufi_guardrail_decisions_total{action="block",enforced="true"}` is shared
+    with G1, where every entry is a real block. A phantom entry from a control
+    that always returns the request corrupts the one number the rollout uses to
+    decide whether enforcement is safe.
+    """
+    guard = _g2a(policy_path, FakePii(fail=True), mode="pre_call")
+    data = _data("mail me at sun@dudaji.com")
+
+    result = await guard.async_pre_call_hook(FakeKey(), None, data, "acompletion")
+
+    assert result["messages"][0]["content"] == "mail me at sun@dudaji.com"
+    assert data["metadata"]["guardrail_information"][0]["enforced"] is False
+
+
+@pytest.mark.asyncio
+async def test_g2b_skips_empty_texts_without_calling_the_scanner(policy_path):
+    """Asserting "unchanged" alone passes whether or not the skip exists.
+
+    The real scanners return no findings for an empty span, so the guard is only
+    observable by counting calls.
+    """
+    scanner = FakePii([(0, 5, "EMAIL_ADDRESS")])
+    guard = _g2b(policy_path, scanner)
+
+    result = await guard.apply_guardrail(
+        inputs={"texts": ["", "   ", ""]}, request_data={}, input_type="response"
+    )
+
+    assert result["texts"] == ["", "   ", ""]
+    assert scanner.calls == 1
+
+
 def test_g2b_redact_leaves_clean_text_untouched(policy_path):
     guard = _g2b(policy_path, FakePii())
 
@@ -4022,6 +4062,14 @@ class G2aPiiInput(BaseNufiGuardrail):
     """Detects PII in the prompt. Logs only — the prompt is never rewritten."""
 
     control_id = "G2a"
+    # This control has no mechanism to withhold or alter a request: every path
+    # ends in `return data`. So an outage here can never be "enforced", and
+    # claiming otherwise would put a phantom block into
+    # nufi_guardrail_decisions_total{action="block",enforced="true"} — a series
+    # shared with G1, where every entry IS a real block. A metric that reports a
+    # block that did not happen is worse than a missing one: absence is legible
+    # as a gap, a wrong value is read as fact.
+    outage_can_enforce = False
 
     def __init__(self, policy=None, scanner=None, **kwargs):
         super().__init__(policy=policy, **kwargs)
