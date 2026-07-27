@@ -5870,6 +5870,59 @@ That service is deleted in Task 15. Replace it with:
 Confirm with `grep -rn "llm-guard\|LLM Guard" deploy/platform` that nothing
 else still refers to the removed service, and report anything you find.
 
+- [ ] **Step 7b: Correct recorded reasoning that measurement has since falsified**
+
+Task 15's reviews found several places where a comment or a doc states a reason
+that was true when written and is not true now. This branch's whole thesis is
+that recorded reasoning must be verified, so these are in scope rather than
+cosmetic. Each one below was **observed by a reviewer running something**, not
+inferred — but verify each yourself before editing, and report anything that
+does not reproduce.
+
+**a. `deploy/platform/litellm/Dockerfile` justifies itself with numbers that no
+longer exist.** Its comment says the `pip install` is omitted because all three
+of `litellm/requirements.txt`'s pins (0.27.2 / 0.21.1 / 6.0.2) conflict with the
+base image. Task 15's fix round reduced that file to a single line —
+`prometheus-client==0.20.0` — which now *matches* the image exactly. The
+decision (no `pip install`) is still correct; the stated reason is false, one
+directory away from the file it describes.
+
+Rewrite the comment to say what is now true: the base image already carries
+every third-party package the guardrail package imports, and
+`litellm/requirements.txt` exists for the test environment, which needs
+`prometheus_client` because it is in litellm's `proxy-runtime` extra rather than
+its base dependencies. Do not restate version numbers you have not just
+measured.
+
+**b. `deploy/platform/litellm/config.yaml`'s comment understates the wiring
+check.** It says the check "reconciles this block against `guardrails/policy.yaml`
+in both directions". It now also rejects `default_on` values that are not
+literally `true`, a `mode` that disagrees with the control's declared hook, a
+target class that does not exist, and a control whose class defines no hook
+method. Read `scripts/check-guardrails-wired.sh` and describe what it actually
+enforces — an operator who trusts the comment will not know the check is
+protecting them from the `default_on` trap.
+
+**c. The local venv disagrees with CI and the image on PyYAML.** `.venv` has
+6.0.2; CI and the proxy image both have 6.0.3. Nothing pins it any more, so pip
+simply left the pre-existing version in place. The stated goal of Task 15's
+requirements change was that local, CI and image agree — reconcile it, and
+confirm the suite still passes afterwards.
+
+**d. `apps/docs/content/docs/developer/local-stack.mdx:38` names a deleted
+file.** The tree shows `callbacks/ # custom pre/post hooks (prompt-injection.py)`.
+That file was deleted in Task 15; the earlier grep missed it because it used the
+underscore form. The same tree also omits `litellm/guardrails/` — the new home
+of this entire feature — and `scanner/`. Correct both.
+
+**e. Two docs claim resource limits that have never existed.**
+`deploy/platform/docs/deployment-infra.md` and the corresponding
+`apps/docs/.../infra-sizing.mdx` both present per-service CPU/RAM caps and state
+"Compose declares CPU and memory caps". `grep -c "deploy:" deploy/platform/docker-compose.yml`
+returns **0**. There are none and never were. Verify this yourself, then either
+correct the claim or, if the tables are useful as sizing *guidance*, relabel
+them as recommendations rather than as something the file declares.
+
 - [ ] **Step 8: Run the full suite one last time**
 
 ```bash
