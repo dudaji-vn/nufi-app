@@ -55,3 +55,4 @@ class Decision:
 class Canonical:
     text: str
     transforms: tuple[str, ...]
+    derived: tuple[str, ...] = ()
