@@ -188,7 +188,12 @@ services:
     networks: [npuops]
 
   litellm-proxy:
-    image: ghcr.io/berriai/litellm:main-stable
+    # Derived image: the guardrail package, the callbacks and config.yaml are
+    # baked in so the same artifact runs here and on the production gateway.
+    build:
+      context: ./litellm
+      dockerfile: Dockerfile
+    image: nufi/litellm:local
     container_name: npuops-litellm
     restart: unless-stopped
     extra_hosts:
@@ -206,7 +211,7 @@ services:
         condition: service_healthy
       presidio-anonymizer:
         condition: service_healthy
-      llm-guard-api:
+      nufi-scanner:
         condition: service_healthy
     # `env_file` loads the whole .env so any cloud-provider key referenced from
     # litellm/config.yaml (GEMINI_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY, …)
@@ -235,15 +240,17 @@ services:
       # Presidio guardrail (W5.1) — both services live on the npuops network.
       PRESIDIO_ANALYZER_API_BASE: http://presidio-analyzer:3000
       PRESIDIO_ANONYMIZER_API_BASE: http://presidio-anonymizer:3000
-      # LLM Guard sidecar — read by callbacks/prompt_injection.py.
-      LLM_GUARD_API_BASE: http://llm-guard-api:8000
-      LLM_GUARD_AUTH_TOKEN: ${LLM_GUARD_AUTH_TOKEN}
-      LLM_GUARD_TIMEOUT_S: "5.0"
+      # Guardrail pipeline — read by litellm/guardrails/entrypoints.py.
+      SCANNER_API_BASE: http://nufi-scanner:8000
+      SCANNER_TIMEOUT_S: "8.0"
+      GUARDRAIL_POLICY_PATH: /app/guardrails/policy.yaml
     ports:
       - "4000:4000"
     volumes:
-      - ./litellm/config.yaml:/app/config.yaml:ro
-      - ./litellm/callbacks:/app/callbacks:ro
+      # config.yaml, callbacks/ and guardrails/ are baked into the image. Only
+      # the policy is mounted, so thresholds and enforcement mode can be tuned
+      # during shadow mode without a rebuild.
+      - ./litellm/guardrails/policy.yaml:/app/guardrails/policy.yaml:ro
     command:
       ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "1"]
     healthcheck:
@@ -494,9 +501,10 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
     networks: [npuops]
 
-  # --- Guardrails (W5.1) ---------------------------------------------------
-  # LiteLLM calls these two services over HTTP for PII detection + masking.
-  # Internal port 3000 on each container; no host ports — cluster-internal.
+  # --- Guardrail detectors -------------------------------------------------
+  # Detection sidecars called over HTTP by litellm/guardrails/*. They score and
+  # nothing else — every threshold and failure behaviour lives in
+  # litellm/guardrails/policy.yaml. No host ports; cluster-internal only.
 
   presidio-analyzer:
     image: mcr.microsoft.com/presidio-analyzer:2.2.362
@@ -531,31 +539,28 @@ services:
       start_period: 30s
     networks: [npuops]
 
-  # Prompt-injection scanner — sidecar API server from Protect AI / Laiyer.
-  # CPU variant; first boot loads a DeBERTa classifier (~400 MB), so the
-  # start_period is generous. Custom pre-call hook in
-  # litellm/callbacks/prompt_injection.py POSTs each user prompt to
-  # /scan/prompt and fails-closed when is_valid is false.
-  llm-guard-api:
-    image: laiyer/llm-guard-api:0.3.16
-    container_name: npuops-llm-guard-api
+  # Injection classifier — our own sidecar (see ./scanner). Replaces the
+  # laiyer/llm-guard-api container: that one owned both detection AND the
+  # decision, so its thresholds lived outside guardrails/policy.yaml. This one
+  # only scores; guardrails/policy.py decides.
+  nufi-scanner:
+    build:
+      context: ./scanner
+      dockerfile: Dockerfile
+    image: nufi/scanner:local
+    container_name: npuops-nufi-scanner
     restart: unless-stopped
     environment:
-      AUTH_TOKEN: ${LLM_GUARD_AUTH_TOKEN}
-      # The default config ships with too many aggressive scanners
-      # (BanSubstrings on "test", competitor blocklist, etc.). We mount our
-      # own minimal one — see llm-guard/scanners.yml for rationale.
-      CONFIG_FILE: /home/user/app/config/scanners.yml
-    volumes:
-      - ./llm-guard/scanners.yml:/home/user/app/config/scanners.yml:ro
+      SCANNER_MODEL_ID: ${SCANNER_MODEL_ID:-protectai/deberta-v3-base-prompt-injection-v2}
+      SCANNER_MODEL_REVISION: ${SCANNER_MODEL_REVISION:-90c9989b1a342275dd0d1a95aad283c04e075671}
+      HF_TOKEN: ${HF_TOKEN:-}
     healthcheck:
       test:
-        [
-          "CMD-SHELL",
-          'python -c ''import urllib.request; urllib.request.urlopen("http://localhost:8000/healthz")'' || exit 1',
-        ]
+        - "CMD-SHELL"
+        - 'python -c ''import urllib.request; urllib.request.urlopen("http://localhost:8000/healthz")'' || exit 1'
       interval: 15s
       timeout: 5s
       retries: 10
-      start_period: 180s
+      # First boot downloads the classifier (~700 MB).
+      start_period: 300s
     networks: [npuops]
