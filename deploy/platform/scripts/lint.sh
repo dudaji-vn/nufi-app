@@ -26,6 +26,10 @@ run() {
 
 run "yamllint" yamllint -c .yamllint.yml .
 run "ruff" ruff check .
+# Invoked via `bash` on purpose: `run` gates on `command -v "$1"`, so passing
+# the script directly would report "skipped (not installed)" the moment the
+# path changed — a security check that reports success while not running.
+run "guardrail wiring" bash ./scripts/check-guardrails-wired.sh
 
 dockerfiles=$(find . -name Dockerfile -not -path './.git/*')
 if [ -n "${dockerfiles}" ]; then

@@ -69,6 +69,12 @@ jobs:
         run: pip install pytest==8.3.4 pytest-asyncio==0.25.2 ruff==0.9.2 litellm==1.83.10 -r litellm/requirements.txt
       - name: Ruff
         run: ruff check .
+      # Runs in this job because it needs PyYAML, which the step above installs.
+      # A control declared in guardrails/policy.yaml but never wired into
+      # litellm/config.yaml is never imported, so nothing inside the proxy can
+      # report its absence — this is the only place that mismatch is visible.
+      - name: Guardrail wiring
+        run: PYTHON=python ./scripts/check-guardrails-wired.sh
       - name: Pytest
         run: python -m pytest -v
   build:

@@ -5,6 +5,7 @@
     "bootstrap": "./scripts/bootstrap.sh",
     "format": "./scripts/format.sh",
     "lint": "./scripts/lint.sh",
+    "check:wired": "./scripts/check-guardrails-wired.sh",
     "smoke": "./scripts/smoke-test.sh",
     "smoke:e2e": "./scripts/e2e-smoke-test.sh",
     "add-model": "./scripts/add-model.sh",
