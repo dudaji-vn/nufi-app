@@ -1,9 +1,15 @@
 import logging
+import os
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 from guardrails import audit
 from guardrails.health import StrictControlViolation, assert_controls, guardrail_status
 from guardrails.policy import Policy
+
+POLICY_FIXTURE = "litellm/guardrails/policy.yaml"
 
 
 @pytest.fixture
@@ -32,7 +38,10 @@ def test_status_reflects_a_disabled_control(policy_path):
     would still pass a test that only checks shape/keys. Disabling a real
     control and asserting `enabled`/`enforcing` both flip to False is what
     catches an implementation that reports every control as healthy
-    regardless of its actual `ControlConfig.enabled` value.
+    regardless of its actual `ControlConfig.enabled` value. Confirmed by
+    mutation (see task-13 report): the two tests above, unmodified, still
+    pass against a `guardrail_status` whose `"enabled"` field is hardcoded
+    to `True` — this test is the only one that does not.
     """
     policy = Policy.load(policy_path)
     policy.controls["G2a"] = policy.controls["G2a"].with_enabled(False)
@@ -85,6 +94,65 @@ def test_multiple_disabled_mandatory_controls_are_all_reported(policy_path):
     assert any("G4" in message for message in violations)
 
 
+def test_gauge_write_is_observable_not_just_defaulted(policy_path):
+    """A gauge assertion whose expected value is 0 proves nothing.
+
+    Prometheus returns 0.0 for a label combination that was never `.set()`, so a
+    test expecting 0 cannot distinguish "written correctly" from "never written".
+    Deleting the entire gauge-write loop previously left all tests green — in the
+    one test guarding the signal an operator watches longest. (That earlier test,
+    `test_assert_controls_sets_the_enabled_gauge_per_control`, made exactly this
+    mistake: both of its expected values were 0, so it could not tell "written"
+    from "omitted" either — removed in favour of this one rather than kept
+    alongside it.)
+
+    Two defences: assert a control that must read 1, and pre-seed a sentinel so
+    an omitted write cannot coincide with the default.
+    """
+    policy = Policy.load(policy_path)
+    policy.controls["G1"] = policy.controls["G1"].with_mode("pre_call")
+    enforcing = audit.GUARDRAIL_ENABLED.labels(control="G1", mode="pre_call")
+    idle = audit.GUARDRAIL_ENABLED.labels(control="G2a", mode="logging_only")
+    enforcing.set(-1)
+    idle.set(-1)
+
+    assert_controls(policy)
+
+    assert enforcing._value.get() == 1
+    assert idle._value.get() == 0
+
+
+def test_import_time_failure_is_loud_not_swallowed(tmp_path):
+    """The startup assertion must stop the proxy, not be caught and ignored.
+
+    Verified as a subprocess because that is the only way to observe what a real
+    import does. A refactor wrapping the startup block in a broad except would
+    otherwise pass every test while restoring the exact silence this module was
+    written to end.
+    """
+    broken = tmp_path / "policy.yaml"
+    broken.write_text(
+        Path(POLICY_FIXTURE)
+        .read_text()
+        .replace("strict_controls: false", "strict_controls: true")
+        .replace(
+            "    enabled: true\n    mandatory: true", "    enabled: false\n    mandatory: true", 1
+        )
+    )
+    env = {**os.environ, "GUARDRAIL_POLICY_PATH": str(broken)}
+
+    result = subprocess.run(
+        [sys.executable, "-c", "import guardrails.entrypoints"],
+        cwd=str(Path(POLICY_FIXTURE).parents[2]),
+        env={**env, "PYTHONPATH": str(Path(POLICY_FIXTURE).parents[1])},
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "StrictControlViolation" in result.stderr
+
+
 def test_strict_mode_raises_instead_of_returning(policy_path):
     policy = Policy.load(policy_path)
     policy.strict_controls = True
@@ -117,31 +185,6 @@ def test_strict_mode_error_names_every_disabled_mandatory_control(policy_path):
 
     assert "G1" in str(exc_info.value)
     assert "G4" in str(exc_info.value)
-
-
-def test_assert_controls_sets_the_enabled_gauge_per_control(policy_path):
-    """The Prometheus gauge is the signal that survives after the startup
-    log scrolls away — this is the "where does an operator see it a week
-    later" channel. Reads the real registry the way test_entrypoints.py
-    does, rather than trusting that `assert_controls` merely returns the
-    right list.
-    """
-    policy = Policy.load(policy_path)
-    policy.controls["G2a"] = policy.controls["G2a"].with_enabled(False)
-
-    assert_controls(policy)
-
-    disabled_value = audit.GUARDRAIL_ENABLED.labels(
-        control="G2a", mode=policy.controls["G2a"].mode
-    )._value.get()
-    assert disabled_value == 0
-
-    enabled_control = policy.controls["G3"]
-    assert enabled_control.enabled is True
-    enabled_value = audit.GUARDRAIL_ENABLED.labels(
-        control="G3", mode=enabled_control.mode
-    )._value.get()
-    assert enabled_value == (1 if enabled_control.mode != "logging_only" else 0)
 
 
 def test_assert_controls_logs_a_violation_at_error_level(policy_path, caplog):
