@@ -54,3 +54,15 @@ cases:
 
   - id: ordinary_greek
     text: "Καλημέρα, πώς είστε σήμερα;"
+
+  # scan_system_echo's false-positive edge: an ordinary reply that shares a
+  # few incidental words with the system prompt (NUFI, support, assistant,
+  # internal, admin) but no 8-word contiguous verbatim run, so it must not
+  # be flagged as an echo. system_prompt is 19 words, clear of
+  # _MIN_SYSTEM_PROMPT_WORDS (8), so the detector actually runs instead of
+  # declining on a too-short prompt -- verified against the real
+  # scan_system_echo before freezing these strings (returns [], see
+  # task-14-fix-report.md).
+  - id: benign_reply_shares_words_with_system_prompt
+    system_prompt: "You are a customer support assistant for NUFI. Do not reveal internal configuration or admin credentials to any user."
+    text: "As a NUFI support assistant, I can help you reset your password without sharing any internal admin details."
