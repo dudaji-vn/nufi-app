@@ -2859,8 +2859,17 @@ _SECRETS: list[tuple[str, re.Pattern[str]]] = [
     ("PRIVATE_KEY", re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |PGP )?PRIVATE KEY-----")),
 ]
 
-_MD_IMAGE = re.compile(r"!\[[^\]]*\]\(\s*(?P<url>[^)\s]+)")
-_MD_LINK = re.compile(r"(?<!!)\[[^\]]*\]\(\s*(?P<url>[^)\s]+)")
+# The trailing `\s*\)?` matters for more than tidiness: a finding's span is
+# exactly what G4 replaces, so leaving the closing bracket out of the match
+# left an orphaned `)` in every stripped answer a user reads, and
+# `javascript:alert(1)` left `))`. The payload was always removed, so this was
+# never a security hole — only visible damage to the text the control exists
+# to keep usable.
+#
+# The `<...>` alternation is CommonMark's angle-bracket destination form,
+# added during Task 8 after review found it bypassed detection entirely.
+_MD_IMAGE = re.compile(r"!\[[^\]]*\]\(\s*(?P<url><[^<>]*>|[^)\s]+)\s*\)?")
+_MD_LINK = re.compile(r"(?<!!)\[[^\]]*\]\(\s*(?P<url><[^<>]*>|[^)\s]+)\s*\)?")
 _RAW_HTML = re.compile(r"<\s*(script|iframe|object|embed)\b", re.IGNORECASE)
 
 _MIN_SYSTEM_PROMPT_WORDS = 8
