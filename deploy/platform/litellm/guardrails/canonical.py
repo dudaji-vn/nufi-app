@@ -26,36 +26,18 @@ import unicodedata
 
 from guardrails.types import Canonical
 
-# Any zero-width codepoint inserted mid-ciphertext splits a base64 blob and
-# defeats the decode, so this list must be exhaustive rather than illustrative.
-_INVISIBLE = dict.fromkeys(
-    [
-        0x00AD,  # soft hyphen
-        0x180E,  # mongolian vowel separator
-        0x200B,  # zero width space
-        0x200C,  # zero width non-joiner
-        0x200D,  # zero width joiner
-        0x2060,  # word joiner
-        0x2061,  # function application
-        0x2062,  # invisible times
-        0x2063,  # invisible separator
-        0x2064,  # invisible plus
-        0xFEFF,  # zero width no-break space
-        *range(0xFE00, 0xFE10),  # variation selectors 1-16
-        *range(0xE0100, 0xE01F0),  # variation selectors supplement
-        0x1D173,  # musical symbol begin beam
-        0x1D174,
-        0x1D175,
-        0x1D176,
-        0x1D177,
-        0x1D178,
-        0x1D179,
-        0x1D17A,
-    ]
-)
+# Zero-width characters are enumerated by Unicode general category, not by hand.
+# Two rounds of hand-listing were each defeated by a codepoint that was not on
+# the list, because "every invisible character" is not a list a human finishes.
 _BIDI = dict.fromkeys(
     [0x202A, 0x202B, 0x202C, 0x202D, 0x202E, 0x2066, 0x2067, 0x2068, 0x2069]
 )
+
+# Variation selectors are category Mn, so the Cf sweep does not reach them.
+# Other combining marks are deliberately NOT stripped — Vietnamese is written
+# with them, and mangling ordinary Vietnamese would blind the scanner to the
+# language most of this deployment's users write in.
+_VARIATION_SELECTORS = frozenset([*range(0xFE00, 0xFE10), *range(0xE0100, 0xE01F0)])
 
 # Unicode Tags block: each codepoint mirrors an ASCII character at an offset of
 # 0xE0000. This is the published "ASCII smuggler" vector — text a human reader
@@ -71,10 +53,28 @@ _HOMOGLYPHS = {
     "ο": "o", "α": "a", "ρ": "p", "υ": "u",
 }
 
-_B64_CANDIDATE = re.compile(r"(?<![A-Za-z0-9+/\-_])[A-Za-z0-9+/\-_]{20,}={0,2}(?![A-Za-z0-9+/\-_])")
+_B64_CHARS = r"[A-Za-z0-9+/\-_]"
+_B64_CANDIDATE = re.compile(
+    rf"(?<!{_B64_CHARS}){_B64_CHARS}{{20,}}={{0,2}}(?!{_B64_CHARS})"
+)
 _B64_URLSAFE = str.maketrans({"-": "+", "_": "/"})
 _MIN_DECODED_LEN = 8
 _ALLOWED_CONTROL = "\n\r\t"
+_MAX_UNSCANNABLE_RATIO = 0.34
+
+
+def _strip_invisible(text: str) -> str:
+    """Remove every zero-width format character.
+
+    Unicode general category `Cf` is the exhaustive definition, so we ask
+    Unicode rather than maintain a list. Tag characters are also Cf, which is
+    why `_extract_tags` must run before this.
+    """
+    return "".join(
+        char
+        for char in text
+        if unicodedata.category(char) != "Cf" and ord(char) not in _VARIATION_SELECTORS
+    )
 
 
 def _extract_tags(text: str) -> tuple[str, str]:
@@ -90,9 +90,27 @@ def _extract_tags(text: str) -> tuple[str, str]:
     return "".join(kept), "".join(hidden).strip()
 
 
-def _is_scannable(text: str) -> bool:
-    """Printable, but tolerating the whitespace a real payload contains."""
-    return all(char.isprintable() or char in _ALLOWED_CONTROL for char in text)
+def _sanitise(text: str) -> str | None:
+    """Replace unscannable bytes rather than discarding the whole payload.
+
+    Dropping a candidate over one control byte inverted this layer's contract:
+    `base64(payload + "\\x00")` decoded to a real injection that was then thrown
+    away, so no scanner ever saw it. Candidates that are mostly unscannable are
+    still rejected — that is binary noise, not a hidden instruction.
+    """
+    if not text:
+        return None
+    out: list[str] = []
+    replaced = 0
+    for char in text:
+        if char.isprintable() or char in _ALLOWED_CONTROL:
+            out.append(char)
+        else:
+            out.append(" ")
+            replaced += 1
+    if replaced / len(text) > _MAX_UNSCANNABLE_RATIO:
+        return None
+    return "".join(out)
 
 
 def _fold_homoglyphs(text: str) -> str:
@@ -119,12 +137,38 @@ def _decode_base64(text: str) -> list[str]:
         chunk = match.group(0).translate(_B64_URLSAFE)
         padded = chunk + "=" * (-len(chunk) % 4)
         try:
-            candidate = base64.b64decode(padded, validate=True).decode("utf-8")
+            raw = base64.b64decode(padded, validate=True).decode("utf-8")
         except (binascii.Error, UnicodeDecodeError, ValueError):
             continue
-        if len(candidate) >= _MIN_DECODED_LEN and _is_scannable(candidate):
+        candidate = _sanitise(raw)
+        if candidate is not None and len(candidate.strip()) >= _MIN_DECODED_LEN:
             decoded.append(candidate)
     return decoded
+
+
+def _decode_all(text: str) -> tuple[list[str], bool]:
+    """One level of every decoder, applied uniformly.
+
+    Both call sites go through here so the branches cannot drift apart. An
+    earlier version re-decoded tag content but not ROT13 output, which left
+    `rot13(base64(payload))` recoverable nowhere.
+
+    Bounded by construction: base64 is applied to the ROT13 output, but nothing
+    is applied to its own output. Decoding to a fixed point would be unbounded
+    work on attacker-controlled input.
+    """
+    out: list[str] = []
+    from_base64 = _decode_base64(text)
+    out.extend(from_base64)
+
+    nested: list[str] = []
+    rotated = codecs.decode(text, "rot_13")
+    if rotated != text:
+        out.append(rotated)
+        nested = _decode_base64(rotated)
+        out.extend(nested)
+
+    return out, bool(from_base64 or nested)
 
 
 def canonicalize(text: str) -> Canonical:
@@ -132,30 +176,24 @@ def canonicalize(text: str) -> Canonical:
     derived: list[str] = []
     working = text
 
-    stripped = working.translate(_INVISIBLE)
-    if stripped != working:
-        transforms.append("invisible")
-        working = stripped
+    # Tags are themselves category Cf, so they must be recovered BEFORE the
+    # invisible sweep would delete them.
+    working, hidden = _extract_tags(working)
+    if hidden:
+        transforms.append("unicode_tags")
+        derived.append(hidden)
+        hidden_decoded, _ = _decode_all(hidden)
+        derived.extend(hidden_decoded)
 
     stripped = working.translate(_BIDI)
     if stripped != working:
         transforms.append("bidi")
         working = stripped
 
-    working, hidden = _extract_tags(working)
-    if hidden:
-        transforms.append("unicode_tags")
-        derived.append(hidden)
-        # Recovered tag text is itself attacker-authored, so it gets the same
-        # decoders as the visible text. Without this, base64 or ROT13 hidden
-        # inside the Tags block lands in neither `text` nor `derived` — two
-        # layers of invisibility and a working bypass. One extra level only,
-        # deliberately: decoding to a fixed point is unbounded work on
-        # attacker-controlled input.
-        derived.extend(_decode_base64(hidden))
-        rotated_hidden = codecs.decode(hidden, "rot_13")
-        if rotated_hidden != hidden:
-            derived.append(rotated_hidden)
+    stripped = _strip_invisible(working)
+    if stripped != working:
+        transforms.append("invisible")
+        working = stripped
 
     normalised = unicodedata.normalize("NFKC", working)
     if normalised != working:
@@ -167,13 +205,9 @@ def canonicalize(text: str) -> Canonical:
         transforms.append("homoglyph")
         working = folded
 
-    from_base64 = _decode_base64(working)
-    if from_base64:
+    decoded, saw_base64 = _decode_all(working)
+    if saw_base64:
         transforms.append("base64")
-        derived.extend(from_base64)
-
-    rotated = codecs.decode(working, "rot_13")
-    if rotated != working:
-        derived.append(rotated)
+    derived.extend(decoded)
 
     return Canonical(text=working, transforms=tuple(transforms), derived=tuple(derived))
