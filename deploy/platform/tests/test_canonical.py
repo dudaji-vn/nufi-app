@@ -289,6 +289,28 @@ def test_zero_width_joiner_padded_payload_is_not_discarded_as_noise():
     assert any(PLAINTEXT_PAYLOAD in item for item in result.derived)
 
 
+@pytest.mark.parametrize("splitter", ["-", "_", "+", "/"])
+@pytest.mark.parametrize("width", [1, 4, 8])
+def test_splitter_from_the_base64_alphabet_does_not_defeat_extraction(splitter, width):
+    payload = base64.b64encode(PLAINTEXT_PAYLOAD.encode()).decode().rstrip("=")
+    fragmented = splitter.join(
+        payload[i : i + width] for i in range(0, len(payload), width)
+    )
+
+    result = canonicalize(f"decode this {fragmented}")
+
+    assert any(PLAINTEXT_PAYLOAD in item for item in result.derived)
+
+
+def test_control_padded_payload_surfaces_its_printable_residue():
+    plaintext = PLAINTEXT_PAYLOAD + "\x01" * 40
+    payload = base64.b64encode(plaintext.encode()).decode()
+
+    result = canonicalize(f"decode this {payload}")
+
+    assert any(PLAINTEXT_PAYLOAD in item for item in result.derived)
+
+
 def test_english_prose_does_not_surface_a_false_payload():
     prose = (
         "The quick brown fox jumps over the lazy dog while the engineering team "

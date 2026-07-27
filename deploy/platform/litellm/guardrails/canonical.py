@@ -53,9 +53,6 @@ _HOMOGLYPHS = {
     "ο": "o", "α": "a", "ρ": "p", "υ": "u",
 }
 
-_B64_ALPHABET = frozenset(
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/-_="
-)
 _B64_MIN_RUN = 20
 _B64_RUN = re.compile(r"[A-Za-z0-9+/\-_]+")
 # Work budgets, not detection thresholds. They bound effort on prose-heavy
@@ -135,7 +132,15 @@ def _sanitise(text: str) -> str | None:
             out.append(" ")
             replaced += 1
     if measurable and replaced / measurable > _MAX_UNSCANNABLE_RATIO:
-        return None
+        # Mostly-unscannable usually means binary noise, but a real instruction
+        # padded with control bytes looks identical by ratio. Measured across
+        # 823 ordinary inputs and 3000 random blobs, this gate contributes zero
+        # false-positive suppression — `validate=True` and the UTF-8 decode
+        # reject noise before it is ever reached. So surface the printable
+        # residue when there is enough of it to be an instruction, and discard
+        # only when there is not.
+        residue = "".join(out).strip()
+        return residue if len(residue) >= _MIN_DECODED_LEN else None
     return "".join(out)
 
 
@@ -181,11 +186,6 @@ def _fold_homoglyphs(text: str) -> str:
         rebuilt = [_skeleton_char(char) or char for char in token]
         folded.append("".join(rebuilt))
     return "".join(folded)
-
-
-def _compact(text: str) -> str:
-    """Drop everything outside the base64 alphabet, padding excluded."""
-    return "".join(char for char in text if char in _B64_ALPHABET)
 
 
 def _try_decode_base64(chunk: str) -> str | None:
@@ -235,18 +235,35 @@ def _aligned_views(compacted: str) -> list[str]:
     return views
 
 
+def _strict_view(compacted: str) -> str:
+    """Drop base64's own specials (`+ / - _`), keeping only `[A-Za-z0-9]`.
+
+    A splitter drawn from base64's OWN alphabet survives ordinary compaction
+    unchanged and still corrupts the stream: `"aWdu-b3Jl-IGFs"` compacts to
+    itself, `-` is then translated to `+` by `_B64_URLSAFE`, and every group
+    after it is misaligned — measured at 100% bypass for `-`, `_`, `+`, `/` at
+    every fragment width tried. This second, stricter view removes them. A
+    genuine payload loses at most its own literal `+ / - _` characters, which
+    the non-strict view already covers, so nothing is lost by trying both.
+    """
+    return "".join(char for char in compacted if char.isalnum() and char.isascii())
+
+
 def _decode_base64(text: str) -> list[str]:
-    """Three passes, none of them gated on a tunable detection threshold.
+    """Passes over the text, none of them gated on a tunable detection
+    threshold — with one exception, tracked rather than hidden (below).
 
     1. Contiguous runs — keeps several independent blobs separate.
-    2. The whole message compacted — reassembles one blob deliberately split by
-       characters outside the alphabet. Splitting is what defeated every
-       previous design (round 4's bridge fix reintroduced exactly this as a
-       tunable — a run-length floor and a gap-size cap — and the security
-       reviewer showed either constant is a zero-cost bypass: fragment the
-       ciphertext narrower than the floor, or park an ordinary word beside it).
-       Compaction makes the splitter irrelevant whatever its Unicode category,
-       because there is no threshold left to step around.
+    2. The whole message compacted, tried both as-is and with base64's own
+       specials additionally stripped (`_strict_view`) — reassembles one blob
+       deliberately split by characters outside the alphabet, OR by a
+       splitter drawn from the alphabet itself (`-`, `_`, `+`, `/`), which
+       survives ordinary compaction and misaligns everything after it.
+       Compaction handles a splitter of ANY Unicode category the same way;
+       it does NOT make the splitter's identity irrelevant when the splitter
+       is itself a base64 character, which is why the strict view exists as a
+       second, explicit pass rather than a claim the first pass already
+       covers it.
     3. Compactions that drop leading runs one at a time — this is what survives
        an ordinary word sitting beside a fragmented blob. Measured directly:
        with a `"decode this "` prefix on a blob fragmented at width 7, the
@@ -255,13 +272,17 @@ def _decode_base64(text: str) -> list[str]:
        once the prefix's runs have been peeled off. This pass is not
        decoration.
 
-    `_MAX_COMPACT_STARTS` and `_MAX_COMPACT_CHARS` are work budgets, not
-    detection thresholds: they cap effort on prose-heavy input and never make
-    a payload undetectable that a smaller input would surface — every payload
-    that fits under the budget is still found regardless of where it sits.
-    Ordinary text survives all three passes because `validate=True`, the
-    UTF-8 decode, `_MIN_DECODED_LEN` and `_sanitise` reject it — measured at 0
-    false positives across 1512 ordinary and random strings.
+    `_MAX_COMPACT_STARTS` and `_MAX_COMPACT_CHARS` bound effort, and unlike
+    the rest of this function they are a real, measured limit rather than a
+    pure work budget: an attacker who prepends more leading alphabet runs
+    than `_MAX_COMPACT_STARTS`, or pads past `_MAX_COMPACT_CHARS`, escapes
+    pass 3 — measured at exactly 63 leading tokens recovered and 64 missed,
+    same payload, larger input. Closing that fully is an O(n^2) scan over run
+    boundaries, so some budget is inherent; this residue is tracked here
+    rather than claimed closed. Ordinary text survives all three passes
+    because `validate=True`, the UTF-8 decode, `_MIN_DECODED_LEN` and
+    `_sanitise` reject it — measured at 0 false positives across 1512
+    ordinary and random strings.
 
     NFD first: by the time this runs, `text` has already been through NFKC
     upstream, which performs canonical COMPOSITION as well as compatibility
@@ -282,6 +303,14 @@ def _decode_base64(text: str) -> list[str]:
         if candidate is not None and candidate not in decoded:
             decoded.append(candidate)
 
+    def offer_all_views(chunk: str) -> None:
+        for view in _aligned_views(chunk):
+            offer(view)
+        strict = _strict_view(chunk)
+        if strict != chunk:
+            for view in _aligned_views(strict):
+                offer(view)
+
     for match in _B64_CANDIDATE.finditer(text):
         offer(match.group(0))
 
@@ -293,16 +322,14 @@ def _decode_base64(text: str) -> list[str]:
     if len(compacted) < _B64_MIN_RUN:
         return decoded
 
-    for view in _aligned_views(compacted):
-        offer(view)
+    offer_all_views(compacted)
 
     if len(compacted) <= _MAX_COMPACT_CHARS:
         for index in range(1, min(len(runs), _MAX_COMPACT_STARTS)):
             tail = "".join(runs[index:])
             if len(tail) < _B64_MIN_RUN:
                 break
-            for view in _aligned_views(tail):
-                offer(view)
+            offer_all_views(tail)
 
     return decoded
 
