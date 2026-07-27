@@ -1790,7 +1790,6 @@ repository is gated, so it needs HF_TOKEN and an accepted licence.
 from __future__ import annotations
 
 import os
-
 import time
 from typing import Any
 
@@ -2145,8 +2144,13 @@ docker rm -f nufi-scanner-dev
 
 - [ ] **Step 7: Verify the Dockerfile lints**
 
-Run: `cd deploy/platform && hadolint scanner/Dockerfile`
-Expected: no output
+```bash
+cd deploy/platform
+hadolint scanner/Dockerfile
+./.venv/bin/ruff check .
+```
+Expected: both clean. `ruff check .` covers `scanner/` too — an earlier version of
+this task verified only hadolint and left the repository lint broken.
 
 - [ ] **Step 8: Commit**
 
