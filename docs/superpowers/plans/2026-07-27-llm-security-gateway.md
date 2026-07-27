@@ -5672,6 +5672,60 @@ attack-corpus results alone.
 Community License and setting `HF_TOKEN`.
 ```
 
+- [ ] **Step 5b: Record the single-worker constraint that the metrics depend on**
+
+Everything in this task — the benchmark, the README's "Status" bullet, and the
+rollout procedure that reads `nufi_guardrail_decisions_total` to decide whether
+enforcing is safe — assumes our metrics actually appear on the proxy's
+`/metrics`. Verified against installed litellm 1.83.10
+(`integrations/prometheus.py:3450-3476`), they do, but only because of two
+facts that are true today and are not enforced anywhere:
+
+- `docker-compose.yml` runs the proxy with `--num_workers 1`.
+- `PROMETHEUS_MULTIPROC_DIR` is set nowhere in the platform.
+
+`_mount_metrics_endpoint()` calls bare `make_asgi_app()` in that case, which
+serves the **process-global** `REGISTRY` — the same registry
+`litellm/guardrails/audit.py` registers on. Change either fact and the
+guardrail metrics stop being trustworthy:
+
+- Raise `--num_workers` above 1 and each worker keeps its own counts, so a
+  scrape samples whichever worker answers. The numbers stay plausible and
+  become wrong by a factor of the worker count.
+- Set `PROMETHEUS_MULTIPROC_DIR` and LiteLLM builds a fresh `CollectorRegistry`
+  carrying only a `MultiProcessCollector`. Counters and histograms survive
+  through prometheus_client's mmap files; the two `Gauge`s
+  (`nufi_guardrail_enabled`, `nufi_guardrail_degraded`) export one series per
+  pid under the default `multiprocess_mode`, so "is this control enforcing"
+  stops having a single answer.
+
+Both failures are silent, and both corrupt the exact numbers the rollout
+decision reads. A control that is off would look identical to a control that is
+on and has never fired — the founding failure of this project, reintroduced
+through a scaling knob.
+
+Add a comment in `deploy/platform/docker-compose.yml` directly above the
+`litellm-proxy` `command:` line, where whoever raises the worker count will be
+standing:
+
+```yaml
+    # --num_workers MUST stay 1 unless the guardrail metrics are reworked.
+    # LiteLLM mounts /metrics over the process-global prometheus REGISTRY
+    # (integrations/prometheus.py), which is where guardrails/audit.py
+    # registers. With >1 worker each process keeps its own counts and a scrape
+    # samples one of them; with PROMETHEUS_MULTIPROC_DIR set, the gauges go
+    # per-pid. Either way nufi_guardrail_* silently stops meaning what the
+    # rollout procedure in README.md assumes it means.
+```
+
+and append to the README section added in Step 5, under "Status":
+
+```markdown
+> The guardrail metrics are only correct while the proxy runs a single worker
+> and `PROMETHEUS_MULTIPROC_DIR` is unset. See the comment above `command:` in
+> `docker-compose.yml` before changing either.
+```
+
 - [ ] **Step 6: Record the deviations in the design doc**
 
 In `docs/2026-07-27-llm-security-gateway-design.md`, replace the "Open item for
@@ -5723,32 +5777,51 @@ the "Block contract" heading.
 
 - [ ] **Step 7: Fix the stale platform CLAUDE.md**
 
-`deploy/platform/CLAUDE.md` still describes a `librechat/` directory and a
-`dudaji-vn/LibreChat` fork on branch `npuops/main`, neither of which exists
-after the monorepo consolidation. In the "Directory layout" list, replace the
-`librechat/` bullet with:
+Three claims in `deploy/platform/CLAUDE.md` are out of date. Verify each against
+the repository before editing — one of them is subtler than it looks.
+
+In the "Directory layout" list, the `librechat/` bullet (lines 26-27) reads:
 
 ```markdown
+- `librechat/` — LibreChat runtime config (`librechat.yaml`) only; the image
+  ships from a separate fork repo (`dudaji-vn/LibreChat`, branch `npuops/main`)
+```
+
+There is no `librechat/` directory — `librechat.yaml` sits at the platform root
+— and the fork it names is gone: the on-prem service was repointed to the
+maintained `nufichat:main` image (commit `8ba116014`). But the file itself is
+real and still consumed by the `librechat` compose service, so **correct this
+bullet rather than deleting it**, then add the two new ones:
+
+```markdown
+- `librechat.yaml` — LibreChat runtime config, at the platform root
 - `scanner/` — prompt-injection classifier sidecar
 - `litellm/guardrails/` — gateway security controls (see README)
 ```
 
-and in the "Core stack" list replace the `LLM Guard — PII / prompt injection scanner`
-line with:
+In the "Core stack" list, line 15 reads `- LLM Guard — PII / prompt injection scanner`.
+That service is deleted in Task 15. Replace it with:
 
 ```markdown
 - Presidio — PII detection
 - nufi-scanner — prompt-injection classifier
 ```
 
+Confirm with `grep -rn "llm-guard\|LLM Guard" deploy/platform` that nothing
+else still refers to the removed service, and report anything you find.
+
 - [ ] **Step 8: Run the full suite one last time**
 
 ```bash
 cd deploy/platform
 ruff check .
-python -m pytest -v
+.venv/bin/python -m pytest -v
 ./scripts/lint.sh
 ```
+
+Use the venv interpreter explicitly, as the earlier tasks did — a bare `python`
+may resolve to an interpreter without `litellm` or `pytest` installed, and a
+suite that cannot run is not a suite that passed.
 
 Expected: ruff clean, all non-contract tests pass, lint passes.
 
