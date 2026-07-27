@@ -1,0 +1,78 @@
+---
+# Declarative guardrail policy. Every threshold and failure behaviour lives
+# here, never in code. See docs/2026-07-27-llm-security-gateway-design.md.
+version: 1
+
+# When true, the proxy refuses to start if a mandatory control is disabled.
+strict_controls: false
+
+controls:
+  G1:
+    risk: LLM01
+    enabled: true
+    mandatory: true
+    # Start in shadow. Flip to pre_call to enforce.
+    mode: logging_only
+    fail: closed
+    thresholds:
+      # A jailbreak string inside a retrieved document is near-certain attack;
+      # the same string typed by a user may be a question about the topic.
+      user: 0.90
+      untrusted: 0.50
+      system: 1.01
+    action: block
+
+  G2a:
+    risk: LLM02
+    enabled: true
+    mandatory: false
+    mode: logging_only
+    fail: open
+    thresholds:
+      user: 0.50
+      untrusted: 0.50
+      system: 1.01
+    # Input PII is never masked. Masking corrupts the user's task — the model
+    # starts answering the placeholder instead of the question (W5.1, May 2026).
+    action: log
+
+  G2b:
+    risk: LLM02
+    enabled: true
+    mandatory: false
+    mode: logging_only
+    fail: open
+    thresholds:
+      user: 0.50
+      untrusted: 0.50
+      system: 1.01
+    action: redact
+    options:
+      # Honoured only when the calling key carries allow_grounded_hint.
+      respect_grounded_hint: true
+
+  G3:
+    risk: LLM07
+    enabled: true
+    mandatory: false
+    mode: logging_only
+    fail: open
+    thresholds:
+      user: 0.60
+      untrusted: 0.60
+      system: 1.01
+    action: block
+
+  G4:
+    risk: LLM05
+    enabled: true
+    mandatory: true
+    mode: logging_only
+    fail: open
+    thresholds:
+      user: 0.99
+      untrusted: 0.99
+      system: 1.01
+    action: redact
+    options:
+      image_host_allowlist: []
