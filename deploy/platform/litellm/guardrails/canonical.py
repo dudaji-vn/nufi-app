@@ -26,15 +26,31 @@ import unicodedata
 
 from guardrails.types import Canonical
 
+# Any zero-width codepoint inserted mid-ciphertext splits a base64 blob and
+# defeats the decode, so this list must be exhaustive rather than illustrative.
 _INVISIBLE = dict.fromkeys(
     [
         0x00AD,  # soft hyphen
+        0x180E,  # mongolian vowel separator
         0x200B,  # zero width space
         0x200C,  # zero width non-joiner
         0x200D,  # zero width joiner
         0x2060,  # word joiner
-        0xFE0F,  # variation selector-16
+        0x2061,  # function application
+        0x2062,  # invisible times
+        0x2063,  # invisible separator
+        0x2064,  # invisible plus
         0xFEFF,  # zero width no-break space
+        *range(0xFE00, 0xFE10),  # variation selectors 1-16
+        *range(0xE0100, 0xE01F0),  # variation selectors supplement
+        0x1D173,  # musical symbol begin beam
+        0x1D174,
+        0x1D175,
+        0x1D176,
+        0x1D177,
+        0x1D178,
+        0x1D179,
+        0x1D17A,
     ]
 )
 _BIDI = dict.fromkeys(
@@ -55,7 +71,7 @@ _HOMOGLYPHS = {
     "ο": "o", "α": "a", "ρ": "p", "υ": "u",
 }
 
-_B64_CANDIDATE = re.compile(r"\b[A-Za-z0-9+/\-_]{20,}={0,2}\b")
+_B64_CANDIDATE = re.compile(r"(?<![A-Za-z0-9+/\-_])[A-Za-z0-9+/\-_]{20,}={0,2}(?![A-Za-z0-9+/\-_])")
 _B64_URLSAFE = str.maketrans({"-": "+", "_": "/"})
 _MIN_DECODED_LEN = 8
 _ALLOWED_CONTROL = "\n\r\t"
@@ -130,6 +146,16 @@ def canonicalize(text: str) -> Canonical:
     if hidden:
         transforms.append("unicode_tags")
         derived.append(hidden)
+        # Recovered tag text is itself attacker-authored, so it gets the same
+        # decoders as the visible text. Without this, base64 or ROT13 hidden
+        # inside the Tags block lands in neither `text` nor `derived` — two
+        # layers of invisibility and a working bypass. One extra level only,
+        # deliberately: decoding to a fixed point is unbounded work on
+        # attacker-controlled input.
+        derived.extend(_decode_base64(hidden))
+        rotated_hidden = codecs.decode(hidden, "rot_13")
+        if rotated_hidden != hidden:
+            derived.append(rotated_hidden)
 
     normalised = unicodedata.normalize("NFKC", working)
     if normalised != working:
