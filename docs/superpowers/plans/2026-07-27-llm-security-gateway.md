@@ -1594,9 +1594,12 @@ _MODES = frozenset({"pre_call", "post_call", "during_call", "logging_only"})
 # reason threshold keys are: a typo here does not fail loudly, it re-prices a
 # control silently — `coverge_gap` would leave real coverage_gap findings falling
 # back to the source threshold, where score 1.0 blocks everything.
-_KNOWN_DETECTORS = frozenset(
-    {"injection", "coverage_gap", "presidio", "secrets", "system_echo", "exfil"}
-)
+# Extended by each task that introduces a detector. Rejecting an unknown name
+# fails loud, which is the right direction, but it means a task that adds a
+# detector and forgets this set makes a legitimate policy.yaml unloadable.
+# Task 6 added injection and coverage_gap; Task 7 adds presidio; Task 8 adds
+# secrets, system_echo and exfil.
+_KNOWN_DETECTORS = frozenset({"injection", "coverage_gap"})
 _FAIL = frozenset({"open", "closed"})
 
 
@@ -2489,6 +2492,11 @@ git commit -m "feat(guardrails): add injection scanner adapter with canonicalisa
 - Create: `deploy/platform/litellm/guardrails/scanners/pii.py`
 - Test: `deploy/platform/tests/contract/test_pii_contract.py`
 
+**Also modify:** `deploy/platform/litellm/guardrails/policy.py` — add `"presidio"`
+to `_KNOWN_DETECTORS`. This task introduces that detector name, so a policy that
+declares a `presidio` per-detector threshold must be loadable. Leaving it out
+makes a legitimate `policy.yaml` fail to parse.
+
 **Interfaces:**
 - Consumes: `Span`, `Finding` from `guardrails.types`; `ScannerUnavailable` from `guardrails.scanners.base`
 - Produces: `PiiScanner(base_url: str, timeout_s: float, entities: list[str], language: str)` with `async scan(spans) -> list[Finding]`. Each `Finding` sets `entity` to the Presidio entity type and `start`/`end` to the character offsets within its span.
@@ -2643,6 +2651,9 @@ Covers three things no model classifier handles: credential formats, system-prom
 
 **Files:**
 - Create: `deploy/platform/litellm/guardrails/scanners/patterns.py`
+- Modify: `deploy/platform/litellm/guardrails/policy.py` — add `"secrets"`,
+  `"system_echo"` and `"exfil"` to `_KNOWN_DETECTORS`; this task introduces all
+  three, and a policy declaring a threshold for one must be loadable.
 - Test: `deploy/platform/tests/test_patterns.py`
 
 **Interfaces:**
