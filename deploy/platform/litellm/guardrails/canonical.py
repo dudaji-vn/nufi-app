@@ -57,6 +57,11 @@ _B64_ALPHABET = frozenset(
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/-_="
 )
 _B64_MIN_RUN = 20
+_B64_RUN = re.compile(r"[A-Za-z0-9+/\-_]+")
+# Work budgets, not detection thresholds. They bound effort on prose-heavy
+# input; they never make a payload undetectable that a smaller input surfaces.
+_MAX_COMPACT_STARTS = 64
+_MAX_COMPACT_CHARS = 65536
 _MEANINGFUL_JOINERS = frozenset("‌‍")
 _B64_CHARS = r"[A-Za-z0-9+/\-_]"
 _B64_CANDIDATE = re.compile(
@@ -114,13 +119,22 @@ def _sanitise(text: str) -> str | None:
         return None
     out: list[str] = []
     replaced = 0
+    measurable = 0
     for char in text:
+        # Format characters are not evidence of binary noise — a decoded payload
+        # padded with ZWJ or ZWNJ (kept by `_normalise_candidate` because they
+        # are meaningful in Persian, Hindi and emoji) is still a payload, and
+        # counting them toward the ratio pushed legitimate decodes over the
+        # gate and discarded them.
+        if unicodedata.category(char) == "Cf":
+            continue
+        measurable += 1
         if char.isprintable() or char in _ALLOWED_CONTROL:
             out.append(char)
         else:
             out.append(" ")
             replaced += 1
-    if replaced / len(text) > _MAX_UNSCANNABLE_RATIO:
+    if measurable and replaced / measurable > _MAX_UNSCANNABLE_RATIO:
         return None
     return "".join(out)
 
@@ -128,37 +142,27 @@ def _sanitise(text: str) -> str | None:
 def _skeleton_char(char: str) -> str | None:
     """Map one lookalike to its ASCII letter, or None if it is not one.
 
-    Tries the explicit map first, then Unicode's own COMPATIBILITY
-    decomposition: a character whose NFKD form reduces to a single ASCII
-    letter once its combining marks are removed IS that letter as far as a
-    reader is concerned (e.g. fullwidth or styled Latin letters). This
-    replaces a 16-entry hand-list, which was the same failure shape as the
-    hand-listed invisibles — a list nobody finishes.
+    This is an explicit table, and that is an accepted limitation rather than a
+    solved problem. An NFKD-skeleton generalisation was tried here in round 4
+    and measured to be a no-op: the characters that actually matter — U+0455
+    Cyrillic es, U+03BD Greek nu, U+0261 Latin script g, U+0578 Armenian vo —
+    carry no decomposition at all, so NFKD leaves them untouched. The only
+    characters NFKD did fold were compatibility forms such as fullwidth, which
+    `_apply_nfkc` has already resolved before this runs, and precomposed
+    Vietnamese vowels, which folding would have destroyed (that was round 4's
+    near-miss: gating the fallback on a compatibility-tagged decomposition
+    correctly stopped it from touching Vietnamese, but the gate also made the
+    fallback unreachable for anything real — it never fired for any character
+    this module needed to fold).
 
-    Restricted to CANONICAL-decomposition-free / compatibility-tagged
-    characters only: `unicodedata.decomposition()` returns a bare codepoint
-    list ("0061 0300") for a canonical decomposition and a tagged one
-    ("<wide> 0072") for a compatibility decomposition. Precomposed accented
-    Latin letters — "à", "ạ" — decompose canonically into base + combining
-    mark; that IS the character, not a lookalike of something else, and
-    Vietnamese is written with exactly these. Folding them by stripping their
-    `Mn` part was the first draft of this function and it silently turned
-    "bạn" into "ban" — the deployment's primary user language. Only a
-    compatibility (tagged) decomposition, or no decomposition at all (caught
-    by the explicit map above), is eligible here.
+    Closing the class properly needs Unicode's confusables table, which was
+    declined to avoid adding a dependency to a security-critical image. Two
+    things bound the residue: a homoglyph inside a base64 blob is now
+    irrelevant, because extraction compacts to the alphabet and the splitter's
+    identity no longer matters; and homoglyphed visible text still reaches the
+    multilingual injection classifier, which does not read ASCII skeletons.
     """
-    if char in _HOMOGLYPHS:
-        return _HOMOGLYPHS[char]
-    if not unicodedata.decomposition(char).startswith("<"):
-        return None
-    stripped = "".join(
-        part
-        for part in unicodedata.normalize("NFKD", char)
-        if unicodedata.category(part) != "Mn"
-    )
-    if len(stripped) == 1 and "a" <= stripped.lower() <= "z":
-        return stripped
-    return None
+    return _HOMOGLYPHS.get(char)
 
 
 def _fold_homoglyphs(text: str) -> str:
@@ -180,17 +184,7 @@ def _fold_homoglyphs(text: str) -> str:
 
 
 def _compact(text: str) -> str:
-    """Drop everything outside the base64 alphabet.
-
-    A blob split by ONE character out of the alphabet was enough to defeat the
-    decoder, and the categories that can supply such a character are unbounded:
-    `Cf` format characters, `Lo` Hangul fillers that render blank, `So` braille
-    blank, ordinary whitespace, and `Mn` combining marks — which cannot be
-    stripped, because Vietnamese is written with them.
-
-    So contiguity is no longer required. Stripping at the extraction site is
-    bounded by design; stripping at the character site was bounded by a list.
-    """
+    """Drop everything outside the base64 alphabet, padding excluded."""
     return "".join(char for char in text if char in _B64_ALPHABET)
 
 
@@ -212,69 +206,62 @@ def _try_decode_base64(chunk: str) -> str | None:
     return candidate
 
 
-_B64_RUN = re.compile(rf"{_B64_CHARS}+=*")
-# A run this short is an ordinary short English word ("this", "decode"); a
-# base64 fragment split by one splitter character is not. Only runs on BOTH
-# sides of a gap that clear this floor are bridged, so "decode this <blob>"
-# never has "this" stitched onto the blob.
-_MIN_BRIDGE_RUN = 8
-# Wide enough to bridge a blob split by one splitter codepoint (and a couple
-# of stacked ones); narrow enough that it never reaches across a sentence.
-_MAX_BRIDGE_GAP = 3
+def _aligned_views(compacted: str) -> list[str]:
+    """Every 4-phase-shifted window of a compacted run.
 
+    Four phase offsets (drop 0-3 leading characters) cover every possible
+    front alignment in O(4n), with no constant an attacker can step around.
 
-def _bridge_spans(text: str) -> list[str]:
-    """Reassemble a blob split by a small number of filler characters.
-
-    A blob split by one splitter character no longer matches `_B64_CANDIDATE`
-    at all: the two remaining pieces are each individually too short, or the
-    combined run never existed as one contiguous match to begin with.
-    Whitespace, Hangul fillers, the braille blank and a stray combining mark
-    are all valid splitters here — none of them is `Cf`, so the invisible
-    sweep does not remove them, and none of them can be enumerated exhaustively
-    (see `_compact`). Bridging fixes the SITE instead of the character: two
-    alphabet runs are joined only when each one is independently long enough
-    to be a blob fragment rather than a word, and the gap between them is
-    short enough that it can only be a handful of splitter characters, not an
-    intervening sentence.
+    The tail is NOT separately trimmed to a multiple of four: `_try_decode_
+    base64` already re-pads to the correct length via `-len % 4`, so trimming
+    here would be redundant at best. It was tried and measured harmful: for a
+    genuine payload whose true length isn't already a multiple of 4 (the
+    common case — that is what padding exists for), trimming discards the
+    real trailing characters instead of letting them be validly padded,
+    silently truncating a recovered payload. It also manufactures false
+    positives the opposite way: trimming a mis-aligned phase's remainder DOWN
+    to a valid length let structured binary noise decode as content it would
+    otherwise have been correctly rejected for (`-29 % 4 == 3` is not
+    encodable padding and `validate=True` rejects it outright — trimming to
+    28 hid that rejection). Leaving the natural remainder for `_try_decode_
+    base64` to pad itself keeps both properties: full recovery when the
+    alignment is genuine, and rejection when it is not.
     """
-    runs = list(_B64_RUN.finditer(text))
-    spans: list[str] = []
-    chain_start: int | None = None
-    chain_runs = 0
-    for idx, match in enumerate(runs):
-        if chain_start is None:
-            chain_start = match.start()
-            chain_runs = 1
-            continue
-        prev = runs[idx - 1]
-        gap = match.start() - prev.end()
-        if (
-            gap <= _MAX_BRIDGE_GAP
-            and len(prev.group(0)) >= _MIN_BRIDGE_RUN
-            and len(match.group(0)) >= _MIN_BRIDGE_RUN
-        ):
-            chain_runs += 1
-        else:
-            if chain_runs > 1:
-                spans.append(text[chain_start : prev.end()])
-            chain_start = match.start()
-            chain_runs = 1
-    if chain_runs > 1 and chain_start is not None:
-        spans.append(text[chain_start : runs[-1].end()])
-    return spans
+    views: list[str] = []
+    for phase in range(4):
+        chunk = compacted[phase:]
+        if len(chunk) >= _B64_MIN_RUN:
+            views.append(chunk)
+    return views
 
 
 def _decode_base64(text: str) -> list[str]:
-    """Two passes: contiguous runs, then nearby runs bridged across a gap.
+    """Three passes, none of them gated on a tunable detection threshold.
 
-    The contiguous pass keeps several independent blobs separate. The
-    bridging pass reassembles one blob that was deliberately split — scoped to
-    the bridged span itself (via `_compact`), not the whole message, so
-    surrounding prose is never absorbed into the candidate. Ordinary prose
-    survives both because `validate=True` plus a UTF-8 decode plus
-    `_MIN_DECODED_LEN` reject it — measured at 0 surfacings across 3000 random
-    binary blobs and the whole ordinary-content corpus.
+    1. Contiguous runs — keeps several independent blobs separate.
+    2. The whole message compacted — reassembles one blob deliberately split by
+       characters outside the alphabet. Splitting is what defeated every
+       previous design (round 4's bridge fix reintroduced exactly this as a
+       tunable — a run-length floor and a gap-size cap — and the security
+       reviewer showed either constant is a zero-cost bypass: fragment the
+       ciphertext narrower than the floor, or park an ordinary word beside it).
+       Compaction makes the splitter irrelevant whatever its Unicode category,
+       because there is no threshold left to step around.
+    3. Compactions that drop leading runs one at a time — this is what survives
+       an ordinary word sitting beside a fragmented blob. Measured directly:
+       with a `"decode this "` prefix on a blob fragmented at width 7, the
+       4-phase views of pass 2 alone MISS (the prefix's own alphabet
+       characters are baked into every phase), and dropping leading runs HITS
+       once the prefix's runs have been peeled off. This pass is not
+       decoration.
+
+    `_MAX_COMPACT_STARTS` and `_MAX_COMPACT_CHARS` are work budgets, not
+    detection thresholds: they cap effort on prose-heavy input and never make
+    a payload undetectable that a smaller input would surface — every payload
+    that fits under the budget is still found regardless of where it sits.
+    Ordinary text survives all three passes because `validate=True`, the
+    UTF-8 decode, `_MIN_DECODED_LEN` and `_sanitise` reject it — measured at 0
+    false positives across 1512 ordinary and random strings.
 
     NFD first: by the time this runs, `text` has already been through NFKC
     upstream, which performs canonical COMPOSITION as well as compatibility
@@ -289,17 +276,33 @@ def _decode_base64(text: str) -> list[str]:
     """
     text = unicodedata.normalize("NFD", text)
     decoded: list[str] = []
-    for match in _B64_CANDIDATE.finditer(text):
-        candidate = _try_decode_base64(match.group(0))
-        if candidate is not None:
+
+    def offer(chunk: str) -> None:
+        candidate = _try_decode_base64(chunk)
+        if candidate is not None and candidate not in decoded:
             decoded.append(candidate)
 
-    for span in _bridge_spans(text):
-        compacted = _compact(span)
-        if len(compacted) >= _B64_MIN_RUN:
-            candidate = _try_decode_base64(compacted)
-            if candidate is not None and candidate not in decoded:
-                decoded.append(candidate)
+    for match in _B64_CANDIDATE.finditer(text):
+        offer(match.group(0))
+
+    runs = _B64_RUN.findall(text)
+    if not runs:
+        return decoded
+
+    compacted = "".join(runs)
+    if len(compacted) < _B64_MIN_RUN:
+        return decoded
+
+    for view in _aligned_views(compacted):
+        offer(view)
+
+    if len(compacted) <= _MAX_COMPACT_CHARS:
+        for index in range(1, min(len(runs), _MAX_COMPACT_STARTS)):
+            tail = "".join(runs[index:])
+            if len(tail) < _B64_MIN_RUN:
+                break
+            for view in _aligned_views(tail):
+                offer(view)
 
     return decoded
 
