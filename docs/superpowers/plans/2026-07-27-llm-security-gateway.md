@@ -5174,6 +5174,64 @@ git rm deploy/platform/litellm/callbacks/prompt_injection.py
 git rm -r deploy/platform/llm-guard
 ```
 
+- [ ] **Step 5b: Add the reconciliation check that catches an unwired control**
+
+This closes the failure the whole project exists to fix, and no amount of
+in-process instrumentation can do it: if a control is declared in `policy.yaml`
+but never listed in `config.yaml`, the guardrail module is never imported, so
+none of our startup assertions, gauges or logs ever run. The system is silent
+because it is absent. That is exactly how the previous generation sat disabled
+for two months.
+
+Detection has to come from outside the process. Create
+`deploy/platform/scripts/check-guardrails-wired.sh`:
+
+```bash
+#!/usr/bin/env bash
+# Every mandatory control in policy.yaml must be referenced from config.yaml.
+# An unwired control cannot report its own absence: the module never loads.
+set -euo pipefail
+
+cd "$(dirname "$0")/.." || exit 1
+
+policy="litellm/guardrails/policy.yaml"
+config="litellm/config.yaml"
+missing=0
+
+mandatory=$(python3 -c "
+import sys, yaml
+doc = yaml.safe_load(open('${policy}')) or {}
+for name, body in (doc.get('controls') or {}).items():
+    if body.get('mandatory'):
+        print(name)
+")
+
+for control in ${mandatory}; do
+  # entrypoints expose g1_injection, g2a_pii_input, ... — match on the id
+  needle=$(printf '%s' "${control}" | tr '[:upper:]' '[:lower:]')
+  if ! grep -qi "guardrails.entrypoints.*${needle}" "${config}"; then
+    echo "MISSING: mandatory control ${control} is not wired into ${config}"
+    missing=1
+  fi
+done
+
+if [ "${missing}" -ne 0 ]; then
+  echo
+  echo "A control declared in policy.yaml but absent from config.yaml never loads,"
+  echo "so it cannot warn about its own absence. Wire it or drop its mandatory flag."
+  exit 1
+fi
+
+echo "all mandatory controls are wired"
+```
+
+Make it executable, add `"check:wired": "./scripts/check-guardrails-wired.sh"` to
+`package.json`, and add it to `scripts/lint.sh` after the ruff line:
+
+```bash
+run "guardrail wiring" ./scripts/check-guardrails-wired.sh
+```
+
 - [ ] **Step 6: Validate compose and lint**
 
 ```bash
