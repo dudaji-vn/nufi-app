@@ -38,8 +38,19 @@ _SECRETS: list[tuple[str, re.Pattern[str]]] = [
 # `_normalise_url` cannot recognise as bracketed (doesn't end with ">"), so
 # the destination fell through unnormalised and unflagged. The plain
 # `[^)\s]+` branch still handles the common unbracketed case.
-_MD_IMAGE = re.compile(r"!\[[^\]]*\]\(\s*(?P<url><[^<>]*>|[^)\s]+)")
-_MD_LINK = re.compile(r"(?<!!)\[[^\]]*\]\(\s*(?P<url><[^<>]*>|[^)\s]+)")
+#
+# The trailing `\s*\)?` matters for more than tidiness: a `Finding`'s span is
+# exactly what a caller (e.g. `G4OutputHandling.strip`) replaces, so leaving
+# the closing bracket out of the match left an orphaned `)` in every
+# stripped answer a user reads — `[removed:EXTERNAL_IMAGE])` — and
+# `javascript:alert(1)` left `))`. The payload was always removed either
+# way, so this was never a security hole, only visible damage to the text
+# the control exists to keep usable. Nested parentheses
+# (`javascript:alert(1)`) still leave one stray `)` behind — closing that
+# needs a real parser, not a regex, and stays on the recorded limitations
+# list in `scan_exfil`'s docstring below.
+_MD_IMAGE = re.compile(r"!\[[^\]]*\]\(\s*(?P<url><[^<>]*>|[^)\s]+)\s*\)?")
+_MD_LINK = re.compile(r"(?<!!)\[[^\]]*\]\(\s*(?P<url><[^<>]*>|[^)\s]+)\s*\)?")
 _RAW_HTML = re.compile(r"<\s*(script|iframe|object|embed)\b", re.IGNORECASE)
 
 _MIN_SYSTEM_PROMPT_WORDS = 8

