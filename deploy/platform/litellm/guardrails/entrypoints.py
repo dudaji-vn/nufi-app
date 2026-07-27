@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 from typing import Any
@@ -1092,3 +1093,10 @@ g2a_pii_input = G2aPiiInput()
 g2b_pii_output = G2bPiiOutput()
 g3_system_prompt_leak = G3SystemPromptLeak()
 g4_output_handling = G4OutputHandling()
+
+from guardrails.health import assert_controls, guardrail_status  # noqa: E402
+
+logging.getLogger("nufi.guardrails").warning(
+    "guardrail status: %s", guardrail_status(g1_injection._policy)
+)
+assert_controls(g1_injection._policy)
