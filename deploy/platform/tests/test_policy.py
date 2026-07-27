@@ -1,6 +1,8 @@
 import pytest
-from guardrails.policy import Policy, decide
+from guardrails.policy import Policy, _parse_control, decide
 from guardrails.types import Action, Finding, SpanSource
+
+_ALL_THRESHOLDS = {"user": 0.5, "untrusted": 0.5, "system": 1.01}
 
 
 @pytest.fixture
@@ -97,3 +99,59 @@ def test_decision_carries_only_the_findings_that_crossed_threshold(policy):
 
     assert len(decision.findings) == 1
     assert decision.findings[0].score == 0.99
+
+
+def test_typo_in_a_threshold_key_is_refused_not_silently_ignored():
+    """A typo must stop the proxy, not leave a control that never fires.
+
+    `usr:` instead of `user:` previously defaulted all three sources to the
+    unreachable 1.01, so the control loaded, reported enabled, and blocked
+    nothing — the exact silent-decay failure this design exists to prevent.
+    """
+    body = {"risk": "LLM01", "thresholds": {"usr": 0.5, "untrusted": 0.5, "system": 1.01}}
+
+    with pytest.raises(ValueError, match="unknown threshold key"):
+        _parse_control("G1", body)
+
+
+def test_missing_threshold_is_refused():
+    body = {"risk": "LLM01", "thresholds": {"user": 0.5}}
+
+    with pytest.raises(ValueError, match="missing threshold"):
+        _parse_control("G1", body)
+
+
+def test_missing_risk_names_the_control():
+    with pytest.raises(ValueError, match="G7: missing required key 'risk'"):
+        _parse_control("G7", {"thresholds": _ALL_THRESHOLDS})
+
+
+def test_unknown_action_names_the_control():
+    body = {"risk": "LLM01", "action": "detonate", "thresholds": _ALL_THRESHOLDS}
+
+    with pytest.raises(ValueError, match="G1: unknown action"):
+        _parse_control("G1", body)
+
+
+def test_unknown_control_id_names_what_is_available(policy):
+    with pytest.raises(KeyError, match="policy declares"):
+        policy.control("G99")
+
+
+def test_mandatory_ids_is_ordered(policy):
+    assert policy.mandatory_ids() == tuple(sorted(policy.mandatory_ids()))
+
+
+def test_fails_closed_reflects_the_policy(policy):
+    assert policy.control("G1").fails_closed is True
+    assert policy.control("G2a").fails_closed is False
+
+
+def test_decision_risk_comes_from_the_control_not_the_finding(policy):
+    mismatched = Finding(
+        risk="LLM99", detector="test", score=0.99, source=SpanSource.USER, start=0, end=1
+    )
+
+    decision = decide(policy.control("G1"), [mismatched], grounded=False)
+
+    assert decision.risk == "LLM01"

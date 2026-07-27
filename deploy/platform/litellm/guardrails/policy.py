@@ -58,6 +58,9 @@ class Policy:
             return cls(handle.read())
 
     def control(self, control_id: str) -> ControlConfig:
+        if control_id not in self.controls:
+            known = sorted(self.controls)
+            raise KeyError(f"unknown control {control_id!r}; policy declares {known}")
         return self.controls[control_id]
 
     def mandatory_ids(self) -> tuple[str, ...]:
@@ -68,17 +71,49 @@ class Policy:
 
 
 def _parse_control(control_id: str, body: dict[str, Any]) -> ControlConfig:
+    """Parse one control, refusing anything ambiguous.
+
+    Every error names the control, because a policy file that loads with a
+    silently-inert control is the exact failure this whole design exists to
+    prevent: the previous generation of these guardrails sat disabled in config
+    for two months with no signal. A typo must stop the proxy, not neuter a
+    control while the dashboard still reports it enabled.
+    """
+    if "risk" not in body:
+        raise ValueError(f"{control_id}: missing required key 'risk'")
+
     mode = str(body.get("mode", "logging_only"))
     if mode not in _MODES:
-        raise ValueError(f"{control_id}: unknown mode {mode!r}")
+        raise ValueError(
+            f"{control_id}: unknown mode {mode!r}, expected one of {sorted(_MODES)}"
+        )
     fail = str(body.get("fail", "open"))
     if fail not in _FAIL:
         raise ValueError(f"{control_id}: fail must be open or closed, got {fail!r}")
 
+    action_raw = str(body.get("action", "log"))
+    try:
+        action = Action(action_raw)
+    except ValueError as exc:
+        valid = sorted(item.value for item in Action)
+        raise ValueError(
+            f"{control_id}: unknown action {action_raw!r}, expected one of {valid}"
+        ) from exc
+
     thresholds_raw = body.get("thresholds") or {}
-    thresholds = {
-        source: float(thresholds_raw.get(source.value, 1.01)) for source in SpanSource
-    }
+    known = {source.value for source in SpanSource}
+    unknown = sorted(set(thresholds_raw) - known)
+    if unknown:
+        raise ValueError(
+            f"{control_id}: unknown threshold key(s) {unknown}, expected {sorted(known)}"
+        )
+    missing = sorted(known - set(thresholds_raw))
+    if missing:
+        raise ValueError(
+            f"{control_id}: missing threshold(s) for {missing}. "
+            f"Use 1.01 to exclude a source deliberately — omitting it is not the same thing."
+        )
+    thresholds = {source: float(thresholds_raw[source.value]) for source in SpanSource}
 
     return ControlConfig(
         id=control_id,
@@ -87,7 +122,7 @@ def _parse_control(control_id: str, body: dict[str, Any]) -> ControlConfig:
         mandatory=bool(body.get("mandatory", False)),
         mode=mode,
         fail=fail,
-        action=Action(str(body.get("action", "log"))),
+        action=action,
         thresholds=thresholds,
         options=dict(body.get("options") or {}),
     )
