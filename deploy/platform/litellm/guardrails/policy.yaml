@@ -20,6 +20,12 @@ controls:
       user: 0.90
       untrusted: 0.50
       system: 1.01
+    detector_thresholds:
+      # The scanner reports a span it could not fully examine. 1.01 ignores it,
+      # which is the shadow-mode default — measure how often real traffic hits
+      # the window budget before deciding what it should cost. Lower it to 1.0
+      # to treat an unscanned span as a detection once that is known.
+      coverage_gap: 1.01
     action: block
 
   G2a:

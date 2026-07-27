@@ -155,3 +155,60 @@ def test_decision_risk_comes_from_the_control_not_the_finding(policy):
     decision = decide(policy.control("G1"), [mismatched], grounded=False)
 
     assert decision.risk == "LLM01"
+
+
+def test_detector_thresholds_defaults_to_empty_when_absent():
+    """A control with no `detector_thresholds` key must still parse.
+
+    Unlike `thresholds`, which is mandatory per SpanSource, per-detector
+    overrides are optional — most detectors are priced purely by source.
+    """
+    control = _parse_control("G1", {"risk": "LLM01", "thresholds": _ALL_THRESHOLDS})
+
+    assert control.detector_thresholds == {}
+
+
+def test_coverage_gap_is_ignored_by_g1_by_default(policy):
+    """The scanner's own `coverage_gap` finding must not silently block.
+
+    G1's per-source `user` threshold is 0.90; a coverage_gap Finding always
+    scores 1.0 (guardrails/scanners/injection.py), so if `decide` compared it
+    against the plain source threshold instead of the detector override, an
+    unscanned span would BLOCK the instant G1 is flipped from logging_only to
+    pre_call — silently turning "we could not check this" into "we blocked
+    this", the opposite of the shadow-mode default recorded in policy.yaml.
+    """
+    gap = Finding(
+        risk="LLM01", detector="coverage_gap", score=1.0,
+        source=SpanSource.USER, start=0, end=1,
+    )
+
+    decision = decide(policy.control("G1"), [gap], grounded=False)
+
+    assert decision.action is Action.ALLOW
+
+
+def test_detector_threshold_overrides_the_source_threshold_for_that_detector():
+    """`decide` must consult `detector_thresholds` before falling back to
+    the per-source `thresholds`, and only for findings from that detector."""
+    body = {
+        "risk": "LLM01",
+        "action": "block",
+        "thresholds": {"user": 0.99, "untrusted": 0.99, "system": 1.01},
+        "detector_thresholds": {"coverage_gap": 0.5},
+    }
+    control = _parse_control("G1", body)
+
+    gap = Finding(
+        risk="LLM01", detector="coverage_gap", score=0.6,
+        source=SpanSource.USER, start=0, end=1,
+    )
+    ordinary = Finding(
+        risk="LLM01", detector="injection", score=0.6,
+        source=SpanSource.USER, start=0, end=1,
+    )
+
+    # 0.6 is below the plain 0.99 source threshold but above the 0.5
+    # detector-specific override, so only the coverage_gap finding blocks.
+    assert decide(control, [gap], grounded=False).action is Action.BLOCK
+    assert decide(control, [ordinary], grounded=False).action is Action.ALLOW

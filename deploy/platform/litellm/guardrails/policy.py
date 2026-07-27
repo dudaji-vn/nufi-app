@@ -28,6 +28,12 @@ class ControlConfig:
     fail: str
     action: Action
     thresholds: dict[SpanSource, float]
+    # Optional per-detector overrides, keyed by Finding.detector. A detector
+    # that doesn't report a likelihood on the same 0-1 scale as a classifier
+    # score — coverage_gap, for instance — needs its own threshold rather
+    # than being compared against a per-source score threshold it does not
+    # share. Absent for a given detector, `decide` falls back to `thresholds`.
+    detector_thresholds: dict[str, float]
     options: dict[str, Any]
 
     def with_mode(self, mode: str) -> ControlConfig:
@@ -115,6 +121,9 @@ def _parse_control(control_id: str, body: dict[str, Any]) -> ControlConfig:
         )
     thresholds = {source: float(thresholds_raw[source.value]) for source in SpanSource}
 
+    detector_raw = body.get("detector_thresholds") or {}
+    detector_thresholds = {str(name): float(value) for name, value in detector_raw.items()}
+
     return ControlConfig(
         id=control_id,
         risk=str(body["risk"]),
@@ -124,6 +133,7 @@ def _parse_control(control_id: str, body: dict[str, Any]) -> ControlConfig:
         fail=fail,
         action=action,
         thresholds=thresholds,
+        detector_thresholds=detector_thresholds,
         options=dict(body.get("options") or {}),
     )
 
@@ -137,7 +147,8 @@ def decide(
     crossed = tuple(
         finding
         for finding in findings
-        if finding.score >= control.thresholds[finding.source]
+        if finding.score
+        >= control.detector_thresholds.get(finding.detector, control.thresholds[finding.source])
     )
     if not crossed:
         return _allow(control, "no finding crossed threshold")

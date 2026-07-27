@@ -10,6 +10,7 @@ markers = [
     "contract: requires a live sidecar or Presidio; skipped by default",
 ]
 addopts = "-m 'not contract'"
+asyncio_mode = "auto"
 
 [tool.ruff]
 target-version = "py312"
