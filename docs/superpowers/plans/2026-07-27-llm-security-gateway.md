@@ -1309,6 +1309,12 @@ controls:
       user: 0.90
       untrusted: 0.50
       system: 1.01
+    detector_thresholds:
+      # The scanner reports a span it could not fully examine. 1.01 ignores it,
+      # which is the shadow-mode default — measure how often real traffic hits
+      # the window budget before deciding what it should cost. Lower it to 1.0
+      # to treat an unscanned span as a detection once that is known.
+      coverage_gap: 1.01
     action: block
 
   G2a:
@@ -1580,6 +1586,10 @@ class ControlConfig:
     fail: str
     action: Action
     thresholds: dict[SpanSource, float]
+    # Optional per-detector overrides. A detector that reports something other
+    # than a likelihood — coverage_gap, for instance — needs its own threshold
+    # rather than being compared against a score scale it does not share.
+    detector_thresholds: dict[str, float]
     options: dict[str, Any]
 
     def with_mode(self, mode: str) -> ControlConfig:
@@ -1648,6 +1658,9 @@ def _parse_control(control_id: str, body: dict[str, Any]) -> ControlConfig:
         valid = sorted(item.value for item in Action)
         raise ValueError(f"{control_id}: unknown action {action_raw!r}, expected one of {valid}") from exc
 
+    detector_raw = body.get("detector_thresholds") or {}
+    detector_thresholds = {str(name): float(value) for name, value in detector_raw.items()}
+
     thresholds_raw = body.get("thresholds") or {}
     known = {source.value for source in SpanSource}
     unknown = sorted(set(thresholds_raw) - known)
@@ -1672,6 +1685,7 @@ def _parse_control(control_id: str, body: dict[str, Any]) -> ControlConfig:
         fail=fail,
         action=action,
         thresholds=thresholds,
+        detector_thresholds=detector_thresholds,
         options=dict(body.get("options") or {}),
     )
 
@@ -1685,7 +1699,8 @@ def decide(
     crossed = tuple(
         finding
         for finding in findings
-        if finding.score >= control.thresholds[finding.source]
+        if finding.score
+        >= control.detector_thresholds.get(finding.detector, control.thresholds[finding.source])
     )
     if not crossed:
         return _allow(control, "no finding crossed threshold")
@@ -1859,9 +1874,13 @@ def _window_starts(total: int, budget: int) -> list[int]:
         return sequential
 
     last = sequential[-1]
-    if budget == 1:
-        return [last]
-    if budget == 2:
+    if budget <= 2:
+        # Floor is BOTH ends, never one. A budget of 1 previously returned the
+        # tail alone, which silently dropped head coverage the moment a request
+        # squeezed its spans — measured at 2 of 4 head-planted injections caught
+        # where the previous version caught 4 of 4. Two windows is the smallest
+        # honest scan of a long span; if the budget cannot afford it, the span is
+        # reported incomplete rather than scanned badly.
         return [0, last]
 
     interior = sequential[1:-1]
@@ -2295,10 +2314,12 @@ class InjectionScanner:
             )
 
         best = [0.0] * len(spans)
+        complete = [True] * len(spans)
         for owner, result in zip(owners, results, strict=True):
             best[owner] = max(best[owner], float(result.get("score", 0.0)))
+            complete[owner] = complete[owner] and bool(result.get("complete", True))
 
-        return [
+        findings = [
             Finding(
                 risk=self.risk,
                 detector=self.name,
@@ -2309,6 +2330,26 @@ class InjectionScanner:
             )
             for span, score in zip(spans, best, strict=True)
         ]
+
+        # A span the scanner could not fully examine is reported, not assumed
+        # safe. It carries its own detector so policy can price it separately:
+        # partial coverage is not a likelihood on the same scale as a classifier
+        # score, and treating it as one would either block constantly or say
+        # nothing. `policy.yaml` decides what it costs.
+        findings.extend(
+            Finding(
+                risk=self.risk,
+                detector="coverage_gap",
+                score=1.0,
+                source=span.source,
+                start=0,
+                end=len(span.text),
+            )
+            for span, scanned in zip(spans, complete, strict=True)
+            if not scanned
+        )
+
+        return findings
 ```
 
 - [ ] **Step 6: Run the contract test with the sidecar up**
