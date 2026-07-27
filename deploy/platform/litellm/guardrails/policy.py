@@ -30,7 +30,7 @@ _FAIL = frozenset({"open", "closed"})
 # guardrails.scanners.injection.InjectionScanner is the only scanner shipped
 # so far, and it emits exactly these two. Add a new scanner's detector name
 # here when it needs a detector_thresholds override.
-_KNOWN_DETECTORS = frozenset({"injection", "coverage_gap"})
+_KNOWN_DETECTORS = frozenset({"injection", "coverage_gap", "presidio"})
 
 
 @dataclass(frozen=True)

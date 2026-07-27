@@ -251,3 +251,34 @@ def test_the_shipped_policy_still_parses_with_detector_threshold_validation(poli
     """Regression: the real coverage_gap: 1.01 entry in policy.yaml must be a
     known, accepted key — validation must not reject legitimate config."""
     assert policy.control("G1").detector_thresholds == {"coverage_gap": 1.01}
+
+
+def test_presidio_detector_threshold_parses():
+    """`PiiScanner` (guardrails/scanners/pii.py) reports its findings with
+    `detector="presidio"`. A control that wants to price a presidio finding
+    differently from the plain per-source threshold — e.g. G2a/G2b — must be
+    able to declare `detector_thresholds: {presidio: ...}` without it being
+    rejected as an unknown key."""
+    body = {
+        "risk": "LLM02",
+        "thresholds": _ALL_THRESHOLDS,
+        "detector_thresholds": {"presidio": 0.7},
+    }
+
+    control = _parse_control("G2a", body)
+
+    assert control.detector_thresholds == {"presidio": 0.7}
+
+
+def test_typo_in_the_presidio_detector_threshold_key_is_still_refused():
+    """The guard must stay sharp after `presidio` is added to
+    `_KNOWN_DETECTORS`: a near-miss spelling is still an unknown key, not a
+    silently-inert override — same failure shape as `coverge_gap` above."""
+    body = {
+        "risk": "LLM02",
+        "thresholds": _ALL_THRESHOLDS,
+        "detector_thresholds": {"presidoo": 0.7},
+    }
+
+    with pytest.raises(ValueError, match=r"G2a:.*presidoo.*expected one of"):
+        _parse_control("G2a", body)
