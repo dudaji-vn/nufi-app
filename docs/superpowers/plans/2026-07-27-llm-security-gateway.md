@@ -1791,6 +1791,9 @@ from __future__ import annotations
 
 import os
 
+import time
+from typing import Any
+
 from fastapi import FastAPI
 from pydantic import BaseModel
 from transformers import pipeline
@@ -1823,6 +1826,13 @@ _MAX_CHUNKS = int(os.environ.get("SCANNER_MAX_CHUNKS", "24"))
 # Bounds worst-case request latency. At ~200 ms per window this keeps a scan
 # under roughly 5 s, which is what the caller allows before failing closed.
 _MAX_WINDOWS_PER_REQUEST = int(os.environ.get("SCANNER_MAX_WINDOWS", "24"))
+# Wall-clock budget. A window cap alone cannot bound latency: the per-span floor
+# of two windows means many spans still add up past any fixed count, and a scan
+# that overruns the caller's timeout never delivers its coverage report at all —
+# the caller just fails closed on a 503. Scoring stops at the deadline and the
+# unscored spans are reported incomplete, which is the whole point of reporting.
+_DEADLINE_S = float(os.environ.get("SCANNER_DEADLINE_S", "5.0"))
+_BATCH = 8
 
 _MALICIOUS_LABELS = {"INJECTION", "MALICIOUS", "LABEL_1", "JAILBREAK"}
 _SAFE_LABELS = {"SAFE", "BENIGN", "CLEAN", "LABEL_0"}
@@ -1977,8 +1987,13 @@ def scan_spans(request: ScanRequest) -> ScanResponse:
         key=lambda index: (spans[index].source != "untrusted", -len(per_span[index])),
     )
     while sum(len(w) for w in per_span) > _MAX_WINDOWS_PER_REQUEST:
+        # Filter must match the floor in `_window_starts`, which is 2. When it
+        # said > 1, a span already at its floor was chosen as victim, re-windowed
+        # back to 2, and chosen again — a live request hung past 90 seconds. A
+        # proxy that hangs is a total outage, worse than anything it was guarding
+        # against.
         victim = next(
-            (index for index in reversed(order) if len(per_span[index]) > 1), None
+            (index for index in reversed(order) if len(per_span[index]) > 2), None
         )
         if victim is None:
             break
@@ -1991,17 +2006,29 @@ def scan_spans(request: ScanRequest) -> ScanResponse:
         complete[victim] = False
 
     flat = [window for windows in per_span for window in windows]
-    raw = _classifier(flat) if flat else []
+    owners = [index for index, windows in enumerate(per_span) for _ in windows]
+
+    # Score in batches against a deadline. Whatever is not reached is reported,
+    # never assumed clean.
+    started = time.monotonic()
+    raw: list[dict[str, Any]] = []
+    for offset in range(0, len(flat), _BATCH):
+        if offset and time.monotonic() - started > _DEADLINE_S:
+            for owner in owners[offset:]:
+                complete[owner] = False
+            break
+        raw.extend(_classifier(flat[offset : offset + _BATCH]))
+
     scored = [_injection_score(str(item["label"]), float(item["score"])) for item in raw]
     labels = [str(item["label"]).upper() for item in raw]
+    owners = owners[: len(raw)]
 
     results: list[SpanResult] = []
-    cursor = 0
-    for index_of_span, windows in enumerate(per_span):
-        count = len(windows)
-        span_scores = scored[cursor : cursor + count]
-        span_labels = labels[cursor : cursor + count]
-        cursor += count
+    for index_of_span in range(len(per_span)):
+        picks = [index for index, owner in enumerate(owners) if owner == index_of_span]
+        span_scores = [scored[index] for index in picks]
+        span_labels = [labels[index] for index in picks]
+        count = len(span_scores)
         if not span_scores:
             results.append(SpanResult(score=0.0, label="EMPTY", complete=False))
             continue
