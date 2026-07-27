@@ -1,8 +1,19 @@
 import pytest
+from guardrails.audit import GUARDRAIL_DECISIONS, GUARDRAIL_DEGRADED
 from guardrails.entrypoints import G1Injection, GuardrailBlocked
 from guardrails.policy import Policy
 from guardrails.scanners.base import ScannerUnavailable
 from guardrails.types import Finding
+
+
+def _decisions_counter(*, control: str, risk: str, action: str, enforced: bool) -> float:
+    return GUARDRAIL_DECISIONS.labels(
+        control=control, risk=risk, action=action, enforced=str(enforced).lower()
+    )._value.get()
+
+
+def _degraded_gauge(control: str) -> float:
+    return GUARDRAIL_DEGRADED.labels(control=control)._value.get()
 
 
 class FakeScanner:
@@ -113,6 +124,64 @@ async def test_scanner_outage_in_logging_only_does_not_block(policy_path):
     assert result["messages"]
 
 
+# --- Reviewer fix: a blocking outage with no audit event is invisible ------
+# The reviewer executed the outage path and measured GUARDRAIL_DECISIONS
+# staying flat while a GuardrailBlocked was raised: an operator watching the
+# counter cannot distinguish "G1 is fail-closing on every request" from
+# "nothing was blocked at all", and the event_id in the 503 was generated
+# fresh and written nowhere, so it cannot be looked up afterwards. Fixed by
+# routing the outage through the same _emit() path as any other verdict, in
+# both enforcing and shadow mode.
+
+
+@pytest.mark.asyncio
+async def test_outage_is_recorded_in_the_audit_trail_when_it_blocks(policy_path):
+    guard = _guard(policy_path, FakeScanner(fail=True))
+    data = _data("hello")
+
+    before = _decisions_counter(control="G1", risk="LLM01", action="block", enforced=True)
+
+    with pytest.raises(GuardrailBlocked) as excinfo:
+        await guard.async_pre_call_hook(FakeKey(), None, data, "acompletion")
+
+    after = _decisions_counter(control="G1", risk="LLM01", action="block", enforced=True)
+    assert after == before + 1
+
+    events = data["metadata"]["guardrail_information"]
+    assert events[0]["control"] == "G1"
+    assert events[0]["enforced"] is True
+    assert events[0]["event_id"] == excinfo.value.event_id
+
+
+@pytest.mark.asyncio
+async def test_outage_is_recorded_in_shadow_mode_too(policy_path):
+    guard = _guard(policy_path, FakeScanner(fail=True), mode="logging_only")
+    data = _data("hello")
+
+    before = _decisions_counter(control="G1", risk="LLM01", action="block", enforced=False)
+
+    result = await guard.async_pre_call_hook(FakeKey(), None, data, "acompletion")
+
+    after = _decisions_counter(control="G1", risk="LLM01", action="block", enforced=False)
+    assert after == before + 1
+
+    events = result["metadata"]["guardrail_information"]
+    assert events[0]["enforced"] is False
+    # Never breaks traffic even though it was recorded as "would have blocked".
+    assert result["messages"]
+
+
+@pytest.mark.asyncio
+async def test_outage_still_moves_the_degraded_gauge(policy_path):
+    """GUARDRAIL_DEGRADED and the audit event are separate signals; both
+    must survive a fix to either one."""
+    guard = _guard(policy_path, FakeScanner(fail=True), mode="logging_only")
+
+    await guard.async_pre_call_hook(FakeKey(), None, _data("hello"), "acompletion")
+
+    assert _degraded_gauge("G1") == 1
+
+
 @pytest.mark.asyncio
 async def test_non_chat_call_types_are_skipped(policy_path):
     guard = _guard(policy_path, FakeScanner(score=0.99))
@@ -121,6 +190,24 @@ async def test_non_chat_call_types_are_skipped(policy_path):
     result = await guard.async_pre_call_hook(FakeKey(), None, data, "aembedding")
 
     assert result == data
+
+
+@pytest.mark.asyncio
+async def test_grounded_verdict_is_resolved_for_non_chat_call_types(policy_path):
+    """The non-chat early return must not skip resolution.
+
+    A post_call control treats a missing verdict as not-grounded, so a path
+    that returns without resolving silently changes redaction behaviour the
+    day something reads verified_grounded() for a non-chat call type.
+    """
+    guard = _guard(policy_path, FakeScanner(score=0.01))
+    data = {"input": "text to embed", "metadata": {"nufi_grounded": True}}
+
+    result = await guard.async_pre_call_hook(
+        FakeKey(metadata={"allow_grounded_hint": True}), None, data, "aembedding"
+    )
+
+    assert result["metadata"]["nufi_grounded_verified"] is True
 
 
 @pytest.mark.asyncio

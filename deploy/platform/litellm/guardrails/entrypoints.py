@@ -11,7 +11,7 @@ from guardrails.canonical import canonicalize
 from guardrails.policy import ControlConfig, Policy, decide
 from guardrails.scanners.injection import InjectionScanner
 from guardrails.spans import extract_spans
-from guardrails.types import Action
+from guardrails.types import Action, Decision
 from litellm._logging import verbose_proxy_logger
 from litellm.integrations.custom_guardrail import CustomGuardrail
 
@@ -218,13 +218,16 @@ class G1Injection(BaseNufiGuardrail):
     async def async_pre_call_hook(
         self, user_api_key_dict: Any, cache: Any, data: dict[str, Any], call_type: str
     ) -> dict[str, Any]:
+        # Resolved before EVERY early return, including the non-chat-call-type
+        # one immediately below. This is the only phase LiteLLM hands over the
+        # key object, and a post_call control treats a missing verdict as
+        # not-grounded — a return that skips this would silently change that
+        # control's redaction behaviour for any call type it runs against,
+        # not just the chat ones this hook goes on to scan.
+        grounded = self.resolve_grounded(data, user_api_key_dict)
+
         if call_type not in _CHAT_CALL_TYPES:
             return data
-
-        # Runs before every early return below, so post_call controls always
-        # see an authoritative verdict. If G1 is disabled the key is never set
-        # and `verified_grounded` returns False — which redacts more, not less.
-        grounded = self.resolve_grounded(data, user_api_key_dict)
 
         if not self._control.enabled:
             return data
@@ -291,6 +294,44 @@ class G1Injection(BaseNufiGuardrail):
     def _on_outage(
         self, data: dict[str, Any], key: Any, exc: Exception
     ) -> dict[str, Any]:
+        """Record the outage, then act on it.
+
+        An outage that blocks a request is a blocking path, and a blocking
+        path with no audit event is invisible: `GUARDRAIL_DECISIONS` stays
+        flat, so an operator watching it cannot distinguish "G1 is
+        fail-closing on every request because the scanner is down" from
+        "nothing was blocked at all" — and an `event_id` handed to the
+        client that was never recorded anywhere cannot be looked up
+        afterwards. This was the brief's own reference `_on_outage`
+        (`raise GuardrailBlocked(..., event_id=audit.new_event_id(), ...)`
+        with no `_emit` call at all) — the same blind spot this whole
+        project exists to remove, reproduced inside the control whose job
+        is to make control state visible. Fixed by building a synthetic
+        `Decision` and routing it through the same `_emit` path as any
+        other verdict, in BOTH enforcing and shadow mode, so
+        `GUARDRAIL_DEGRADED` (the infra-level "something is down" signal)
+        and the audit trail (the per-request "here is what happened"
+        signal) are both populated regardless of whether the request was
+        actually enforced against.
+
+        `decision.action` is always `Action.BLOCK`: an outage always means
+        "we could not certify this request", independent of whether this
+        control's `fail` setting or `mode` goes on to act on that. Whether
+        it is actually enacted is carried entirely by `enforced` — `fail:
+        open` and `logging_only` both produce `enforced=False` (a visible
+        "would have blocked" event, never a broken request), `fail: closed`
+        plus an enforcing mode produces `enforced=True` and the raise below.
+
+        `decision.reason` never includes `str(exc)`: with `findings=()`,
+        `audit._safe_reason` returns `decision.reason` UNCHANGED (there are
+        no findings to rebuild it from), so this is the one place in this
+        module where nothing downstream sanitises what lands in the
+        server-side audit trail. `type(exc).__name__` is always a fixed,
+        safe Python identifier; the exception's own message — which could
+        echo request-shaped text from a future scanner or decoder bug — is
+        confined to the client-facing `GuardrailBlocked.detail` below and
+        the operator-only warning log, never the persisted event.
+        """
         verbose_proxy_logger.warning(
             "guardrail %s could not certify request (%s): %s",
             self.control_id,
@@ -298,10 +339,20 @@ class G1Injection(BaseNufiGuardrail):
             exc,
         )
         audit.GUARDRAIL_DEGRADED.labels(control=self.control_id).set(1)
-        if self._control.fails_closed and self._enforcing():
+
+        enforced = self._control.fails_closed and self._enforcing()
+        decision = Decision(
+            action=Action.BLOCK,
+            control=self.control_id,
+            risk=self._control.risk,
+            findings=(),
+            reason=f"guardrail unavailable: {type(exc).__name__}",
+        )
+        event = self._emit(data, decision, (), key, enforced)
+        if enforced:
             raise GuardrailBlocked(
                 code="GUARDRAIL_UNAVAILABLE",
-                event_id=audit.new_event_id(),
+                event_id=event["event_id"],
                 detail=str(exc),
                 status_code=503,
             )
