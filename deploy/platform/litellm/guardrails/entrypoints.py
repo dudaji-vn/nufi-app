@@ -571,60 +571,103 @@ class G2bPiiOutput(BaseNufiGuardrail):
 
     async def apply_guardrail(
         self,
-        text: str,
-        language: str | None = None,
-        entities: list[str] | None = None,
-        request_data: dict[str, Any] | None = None,
-    ) -> str:
-        # NAMING NOTE: `CustomGuardrail.apply_guardrail` (litellm==1.83.10) is
-        # a real base-class hook —
-        # `apply_guardrail(self, inputs: GenericGuardrailAPIInputs, request_data: dict,
-        # input_type: Literal["request", "response"], logging_obj=None)` — and
-        # LiteLLM's own dispatch (`"apply_guardrail" in type(cb).__dict__`,
-        # verified against litellm/proxy/common_request_processing.py and
-        # litellm/proxy/guardrails/guardrail_hooks/unified_guardrail/unified_guardrail.py)
-        # special-cases ANY guardrail that defines a method of this name,
-        # routing it through `unified_guardrail`'s translation layer for BOTH
-        # the non-streaming (`process_output_response`) and end-of-stream
-        # streaming (`process_output_streaming_response`) paths — the "used
-        # by both hooks" character this method is built around. This
-        # override's signature intentionally matches this plan's own
-        # text-in/text-out convention (shared with G3/G4) rather than
-        # litellm's real `GenericGuardrailAPIInputs` shape. Registering
-        # `g2b_pii_output` directly as a litellm `custom_guardrail` callback
-        # WITHOUT a translation adapter between the two shapes will raise a
-        # `TypeError` on every real request. That adapter is an integration
-        # concern for whichever task wires this module into litellm's proxy
-        # config — recorded here so it is not silently discovered in
-        # production instead.
-        if not self._control.enabled or not text:
-            return text
+        inputs: dict[str, Any],
+        request_data: dict[str, Any] | None,
+        input_type: str,
+        logging_obj: Any = None,
+    ) -> dict[str, Any]:
+        """Redact PII in the model's response.
 
-        spans = [Span(text=text, source=SpanSource.UNTRUSTED, message_index=0)]
-        started = time.perf_counter()
-        try:
-            findings = await self._scanner.scan(spans) + scan_secrets(spans)
-        except Exception as exc:
-            # Caught broadly for the same reason as `G2aPiiInput`: neither
-            # `PiiScanner.scan` nor `scan_secrets`'s documented contract
-            # should be trusted absolutely by the one control whose entire
-            # job is not letting PII pass unredacted.
-            return self._on_outage(text, request_data, exc)
-        finally:
-            audit.GUARDRAIL_LATENCY.labels(control=self.control_id).observe(
-                time.perf_counter() - started
-            )
+        This is LiteLLM's real base-class hook (`CustomGuardrail.apply_guardrail`,
+        verified against the installed litellm==1.83.10, not the docs page —
+        an earlier draft of this method used a `(text, ..., request_data) ->
+        str` signature taken from the docs page instead). The method NAME is
+        load-bearing: `litellm/proxy/common_request_processing.py` checks
+        `if "apply_guardrail" in type(cb).__dict__` and reroutes dispatch
+        through `unified_guardrail`'s translation layer whenever it is
+        present, for BOTH the non-streaming (`process_output_response`) and
+        end-of-stream streaming (`process_output_streaming_response`) paths —
+        the "used by both hooks" character `redact` is built around.
+        Defining this method with any other signature does not fall back to
+        a different hook; every per-provider handler (e.g.
+        `litellm/llms/openai/chat/guardrail_translation/handler.py`) calls
+        `guardrail_to_apply.apply_guardrail(inputs=..., request_data=...,
+        input_type=..., logging_obj=...)` positionally-compatible with
+        keywords, so a mismatched signature raises `TypeError` on every
+        request through the proxy — an outage caused by the guardrail
+        itself.
 
-        audit.GUARDRAIL_DEGRADED.labels(control=self.control_id).set(0)
+        `inputs["texts"]` is a list of strings (`GenericGuardrailAPIInputs`);
+        the return value replaces them. `input_type` distinguishes the
+        request leg from the response leg — G2b only acts on `"response"`,
+        since this control exists to redact what the model said, not what
+        the user asked (that is G2a's job, and G2a never rewrites anything).
+
+        Each text is scanned and decided on independently: nothing on
+        `Finding` identifies which text produced it, so a finding's offsets
+        are only safe to slice against the text that produced it, and one
+        text's verdict must never redact another's. A scanner failure on
+        ONE text degrades to "leave THIS text unredacted, record the outage"
+        via `_on_outage` and continues with the rest of the batch — it does
+        NOT abort the whole response and discard every other text's
+        already-computed, already-audited redaction. An earlier draft of
+        this method wrapped the entire loop in one try/except and returned
+        the wholly-untouched `inputs` on any single text's failure: if text
+        #1 had already been redacted and its REDACT decision already
+        `_emit`-ted (audit trail says "redacted, enforced"), and text #3
+        then failed, that draft discarded text #1's redaction too — MORE PII
+        reached the client than a per-text failure alone would ever leak,
+        while the audit trail kept claiming text #1 was redacted. Verified
+        by execution (see the task report) rather than assumed correct.
+        """
+        if input_type != "response" or not self._control.enabled:
+            return inputs
+
+        texts = inputs.get("texts") or []
+        if not texts:
+            return inputs
 
         data = request_data if isinstance(request_data, dict) else {}
-        decision = decide(self._control, findings, self.verified_grounded(data))
-        if decision.action is not Action.REDACT:
-            return text
-
+        grounded = self.verified_grounded(data)
         enforced = self._enforcing()
-        self._emit(data, decision, (), None, enforced)
-        return self.redact(text, list(decision.findings)) if enforced else text
+        rewritten: list[str] = []
+
+        for item in texts:
+            if not item:
+                rewritten.append(item)
+                continue
+
+            spans = [Span(text=item, source=SpanSource.UNTRUSTED, message_index=0)]
+            started = time.perf_counter()
+            try:
+                findings = await self._scanner.scan(spans) + scan_secrets(spans)
+            except Exception as exc:
+                # Caught broadly for the same reason as `G2aPiiInput`: neither
+                # `PiiScanner.scan` nor `scan_secrets`'s documented contract
+                # should be trusted absolutely by the one control whose
+                # entire job is not letting PII pass unredacted. Scoped to
+                # THIS item only — the rest of the batch still gets a real
+                # decision.
+                rewritten.append(self._on_outage(item, data, exc))
+                continue
+            finally:
+                audit.GUARDRAIL_LATENCY.labels(control=self.control_id).observe(
+                    time.perf_counter() - started
+                )
+
+            audit.GUARDRAIL_DEGRADED.labels(control=self.control_id).set(0)
+
+            decision = decide(self._control, findings, grounded)
+            if decision.action is not Action.REDACT:
+                rewritten.append(item)
+                continue
+
+            self._emit(data, decision, (), None, enforced)
+            rewritten.append(self.redact(item, list(decision.findings)) if enforced else item)
+
+        if enforced:
+            inputs["texts"] = rewritten
+        return inputs
 
     def _on_outage(self, text: str, request_data: Any, exc: Exception) -> str:
         """Record the outage, then fail open: return `text` unredacted.

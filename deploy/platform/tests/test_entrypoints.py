@@ -452,6 +452,68 @@ class BrokenPii:
         raise RuntimeError("presidio bug, not ScannerUnavailable")
 
 
+class SubstringPii:
+    """A fake PiiScanner that flags a literal substring wherever it occurs
+    in a span's OWN text, computing real offsets against that text — unlike
+    `FakePii`'s fixed-offset fixture (which reports the same (start, end)
+    for every span regardless of content), this can tell two different
+    texts in the same `apply_guardrail` batch apart, which is what a
+    multi-text redaction test needs."""
+
+    name = "presidio"
+
+    def __init__(self, substring: str, entity: str = "EMAIL_ADDRESS") -> None:
+        self._substring = substring
+        self._entity = entity
+        self.calls = 0
+
+    async def scan(self, spans):
+        self.calls += 1
+        findings = []
+        for span in spans:
+            start = span.text.find(self._substring)
+            if start == -1:
+                continue
+            findings.append(
+                Finding(
+                    risk="LLM02", detector="presidio", score=0.9, source=span.source,
+                    start=start, end=start + len(self._substring), entity=self._entity,
+                )
+            )
+        return findings
+
+
+class SelectivePii:
+    """Raises `ScannerUnavailable` only for a span containing `fail_trigger`;
+    scans normally (flagging `find_substring`, offsets computed against that
+    span's own text) for everything else. Lets a test simulate ONE text's
+    scan failing while its siblings in the same `apply_guardrail` batch
+    succeed."""
+
+    name = "presidio"
+
+    def __init__(self, fail_trigger: str, find_substring: str, entity: str = "EMAIL_ADDRESS"):
+        self._fail_trigger = fail_trigger
+        self._find_substring = find_substring
+        self._entity = entity
+
+    async def scan(self, spans):
+        findings = []
+        for span in spans:
+            if self._fail_trigger in span.text:
+                raise ScannerUnavailable("presidio down for this span")
+            start = span.text.find(self._find_substring)
+            if start == -1:
+                continue
+            findings.append(
+                Finding(
+                    risk="LLM02", detector="presidio", score=0.9, source=span.source,
+                    start=start, end=start + len(self._find_substring), entity=self._entity,
+                )
+            )
+        return findings
+
+
 def _g2a(policy_path, scanner, mode="pre_call"):
     policy = Policy.load(policy_path)
     guard = G2aPiiInput(policy=policy, scanner=scanner)
@@ -464,6 +526,19 @@ def _g2b(policy_path, scanner, mode="post_call"):
     guard = G2bPiiOutput(policy=policy, scanner=scanner)
     guard._control = policy.control("G2b").with_mode(mode)
     return guard
+
+
+async def _apply_text(guard, text, request_data=None, input_type="response"):
+    """Call `apply_guardrail` the way LiteLLM really does: a
+    `GenericGuardrailAPIInputs`-shaped dict (`{"texts": [...]}`), never a
+    bare string — verified against the installed litellm==1.83.10's
+    per-provider guardrail_translation handlers. Unwraps the single
+    resulting text for tests that only care about one string, the way most
+    of this suite's tests predate the multi-text batch shape."""
+    result = await guard.apply_guardrail(
+        {"texts": [text]}, request_data, input_type
+    )
+    return result["texts"][0]
 
 
 @pytest.mark.asyncio
@@ -658,7 +733,7 @@ async def test_g2b_honours_the_verified_grounded_flag(policy_path):
     guard = _g2b(policy_path, FakePii([(0, 14, "EMAIL_ADDRESS")]))
     request = {"metadata": {"nufi_grounded_verified": True}}
 
-    result = await guard.apply_guardrail("sun@dudaji.com is the contact", request_data=request)
+    result = await _apply_text(guard, "sun@dudaji.com is the contact", request)
 
     assert result == "sun@dudaji.com is the contact"
 
@@ -668,7 +743,7 @@ async def test_g2b_ignores_an_unverified_client_hint(policy_path):
     guard = _g2b(policy_path, FakePii([(0, 14, "EMAIL_ADDRESS")]))
     request = {"metadata": {"nufi_grounded": True}}
 
-    result = await guard.apply_guardrail("sun@dudaji.com is the contact", request_data=request)
+    result = await _apply_text(guard, "sun@dudaji.com is the contact", request)
 
     assert result.startswith("[EMAIL_ADDRESS]")
 
@@ -677,7 +752,7 @@ async def test_g2b_ignores_an_unverified_client_hint(policy_path):
 async def test_g2b_redacts_when_no_grounded_verdict_was_recorded(policy_path):
     guard = _g2b(policy_path, FakePii([(0, 14, "EMAIL_ADDRESS")]))
 
-    result = await guard.apply_guardrail("sun@dudaji.com is the contact", request_data={})
+    result = await _apply_text(guard, "sun@dudaji.com is the contact", {})
 
     assert result.startswith("[EMAIL_ADDRESS]")
 
@@ -689,7 +764,7 @@ async def test_g2b_redacts_when_grounded_verdict_is_explicitly_false(policy_path
     guard = _g2b(policy_path, FakePii([(0, 14, "EMAIL_ADDRESS")]))
     request = {"metadata": {"nufi_grounded_verified": False}}
 
-    result = await guard.apply_guardrail("sun@dudaji.com is the contact", request_data=request)
+    result = await _apply_text(guard, "sun@dudaji.com is the contact", request)
 
     assert result.startswith("[EMAIL_ADDRESS]")
 
@@ -701,7 +776,7 @@ async def test_g2b_redacts_when_grounded_verdict_is_explicitly_false(policy_path
 async def test_g2b_apply_guardrail_survives_request_data_none(policy_path):
     guard = _g2b(policy_path, FakePii([(0, 14, "EMAIL_ADDRESS")]))
 
-    result = await guard.apply_guardrail("sun@dudaji.com is the contact", request_data=None)
+    result = await _apply_text(guard, "sun@dudaji.com is the contact", None)
 
     assert result.startswith("[EMAIL_ADDRESS]")
 
@@ -710,9 +785,7 @@ async def test_g2b_apply_guardrail_survives_request_data_none(policy_path):
 async def test_g2b_apply_guardrail_survives_request_data_not_a_dict(policy_path):
     guard = _g2b(policy_path, FakePii([(0, 14, "EMAIL_ADDRESS")]))
 
-    result = await guard.apply_guardrail(
-        "sun@dudaji.com is the contact", request_data="not-a-dict"
-    )
+    result = await _apply_text(guard, "sun@dudaji.com is the contact", "not-a-dict")
 
     assert result.startswith("[EMAIL_ADDRESS]")
 
@@ -734,7 +807,7 @@ async def test_g2b_fails_open_and_records_an_audit_event_on_outage(policy_path):
         control="G2b", risk="LLM02", action="block", enforced="false"
     )._value.get()
 
-    result = await guard.apply_guardrail("sun@dudaji.com is the contact", request_data=request)
+    result = await _apply_text(guard, "sun@dudaji.com is the contact", request)
 
     after = GUARDRAIL_DECISIONS.labels(
         control="G2b", risk="LLM02", action="block", enforced="false"
@@ -749,7 +822,7 @@ async def test_g2b_fails_open_and_records_an_audit_event_on_outage(policy_path):
 async def test_g2b_survives_a_scanner_raising_the_wrong_exception_type(policy_path):
     guard = _g2b(policy_path, BrokenPii())
 
-    result = await guard.apply_guardrail("sun@dudaji.com is the contact", request_data={})
+    result = await _apply_text(guard, "sun@dudaji.com is the contact", {})
 
     assert result == "sun@dudaji.com is the contact"
 
@@ -760,7 +833,7 @@ async def test_g2b_disabled_control_returns_text_unchanged(policy_path):
     guard = _g2b(policy_path, scanner)
     guard._control = guard._control.with_enabled(False)
 
-    result = await guard.apply_guardrail("sun@dudaji.com is the contact", request_data={})
+    result = await _apply_text(guard, "sun@dudaji.com is the contact", {})
 
     assert result == "sun@dudaji.com is the contact"
     # `policy.decide()` also returns ALLOW when the control is disabled, so
@@ -775,6 +848,131 @@ async def test_g2b_disabled_control_returns_text_unchanged(policy_path):
 async def test_g2b_empty_text_returns_unchanged(policy_path):
     guard = _g2b(policy_path, FakePii([(0, 14, "EMAIL_ADDRESS")]))
 
-    result = await guard.apply_guardrail("", request_data={})
+    result = await _apply_text(guard, "", {})
 
     assert result == ""
+
+
+# =============================================================================
+# apply_guardrail's REAL calling convention — verified against installed
+# litellm==1.83.10, not the docs page. LiteLLM never calls this with a bare
+# string: it always builds a `GenericGuardrailAPIInputs`-shaped dict
+# (`{"texts": [...]}`) and calls
+# `guardrail_to_apply.apply_guardrail(inputs=inputs, request_data=data,
+# input_type="request"|"response", logging_obj=...)`. `common_request_
+# processing.py` detects the presence of a method literally named
+# `apply_guardrail` on the class and reroutes dispatch accordingly — a
+# mismatched signature does not fall back to a different hook, it raises
+# `TypeError` on every request through the proxy.
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_g2b_apply_guardrail_matches_litellms_real_call_convention(policy_path):
+    """Call it exactly the way LiteLLM's own per-provider handlers do (e.g.
+    `litellm/llms/openai/chat/guardrail_translation/handler.py`): a
+    `GenericGuardrailAPIInputs`-shaped dict with several texts, positional
+    `request_data` and `input_type`, no `text=` keyword anywhere. Must not
+    raise `TypeError`, must redact the text that has PII, and must leave a
+    clean sibling in the same batch untouched."""
+    guard = _g2b(policy_path, SubstringPii("sun@dudaji.com"))
+    inputs = {"texts": ["contact sun@dudaji.com for details", "no pii in here at all"]}
+
+    result = await guard.apply_guardrail(inputs, {}, "response")
+
+    assert result["texts"][0] == "contact [EMAIL_ADDRESS] for details"
+    assert result["texts"][1] == "no pii in here at all"
+
+
+@pytest.mark.asyncio
+async def test_g2b_apply_guardrail_accepts_litellms_exact_keyword_call(policy_path):
+    """Every real litellm call site (e.g.
+    `litellm/llms/openai/chat/guardrail_translation/handler.py`,
+    `litellm/llms/anthropic/chat/guardrail_translation/handler.py`) invokes
+    this with ALL FOUR arguments as keywords:
+    `guardrail_to_apply.apply_guardrail(inputs=inputs, request_data=data,
+    input_type=..., logging_obj=...)`. Confirmed by direct execution (see
+    the fix report) that the parameter-name mismatch in an earlier draft's
+    `(text, language, entities, request_data)` signature raises
+    `TypeError: got an unexpected keyword argument 'inputs'` under this
+    exact call shape -- this test pins the keyword names themselves, not
+    just positional arity, which a purely positional call would not catch."""
+    guard = _g2b(policy_path, SubstringPii("sun@dudaji.com"))
+
+    result = await guard.apply_guardrail(
+        inputs={"texts": ["contact sun@dudaji.com for details"]},
+        request_data={},
+        input_type="response",
+        logging_obj=None,
+    )
+
+    assert result["texts"][0] == "contact [EMAIL_ADDRESS] for details"
+
+
+@pytest.mark.asyncio
+async def test_g2b_input_type_request_is_a_no_op(policy_path):
+    """G2b only acts on the response leg. `input_type="request"` (the leg
+    G2a already covers, detect-and-log-only) must pass every text through
+    completely untouched, even when it contains PII the scanner would
+    otherwise flag."""
+    scanner = SubstringPii("sun@dudaji.com")
+    guard = _g2b(policy_path, scanner)
+    inputs = {"texts": ["contact sun@dudaji.com for details"]}
+
+    result = await guard.apply_guardrail(inputs, {}, "request")
+
+    assert result["texts"][0] == "contact sun@dudaji.com for details"
+    # Not just "the text is unchanged" (decide() could coincidentally agree
+    # even after a real scan) -- the request leg must not dial out to the
+    # scanner at all.
+    assert scanner.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_g2b_each_text_in_a_batch_gets_its_own_independent_decision(policy_path):
+    """One text containing PII must not cause redaction of a clean sibling
+    in the same batch — `Finding` carries no identifier for which text
+    produced it, so decisions have to stay scoped per text, not per batch."""
+    guard = _g2b(policy_path, SubstringPii("sun@dudaji.com"))
+    inputs = {
+        "texts": [
+            "totally unrelated first reply",
+            "email me at sun@dudaji.com please",
+            "another unrelated reply, no secrets here",
+        ]
+    }
+
+    result = await guard.apply_guardrail(inputs, {}, "response")
+
+    assert result["texts"][0] == "totally unrelated first reply"
+    assert result["texts"][1] == "email me at [EMAIL_ADDRESS] please"
+    assert result["texts"][2] == "another unrelated reply, no secrets here"
+
+
+# --- Added beyond the brief: a per-text outage must not discard another
+# text's already-computed, already-audited redaction. An earlier draft of
+# `apply_guardrail` wrapped the ENTIRE per-text loop in one try/except and
+# returned the wholly-untouched `inputs` the instant any single text's scan
+# failed — silently reverting every OTHER text's redaction in the same
+# batch too, even though those had already succeeded and already been
+# recorded in the audit trail as "redacted, enforced". Fixed by scoping the
+# outage handling to the one failing text.
+
+
+@pytest.mark.asyncio
+async def test_g2b_one_texts_outage_does_not_discard_another_texts_redaction(policy_path):
+    scanner = SelectivePii(fail_trigger="TRIGGER_FAIL", find_substring="sun@dudaji.com")
+    guard = _g2b(policy_path, scanner)
+    inputs = {
+        "texts": [
+            "contact sun@dudaji.com please",
+            "this one will TRIGGER_FAIL during scanning",
+        ]
+    }
+
+    result = await guard.apply_guardrail(inputs, {}, "response")
+
+    assert result["texts"][0] == "contact [EMAIL_ADDRESS] please"
+    # The failing text fails open (unredacted), not silently dropped either.
+    assert result["texts"][1] == "this one will TRIGGER_FAIL during scanning"
+    assert GUARDRAIL_DEGRADED.labels(control="G2b")._value.get() == 1
