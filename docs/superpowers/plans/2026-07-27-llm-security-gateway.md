@@ -11,7 +11,15 @@
 ## Global Constraints
 
 - Python 3.12 everywhere. The e2e harness already pins `python:3.12.7-slim-bookworm`; match it.
-- Pin every Docker image version. Never use `:latest` (project convention, `deploy/platform/CLAUDE.md`).
+- Pin every Docker image version. Never use `:latest` **or a moving tag** — the
+  derived image uses `ghcr.io/berriai/litellm:v1.83.10-stable`, not
+  `:main-stable` (project convention, `deploy/platform/CLAUDE.md`).
+- Pin the classifier model revision (`SCANNER_MODEL_REVISION`). An unpinned
+  model is the same supply-chain exposure as an unpinned image, and this one is
+  a security control.
+- Use Python **3.12** for the virtualenv (`python3.12 -m venv .venv` inside
+  `deploy/platform`); the host default is 3.14 and `litellm` is not verified
+  against it. `.venv/` must be git-ignored.
 - Secrets only via `.env`. Never hardcode, never commit.
 - Scanners must never decide. Only `policy.py` returns a `Decision`.
 - `canonical.py` and `policy.py` must have zero I/O and zero network calls — they are unit-tested without Docker.
@@ -1079,11 +1087,19 @@ from transformers import pipeline
 MODEL_ID = os.environ.get(
     "SCANNER_MODEL_ID", "protectai/deberta-v3-base-prompt-injection-v2"
 )
+# Pinned so the classifier cannot change under us — this is a security control,
+# and an unpinned model is the same supply-chain exposure as an unpinned image.
+# Verified 2026-07-27: apache-2.0, ungated.
+MODEL_REVISION = os.environ.get(
+    "SCANNER_MODEL_REVISION", "90c9989b1a342275dd0d1a95aad283c04e075671"
+)
 MAX_CHARS = int(os.environ.get("SCANNER_MAX_CHARS", "4000"))
 _MALICIOUS_LABELS = {"INJECTION", "MALICIOUS", "LABEL_1", "JAILBREAK"}
 
 app = FastAPI(title="nufi-scanner")
-_classifier = pipeline("text-classification", model=MODEL_ID, truncation=True)
+_classifier = pipeline(
+    "text-classification", model=MODEL_ID, revision=MODEL_REVISION, truncation=True
+)
 
 
 class SpanIn(BaseModel):
@@ -1107,7 +1123,7 @@ class ScanResponse(BaseModel):
 
 @app.get("/healthz")
 def healthz() -> dict[str, str]:
-    return {"status": "ok", "model": MODEL_ID}
+    return {"status": "ok", "model": MODEL_ID, "revision": MODEL_REVISION}
 
 
 @app.post("/scan/spans", response_model=ScanResponse)
@@ -3342,7 +3358,11 @@ Create `deploy/platform/litellm/Dockerfile`:
 ```dockerfile
 # Derived LiteLLM image with the NUFI guardrail package baked in, so the same
 # artifact runs on the on-prem compose stack and on the production gateway.
-FROM ghcr.io/berriai/litellm:main-stable
+#
+# Pinned rather than :main-stable, per the project's "pin every image" rule.
+# v1.83.10 is what api.codechi.me already runs, so on-prem and production now
+# share one base. Verified present on GHCR 2026-07-27.
+FROM ghcr.io/berriai/litellm:v1.83.10-stable
 
 WORKDIR /app
 
@@ -3448,6 +3468,7 @@ Delete the entire `llm-guard-api` service block and add, beside `presidio-anonym
     restart: unless-stopped
     environment:
       SCANNER_MODEL_ID: ${SCANNER_MODEL_ID:-protectai/deberta-v3-base-prompt-injection-v2}
+      SCANNER_MODEL_REVISION: ${SCANNER_MODEL_REVISION:-90c9989b1a342275dd0d1a95aad283c04e075671}
       HF_TOKEN: ${HF_TOKEN:-}
     healthcheck:
       test:
@@ -3467,9 +3488,12 @@ In `deploy/platform/.env.example`, remove the `LLM_GUARD_AUTH_TOKEN` line and ad
 
 ```bash
 # --- Guardrails -------------------------------------------------------------
-# Injection classifier. The default is ungated and Apache-2.0. Switching to
-# meta-llama/Llama-Prompt-Guard-2-22M requires HF_TOKEN and licence acceptance.
+# Injection classifier. The default is ungated and Apache-2.0, pinned to a
+# revision so it cannot change underneath a security control. Switching to
+# meta-llama/Llama-Prompt-Guard-2-22M requires HF_TOKEN and licence acceptance;
+# change SCANNER_MODEL_REVISION to that model's commit sha at the same time.
 SCANNER_MODEL_ID=protectai/deberta-v3-base-prompt-injection-v2
+SCANNER_MODEL_REVISION=90c9989b1a342275dd0d1a95aad283c04e075671
 HF_TOKEN=
 ```
 
