@@ -4,16 +4,20 @@ Events never carry the matched text — only offsets, scores and entity types �
 so the audit trail cannot itself become a disclosure channel. `build_event`
 reads `request_context` through a fixed key allow-list (never `**spread`), so
 an unexpected key a caller passes in — a prompt, a user message — cannot ride
-along into the audit trail either. `Finding.entity`, `Finding.detector` and
-`Canonical.transforms` are all fixed category/evidence labels supplied by the
-scanners and `guardrails.canonical` — never spans of user text — which is
-what makes copying them into an event safe; see the task report for how that
-is proven against each scanner, not merely assumed here. `decision.reason`
-is the one field this module does NOT trust verbatim: `_safe_reason`
-rebuilds it from the top finding's structured fields, because `reason`
-staying text-free today is a property of `policy.decide()`'s current
-implementation, not a constraint this module enforces on its own — the
-guarantee must not depend on a fact that lives somewhere else.
+along into the audit trail either. `decision.reason` is rebuilt from
+structured `Finding` fields by `_safe_reason` rather than copied verbatim.
+`control`, `risk`, each `transforms` entry, and each finding's
+`detector`/`entity` are all meant to be fixed, closed-set labels — every
+current producer honours that (verified by reading each scanner and
+`policy.py` directly; see the task report) — but that is a fact about
+today's producers, not a guarantee this module enforced on its own until
+`_safe_label` was added: every one of those five routes is now checked
+against an identifier shape (`^[A-Za-z0-9_.:-]{1,64}$`) and replaced with
+`"UNSAFE_LABEL"` if it fails, so a future producer that regresses — a
+scanner that puts the matched substring into `entity` instead of its
+category, say — cannot leak through this module even though nothing here
+controls that producer. The guarantee must not depend on a fact that lives
+somewhere else.
 
 `record` raises `AuditRecordError` rather than silently discarding an event
 it cannot attach to request metadata. A dropped audit event that raises
@@ -26,6 +30,7 @@ from __future__ import annotations
 
 import base64
 import os
+import re
 from collections.abc import Callable
 from typing import Any, TypeVar
 
@@ -98,6 +103,7 @@ GUARDRAIL_DEGRADED = _register(
 
 _CONTEXT_KEYS = ("key_alias", "team_id", "model", "policy_digest")
 _LABEL_KEYS = ("control", "risk", "action")
+_LABEL_SHAPE = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")
 
 
 class AuditRecordError(RuntimeError):
@@ -124,6 +130,42 @@ def new_event_id() -> str:
     return f"grd_{raw[:26]}"
 
 
+def _safe_label(value: str | None) -> str | None:
+    """Refuse to copy a string into the event unless it is identifier-shaped.
+
+    `control`, `risk`, each `transforms` entry, and each finding's
+    `detector`/`entity` are all meant to be fixed, closed-set labels —
+    control ids from `policy.yaml`, risk codes, obfuscation-evidence tags,
+    detector names, entity-type categories — never matched text. Every
+    current producer of these values happens to honour that (every scanner
+    and `policy.py` were read directly to confirm it; see the task report),
+    but `_safe_reason` below exists precisely because "no producer
+    currently violates this" is not the same claim as "this module
+    enforces it". Patching each of these routes individually would repeat
+    the mistake `_safe_reason` was written to fix — a guard placed next to
+    today's known-safe producers survives only until a sixth route is
+    added, or a scanner starts putting the matched substring into `entity`
+    instead of its category, and nothing here would notice.
+
+    A matched secret is not identifier-shaped: an email address has an
+    `@`, a quoted span has spaces, an API key or a decoded payload can
+    carry arbitrary Unicode. None of that survives
+    `^[A-Za-z0-9_.:-]{1,64}$`, so replacing anything that fails the check
+    with the literal `"UNSAFE_LABEL"` closes every one of these routes at
+    once — including the one nobody has written a producer for yet —
+    rather than trusting each individual producer never to regress.
+
+    `None` passes through unchanged: it is `Finding.entity`'s legitimate
+    "no entity classified" value (injection and coverage_gap findings never
+    set one), not a value to sanitise.
+    """
+    if value is None:
+        return None
+    if _LABEL_SHAPE.match(value):
+        return value
+    return "UNSAFE_LABEL"
+
+
 def _safe_reason(decision: Decision) -> str:
     """Rebuild `reason` from structured `Finding` fields rather than trusting
     `decision.reason` verbatim.
@@ -148,11 +190,21 @@ def _safe_reason(decision: Decision) -> str:
     its reason drawn from a closed set of literals — "control disabled", "no
     finding crossed threshold", "grounded hint honoured" — none of which can
     contain matched text, so those pass through unchanged.
+
+    `top.detector` is passed through `_safe_label` before it goes into the
+    string — rebuilding the reason from structured fields does not help if
+    one of those fields is itself untrusted free text (caught by this
+    module's own test suite: a smuggled `Finding.detector` leaked straight
+    through an earlier version of this function that skipped the sanitise
+    step). `top.source.value` needs no such check: `Finding.source` is a
+    `SpanSource` enum with exactly three members (user/untrusted/system),
+    assigned from message role by `extract_spans`, never attacker-influenced
+    text.
     """
     if not decision.findings:
         return decision.reason
     top = max(decision.findings, key=lambda f: f.score)
-    return f"{top.detector}={top.score:.2f} on {top.source.value} span"
+    return f"{_safe_label(top.detector)}={top.score:.2f} on {top.source.value} span"
 
 
 def build_event(
@@ -172,23 +224,26 @@ def build_event(
 
     `reason` is rebuilt by `_safe_reason` rather than copied from
     `decision.reason` directly — see that function's docstring for why.
+    `control`, `risk`, each `transforms` entry, and each finding's
+    `detector`/`entity` are passed through `_safe_label` for the same
+    reason — see its docstring.
     """
     return {
         "event_id": new_event_id(),
-        "control": decision.control,
-        "risk": decision.risk,
+        "control": _safe_label(decision.control),
+        "risk": _safe_label(decision.risk),
         "action": decision.action.value,
         "reason": _safe_reason(decision),
         "enforced": enforced,
-        "transforms": list(transforms),
+        "transforms": [_safe_label(t) for t in transforms],
         "findings": [
             {
-                "detector": finding.detector,
+                "detector": _safe_label(finding.detector),
                 "score": finding.score,
                 "source": finding.source.value,
                 "start": finding.start,
                 "end": finding.end,
-                "entity": finding.entity,
+                "entity": _safe_label(finding.entity),
             }
             for finding in decision.findings
         ],

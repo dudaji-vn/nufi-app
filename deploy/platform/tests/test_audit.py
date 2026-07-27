@@ -300,6 +300,101 @@ def test_event_reason_passes_through_unchanged_for_a_finding_free_decision():
 
 
 # ---------------------------------------------------------------------------
+# build_event — every label route, not just reason, must refuse matched text
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("field", ["control", "risk", "transforms", "detector", "entity"])
+def test_a_matched_secret_smuggled_into_any_label_field_is_replaced_not_leaked(field):
+    """`control`, `risk`, each `transforms` entry, and each finding's
+    `detector`/`entity` are all meant to be fixed, closed-set labels — never
+    matched text. Every current producer honours that today (a scanner
+    setting `entity` to a category, `policy.py` setting `control`/`risk`
+    from `policy.yaml`), but that is a fact about today's producers, not a
+    guarantee this module enforces on its own. Simulate a future producer
+    that puts a matched secret into each of these five routes in turn — one
+    parametrised case per route — and confirm `_safe_label` closes all five,
+    not just the one route this task happened to probe first (`reason`).
+
+    Checked against completeness first, same shape as every other no-leak
+    test in this file: asserts the untargeted fields kept their legitimate
+    values and the full event shape is present, so this cannot pass against
+    a stub that returns an empty or partially-deleted dict.
+    """
+    secret = "sun@dudaji.com"
+    control = secret if field == "control" else "G2b"
+    risk = secret if field == "risk" else "LLM02"
+    transforms = (secret,) if field == "transforms" else ("homoglyph",)
+    detector = secret if field == "detector" else "presidio"
+    entity = secret if field == "entity" else "EMAIL_ADDRESS"
+
+    finding = Finding(
+        risk="LLM02", detector=detector, score=0.9,
+        source=SpanSource.USER, start=0, end=10, entity=entity,
+    )
+    decision = Decision(
+        action=Action.REDACT, control=control, risk=risk,
+        findings=(finding,), reason="presidio=0.90 on user span",
+    )
+
+    event = build_event(decision, transforms=transforms, request_context={}, enforced=True)
+
+    # Prove completeness first. `_safe_reason` rebuilds `reason` from the
+    # finding's own (now-sanitised) `detector`, ignoring `decision.reason`
+    # entirely whenever there is a finding — so when the smuggled secret IS
+    # the detector, it must show up here as UNSAFE_LABEL too, not leak
+    # through this second, independent path into the reason string.
+    assert event["action"] == "redact"
+    assert event["enforced"] is True
+    expected_reason = (
+        "UNSAFE_LABEL=0.90 on user span" if field == "detector" else "presidio=0.90 on user span"
+    )
+    assert event["reason"] == expected_reason
+    assert len(event["findings"]) == 1
+    f = event["findings"][0]
+    assert (f["score"], f["source"], f["start"], f["end"]) == (0.9, "user", 0, 10)
+
+    # The targeted route was replaced; the other four kept their legitimate
+    # values — proving this is a per-field shape check, not a blanket
+    # "something looked wrong, drop everything" reaction.
+    assert event["control"] == ("UNSAFE_LABEL" if field == "control" else "G2b")
+    assert event["risk"] == ("UNSAFE_LABEL" if field == "risk" else "LLM02")
+    assert event["transforms"] == (
+        ["UNSAFE_LABEL"] if field == "transforms" else ["homoglyph"]
+    )
+    assert f["detector"] == ("UNSAFE_LABEL" if field == "detector" else "presidio")
+    assert f["entity"] == ("UNSAFE_LABEL" if field == "entity" else "EMAIL_ADDRESS")
+
+    assert secret not in json.dumps(event)
+
+
+def test_ordinary_labels_pass_through_byte_identical():
+    """A guard that mangles legitimate labels is worse than no guard: `G1`
+    would silently vanish from every dashboard and audit record. Confirm
+    `_safe_label` is a no-op for every real label value this codebase
+    actually produces today.
+    """
+    finding = Finding(
+        risk="LLM02", detector="presidio", score=0.9,
+        source=SpanSource.USER, start=0, end=10, entity="EMAIL_ADDRESS",
+    )
+    decision = Decision(
+        action=Action.REDACT, control="G2b", risk="LLM02",
+        findings=(finding,), reason="presidio=0.90 on user span",
+    )
+
+    event = build_event(
+        decision, transforms=("homoglyph",), request_context={}, enforced=True,
+    )
+
+    assert event["control"] == "G2b"
+    assert event["risk"] == "LLM02"
+    assert event["transforms"] == ["homoglyph"]
+    assert event["findings"][0]["detector"] == "presidio"
+    assert event["findings"][0]["entity"] == "EMAIL_ADDRESS"
+
+
+# ---------------------------------------------------------------------------
 # record — happy path
 # ---------------------------------------------------------------------------
 
