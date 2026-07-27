@@ -12,7 +12,8 @@ Q2 2026 deliverable: complete GPU platform with NPU integration ready.
 - LiteLLM Proxy — gateway, routing, virtual keys
 - Langfuse — observability, tracing, cost tracking
 - LibreChat — chat interface for end users (Apache-2.0; replaced Open WebUI in W1 due to license restrictions)
-- LLM Guard — PII / prompt injection scanner
+- Guardrails — in-proxy LLM security controls (`litellm/guardrails/`) backed by
+  Presidio and the `nufi-scanner` injection-classifier sidecar
 - Prometheus + Grafana — monitoring
 - PostgreSQL — state store (LiteLLM keys, Langfuse)
 - MongoDB — LibreChat app data

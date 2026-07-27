@@ -11,7 +11,7 @@ Q2 2026 deliverable: complete GPU platform with NPU integration ready.
 | Langfuse          | Observability, tracing, cost tracking      |
 | LibreChat         | Chat interface for end users               |
 | Console           | Self-service API key + usage UI (W3)       |
-| LLM Guard         | PII / prompt-injection scanner (W5)        |
+| Guardrails        | In-proxy LLM security controls + detector sidecars (Presidio, nufi-scanner) |
 | Prometheus + Grafana | Monitoring dashboards (W5)              |
 | PostgreSQL        | State store (LiteLLM keys, Langfuse data)  |
 | MongoDB           | LibreChat app data                         |
