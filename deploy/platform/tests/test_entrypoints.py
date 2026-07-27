@@ -591,18 +591,50 @@ async def test_g2a_records_an_audit_event_on_outage(policy_path):
     guard = _g2a(policy_path, FakePii(fail=True))
     data = _data("hi")
 
+    # `enforced="false"`, not "true": G2a has no mechanism to withhold or
+    # alter a request -- every path ends in `return data`, in every mode.
+    # Recording `enforced=True` here (an earlier draft passed
+    # `self._enforcing()` alone) would write a phantom entry into
+    # `nufi_guardrail_decisions_total{action="block", enforced="true"}`, a
+    # series shared with G1Injection, where every entry IS a real block.
     before = GUARDRAIL_DECISIONS.labels(
-        control="G2a", risk="LLM02", action="block", enforced="true"
+        control="G2a", risk="LLM02", action="block", enforced="false"
     )._value.get()
 
     result = await guard.async_pre_call_hook(FakeKey(), None, data, "acompletion")
 
     after = GUARDRAIL_DECISIONS.labels(
-        control="G2a", risk="LLM02", action="block", enforced="true"
+        control="G2a", risk="LLM02", action="block", enforced="false"
     )._value.get()
     assert after == before + 1
-    assert result["metadata"]["guardrail_information"][0]["control"] == "G2a"
+    event = result["metadata"]["guardrail_information"][0]
+    assert event["control"] == "G2a"
+    assert event["enforced"] is False
     assert GUARDRAIL_DEGRADED.labels(control="G2a")._value.get() == 1
+
+
+@pytest.mark.asyncio
+async def test_g2a_outage_in_enforcing_mode_never_reports_a_phantom_block(policy_path):
+    """G2a has no mechanism to withhold a request -- an outage here must
+    never land a sample in `nufi_guardrail_decisions_total{action="block",
+    enforced="true"}`, the series G1Injection shares and the rollout plan
+    reads to decide whether enforcement is safe. Checked with the control
+    in its most "enforcing" mode (pre_call, not logging_only) specifically,
+    since that is exactly the mode an earlier draft's `self._enforcing()`
+    alone would have reported as True."""
+    guard = _g2a(policy_path, FakePii(fail=True), mode="pre_call")
+    assert guard._enforcing() is True  # sanity: genuinely in enforcing mode
+
+    before = GUARDRAIL_DECISIONS.labels(
+        control="G2a", risk="LLM02", action="block", enforced="true"
+    )._value.get()
+
+    await guard.async_pre_call_hook(FakeKey(), None, _data("hi"), "acompletion")
+
+    after = GUARDRAIL_DECISIONS.labels(
+        control="G2a", risk="LLM02", action="block", enforced="true"
+    )._value.get()
+    assert after == before
 
 
 @pytest.mark.asyncio
@@ -846,11 +878,20 @@ async def test_g2b_disabled_control_returns_text_unchanged(policy_path):
 
 @pytest.mark.asyncio
 async def test_g2b_empty_text_returns_unchanged(policy_path):
-    guard = _g2b(policy_path, FakePii([(0, 14, "EMAIL_ADDRESS")]))
+    scanner = FakePii([(0, 14, "EMAIL_ADDRESS")])
+    guard = _g2b(policy_path, scanner)
 
     result = await _apply_text(guard, "", {})
 
     assert result == ""
+    # Real scanners already return no findings for an empty span (PiiScanner
+    # short-circuits before any network call; scan_secrets' regexes never
+    # match ""), so "the output is still empty" does not discriminate the
+    # `if not item: continue` fast path -- with or without it, the
+    # observable OUTPUT is identical (the same class of non-discriminating
+    # guard-clause test as M14's `if not findings` case). The scanner never
+    # being dialed at all is the only difference this fake can detect.
+    assert scanner.calls == 0
 
 
 # =============================================================================

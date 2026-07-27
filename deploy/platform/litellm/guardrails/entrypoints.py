@@ -100,6 +100,21 @@ class GuardrailBlocked(Exception):
 class BaseNufiGuardrail(CustomGuardrail):
     control_id: str = ""
 
+    # Can THIS control's outage path ever actually change what happens to a
+    # request/response — block it, withhold it — or does every path through
+    # `_on_outage` end in returning the input unchanged regardless of what
+    # `enforced` says? Defaults to `True` (matching `G1Injection`, which has
+    # a real `GuardrailBlocked`-raising mechanism) so a control says nothing
+    # only when it genuinely has one. A control with no such mechanism (see
+    # `G2aPiiInput`) must override this to `False`: recording `enforced=True`
+    # on an outage decision that structurally cannot enforce anything writes
+    # a phantom entry into `nufi_guardrail_decisions_total{action="block",
+    # enforced="true"}` — a series shared with G1, where every entry IS a
+    # real block, and the exact number the rollout plan reads to decide
+    # whether enforcement is safe. A missing signal reads as a gap; a wrong
+    # one reads as fact — the worse of the two.
+    outage_can_enforce: bool = True
+
     def __init__(self, policy: Policy | None = None, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._policy = policy or Policy.load(POLICY_PATH)
@@ -397,6 +412,12 @@ class G2aPiiInput(BaseNufiGuardrail):
     """
 
     control_id = "G2a"
+    # This control has no mechanism to withhold or alter a request: every
+    # path through `async_pre_call_hook` and `_on_outage` ends in
+    # `return data`, in every mode, regardless of `fail`. See
+    # `BaseNufiGuardrail.outage_can_enforce` for why this must be declared
+    # explicitly rather than left to the (enforcement-capable) default.
+    outage_can_enforce = False
 
     def __init__(
         self, policy: Policy | None = None, scanner: Any | None = None, **kwargs: Any
@@ -478,14 +499,18 @@ class G2aPiiInput(BaseNufiGuardrail):
         `GUARDRAIL_DECISIONS` unable to distinguish "no PII in traffic" from
         "PII detection was blind for this request".
 
-        `enforced` reuses this control's own `_enforcing()`, the same value
-        the non-outage path below passes to `_emit` — NOT
+        `enforced` is gated by `self.outage_can_enforce` (declared `False`
+        above), not just this control's own `_enforcing()` — an earlier
+        draft passed `self._enforcing()` alone, the same value the
+        non-outage path below passes to `_emit`, and NOT
         `fails_closed and _enforcing()` as `G1Injection._on_outage` computes
-        it. G1's formula answers "would this outage have actually blocked
-        the request"; G2a has no such branch to answer for — it always
-        returns `data` unchanged, in every mode, regardless of `fail`. Reusing
-        G1's formula here would make `enforced` claim an effect (blocking)
-        this control can never have.
+        it either. Both of those still let `enforced` come back `True`
+        whenever this control is out of shadow mode, even though G2a always
+        returns `data` unchanged, in every mode, regardless of `fail` — a
+        phantom "enforced" block recorded for a control that structurally
+        cannot block anything. `outage_can_enforce` collapses `enforced` to
+        `False` unconditionally, matching what this control can actually do
+        rather than what mode it happens to be in.
         """
         verbose_proxy_logger.warning(
             "guardrail %s could not scan request (%s): %s",
@@ -501,7 +526,8 @@ class G2aPiiInput(BaseNufiGuardrail):
             findings=(),
             reason=f"guardrail unavailable: {type(exc).__name__}",
         )
-        self._emit(data, decision, (), key, self._enforcing())
+        enforced = self.outage_can_enforce and self._enforcing()
+        self._emit(data, decision, (), key, enforced)
         return data
 
 
