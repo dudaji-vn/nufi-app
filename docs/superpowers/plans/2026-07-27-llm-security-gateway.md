@@ -4054,6 +4054,24 @@ class G2aPiiInput(BaseNufiGuardrail):
         return data
 
 
+# LiteLLM's real `apply_guardrail` contract, verified against the installed
+# 1.83.10 rather than taken from the docs page:
+#
+#   apply_guardrail(inputs: GenericGuardrailAPIInputs, request_data: dict,
+#                   input_type: Literal["request", "response"],
+#                   logging_obj=None) -> GenericGuardrailAPIInputs
+#
+# `inputs["texts"]` is a list of strings to inspect or rewrite, and the return
+# value replaces them. `input_type` distinguishes the request leg from the
+# response leg, so a post-call control must filter on it.
+#
+# The method NAME is load-bearing: `common_request_processing.py:1503` checks
+# `if "apply_guardrail" in type(cb).__dict__` and reroutes dispatch when it is
+# present. Defining it with any other signature raises TypeError on every
+# request through the proxy — an outage caused by the guardrail itself, which is
+# worse than anything it guards against.
+
+
 class G2bPiiOutput(BaseNufiGuardrail):
     """Redacts PII and secrets in the model's response."""
 
@@ -4068,41 +4086,63 @@ class G2bPiiOutput(BaseNufiGuardrail):
         if not findings:
             return text
         out = text
-        for finding in sorted(findings, key=lambda f: f.start, reverse=True):
-            out = out[: finding.start] + f"[{finding.entity}]" + out[finding.end :]
-        return out
-
     async def apply_guardrail(
-        self, text: str, language=None, entities=None, request_data=None
-    ) -> str:
-        if not self._control.enabled or not text:
-            return text
+        self,
+        inputs: dict[str, Any],
+        request_data: dict[str, Any],
+        input_type: str,
+        logging_obj: Any = None,
+    ) -> dict[str, Any]:
+        """Redact PII in the model's response.
 
-        from guardrails.types import Span, SpanSource
+        Each text is scanned and decided on independently, so one text's verdict
+        never redacts another's. Findings carry offsets into their own text and
+        nothing on `Finding` identifies which text produced it, so keeping the
+        loop per-text is what makes the offsets safe to slice with.
+        """
+        if input_type != "response" or not self._control.enabled:
+            return inputs
 
-        spans = [Span(text=text, source=SpanSource.UNTRUSTED, message_index=0)]
+        texts = inputs.get("texts") or []
+        if not texts:
+            return inputs
+
+        data = request_data if isinstance(request_data, dict) else {}
+        grounded = self.verified_grounded(data)
+        enforced = self._enforcing()
         started = time.perf_counter()
+        rewritten: list[str] = []
+
         try:
-            findings = await self._scanner.scan(spans) + scan_secrets(spans)
-        except ScannerUnavailable:
-            audit.GUARDRAIL_DEGRADED.labels(control=self.control_id).set(1)
-            return text
+            for item in texts:
+                if not item:
+                    rewritten.append(item)
+                    continue
+                spans = [Span(text=item, source=SpanSource.UNTRUSTED, message_index=0)]
+                findings = await self._scanner.scan(spans) + scan_secrets(spans)
+                decision = decide(self._control, findings, grounded)
+                if decision.action is not Action.REDACT:
+                    rewritten.append(item)
+                    continue
+                self._emit(data, decision, (), None, enforced)
+                rewritten.append(
+                    self.redact(item, list(decision.findings)) if enforced else item
+                )
+        except ScannerUnavailable as exc:
+            self._on_outage(data, None, exc)
+            return inputs
+        except Exception as exc:  # noqa: BLE001 - a detector must never break traffic
+            self._on_outage(data, None, exc)
+            return inputs
         finally:
             audit.GUARDRAIL_LATENCY.labels(control=self.control_id).observe(
                 time.perf_counter() - started
             )
 
         audit.GUARDRAIL_DEGRADED.labels(control=self.control_id).set(0)
-
-        data = request_data if isinstance(request_data, dict) else {}
-        decision = decide(self._control, findings, self.verified_grounded(data))
-        if decision.action is not Action.REDACT:
-            return text
-
-        enforced = self._enforcing()
-        self._emit(data, decision, (), None, enforced)
-        return self.redact(text, list(decision.findings)) if enforced else text
-
+        if enforced:
+            inputs["texts"] = rewritten
+        return inputs
 
 g2a_pii_input = G2aPiiInput()
 g2b_pii_output = G2bPiiOutput()
@@ -4246,35 +4286,46 @@ class G3SystemPromptLeak(BaseNufiGuardrail):
         return "\n".join(parts)
 
     async def apply_guardrail(
-        self, text: str, language=None, entities=None, request_data=None
-    ) -> str:
-        if not self._control.enabled or not text:
-            return text
+        self,
+        inputs: dict[str, Any],
+        request_data: dict[str, Any],
+        input_type: str,
+        logging_obj: Any = None,
+    ) -> dict[str, Any]:
+        if input_type != "response" or not self._control.enabled:
+            return inputs
 
+        texts = inputs.get("texts") or []
         data = request_data if isinstance(request_data, dict) else {}
         system_prompt = self._system_prompt(data)
-        if not system_prompt:
-            return text
+        if not texts or not system_prompt:
+            return inputs
 
         started = time.perf_counter()
-        findings = scan_system_echo(text, system_prompt)
+        findings = [
+            finding
+            for item in texts
+            if item
+            for finding in scan_system_echo(item, system_prompt)
+        ]
         audit.GUARDRAIL_LATENCY.labels(control=self.control_id).observe(
             time.perf_counter() - started
         )
 
         decision = decide(self._control, findings, grounded=False)
         if decision.action is Action.ALLOW:
-            return text
+            return inputs
 
         enforced = self._enforcing()
         event = self._emit(data, decision, (), None, enforced)
         if not enforced:
-            return text
+            return inputs
 
         raise GuardrailBlocked(
             code="LLM07_SYSTEM_PROMPT_LEAK",
             event_id=event["event_id"],
             detail=decision.reason,
+            status_code=400,
         )
 
 
@@ -4291,27 +4342,45 @@ class G4OutputHandling(BaseNufiGuardrail):
         return out
 
     async def apply_guardrail(
-        self, text: str, language=None, entities=None, request_data=None
-    ) -> str:
-        if not self._control.enabled or not text:
-            return text
+        self,
+        inputs: dict[str, Any],
+        request_data: dict[str, Any],
+        input_type: str,
+        logging_obj: Any = None,
+    ) -> dict[str, Any]:
+        if input_type != "response" or not self._control.enabled:
+            return inputs
+
+        texts = inputs.get("texts") or []
+        if not texts:
+            return inputs
 
         allowlist = list(self._control.options.get("image_host_allowlist") or [])
-
+        data = request_data if isinstance(request_data, dict) else {}
+        enforced = self._enforcing()
         started = time.perf_counter()
-        findings = scan_exfil(text, allowlist)
+        rewritten: list[str] = []
+
+        for item in texts:
+            if not item:
+                rewritten.append(item)
+                continue
+            findings = scan_exfil(item, allowlist)
+            decision = decide(self._control, findings, grounded=False)
+            if decision.action is not Action.REDACT:
+                rewritten.append(item)
+                continue
+            self._emit(data, decision, (), None, enforced)
+            rewritten.append(
+                self.strip(item, list(decision.findings)) if enforced else item
+            )
+
         audit.GUARDRAIL_LATENCY.labels(control=self.control_id).observe(
             time.perf_counter() - started
         )
-
-        decision = decide(self._control, findings, grounded=False)
-        if decision.action is not Action.REDACT:
-            return text
-
-        data = request_data if isinstance(request_data, dict) else {}
-        enforced = self._enforcing()
-        self._emit(data, decision, (), None, enforced)
-        return self.strip(text, list(decision.findings)) if enforced else text
+        if enforced:
+            inputs["texts"] = rewritten
+        return inputs
 
 
 g3_system_prompt_leak = G3SystemPromptLeak()
