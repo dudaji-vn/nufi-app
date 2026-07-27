@@ -27,10 +27,13 @@ _FAIL = frozenset({"open", "closed"})
 # `user` threshold (0.90) and BLOCK every unscanned span the instant G1
 # enforces — the exact inverse of the shadow-mode-ignore default this key
 # exists to express, with zero signal that the override was never applied.
-# guardrails.scanners.injection.InjectionScanner is the only scanner shipped
-# so far, and it emits exactly these two. Add a new scanner's detector name
-# here when it needs a detector_thresholds override.
-_KNOWN_DETECTORS = frozenset({"injection", "coverage_gap", "presidio"})
+# guardrails.scanners.injection.InjectionScanner, guardrails.scanners.pii.PiiScanner
+# and guardrails.scanners.patterns (secrets / system_echo / exfil) are the
+# scanners shipped so far. Add a new scanner's detector name here when it
+# needs a detector_thresholds override.
+_KNOWN_DETECTORS = frozenset(
+    {"injection", "coverage_gap", "presidio", "secrets", "system_echo", "exfil"}
+)
 
 
 @dataclass(frozen=True)

@@ -282,3 +282,20 @@ def test_typo_in_the_presidio_detector_threshold_key_is_still_refused():
 
     with pytest.raises(ValueError, match=r"G2a:.*presidoo.*expected one of"):
         _parse_control("G2a", body)
+
+
+@pytest.mark.parametrize("detector", ["secrets", "system_echo", "exfil"])
+def test_pattern_scanner_detector_thresholds_parse(detector):
+    """`guardrails.scanners.patterns` (Task 8) reports findings with
+    `detector="secrets"`, `detector="system_echo"` and `detector="exfil"`.
+    A policy declaring a `detector_thresholds` override for any one of them
+    must load, exactly like the existing `presidio`/`coverage_gap` entries."""
+    body = {
+        "risk": "LLM05",
+        "thresholds": _ALL_THRESHOLDS,
+        "detector_thresholds": {detector: 0.75},
+    }
+
+    control = _parse_control("G4", body)
+
+    assert control.detector_thresholds == {detector: 0.75}
