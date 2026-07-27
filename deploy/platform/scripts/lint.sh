@@ -25,6 +25,7 @@ run() {
 }
 
 run "yamllint" yamllint -c .yamllint.yml .
+run "ruff" ruff check .
 
 dockerfiles=$(find . -name Dockerfile -not -path './.git/*')
 if [ -n "${dockerfiles}" ]; then
