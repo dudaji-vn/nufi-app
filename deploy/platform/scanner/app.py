@@ -95,9 +95,13 @@ def _window_starts(total: int, budget: int) -> list[int]:
         return sequential
 
     last = sequential[-1]
-    if budget == 1:
-        return [last]
-    if budget == 2:
+    if budget <= 2:
+        # Floor is BOTH ends, never one. A budget of 1 previously returned the
+        # tail alone, which silently dropped head coverage the moment a request
+        # squeezed its spans — measured at 2 of 4 head-planted injections caught
+        # where the previous version caught 4 of 4. Two windows is the smallest
+        # honest scan of a long span; if the budget cannot afford it, the span is
+        # reported incomplete rather than scanned badly.
         return [0, last]
 
     interior = sequential[1:-1]
@@ -194,8 +198,16 @@ def scan_spans(request: ScanRequest) -> ScanResponse:
         key=lambda index: (spans[index].source != "untrusted", -len(per_span[index])),
     )
     while sum(len(w) for w in per_span) > _MAX_WINDOWS_PER_REQUEST:
+        # `> 2`, not `> 1`: _window_starts's floor is two windows (head+tail),
+        # never one. A `> 1` filter here does not match that floor — asking
+        # _window_starts for budget=1 still returns 2 windows, so a span already
+        # at 2 never shrinks, is picked as "victim" again next iteration, and the
+        # loop never converges. Reproduced directly: a 4x20k-char same-priority
+        # request hung indefinitely (2000+ iterations, one span pinned at 2
+        # windows, total stuck at 38 > budget 24) before this filter was
+        # corrected to match the new floor.
         victim = next(
-            (index for index in reversed(order) if len(per_span[index]) > 1), None
+            (index for index in reversed(order) if len(per_span[index]) > 2), None
         )
         if victim is None:
             break
