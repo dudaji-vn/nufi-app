@@ -235,6 +235,70 @@ def test_no_span_text_or_decoded_payload_anywhere_in_a_fully_populated_event():
     assert canary not in json.dumps(event)
 
 
+def test_event_reason_never_carries_matched_text_even_if_decisions_reason_did():
+    """`policy.decide()` today only ever formats `reason` from
+    detector/score/source — but nothing in `build_event` enforced that on
+    its own until now. Build a `Decision` whose `reason` DOES carry a raw
+    secret (standing in for a future, more descriptive `policy.decide()`
+    that names an entity value or quotes a span) and prove `build_event`
+    rebuilds `reason` from the finding's structured fields instead of
+    trusting the string verbatim.
+
+    Checked against completeness first, same as every other no-leak test in
+    this file: an implementation that returns an empty dict — or one that
+    merely deletes the `reason` key — would pass a bare "secret not in
+    event" check trivially, so the full expected shape is asserted before
+    the secret's absence is.
+    """
+    secret = "sun@dudaji.com"
+    finding = Finding(
+        risk="LLM02", detector="presidio", score=0.97,
+        source=SpanSource.USER, start=11, end=25, entity="EMAIL_ADDRESS",
+    )
+    decision = Decision(
+        action=Action.REDACT, control="G2a", risk="LLM02",
+        findings=(finding,), reason=f"presidio=0.97 matched {secret} verbatim",
+    )
+
+    event = build_event(
+        decision, transforms=(), request_context={"model": "nufi"}, enforced=True,
+    )
+
+    # Prove completeness first.
+    assert event["control"] == "G2a"
+    assert event["risk"] == "LLM02"
+    assert event["action"] == "redact"
+    assert event["enforced"] is True
+    assert event["model"] == "nufi"
+    assert len(event["findings"]) == 1
+    f = event["findings"][0]
+    assert (f["detector"], f["score"], f["source"], f["entity"]) == (
+        "presidio", 0.97, "user", "EMAIL_ADDRESS",
+    )
+
+    # `reason` must be rebuilt from the finding's structured fields — the
+    # exact format policy.decide() itself uses — not whatever
+    # `decision.reason` said.
+    assert event["reason"] == "presidio=0.97 on user span"
+    assert secret not in event["reason"]
+    assert secret not in json.dumps(event)
+
+
+def test_event_reason_passes_through_unchanged_for_a_finding_free_decision():
+    # A Decision with no findings draws its reason from a closed set of
+    # literals in policy._allow ("control disabled", "no finding crossed
+    # threshold", "grounded hint honoured") — none can carry matched text,
+    # so _safe_reason must leave these untouched rather than mangling them.
+    decision = Decision(
+        action=Action.ALLOW, control="G2", risk="LLM02",
+        findings=(), reason="no finding crossed threshold",
+    )
+
+    event = build_event(decision, transforms=(), request_context={}, enforced=True)
+
+    assert event["reason"] == "no finding crossed threshold"
+
+
 # ---------------------------------------------------------------------------
 # record — happy path
 # ---------------------------------------------------------------------------

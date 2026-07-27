@@ -8,7 +8,12 @@ along into the audit trail either. `Finding.entity`, `Finding.detector` and
 `Canonical.transforms` are all fixed category/evidence labels supplied by the
 scanners and `guardrails.canonical` — never spans of user text — which is
 what makes copying them into an event safe; see the task report for how that
-is proven against each scanner, not merely assumed here.
+is proven against each scanner, not merely assumed here. `decision.reason`
+is the one field this module does NOT trust verbatim: `_safe_reason`
+rebuilds it from the top finding's structured fields, because `reason`
+staying text-free today is a property of `policy.decide()`'s current
+implementation, not a constraint this module enforces on its own — the
+guarantee must not depend on a fact that lives somewhere else.
 
 `record` raises `AuditRecordError` rather than silently discarding an event
 it cannot attach to request metadata. A dropped audit event that raises
@@ -119,6 +124,37 @@ def new_event_id() -> str:
     return f"grd_{raw[:26]}"
 
 
+def _safe_reason(decision: Decision) -> str:
+    """Rebuild `reason` from structured `Finding` fields rather than trusting
+    `decision.reason` verbatim.
+
+    `policy.decide()` today only ever formats `reason` from
+    `detector`/`score`/`source` — verified by reading `policy.py` directly —
+    so the two currently agree. But nothing in THIS module enforces that
+    agreement: a guard that lives only in the module that happens not to
+    violate it survives exactly until someone edits the OTHER module to add
+    a more descriptive reason (naming an entity value, quoting a span). That
+    coupling — a constraint stated in one place, relied on from another —
+    is the same shape that cost two fix rounds in Task 8. Rebuilding here
+    means the no-text guarantee holds even if `policy.decide`'s `reason`
+    format later changes to something less careful.
+
+    `top` is picked the same way `policy.decide()` picks it — `max` over the
+    same `findings` tuple `decide()` already narrowed to `crossed` before
+    constructing the `Decision` — so this reproduces an identical string in
+    the case that matters today, while no longer trusting the string itself.
+
+    A `Decision` with no findings (the ALLOW paths in `policy._allow`) has
+    its reason drawn from a closed set of literals — "control disabled", "no
+    finding crossed threshold", "grounded hint honoured" — none of which can
+    contain matched text, so those pass through unchanged.
+    """
+    if not decision.findings:
+        return decision.reason
+    top = max(decision.findings, key=lambda f: f.score)
+    return f"{top.detector}={top.score:.2f} on {top.source.value} span"
+
+
 def build_event(
     decision: Decision,
     transforms: tuple[str, ...],
@@ -133,13 +169,16 @@ def build_event(
     the event entirely rather than defaulted to `None`: a `None` copied into
     every event looks, on the reading side, identical to "we checked and
     there wasn't one", which is not the same claim as "we never looked".
+
+    `reason` is rebuilt by `_safe_reason` rather than copied from
+    `decision.reason` directly — see that function's docstring for why.
     """
     return {
         "event_id": new_event_id(),
         "control": decision.control,
         "risk": decision.risk,
         "action": decision.action.value,
-        "reason": decision.reason,
+        "reason": _safe_reason(decision),
         "enforced": enforced,
         "transforms": list(transforms),
         "findings": [
