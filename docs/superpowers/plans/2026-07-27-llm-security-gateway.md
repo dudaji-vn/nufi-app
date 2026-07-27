@@ -1801,6 +1801,9 @@ MAX_CHARS = int(os.environ.get("SCANNER_MAX_CHARS", "64000"))
 _CHUNK_TOKENS = 450
 _CHUNK_OVERLAP = 64
 _MAX_CHUNKS = int(os.environ.get("SCANNER_MAX_CHUNKS", "24"))
+# Bounds worst-case request latency. At ~200 ms per window this keeps a scan
+# under roughly 5 s, which is what the caller allows before failing closed.
+_MAX_WINDOWS_PER_REQUEST = int(os.environ.get("SCANNER_MAX_WINDOWS", "24"))
 
 _MALICIOUS_LABELS = {"INJECTION", "MALICIOUS", "LABEL_1", "JAILBREAK"}
 _SAFE_LABELS = {"SAFE", "BENIGN", "CLEAN", "LABEL_0"}
@@ -1900,6 +1903,18 @@ def scan_spans(request: ScanRequest) -> ScanResponse:
         return ScanResponse(model=MODEL_ID, results=[])
 
     per_span = [_windows(span.text[:MAX_CHARS]) for span in request.spans]
+
+    # Cap windows per REQUEST, not just per span. Measured: ~200 ms per window,
+    # so a RAG turn carrying several long documents would otherwise blow past
+    # the caller's timeout — and G1 fails closed, which turns a slow scan into a
+    # 503 for the user. Windows are dropped from the tail of the longest spans
+    # first, so every span keeps its head and no span goes entirely unscored.
+    while sum(len(w) for w in per_span) > _MAX_WINDOWS_PER_REQUEST:
+        longest = max(range(len(per_span)), key=lambda index: len(per_span[index]))
+        if len(per_span[longest]) <= 1:
+            break
+        per_span[longest].pop()
+
     flat = [window for windows in per_span for window in windows]
     raw = _classifier(flat) if flat else []
     scored = [_injection_score(str(item["label"]), float(item["score"])) for item in raw]
@@ -3095,7 +3110,10 @@ _CHAT_CALL_TYPES = frozenset(
 
 POLICY_PATH = os.environ.get("GUARDRAIL_POLICY_PATH", "/app/guardrails/policy.yaml")
 SCANNER_API_BASE = os.environ.get("SCANNER_API_BASE", "http://nufi-scanner:8000")
-SCANNER_TIMEOUT_S = float(os.environ.get("SCANNER_TIMEOUT_S", "5.0"))
+# Measured: ~200 ms per 450-token window, and the scanner caps a request at
+# _MAX_WINDOWS_PER_REQUEST windows, so a full scan lands near 5 s worst case.
+# G1 fails closed, so a timeout is a 503 for the user — leave headroom.
+SCANNER_TIMEOUT_S = float(os.environ.get("SCANNER_TIMEOUT_S", "8.0"))
 
 # Where the pre_call phase records its verdict on the client's grounded hint,
 # for post_call controls to read. Namespaced so a client cannot forge it: the
@@ -4314,7 +4332,7 @@ Under `litellm-proxy.environment`, remove the three `LLM_GUARD_*` lines and add:
 
 ```yaml
       SCANNER_API_BASE: http://nufi-scanner:8000
-      SCANNER_TIMEOUT_S: "5.0"
+      SCANNER_TIMEOUT_S: "8.0"
       GUARDRAIL_POLICY_PATH: /app/guardrails/policy.yaml
 ```
 
