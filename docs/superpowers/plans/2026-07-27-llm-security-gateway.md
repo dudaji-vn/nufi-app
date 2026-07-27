@@ -5243,54 +5243,127 @@ none of our startup assertions, gauges or logs ever run. The system is silent
 because it is absent. That is exactly how the previous generation sat disabled
 for two months.
 
-Detection has to come from outside the process. Create
-`deploy/platform/scripts/check-guardrails-wired.sh`:
+Detection has to come from outside the process. Two rules govern the check, and
+both were mistakes in an earlier draft of this step — read them before writing
+the script, because the obvious implementation gets both wrong:
+
+**Rule 1 — reconcile EVERY declared control, not only the mandatory ones.**
+`mandatory` answers "should the proxy refuse to start when this control is
+*disabled*". Whether a control is *wired* is a different axis entirely. Today
+only G1 and G4 are `mandatory: true`, so a mandatory-only check would leave
+G2a, G2b and G3 — three of five controls, including both PII controls — with no
+wiring check at all. A control declared in `policy.yaml` and absent from
+`config.yaml` is always a mistake: if you do not want it, delete it from
+`policy.yaml`. `mandatory` may govern the *severity* of other checks; it must
+not govern this one's scope.
+
+**Rule 2 — parse the YAML, do not grep it.** A `grep` for
+`guardrails.entrypoints.*g1` passes on a line that begins with `#`. Look at
+`litellm/config.yaml:66-68` right now:
+
+```yaml
+    # Temporarily disabled while the Korean team's AI gateway is in flight —
+    # self-testing the chat interface only. Re-enable when the gateway lands.
+    # - callbacks.prompt_injection.proxy_handler_instance
+```
+
+That is a commented-out security callback sitting in the live config — the
+precise shape of the failure this project exists to end, still present in the
+file we are about to edit. A grep-based check would report the same line as
+wired. Parse `config.yaml` with `yaml.safe_load`, exactly as LiteLLM does, so a
+commented-out entry is absent to the checker for the same reason it is absent to
+the proxy.
+
+Create `deploy/platform/scripts/check-guardrails-wired.sh`:
 
 ```bash
 #!/usr/bin/env bash
-# Every mandatory control in policy.yaml must be referenced from config.yaml.
-# An unwired control cannot report its own absence: the module never loads.
+# Reconcile policy.yaml against config.yaml, in both directions.
+#
+# A control declared in policy.yaml but never referenced from config.yaml is
+# never imported by LiteLLM, so it cannot report its own absence: no startup
+# assertion, no gauge, no log line. It is silent because it is missing, and a
+# green dashboard looks identical either way. In-process instrumentation cannot
+# close this by construction, which is why the check lives out here.
 set -euo pipefail
 
 cd "$(dirname "$0")/.." || exit 1
 
-policy="litellm/guardrails/policy.yaml"
-config="litellm/config.yaml"
-missing=0
+python3 - "litellm/guardrails/policy.yaml" "litellm/config.yaml" <<'PY'
+import sys
+import yaml
 
-mandatory=$(python3 -c "
-import sys, yaml
-doc = yaml.safe_load(open('${policy}')) or {}
-for name, body in (doc.get('controls') or {}).items():
-    if body.get('mandatory'):
-        print(name)
-")
+policy_path, config_path = sys.argv[1], sys.argv[2]
 
-for control in ${mandatory}; do
-  # entrypoints expose g1_injection, g2a_pii_input, ... — match on the id
-  needle=$(printf '%s' "${control}" | tr '[:upper:]' '[:lower:]')
-  if ! grep -qi "guardrails.entrypoints.*${needle}" "${config}"; then
-    echo "MISSING: mandatory control ${control} is not wired into ${config}"
-    missing=1
-  fi
-done
+with open(policy_path, encoding="utf-8") as handle:
+    policy = yaml.safe_load(handle) or {}
+with open(config_path, encoding="utf-8") as handle:
+    config = yaml.safe_load(handle) or {}
 
-if [ "${missing}" -ne 0 ]; then
-  echo
-  echo "A control declared in policy.yaml but absent from config.yaml never loads,"
-  echo "so it cannot warn about its own absence. Wire it or drop its mandatory flag."
-  exit 1
-fi
+# EVERY declared control, not just the mandatory ones -- see Rule 1.
+declared = sorted((policy.get("controls") or {}))
 
-echo "all mandatory controls are wired"
+PREFIX = "guardrails.entrypoints."
+wired = {}
+for entry in config.get("guardrails") or []:
+    target = ((entry or {}).get("litellm_params") or {}).get("guardrail") or ""
+    if not target.startswith(PREFIX):
+        continue
+    # guardrails.entrypoints.g2a_pii_input -> "g2a"; splitting on "_" keeps a
+    # future control named G2 from matching g2a_pii_input by prefix.
+    wired[target[len(PREFIX):].split("_")[0]] = entry.get("guardrail_name") or target
+
+problems = []
+for control in declared:
+    if control.lower() not in wired:
+        problems.append(
+            f"MISSING: control {control} is declared in {policy_path} "
+            f"but no guardrail in {config_path} points at {PREFIX}{control.lower()}_*"
+        )
+
+declared_lower = {c.lower() for c in declared}
+for key, name in sorted(wired.items()):
+    if key not in declared_lower:
+        problems.append(
+            f"ORPHAN: {config_path} wires {name} at {PREFIX}{key}_* "
+            f"but no matching control is declared in {policy_path}"
+        )
+
+if problems:
+    print("\n".join(problems))
+    print()
+    print("A control declared in policy.yaml but absent from config.yaml never")
+    print("loads, so it cannot warn about its own absence. A guardrail wired in")
+    print("config.yaml with no policy entry has no thresholds to decide with.")
+    print("Wire it, or delete it from policy.yaml.")
+    sys.exit(1)
+
+print(f"all {len(declared)} declared controls are wired: {', '.join(declared)}")
+PY
 ```
 
 Make it executable, add `"check:wired": "./scripts/check-guardrails-wired.sh"` to
-`package.json`, and add it to `scripts/lint.sh` after the ruff line:
+`package.json`, and add it to `scripts/lint.sh` after the ruff line. Note
+`lint.sh`'s `run` helper checks `command -v "$1"`, so pass the interpreter
+explicitly or the check will be silently reported as "skipped (not installed)"
+— itself an instance of the failure shape this whole task is about:
 
 ```bash
-run "guardrail wiring" ./scripts/check-guardrails-wired.sh
+run "guardrail wiring" bash ./scripts/check-guardrails-wired.sh
 ```
+
+Prove the check bites before you trust it. All three must be observed, not
+assumed:
+
+1. Comment out the `nufi-g2a-pii-input` entry in `config.yaml` (a non-mandatory
+   control — the case Rule 1 exists for). Expected: exit 1, naming G2a.
+2. Delete the `nufi-g1-injection` entry outright. Expected: exit 1, naming G1.
+3. Add a guardrail entry pointing at `guardrails.entrypoints.g9_nonexistent`.
+   Expected: exit 1 with the ORPHAN message.
+
+Restore `config.yaml` after each. Record the observed output of all three in
+your report — a check that cannot fail is worth less than no check, because it
+reads as coverage.
 
 - [ ] **Step 6: Validate compose and lint**
 
