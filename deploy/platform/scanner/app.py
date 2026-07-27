@@ -37,6 +37,9 @@ MAX_CHARS = int(os.environ.get("SCANNER_MAX_CHARS", "64000"))
 _CHUNK_TOKENS = 450
 _CHUNK_OVERLAP = 64
 _MAX_CHUNKS = int(os.environ.get("SCANNER_MAX_CHUNKS", "24"))
+# Bounds worst-case request latency. At ~200 ms per window this keeps a scan
+# under roughly 5 s, which is what the caller allows before failing closed.
+_MAX_WINDOWS_PER_REQUEST = int(os.environ.get("SCANNER_MAX_WINDOWS", "24"))
 
 _MALICIOUS_LABELS = {"INJECTION", "MALICIOUS", "LABEL_1", "JAILBREAK"}
 _SAFE_LABELS = {"SAFE", "BENIGN", "CLEAN", "LABEL_0"}
@@ -136,6 +139,18 @@ def scan_spans(request: ScanRequest) -> ScanResponse:
         return ScanResponse(model=MODEL_ID, results=[])
 
     per_span = [_windows(span.text[:MAX_CHARS]) for span in request.spans]
+
+    # Cap windows per REQUEST, not just per span. Measured: ~200 ms per window,
+    # so a RAG turn carrying several long documents would otherwise blow past
+    # the caller's timeout — and G1 fails closed, which turns a slow scan into a
+    # 503 for the user. Windows are dropped from the tail of the longest spans
+    # first, so every span keeps its head and no span goes entirely unscored.
+    while sum(len(w) for w in per_span) > _MAX_WINDOWS_PER_REQUEST:
+        longest = max(range(len(per_span)), key=lambda index: len(per_span[index]))
+        if len(per_span[longest]) <= 1:
+            break
+        per_span[longest].pop()
+
     flat = [window for windows in per_span for window in windows]
     raw = _classifier(flat) if flat else []
     scored = [_injection_score(str(item["label"]), float(item["score"])) for item in raw]
