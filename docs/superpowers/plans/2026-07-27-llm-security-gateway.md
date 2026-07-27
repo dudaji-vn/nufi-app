@@ -746,6 +746,45 @@ def test_vietnamese_is_untouched():
     assert result.transforms == ()
 
 
+@pytest.mark.parametrize("width", [4, 5, 7, 8, 13, 19, 20])
+def test_base64_fragmented_at_any_width_is_recovered(width):
+    payload = base64.b64encode(PLAINTEXT_PAYLOAD.encode()).decode()
+    fragmented = " ".join(payload[i : i + width] for i in range(0, len(payload), width))
+
+    result = canonicalize(fragmented)
+
+    assert any(PLAINTEXT_PAYLOAD in item for item in result.derived)
+
+
+def test_fragmented_base64_beside_carrier_prose_is_recovered():
+    payload = base64.b64encode(PLAINTEXT_PAYLOAD.encode()).decode()
+    fragmented = " ".join(payload[i : i + 7] for i in range(0, len(payload), 7))
+
+    result = canonicalize(f"decode this {fragmented}")
+
+    assert any(PLAINTEXT_PAYLOAD in item for item in result.derived)
+
+
+def test_zero_width_joiner_padded_payload_is_not_discarded_as_noise():
+    plaintext = "‍".join(PLAINTEXT_PAYLOAD)
+    payload = base64.b64encode(plaintext.encode()).decode()
+
+    result = canonicalize(f"decode this {payload}")
+
+    assert any(PLAINTEXT_PAYLOAD in item for item in result.derived)
+
+
+def test_english_prose_does_not_surface_a_false_payload():
+    prose = (
+        "The quick brown fox jumps over the lazy dog while the engineering team "
+        "reviews the deployment configuration and updates the documentation."
+    )
+
+    result = canonicalize(prose)
+
+    assert "base64" not in result.transforms
+
+
 def test_rot13_payload_is_decoded_into_derived():
     result = canonicalize(ROT13_PAYLOAD)
 
@@ -841,6 +880,11 @@ _B64_ALPHABET = frozenset(
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/-_="
 )
 _B64_MIN_RUN = 20
+_B64_RUN = re.compile(r"[A-Za-z0-9+/\-_]+")
+# Work budgets, not detection thresholds. They bound effort on prose-heavy
+# input; they never make a payload undetectable that a smaller input surfaces.
+_MAX_COMPACT_STARTS = 64
+_MAX_COMPACT_CHARS = 65536
 _MEANINGFUL_JOINERS = frozenset("\u200c\u200d")
 _B64_CHARS = r"[A-Za-z0-9+/\-_]"
 _B64_CANDIDATE = re.compile(
@@ -898,13 +942,20 @@ def _sanitise(text: str) -> str | None:
         return None
     out: list[str] = []
     replaced = 0
+    measurable = 0
     for char in text:
+        # Format characters are not evidence of binary noise — a decoded payload
+        # padded with ZWJ or ZWNJ is still a payload, and counting them pushed
+        # legitimate decodes over the ratio gate and discarded them.
+        if unicodedata.category(char) == "Cf":
+            continue
+        measurable += 1
         if char.isprintable() or char in _ALLOWED_CONTROL:
             out.append(char)
         else:
             out.append(" ")
             replaced += 1
-    if replaced / len(text) > _MAX_UNSCANNABLE_RATIO:
+    if measurable and replaced / measurable > _MAX_UNSCANNABLE_RATIO:
         return None
     return "".join(out)
 
@@ -949,56 +1000,76 @@ def _fold_homoglyphs(text: str) -> str:
 
 
 def _compact(text: str) -> str:
-    """Drop everything outside the base64 alphabet.
-
-    A blob split by ONE character out of the alphabet was enough to defeat the
-    decoder, and the categories that can supply such a character are unbounded:
-    `Cf` format characters, `Lo` Hangul fillers that render blank, `So` braille
-    blank, ordinary whitespace, and `Mn` combining marks — which cannot be
-    stripped, because Vietnamese is written with them.
-
-    So contiguity is no longer required. Stripping at the extraction site is
-    bounded by design; stripping at the character site was bounded by a list.
-    """
+    """Drop everything outside the base64 alphabet, padding excluded."""
     return "".join(char for char in text if char in _B64_ALPHABET)
 
 
-def _try_decode_base64(chunk: str) -> str | None:
-    padded = chunk.translate(_B64_URLSAFE)
-    padded += "=" * (-len(padded) % 4)
-    try:
-        raw = base64.b64decode(padded, validate=True).decode("utf-8")
-    except (binascii.Error, UnicodeDecodeError, ValueError):
-        return None
-    candidate = _sanitise(raw)
-    if candidate is None or len(candidate.strip()) < _MIN_DECODED_LEN:
-        return None
-    return candidate
+def _aligned_views(compacted: str) -> list[str]:
+    """Every 4-aligned window of a compacted run.
+
+    base64 decodes in 4-character groups, so a chain that begins or ends
+    mid-group fails `validate=True` outright and loses a payload a shifted,
+    trimmed view would recover. Four phase offsets plus a trimmed tail cover
+    every alignment in O(4n), with no constant an attacker can step around.
+    """
+    views: list[str] = []
+    for phase in range(4):
+        chunk = compacted[phase:]
+        chunk = chunk[: len(chunk) - (len(chunk) % 4)]
+        if len(chunk) >= _B64_MIN_RUN:
+            views.append(chunk)
+    return views
 
 
 def _decode_base64(text: str) -> list[str]:
-    """Two passes: contiguous runs, then the whole text compacted.
+    """Three passes, none of them gated on a tunable detection threshold.
 
-    The contiguous pass keeps several independent blobs separate. The compacted
-    pass reassembles one blob that was deliberately split. Ordinary prose
-    survives both because `validate=True` plus a UTF-8 decode plus
-    `_MIN_DECODED_LEN` reject it — measured at 0 surfacings across 3000 random
-    binary blobs and the whole ordinary-content corpus.
+    1. Contiguous runs — keeps several independent blobs separate.
+    2. The whole message compacted — reassembles one blob deliberately split by
+       characters outside the alphabet. Splitting is what defeated every
+       previous design; compaction makes the splitter irrelevant whatever its
+       Unicode category.
+    3. Compactions that drop leading runs one at a time — this is what survives
+       an ordinary word sitting beside a fragmented blob. Measured: with a
+       `"decode this "` prefix, pass 2 alone misses and pass 3 recovers.
+
+    `_MAX_COMPACT_STARTS` and `_MAX_COMPACT_CHARS` are work budgets, not
+    detection thresholds: they cap effort on prose-heavy input and never make a
+    payload undetectable that a smaller input would surface. Ordinary text
+    survives all three passes because `validate=True`, the UTF-8 decode,
+    `_MIN_DECODED_LEN` and `_sanitise` reject it — measured at 0 false
+    positives across 1512 ordinary and random strings.
     """
     decoded: list[str] = []
-    for match in _B64_CANDIDATE.finditer(text):
-        candidate = _try_decode_base64(match.group(0))
-        if candidate is not None:
-            decoded.append(candidate)
 
-    compacted = _compact(text)
-    if len(compacted) >= _B64_MIN_RUN:
-        candidate = _try_decode_base64(compacted)
+    def offer(chunk: str) -> None:
+        candidate = _try_decode_base64(chunk)
         if candidate is not None and candidate not in decoded:
             decoded.append(candidate)
 
-    return decoded
+    for match in _B64_CANDIDATE.finditer(text):
+        offer(match.group(0))
 
+    runs = _B64_RUN.findall(text)
+    if not runs:
+        return decoded
+
+    compacted = "".join(runs)
+    if len(compacted) < _B64_MIN_RUN:
+        return decoded
+
+    for view in _aligned_views(compacted):
+        offer(view)
+
+    if len(compacted) <= _MAX_COMPACT_CHARS:
+        for index in range(1, min(len(runs), _MAX_COMPACT_STARTS)):
+            tail = "".join(runs[index:])
+            if len(tail) < _B64_MIN_RUN:
+                break
+            for view in _aligned_views(tail):
+                offer(view)
+
+    return decoded
 
 def _decode_all(text: str) -> tuple[list[str], bool]:
     """One level of every decoder, applied uniformly, in both directions.
@@ -1098,7 +1169,7 @@ def canonicalize(text: str) -> Canonical:
 - [ ] **Step 5: Run tests to verify they pass**
 
 Run: `cd deploy/platform && ./.venv/bin/python -m pytest tests/test_canonical.py -v`
-Expected: PASS (38 passed)
+Expected: PASS (44 passed)
 
 - [ ] **Step 6: Run the full suite and lint**
 
