@@ -103,17 +103,21 @@ class BaseNufiGuardrail(CustomGuardrail):
     # Can THIS control's outage path ever actually change what happens to a
     # request/response — block it, withhold it — or does every path through
     # `_on_outage` end in returning the input unchanged regardless of what
-    # `enforced` says? Defaults to `True` (matching `G1Injection`, which has
-    # a real `GuardrailBlocked`-raising mechanism) so a control says nothing
-    # only when it genuinely has one. A control with no such mechanism (see
-    # `G2aPiiInput`) must override this to `False`: recording `enforced=True`
-    # on an outage decision that structurally cannot enforce anything writes
-    # a phantom entry into `nufi_guardrail_decisions_total{action="block",
-    # enforced="true"}` — a series shared with G1, where every entry IS a
-    # real block, and the exact number the rollout plan reads to decide
-    # whether enforcement is safe. A missing signal reads as a gap; a wrong
-    # one reads as fact — the worse of the two.
-    outage_can_enforce: bool = True
+    # `enforced` says? Defaults to `False`: across this plan's five controls,
+    # only G1 (raises `GuardrailBlocked`) and G3 (same) can actually enforce
+    # on an outage — G2a, G2b, and G4 (which, like G2b, only rewrites text)
+    # cannot. Recording `enforced=True` on an outage decision that
+    # structurally cannot enforce anything writes a phantom entry into
+    # `nufi_guardrail_decisions_total{action="block", enforced="true"}` — a
+    # series shared with G1, where every entry IS a real block, and the exact
+    # number the rollout plan reads to decide whether enforcement is safe. A
+    # missing signal reads as a gap; a wrong one reads as fact — the worse of
+    # the two, and the one a default of `True` would hand to every future
+    # control that says nothing. Only a control that genuinely has a
+    # blocking/withholding mechanism (see `G1Injection`) should override this
+    # to `True` — saying nothing must be the safe choice, not the dangerous
+    # one a majority-shaped default would make it.
+    outage_can_enforce: bool = False
 
     def __init__(self, policy: Policy | None = None, **kwargs: Any) -> None:
         super().__init__(**kwargs)
@@ -223,6 +227,9 @@ class BaseNufiGuardrail(CustomGuardrail):
 
 class G1Injection(BaseNufiGuardrail):
     control_id = "G1"
+    # Raises `GuardrailBlocked` on a fails-closed outage (see `_on_outage`
+    # below), so a fails-closed outage here is a real block, not a phantom one.
+    outage_can_enforce = True
 
     def __init__(
         self, policy: Policy | None = None, scanner: Any | None = None, **kwargs: Any
@@ -357,7 +364,17 @@ class G1Injection(BaseNufiGuardrail):
         )
         audit.GUARDRAIL_DEGRADED.labels(control=self.control_id).set(1)
 
-        enforced = self._control.fails_closed and self._enforcing()
+        # `self.outage_can_enforce` gates this alongside `fails_closed` and
+        # `_enforcing()` — not because G1 needs it today (it is declared
+        # `True` above precisely because this class DOES raise
+        # `GuardrailBlocked` below), but because leaving it out of the
+        # formula would make the class attribute purely decorative for the
+        # one control that actually has a mechanism to enforce: if a future
+        # edit ever removed the `outage_can_enforce = True` override from
+        # this class, `self._control.fails_closed and self._enforcing()`
+        # alone would still raise on a fails-closed outage, silently
+        # disagreeing with what the class now claims about itself.
+        enforced = self.outage_can_enforce and self._control.fails_closed and self._enforcing()
         decision = Decision(
             action=Action.BLOCK,
             control=self.control_id,
