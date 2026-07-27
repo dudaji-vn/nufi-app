@@ -5726,10 +5726,64 @@ and append to the README section added in Step 5, under "Status":
 > `docker-compose.yml` before changing either.
 ```
 
-- [ ] **Step 6: Record the deviations in the design doc**
+- [ ] **Step 6: Correct the design doc where it describes things the system does not do**
 
-In `docs/2026-07-27-llm-security-gateway-design.md`, replace the "Open item for
-planning" block in section 10 with:
+Task 15 brought the stack up and measured it. Three sections of
+`docs/2026-07-27-llm-security-gateway-design.md` describe behaviour the running
+system does not have. These are **corrections, not annotations** — appending an
+observed-reality note under a false paragraph leaves the false paragraph there
+for the next reader to build from.
+
+**§7 Block contract — the largest correction.** The section currently shows:
+
+```json
+{ "error": { "type": "nufi_guardrail_blocked", "code": "LLM01_INJECTION",
+             "event_id": "grd_01J...", "detail": "..." } }
+```
+
+and then states that `apps/chat` matches on `type` and resolves refusal text
+from `code` through i18n. Task 15 flipped G1 to enforce on the live stack and
+captured the actual response, reproduced byte-identically by the reviewer:
+
+```
+HTTP/1.1 400 Bad Request
+{"error":{"message":"injection=1.00 on user span","type":"None","param":"None","code":"400"}}
+```
+
+`type` is the literal string `"None"`. `code` is the HTTP status. `event_id` is
+absent, and no response header carries it. `GuardrailBlocked.to_body()` has zero
+callers and zero tests anywhere in the repository — our code never constructs
+the documented shape at all.
+
+Replace the JSON block with the observed response, and replace the two
+paragraphs that follow it with an honest statement of where this leaves the
+design:
+
+- Matching on `type` is not available; `type` is `"None"`.
+- Resolving refusal text from `code` through i18n is not available either —
+  `code` carries the HTTP status, so there is nothing to key i18n on. The whole
+  "no model call on the block path" argument in that section depends on a code
+  that does not survive, and must be re-decided, not quietly kept.
+- `event_id` does not reach the client, so a client-side lookup by `event_id`
+  is not currently possible.
+
+State plainly that the carrier is an **open decision for the follow-up plan**,
+list the options Task 15's report ranked, and record the one thing that gates
+the choice and is still untested: whether a blocked `pre_call` request produces
+a Langfuse trace at all. Langfuse was not in Task 15's subset stack. Do not
+resolve the decision here — this task documents, it does not design.
+
+**§12** lists "recognition of the `nufi_guardrail_blocked` error contract" as
+retained app-layer work. That contract does not exist on the wire. Correct it to
+point at the open carrier decision in §7 rather than at a shape the gateway never
+emits.
+
+**§10** needs two edits, not one:
+
+1. Line ~324 says the guardrail package "is bind-mounted into the proxy
+   container, in the same way `litellm/callbacks` is mounted today". Task 15
+   baked it into a derived image and removed both mounts. Correct it.
+2. Replace the "Open item for planning" block with:
 
 ```markdown
 **Resolved during planning.** The guardrail package is baked into a derived
@@ -5738,8 +5792,11 @@ so `api.codechi.me` consumes the identical artifact by pulling the image. Only
 `policy.yaml` is mounted, so thresholds can be tuned without a rebuild.
 ```
 
-In section 6.1, replace the paragraph beginning "Scanner: Llama Prompt Guard 2"
-with:
+Check whether anything later in §10 still assumes the bind-mount (the reviewer
+flagged one such sentence at line ~338, "the bind-mount approach transfers
+unchanged"); correct whatever you find rather than only the two sites named here.
+
+**§6.1** — replace the paragraph beginning "Scanner: Llama Prompt Guard 2" with:
 
 ```markdown
 Scanner: a dedicated sidecar hosting a text-classification model, selected by
@@ -5754,7 +5811,7 @@ scoring. `llm-guard-api` is removed; prompt injection was its only enabled
 scanner.
 ```
 
-In section 4, change the LLM10 row's status from `Implemented — G5 …` to:
+**§4** — change the LLM10 row's status from `Implemented — G5 …` to:
 
 ```markdown
 | LLM10 Unbounded Consumption | Gateway | **Deferred** — LiteLLM budgets already enforce; alerting rules are a follow-up (not a scanner, belongs with monitoring) |
@@ -5762,7 +5819,7 @@ In section 4, change the LLM10 row's status from `Implemented — G5 …` to:
 
 and delete section 6.5 along with the G5 row in the section 6 table.
 
-In section 9, append to the degraded-mode list:
+**§9** — append to the degraded-mode list:
 
 ```markdown
 `/health/guardrails` as an HTTP route is **not implemented**: LiteLLM exposes no
@@ -5772,8 +5829,11 @@ WARNING-level status line logged at proxy startup, which satisfies the alerting
 requirement.
 ```
 
-In section 7, append the observed wire format captured in Task 15 Step 9 under
-the "Block contract" heading.
+Before you finish this step, **re-read §7, §9, §10 and §12 as a whole** and
+check for any remaining sentence that assumes a shape or a deployment the
+running system does not have. Two of the three corrections above were found only
+because someone brought the stack up and measured it; the rest of the document
+was written before that was possible.
 
 - [ ] **Step 7: Fix the stale platform CLAUDE.md**
 
