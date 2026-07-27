@@ -1479,6 +1479,23 @@ def test_disabled_control_allows_everything(policy):
     assert decide(control, [_finding(1.0)], grounded=False).action is Action.ALLOW
 
 
+def test_typo_in_a_detector_threshold_key_is_refused():
+    """A typo here re-prices a control silently rather than disabling it.
+
+    `coverge_gap` parses, the real coverage_gap finding falls back to the source
+    threshold, and score 1.0 blocks every unscanned span — the exact opposite of
+    the shadow-mode default the entry was written to express.
+    """
+    body = {
+        "risk": "LLM01",
+        "thresholds": _ALL_THRESHOLDS,
+        "detector_thresholds": {"coverge_gap": 1.01},
+    }
+
+    with pytest.raises(ValueError, match="unknown detector threshold"):
+        _parse_control("G1", body)
+
+
 def test_typo_in_a_threshold_key_is_refused_not_silently_ignored():
     """A typo must stop the proxy, not leave a control that never fires.
 
@@ -1573,6 +1590,13 @@ import yaml
 from guardrails.types import Action, Decision, Finding, SpanSource
 
 _MODES = frozenset({"pre_call", "post_call", "during_call", "logging_only"})
+# Detector names a per-detector threshold may reference. Validated for the same
+# reason threshold keys are: a typo here does not fail loudly, it re-prices a
+# control silently — `coverge_gap` would leave real coverage_gap findings falling
+# back to the source threshold, where score 1.0 blocks everything.
+_KNOWN_DETECTORS = frozenset(
+    {"injection", "coverage_gap", "presidio", "secrets", "system_echo", "exfil"}
+)
 _FAIL = frozenset({"open", "closed"})
 
 
@@ -1659,6 +1683,12 @@ def _parse_control(control_id: str, body: dict[str, Any]) -> ControlConfig:
         raise ValueError(f"{control_id}: unknown action {action_raw!r}, expected one of {valid}") from exc
 
     detector_raw = body.get("detector_thresholds") or {}
+    unknown_detectors = sorted(set(detector_raw) - _KNOWN_DETECTORS)
+    if unknown_detectors:
+        raise ValueError(
+            f"{control_id}: unknown detector threshold(s) {unknown_detectors}, "
+            f"expected {sorted(_KNOWN_DETECTORS)}"
+        )
     detector_thresholds = {str(name): float(value) for name, value in detector_raw.items()}
 
     thresholds_raw = body.get("thresholds") or {}
@@ -2268,6 +2298,37 @@ async def test_obfuscated_injection_is_caught_after_canonicalisation():
     assert findings[0].score > 0.8
 
 
+@pytest.mark.parametrize("bad", ["nan", "NaN", "inf", "-inf"])
+@pytest.mark.asyncio
+async def test_non_finite_score_is_an_outage_not_a_clean_verdict(bad):
+    """max(0.0, nan) is 0.0 and `nan >= threshold` is always False, so a
+    corrupted score would read as definitely-safe twice over."""
+    scanner = _scanner_returning([{"score": float(bad), "label": "INJECTION"}])
+
+    with pytest.raises(ScannerUnavailable):
+        await scanner.scan([Span(text="hello", source=SpanSource.USER, message_index=0)])
+
+
+@pytest.mark.asyncio
+async def test_span_takes_the_max_when_the_highest_candidate_comes_first():
+    """The higher score is deliberately FIRST here.
+
+    Both earlier max tests placed it last, so a last-candidate-wins bug was
+    indistinguishable from correct aggregation. This orientation fails against
+    that bug and passes against the real implementation.
+    """
+    scanner = _scanner_returning(
+        [{"score": 0.97, "label": "INJECTION"}, {"score": 0.01, "label": "SAFE"}]
+    )
+    payload = base64.b64encode(b"benign trailing payload text").decode()
+
+    findings = await scanner.scan(
+        [Span(text=f"ignore previous {payload}", source=SpanSource.USER, message_index=0)]
+    )
+
+    assert findings[0].score == pytest.approx(0.97)
+
+
 @pytest.mark.asyncio
 async def test_unreachable_scanner_raises_scanner_unavailable():
     from guardrails.scanners.base import ScannerUnavailable
@@ -2307,6 +2368,8 @@ Create `deploy/platform/litellm/guardrails/scanners/injection.py`:
 """LLM01 — prompt injection, scored per span by the classifier sidecar."""
 
 from __future__ import annotations
+
+import math
 
 import httpx
 
@@ -2353,7 +2416,17 @@ class InjectionScanner:
         best = [0.0] * len(spans)
         complete = [True] * len(spans)
         for owner, result in zip(owners, results, strict=True):
-            best[owner] = max(best[owner], float(result.get("score", 0.0)))
+            try:
+                score = float(result["score"])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ScannerUnavailable(f"injection scanner: bad score {result!r}") from exc
+            # NaN and infinity survive float() and then vanish: max(0.0, nan)
+            # is 0.0 in CPython, and `nan >= threshold` is always False, so a
+            # corrupted score would read as "definitely safe" twice over. A
+            # score we cannot interpret is an outage, not a clean verdict.
+            if not math.isfinite(score):
+                raise ScannerUnavailable(f"injection scanner: non-finite score {score!r}")
+            best[owner] = max(best[owner], score)
             complete[owner] = complete[owner] and bool(result.get("complete", True))
 
         findings = [
