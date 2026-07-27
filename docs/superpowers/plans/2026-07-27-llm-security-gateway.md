@@ -4584,10 +4584,18 @@ Makes a disabled control impossible to miss — the failure the design calls out
 Create `deploy/platform/tests/test_health.py`:
 
 ```python
+import os
+import subprocess
+import sys
+from pathlib import Path
+
 import pytest
 
+from guardrails import audit
 from guardrails.health import StrictControlViolation, assert_controls, guardrail_status
 from guardrails.policy import Policy
+
+POLICY_FIXTURE = "litellm/guardrails/policy.yaml"
 
 
 @pytest.fixture
@@ -4622,6 +4630,58 @@ def test_disabled_mandatory_control_is_reported_as_a_violation(policy_path):
 
 def test_enabled_mandatory_controls_produce_no_violation(policy):
     assert assert_controls(policy) == []
+
+
+def test_gauge_write_is_observable_not_just_defaulted(policy_path):
+    """A gauge assertion whose expected value is 0 proves nothing.
+
+    Prometheus returns 0.0 for a label combination that was never `.set()`, so a
+    test expecting 0 cannot distinguish "written correctly" from "never written".
+    Deleting the entire gauge-write loop previously left all tests green — in the
+    one test guarding the signal an operator watches longest.
+
+    Two defences: assert a control that must read 1, and pre-seed a sentinel so
+    an omitted write cannot coincide with the default.
+    """
+    policy = Policy.load(policy_path)
+    policy.controls["G1"] = policy.controls["G1"].with_mode("pre_call")
+    enforcing = audit.GUARDRAIL_ENABLED.labels(control="G1", mode="pre_call")
+    idle = audit.GUARDRAIL_ENABLED.labels(control="G2a", mode="logging_only")
+    enforcing.set(-1)
+    idle.set(-1)
+
+    assert_controls(policy)
+
+    assert enforcing._value.get() == 1
+    assert idle._value.get() == 0
+
+
+def test_import_time_failure_is_loud_not_swallowed(tmp_path):
+    """The startup assertion must stop the proxy, not be caught and ignored.
+
+    Verified as a subprocess because that is the only way to observe what a real
+    import does. A refactor wrapping the startup block in a broad except would
+    otherwise pass every test while restoring the exact silence this module was
+    written to end.
+    """
+    broken = tmp_path / "policy.yaml"
+    broken.write_text(
+        Path(POLICY_FIXTURE).read_text().replace(
+            "strict_controls: false", "strict_controls: true"
+        ).replace("    enabled: true\n    mandatory: true", "    enabled: false\n    mandatory: true", 1)
+    )
+    env = {**os.environ, "GUARDRAIL_POLICY_PATH": str(broken)}
+
+    result = subprocess.run(
+        [sys.executable, "-c", "import guardrails.entrypoints"],
+        cwd=str(Path(POLICY_FIXTURE).parents[2]),
+        env={**env, "PYTHONPATH": str(Path(POLICY_FIXTURE).parents[1])},
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "StrictControlViolation" in result.stderr
 
 
 def test_strict_mode_raises_instead_of_returning(policy_path):
