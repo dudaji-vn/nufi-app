@@ -1389,7 +1389,7 @@ import pytest
 from guardrails.policy import Policy, _parse_control, decide
 
 _ALL_THRESHOLDS = {"user": 0.5, "untrusted": 0.5, "system": 1.01}
-from guardrails.types import Action, Finding, SpanSource
+from guardrails.types import Action, Decision, Finding, SpanSource
 
 
 @pytest.fixture
@@ -3501,6 +3501,54 @@ async def test_scanner_outage_in_logging_only_does_not_block(policy_path):
 
 
 @pytest.mark.asyncio
+async def test_outage_is_recorded_in_the_audit_trail_when_it_blocks(policy_path):
+    """A blocking path with no audit event is invisible.
+
+    Without this, a dashboard cannot distinguish "G1 is fail-closing on every
+    request" from "nothing was blocked at all", and the event id handed to the
+    client in the 503 cannot be looked up anywhere.
+    """
+    guard = _guard(policy_path, FakeScanner(fail=True))
+    data = _data("hello")
+
+    with pytest.raises(GuardrailBlocked) as excinfo:
+        await guard.async_pre_call_hook(FakeKey(), None, data, "acompletion")
+
+    events = data["metadata"]["guardrail_information"]
+    assert events[0]["control"] == "G1"
+    assert events[0]["enforced"] is True
+    assert events[0]["event_id"] == excinfo.value.event_id
+
+
+@pytest.mark.asyncio
+async def test_outage_is_recorded_in_shadow_mode_too(policy_path):
+    guard = _guard(policy_path, FakeScanner(fail=True), mode="logging_only")
+    data = _data("hello")
+
+    await guard.async_pre_call_hook(FakeKey(), None, data, "acompletion")
+
+    events = data["metadata"]["guardrail_information"]
+    assert events[0]["enforced"] is False
+
+
+@pytest.mark.asyncio
+async def test_grounded_verdict_is_resolved_for_non_chat_call_types(policy_path):
+    """The non-chat early return must not skip resolution.
+
+    A post_call control treats a missing verdict as not-grounded, so a path that
+    returns without resolving silently changes redaction behaviour.
+    """
+    guard = _guard(policy_path, FakeScanner(score=0.01))
+    data = {"input": "text to embed", "metadata": {"nufi_grounded": True}}
+
+    result = await guard.async_pre_call_hook(
+        FakeKey(metadata={"allow_grounded_hint": True}), None, data, "aembedding"
+    )
+
+    assert result["metadata"]["nufi_grounded_verified"] is True
+
+
+@pytest.mark.asyncio
 async def test_non_chat_call_types_are_skipped(policy_path):
     guard = _guard(policy_path, FakeScanner(score=0.99))
     data = {"input": "text to embed"}
@@ -3704,13 +3752,14 @@ class G1Injection(BaseNufiGuardrail):
     async def async_pre_call_hook(
         self, user_api_key_dict: Any, cache: Any, data: dict[str, Any], call_type: str
     ) -> dict[str, Any]:
+        # Resolved before EVERY early return, including the non-chat one below.
+        # This is the only phase LiteLLM hands over the key object, and a
+        # post_call control treats a missing verdict as not-grounded — so a path
+        # that returns without resolving silently changes redaction behaviour.
+        grounded = self.resolve_grounded(data, user_api_key_dict)
+
         if call_type not in _CHAT_CALL_TYPES:
             return data
-
-        # Runs before every early return below, so post_call controls always
-        # see an authoritative verdict. If G1 is disabled the key is never set
-        # and `verified_grounded` returns False — which redacts more, not less.
-        grounded = self.resolve_grounded(data, user_api_key_dict)
 
         if not self._control.enabled:
             return data
@@ -3750,14 +3799,35 @@ class G1Injection(BaseNufiGuardrail):
         )
 
     def _on_outage(
-        self, data: dict[str, Any], key: Any, exc: ScannerUnavailable
+        self, data: dict[str, Any], key: Any, exc: Exception
     ) -> dict[str, Any]:
+        """Record the outage, then act on it.
+
+        An outage that blocks a request is a blocking path, and a blocking path
+        with no audit event is invisible: the decisions counter stays flat, so a
+        dashboard cannot tell "G1 is fail-closing on every request" from "nothing
+        was blocked at all". The event id handed to the client in the 503 must
+        also exist somewhere it can be looked up afterwards, or it is decoration.
+
+        This is the same blind spot the project exists to remove, appearing in
+        the control whose job is to make control state visible.
+        """
         audit.GUARDRAIL_DEGRADED.labels(control=self.control_id).set(1)
-        if self._control.fails_closed and self._enforcing():
+        enforced = self._control.fails_closed and self._enforcing()
+        decision = Decision(
+            action=Action.BLOCK,
+            control=self.control_id,
+            risk=self._control.risk,
+            findings=(),
+            reason=f"scanner unavailable: {type(exc).__name__}",
+        )
+        event = self._emit(data, decision, (), key, enforced)
+        if enforced:
             raise GuardrailBlocked(
                 code="GUARDRAIL_UNAVAILABLE",
-                event_id=audit.new_event_id(),
+                event_id=event["event_id"],
                 detail=str(exc),
+                status_code=503,
             )
         return data
 
