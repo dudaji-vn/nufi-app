@@ -4731,6 +4731,20 @@ LLM security controls run inside the LiteLLM proxy. Design:
 - **Tests** — `python -m pytest` for the pure layers, and
   `python -m pytest -m contract` with the sidecars running for the adapters.
 
+### Known false-positive risk to measure first
+
+The classifier reacts to **repetition**, independently of any payload. A long
+repetitive-but-benign span measured **0.9988** against G1's user threshold of
+0.90 — so pasted logs, CSV extracts, wide tables and boilerplate-heavy code
+could be blocked outright the moment G1 enforces.
+
+This is the single most likely reason for the control to be switched off after
+launch, which is exactly how the previous generation of these guardrails died.
+Measure it before enforcing: count `logging_only` blocks whose spans are
+repetitive-but-benign, and raise the user threshold or add a repetition-aware
+exemption if the rate is material. Do not enforce G1 on the strength of the
+attack-corpus results alone.
+
 ### Turning a control on
 
 1. Run in `logging_only` for several days and read
