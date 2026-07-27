@@ -74,6 +74,53 @@ async def test_span_score_is_the_max_across_canonical_text_and_derived_payloads(
     assert findings[0].risk == "LLM01"
 
 
+async def test_span_takes_the_max_when_the_highest_candidate_comes_first(monkeypatch):
+    """The higher score is deliberately FIRST here.
+
+    `test_span_score_is_the_max_across_canonical_text_and_derived_payloads`
+    (above) and `test_multi_span_candidates_are_attributed_to_the_right_owner`
+    (below) both place the higher-scoring candidate LAST, so a
+    last-candidate-wins bug (`best[owner] = score` instead of
+    `max(best[owner], score)`) is indistinguishable from correct
+    max-aggregation in either of them — a mutation test proved it: replacing
+    `max(...)` with a plain assignment left all of them passing. This
+    orientation fails against that bug and passes against the real
+    implementation. Keep this alongside the last-first tests, not instead of
+    them — the orientation is the point.
+    """
+    canonical_map = {
+        "carrier": Canonical(text="carrier", transforms=(), derived=("payload",)),
+    }
+    handler = _json_handler(
+        [
+            {"score": 0.97, "label": "INJECTION", "complete": True},
+            {"score": 0.01, "label": "SAFE", "complete": True},
+        ]
+    )
+    scanner = _scanner(handler, monkeypatch, canonical_map)
+
+    findings = await scanner.scan(
+        [Span(text="carrier", source=SpanSource.USER, message_index=0)]
+    )
+
+    assert findings[0].score == pytest.approx(0.97)
+
+
+@pytest.mark.parametrize("bad", ["nan", "NaN", "inf", "-inf"])
+async def test_non_finite_score_is_an_outage_not_a_clean_verdict(monkeypatch, bad):
+    """max(0.0, nan) is 0.0 and `nan >= threshold` is always False in
+    policy.decide, so a corrupted score would read as definitely-safe twice
+    over. Python's json module also accepts bare NaN/Infinity/-Infinity
+    tokens by default, so a malformed response can carry one without even
+    failing JSON parsing — this must surface as ScannerUnavailable, not a
+    score."""
+    handler = _json_handler([{"score": float(bad), "label": "INJECTION", "complete": True}])
+    scanner = _scanner(handler, monkeypatch)
+
+    with pytest.raises(ScannerUnavailable):
+        await scanner.scan([Span(text="hello", source=SpanSource.USER, message_index=0)])
+
+
 async def test_incomplete_span_gets_a_separate_coverage_gap_finding(monkeypatch):
     canonical_map = {
         "short": Canonical(text="short", transforms=()),

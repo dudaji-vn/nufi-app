@@ -212,3 +212,42 @@ def test_detector_threshold_overrides_the_source_threshold_for_that_detector():
     # detector-specific override, so only the coverage_gap finding blocks.
     assert decide(control, [gap], grounded=False).action is Action.BLOCK
     assert decide(control, [ordinary], grounded=False).action is Action.ALLOW
+
+
+def test_typo_in_a_detector_threshold_key_is_refused_not_silently_ignored():
+    """A misspelled detector_thresholds key must stop the proxy, exactly like
+    a misspelled `thresholds` key already does.
+
+    `coverge_gap` (missing an `a`) previously parsed cleanly and was simply
+    never consulted: the real `coverage_gap` finding (always score=1.0) fell
+    back to the plain per-source `thresholds`, and G1's `user` threshold
+    (0.90) means every unscanned span would BLOCK the instant G1 enforces —
+    the exact opposite of the shadow-mode-ignore default this key exists to
+    express, with no error and no signal anywhere that the override never
+    applied.
+    """
+    body = {
+        "risk": "LLM01",
+        "thresholds": _ALL_THRESHOLDS,
+        "detector_thresholds": {"coverge_gap": 1.01},
+    }
+
+    with pytest.raises(ValueError, match="unknown detector_thresholds key"):
+        _parse_control("G1", body)
+
+
+def test_typo_in_a_detector_threshold_key_names_the_control_and_valid_set():
+    body = {
+        "risk": "LLM01",
+        "thresholds": _ALL_THRESHOLDS,
+        "detector_thresholds": {"coverge_gap": 1.01},
+    }
+
+    with pytest.raises(ValueError, match=r"G1:.*coverge_gap.*expected one of"):
+        _parse_control("G1", body)
+
+
+def test_the_shipped_policy_still_parses_with_detector_threshold_validation(policy):
+    """Regression: the real coverage_gap: 1.01 entry in policy.yaml must be a
+    known, accepted key — validation must not reject legitimate config."""
+    assert policy.control("G1").detector_thresholds == {"coverage_gap": 1.01}

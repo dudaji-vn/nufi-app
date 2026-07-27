@@ -16,6 +16,21 @@ from guardrails.types import Action, Decision, Finding, SpanSource
 
 _MODES = frozenset({"pre_call", "post_call", "during_call", "logging_only"})
 _FAIL = frozenset({"open", "closed"})
+# Every detector string a shipped scanner can put in Finding.detector.
+# `thresholds` is validated against SpanSource, a real closed enum in
+# guardrails.types; `detector_thresholds` has no such type to lean on, since
+# Finding.detector is a plain str. Enumerating it here is what makes a typo
+# here as loud as a typo in `thresholds` — one that silently reused the
+# per-source threshold instead of the override was already a known, unfixed
+# gap: `coverge_gap` for `coverage_gap` would parse cleanly, then a
+# coverage_gap Finding (always score=1.0) would fall back to G1's plain
+# `user` threshold (0.90) and BLOCK every unscanned span the instant G1
+# enforces — the exact inverse of the shadow-mode-ignore default this key
+# exists to express, with zero signal that the override was never applied.
+# guardrails.scanners.injection.InjectionScanner is the only scanner shipped
+# so far, and it emits exactly these two. Add a new scanner's detector name
+# here when it needs a detector_thresholds override.
+_KNOWN_DETECTORS = frozenset({"injection", "coverage_gap"})
 
 
 @dataclass(frozen=True)
@@ -122,6 +137,12 @@ def _parse_control(control_id: str, body: dict[str, Any]) -> ControlConfig:
     thresholds = {source: float(thresholds_raw[source.value]) for source in SpanSource}
 
     detector_raw = body.get("detector_thresholds") or {}
+    unknown_detectors = sorted(set(detector_raw) - _KNOWN_DETECTORS)
+    if unknown_detectors:
+        raise ValueError(
+            f"{control_id}: unknown detector_thresholds key(s) {unknown_detectors}, "
+            f"expected one of {sorted(_KNOWN_DETECTORS)}"
+        )
     detector_thresholds = {str(name): float(value) for name, value in detector_raw.items()}
 
     return ControlConfig(
