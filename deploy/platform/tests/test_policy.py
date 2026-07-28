@@ -57,15 +57,24 @@ def test_system_spans_are_never_flagged(policy):
     assert decision.action is Action.ALLOW
 
 
-def test_logging_only_mode_downgrades_a_block_to_log(policy):
-    control = policy.control("G1")
-    assert control.mode == "logging_only"
+def test_decide_is_mode_independent_the_downgrade_lives_in_enforcement(policy):
+    """`decide()` returns the same verdict in both modes -- by design.
 
-    decision = decide(control, [_finding(0.99)], grounded=False)
+    Renamed from `test_logging_only_mode_downgrades_a_block_to_log`, which
+    asserted BLOCK in both modes and therefore demonstrated the exact opposite
+    of its name. `policy.decide` has no mode logic at all: the shadow-mode
+    downgrade lives in `enforced`, which the entrypoints compute from
+    `ControlConfig.enforcing`. Someone auditing "is shadow mode safe?" would
+    have found a green test with a reassuring name that proved nothing about
+    it. The real guarantee is tested in test_entrypoints.py.
 
-    assert decision.action is Action.BLOCK
+    Also no longer asserts the shipping policy's mode: doing so made step 3 of
+    the documented rollout turn the suite red.
+    """
+    shadow = policy.control("G1").with_mode("logging_only")
+    enforcing = policy.control("G1").with_mode("pre_call")
 
-    enforcing = control.with_mode("pre_call")
+    assert decide(shadow, [_finding(0.99)], grounded=False).action is Action.BLOCK
     assert decide(enforcing, [_finding(0.99)], grounded=False).action is Action.BLOCK
 
 

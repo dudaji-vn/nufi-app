@@ -280,7 +280,9 @@ LLM security controls run inside the LiteLLM proxy. Design:
 ### Measured latency
 
 25 iterations against a local `qwen2.5:0.5b`, shadow mode, all five controls
-registered (`npm run bench:guardrails`, 2026-07-28):
+registered (`BENCH_MODEL=<model> ITERATIONS=25 npm run bench:guardrails`,
+2026-07-28 — `ITERATIONS` defaults to 50, so the bare command does not
+reproduce this run):
 
 | control | n | mean | p50 | p95 | p99 |
 |---|---|---|---|---|---|

@@ -20,10 +20,17 @@ def policy(policy_path):
 def test_status_reports_every_control_with_its_mode(policy):
     status = guardrail_status(policy)
 
+    # Pins the SHAPE and the mode/enforcing relationship, not the shipping
+    # policy's current mode. Asserting `== "logging_only"` here meant that
+    # flipping G1 to pre_call -- step 3 of the documented rollout -- turned the
+    # suite red, so the procedure this whole project exists to enable made CI
+    # fail. A rollout that reddens CI is a rollout people postpone.
     assert status["policy_digest"] == policy.digest()
-    assert status["controls"]["G1"]["mode"] == "logging_only"
+    assert status["controls"]["G1"]["mode"] == policy.control("G1").mode
     assert status["controls"]["G1"]["mandatory"] is True
-    assert status["controls"]["G1"]["enforcing"] is False
+    assert status["controls"]["G1"]["enforcing"] is (
+        policy.control("G1").mode != "logging_only"
+    )
 
 
 def test_status_marks_enforcing_controls(policy_path):

@@ -90,7 +90,21 @@ for _ in $(seq 1 "${ITERATIONS}"); do
   fi
 done
 if [ "${failed}" -ne 0 ]; then
-  echo "${failed}/${ITERATIONS} requests did not return 200 -- post_call controls did not run on those" >&2
+  # Exit non-zero. This block used to warn and fall through, and the Python
+  # heredoc below (the last command) set the status, so a run in which EVERY
+  # request was rejected still printed a plausible per-control table and
+  # exited 0. Measured: 3 requests, all HTTP 400, reported G1 at 102.1 mean /
+  # 198.5 p99 -- within noise of the honest 25-request figures.
+  #
+  # It matters most exactly when the numbers matter most: the warm-up prompt
+  # ("hello") differs from the measured one, so a content-dependent rejection
+  # -- which is what happens once a control stops being logging_only, the
+  # decision these numbers exist to inform -- passes warm-up and fails every
+  # measured request.
+  echo "${failed}/${ITERATIONS} requests did not return 200." >&2
+  echo "post_call controls did not run on those, so any table below would" >&2
+  echo "describe a different pipeline than the one you meant to measure." >&2
+  exit 1
 fi
 
 scrape >"${after}"
