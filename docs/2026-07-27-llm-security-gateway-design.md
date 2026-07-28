@@ -78,7 +78,7 @@ existing implementation down a layer.
 | D3 | One config + package, deployable to compose and `api.codechi.me` | Avoids re-creating the two-implementations problem |
 | D4 | Budget ~100–200 ms p99; model-based scanners on every request | W5.1 measured 30 ms p99 for DeBERTa + Presidio in-network, so the budget is comfortable. Ends the heuristic-first compromise |
 | D5 | Grounded-context hint travels as request metadata, honoured only for privileged keys | Preserves the RAG PII exemption without trusting client input |
-| D6 | LiteLLM Postgres is the audit store; Langfuse holds traces | Native mechanism; keeps guardrail events beside spend records for the same key |
+| D6 | ~~LiteLLM Postgres is the audit store~~ — **corrected**: guardrail events reach the configured callback loggers (Langfuse / OTEL / DataDog), not the `LiteLLM_SpendLogs` table. See §8. |
 | D7 | Full standard documented now; gateway controls implemented first | Delivers the standard on paper immediately without one oversized change |
 
 ## 4. Control Ownership Map
@@ -307,8 +307,33 @@ that option is costed.
 
 ## 8. Audit & Observability
 
-- **Audit store:** LiteLLM's `guardrail_information` in Postgres, beside
-  spend logs, so a key's blocks and its spend are queryable together.
+- **Audit store — corrected against the running system.** The original claim
+  here (guardrail events land in Postgres beside spend logs, so a key's blocks
+  and its spend are queryable together) is **false**, and was measured as such.
+
+  `litellm==1.83.10`'s `LiteLLM_SpendLogs` has no guardrail column: its
+  `metadata` carries `applied_guardrails` (a bridge-routed name list — not an
+  inventory of what ran; G1 is absent from it on a request G1 demonstrably
+  scanned) and nothing else guardrail-related.
+
+  Guardrail events travel on the StandardLoggingPayload key
+  `standard_logging_guardrail_information`, which is consumed by the **callback
+  loggers** — `integrations/langfuse`, `integrations/opentelemetry`,
+  `integrations/datadog` — never written to the spend-log table. So the durable
+  audit trail is **Langfuse**, and it exists only while Langfuse is configured
+  and reachable.
+
+  Two consequences to design around rather than assume away:
+
+  - Correlating a block with its spend record requires joining across Langfuse
+    and Postgres on `request_id`; it is not one SQL query.
+  - If Langfuse is down, guardrail events are lost with no error on the request
+    path. The Prometheus counters survive, but they are aggregates and cannot
+    be attached to a request or a key.
+
+  Until an event id can be looked up end to end, treat the `event_id` handed to
+  a blocked user as a correlation token whose resolution is not yet guaranteed
+  (§7 carries the same open question from the client side).
 - **Traces:** Langfuse, for debugging individual decisions.
 - **Metrics:** Prometheus counters per control and outcome, plus latency
   histograms.

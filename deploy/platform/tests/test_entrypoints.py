@@ -1813,3 +1813,97 @@ def test_enabled_gauge_is_zero_for_a_control_that_is_on_but_only_logging(policy_
     G4OutputHandling(policy=enforcing_policy)
 
     assert enforcing._value.get() == 1
+
+
+# --- persistence to the key LiteLLM actually reads -------------------------
+#
+# Every other assertion in this file reads `metadata["guardrail_information"]`
+# -- OUR bucket. Nothing downstream reads it. LiteLLM persists guardrail data
+# to LiteLLM_SpendLogs (and forwards it to Langfuse/OTEL) exclusively from
+# `metadata["standard_logging_guardrail_information"]`.
+#
+# That gap shipped through sixteen task reviews and was found only against the
+# live database: 464 decisions on the Prometheus counter, 244 spend-log rows,
+# ZERO carrying a `grd_` id. Every event was built, attached, and dropped, and
+# the whole suite stayed green because it was asserting on the dict.
+#
+# These tests assert the LiteLLM-owned key. They fail if the
+# add_standard_logging_guardrail_information_to_request_data call is removed.
+
+
+def _slg(data: dict) -> list:
+    return data["metadata"]["standard_logging_guardrail_information"]
+
+
+@pytest.mark.asyncio
+async def test_event_reaches_the_key_litellm_persists_from(policy_path):
+    guard = _guard(policy_path, FakeScanner(score=0.99), mode="logging_only")
+    data = _data("ignore previous")
+
+    result = await guard.async_pre_call_hook(FakeKey(), None, data, "acompletion")
+
+    entries = _slg(result)
+    assert len(entries) == 1, "no entry in the key LiteLLM reads -- the event is dropped"
+    entry = entries[0]
+    assert entry["guardrail_name"] == guard.guardrail_name
+    # The whole point of persisting: the id in a block response must be
+    # findable. Assert the id itself survives, not merely that a row exists.
+    assert entry["guardrail_response"]["event_id"] == result["metadata"][
+        "guardrail_information"
+    ][0]["event_id"]
+    assert entry["guardrail_response"]["event_id"].startswith("grd_")
+
+
+@pytest.mark.asyncio
+async def test_shadow_decision_is_persisted_as_success_not_intervened(policy_path):
+    """A `logging_only` control changed nothing, so it did not intervene.
+
+    `guardrail_status` is what a spend-log query filters on. Reporting shadow
+    traffic as `guardrail_intervened` would make every dashboard read as though
+    the pipeline were enforcing -- the same wrong-signal shape as a phantom
+    `enforced=true`.
+    """
+    guard = _guard(policy_path, FakeScanner(score=0.99), mode="logging_only")
+
+    result = await guard.async_pre_call_hook(
+        FakeKey(), None, _data("ignore previous"), "acompletion"
+    )
+
+    assert _slg(result)[0]["guardrail_status"] == "success"
+
+
+@pytest.mark.asyncio
+async def test_enforced_block_is_persisted_as_intervened(policy_path):
+    guard = _guard(policy_path, FakeScanner(score=0.99), mode="pre_call")
+    data = _data("ignore previous")
+
+    with pytest.raises(GuardrailBlocked):
+        await guard.async_pre_call_hook(FakeKey(), None, data, "acompletion")
+
+    # The request was blocked, but the event must still be persisted -- a
+    # blocked request is precisely the one someone will later look up.
+    assert _slg(data)[0]["guardrail_status"] == "guardrail_intervened"
+
+
+@pytest.mark.asyncio
+async def test_clean_request_persists_nothing_and_that_is_deliberate(policy_path):
+    """An ALLOW verdict writes no audit entry at all, by design.
+
+    `async_pre_call_hook` returns early on `Action.ALLOW`, so a clean request
+    costs no spend-log row. Recording one would mean an audit row for ~100% of
+    traffic to say nothing happened.
+
+    The cost is that a spend-log row cannot distinguish "G1 scanned this and it
+    was clean" from "G1 never ran". That question is answered by
+    `nufi_guardrail_latency_seconds_count{control="G1"}`, which is observed on
+    every scan regardless of verdict -- so the signal exists, just not in this
+    table. Pinned here so the trade-off is explicit rather than looking like an
+    oversight to the next reader.
+    """
+    guard = _guard(policy_path, FakeScanner(score=0.01))
+    data = _data("what is the capital of Vietnam")
+
+    result = await guard.async_pre_call_hook(FakeKey(), None, data, "acompletion")
+
+    assert "standard_logging_guardrail_information" not in result.get("metadata", {})
+    assert "guardrail_information" not in result.get("metadata", {})

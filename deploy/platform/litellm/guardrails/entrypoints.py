@@ -237,6 +237,43 @@ class BaseNufiGuardrail(CustomGuardrail):
                 self.control_id,
                 event.get("event_id"),
             )
+
+        # The write above is OURS: it lands in
+        # `data["metadata"]["guardrail_information"]`, which nothing downstream
+        # reads. LiteLLM persists guardrail data to `LiteLLM_SpendLogs` (and
+        # forwards it to Langfuse/OTEL) exclusively from
+        # `metadata["standard_logging_guardrail_information"]`, written only by
+        # the helper below -- see litellm_logging.py:5526 and :5571.
+        #
+        # Without this call every event is built, attached, and dropped. That
+        # was live: 464 decisions on the Prometheus counter, 244 spend-log rows,
+        # ZERO carrying a `grd_` id. A user handed an event_id in a block
+        # response could not have it looked up, anywhere.
+        #
+        # It is a separate try from the one above because it is a separate
+        # failure: our attach can succeed while this one fails, and reporting
+        # either as the other is how the first one hid for sixteen tasks.
+        try:
+            self.add_standard_logging_guardrail_information_to_request_data(
+                guardrail_json_response=event,
+                request_data=data,
+                guardrail_status=(
+                    "guardrail_intervened"
+                    if enforced and decision.action not in ("log", "allow")
+                    else "success"
+                ),
+            )
+        except Exception:  # noqa: BLE001 - never break traffic to record an event
+            # Loud, because the alternative is exactly the defect this call
+            # fixes: an event that looks recorded and is not. Swallowed rather
+            # than raised for the same reason as the sibling above -- a
+            # logging_only control must never break a request.
+            verbose_proxy_logger.exception(
+                "guardrail %s: event %s was NOT persisted to spend logs; "
+                "it exists only in Prometheus counters",
+                self.control_id,
+                event.get("event_id"),
+            )
         return event
 
 
