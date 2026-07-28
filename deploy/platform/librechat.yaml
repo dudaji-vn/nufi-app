@@ -39,13 +39,24 @@ endpoints:
       # Internal compose hostname; the proxy listens on :4000
       baseURL: "http://litellm-proxy:4000/v1"
       models:
-        # `fetch: true` populates the dropdown from LiteLLM's /v1/models, so
-        # the script's only job is to register the model in litellm/config.yaml
-        # and restart the two services. `default` is just a fallback list used
-        # if the fetch fails — keep it empty so we never serve stale entries.
-        # `./scripts/add-model.sh` appends to this list automatically.
+        # `fetch: true` populates the dropdown from LiteLLM's /v1/models, so in
+        # normal operation `default` is never read — it is only a fallback for
+        # when that fetch fails. `./scripts/add-model.sh` appends real model
+        # names here automatically (see scripts/add-model.sh:556).
+        #
+        # It must NOT be empty. LibreChat validates this file with Zod and
+        # `models.default` carries min(1); an empty list fails validation and
+        # LibreChat exits at startup with "Exiting due to invalid
+        # configuration", never serving a page. That turns a fresh deploy into
+        # a crashloop: `docker compose up -d` (the documented quick start)
+        # brings LibreChat up before any model has been registered, and the
+        # error names a Zod path rather than saying "register a model first".
+        #
+        # So this placeholder is load-bearing. It is a name no backend serves,
+        # so if it is ever visible in the dropdown that itself is the signal
+        # that the /v1/models fetch is failing.
         fetch: true
-        default: []
+        default: ["_no-model-registered"]
       titleConvo: true
       # Use whatever model the user is chatting with to title the conversation,
       # so this works regardless of which models are registered.

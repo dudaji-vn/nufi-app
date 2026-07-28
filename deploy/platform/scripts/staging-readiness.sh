@@ -79,12 +79,31 @@ if [ -z "${MODEL}" ]; then
 fi
 ok "proxy live, model '${MODEL}'"
 
-echo "==> 1/10 Every compose service is running"
+echo "==> 1/10 Every compose service is running AND healthy"
+# Health, not just state. A container can sit "running" forever while its
+# healthcheck fails on every probe -- librechat did exactly that, because the
+# probe hit /api/health which 404s on this version. Nothing looked wrong in
+# `docker compose ps`, and the e2e suite (depends_on: service_healthy) could
+# never start. Checking only State would have reported that stack as ready.
 notrunning=$(docker compose ps --format '{{.Service}} {{.State}}' 2>/dev/null | awk '$2 != "running" { print $1 }')
+unhealthy=""
+for cname in $(docker compose ps --format '{{.Name}}' 2>/dev/null); do
+  h=$(docker inspect "${cname}" --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' 2>/dev/null)
+  case "${h}" in
+    healthy|none) ;;
+    *) unhealthy="${unhealthy} ${cname}:${h}" ;;
+  esac
+done
 if [ -z "${notrunning}" ]; then
   ok "all services running"
 else
   bad "not running: $(echo "${notrunning}" | tr '\n' ' ')"
+fi
+if [ -z "${unhealthy}" ]; then
+  ok "all healthchecks passing"
+else
+  bad "unhealthy:${unhealthy}"
+  note "a running-but-unhealthy container blocks anything that depends_on it"
 fi
 
 echo "==> 2/10 Declared controls are wired and able to run"

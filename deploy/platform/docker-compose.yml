@@ -358,7 +358,11 @@ services:
       test:
         [
           "CMD-SHELL",
-          "wget --quiet --tries=1 --spider http://127.0.0.1:3080/api/health || exit 1",
+          # /health, not /api/health -- the latter 404s on this LibreChat
+          # version, so the probe failed permanently and the container never
+          # became healthy. e2e-test depends_on librechat: service_healthy, so
+          # ./scripts/e2e-smoke-test.sh could never start at all.
+          "wget --quiet --tries=1 --spider http://127.0.0.1:3080/health || exit 1",
         ]
       interval: 15s
       timeout: 5s
