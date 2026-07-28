@@ -6,6 +6,7 @@
     "format": "./scripts/format.sh",
     "lint": "./scripts/lint.sh",
     "check:wired": "./scripts/check-guardrails-wired.sh",
+    "bench:guardrails": "./scripts/guardrail-bench.sh",
     "smoke": "./scripts/smoke-test.sh",
     "smoke:e2e": "./scripts/e2e-smoke-test.sh",
     "add-model": "./scripts/add-model.sh",
