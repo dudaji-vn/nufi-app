@@ -248,6 +248,116 @@ docker compose restart alertmanager
 
 The real `slack-webhook` file is gitignored.
 
+## Guardrails
+
+LLM security controls run inside the LiteLLM proxy. Design:
+`docs/2026-07-27-llm-security-gateway-design.md`.
+
+- **Policy** — `litellm/guardrails/policy.yaml`. Every threshold, failure
+  behaviour and enforcement mode lives there, not in code.
+- **Enforcement** — a control blocks only when its `policy.yaml` `mode` is
+  something other than `logging_only` **and** it is registered in `config.yaml`.
+  All controls ship in `logging_only`.
+- **Status** — `curl localhost:4000/metrics/ | grep nufi_guardrail`. Note the
+  trailing slash: LiteLLM mounts the metrics app at `/metrics`, and the
+  un-slashed form answers `307` with an empty body, so a grep against it matches
+  nothing on a perfectly healthy stack. `nufi_guardrail_enabled` is `0` for any
+  control that is not enforcing.
+- **Wiring** — `npm run check:wired` reconciles `policy.yaml` against
+  `config.yaml`. A control declared in one and missing from the other cannot
+  report its own absence, because the module never loads.
+- **Benchmark** — `npm run bench:guardrails` (needs `BENCH_MODEL`;
+  `LITELLM_MASTER_KEY` is read from `.env`).
+- **Tests** — `.venv/bin/python -m pytest` for the pure layers. The 14
+  `contract` tests are deselected by default and need Presidio and the scanner
+  reachable on `localhost`; the compose sidecars publish no host ports, so they
+  do not currently run against this stack.
+
+> The guardrail metrics are only correct while the proxy runs a single worker
+> and `PROMETHEUS_MULTIPROC_DIR` is unset. See the comment above `command:` in
+> `docker-compose.yml` before changing either.
+
+### Measured latency
+
+25 iterations against a local `qwen2.5:0.5b`, shadow mode, all five controls
+registered (`npm run bench:guardrails`, 2026-07-28):
+
+| control | n | mean | p50 | p95 | p99 |
+|---|---|---|---|---|---|
+| G1 injection (pre) | 25 | 103.7 | 91.7 | 187.5 | 197.5 |
+| G2a PII input (pre) | 25 | 4.1 | <5.0 | <5.0 | 8.8 |
+| G2b PII output (post) | 25 | 67.0 | 69.1 | 137.5 | 187.5 |
+| G4 output handling (post) | 25 | 0.0 | <5.0 | <5.0 | <5.0 |
+
+All figures in milliseconds. `<5.0` means the value falls inside the lowest
+histogram bucket and is not resolvable further — trust the mean beside it.
+G3 recorded no samples: it needs a system message, and the benchmark prompt
+sends none.
+
+**Against the design's 100–200 ms budget this holds at the mean and fails at
+the tail.** Mean total added latency is ~175 ms (G1 + G2a + G2b + G4). But G1
+and G2b alone reach 325 ms at p95 and 385 ms at p99, and those two run on
+opposite sides of the model call, so they add rather than overlap. The budget
+needs either re-stating as a mean, or work on the tail, before anyone promises
+it externally.
+
+### Known false-positive risks — measure before enforcing
+
+Two are already measured. Both would degrade ordinary traffic the moment the
+control enforces, which is exactly how the previous generation of these
+guardrails ended up switched off.
+
+**1. G2b redacts ordinary place names, on essentially every response.** The
+default `PII_ENTITIES` list (`litellm/guardrails/entrypoints.py`) includes
+`LOCATION` and `PERSON`, and both thresholds are `0.50`. Presidio scores the
+word *Hanoi* as `LOCATION` at **0.85** and *Thai* (in "Ly Thai To") as `NRP` at
+0.85 — both far above the threshold. In the benchmark run above, the benign
+prompt *"summarise the history of Hanoi"* produced a G2b `redact` decision on
+**25 of 25 requests**, and the running stack has recorded 228 of them.
+
+If G2b were enforced today, any answer naming a city or a person would come
+back with `[redacted:LOCATION]` in it. This is not a tail risk; it is the modal
+case. The decision to make before enforcing G2b is whether `LOCATION` and
+`PERSON` belong in the entity list at all — a city name in a history answer is
+not sensitive information disclosure, while a customer's name in a support
+transcript is. That is a policy question, not a tuning question.
+
+G2a is unaffected in practice: its action is `log`, never `mask`. Input masking
+was already tried and reverted (W5.1, May 2026) because the model began
+answering the placeholder instead of the question.
+
+**2. G1 reacts to repetition, independently of any payload.** A long
+repetitive-but-benign span measured **0.9988** against G1's user threshold of
+0.90. Pasted logs, CSV extracts, wide tables and boilerplate-heavy code could
+be blocked outright the moment G1 enforces. Count `logging_only` blocks whose
+spans are repetitive-but-benign before enforcing, and raise the threshold or
+add a repetition-aware exemption if the rate is material. The attack corpus
+passing is not evidence that enforcement is safe; it only measures the other
+direction.
+
+### Turning a control on
+
+1. Run in `logging_only` for several days and read
+   `nufi_guardrail_decisions_total` — an action with `enforced="false"` is what
+   *would* have happened.
+2. Tune thresholds, and for G2 the entity list, in `policy.yaml` until the
+   false-positive rate is acceptable.
+3. Change that control's `mode` and restart the proxy.
+
+Two tests currently fail on the first enforcement flip
+(`test_health.py::test_status_reports_every_control_with_its_mode` and
+`test_policy.py::test_logging_only_mode_downgrades_a_block_to_log`); they pin
+the shipping `policy.yaml` rather than the semantics. Fix them as part of the
+rollout rather than treating red tests as a reason not to proceed.
+
+### Swapping the injection classifier
+
+`SCANNER_MODEL_ID` selects the model, and `SCANNER_MODEL_REVISION` pins it to a
+commit so it cannot change underneath a security control. The default is
+ungated and Apache-2.0. Using `meta-llama/Llama-Prompt-Guard-2-22M` requires
+accepting the Llama 4 Community License and setting `HF_TOKEN`; change the
+revision to that model's commit sha at the same time.
+
 ## Project conventions
 
 - All services run in Docker Compose. Do not run Python / Node directly on host.

@@ -251,6 +251,14 @@ services:
       # the policy is mounted, so thresholds and enforcement mode can be tuned
       # during shadow mode without a rebuild.
       - ./litellm/guardrails/policy.yaml:/app/guardrails/policy.yaml:ro
+    # --num_workers MUST stay 1 unless the guardrail metrics are reworked.
+    # LiteLLM mounts /metrics over the process-global prometheus REGISTRY
+    # (integrations/prometheus.py::_mount_metrics_endpoint), which is where
+    # guardrails/audit.py registers. With >1 worker each process keeps its own
+    # counts and a scrape samples one of them; with PROMETHEUS_MULTIPROC_DIR
+    # set, LiteLLM builds a fresh registry and the two gauges go per-pid.
+    # Either way nufi_guardrail_* silently stops meaning what the rollout
+    # procedure in README.md assumes it means.
     command:
       ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "1"]
     healthcheck:
