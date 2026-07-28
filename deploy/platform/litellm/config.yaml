@@ -87,7 +87,11 @@ general_settings:
 # ./scripts/check-guardrails-wired.sh reconciles this block against
 # guardrails/policy.yaml in both directions, because a control declared there
 # and missing here is never imported and therefore cannot report its own
-# absence.
+# absence. It also rejects the quieter ways an entry can be present and still
+# never run: a `default_on` that is not literally true, a `mode` that
+# disagrees with the control's declared hook, a target class that does not
+# exist, and a class that implements no hook method. Each of those loads,
+# gauges and logs exactly like a healthy control while inspecting nothing.
 guardrails:
   - guardrail_name: nufi-g1-injection
     litellm_params:

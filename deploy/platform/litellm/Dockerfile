@@ -15,12 +15,19 @@
 #     PyYAML             6.0.3
 #     litellm            1.83.10
 #
-# All three conflict with litellm/requirements.txt (0.27.2 / 0.21.1 / 6.0.2),
-# and httpx is a hard `==` pin of litellm's own. Installing that file over this
-# image downgrades httpx underneath the proxy and prints only a resolver
-# warning -- a build step that reports success while degrading a dependency the
-# whole proxy runs on. litellm/requirements.txt exists for the CI/test venv
-# (.github/workflows/platform-ci.yml), never for this image.
+# litellm/requirements.txt is for the CI/test venv
+# (.github/workflows/platform-ci.yml), never for this image. It pins only
+# prometheus-client, which a bare `pip install litellm` does not provide --
+# that package lives in litellm's `proxy-runtime` extra, which the proxy image
+# has and a plain install does not.
+#
+# Do not "fix" the absence of a pip install here. An earlier version of that
+# file also pinned httpx==0.27.2 against litellm's own top-level httpx==0.28.1;
+# installing it over this image downgraded httpx underneath the proxy and
+# reported only a resolver warning -- a build step that succeeds while
+# degrading a dependency the whole proxy runs on. The pins are gone, but the
+# reason to keep this image install-free is not: every version this package
+# needs is already here, chosen by litellm.
 FROM ghcr.io/berriai/litellm:v1.83.10-stable
 
 WORKDIR /app
