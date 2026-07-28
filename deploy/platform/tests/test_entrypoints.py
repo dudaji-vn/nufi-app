@@ -1907,3 +1907,170 @@ async def test_clean_request_persists_nothing_and_that_is_deliberate(policy_path
 
     assert "standard_logging_guardrail_information" not in result.get("metadata", {})
     assert "guardrail_information" not in result.get("metadata", {})
+
+
+# --- Final review, C2: a rewrite the client never receives ------------------
+# Reproduced end to end against the running stack (litellm 1.83.10) on
+# 2026-07-28: a STREAMED completion containing
+# `<iframe src="https://example.com" ...>` reached the client unstripped,
+# while the identical non-streamed request came back `[removed:RAW_HTML]` --
+# and BOTH recorded `action=redact, enforced=true,
+# guardrail_status=guardrail_intervened` into the spend log. Two rows an
+# incident responder cannot tell apart, one of which is false.
+#
+# The cause is litellm's own `unified_guardrail
+# .async_post_call_streaming_iterator_hook`: it deep-copies each sampled
+# chunk into `original_item` BEFORE calling the guardrail and then yields
+# `original_item`. `apply_guardrail`'s return value is never routed back
+# into the stream. We cannot rewrite a streamed response from here, so
+# `enforced` must not claim we did. See `BaseNufiGuardrail.streamed`.
+
+
+@pytest.mark.asyncio
+async def test_g2b_records_a_streamed_redaction_as_not_enforced(policy_path):
+    guard = _g2b(policy_path, SubstringPii("sun@dudaji.com"), mode="post_call")
+    assert guard._enforcing() is True  # sanity: genuinely out of shadow mode
+    request: dict = {"stream": True}
+
+    result = await _apply_text(guard, "write to sun@dudaji.com", request)
+
+    # Both halves matter, and neither alone is sufficient. The text assertion
+    # alone would pass against an implementation that redacts and lies about
+    # it in the audit trail; the event assertion alone would pass against one
+    # that records honestly but corrupts a response it cannot deliver.
+    assert result == "write to sun@dudaji.com"
+    event = request["metadata"]["guardrail_information"][0]
+    assert event["control"] == "G2b"
+    assert event["action"] == "redact"
+    assert event["enforced"] is False
+
+
+@pytest.mark.asyncio
+async def test_g2b_streamed_redaction_is_not_persisted_as_intervened(policy_path):
+    """The spend-log status is the field an incident responder reads first.
+
+    `_emit` derives `guardrail_status` from `enforced`, so a streamed
+    redaction recorded honestly must land as `success` ("we saw it, we did
+    not act"), never `guardrail_intervened` ("we rewrote this response") --
+    the exact value the live reproduction wrote for a response that reached
+    the client verbatim."""
+    guard = _g2b(policy_path, SubstringPii("sun@dudaji.com"), mode="post_call")
+    request: dict = {"stream": True}
+
+    await _apply_text(guard, "write to sun@dudaji.com", request)
+
+    assert _slg(request)[0]["guardrail_status"] == "success"
+
+
+@pytest.mark.asyncio
+async def test_g2b_non_streamed_redaction_still_enforces(policy_path):
+    """The other direction of the same guard.
+
+    Without this, `enforced = False` unconditionally would satisfy every
+    streaming test above while quietly disabling G2b on the path where it
+    does work."""
+    guard = _g2b(policy_path, SubstringPii("sun@dudaji.com"), mode="post_call")
+    request: dict = {}
+
+    result = await _apply_text(guard, "write to sun@dudaji.com", request)
+
+    assert result == "write to [EMAIL_ADDRESS]"
+    assert request["metadata"]["guardrail_information"][0]["enforced"] is True
+
+
+@pytest.mark.asyncio
+async def test_g2b_streamed_flag_false_is_treated_as_non_streamed(policy_path):
+    """`stream: false` is what a non-streaming client actually sends.
+
+    Pinned separately from the absent-key case above because a truthiness
+    bug that read the key's PRESENCE rather than its value would disable
+    redaction for every explicit `"stream": false` request -- the majority
+    of non-streaming traffic -- while every other test in this file (which
+    omits the key entirely) stayed green."""
+    guard = _g2b(policy_path, SubstringPii("sun@dudaji.com"), mode="post_call")
+    request: dict = {"stream": False}
+
+    result = await _apply_text(guard, "write to sun@dudaji.com", request)
+
+    assert result == "write to [EMAIL_ADDRESS]"
+    assert request["metadata"]["guardrail_information"][0]["enforced"] is True
+
+
+@pytest.mark.asyncio
+async def test_g4_records_a_streamed_strip_as_not_enforced(policy_path):
+    """The control the live reproduction actually caught in the act.
+
+    G4 is the one post_call control that runs at all on a streamed response
+    (see `BaseNufiGuardrail.streamed` for why the others do not), so this
+    phantom was not hypothetical: `nufi_guardrail_decisions_total
+    {action="redact", control="G4", enforced="true"}` incremented for a
+    response delivered with its `<iframe>` intact."""
+    guard = _g4(policy_path, mode="post_call")
+    assert guard._enforcing() is True
+    request: dict = {"stream": True}
+    vector = 'Example: <iframe src="https://example.com"></iframe>'
+
+    result = await _apply_text(guard, vector, request)
+
+    assert result == vector
+    event = request["metadata"]["guardrail_information"][0]
+    assert event["control"] == "G4"
+    assert event["action"] == "redact"
+    assert event["enforced"] is False
+
+
+@pytest.mark.asyncio
+async def test_g4_non_streamed_strip_still_enforces(policy_path):
+    guard = _g4(policy_path, mode="post_call")
+    request: dict = {}
+    vector = 'Example: <iframe src="https://example.com"></iframe>'
+
+    result = await _apply_text(guard, vector, request)
+
+    assert "[removed:RAW_HTML]" in result
+    assert request["metadata"]["guardrail_information"][0]["enforced"] is True
+
+
+# --- Final review, Minor 1: `outage_can_enforce` was decorative on G2b/G4 ---
+# Both hardcoded `False` in `_on_outage` instead of reading the attribute,
+# while G1/G2a/G3 read it. Flipping `G4.outage_can_enforce = True` survived
+# the entire suite -- the attribute whose eleven-line comment describes it as
+# the guard against a phantom `enforced=true` guarded nothing. These two
+# tests are what make it observable: they fail if either `_on_outage` goes
+# back to a literal.
+
+
+@pytest.mark.asyncio
+async def test_g2b_outage_reads_outage_can_enforce_rather_than_a_literal(policy_path):
+    guard = _g2b(policy_path, FakePii(fail=True), mode="post_call")
+    assert guard.outage_can_enforce is False  # the shipped, correct value
+    guard.outage_can_enforce = True
+    request: dict = {}
+
+    result = await _apply_text(guard, "write to sun@dudaji.com", request)
+
+    # The response is STILL returned unchanged -- flipping the attribute must
+    # not invent a withholding mechanism this control does not have. What it
+    # changes is only what the audit trail claims, which is the whole point:
+    # the attribute and the code that reads it can no longer disagree.
+    assert result == "write to sun@dudaji.com"
+    assert request["metadata"]["guardrail_information"][0]["enforced"] is True
+
+
+@pytest.mark.asyncio
+async def test_g4_outage_reads_outage_can_enforce_rather_than_a_literal(
+    policy_path, monkeypatch
+):
+    def _boom(output, allowlist):
+        raise RuntimeError("scan_exfil bug")
+
+    monkeypatch.setattr(entrypoints, "scan_exfil", _boom)
+    guard = _g4(policy_path, mode="post_call")
+    assert guard.outage_can_enforce is False
+    guard.outage_can_enforce = True
+    request: dict = {}
+
+    result = await _apply_text(guard, "![x](https://attacker.example/log)", request)
+
+    assert result == "![x](https://attacker.example/log)"
+    assert request["metadata"]["guardrail_information"][0]["enforced"] is True

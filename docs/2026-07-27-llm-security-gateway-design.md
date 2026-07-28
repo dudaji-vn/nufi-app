@@ -76,7 +76,7 @@ existing implementation down a layer.
 | D1 | Redesign from the OWASP LLM Top 10 threat model; new controls are in scope | "Move it down a layer" would carry the ad-hoc structure with it |
 | D2 | The gateway is the only place that decides; `apps/chat` renders outcomes | Policy in two languages in two codebases is the defect being removed |
 | D3 | One config + package, deployable to compose and `api.codechi.me` | Avoids re-creating the two-implementations problem |
-| D4 | Budget ~100–200 ms p99; model-based scanners on every request | W5.1 measured 30 ms p99 for DeBERTa + Presidio in-network, so the budget is comfortable. Ends the heuristic-first compromise |
+| D4 | Budget ~100–200 ms p99; model-based scanners on every request | ~~W5.1 measured 30 ms p99 for DeBERTa + Presidio in-network, so the budget is comfortable~~ — **falsified by measurement**: on the shipped CPU stack G1 alone is 197.5 ms p99 and G1+G2b reach 385 ms (§11). The budget holds at the mean and misses at the tail. Restate it as a mean, or address the tail, before quoting it |
 | D5 | Grounded-context hint travels as request metadata, honoured only for privileged keys | Preserves the RAG PII exemption without trusting client input |
 | D6 | ~~LiteLLM Postgres is the audit store~~ — **corrected**: guardrail events reach the configured callback loggers (Langfuse / OTEL / DataDog), not the `LiteLLM_SpendLogs` table. See §8. |
 | D7 | Full standard documented now; gateway controls implemented first | Delivers the standard on paper immediately without one oversized change |
@@ -118,9 +118,10 @@ detect-and-decide modules.
 deploy/platform/litellm/guardrails/
 ├── canonical.py      ① Normalisation — pure functions, no I/O
 ├── scanners/         ② Detector adapters — detect only, never decide
-│   ├── injection.py      → Prompt Guard 2 sidecar
+│   ├── injection.py      → nufi-scanner sidecar (deberta-v3-base-
+│   │                       prompt-injection-v2 by default, §6.1)
 │   ├── pii.py            → Presidio analyzer
-│   └── patterns.py       → regex (system-prompt echo, secrets)
+│   └── patterns.py       → regex (secrets, system-prompt echo, exfil)
 ├── policy.py         ③ Policy engine — the only place decisions are made
 ├── policy.yaml           risk → control → mode → thresholds → fail policy
 ├── audit.py          Normalised event → guardrail_information + metrics
@@ -149,8 +150,15 @@ team, model, grounded hint) and returns a `Decision`
 (`allow | block | redact | log`). Every threshold, fail behaviour, and
 per-team exemption lives in `policy.yaml`, not in code.
 
-The `CustomGuardrail` subclasses are then ~30 LOC each: call ①, call ②,
-ask ③, honour LiteLLM's contract.
+The `CustomGuardrail` subclasses call ①, call ②, ask ③, and honour LiteLLM's
+contract. They are **not** the ~30 LOC each this section originally projected:
+measured on the shipped code, 86 / 86 / 184 / 123 / 133 non-comment lines for
+G1 / G2a / G2b / G3 / G4. The gap is not decision logic leaking back into the
+wiring layer — every threshold still lives in `policy.yaml` — it is the outage
+paths (`_on_outage` per control, plus the broad `except` around every scanner
+call) and the per-text batching that LiteLLM's real `apply_guardrail` contract
+requires. Both were discovered during implementation, not designed away. The
+boundary held; the size estimate did not.
 
 The boundary test this is designed to pass: answering "why was this
 request blocked?" should require reading one `Finding` and one
@@ -161,11 +169,22 @@ and one Python file.
 
 | ID | Risk | LiteLLM mode | Mechanism |
 |---|---|---|---|
-| G1 | LLM01 Injection | `pre_call` | normalise → Prompt Guard 2 → hard-signature regex → policy |
-| G2a | LLM02 PII (input) | `pre_call` | Presidio detect — log only, prompt never mutated |
-| G2b | LLM02 PII (output) | `post_call` + streaming iterator hook | Presidio + secret regex → redact unless grounded |
+| G1 | LLM01 Injection | `pre_call` | normalise → injection classifier → policy |
+| G2a | LLM02 PII (input) | `pre_call` | Presidio detect + secret regex — log only, prompt never mutated |
+| G2b | LLM02 PII (output) | `post_call` | Presidio + secret regex → redact unless grounded |
 | G3 | LLM07 System prompt leakage | `post_call` | n-gram overlap between output and the configured system prompt |
 | G4 | LLM05 Improper output handling | `post_call` | strip exfiltration vectors in markdown/HTML |
+
+**None of the three `post_call` controls protects a streamed response**, and
+chat streams by default. LiteLLM 1.83.10 discards `apply_guardrail`'s return
+value on a stream (it yields a pre-guardrail deep copy of each chunk), and its
+dispatch loop lets only the last-registered `apply_guardrail` control run at
+all. Measured end to end on 2026-07-28; the phantom `enforced=true` that
+resulted has been fixed, the missing protection has not. See §13.
+
+`+ streaming iterator hook` was previously listed against G2b in this table.
+No `async_post_call_streaming_iterator_hook` is implemented anywhere in
+`entrypoints.py`, and adding one is exactly the §13 item above.
 
 ### 6.1 G1 — Prompt injection
 
@@ -184,9 +203,14 @@ change underneath a security control. The default is
 `meta-llama/Llama-Prompt-Guard-2-22M` is a drop-in upgrade — smaller and
 multilingual — but its repository is gated under the Llama 4 Community
 License and needs an authenticated token, so it is opt-in rather than the
-default. The hard-signature regex list is retained as a second, independent
-detector — the evasion literature is explicit that a single classifier is
-insufficient.
+default.
+
+**G1 ships as a single-classifier control.** The hard-signature regex list this
+section described as "retained as a second, independent detector" was never
+built: `scanners/patterns.py` ships secrets, system-echo and exfil regexes, none
+of which G1 consults — `G1Injection.async_pre_call_hook` calls the classifier
+and nothing else. The evasion literature's point stands, and it is the reason
+this is recorded as §13 follow-up work rather than dropped.
 
 The sidecar exists rather than reusing `llm-guard-api` because that service's
 `/scan/prompt` accepts a single prompt string and cannot express
@@ -197,10 +221,11 @@ Measured at 103.7 ms mean / 197.5 ms p99 for the whole G1 control on CPU
 (section 11), not the ~19 ms this section previously claimed for a GPU
 inference alone.
 
-Conversation history is available on every request, so multi-turn
-escalation is scorable. Initial implementation scores the full trajectory
-with a lower weight on older turns; tuning is deferred to the shadow-mode
-period (section 11).
+Conversation history is available on every request, so multi-turn escalation is
+scorable — and every span is scored. **There is no weighting.** `extract_spans`
+emits one span per message and `policy.decide` compares each against its own
+source threshold with no positional term; "a lower weight on older turns" does
+not exist in the code. Recency weighting is §13 follow-up work.
 
 ### 6.2 G2a / G2b — Sensitive information
 
@@ -351,8 +376,15 @@ type (user vs untrusted), virtual key, team, and model.
 |---|---|---|
 | G1 | **fail-closed** (503) | Security control; refusing beats forwarding an unverified prompt |
 | G2a | fail-open | Log-only control; nothing to get wrong |
-| G2b | fail-open + circuit breaker | Blocking all chat because a PII scanner is down converts a scanner outage into a full outage |
+| G2b | fail-open | Blocking all chat because a PII scanner is down converts a scanner outage into a full outage |
 | G3, G4 | fail-open | G4 parses locally and has no external dependency |
+
+G2b's row previously read "fail-open + circuit breaker". **No circuit breaker
+exists** — no state, no trip threshold, no cooldown. Every G2b request calls
+Presidio and every failure is handled independently, so a Presidio outage costs
+one timeout per request rather than one per cooldown window. Adding a breaker
+is §13 follow-up work; until then the `PRESIDIO_TIMEOUT_S` default (5 s) is the
+only thing bounding that cost.
 
 **Degraded mode is a first-class state.** The root cause of the current
 situation was not defective code — it was that disabling a control left no
@@ -400,8 +432,16 @@ One artifact, two targets (D3):
   tuned without a rebuild. The scanner sidecar joins the existing network
   alongside Presidio.
 - **`api.codechi.me`**: the same package and `policy.yaml`. Environment
-  differences (scanner base URLs, thresholds) are confined to environment
-  variables referenced from `policy.yaml`.
+  differences split in two, and the split is not the one this section
+  originally described: `policy.yaml` performs **no** variable interpolation
+  (`Policy` is a plain `yaml.safe_load`, and `_parse_control` accepts only
+  literal values), so thresholds and modes are per-target *file contents*,
+  while service URLs and timeouts (`SCANNER_API_BASE`,
+  `PRESIDIO_ANALYZER_API_BASE`, `SCANNER_TIMEOUT_S`, `PRESIDIO_TIMEOUT_S`,
+  `GUARDRAIL_POLICY_PATH`) are read from `os.environ` in
+  `entrypoints.py` and never appear in the policy file at all. Two targets
+  therefore differ by a mounted file *and* an env block; `policy.digest()`
+  covers only the first.
 
 **Resolved during implementation.** The packaging question is closed by the
 derived image: the guardrail package is baked in rather than mounted, so
@@ -425,16 +465,47 @@ a parity check must read it from there, or from the startup status line.
 - Layers ① and ③ are pure — unit-tested with no Docker.
 - Layer ② is contract-tested against real sidecars.
 
-**Versioned red-team corpus**, executed in CI with recall thresholds:
+**Versioned red-team corpus**, executed in CI. What shipped is narrower than
+this section originally claimed, deliberately in one respect and by omission in
+the others.
 
-- Evasion techniques from the published analysis: zero-width characters,
-  homoglyphs, Base64, ROT13, paraphrase, multi-turn escalation.
-- Indirect injection: payloads embedded in simulated RAG context.
-- G4 exfiltration vectors: markdown images to external hosts.
-- Multilingual cases: Vietnamese, Korean, Japanese.
-- A **benign corpus** measured for false positives, weighted equally with
-  the attack corpus. A control that blocks legitimate traffic will be
-  turned off, which is how the current controls were lost.
+Shipped — `tests/corpus/attacks.yaml`, 20 cases, ids pinned as a literal set so
+a case cannot be dropped silently:
+
+| Category | Cases |
+|---|---|
+| obfuscation (zero-width, homoglyph, bidi, Unicode tags, fullwidth) | 5 |
+| encoding (Base64, ROT13) | 5 |
+| secrets (API keys, JWTs, private keys) | 4 |
+| exfiltration (markdown images to external hosts, `javascript:`, raw HTML) | 4 |
+| system_echo | 2 |
+
+And `tests/corpus/benign.yaml`, 13 cases, including the false-positive traps
+(relative image URL, citation link, ordinary Cyrillic/Greek) and the
+multilingual set (`plain_question_vi` / `_ko` / `_ja`).
+
+Not shipped, and each is a real gap rather than a wording fix:
+
+- **No recall thresholds.** Every case is asserted individually; no aggregate
+  recall or false-positive rate is computed, so the corpus cannot answer "did
+  this change make detection worse overall?" — only "did it break case *X*?"
+- **No paraphrase or multi-turn escalation cases**, the two evasion techniques
+  the published analysis rates hardest.
+- **No indirect/RAG injection cases** — the threat G1's per-span design exists
+  for is not represented in the corpus that gates it.
+- **Multilingual coverage is benign-only.** Vietnamese, Korean and Japanese
+  appear as false-positive traps; no attack payload is written in any of them.
+
+This is bounded by design in one respect and only one: the corpus gates the
+**deterministic** detectors (`canonicalize`, `scan_secrets`, `scan_exfil`,
+`scan_system_echo`) and deliberately does not pin classifier recall, because a
+model swap would then turn a routine upgrade into a false CI failure — G1
+recall is measured in shadow mode instead. The four gaps above are not covered
+by that argument. See §13.
+
+A **benign corpus** is measured for false positives alongside the attack
+corpus. A control that blocks legitimate traffic will be turned off, which is
+how the current controls were lost.
 
 **Latency.** `npm run bench:guardrails` measures p50/p95/p99 per control from
 the histogram the proxy exports. It is a manual script, **not** a CI gate — CI
@@ -506,14 +577,41 @@ Recorded here so the control map in section 4 has no unowned rows.
 | Conversation retention and deletion policy | `apps/chat` | Classic AppSec, outside the OWASP LLM list |
 | Presidio Vietnamese entity coverage | Platform | Presidio's Vietnamese support is weaker than English; measure during shadow mode |
 
+### 13.1 Designed but not built
+
+Each of these is described elsewhere in this document as if it exists. It does
+not. They are listed rather than deleted because each is genuinely wanted; the
+correction in the owning section says plainly that it is absent today.
+
+| Item | Section | Why deferred |
+|---|---|---|
+| **Streamed responses are unprotected** — G2b, G3, G4 cannot rewrite or reliably inspect a streamed completion, and chat streams by default | §6 | Needs a real `async_post_call_streaming_iterator_hook` per control **and** a way around LiteLLM's single-slot `guardrail_to_apply` dispatch (only the last-registered control runs on a stream at all). That is an upstream fix or a fork, not a change inside `entrypoints.py`. The lie has been removed — `enforced=false` is now recorded for streamed rewrites — but the gap is the largest one on this list |
+| **G1's second, independent detector** — a hard-signature regex list beside the classifier | §6.1 | Real signature curation, plus its own false-positive budget; landing it unmeasured beside a classifier already in shadow mode would confound the shadow numbers the rollout depends on |
+| **Recency-weighted trajectory scoring** for multi-turn escalation | §6.1 | Needs the shadow-mode multi-turn data to pick a decay before the weighting can be anything but a guess |
+| **G2b circuit breaker** on Presidio | §9 | Cross-request state in a hook that is currently pure per-request; correctness depends on the `--num_workers 1` constraint below |
+| **Per-language thresholds** in `policy.yaml` | §14 | A schema change to `_parse_control` plus a language signal on `Span` that no scanner emits today |
+| **Corpus gaps**: no recall metric, no paraphrase / multi-turn / indirect-RAG attack cases, multilingual coverage benign-only | §11 | Corpus authoring is the work; the harness supports it. Sized as its own task rather than smuggled into a fix pass |
+| **Config-drift parity check** between compose and `api.codechi.me` | §10, §14 | Blocked on there being somewhere to read the digest from — `/health/guardrails` does not exist, and the env-var half of the difference is not digested at all |
+
+### 13.2 Found in the final review, deferred with reasons
+
+| Item | Why deferred |
+|---|---|
+| **Langfuse persistence is unverified end to end.** §8's corrected claim — that guardrail events reach Langfuse via `standard_logging_guardrail_information` — is read from the litellm source and confirmed as far as the spend-log row, but no event has been observed arriving *in Langfuse*: it was not in the running subset stack when C1 was fixed | Needs Langfuse up and a manual trace lookup. Until it is done, the durable audit trail is asserted, not demonstrated — and it is the only durable trail there is |
+| **`nufi_guardrail_latency_seconds` measures less than it claims.** Documented as "time spent inside a guardrail control"; it times only the scanner call. `extract_spans`, `canonicalize`, `decide`, `build_event` and `record` all sit outside the timer. Worse, `canonicalize` runs **twice per span** — once inside `InjectionScanner.scan`, again in `entrypoints.py` purely to recompute `transforms` for the audit event, discarding the first result (2 spans → 4 calls, measured). Task 3 clocked that function at ~178 ms on 255 KB of adversarial input | Fixing it means threading the first `canonicalize` result through to the audit event — a signature change across the scanner boundary §5 deliberately keeps narrow — and re-running the whole benchmark. Consequence to carry meanwhile: README's `~175 ms mean` under-counts by an unknown amount and is being compared against a 100–200 ms budget to make a go/no-go call. Also un-noted there: summing per-control p95/p99 is not valid (the quantile of a sum is not the sum of quantiles), and at n=25 a p99 rests on a single sample |
+| **Nothing consumes the guardrail metrics.** Zero alert rules on `nufi_guardrail_enabled` / `_degraded` / `_decisions_total`, zero dashboard panels; the "Guardrail blocks (4xx rate by model)" panel still uses the pre-guardrail 4xx heuristic, which reads zero in shadow mode | Monitoring work with its own review surface (thresholds, routing, on-call). Consequence: if G1 enforces and the sidecar dies, `nufi_guardrail_degraded` sits at 1.0 unwatched and the only page blames the proxy |
+| **The 14 contract tests run nowhere.** Deselected by `addopts`, deselected in CI, and unrunnable locally because the sidecars publish no host ports | Requires a CI job with the sidecars up, or host port publishing. They are the only tests asserting the real wire contracts — and `injection.py`'s `result.get("complete", True)` means a sidecar that stops emitting `complete` silently reports every span as fully scanned, which is exactly the class of failure only a contract test catches |
+| **G3 has never executed.** No `nufi_guardrail_latency_seconds{control="G3"}` series exists on the live stack: it needs a system message and nothing has sent one | Needs a deliberate exercise path (LibreChat sends system prompts; the benchmark and smoke tests do not). A control with no samples is indistinguishable from one that never loaded |
+| **`--num_workers` above 1 silently corrupts the metrics** by a factor of the worker count. There is a comment in `docker-compose.yml` and nothing that enforces it | `health.assert_controls` already runs at import and could check both the worker count and `PROMETHEUS_MULTIPROC_DIR`, failing loudly. Deferred only for scope — it is small, and it is the same invisible-failure shape as everything else on this list, inside the operator's hands rather than the code's |
+
 ## 14. Risks
 
 | Risk | Mitigation |
 |---|---|
-| Prompt Guard 2 false positives on Vietnamese degrade chat | Shadow mode with a benign corpus before enforcement; per-language thresholds in `policy.yaml` |
+| Classifier false positives on Vietnamese degrade chat | Shadow mode with a benign corpus before enforcement. **Not** per-language thresholds: `policy.yaml` has no language dimension, and `_parse_control` rejects any key under `thresholds` that is not a `SpanSource`, so adding one is a schema change (§13), not a config edit |
 | Scanner sidecar becomes a single point of failure | G1 fails closed by design; sidecar is health-checked and horizontally scalable |
-| `api.codechi.me` config drifts from the repo | `policy.yaml` digest exposed on `/health/guardrails` and compared across targets |
-| Classifier evasion advances faster than the corpus | Corpus is versioned and extended whenever a bypass is found; the hard-signature regex layer stays as an independent detector |
+| `api.codechi.me` config drifts from the repo | **Unmitigated today.** `/health/guardrails` does not exist (§9), and the two targets can also differ by env vars the digest does not cover (§10). The `policy.yaml` digest is carried on audit events, so a parity check must read it from Langfuse or the startup status line — nothing does yet (§13) |
+| Classifier evasion advances faster than the corpus | Corpus is versioned and extended whenever a bypass is found. The independent second detector this row also relied on does not exist (§6.1) |
 | Removing the app layer too early reopens the gap | Sequencing in section 12 keeps one layer enforcing at all times |
 
 ## 15. References

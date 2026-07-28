@@ -201,6 +201,66 @@ class BaseNufiGuardrail(CustomGuardrail):
             return False
         return metadata.get(VERIFIED_GROUNDED_KEY) is True
 
+    @staticmethod
+    def streamed(request_data: dict[str, Any] | None) -> bool:
+        """Is the response this hook is inspecting being STREAMED to the client?
+
+        Load-bearing for `enforced`, not a cosmetic detail. A rewriting
+        control (`G2bPiiOutput`, `G4OutputHandling`) cannot change what a
+        streamed client receives, and measuring that is the whole point of
+        this method — reproduced end to end against the running stack on
+        2026-07-28, litellm 1.83.10:
+
+          * A streamed completion whose response contained
+            `<iframe src="https://example.com" ...>` reached the client
+            byte-for-byte unstripped, while the identical NON-streamed
+            request came back as `[removed:RAW_HTML]`.
+          * Both requests recorded the same event shape —
+            `action=redact, enforced=true, guardrail_status=
+            guardrail_intervened` — into the durable trail. Two spend-log
+            rows, indistinguishable, one of which describes an effect that
+            did not happen.
+
+        The mechanism is in litellm's own
+        `unified_guardrail.async_post_call_streaming_iterator_hook`: it
+        deep-copies each sampled chunk into `original_item` BEFORE calling
+        the guardrail, and then yields `original_item` — the pre-guardrail
+        copy. `apply_guardrail`'s return value is never routed back into
+        the stream at all; the end-of-stream pass runs after every chunk
+        has already been sent and can only raise. So `inputs["texts"] =
+        rewritten` is written into a structure nothing downstream reads.
+
+        `enforced` is therefore forced to `False` on a streamed response.
+        The decision is still recorded — "G2b/G4 WOULD have rewritten this"
+        is exactly the shadow-mode signal the rollout reads — but it is
+        recorded as what it is. Silently claiming the rewrite happened is
+        the invisible-failure shape this whole pipeline exists to prevent,
+        and it is the shape that would be believed: the audit trail is what
+        an incident responder has after the response is gone.
+
+        Reads `request_data["stream"]`, the client's own request body flag
+        that the proxy passes through to this hook unchanged. Not
+        `request_data["responses"]` (litellm's streaming translation layer
+        sets it, but only on the mid-stream sampled path, never on the
+        end-of-stream one) and not a `logging_obj` attribute (private, and
+        `apply_guardrail` is called with `logging_obj=None` from several
+        call sites).
+
+        NOTE, and it is worse than the above: on a streamed response only
+        ONE of our post_call controls runs at all. `proxy/utils.py`'s
+        dispatch loop assigns `request_data["guardrail_to_apply"] =
+        callback` once per guardrail into a SINGLE dict slot, while
+        `unified_guardrail`'s generator `pop`s that slot lazily — after the
+        whole loop has finished. Every wrapper therefore reads the last
+        value written (G4) and the rest get `None` and pass through
+        untouched. Measured on the same run: one streamed request moved
+        `nufi_guardrail_latency_seconds_count{control="G4"}` by 6 and
+        `{control="G2b"}` by 0. That is a litellm defect, not ours, and
+        fixing it is follow-up work (design §13) — this method only stops
+        us lying about the part we do control.
+        """
+        return bool((request_data or {}).get("stream"))
+
     def _emit(
         self,
         data: dict[str, Any],
@@ -611,6 +671,13 @@ class G2bPiiOutput(BaseNufiGuardrail):
     """
 
     control_id = "G2b"
+    # This control has no mechanism to withhold or alter a response it cannot
+    # rewrite: `_on_outage` returns the text untouched on every path, in every
+    # mode, regardless of `fail`. Declared explicitly (matching `G2aPiiInput`
+    # and `G4OutputHandling`) rather than left to the inherited default, so
+    # `_on_outage` has a stated attribute to read instead of a hardcoded
+    # `False` that agrees with it only by coincidence.
+    outage_can_enforce = False
 
     def __init__(
         self, policy: Policy | None = None, scanner: Any | None = None, **kwargs: Any
@@ -724,7 +791,11 @@ class G2bPiiOutput(BaseNufiGuardrail):
 
         data = request_data if isinstance(request_data, dict) else {}
         grounded = self.verified_grounded(data)
-        enforced = self._enforcing()
+        # `and not streamed`: a redaction on a streamed response is discarded
+        # by litellm before the client ever sees it, so claiming
+        # `enforced=True` would record an effect that did not happen. See
+        # `BaseNufiGuardrail.streamed` for the measured reproduction.
+        enforced = self._enforcing() and not self.streamed(data)
         rewritten: list[str] = []
 
         for item in texts:
@@ -775,13 +846,26 @@ class G2bPiiOutput(BaseNufiGuardrail):
         fleet-wide `GUARDRAIL_DEGRADED` gauge, an operator investigating one
         specific PII-leak report has no per-request `event_id` to confirm
         "G2b could not redact this one" versus "there was nothing to
-        redact". `enforced` is always `False`: this control has no mechanism
+        redact". `enforced` comes out `False`: this control has no mechanism
         to withhold a response at all (unlike `G1Injection`, it never raises
         `GuardrailBlocked`), so recording anything else would claim an
         effect that never happened. If a future policy ever sets G2b's
         `fail: closed`, this method still fails open — there is no
         response-blocking mechanism for this control to invoke, and adding
         one is a larger design decision this task does not make silently.
+
+        That `False` is READ from `self.outage_can_enforce`, not written as
+        a literal. It was a literal until the final review: the class
+        attribute that every other control's `_on_outage` consults was, on
+        this one and on `G4OutputHandling`, purely decorative — setting
+        `G2b.outage_can_enforce = True` changed nothing, so the attribute
+        that documents "can this control's outage path enforce?" and the
+        code that decides it could disagree without a single test noticing.
+        `self._enforcing()` is kept in the conjunction (and is what makes
+        the attribute observable at all) so that a control which later gains
+        a real withholding mechanism gets the same
+        `outage_can_enforce and _enforcing()` formula `G2aPiiInput` uses,
+        rather than a hand-written variant.
         """
         verbose_proxy_logger.warning(
             "guardrail %s could not scan response (%s): %s",
@@ -798,7 +882,8 @@ class G2bPiiOutput(BaseNufiGuardrail):
             findings=(),
             reason=f"guardrail unavailable: {type(exc).__name__}",
         )
-        self._emit(data, decision, (), None, False)
+        enforced = self.outage_can_enforce and self._enforcing()
+        self._emit(data, decision, (), None, enforced)
         return text
 
 
@@ -1045,7 +1130,7 @@ class G4OutputHandling(BaseNufiGuardrail):
     def _on_outage(self, item: str, request_data: Any, exc: Exception) -> str:
         """Record the outage, then fail open: return `item` unstripped.
 
-        Mirrors `G2bPiiOutput._on_outage`: `enforced` is always `False` —
+        Mirrors `G2bPiiOutput._on_outage`: `enforced` comes out `False` —
         this control has no mechanism to withhold or alter a response at all
         (unlike `G3SystemPromptLeak`, it never raises `GuardrailBlocked`),
         so recording anything else would claim an effect that never
@@ -1055,6 +1140,15 @@ class G4OutputHandling(BaseNufiGuardrail):
         outage is still routed through `_emit` rather than only flipping
         `GUARDRAIL_DEGRADED` (a fleet-wide gauge an operator investigating
         one specific report cannot attach to any one request).
+
+        And, exactly as in `G2bPiiOutput._on_outage`, that `False` is READ
+        from `self.outage_can_enforce` rather than written as a literal.
+        The eleven-line comment on that attribute above describes it as the
+        thing preventing a phantom `enforced=true` in
+        `nufi_guardrail_decisions_total{action="block", enforced="true"}` —
+        and until the final review it prevented nothing here, because this
+        method never consulted it. Flipping `G4.outage_can_enforce = True`
+        survived the whole suite.
         """
         verbose_proxy_logger.warning(
             "guardrail %s could not scan response (%s): %s",
@@ -1071,7 +1165,8 @@ class G4OutputHandling(BaseNufiGuardrail):
             findings=(),
             reason=f"guardrail unavailable: {type(exc).__name__}",
         )
-        self._emit(data, decision, (), None, False)
+        enforced = self.outage_can_enforce and self._enforcing()
+        self._emit(data, decision, (), None, enforced)
         return item
 
     async def apply_guardrail(
@@ -1100,7 +1195,11 @@ class G4OutputHandling(BaseNufiGuardrail):
 
         allowlist = list(self._control.options.get("image_host_allowlist") or [])
         data = request_data if isinstance(request_data, dict) else {}
-        enforced = self._enforcing()
+        # `and not streamed`: same as `G2bPiiOutput.apply_guardrail` — a strip
+        # on a streamed response never reaches the client, so recording
+        # `enforced=True` for one is a phantom. Reproduced with THIS control:
+        # see `BaseNufiGuardrail.streamed`.
+        enforced = self._enforcing() and not self.streamed(data)
         rewritten: list[str] = []
 
         for item in texts:

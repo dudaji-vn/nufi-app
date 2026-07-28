@@ -309,20 +309,47 @@ Two are already measured. Both would degrade ordinary traffic the moment the
 control enforces, which is exactly how the previous generation of these
 guardrails ended up switched off.
 
-**1. G2b redacts ordinary place names, on essentially every response.** The
-default `PII_ENTITIES` list (`litellm/guardrails/entrypoints.py`) includes
-`LOCATION` and `PERSON`, and both thresholds are `0.50`. Presidio scores the
-word *Hanoi* as `LOCATION` at **0.85** and *Thai* (in "Ly Thai To") as `NRP` at
-0.85 — both far above the threshold. In the benchmark run above, the benign
-prompt *"summarise the history of Hanoi"* produced a G2b `redact` decision on
-**25 of 25 requests**, and the running stack has recorded 228 of them.
+**1. G2b redacts ordinary capitalised words, on essentially every response.**
+The default `PII_ENTITIES` list (`litellm/guardrails/entrypoints.py`) includes
+`LOCATION` and `PERSON`, and both thresholds are `0.50`. Measured against the
+running Presidio, sending `PII_ENTITIES` as the entity filter exactly as
+`scanners/pii.py` does:
 
-If G2b were enforced today, any answer naming a city or a person would come
-back with `[redacted:LOCATION]` in it. This is not a tail risk; it is the modal
-case. The decision to make before enforcing G2b is whether `LOCATION` and
-`PERSON` belong in the entity list at all — a city name in a history answer is
-not sensitive information disclosure, while a customer's name in a support
-transcript is. That is a policy question, not a tuning question.
+| Text | Entity | Score |
+|---|---|---|
+| `Hanoi` | `LOCATION` | 0.85 |
+| `Vietnam` | `LOCATION` | 0.85 |
+| `Docker` | `PERSON` | 0.85 |
+
+All far above the 0.50 threshold. **`Docker` is the important row**: this is not
+a place-name problem, it is a capitalised-noun problem, and product names,
+library names and headings are capitalised nouns. In the benchmark run above,
+the benign prompt *"summarise the history of Hanoi"* produced a G2b `redact`
+decision on **25 of 25 requests**, and a separate five-prompt benign sample had
+**4 of 5 responses rewritten**.
+
+Measured end to end with G2b flipped to `post_call`, the response
+*"The capital of Vietnam is Hanoi."* was delivered to the client as:
+
+```
+The capital of [LOCATION] is [LOCATION].
+```
+
+That is the literal marker `redact()` emits — `[ENTITY]`, not
+`[redacted:ENTITY]`. (`[removed:ENTITY]` is a different control: G4's `strip()`.)
+
+This is not a tail risk; it is the modal case. The decision to make before
+enforcing G2b is whether `LOCATION` and `PERSON` belong in the entity list at
+all — a city name in a history answer is not sensitive information disclosure,
+while a customer's name in a support transcript is. That is a policy question,
+not a tuning question.
+
+One entity that is *not* in play, despite looking like it should be: Presidio
+scores *Thai* as `NRP` (nationality/religion/political affiliation) at 0.85,
+but `NRP` is absent from `PII_ENTITIES`, and `scanners/pii.py` sends that list
+to `/analyze` as an entity **filter** — so G2b never receives an `NRP` finding
+and cannot act on one. Adding `NRP` to the list would change that; nothing else
+would.
 
 G2a is unaffected in practice: its action is `log`, never `mask`. Input masking
 was already tried and reverted (W5.1, May 2026) because the model began
@@ -346,11 +373,40 @@ direction.
    false-positive rate is acceptable.
 3. Change that control's `mode` and restart the proxy.
 
-Two tests currently fail on the first enforcement flip
-(`test_health.py::test_status_reports_every_control_with_its_mode` and
-`test_policy.py::test_logging_only_mode_downgrades_a_block_to_log`); they pin
-the shipping `policy.yaml` rather than the semantics. Fix them as part of the
-rollout rather than treating red tests as a reason not to proceed.
+Flipping any control's mode leaves the suite green — verified by flipping G1 to
+`pre_call` and G4 to `post_call` in the real `policy.yaml` and running it. Two
+tests used to pin the shipping file's contents rather than the semantics and
+went red on step 3; they now use `with_mode()`. A red suite after step 3 is a
+real regression, not the expected cost of the rollout.
+
+### G2b and G4 do not protect a streamed response
+
+**Chat streams by default, so this is the normal path, not an edge case.**
+
+`apply_guardrail`'s return value is discarded on a streamed completion. LiteLLM
+(1.83.10) deep-copies each sampled chunk before calling the guardrail and then
+yields the pre-guardrail copy; the end-of-stream pass runs after every chunk has
+already been sent to the client and can only raise. Reproduced on the running
+stack: with G4 in `post_call`, an `<iframe …>` in the response was stripped to
+`[removed:RAW_HTML]` on the non-streamed request and delivered **intact** on the
+streamed one.
+
+Worse, only one post_call control runs on a stream at all. LiteLLM's dispatch
+loop (`proxy/utils.py`) writes `request_data["guardrail_to_apply"] = callback`
+into a single dict slot once per guardrail, and the generator that reads it
+`pop`s lazily — after the loop has finished. Every wrapper therefore sees the
+last value written (G4), and G2b and G3 pass through untouched. Measured: one
+streamed request moved `nufi_guardrail_latency_seconds_count{control="G4"}` by
+6 and `{control="G2b"}` by **0**.
+
+What the code does about it today: G2b and G4 record `enforced=false` on a
+streamed response (`guardrail_status=success`, not `guardrail_intervened`), so
+the audit trail states what actually happened instead of claiming a rewrite that
+was thrown away. The `would have redacted` signal the rollout reads is still
+recorded. **The protection itself is absent** — see design §13 for the follow-up.
+
+G1 and G2a are unaffected: both are `pre_call` and act on the request, which is
+not streamed.
 
 ### Swapping the injection classifier
 
