@@ -93,7 +93,7 @@ the gateway.
 | LLM02 Sensitive Information Disclosure | Gateway | Implemented — G2a / G2b |
 | LLM05 Improper Output Handling | Gateway | Implemented — G4 |
 | LLM07 System Prompt Leakage | Gateway | Implemented — G3 |
-| LLM10 Unbounded Consumption | Gateway | Implemented — G5 (framing existing budgets as a control, adding alerts) |
+| LLM10 Unbounded Consumption | Gateway | **Deferred** — LiteLLM budgets already enforce; alerting rules are a follow-up (not a scanner, belongs with monitoring) |
 | LLM08 Vector & Embedding Weaknesses | `apps/chat` | Already covered by Team Workspaces FILE ACL + sub-group RBAC |
 | LLM04 Data & Model Poisoning | `apps/chat` | **Gap** — no controls on RAG ingestion. Backlog |
 | LLM06 Excessive Agency | `apps/chat` | **Gap** — agent tool grants (Web Search, Run Code) have no policy. Backlog |
@@ -166,7 +166,6 @@ and one Python file.
 | G2b | LLM02 PII (output) | `post_call` + streaming iterator hook | Presidio + secret regex → redact unless grounded |
 | G3 | LLM07 System prompt leakage | `post_call` | n-gram overlap between output and the configured system prompt |
 | G4 | LLM05 Improper output handling | `post_call` | strip exfiltration vectors in markdown/HTML |
-| G5 | LLM10 Unbounded consumption | `logging_only` + native budgets | thresholds plus per-key anomaly alerting |
 
 ### 6.1 G1 — Prompt injection
 
@@ -178,11 +177,25 @@ is close to certain attack; the same string typed by a user may be a
 question about prompt injection. The current app-layer guard cannot make
 this distinction because it only sees `req.body.text`.
 
-Scanner: Llama Prompt Guard 2 (22M, mDeBERTa-based, ~19 ms on GPU).
-Multilingual by construction, which replaces the hand-maintained
-English/Vietnamese regex list. The hard-signature regex list is retained
-as a second, independent detector — the evasion literature is explicit
-that a single classifier is insufficient.
+Scanner: a dedicated sidecar hosting a text-classification model, selected
+by `SCANNER_MODEL_ID` and pinned by `SCANNER_MODEL_REVISION` so it cannot
+change underneath a security control. The default is
+`protectai/deberta-v3-base-prompt-injection-v2` (Apache-2.0, ungated).
+`meta-llama/Llama-Prompt-Guard-2-22M` is a drop-in upgrade — smaller and
+multilingual — but its repository is gated under the Llama 4 Community
+License and needs an authenticated token, so it is opt-in rather than the
+default. The hard-signature regex list is retained as a second, independent
+detector — the evasion literature is explicit that a single classifier is
+insufficient.
+
+The sidecar exists rather than reusing `llm-guard-api` because that service's
+`/scan/prompt` accepts a single prompt string and cannot express
+per-source-span scoring. `llm-guard-api` is removed; prompt injection was its
+only enabled scanner.
+
+Measured at 103.7 ms mean / 197.5 ms p99 for the whole G1 control on CPU
+(section 11), not the ~19 ms this section previously claimed for a GPU
+inference alone.
 
 Conversation history is available on every request, so multi-turn
 escalation is scorable. Initial implementation scores the full trajectory
@@ -227,13 +240,6 @@ audited. Blocking a whole response over one image is disproportionate.
 Detected: markdown images and links pointing outside the configured
 allowlist, `javascript:` URLs, raw HTML and script tags.
 
-### 6.5 G5 — Unbounded consumption
-
-LiteLLM already enforces budgets and rate limits. This control makes them
-part of the security posture: thresholds are declared in `policy.yaml`,
-breaches emit guardrail events, and per-key consumption anomalies raise
-alerts rather than only appearing on a cost dashboard.
-
 ## 7. Data Flow & Trust Boundary
 
 ```
@@ -255,29 +261,49 @@ LiteLLM already authenticates and identifies the key, so no signing scheme
 is needed. The chat app's key is granted the flag; user-issued console
 keys are not, and the hint is ignored if they send it.
 
-**Block contract.** A blocked request returns a stable, machine-readable
-error:
+**Block contract — OPEN, and narrower than this section originally
+assumed.** The shape below was specified before the pipeline ran. It was
+measured on the live stack with G1 temporarily enforcing, and it is not what
+reaches the client:
 
-```json
-{
-  "error": {
-    "type": "nufi_guardrail_blocked",
-    "code": "LLM01_INJECTION",
-    "event_id": "grd_01J...",
-    "detail": "..."
-  }
-}
+```
+HTTP/1.1 400 Bad Request
+{"error":{"message":"injection=1.00 on user span","type":"None","param":"None","code":"400"}}
 ```
 
-`apps/chat` matches on `type` and renders the outcome as a normal streamed
-assistant message — preserving the `nufi-v0.1.3` fix, where a hard
-middleware denial left the client spinning indefinitely. Refusal text is
-resolved from `code` through the app's existing i18n.
+`type` is the literal string `"None"`. `code` is the HTTP status, not a risk
+code. `event_id` is absent entirely, and no response header carries it.
+`GuardrailBlocked.to_body()` — which defines our intended shape — has zero
+callers and zero tests: our code never constructs it, so this is not LiteLLM
+discarding our payload.
 
-This removes a model call from the block path. The current implementation
-invokes an LLM purely to translate the refusal into the user's language;
-error codes plus i18n is both cheaper and consistent, since the message no
-longer varies per invocation.
+Three consequences, all of which were previously stated here as settled:
+
+- **Matching on `type` is unavailable.** There is no discriminator on the wire
+  that distinguishes a guardrail block from any other 400.
+- **Resolving refusal text from `code` through i18n is unavailable.** `code`
+  carries the HTTP status, so there is nothing to key i18n on. The argument
+  that this removes a model call from the block path depends on a code that
+  does not survive, and must be re-decided rather than quietly retained.
+- **A client-side lookup by `event_id` is unavailable**, because the id never
+  leaves the proxy.
+
+**The carrier is an open decision for the follow-up plan.** Options, roughly in
+order of preference:
+
+1. Emit a response header (e.g. `x-nufi-guardrail-event`) from the control.
+   Note that `x-litellm-applied-guardrails` is not usable for this: it is
+   populated only when something calls LiteLLM's own header helper, so it
+   lists bridge-routed guardrails rather than what actually ran — verified
+   live, where it named three controls on a request that G1 had blocked.
+2. Encode a structured token inside the `message` string and parse it
+   app-side. Ugly, but `message` is the one field that survives intact.
+3. Look the event up by correlation id from the audit store.
+
+Option 3 is gated on a question that is still **untested**: whether a blocked
+`pre_call` request produces a Langfuse trace at all. Langfuse was not running
+in the subset stack used for the measurement, so this must be answered before
+that option is costed.
 
 ## 8. Audit & Observability
 
@@ -301,7 +327,7 @@ type (user vs untrusted), virtual key, team, and model.
 | G1 | **fail-closed** (503) | Security control; refusing beats forwarding an unverified prompt |
 | G2a | fail-open | Log-only control; nothing to get wrong |
 | G2b | fail-open + circuit breaker | Blocking all chat because a PII scanner is down converts a scanner outage into a full outage |
-| G3, G4, G5 | fail-open | G4 parses locally and has no external dependency |
+| G3, G4 | fail-open | G4 parses locally and has no external dependency |
 
 **Degraded mode is a first-class state.** The root cause of the current
 situation was not defective code — it was that disabling a control left no
@@ -316,37 +342,56 @@ trace. Required:
 - A dedicated metric for active fail-open, so degradation is visible
   rather than silent.
 
+`/health/guardrails` as an HTTP route is **not implemented**: LiteLLM exposes
+no route-registration hook to guardrail classes. Status is published instead
+through the `nufi_guardrail_enabled` / `nufi_guardrail_degraded` gauges on
+`/metrics/` and a WARNING-level status line logged at proxy startup, which
+satisfies the alerting requirement. Note the trailing slash — the un-slashed
+`/metrics` answers 307 with an empty body.
+
+The alert rule this section requires does **not** exist yet: nothing in
+`monitoring/rules/` watches `nufi_guardrail_enabled`, and the Grafana panel
+titled "Guardrail blocks (4xx rate by model)" measures 4xx responses, which
+read zero in shadow mode while `nufi_guardrail_decisions_total` climbs. Both
+are follow-up work (section 13).
+
+One control-state failure is undetectable from inside the process and is
+covered out-of-band instead: a control declared in `policy.yaml` but never
+registered in `config.yaml` is never imported, so no assertion, gauge or log
+of ours runs. `scripts/check-guardrails-wired.sh` reconciles the two files in
+CI. It also rejects the subtler forms — a registered control with
+`default_on: false`, or one wired to a hook it does not implement — both of
+which load, gauge and log exactly like a healthy control while never
+inspecting a single request.
+
 ## 10. Deployment
 
 One artifact, two targets (D3):
 
 - **On-prem compose** (`deploy/platform/docker-compose.yml`): the guardrail
-  package is bind-mounted into the proxy container, in the same way
-  `litellm/callbacks` is mounted today, and registered from `config.yaml`.
-  The scanner sidecar joins the existing network alongside Presidio.
+  package is baked into a derived image (`deploy/platform/litellm/Dockerfile`,
+  `FROM ghcr.io/berriai/litellm:v1.83.10-stable`) and registered from
+  `config.yaml`. Only `policy.yaml` is bind-mounted, so thresholds can be
+  tuned without a rebuild. The scanner sidecar joins the existing network
+  alongside Presidio.
 - **`api.codechi.me`**: the same package and `policy.yaml`. Environment
   differences (scanner base URLs, thresholds) are confined to environment
   variables referenced from `policy.yaml`.
 
-**Open item for planning.** How `api.codechi.me` is deployed is not
-established in this repository — it runs LiteLLM v1.83.10 with a database
-attached, but neither its compose file nor its config source is version
-controlled here. The first planning task is to confirm which of these
-applies, because the answer changes the packaging:
+**Resolved during implementation.** The packaging question is closed by the
+derived image: the guardrail package is baked in rather than mounted, so
+`api.codechi.me` consumes the identical artifact by pulling the image,
+whichever of the two deployment shapes it turns out to have. Only
+`policy.yaml` is mounted.
 
-1. It runs from a compose file or container spec we control — then the
-   bind-mount approach transfers unchanged.
-2. It is a managed or hand-configured deployment — then the guardrail
-   package must ship as an installable Python distribution (or a derived
-   image) rather than a mounted directory, and the scanner sidecar needs a
-   reachable network address.
+What remains open is the cutover itself — publishing the image to GHCR and
+pointing the production gateway at it — which is follow-up work (section 13),
+not a design question.
 
-Until this is confirmed, treat the on-prem stack as the implementation
-target and the production gateway as a packaging requirement on the
-design, not a solved deployment.
-
-Deployment parity is verified by a check that asserts both targets report
-the same `policy.yaml` digest through `/health/guardrails`.
+Deployment parity was to be verified by comparing the `policy.yaml` digest
+reported by both targets through `/health/guardrails`. That route does not
+exist (section 9). The digest is carried on guardrail audit events instead;
+a parity check must read it from there, or from the startup status line.
 
 ## 11. Testing & Rollout
 
@@ -366,8 +411,31 @@ the same `policy.yaml` digest through `/health/guardrails`.
   the attack corpus. A control that blocks legitimate traffic will be
   turned off, which is how the current controls were lost.
 
-**Latency gate:** p50/p95/p99 measured per control in CI, enforced against
-the D4 budget, reusing the W5.1 benchmark approach.
+**Latency.** `npm run bench:guardrails` measures p50/p95/p99 per control from
+the histogram the proxy exports. It is a manual script, **not** a CI gate — CI
+has no stack to measure against, and gating on numbers from a laptop would
+fail for reasons unrelated to the code.
+
+First measurement (25 iterations, shadow mode, local `qwen2.5:0.5b`,
+2026-07-28), in milliseconds:
+
+| control | mean | p50 | p95 | p99 |
+|---|---|---|---|---|
+| G1 injection (pre) | 103.7 | 91.7 | 187.5 | 197.5 |
+| G2a PII input (pre) | 4.1 | <5.0 | <5.0 | 8.8 |
+| G2b PII output (post) | 67.0 | 69.1 | 137.5 | 187.5 |
+| G4 output handling (post) | 0.0 | <5.0 | <5.0 | <5.0 |
+
+**This meets the D4 budget of 100–200 ms at the mean and misses it at the
+tail.** Mean total is ~175 ms. G1 and G2b alone reach 325 ms at p95 and 385 ms
+at p99, and they sit on opposite sides of the model call, so they add rather
+than overlap. D4 should be restated as a budget on the mean, or the tail
+addressed, before the figure is quoted externally.
+
+G3 recorded no samples: it needs a system message and the benchmark prompt
+sends none. A control that is registered but silent is reported explicitly by
+the benchmark rather than omitted, since a missing row is indistinguishable
+from a control that never loaded.
 
 **Rollout via `logging_only`.** LiteLLM supports shadow evaluation
 natively. The full pipeline runs against production traffic without
@@ -384,9 +452,13 @@ adapter (D2).
 `streamRedactor.js`, `inputGuard.js`, `outputGuard.js`, `systemPrompt.js`,
 `audit.js` and their specs — roughly 2000 LOC.
 
-**Retained or added:** recognition of the `nufi_guardrail_blocked` error
-contract, rendering of the block as a streamed assistant message, and i18n
-keys per risk code.
+**Retained or added:** rendering of the block as a streamed assistant
+message, and refusal text keyed to whatever discriminator the block carries.
+That discriminator is **not yet decided** — the `nufi_guardrail_blocked`
+contract this section originally named does not exist on the wire, and
+neither a risk code nor an event id currently reaches the client. See the
+open carrier decision in section 7; the app-layer work cannot be specified
+until it is settled.
 
 **Sequencing.** The gateway controls run in shadow mode with the app layer
 still enforcing. The app layer is removed only after the gateway has been
