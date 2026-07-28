@@ -255,15 +255,27 @@ async def test_non_numeric_score_raises_scanner_unavailable():
         await scanner.scan([Span(text="hello", source=SpanSource.USER, message_index=0)])
 
 
-@pytest.mark.parametrize("bad", ["nan", "NaN", "inf", "-inf"])
-async def test_non_finite_score_is_an_outage_not_a_clean_verdict(bad):
+@pytest.mark.parametrize("token", ["NaN", "Infinity", "-Infinity"])
+async def test_non_finite_score_is_an_outage_not_a_clean_verdict(token):
     """`nan >= threshold` is always False in policy.decide, so a corrupted
-    score would read as definitely-safe. json.loads also accepts bare
-    NaN/Infinity/-Infinity tokens by default, so a malformed response can
-    carry one without even failing JSON parsing."""
-    handler = _json_handler(
-        200, [{"entity_type": "X", "score": float(bad), "start": 0, "end": 1}]
+    score reads as definitely-safe. json.loads accepts bare
+    NaN/Infinity/-Infinity tokens, so a malformed response carries one without
+    failing JSON parsing.
+
+    Raw bytes, not `json=` — see the twin of this test in
+    test_injection_scanner.py for the full explanation. The `json=` form raised
+    during fixture construction, which `pytest.raises(ScannerUnavailable)`
+    accepted while the guard under test never ran.
+    """
+    body = (
+        b'[{"entity_type": "X", "score": ' + token.encode() + b', "start": 0, "end": 1}]'
     )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, content=body, headers={"content-type": "application/json"}
+        )
+
     scanner = _scanner(handler)
 
     with pytest.raises(ScannerUnavailable):

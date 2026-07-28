@@ -106,15 +106,33 @@ async def test_span_takes_the_max_when_the_highest_candidate_comes_first(monkeyp
     assert findings[0].score == pytest.approx(0.97)
 
 
-@pytest.mark.parametrize("bad", ["nan", "NaN", "inf", "-inf"])
-async def test_non_finite_score_is_an_outage_not_a_clean_verdict(monkeypatch, bad):
+@pytest.mark.parametrize("token", ["NaN", "Infinity", "-Infinity"])
+async def test_non_finite_score_is_an_outage_not_a_clean_verdict(monkeypatch, token):
     """max(0.0, nan) is 0.0 and `nan >= threshold` is always False in
-    policy.decide, so a corrupted score would read as definitely-safe twice
-    over. Python's json module also accepts bare NaN/Infinity/-Infinity
-    tokens by default, so a malformed response can carry one without even
-    failing JSON parsing — this must surface as ScannerUnavailable, not a
-    score."""
-    handler = _json_handler([{"score": float(bad), "label": "INJECTION", "complete": True}])
+    policy.decide, so a corrupted score reads as definitely-safe twice over.
+    Python's json module accepts bare NaN/Infinity/-Infinity tokens, so a
+    malformed sidecar response carries one without failing JSON parsing.
+
+    The body is RAW BYTES, not `json=`. The earlier version of this test built
+    it with `httpx.Response(200, json={...})`, and httpx serialises with
+    `allow_nan=False`: constructing the fixture raised ValueError INSIDE the
+    MockTransport handler, the adapter's `except (httpx.HTTPError, ValueError)`
+    turned that into ScannerUnavailable, `pytest.raises` was satisfied, and
+    `math.isfinite` never executed. Deleting the guard this test exists to
+    protect left the whole suite green. The docstring named the real vector
+    while the fixture could not produce it.
+    """
+    body = (
+        b'{"model": "test-model", "results": [{"score": '
+        + token.encode()
+        + b', "label": "INJECTION", "complete": true}]}'
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, content=body, headers={"content-type": "application/json"}
+        )
+
     scanner = _scanner(handler, monkeypatch)
 
     with pytest.raises(ScannerUnavailable):

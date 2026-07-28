@@ -23,7 +23,6 @@ Q2 2026 deliverable: complete GPU platform with NPU integration ready.
 **Directory layout:**
 
 - `litellm/` — config.yaml and customization
-- `langfuse/` — Langfuse setup
 - `librechat.yaml` — LibreChat runtime config, at the platform root; the image
   ships from `nufichat:main`
 - `scanner/` — prompt-injection classifier sidecar
