@@ -40,3 +40,4 @@ Icon
 .claude/local/
 
 
+docker-compose.override.yml
