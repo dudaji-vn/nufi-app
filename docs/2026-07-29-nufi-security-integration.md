@@ -158,6 +158,35 @@ the user asked for their data and got a placeholder.
 **restores the original when the response comes back**. Measured: 1.0000 PII
 protection, 0.9871 utility retention (ROUGE-L), 0.54 ms p95.
 
+**Verified end to end on 2026-07-29, including streaming:**
+
+```
+GỐC       : Please email billing@acme.co and cc support@zephyr.io about the renewal.
+MODEL SEES: Please email ⟦E1⟧ and cc ⟦E2⟧ about the renewal.
+RESTORED  : Please email billing@acme.co and cc support@zephyr.io about the renewal.
+
+roundtrip exact match: True
+stream restore across 10 chunks: True     (r.stream_restorer(session_id))
+```
+
+Three things that matter, none of them in the README:
+
+- The surrogates are **compact** (`⟦E1⟧`, not a 40-character token), so the
+  substitution costs almost nothing in context window.
+- `stream_restorer` is the same shape as our streaming hook's boundary buffer,
+  so restoration composes with the streaming protection rather than fighting it.
+- **Reversibility depends on their policy, per entity.** In the same call
+  `EMAIL` was `pseudonymize` and round-tripped, while `KR_ACCOUNT` was `block`
+  and came back as `<KR_ACCOUNT_REDACTED>` — irreversible, with `blocked=True`
+  and `pseudonymized=0`. "Reversible pseudonymization" is an action their
+  policy assigns, not a property of the library. Anything we want restored must
+  be configured as `pseudonymize`, and the high-severity identifiers are
+  deliberately not.
+
+The packaging gap bites here too: `ReversibleEgress()` needs `config/policy.yaml`
+as well as `config/patterns.yaml`, so the config directory has to ship with the
+image for step 3, not only step 2.
+
 This also unblocks something the gateway gave up on. G2a is `log`-only, never
 masking, because masking input was tried in May 2026 and reverted: the model
 started answering the placeholder instead of the question. A surrogate does not
