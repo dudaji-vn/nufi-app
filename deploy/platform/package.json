@@ -14,6 +14,10 @@
     "down": "docker compose down",
     "restart": "docker compose restart",
     "logs": "docker compose logs -f",
-    "ps": "docker compose ps"
+    "ps": "docker compose ps",
+    "test:guardrails:ui": "node scripts/guardrail-ui-test.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
   }
 }
