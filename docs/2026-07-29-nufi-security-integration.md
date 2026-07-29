@@ -102,6 +102,49 @@ as a miss. A fake resident-registration number is *supposed* to be rejected;
 reading that as a gap would have been unfair to the library and would have sent
 someone tuning a detector that was behaving correctly.
 
+### 2c. Correction to the table above, measured while building step 2
+
+The "0/4 false positives" row is true and misleading, and the `KR_ACCOUNT` row
+does not survive a wider sample. Four English sentences with no numbers in them
+is not a false-positive measurement. Re-run over 2000 realistic machine
+identifiers per shape, with NER and the confidential channel off:
+
+| rule | false positives | on |
+|---|---|---|
+| `KR_ACCOUNT` | **100%** | every ISO-8601 date. `2026-07-29` is a bank account number to this rule, as is any `4-4-4` tracking number |
+| `KR_BRN` | **~10%** | bare 10-digit numbers — including every Unix epoch-seconds timestamp (204/2000). A checksum over 10 digits removes 9 in 10, not 10 in 10 |
+| `KR_RRN` | ~4% | bare 13-digit numbers (epoch millis). 0 on everything else measured |
+| `KR_FOREIGNER_REG` | ~3% | same shape |
+| `KR_PASSPORT` | — | no checksum; `S12345678` is a support ticket id |
+| `KR_DRIVER_LICENSE` | — | no checksum; matches any 12-digit run |
+| `KR_PHONE` | ~0.5% | numbers with a LEADING ZERO. 0/2000 on bare 10-digit ids |
+
+The rules are not wrong — the separators are optional in every one of them, so
+each also matches its identifier's digits run together, and a digit run is a
+digit run. What is wrong is treating "it found `계좌번호 110-1234-567890`" as
+evidence that the rule is safe to REDACT with. G2b rewrites the answer a user
+reads, so `KR_ACCOUNT` on by default would put `[KR_ACCOUNT]` where every date
+used to be — the `LOCATION` failure this branch already removed, in a new
+costume.
+
+So the entity list is the control, exactly as it is for Presidio, and step 2
+ships `KR_RRN`, `KR_FOREIGNER_REG`, `KR_PHONE` with the numbers above recorded
+next to it in `policy.yaml`. `KR_ACCOUNT` is one line away for a deployment
+that wants it and now knows the price.
+
+Two more things measured that this document did not know:
+
+* **The offsets are Python `str` character offsets**, verified on Korean text
+  mixing Hangul, ASCII, a regional-indicator flag and an emoji, in NFC and NFD.
+  `text[start:end] == finding.text` in every case. That is what makes G2b's
+  span redaction safe on Korean at all, and it is asserted at every process
+  start rather than assumed.
+* **Not every channel has that property.** `DetectionPipeline._confidential`
+  matches against a NORMALISED copy and reports offsets into it; the EDM
+  channel reports `start=0, end=0`. `normalize.py`'s own docstring says as
+  much. Both are switched off, and the adapter rejects any finding whose
+  offsets do not slice back to its own matched text.
+
 **A packaging gap that blocks step 2.** `pip install` ships `egress_audit/` but
 **not `config/`**, so `Detector()` raises `FileNotFoundError` looking for
 `site-packages/config/patterns.yaml`. `detect_injection` is unaffected — its
@@ -136,7 +179,7 @@ just deleted from `apps/chat`.
 | Take | As | Why |
 |---|---|---|
 | ~~`PromptInjectionDetector`~~ **DONE** (`61c91a525`) | `scanners/nufi_injection.py`, `detector="nufi_injection"` | G1 enforces on user spans by corroboration. Verified live: attack from a user returns 400 with **two** detectors in the audit trail; each benign imperative returns 200 with the classifier **alone** and `enforced=false`. |
-| `Detector` (Korean PII) | `scanners/nufi_pii.py` → `detector="nufi_pii"` | Korean coverage Presidio does not have, at lower latency and better precision. |
+| ~~`Detector`~~ **DONE** (Korean PII) | `scanners/nufi_pii.py`, `detector="nufi_pii"` | Korean coverage Presidio does not have — measured against the live analyzer, it returns nothing actionable on an RRN, a Korean phone number or a bank account. Shipped with `KR_RRN`/`KR_FOREIGNER_REG`/`KR_PHONE`; see §2c for the rules that did NOT earn a place. |
 | `ReversibleEgress` / `pseudonymize` | a new action in `policy.py` | See §4 — this is the largest product win. |
 | `compliance_report`, `load_catalog` | a report command, out of the request path | 48 controls of evidence we currently cannot produce at all. |
 
@@ -313,8 +356,14 @@ a way Presidio is not.
 1. `scanners/nufi_injection.py` — smallest, highest value. Gives G1 a second
    independent detector and a path to enforcing on user spans by corroboration
    rather than by score alone.
-2. `scanners/nufi_pii.py` — Korean coverage, and a local detector fast enough
-   for per-chunk streaming.
+2. ~~`scanners/nufi_pii.py`~~ **DONE** — Korean coverage on G2a and G2b
+   alongside Presidio, entity list in `policy.yaml`. Verified live: a
+   checksum-valid RRN in a response comes back `[KR_RRN]` (streamed and
+   non-streamed), the same number with a bad check digit comes back intact,
+   and benign Korean containing an ISO date is untouched. The library's
+   `config/` directory does not ship with the wheel, so the rules are vendored
+   at `litellm/guardrails/nufi_patterns.yaml` and the path handed to
+   `DetectionPipeline` is absolute — their own discovery is never used.
 3. Pseudonymize-and-restore as a policy action, replacing `redact` for G2b and
    making a non-destructive G2a possible.
 4. Compliance reporting as an offline command, out of the request path.
