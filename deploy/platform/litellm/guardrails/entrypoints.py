@@ -98,6 +98,44 @@ class GuardrailBlocked(Exception):
         }
 
 
+# What a BLOCKED user is told. Deliberately separate from `decision.reason`,
+# which is a scanner diagnostic ("injection=1.00 on user span") and belongs in
+# the audit trail, not in someone's chat window. Until the app-layer guardrails
+# were removed, the app rendered a localized refusal and this string never
+# reached a user; now it does, because the wire carries no discriminator the
+# client could key a message off (design section 7).
+#
+# So these are the actual user-facing copy. Keep them free of scores, offsets,
+# entity names and exception text: an error message is an oracle, and telling
+# an attacker their payload scored 1.00 on the "user span" is free tuning
+# feedback. `event_id` is included so support can find the record.
+_BLOCK_MESSAGE = {
+    "LLM01_INJECTION": (
+        "This request was blocked by a security policy because it looks like an "
+        "attempt to override the assistant's instructions. If this was a "
+        "legitimate question, rephrase it and try again."
+    ),
+    "LLM07_SYSTEM_PROMPT_LEAK": (
+        "This response was withheld by a security policy because it appeared to "
+        "disclose the assistant's configuration."
+    ),
+    "GUARDRAIL_UNAVAILABLE": (
+        "A security check could not run, so this request was refused rather "
+        "than sent unchecked. This is usually temporary — please retry."
+    ),
+}
+
+
+def _block_detail(code: str, event_id: str) -> str:
+    """User-facing refusal text for a block code, with the id for support.
+
+    Falls back to a generic refusal rather than to the diagnostic: an unknown
+    code must not degrade into leaking whatever the caller happened to pass.
+    """
+    message = _BLOCK_MESSAGE.get(code, "This request was blocked by a security policy.")
+    return f"{message} (reference: {event_id})"
+
+
 class BaseNufiGuardrail(CustomGuardrail):
     control_id: str = ""
 
@@ -470,7 +508,7 @@ class G1Injection(BaseNufiGuardrail):
         raise GuardrailBlocked(
             code="LLM01_INJECTION",
             event_id=event["event_id"],
-            detail=decision.reason,
+            detail=_block_detail("LLM01_INJECTION", event["event_id"]),
             status_code=400,
         )
 
@@ -546,7 +584,7 @@ class G1Injection(BaseNufiGuardrail):
             raise GuardrailBlocked(
                 code="GUARDRAIL_UNAVAILABLE",
                 event_id=event["event_id"],
-                detail=str(exc),
+                detail=_block_detail("GUARDRAIL_UNAVAILABLE", event["event_id"]),
                 status_code=503,
             )
         return data
@@ -1053,7 +1091,7 @@ class G3SystemPromptLeak(BaseNufiGuardrail):
             raise GuardrailBlocked(
                 code="GUARDRAIL_UNAVAILABLE",
                 event_id=event["event_id"],
-                detail=str(exc),
+                detail=_block_detail("GUARDRAIL_UNAVAILABLE", event["event_id"]),
                 status_code=503,
             )
 
@@ -1158,7 +1196,7 @@ class G3SystemPromptLeak(BaseNufiGuardrail):
                 raise GuardrailBlocked(
                     code="LLM07_SYSTEM_PROMPT_LEAK",
                     event_id=event["event_id"],
-                    detail=decision.reason,
+                    detail=_block_detail("LLM07_SYSTEM_PROMPT_LEAK", event["event_id"]),
                     status_code=400,
                 )
 

@@ -2187,3 +2187,41 @@ def test_empty_entity_list_is_refused(policy_path):
 
     with pytest.raises(ValueError, match="non-empty list"):
         entrypoints._pii_entities(control)
+
+
+# --- what a blocked user is told -------------------------------------------
+
+
+def test_block_detail_carries_no_diagnostic():
+    """An error message is an oracle.
+
+    `decision.reason` reads "injection=1.00 on user span". Handing that to the
+    caller tells an attacker exactly which span scored and how close to the
+    threshold they are — free tuning feedback, one request at a time. It
+    belongs in the audit trail, which already has it.
+    """
+    detail = entrypoints._block_detail("LLM01_INJECTION", "grd_abc")
+
+    assert "grd_abc" in detail
+    for leak in ("injection=", "1.00", "user span", "score", "presidio"):
+        assert leak not in detail
+
+
+def test_unknown_code_falls_back_to_a_refusal_not_the_input():
+    detail = entrypoints._block_detail("SOMETHING_NEW", "grd_xyz")
+
+    assert "blocked by a security policy" in detail
+    assert "SOMETHING_NEW" not in detail
+
+
+@pytest.mark.asyncio
+async def test_blocked_request_does_not_leak_the_reason(policy_path):
+    guard = _guard(policy_path, FakeScanner(score=0.99), mode="pre_call")
+
+    with pytest.raises(GuardrailBlocked) as excinfo:
+        await guard.async_pre_call_hook(
+            FakeKey(), None, _data("ignore previous"), "acompletion"
+        )
+
+    assert "injection=" not in excinfo.value.detail
+    assert excinfo.value.event_id in excinfo.value.detail
