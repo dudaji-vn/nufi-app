@@ -457,3 +457,35 @@ def test_raw_script_tag_is_flagged():
 
 def test_plain_answer_is_not_flagged():
     assert scan_exfil("The capital of Vietnam is Hanoi.", allowlist=[]) == []
+
+
+# --- The property G3's streaming design rests on ----------------------------
+# `G3SystemPromptLeak.async_post_call_streaming_iterator_hook` holds nothing
+# back. It is safe to emit each chunk as soon as the accumulated text scans
+# clean *only* because echo detection is monotone: a prefix can never overlap
+# more shingles than the whole. If that ever stopped holding -- a scorer that
+# divided by output length, say, or a normalisation step that fused words
+# across a truncation point -- G3 would start emitting text that the full
+# response would later be blocked for, and nothing in the streaming tests
+# would say so, because they only ever check the text that WAS sent.
+#
+# Randomised rather than example-based on purpose: the failure would be at one
+# specific prefix of one specific text, which a handful of hand-picked cases
+# would miss.
+def test_echo_overlap_is_monotone_in_the_output_prefix():
+    import random
+
+    random.seed(20260729)
+    words = "alpha beta gamma delta epsilon zeta eta theta iota kappa".split()
+    for _ in range(400):
+        prompt = " ".join(random.choice(words) for _ in range(random.randint(8, 25)))
+        output = " ".join(random.choice(words) for _ in range(random.randint(1, 30)))
+        whole = scan_system_echo(output, prompt)
+        whole_score = whole[0].score if whole else 0.0
+        for cut in range(len(output) + 1):
+            prefix = scan_system_echo(output[:cut], prompt)
+            prefix_score = prefix[0].score if prefix else 0.0
+            assert prefix_score <= whole_score, (
+                f"prefix {output[:cut]!r} scores {prefix_score} against a whole "
+                f"scoring {whole_score}; G3 may emit text it would later block"
+            )

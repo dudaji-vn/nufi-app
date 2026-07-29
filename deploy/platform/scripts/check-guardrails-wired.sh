@@ -89,6 +89,32 @@ HOOK_MODE = {
     "async_post_call_success_hook": "post_call",
 }
 
+# The streaming counterpart, and a third silent failure mode alongside the two
+# above. `proxy/utils.py`'s streaming dispatch picks a branch with
+#   if "async_post_call_streaming_iterator_hook" in type(callback).__dict__:
+#       ... chain each callback around the previous response iterator ...
+#   elif "apply_guardrail" in type(callback).__dict__:
+#       request_data["guardrail_to_apply"] = callback   # ONE dict slot
+#       ... unified_guardrail bridge ...
+# A post_call control that defines only `apply_guardrail` therefore takes the
+# second branch, where (a) every guardrail overwrites the same dict slot and
+# `unified_guardrail` pops it lazily, after the loop, so only the LAST
+# registered control runs at all, and (b) the bridge deep-copies each chunk
+# before the guardrail sees it and yields the pre-guardrail copy, so even that
+# one control's rewrite is discarded. Measured 2026-07-28: one streamed request
+# moved G4's latency counter and left G2b's and G3's at zero, with the
+# exfiltration vector delivered intact.
+#
+# Chat streams by default, so a control missing this hook protects only the
+# minority of traffic while gauging, logging and counting exactly like a
+# healthy one. Checked here rather than only in the test suite because it is
+# the same class of absence this script exists for: nothing inside the process
+# can tell that litellm chose the other branch.
+#
+# Read from the CLASS body, matching `type(callback).__dict__` -- an inherited
+# method does not satisfy litellm's check and must not satisfy this one.
+STREAMING_HOOK = "async_post_call_streaming_iterator_hook"
+
 ENTRYPOINTS_MODULE = "guardrails.entrypoints"
 
 with open(entrypoints_path, encoding="utf-8") as handle:
@@ -117,6 +143,8 @@ for node in tree.body:
     classes[node.name] = {
         "control_id": control_id,
         "modes": {HOOK_MODE[name] for name in methods if name in HOOK_MODE},
+        "rewrites_output": "apply_guardrail" in methods,
+        "streams": STREAMING_HOOK in methods,
     }
 
 problems = []
@@ -175,6 +203,19 @@ for raw_entry in config.get("guardrails") or []:
         problems.append(
             f"NO HOOK: {symbol} implements none of {sorted(HOOK_MODE)}, so LiteLLM "
             f"has no method to call for {name} on any request."
+        )
+    elif info["rewrites_output"] and not info["streams"]:
+        problems.append(
+            f"STREAMS UNPROTECTED: {symbol} defines apply_guardrail but not "
+            f"{STREAMING_HOOK}, so litellm routes {name} through the "
+            f"unified_guardrail bridge on any `\"stream\": true` request. That "
+            f"bridge keeps ONE `guardrail_to_apply` slot for all guardrails and "
+            f"yields a pre-guardrail copy of every chunk, so this control (and "
+            f"probably every other post_call control) inspects nothing and "
+            f"rewrites nothing on the path chat clients use by default -- while "
+            f"still publishing its gauge and recording decisions. Define "
+            f"{STREAMING_HOOK} on {symbol} itself; an inherited one does not "
+            f"satisfy litellm's `type(callback).__dict__` check."
         )
     elif mode not in info["modes"]:
         expected = " or ".join(sorted(info["modes"]))

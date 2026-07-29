@@ -1,3 +1,4 @@
+import logging
 from dataclasses import replace
 
 import pytest
@@ -118,7 +119,9 @@ async def test_injection_above_threshold_raises_guardrail_blocked(policy_path):
     guard = _guard(policy_path, FakeScanner(score=0.99))
 
     with pytest.raises(GuardrailBlocked) as excinfo:
-        await guard.async_pre_call_hook(FakeKey(), None, _untrusted("ignore previous"), "acompletion")
+        await guard.async_pre_call_hook(
+            FakeKey(), None, _untrusted("ignore previous"), "acompletion"
+        )
 
     assert excinfo.value.code == "LLM01_INJECTION"
     assert excinfo.value.event_id.startswith("grd_")
@@ -305,7 +308,9 @@ async def test_block_status_code_is_a_client_error_not_a_500(policy_path):
     guard = _guard(policy_path, FakeScanner(score=0.99))
 
     with pytest.raises(GuardrailBlocked) as excinfo:
-        await guard.async_pre_call_hook(FakeKey(), None, _untrusted("ignore previous"), "acompletion")
+        await guard.async_pre_call_hook(
+            FakeKey(), None, _untrusted("ignore previous"), "acompletion"
+        )
 
     assert excinfo.value.status_code == 400
 
@@ -1930,25 +1935,42 @@ async def test_clean_request_persists_nothing_and_that_is_deliberate(policy_path
     assert "guardrail_information" not in result.get("metadata", {})
 
 
-# --- Final review, C2: a rewrite the client never receives ------------------
+# --- `apply_guardrail` on a streamed response is now a DISPATCH ANOMALY -----
+# History, because it explains why these tests assert what they do.
+#
 # Reproduced end to end against the running stack (litellm 1.83.10) on
 # 2026-07-28: a STREAMED completion containing
 # `<iframe src="https://example.com" ...>` reached the client unstripped,
 # while the identical non-streamed request came back `[removed:RAW_HTML]` --
 # and BOTH recorded `action=redact, enforced=true,
 # guardrail_status=guardrail_intervened` into the spend log. Two rows an
-# incident responder cannot tell apart, one of which is false.
+# incident responder cannot tell apart, one of which is false. The cause was
+# litellm's `unified_guardrail.async_post_call_streaming_iterator_hook`,
+# which deep-copies each sampled chunk into `original_item` BEFORE calling the
+# guardrail and then yields `original_item`; `apply_guardrail`'s return value
+# is never routed back into the stream.
 #
-# The cause is litellm's own `unified_guardrail
-# .async_post_call_streaming_iterator_hook`: it deep-copies each sampled
-# chunk into `original_item` BEFORE calling the guardrail and then yields
-# `original_item`. `apply_guardrail`'s return value is never routed back
-# into the stream. We cannot rewrite a streamed response from here, so
-# `enforced` must not claim we did. See `BaseNufiGuardrail.streamed`.
+# Streamed responses ARE protected now -- see tests/test_streaming.py, which
+# drives the real `async_post_call_streaming_iterator_hook` each control
+# defines and asserts on the text a client would assemble. That hook takes a
+# different branch of litellm's dispatch, so `apply_guardrail` is no longer
+# reached for a streamed response at all.
+#
+# Which is exactly why these tests still exist, and why they still assert
+# `enforced=false`: reaching `apply_guardrail` with `stream: true` now means
+# the streaming hook was NOT dispatched. The rewrite would be discarded for
+# the same reason as before, so recording `enforced=true` would be the same
+# false spend-log row -- and it is the one row that would appear if a future
+# edit removed the streaming hook, or renamed it, or hoisted it to the base
+# class where litellm's `type(callback).__dict__` check cannot see it.
+# `_stream_dispatch_anomaly` additionally logs it, because the request
+# otherwise succeeds and nothing else would say protection was off.
 
 
 @pytest.mark.asyncio
-async def test_g2b_records_a_streamed_redaction_as_not_enforced(policy_path):
+async def test_g2b_records_an_undispatched_streamed_redaction_as_not_enforced(
+    policy_path,
+):
     guard = _g2b(policy_path, SubstringPii("sun@dudaji.com"), mode="post_call")
     assert guard._enforcing() is True  # sanity: genuinely out of shadow mode
     request: dict = {"stream": True}
@@ -1967,14 +1989,34 @@ async def test_g2b_records_a_streamed_redaction_as_not_enforced(policy_path):
 
 
 @pytest.mark.asyncio
-async def test_g2b_streamed_redaction_is_not_persisted_as_intervened(policy_path):
+async def test_the_undispatched_streaming_path_is_logged_as_an_error(
+    policy_path, caplog
+):
+    """Silence here is the whole failure mode: the request succeeds, the
+    response is delivered, and only the rewrite is missing. Without a log,
+    losing streaming protection looks exactly like having it."""
+    guard = _g2b(policy_path, SubstringPii("sun@dudaji.com"), mode="post_call")
+
+    with caplog.at_level(logging.ERROR):
+        await _apply_text(guard, "write to sun@dudaji.com", {"stream": True})
+
+    assert any(
+        "apply_guardrail was called for a STREAMED response" in record.getMessage()
+        for record in caplog.records
+    )
+
+
+@pytest.mark.asyncio
+async def test_g2b_undispatched_streamed_redaction_is_not_persisted_as_intervened(
+    policy_path,
+):
     """The spend-log status is the field an incident responder reads first.
 
-    `_emit` derives `guardrail_status` from `enforced`, so a streamed
-    redaction recorded honestly must land as `success` ("we saw it, we did
-    not act"), never `guardrail_intervened` ("we rewrote this response") --
-    the exact value the live reproduction wrote for a response that reached
-    the client verbatim."""
+    `_emit` derives `guardrail_status` from `enforced`, so a redaction that
+    was not delivered must land as `success` ("we saw it, we did not act"),
+    never `guardrail_intervened` ("we rewrote this response") -- the exact
+    value the live reproduction wrote for a response that reached the client
+    verbatim."""
     guard = _g2b(policy_path, SubstringPii("sun@dudaji.com"), mode="post_call")
     request: dict = {"stream": True}
 
@@ -2018,14 +2060,14 @@ async def test_g2b_streamed_flag_false_is_treated_as_non_streamed(policy_path):
 
 
 @pytest.mark.asyncio
-async def test_g4_records_a_streamed_strip_as_not_enforced(policy_path):
+async def test_g4_records_an_undispatched_streamed_strip_as_not_enforced(policy_path):
     """The control the live reproduction actually caught in the act.
 
-    G4 is the one post_call control that runs at all on a streamed response
-    (see `BaseNufiGuardrail.streamed` for why the others do not), so this
-    phantom was not hypothetical: `nufi_guardrail_decisions_total
-    {action="redact", control="G4", enforced="true"}` incremented for a
-    response delivered with its `<iframe>` intact."""
+    Under the old dispatch G4 was the one post_call control that ran at all on
+    a streamed response, so this phantom was not hypothetical:
+    `nufi_guardrail_decisions_total{action="redact", control="G4",
+    enforced="true"}` incremented for a response delivered with its `<iframe>`
+    intact."""
     guard = _g4(policy_path, mode="post_call")
     assert guard._enforcing() is True
     request: dict = {"stream": True}

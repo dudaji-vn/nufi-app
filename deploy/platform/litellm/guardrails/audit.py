@@ -109,6 +109,30 @@ GUARDRAIL_DEGRADED = _register(
     "1 while a control is failing open because its detector is unavailable.",
     ("control",),
 )
+GUARDRAIL_STREAM_FORCED = _register(
+    Counter,
+    "nufi_guardrail_stream_forced_total",
+    "Times a streaming control hit its hold-back bound and emitted text that "
+    "could still have been part of a longer match.",
+    ("control",),
+)
+# The self-check counter, and the only one that says "this control shipped
+# something it had decided to rewrite or withhold". Every other signal in this
+# module describes what a control DECIDED; this one describes what actually
+# went out on the wire, measured by re-scanning the control's own emitted text
+# after the stream closed. It should sit at zero. A non-zero value means a
+# streamed response is not protected however healthy the rest of the
+# exposition looks -- which is the exact failure `nufi_guardrail_decisions_total
+# {enforced="true"}` cannot, on its own, rule out.
+GUARDRAIL_STREAM_UNENFORCED = _register(
+    Counter,
+    "nufi_guardrail_stream_unenforced_total",
+    "Streamed responses where a control's own post-hoc scan of what it sent "
+    "still trips its decision (reason: bound = hold-back bound exceeded, "
+    "escaped = detected only after the text was already sent, undelivered = "
+    "the rewrite could not be written back onto the chunk).",
+    ("control", "reason"),
+)
 
 _CONTEXT_KEYS = ("key_alias", "team_id", "model", "policy_digest")
 _LABEL_KEYS = ("control", "risk", "action")
