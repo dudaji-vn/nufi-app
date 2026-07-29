@@ -17,6 +17,7 @@ const {
   getProviderConfig,
   memoryInstructions,
   createTokenCounter,
+  formatRunErrorText,
   applyContextToAgent,
   isMemoryAgentEnabled,
   recordCollectedUsage,
@@ -1090,7 +1091,7 @@ class AgentClient extends BaseClient {
         );
         this.contentParts.push({
           type: ContentTypes.ERROR,
-          [ContentTypes.ERROR]: `An error occurred while processing the request${err?.message ? `: ${err.message}` : ''}`,
+          [ContentTypes.ERROR]: formatRunErrorText(err?.message),
         });
       }
     } finally {
