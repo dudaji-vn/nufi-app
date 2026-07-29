@@ -17,7 +17,7 @@ const {
   getProviderConfig,
   memoryInstructions,
   createTokenCounter,
-  formatRunErrorText,
+  formatRunError,
   applyContextToAgent,
   isMemoryAgentEnabled,
   recordCollectedUsage,
@@ -1091,7 +1091,7 @@ class AgentClient extends BaseClient {
         );
         this.contentParts.push({
           type: ContentTypes.ERROR,
-          [ContentTypes.ERROR]: formatRunErrorText(err?.message),
+          [ContentTypes.ERROR]: formatRunError(err),
         });
       }
     } finally {
