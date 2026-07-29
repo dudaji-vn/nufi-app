@@ -199,15 +199,30 @@ wrong** — bare `E1`, `P1`, `T2` are ordinary strings (cell references, part
 numbers, labels), so a bracket-free matcher would corrupt legitimate text.
 Their restriction is correct; the delimiter is the problem.
 
-**The delimiter is fixable, and I measured which ones survive.** Same prompt,
-same model:
+**The delimiter matters, but not the way one sample suggested.** My first
+measurement was a single request per variant and it was misleading — `[[…]]`
+survived once and I wrote it down as "yes". Repeating at n=6, temperature 1.0,
+same prompt and model:
 
-| surrogate | survives the model |
+| surrogate | survives |
 |---|---|
-| `⟦E1⟧` (their `LB`/`RB` at `surrogate.py:31`) | **no** — returned as `E1` |
-| `[[EMAIL_1]]` | yes |
-| `<EMAIL_1>` | yes |
-| `e1@redacted.invalid` | yes |
+| `⟦E1⟧` (their `LB`/`RB` at `surrogate.py:31`) | **0/6** |
+| `[[E1]]` | **2/6** |
+| `<E1>` | 6/6 |
+| `e1@redacted.invalid` | 6/6 |
+
+Their default never survives. `[[…]]` survives a third of the time, which for a
+control that silently loses the user's data is worse than useless — and it is
+what I would have recommended off the first sample.
+
+**So a better delimiter is necessary and not sufficient.** 6/6 is evidence of
+no failures in six draws, not of a guarantee; whether the model echoes a token
+verbatim is a sampling outcome, not a property of the delimiter. Any shippable
+design needs a **non-restoration detector**: after restoring, check whether any
+surrogate this session minted is still present in the output — including its
+mangled forms — and if so treat the response as unrestored and fall back to
+redaction. Losing the value is acceptable; showing the user `E1` where their
+own email should be, with no signal that anything went wrong, is not.
 
 `LB`/`RB` are module constants with no configuration hook, so this is an
 upstream change or a wrapper — not a setting.
