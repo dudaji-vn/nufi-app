@@ -160,7 +160,66 @@ the user asked for their data and got a placeholder.
 **restores the original when the response comes back**. Measured: 1.0000 PII
 protection, 0.9871 utility retention (ROUGE-L), 0.54 ms p95.
 
-**Verified end to end on 2026-07-29, including streaming:**
+**Verified with us on both ends — and it breaks with a model in the middle.**
+
+The mechanism itself is sound. Feeding the surrogate back ourselves:
+
+```
+GỐC       : Please email billing@acme.co and cc support@zephyr.io about the renewal.
+MODEL SEES: Please email ⟦E1⟧ and cc ⟦E2⟧ about the renewal.
+RESTORED  : Please email billing@acme.co and cc support@zephyr.io about the renewal.
+
+roundtrip exact match: True
+stream restore across 10 chunks: True     (r.stream_restorer(session_id))
+```
+
+But that test had us on both ends. **Put a real LLM in the middle — which is
+the entire use case — and it fails.** Measured against `gemini-2.5-flash`
+through the live proxy:
+
+```
+prompt   : Send the report to ⟦E1⟧ and ⟦E2⟧. Reply with one sentence listing who gets it.
+model    : "The report is being sent to E1 and E2."
+restored : "The report is being sent to E1 and E2."      ← NOT restored
+```
+
+The model stripped both delimiters. The user would see `E1` where they expect
+`alice@example.com`.
+
+`egress_audit/surrogate.py:33-34` shows they anticipated *part* of this — there
+is a lenient matcher for when "the LLM transforms the token" — but it requires
+a bracket on both sides:
+
+```python
+_LENIENT = re.compile(r"[\[\(⟦]([A-Z]{1,2})(\d+)[\]\)⟧]")
+```
+
+`⟦E1⟧ → [E1]` is covered; `⟦E1⟧ → E1` is not. **And widening it would be
+wrong** — bare `E1`, `P1`, `T2` are ordinary strings (cell references, part
+numbers, labels), so a bracket-free matcher would corrupt legitimate text.
+Their restriction is correct; the delimiter is the problem.
+
+**The delimiter is fixable, and I measured which ones survive.** Same prompt,
+same model:
+
+| surrogate | survives the model |
+|---|---|
+| `⟦E1⟧` (their `LB`/`RB` at `surrogate.py:31`) | **no** — returned as `E1` |
+| `[[EMAIL_1]]` | yes |
+| `<EMAIL_1>` | yes |
+| `e1@redacted.invalid` | yes |
+
+`LB`/`RB` are module constants with no configuration hook, so this is an
+upstream change or a wrapper — not a setting.
+
+**Consequence for §7: step 3 is not shippable as it stands.** Input
+pseudonymization with the current delimiter would show users `E1` instead of
+their own email, which is the W5.1 failure in new clothing — not "the model
+answers the placeholder" this time, but "the model corrupts the token so
+restoration silently fails". The concrete ask upstream is a configurable, or
+ASCII-delimited, surrogate format. Until then G2a stays log-only.
+
+**The original argument, now qualified.** 
 
 ```
 GỐC       : Please email billing@acme.co and cc support@zephyr.io about the renewal.
@@ -189,7 +248,7 @@ The packaging gap bites here too: `ReversibleEgress()` needs `config/policy.yaml
 as well as `config/patterns.yaml`, so the config directory has to ship with the
 image for step 3, not only step 2.
 
-This also unblocks something the gateway gave up on. G2a is `log`-only, never
+Reversible pseudonymization would unblock something the gateway gave up on, *once the delimiter is fixed*. G2a is `log`-only, never
 masking, because masking input was tried in May 2026 and reverted: the model
 started answering the placeholder instead of the question. A surrogate does not
 have that failure mode — it is a stable token the model can carry through, and
