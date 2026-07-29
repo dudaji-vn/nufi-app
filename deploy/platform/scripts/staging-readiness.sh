@@ -286,6 +286,54 @@ else
   fi
 fi
 
+echo "==> 7b/10 A redacted STREAM does not leak the original to observability"
+# G2b redacts the stream for the client, but litellm's CustomStreamWrapper
+# assembles the text it hands the logging backends BEFORE our streaming hook
+# runs -- so Langfuse can hold the unredacted value while the client got the
+# redacted one, and the audit trail says "redacted". Measured: client received
+# [EMAIL_ADDRESS], the Langfuse trace output held support@zephyr.com.
+# Non-streamed responses are clean; this is streaming-only.
+#
+# Checked here rather than left in a document because a known hole that nothing
+# tests is one refactor away from being an unknown hole. The prompt asks the
+# model to INVENT an address so the value cannot come from the request.
+if [ -z "${LANGFUSE_PUBLIC_KEY:-}" ] || [ -z "${LANGFUSE_SECRET_KEY:-}" ]; then
+  skipped "Langfuse keys unset -- cannot check for observability leakage"
+elif ! curl -fsS "${LANGFUSE_URL:-http://localhost:3000}/api/public/health" >/dev/null 2>&1; then
+  skipped "Langfuse unreachable -- cannot check for observability leakage"
+else
+  marker="Vertex$(date +%s)"
+  curl -sN -X POST "${PROXY}/v1/chat/completions" \
+    -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
+    -H 'content-type: application/json' \
+    -d "{\"model\":\"${MODEL}\",\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"Invent a fictional support contact for a company called ${marker}. Output exactly one line containing a realistic email address. No other text.\"}]}" \
+    >/dev/null 2>&1
+  sleep 15
+  auth=$(printf '%s:%s' "${LANGFUSE_PUBLIC_KEY}" "${LANGFUSE_SECRET_KEY}" | base64)
+  leaked=$(curl -fsS "${LANGFUSE_URL:-http://localhost:3000}/api/public/traces?limit=5" \
+    -H "Authorization: Basic ${auth}" 2>/dev/null \
+    | ${PY} -c "
+import sys, json, re
+try:
+    data = json.load(sys.stdin).get('data', [])
+except Exception:
+    print('unknown'); raise SystemExit
+for trace in data:
+    blob = json.dumps(trace.get('output'))
+    if re.search(r'[\\w.%+-]+@[\\w.-]+\\.[A-Za-z]{2,}', blob):
+        print('yes'); break
+else:
+    print('no')
+")
+  case "${leaked}" in
+    no)      ok "streamed response left no raw address in the trace output" ;;
+    yes)     bad "the Langfuse trace output holds the RAW address the client never saw"
+             note "known: CustomStreamWrapper assembles the logged text before our hook runs"
+             note "mitigate with Langfuse-side masking, or stop capturing content for streams" ;;
+    *)       skipped "could not read Langfuse traces" ;;
+  esac
+fi
+
 echo "==> 8/10 Prometheus has scraped the guardrail metrics"
 if ! curl -fsS "${PROM}/-/healthy" >/dev/null 2>&1; then
   skipped "Prometheus not reachable at ${PROM}"

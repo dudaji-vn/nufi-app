@@ -7,7 +7,7 @@ import os
 import time
 from typing import Any
 
-from guardrails import audit, streaming
+from guardrails import audit, log_masking, streaming
 from guardrails.canonical import canonicalize
 from guardrails.policy import ControlConfig, Policy, decide
 from guardrails.scanners.injection import InjectionScanner
@@ -707,6 +707,11 @@ class G1Injection(BaseNufiGuardrail):
     async def async_pre_call_hook(
         self, user_api_key_dict: Any, cache: Any, data: dict[str, Any], call_type: str
     ) -> dict[str, Any]:
+        # Before every early return: a request that skips the guardrails still
+        # reaches the logging backend, and that is exactly when nothing else is
+        # watching what lands there.
+        log_masking.install(data)
+
         # Resolved before EVERY early return, including the non-chat-call-type
         # one immediately below. This is the only phase LiteLLM hands over the
         # key object, and a post_call control treats a missing verdict as
@@ -976,6 +981,8 @@ class G2aPiiInput(BaseNufiGuardrail):
     async def async_pre_call_hook(
         self, user_api_key_dict: Any, cache: Any, data: dict[str, Any], call_type: str
     ) -> dict[str, Any]:
+        log_masking.install(data)
+
         if call_type not in _CHAT_CALL_TYPES or not self._control.enabled:
             return data
 
