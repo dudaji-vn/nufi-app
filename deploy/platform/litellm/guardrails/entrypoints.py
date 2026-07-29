@@ -1263,9 +1263,16 @@ g2b_pii_output = G2bPiiOutput()
 g3_system_prompt_leak = G3SystemPromptLeak()
 g4_output_handling = G4OutputHandling()
 
-from guardrails.health import assert_controls, guardrail_status  # noqa: E402
+from guardrails.health import (  # noqa: E402
+    assert_controls,
+    assert_metrics_are_trustworthy,
+    guardrail_status,
+)
 
 logging.getLogger("nufi.guardrails").warning(
     "guardrail status: %s", guardrail_status(g1_injection._policy)
 )
 assert_controls(g1_injection._policy)
+# Warn if the process configuration makes the numbers above meaningless. A
+# comment in docker-compose.yml is not a check; this is the check.
+assert_metrics_are_trustworthy()

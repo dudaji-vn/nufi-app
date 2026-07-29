@@ -26,6 +26,9 @@ analysis of what an operator does and does not see in that case.
 from __future__ import annotations
 
 import logging
+import os
+import re
+import sys
 from typing import Any
 
 from guardrails import audit
@@ -76,6 +79,51 @@ def guardrail_status(policy: Policy) -> dict[str, Any]:
             for control in policy.controls.values()
         },
     }
+
+
+def assert_metrics_are_trustworthy() -> list[str]:
+    """Warn when the process configuration silently invalidates the metrics.
+
+    Every number the rollout reads — `nufi_guardrail_enabled`,
+    `nufi_guardrail_decisions_total` — comes from the process-global Prometheus
+    registry that LiteLLM serves on `/metrics`. Two settings break that
+    quietly:
+
+    * `--num_workers` above 1: each worker keeps its own counts and a scrape
+      samples whichever one answers, so the numbers stay plausible and are
+      wrong by roughly the worker count.
+    * `PROMETHEUS_MULTIPROC_DIR` set: LiteLLM builds a fresh registry carrying
+      only a MultiProcessCollector, and the two gauges go per-pid, so "is this
+      control enforcing" stops having a single answer.
+
+    Neither changes anything a request can observe, which is exactly why this
+    has to be said out loud at boot. There is a comment above `command:` in
+    docker-compose.yml; a comment is not a check.
+
+    Warnings only — never raises. A worker-count change must not take the proxy
+    down; it must be impossible to make without being told.
+    """
+    warnings: list[str] = []
+
+    if os.environ.get("PROMETHEUS_MULTIPROC_DIR"):
+        warnings.append(
+            "PROMETHEUS_MULTIPROC_DIR is set: guardrail gauges will be reported "
+            "per-pid, so nufi_guardrail_enabled no longer has one value per "
+            "control. Guardrail metrics are not trustworthy in this configuration."
+        )
+
+    argv = " ".join(sys.argv)
+    match = re.search(r"--num_workers[= ]+(\d+)", argv)
+    if match and int(match.group(1)) > 1:
+        warnings.append(
+            f"--num_workers is {match.group(1)}: each worker keeps its own "
+            "Prometheus counts and a scrape samples one of them, so guardrail "
+            "counters under-report by roughly that factor."
+        )
+
+    for message in warnings:
+        logger.warning("guardrail metrics: %s", message)
+    return warnings
 
 
 def assert_controls(policy: Policy) -> list[str]:

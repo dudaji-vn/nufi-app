@@ -6,7 +6,12 @@ from pathlib import Path
 
 import pytest
 from guardrails import audit
-from guardrails.health import StrictControlViolation, assert_controls, guardrail_status
+from guardrails.health import (
+    StrictControlViolation,
+    assert_controls,
+    assert_metrics_are_trustworthy,
+    guardrail_status,
+)
 from guardrails.policy import Policy
 
 POLICY_FIXTURE = "litellm/guardrails/policy.yaml"
@@ -225,3 +230,43 @@ def test_assert_controls_returns_list_of_str(policy_path):
     violations = assert_controls(policy)
 
     assert all(isinstance(message, str) for message in violations)
+
+
+# --- the configuration that silently invalidates every guardrail number ----
+
+
+def test_multiproc_dir_is_reported(monkeypatch):
+    """PROMETHEUS_MULTIPROC_DIR makes the gauges per-pid.
+
+    Nothing a request can observe changes, which is exactly why it must be
+    said at boot. A comment in docker-compose.yml is not a check.
+    """
+    monkeypatch.setenv("PROMETHEUS_MULTIPROC_DIR", "/tmp/x")
+    monkeypatch.setattr("sys.argv", ["litellm", "--port", "4000"])
+
+    warnings = assert_metrics_are_trustworthy()
+
+    assert any("PROMETHEUS_MULTIPROC_DIR" in w for w in warnings)
+
+
+def test_multiple_workers_are_reported(monkeypatch):
+    monkeypatch.delenv("PROMETHEUS_MULTIPROC_DIR", raising=False)
+    monkeypatch.setattr("sys.argv", ["litellm", "--num_workers", "4"])
+
+    warnings = assert_metrics_are_trustworthy()
+
+    assert any("num_workers is 4" in w for w in warnings)
+
+
+def test_the_shipping_configuration_warns_about_nothing(monkeypatch):
+    """docker-compose.yml runs --num_workers 1 with no multiproc dir.
+
+    Asserted so the check cannot be quietly satisfied by warning always --
+    a warning that fires on the correct configuration teaches operators to
+    ignore it, which is worse than no warning at all.
+    """
+    monkeypatch.delenv("PROMETHEUS_MULTIPROC_DIR", raising=False)
+    monkeypatch.setattr("sys.argv", ["litellm", "--config", "/app/config.yaml",
+                                     "--port", "4000", "--num_workers", "1"])
+
+    assert assert_metrics_are_trustworthy() == []
