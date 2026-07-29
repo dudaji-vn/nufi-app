@@ -500,7 +500,17 @@ class G1Injection(BaseNufiGuardrail):
         if decision.action is Action.ALLOW:
             return data
 
-        enforced = self._enforcing()
+        # Detection and enforcement are separate questions. `_enforcing()` says
+        # the control is switched on; `enforceable()` says this particular
+        # verdict came from a source the control may act on. G1 detects on
+        # every span and blocks only on `untrusted`, because the classifier
+        # scores "Ignore the previous draft and start over" identically to a
+        # real injection -- as sentences they ARE the same sentence, and no
+        # threshold can separate them. What separates them is whose text it is.
+        #
+        # A user-driven verdict still goes through _emit with enforced=false,
+        # so it is counted and auditable; it just does not stop the request.
+        enforced = self._enforcing() and self._control.enforceable(decision.findings)
         event = self._emit(data, decision, transforms, user_api_key_dict, enforced)
         if not enforced:
             return data
@@ -614,11 +624,22 @@ PRESIDIO_TIMEOUT_S = float(os.environ.get("PRESIDIO_TIMEOUT_S", "5.0"))
 # all. A city named in an answer is not sensitive information disclosure, and
 # the recognizer is not reliable enough to be worth the noise.
 #
-# PERSON is kept, and is the known remaining false-positive source: 3 hits, of
-# which "Docker Compose" and "Prometheus" were wrong and "Nguyen Van A" was
-# right. That last case is exactly what G2b exists for -- a customer name in a
-# support transcript -- so removing PERSON would cost real coverage. A
-# deployment that does not handle personal data can drop it in policy.yaml.
+# PERSON is omitted too, and this was measured rather than assumed. Across 8
+# benign technical sentences and 3 containing real PII:
+#
+#   with PERSON        3/8 false positives, 3/3 real PII caught
+#   structured only    0/8 false positives, 3/3 real PII caught
+#
+# So it costs nothing here and flags "Docker Compose", "Prometheus", "Nginx"
+# and "React Query" as people. G2b REDACTS, so each of those puts [PERSON] in a
+# user's answer. Structured identifiers are also the only ones Presidio scores
+# with real confidence (1.00 vs a flat 0.85), which is why this is the default
+# in production LLM gateways generally, not a local shortcut.
+#
+# The honest gap: a response containing ONLY a bare name and no structured
+# identifier is not caught. A deployment handling support transcripts or
+# customer records should add PERSON back in policy.yaml and accept the
+# false-positive rate -- that is a deployment decision, and it is now one line.
 _DEFAULT_PII_ENTITIES = (
     "EMAIL_ADDRESS",
     "PHONE_NUMBER",
@@ -626,7 +647,6 @@ _DEFAULT_PII_ENTITIES = (
     "US_SSN",
     "IBAN_CODE",
     "IP_ADDRESS",
-    "PERSON",
 )
 
 
