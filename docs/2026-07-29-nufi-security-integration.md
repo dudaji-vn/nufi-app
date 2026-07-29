@@ -3,8 +3,10 @@
 **Status:** design, not yet implemented.
 **Companion:** `docs/2026-07-27-llm-security-gateway-design.md` (the gateway this
 integrates into).
-**Subject:** `https://github.com/dudaji/nufi-security` @ `5eb9a02`, v0.0.1,
-~34,700 lines Python, `license = "Proprietary"` (no LICENSE file).
+**Subject:** `https://github.com/dudaji/nufi-security` @ `5eb9a02`,
+distribution `nufi_egress` **0.10.0** — the repo's only git tag is `v0.0.1`,
+which is *not* the package version, so pin the commit rather than either
+number. ~34,700 lines Python, `license = "Proprietary"` (no LICENSE file).
 
 ---
 
@@ -133,7 +135,7 @@ just deleted from `apps/chat`.
 
 | Take | As | Why |
 |---|---|---|
-| `PromptInjectionDetector` | `scanners/nufi_injection.py` → `detector="nufi_injection"` | The corroborating signal G1 needs. Deterministic, so it does not fire on "ignore the previous draft". |
+| ~~`PromptInjectionDetector`~~ **DONE** (`61c91a525`) | `scanners/nufi_injection.py`, `detector="nufi_injection"` | G1 enforces on user spans by corroboration. Verified live: attack from a user returns 400 with **two** detectors in the audit trail; each benign imperative returns 200 with the classifier **alone** and `enforced=false`. |
 | `Detector` (Korean PII) | `scanners/nufi_pii.py` → `detector="nufi_pii"` | Korean coverage Presidio does not have, at lower latency and better precision. |
 | `ReversibleEgress` / `pseudonymize` | a new action in `policy.py` | See §4 — this is the largest product win. |
 | `compliance_report`, `load_catalog` | a report command, out of the request path | 48 controls of evidence we currently cannot produce at all. |
