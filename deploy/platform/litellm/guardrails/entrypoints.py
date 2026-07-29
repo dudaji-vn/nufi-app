@@ -11,6 +11,7 @@ from guardrails import audit, log_masking, streaming
 from guardrails.canonical import canonicalize
 from guardrails.policy import ControlConfig, Policy, decide
 from guardrails.scanners.injection import InjectionScanner
+from guardrails.scanners.nufi_injection import NufiInjectionScanner
 from guardrails.scanners.patterns import scan_exfil, scan_secrets, scan_system_echo
 from guardrails.scanners.pii import PiiScanner
 from guardrails.spans import extract_spans
@@ -697,12 +698,27 @@ class G1Injection(BaseNufiGuardrail):
     outage_can_enforce = True
 
     def __init__(
-        self, policy: Policy | None = None, scanner: Any | None = None, **kwargs: Any
+        self,
+        policy: Policy | None = None,
+        scanner: Any | None = None,
+        nufi_scanner: Any | None = None,
+        **kwargs: Any,
     ) -> None:
         super().__init__(policy=policy, **kwargs)
-        self._scanner = scanner or InjectionScanner(
-            base_url=SCANNER_API_BASE, timeout_s=SCANNER_TIMEOUT_S
-        )
+        # Two independent detectors, both run on every request, both reported.
+        # The ML classifier has recall and cannot separate intent from
+        # phrasing; the regex detector has precision and misses attacks the
+        # classifier catches. policy.yaml's `require_corroboration` is what
+        # spends the pair -- and it can only spend what both of them produce,
+        # so an absent second detector is not a degraded G1, it is a G1 that
+        # silently stops enforcing on user spans. Which is why a scanner that
+        # cannot run raises out of `scan` into `_on_outage` below rather than
+        # being skipped.
+        self._scanners: list[Any] = [
+            scanner
+            or InjectionScanner(base_url=SCANNER_API_BASE, timeout_s=SCANNER_TIMEOUT_S),
+            nufi_scanner or NufiInjectionScanner(),
+        ]
 
     async def async_pre_call_hook(
         self, user_api_key_dict: Any, cache: Any, data: dict[str, Any], call_type: str
@@ -750,7 +766,14 @@ class G1Injection(BaseNufiGuardrail):
 
         started = time.perf_counter()
         try:
-            findings = await self._scanner.scan(spans)
+            # Findings from EVERY detector, concatenated. Each carries its own
+            # `Finding.detector`, so `policy.decide` prices them separately
+            # (see G1's `detector_thresholds`), the audit event names which one
+            # fired, and `ControlConfig._corroborated` can count how many
+            # distinct detectors reached a verdict.
+            findings = []
+            for scanner in self._scanners:
+                findings.extend(await scanner.scan(spans))
         except Exception as exc:
             # Caught broadly, not just `ScannerUnavailable`: a scanner that
             # raises a type this hook does not recognise must still respect
@@ -778,14 +801,18 @@ class G1Injection(BaseNufiGuardrail):
 
         # Detection and enforcement are separate questions. `_enforcing()` says
         # the control is switched on; `enforceable()` says this particular
-        # verdict came from a source the control may act on. G1 detects on
-        # every span and blocks only on `untrusted`, because the classifier
-        # scores "Ignore the previous draft and start over" identically to a
-        # real injection -- as sentences they ARE the same sentence, and no
-        # threshold can separate them. What separates them is whose text it is.
+        # verdict came from a source the control may act on, with whatever
+        # corroboration that source requires. G1 detects on every span; it
+        # blocks on `untrusted` from either detector alone, and on `user` only
+        # when BOTH detectors crossed their thresholds -- because the
+        # classifier scores "Ignore the previous draft and start over"
+        # identically to a real injection, and as sentences they ARE the same
+        # sentence. What separates them is whose text it is, and whether a
+        # second, independent detector agrees.
         #
-        # A user-driven verdict still goes through _emit with enforced=false,
-        # so it is counted and auditable; it just does not stop the request.
+        # A verdict that fails either test still goes through _emit with
+        # enforced=false, so it is counted and auditable; it just does not stop
+        # the request.
         enforced = self._enforcing() and self._control.enforceable(decision.findings)
         event = self._emit(data, decision, transforms, user_api_key_dict, enforced)
         if not enforced:

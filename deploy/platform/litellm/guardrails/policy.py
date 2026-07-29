@@ -27,12 +27,21 @@ _FAIL = frozenset({"open", "closed"})
 # `user` threshold (0.90) and BLOCK every unscanned span the instant G1
 # enforces — the exact inverse of the shadow-mode-ignore default this key
 # exists to express, with zero signal that the override was never applied.
-# guardrails.scanners.injection.InjectionScanner, guardrails.scanners.pii.PiiScanner
-# and guardrails.scanners.patterns (secrets / system_echo / exfil) are the
-# scanners shipped so far. Add a new scanner's detector name here when it
-# needs a detector_thresholds override.
+# guardrails.scanners.injection.InjectionScanner,
+# guardrails.scanners.nufi_injection.NufiInjectionScanner,
+# guardrails.scanners.pii.PiiScanner and guardrails.scanners.patterns
+# (secrets / system_echo / exfil) are the scanners shipped so far. Add a new
+# scanner's detector name here when it needs a detector_thresholds override.
 _KNOWN_DETECTORS = frozenset(
-    {"injection", "coverage_gap", "presidio", "secrets", "system_echo", "exfil"}
+    {
+        "injection",
+        "nufi_injection",
+        "coverage_gap",
+        "presidio",
+        "secrets",
+        "system_echo",
+        "exfil",
+    }
 )
 
 
@@ -82,20 +91,78 @@ class ControlConfig:
     # document, a tool result, a prior assistant turn. So G1 detects on every
     # source (all of it is recorded and counted) and enforces only on
     # `untrusted`.
+    #
+    # Since `require_corroboration` below exists, `user` is back in this list
+    # for G1: the reason to exclude it was never "user text does not matter",
+    # it was "one detector cannot tell these apart". Two can.
     enforce_sources: frozenset[SpanSource]
+    # Sources where ONE detector crossing its threshold is not enough to act.
+    #
+    # `enforce_sources` answers "whose text may stop a request". This answers
+    # a different question: "how much agreement does a verdict on that text
+    # need". The two are separate because the reason a source is dangerous to
+    # enforce on is not always the source itself -- for G1 it is the DETECTOR.
+    # The classifier scores "Ignore the previous draft and start over" 1.0000,
+    # identically to a real attack, so any threshold that stops the attack also
+    # stops ordinary conversational English.
+    #
+    # `nufi-security`'s regex detector has the opposite profile: measured on
+    # the same sentences it catches the attack and fires on none of six benign
+    # imperatives, while missing an attack the classifier catches. Recall from
+    # one, precision from the other. A sentence BOTH of them flag is one no
+    # single-detector threshold could have identified.
+    #
+    # So for a source named here, a verdict may enforce only when findings
+    # from two DISTINCT detectors crossed their thresholds on that source.
+    # Untrusted spans are not named: a jailbreak string inside a retrieved
+    # document is near-certain attack whichever detector saw it, and requiring
+    # a second opinion there would just narrow the control to the intersection
+    # of both detectors' recall.
+    require_corroboration: frozenset[SpanSource]
     options: dict[str, Any]
 
     def enforceable(self, findings: tuple[Finding, ...] | list[Finding]) -> bool:
         """May a verdict built from these findings actually block?
 
-        True when the control has no source restriction, or when at least one
-        finding that crossed its threshold came from a source it is allowed to
-        act on. A verdict driven purely by user-authored text is still
-        recorded -- it just does not stop the request.
+        True when at least one finding that crossed its threshold came from a
+        source this control may act on AND carries whatever corroboration that
+        source requires. A verdict that fails either test is still recorded --
+        it just does not stop the request.
+
+        `findings` is the tuple `decide()` already narrowed to the findings
+        that CROSSED their thresholds, so "two distinct detectors" here means
+        two detectors that each independently reached a verdict, not two that
+        merely looked.
         """
-        if not self.enforce_sources:
+        for finding in findings:
+            if self.enforce_sources and finding.source not in self.enforce_sources:
+                continue
+            if finding.source in self.require_corroboration and not self._corroborated(
+                findings, finding.source
+            ):
+                continue
             return True
-        return any(finding.source in self.enforce_sources for finding in findings)
+        return False
+
+    def _corroborated(
+        self, findings: tuple[Finding, ...] | list[Finding], source: SpanSource
+    ) -> bool:
+        """Did two distinct detectors cross their thresholds on this source?
+
+        Counted per (control, span source) across the request rather than per
+        span, because `Finding` carries no span identity -- only a source and
+        offsets, and offsets from two different detectors do not address the
+        same coordinate space (see `nufi_injection.scan`). The honest
+        consequence: a classifier hit on one user message and a regex hit on
+        another user message corroborate each other. That is the intended
+        reading of "a request whose user-authored content two independent
+        detectors both flagged", and it is stated here rather than left to be
+        discovered.
+        """
+        detectors = {
+            finding.detector for finding in findings if finding.source == source
+        }
+        return len(detectors) >= 2
 
     def exempts(self, model: str | None) -> bool:
         return bool(model) and model in self.exempt_models
@@ -238,6 +305,36 @@ def _parse_control(control_id: str, body: dict[str, Any]) -> ControlConfig:
         )
     enforce_sources = frozenset(valid_sources[str(name)] for name in sources_raw)
 
+    corroborate_raw = body.get("require_corroboration") or []
+    if not isinstance(corroborate_raw, list):
+        raise ValueError(
+            f"{control_id}: require_corroboration must be a list of span sources, "
+            f"got {type(corroborate_raw).__name__}"
+        )
+    unknown_corroborate = sorted(set(map(str, corroborate_raw)) - set(valid_sources))
+    if unknown_corroborate:
+        raise ValueError(
+            f"{control_id}: unknown require_corroboration {unknown_corroborate}, "
+            f"expected one of {sorted(valid_sources)}"
+        )
+    require_corroboration = frozenset(
+        valid_sources[str(name)] for name in corroborate_raw
+    )
+    # A source that cannot enforce at all cannot be made safer by demanding a
+    # second opinion first. Naming one here is dead config, and dead SECURITY
+    # config is worse than none: it reads, to anyone auditing the file, as a
+    # guard that is in force. Refuse it rather than let it sit inert -- the
+    # same reason a typo'd `mode:` stops the proxy instead of neutering a
+    # control. (An empty `enforce_sources` means every source, so it constrains
+    # nothing and anything may be named alongside it.)
+    if enforce_sources and not require_corroboration <= enforce_sources:
+        inert = sorted(s.value for s in require_corroboration - enforce_sources)
+        raise ValueError(
+            f"{control_id}: require_corroboration names {inert}, which "
+            f"enforce_sources does not include, so the requirement can never "
+            f"apply to anything. Add {inert} to enforce_sources, or drop it here."
+        )
+
     return ControlConfig(
         id=control_id,
         risk=str(body["risk"]),
@@ -250,6 +347,7 @@ def _parse_control(control_id: str, body: dict[str, Any]) -> ControlConfig:
         detector_thresholds=detector_thresholds,
         exempt_models=exempt_models,
         enforce_sources=enforce_sources,
+        require_corroboration=require_corroboration,
         options=dict(body.get("options") or {}),
     )
 

@@ -19,3 +19,19 @@
 # 0.20.0 rather than the newest release: that is what the proxy image ships, so
 # the tests exercise the version production runs.
 prometheus-client==0.20.0
+
+# G1's second, independent detector. Pinned to the same COMMIT the Dockerfile's
+# vendoring stage installs, so the test venv and the image run identical
+# patterns -- tests/test_nufi_injection_scanner.py asserts which sentences it
+# fires on, and those assertions are only meaningful if the version under test
+# is the version that ships.
+#
+# Unlike the image, this line lets pip resolve nufi-security's two declared
+# dependencies (PyYAML>=6.0, cryptography>=41.0). That is correct HERE and
+# would not be in the Dockerfile: a test venv is built from scratch by one
+# resolver run, while the image has an existing, litellm-chosen dependency set
+# that no resolver may be pointed at. See litellm/Dockerfile for that argument
+# in full.
+#
+# The repository is public; no credential is needed to install it.
+nufi-egress @ git+https://github.com/dudaji/nufi-security@5eb9a027cbdd9c5d3142d4609782110a737c67e0

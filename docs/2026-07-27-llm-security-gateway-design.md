@@ -205,12 +205,22 @@ multilingual — but its repository is gated under the Llama 4 Community
 License and needs an authenticated token, so it is opt-in rather than the
 default.
 
-**G1 ships as a single-classifier control.** The hard-signature regex list this
-section described as "retained as a second, independent detector" was never
-built: `scanners/patterns.py` ships secrets, system-echo and exfil regexes, none
-of which G1 consults — `G1Injection.async_pre_call_hook` calls the classifier
-and nothing else. The evasion literature's point stands, and it is the reason
-this is recorded as §13 follow-up work rather than dropped.
+**G1 now runs two independent detectors.** The hard-signature regex list this
+section described as "retained as a second, independent detector" was absent
+until 2026-07-29 — `scanners/patterns.py` ships secrets, system-echo and exfil
+regexes, none of which G1 consults. It is now supplied by
+`scanners/nufi_injection.py`, an adapter over `dudaji/nufi-security`'s
+`PromptInjectionDetector` (18 Korean/English patterns, local, no network); see
+`docs/2026-07-29-nufi-security-integration.md`. Both detectors run on every
+request and both are recorded.
+
+What that bought is enforcement on user-authored spans, which a single
+classifier could never support: the classifier scores "Ignore the previous
+draft and start over" 1.0000, identical to a real attack. `policy.yaml`'s
+`require_corroboration: [user]` lets a user span enforce only when two distinct
+detectors crossed their thresholds. Untrusted spans still enforce on either
+detector alone — the regex detector misses attacks the classifier catches, so
+requiring agreement there would narrow the control to their intersection.
 
 The sidecar exists rather than reusing `llm-guard-api` because that service's
 `/scan/prompt` accepts a single prompt string and cannot express
@@ -596,6 +606,12 @@ Recorded here so the control map in section 4 has no unowned rows.
 
 ### 13.1 Designed but not built
 
+**Built since:** G1's second, independent detector, on 2026-07-29 —
+`scanners/nufi_injection.py` over `dudaji/nufi-security`. Its row has been
+removed from the table below rather than left with a note, because a
+"designed but not built" list that carries built items stops being readable
+as a list of gaps.
+
 Each of these is described elsewhere in this document as if it exists. It does
 not. They are listed rather than deleted because each is genuinely wanted; the
 correction in the owning section says plainly that it is absent today.
@@ -603,7 +619,6 @@ correction in the owning section says plainly that it is absent today.
 | Item | Section | Why deferred |
 |---|---|---|
 | **Streamed responses are unprotected** — G2b, G3, G4 cannot rewrite or reliably inspect a streamed completion, and chat streams by default | §6 | Needs a real `async_post_call_streaming_iterator_hook` per control **and** a way around LiteLLM's single-slot `guardrail_to_apply` dispatch (only the last-registered control runs on a stream at all). That is an upstream fix or a fork, not a change inside `entrypoints.py`. The lie has been removed — `enforced=false` is now recorded for streamed rewrites — but the gap is the largest one on this list |
-| **G1's second, independent detector** — a hard-signature regex list beside the classifier | §6.1 | Real signature curation, plus its own false-positive budget; landing it unmeasured beside a classifier already in shadow mode would confound the shadow numbers the rollout depends on |
 | **Recency-weighted trajectory scoring** for multi-turn escalation | §6.1 | Needs the shadow-mode multi-turn data to pick a decay before the weighting can be anything but a guess |
 | **G2b circuit breaker** on Presidio | §9 | Cross-request state in a hook that is currently pure per-request; correctness depends on the `--num_workers 1` constraint below |
 | **Per-language thresholds** in `policy.yaml` | §14 | A schema change to `_parse_control` plus a language signal on `Span` that no scanner emits today |
@@ -627,7 +642,7 @@ correction in the owning section says plainly that it is absent today.
 | Classifier false positives on Vietnamese degrade chat | Shadow mode with a benign corpus before enforcement. **Not** per-language thresholds: `policy.yaml` has no language dimension, and `_parse_control` rejects any key under `thresholds` that is not a `SpanSource`, so adding one is a schema change (§13), not a config edit |
 | Scanner sidecar becomes a single point of failure | G1 fails closed by design; sidecar is health-checked and horizontally scalable |
 | `api.codechi.me` config drifts from the repo | **Unmitigated today.** `/health/guardrails` does not exist (§9), and the two targets can also differ by env vars the digest does not cover (§10). The `policy.yaml` digest is carried on audit events, so a parity check must read it from Langfuse or the startup status line — nothing does yet (§13) |
-| Classifier evasion advances faster than the corpus | Corpus is versioned and extended whenever a bypass is found. The independent second detector this row also relied on does not exist (§6.1) |
+| Classifier evasion advances faster than the corpus | Corpus is versioned and extended whenever a bypass is found. The independent second detector this row relied on now exists — `scanners/nufi_injection.py`, deterministic patterns that do not share the classifier's failure modes (§6.1) |
 | Removing the app layer too early reopens the gap | Sequencing in section 12 keeps one layer enforcing at all times |
 
 ## 15. References
