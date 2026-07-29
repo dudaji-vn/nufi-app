@@ -257,7 +257,11 @@ LLM security controls run inside the LiteLLM proxy. Design:
   behaviour and enforcement mode lives there, not in code.
 - **Enforcement** — a control blocks only when its `policy.yaml` `mode` is
   something other than `logging_only` **and** it is registered in `config.yaml`.
-  All controls ship in `logging_only`.
+  **G1 (prompt injection) enforces as of 2026-07-29**; G2a, G2b, G3 and G4 are
+  still `logging_only`. Verify with
+  `curl localhost:4000/metrics/ | grep nufi_guardrail_enabled` — the running
+  state must match `policy.yaml`, and `staging-readiness.sh` check 4 asserts
+  exactly that agreement rather than assuming everything is in shadow.
 - **Status** — `curl localhost:4000/metrics/ | grep nufi_guardrail`. Note the
   trailing slash: LiteLLM mounts the metrics app at `/metrics`, and the
   un-slashed form answers `307` with an empty body, so a grep against it matches
@@ -390,6 +394,16 @@ spans are repetitive-but-benign before enforcing, and raise the threshold or
 add a repetition-aware exemption if the rate is material. The attack corpus
 passing is not evidence that enforcement is safe; it only measures the other
 direction.
+
+### Rollout status
+
+| Control | Mode | Why |
+|---|---|---|
+| G1 injection | **enforcing** | Blocks verified on live traffic; the LibreChat title false positive is fixed via `exempt_models`; three benign probes including one dense with `Q3` / `Southeast Asia` / `Docker Compose` all returned 200. Enabled when the app-layer guardrails were removed, so that removal did not leave the system with nothing enforcing. |
+| G2a PII input | shadow | Action is `log` only; it never masks, so enforcing changes nothing. |
+| G2b PII output | shadow | Still redacts ~1 in 4 benign responses via `PERSON` (product names like "Docker Compose"). Needs shadow data before enforcing — see risk 1 below. |
+| G3 prompt leak | shadow | Detects verbatim echo only; no false positives seen, but it has had little live exposure. |
+| G4 output handling | shadow | Cannot rewrite a **streamed** response, and chat streams by default — enforcing it would protect the minority path while reporting success. See design §13.1. |
 
 ### Turning a control on
 

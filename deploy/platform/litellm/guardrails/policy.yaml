@@ -12,7 +12,7 @@ controls:
     enabled: true
     mandatory: true
     # Start in shadow. Flip to pre_call to enforce.
-    mode: logging_only
+    mode: pre_call
     fail: closed
     # LibreChat makes a second, asynchronous request per message to generate
     # the conversation title. It wraps the whole conversation in instructions:
