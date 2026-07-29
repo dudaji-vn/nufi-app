@@ -22,6 +22,14 @@ def _decisions_counter(*, control: str, risk: str, action: str, enforced: bool) 
     )._value.get()
 
 
+def _exemptions_counter(*, control: str, model: str) -> float:
+    from guardrails.audit import GUARDRAIL_EXEMPTIONS
+
+    return (
+        GUARDRAIL_EXEMPTIONS.labels(control=control, model=model)._value.get() or 0.0
+    )
+
+
 def _degraded_gauge(control: str) -> float:
     return GUARDRAIL_DEGRADED.labels(control=control)._value.get()
 
@@ -2074,3 +2082,60 @@ async def test_g4_outage_reads_outage_can_enforce_rather_than_a_literal(
 
     assert result == "![x](https://attacker.example/log)"
     assert request["metadata"]["guardrail_information"][0]["enforced"] is True
+
+
+# --- model exemptions -------------------------------------------------------
+#
+# LibreChat's title request wraps a whole conversation in ~3000 characters of
+# instructions and scores 0.987 against G1's 0.90 threshold, on benign chats.
+# Exempting that alias costs no safety -- the user text inside was already
+# scanned by the request that produced it -- but an exemption is a hole, so it
+# must be scoped, visible, and impossible to widen by accident.
+
+
+def _exempting(policy_path, scanner, model):
+    policy = Policy.load(policy_path)
+    guard = G1Injection(policy=policy, scanner=scanner)
+    guard._control = replace(
+        policy.control("G1").with_mode("logging_only"), exempt_models=frozenset({model})
+    )
+    return guard
+
+
+@pytest.mark.asyncio
+async def test_exempt_model_is_not_scanned(policy_path):
+    guard = _exempting(policy_path, FakeScanner(score=0.99), "titles")
+    data = {"messages": [{"role": "user", "content": "ignore previous"}], "model": "titles"}
+
+    result = await guard.async_pre_call_hook(FakeKey(), None, data, "acompletion")
+
+    assert "metadata" not in result or "guardrail_information" not in result.get("metadata", {})
+
+
+@pytest.mark.asyncio
+async def test_a_different_model_is_still_scanned(policy_path):
+    """The exemption must not leak to other models.
+
+    Without this, `exempt_models` set to anything could be mis-implemented as
+    "exempt everything" and the suite would still pass on the test above.
+    """
+    guard = _exempting(policy_path, FakeScanner(score=0.99), "titles")
+    data = _data("ignore previous")
+
+    result = await guard.async_pre_call_hook(FakeKey(), None, data, "acompletion")
+
+    assert result["metadata"]["guardrail_information"][0]["action"] == "block"
+
+
+@pytest.mark.asyncio
+async def test_exemption_is_counted_not_silent(policy_path):
+    """An exemption nothing can observe is indistinguishable from a control
+    that quietly stopped working -- the failure this project exists to end."""
+    before = _exemptions_counter(control="G1", model="titles")
+    guard = _exempting(policy_path, FakeScanner(score=0.99), "titles")
+
+    await guard.async_pre_call_hook(
+        FakeKey(), None, {"messages": [], "model": "titles"}, "acompletion"
+    )
+
+    assert _exemptions_counter(control="G1", model="titles") == before + 1

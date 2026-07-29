@@ -108,17 +108,16 @@ const SCENARIOS = [
     // The other scenarios prove the controls can fire. This proves they can
     // stay quiet. A guardrail that flags everything is not a guardrail.
     //
-    // THIS SCENARIO CURRENTLY FAILS, AND THE FAILURE IS REAL. The user's
-    // question is 57 characters and does not trip G1 when sent directly to
-    // the proxy. But LibreChat fires a second, asynchronous request per
-    // message to generate the conversation title, and that prompt — the whole
-    // conversation wrapped in instructions — measured 2898 and 3007 characters
-    // and scored 0.987 and 0.988 against G1's 0.90 user threshold.
     //
-    // So the moment G1 enforces, title generation breaks on every
-    // conversation, including entirely benign ones. Do not "fix" this by
-    // relaxing the expectation: the expectation is correct and the system is
-    // wrong. See the platform README's false-positive section.
+    // This failed until 2026-07-29 and the failure was real: LibreChat's
+    // asynchronous title request wraps the conversation in ~3000 characters of
+    // instructions and scored 0.987 against G1's 0.90 threshold, on a benign
+    // chat. Fixed by pointing librechat.yaml's titleModel at an alias listed in
+    // G1's exempt_models -- the user text inside that prompt was already
+    // scanned by the request that produced it, so no coverage is lost.
+    //
+    // If this starts failing again, check titleModel before touching the
+    // threshold: the exemption is scoped to one model name by design.
     expect: 'quiet',
   },
 ];

@@ -52,7 +52,24 @@ class ControlConfig:
     # than being compared against a per-source score threshold it does not
     # share. Absent for a given detector, `decide` falls back to `thresholds`.
     detector_thresholds: dict[str, float]
+    # Model names this control does not inspect. Exists for requests an
+    # application makes on its own behalf, where the user content inside them
+    # was ALREADY scanned by the request that produced it -- LibreChat's
+    # conversation-title call is the motivating case: it wraps the whole
+    # conversation in ~3000 characters of instructions and scores 0.987
+    # against G1, on entirely benign chats.
+    #
+    # Re-scanning it buys no safety (the same user text was scanned when it was
+    # sent) and would break titles on every conversation once G1 enforces. But
+    # an exemption is a hole, so it is declared in policy.yaml where it is
+    # reviewable, scoped to an explicit model name rather than a pattern, and
+    # counted on `nufi_guardrail_exemptions_total` so an operator can see how
+    # often it is being used and notice if traffic starts flowing through it.
+    exempt_models: frozenset[str]
     options: dict[str, Any]
+
+    def exempts(self, model: str | None) -> bool:
+        return bool(model) and model in self.exempt_models
 
     def with_mode(self, mode: str) -> ControlConfig:
         return replace(self, mode=mode)
@@ -169,6 +186,14 @@ def _parse_control(control_id: str, body: dict[str, Any]) -> ControlConfig:
         )
     detector_thresholds = {str(name): float(value) for name, value in detector_raw.items()}
 
+    exempt_raw = body.get("exempt_models") or []
+    if not isinstance(exempt_raw, list):
+        raise ValueError(
+            f"{control_id}: exempt_models must be a list of model names, "
+            f"got {type(exempt_raw).__name__}"
+        )
+    exempt_models = frozenset(str(name) for name in exempt_raw)
+
     return ControlConfig(
         id=control_id,
         risk=str(body["risk"]),
@@ -179,6 +204,7 @@ def _parse_control(control_id: str, body: dict[str, Any]) -> ControlConfig:
         action=action,
         thresholds=thresholds,
         detector_thresholds=detector_thresholds,
+        exempt_models=exempt_models,
         options=dict(body.get("options") or {}),
     )
 

@@ -97,6 +97,12 @@ GUARDRAIL_ENABLED = _register(
     "1 when a control is enabled and enforcing, 0 otherwise.",
     ("control", "mode"),
 )
+GUARDRAIL_EXEMPTIONS = _register(
+    Counter,
+    "nufi_guardrail_exemptions_total",
+    "Requests a control skipped because the model is exempt in policy.yaml.",
+    ("control", "model"),
+)
 GUARDRAIL_DEGRADED = _register(
     Gauge,
     "nufi_guardrail_degraded",

@@ -14,6 +14,21 @@ controls:
     # Start in shadow. Flip to pre_call to enforce.
     mode: logging_only
     fail: closed
+    # LibreChat makes a second, asynchronous request per message to generate
+    # the conversation title. It wraps the whole conversation in instructions:
+    # measured at 2898 and 3007 characters, scoring 0.987 and 0.988 against the
+    # 0.90 user threshold below -- on entirely benign chats. Enforcing G1
+    # without this would break titles on every conversation.
+    #
+    # Exempting it costs no safety: the user's text inside that prompt was
+    # already scanned by the request that produced it. What is skipped is the
+    # app-authored wrapper, not user input.
+    #
+    # Scoped to one explicit model name, not a pattern, and counted on
+    # nufi_guardrail_exemptions_total so the hole is visible in use. Point
+    # librechat.yaml's titleModel at this alias; anything else keeps full G1.
+    exempt_models:
+      - gemini-2.5-flash-title
     thresholds:
       # A jailbreak string inside a retrieved document is near-certain attack;
       # the same string typed by a user may be a question about the topic.

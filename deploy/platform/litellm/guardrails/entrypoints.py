@@ -261,6 +261,31 @@ class BaseNufiGuardrail(CustomGuardrail):
         """
         return bool((request_data or {}).get("stream"))
 
+    def _exempt(self, data: dict[str, Any] | None) -> bool:
+        """Is this request's model exempt from THIS control in policy.yaml?
+
+        Counted, never silent. An exemption is a hole in a security control, so
+        `nufi_guardrail_exemptions_total` makes it visible how often the hole is
+        used -- if traffic starts flowing through an exempt alias, that shows up
+        as a rising counter rather than as nothing at all.
+
+        Lives on the base so every control honours the same field. An
+        `exempt_models` list that only some controls read would be a trap: a
+        reviewer sees it in policy.yaml and assumes it applies everywhere.
+        """
+        # Defensive: a control that already tolerates a non-dict request_data
+        # (a client can send anything) must not start raising here. Not-a-dict
+        # means not-exempt, which is the safe direction -- the control runs.
+        if not isinstance(data, dict):
+            return False
+        model = data.get("model")
+        if not self._control.exempts(model):
+            return False
+        audit.GUARDRAIL_EXEMPTIONS.labels(
+            control=self.control_id, model=str(model)
+        ).inc()
+        return True
+
     def _emit(
         self,
         data: dict[str, Any],
@@ -382,6 +407,9 @@ class G1Injection(BaseNufiGuardrail):
         grounded = self.resolve_grounded(data, user_api_key_dict)
 
         if call_type not in _CHAT_CALL_TYPES:
+            return data
+
+        if self._exempt(data):
             return data
 
         if not self._control.enabled:
@@ -579,6 +607,9 @@ class G2aPiiInput(BaseNufiGuardrail):
         if call_type not in _CHAT_CALL_TYPES or not self._control.enabled:
             return data
 
+        if self._exempt(data):
+            return data
+
         messages = data.get("messages")
         if messages is not None and (
             not isinstance(messages, list)
@@ -757,6 +788,9 @@ class G2bPiiOutput(BaseNufiGuardrail):
         input_type: str,
         logging_obj: Any = None,
     ) -> dict[str, Any]:
+        if self._exempt(request_data):
+            return inputs
+
         """Redact PII in the model's response.
 
         This is LiteLLM's real base-class hook (`CustomGuardrail.apply_guardrail`,
@@ -987,6 +1021,9 @@ class G3SystemPromptLeak(BaseNufiGuardrail):
         input_type: str,
         logging_obj: Any = None,
     ) -> dict[str, Any]:
+        if self._exempt(request_data):
+            return inputs
+
         """Block a response that echoes the system prompt.
 
         Same real `apply_guardrail` contract as `G2bPiiOutput` — see that
@@ -1195,6 +1232,9 @@ class G4OutputHandling(BaseNufiGuardrail):
         input_type: str,
         logging_obj: Any = None,
     ) -> dict[str, Any]:
+        if self._exempt(request_data):
+            return inputs
+
         """Strip exfiltration vectors from a response, per text.
 
         Same real `apply_guardrail` contract as `G2bPiiOutput` and

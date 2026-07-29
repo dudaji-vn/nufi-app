@@ -124,22 +124,34 @@ reason. Chat streams by default, so this is a real gap, not a test artifact.
 
 > What is the capital of Vietnam, and what is it known for?
 
-- **decision** G1 should record **nothing**
-- **status today: THIS FAILS, and the failure is real**
+- **decision** G1 records **nothing**; `scans` still moves, proving it ran
+- **status** passes
 
-The question is 57 characters and does not trip G1 when sent straight to the
-proxy — verified. But LibreChat fires a second, asynchronous request per
-message to generate the conversation title, and that prompt wraps the whole
-conversation in instructions. Measured on this stack: **2898 and 3007
-characters, scoring 0.987 and 0.988** against G1's 0.90 threshold.
+This scenario failed until 2026-07-29, and the failure was real. The question
+is 57 characters and never tripped G1 when sent straight to the proxy — but
+LibreChat fires a second, asynchronous request per message to generate the
+conversation title, wrapping the whole conversation in instructions. Measured:
+**2898 and 3007 characters, scoring 0.987 and 0.988** against G1's 0.90
+threshold. G1 fired on a completely benign chat, because of a request the
+product makes on its own behalf.
 
-So G1 fires on a completely benign chat, because of a request the product makes
-on its own behalf. Once G1 enforces, title generation breaks on every
-conversation. This is invisible to every direct-API check; only driving the
-browser found it.
+**The fix, and why it is not a cover-up.** `librechat.yaml`'s `titleModel`
+points at a LiteLLM alias, `gemini-2.5-flash-title`, which `policy.yaml` lists
+in G1's `exempt_models`. The user's text inside that title prompt was **already
+scanned** by the request that produced it; what is skipped is the app-authored
+wrapper, not user input. So no coverage is lost.
 
-Do not relax this scenario to make the suite green. The expectation is right
-and the system is wrong.
+An exemption is still a hole, so it is scoped to one explicit model name rather
+than a pattern, and every use increments
+`nufi_guardrail_exemptions_total{control,model}`. Check both numbers together —
+they are what distinguishes "G1 is exempt here" from "G1 stopped working":
+
+```
+nufi_guardrail_exemptions_total{control="G1",model="gemini-2.5-flash-title"} 7
+nufi_guardrail_latency_seconds_count{control="G1"} 7
+```
+
+Seven titles exempted, seven real requests still scanned.
 
 ### 8b — Why this scenario needs isolation
 

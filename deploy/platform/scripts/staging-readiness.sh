@@ -291,10 +291,16 @@ PY
   else
     bad "benign request returned ${benign} while G1 enforces -- false positive on trivial input"
   fi
-  if git diff --quiet litellm/guardrails/policy.yaml 2>/dev/null; then
+  # Compare against the backup this function took, NOT `git diff`. git diff
+  # answers "does the file differ from HEAD", which is a different question:
+  # it reports a failure whenever policy.yaml has legitimate uncommitted work,
+  # and it would report success if the rehearsal restored the file to a
+  # committed-but-wrong state. The backup is the only correct oracle for "did
+  # this function put back exactly what it found".
+  if cmp -s /tmp/policy.readiness.bak litellm/guardrails/policy.yaml; then
     ok "policy.yaml restored byte-for-byte"
   else
-    bad "policy.yaml NOT restored -- restore it before committing"
+    bad "policy.yaml NOT restored -- /tmp/policy.readiness.bak holds the original"
   fi
   restored=$(metric 'nufi_guardrail_enabled{control="G1"')
   if [ "${restored}" = "0.0" ]; then

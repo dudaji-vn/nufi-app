@@ -361,25 +361,26 @@ G2a is unaffected in practice: its action is `log`, never `mask`. Input masking
 was already tried and reverted (W5.1, May 2026) because the model began
 answering the placeholder instead of the question.
 
-**2. LibreChat's own title-generation request trips G1 on benign chats.**
-Measured through the real UI (`npm run test:guardrails:ui`, scenario 8), not
-through the proxy API. The user's question — *"What is the capital of Vietnam,
-and what is it known for?"*, 57 characters — does **not** trip G1 when sent
-directly. But LibreChat fires a second, asynchronous request per message to
-generate the conversation title, and that prompt wraps the whole conversation
-in instructions: measured at **2898 and 3007 characters, scoring 0.987 and
-0.988** against G1's user threshold of 0.90.
+**2. ~~LibreChat's title-generation request trips G1 on benign chats.~~
+RESOLVED — but read this before changing `titleModel`.**
+LibreChat fires a second request per message to generate a conversation title,
+wrapping the whole conversation in instructions: measured at **2898 and 3007
+characters, scoring 0.987 and 0.988** against G1's 0.90 threshold, on entirely
+benign chats. Enforcing G1 would have broken titles on every conversation.
 
-The moment G1 enforces, title generation breaks on every conversation,
-including entirely benign ones. Whether that surfaces to the user as a missing
-title or an error depends on how LibreChat handles the 400 — untested.
+`titleModel` now points at `gemini-2.5-flash-title`, a LiteLLM alias listed in
+G1's `exempt_models` in `policy.yaml`. This loses no coverage: the user's text
+inside the title prompt was already scanned by the request that produced it.
 
-This is the same underlying behaviour as risk 3 below (the classifier reacts to
-length and instruction density, not only to payloads), but it matters more
-because it is triggered by the product itself on ordinary traffic, not by
-unusual user input. It is invisible to any direct-API test; only driving the
-browser found it. Decide what to do about it — exempt the title route, raise
-the threshold, or scope G1 to user-authored spans — before enforcing G1.
+Two things follow. **Point `titleModel` back at a guarded model and the problem
+returns** — the exemption is scoped to that one alias by name. And **verify the
+exemption is being used, not that G1 died**, by reading both counters:
+`nufi_guardrail_exemptions_total` should rise alongside
+`nufi_guardrail_latency_seconds_count{control="G1"}`, not instead of it.
+
+Found only by driving the browser (`npm run test:guardrails:ui`); it is
+invisible to every direct-API test, because the product, not the user, sends
+the offending request.
 
 **3. G1 reacts to repetition, independently of any payload.** A long
 repetitive-but-benign span measured **0.9988** against G1's user threshold of
