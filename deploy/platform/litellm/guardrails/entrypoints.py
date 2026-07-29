@@ -556,7 +556,32 @@ PRESIDIO_API_BASE = os.environ.get(
     "PRESIDIO_ANALYZER_API_BASE", "http://presidio-analyzer:3000"
 )
 PRESIDIO_TIMEOUT_S = float(os.environ.get("PRESIDIO_TIMEOUT_S", "5.0"))
-PII_ENTITIES = [
+# Fallback only. The real list is `options.entities` in policy.yaml, because
+# which entity types count as "sensitive disclosure" is a policy question, not
+# a code question -- and this list living in code was a straight violation of
+# this project's own rule that policy belongs in policy.yaml.
+#
+# LOCATION is deliberately ABSENT. Presidio's entity recognizers fall into two
+# groups with very different precision, measured against realistic benign text
+# on 2026-07-29:
+#
+#   deterministic (EMAIL_ADDRESS, CREDIT_CARD, PHONE_NUMBER, US_SSN,
+#   IBAN_CODE, IP_ADDRESS) -- score 1.00, and every hit was correct.
+#
+#   NER (PERSON, LOCATION) -- score a FLAT 0.85 whether right or wrong, so no
+#   threshold can separate a true hit from a false one.
+#
+# LOCATION produced 4 hits across 8 benign texts and ALL FOUR were wrong:
+# "Vietnam", "Hanoi", "Southeast Asia" -- and "Q3", which is not a place at
+# all. A city named in an answer is not sensitive information disclosure, and
+# the recognizer is not reliable enough to be worth the noise.
+#
+# PERSON is kept, and is the known remaining false-positive source: 3 hits, of
+# which "Docker Compose" and "Prometheus" were wrong and "Nguyen Van A" was
+# right. That last case is exactly what G2b exists for -- a customer name in a
+# support transcript -- so removing PERSON would cost real coverage. A
+# deployment that does not handle personal data can drop it in policy.yaml.
+_DEFAULT_PII_ENTITIES = (
     "EMAIL_ADDRESS",
     "PHONE_NUMBER",
     "CREDIT_CARD",
@@ -564,15 +589,33 @@ PII_ENTITIES = [
     "IBAN_CODE",
     "IP_ADDRESS",
     "PERSON",
-    "LOCATION",
-]
+)
 
 
-def _default_pii_scanner() -> PiiScanner:
+def _pii_entities(control: ControlConfig) -> list[str]:
+    """Entity types this control asks Presidio for.
+
+    Presidio treats the list as a FILTER: an entity absent from it is never
+    returned, at any score. So this is the real control over what G2a/G2b can
+    see -- more so than the thresholds, which cannot separate a true NER hit
+    from a false one when both score 0.85.
+    """
+    configured = control.options.get("entities")
+    if configured is None:
+        return list(_DEFAULT_PII_ENTITIES)
+    if not isinstance(configured, list) or not configured:
+        raise ValueError(
+            f"{control.id}: options.entities must be a non-empty list of "
+            f"Presidio entity types, got {configured!r}"
+        )
+    return [str(entity) for entity in configured]
+
+
+def _default_pii_scanner(control: ControlConfig) -> PiiScanner:
     return PiiScanner(
         base_url=PRESIDIO_API_BASE,
         timeout_s=PRESIDIO_TIMEOUT_S,
-        entities=PII_ENTITIES,
+        entities=_pii_entities(control),
         language=os.environ.get("PRESIDIO_LANGUAGE", "en"),
     )
 
@@ -599,7 +642,7 @@ class G2aPiiInput(BaseNufiGuardrail):
         self, policy: Policy | None = None, scanner: Any | None = None, **kwargs: Any
     ) -> None:
         super().__init__(policy=policy, **kwargs)
-        self._scanner = scanner or _default_pii_scanner()
+        self._scanner = scanner or _default_pii_scanner(self._control)
 
     async def async_pre_call_hook(
         self, user_api_key_dict: Any, cache: Any, data: dict[str, Any], call_type: str
@@ -733,7 +776,7 @@ class G2bPiiOutput(BaseNufiGuardrail):
         self, policy: Policy | None = None, scanner: Any | None = None, **kwargs: Any
     ) -> None:
         super().__init__(policy=policy, **kwargs)
-        self._scanner = scanner or _default_pii_scanner()
+        self._scanner = scanner or _default_pii_scanner(self._control)
 
     @staticmethod
     def redact(text: str, findings: list[Any]) -> str:

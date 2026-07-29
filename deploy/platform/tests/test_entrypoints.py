@@ -2139,3 +2139,51 @@ async def test_exemption_is_counted_not_silent(policy_path):
     )
 
     assert _exemptions_counter(control="G1", model="titles") == before + 1
+
+
+# --- PII entity list comes from policy, not code ---------------------------
+
+
+def test_entities_default_excludes_location(policy_path):
+    """LOCATION is omitted deliberately, and the default must prove it.
+
+    Measured on benign text: LOCATION produced 4 hits and all four were wrong,
+    including "Q3". Presidio treats the entity list as a FILTER, so this is the
+    real control over what G2b can redact -- more so than the thresholds, which
+    cannot separate a true NER hit from a false one when both score 0.85.
+    """
+    # Two assertions, because they protect different things and mutation
+    # proved the first one alone does not. Reading through policy_path only
+    # tests what policy.yaml says; adding LOCATION back to the CODE default
+    # left the suite green. The fallback needs its own empty-options control.
+    from_policy = entrypoints._pii_entities(Policy.load(policy_path).control("G2b"))
+    assert "LOCATION" not in from_policy
+    assert "EMAIL_ADDRESS" in from_policy
+    assert "CREDIT_CARD" in from_policy
+
+    from_code_default = entrypoints._pii_entities(
+        replace(Policy.load(policy_path).control("G2b"), options={})
+    )
+    assert "LOCATION" not in from_code_default
+    assert "PERSON" in from_code_default
+
+
+def test_policy_entities_override_the_code_default(policy_path):
+    control = replace(
+        Policy.load(policy_path).control("G2b"), options={"entities": ["CREDIT_CARD"]}
+    )
+
+    assert entrypoints._pii_entities(control) == ["CREDIT_CARD"]
+
+
+def test_empty_entity_list_is_refused(policy_path):
+    """An empty list would ask Presidio for nothing and return no findings.
+
+    That reads as "no PII present" -- a control reporting success while
+    inspecting nothing, which is the failure shape this pipeline exists to
+    prevent. Refused loudly at load rather than silently disabling the control.
+    """
+    control = replace(Policy.load(policy_path).control("G2b"), options={"entities": []})
+
+    with pytest.raises(ValueError, match="non-empty list"):
+        entrypoints._pii_entities(control)

@@ -56,6 +56,32 @@ controls:
     # Input PII is never masked. Masking corrupts the user's task — the model
     # starts answering the placeholder instead of the question (W5.1, May 2026).
     action: log
+    options:
+      # Which entity types count as sensitive disclosure is a POLICY question,
+      # so it lives here rather than in code (it was hardcoded in
+      # entrypoints.py until 2026-07-29, which broke this project's own rule).
+      #
+      # Presidio's recognizers split into two groups, measured on realistic
+      # benign text: the deterministic ones (EMAIL_ADDRESS, CREDIT_CARD,
+      # PHONE_NUMBER, US_SSN, IBAN_CODE, IP_ADDRESS) score 1.00 and were right
+      # every time; the NER ones (PERSON, LOCATION) score a FLAT 0.85 whether
+      # right or wrong, so no threshold can separate them.
+      #
+      # LOCATION is omitted: 4 hits across 8 benign texts, all four wrong —
+      # "Vietnam", "Hanoi", "Southeast Asia" and "Q3", which is not a place.
+      # A city named in an answer is not sensitive information disclosure.
+      #
+      # PERSON is kept and is the known remaining false-positive source
+      # ("Docker Compose" and "Prometheus" were flagged; "Nguyen Van A" was
+      # correct). Drop it here if this deployment handles no personal data.
+      entities:
+        - EMAIL_ADDRESS
+        - PHONE_NUMBER
+        - CREDIT_CARD
+        - US_SSN
+        - IBAN_CODE
+        - IP_ADDRESS
+        - PERSON
 
   G2b:
     risk: LLM02
@@ -71,6 +97,18 @@ controls:
     options:
       # Honoured only when the calling key carries allow_grounded_hint.
       respect_grounded_hint: true
+      # Same list and same reasoning as G2a above. G2b is the control where
+      # this matters most: it REDACTS, so a false positive puts [LOCATION] in
+      # the user's answer. With LOCATION included, that happened on
+      # essentially every response mentioning a place.
+      entities:
+        - EMAIL_ADDRESS
+        - PHONE_NUMBER
+        - CREDIT_CARD
+        - US_SSN
+        - IBAN_CODE
+        - IP_ADDRESS
+        - PERSON
 
   G3:
     risk: LLM07
