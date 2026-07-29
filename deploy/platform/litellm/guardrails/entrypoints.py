@@ -334,6 +334,25 @@ class BaseNufiGuardrail(CustomGuardrail):
                 self.control_id,
                 event.get("event_id"),
             )
+
+        # The durable trail, and the only one proven to survive.
+        #
+        # Both metadata routes above were measured NOT to reach any store:
+        # `standard_logging_guardrail_information` (the key litellm's own
+        # helper writes, read at litellm_logging.py:5525) and our
+        # `guardrail_information` are both absent from the spend-log row and
+        # from the Langfuse observation on a request whose decision counter
+        # demonstrably moved. A third attempt with a `nufi_`-namespaced key
+        # was measured absent too. Request metadata does not reliably carry
+        # anything from a guardrail hook to a logging backend in litellm
+        # 1.83.10, so the audit trail cannot be built on it.
+        #
+        # A log line is carried by the container runtime, is greppable by
+        # event_id, and does not depend on litellm forwarding anything. It is
+        # written as single-line JSON so a collector can parse it without a
+        # regex. The event never contains matched text (see audit.py), so this
+        # is safe to emit at INFO.
+        audit.log_event(event)
         return event
 
 

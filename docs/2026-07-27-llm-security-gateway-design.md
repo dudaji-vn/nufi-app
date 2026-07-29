@@ -78,7 +78,7 @@ existing implementation down a layer.
 | D3 | One config + package, deployable to compose and `api.codechi.me` | Avoids re-creating the two-implementations problem |
 | D4 | Budget ~100–200 ms p99; model-based scanners on every request | ~~W5.1 measured 30 ms p99 for DeBERTa + Presidio in-network, so the budget is comfortable~~ — **falsified by measurement**: on the shipped CPU stack G1 alone is 197.5 ms p99 and G1+G2b reach 385 ms (§11). The budget holds at the mean and misses at the tail. Restate it as a mean, or address the tail, before quoting it |
 | D5 | Grounded-context hint travels as request metadata, honoured only for privileged keys | Preserves the RAG PII exemption without trusting client input |
-| D6 | ~~LiteLLM Postgres is the audit store~~ — **corrected**: guardrail events reach the configured callback loggers (Langfuse / OTEL / DataDog), not the `LiteLLM_SpendLogs` table. See §8. |
+| D6 | ~~LiteLLM Postgres is the audit store~~ — **corrected twice**: events reach neither the spend-log table nor the callback loggers; request metadata carries them nowhere. The trail is a structured log record emitted by our own code. See §8. |
 | D7 | Full standard documented now; gateway controls implemented first | Delivers the standard on paper immediately without one oversized change |
 
 ## 4. Control Ownership Map
@@ -341,20 +341,37 @@ that option is costed.
   inventory of what ran; G1 is absent from it on a request G1 demonstrably
   scanned) and nothing else guardrail-related.
 
-  Guardrail events travel on the StandardLoggingPayload key
-  `standard_logging_guardrail_information`, which is consumed by the **callback
-  loggers** — `integrations/langfuse`, `integrations/opentelemetry`,
-  `integrations/datadog` — never written to the spend-log table. So the durable
-  audit trail is **Langfuse**, and it exists only while Langfuse is configured
-  and reachable.
+  **Request metadata does not carry a guardrail event to any logging backend
+  in litellm 1.83.10.** Three keys were tried and every one was measured absent
+  downstream, on requests whose decision counter demonstrably incremented:
+  `standard_logging_guardrail_information` (litellm's own, written by its
+  `CustomGuardrail` helper and read at `litellm_logging.py:5525`), our
+  `guardrail_information`, and a `nufi_`-namespaced mirror. Neither the
+  spend-log row nor the Langfuse observation carried any of them.
+
+  The audit trail is therefore emitted directly, by `guardrails.audit.log_event`,
+  as a single-line JSON record prefixed `nufi_guardrail_event`. It is carried by
+  the container runtime and is greppable by `event_id` — the operation a blocked
+  user's support request actually needs. Verified end to end: a block produced
+  `grd_y3wbptcu3zm4and4cwxucmfbfa`, retrievable by that id, carrying control,
+  risk, action, `enforced`, scores, offsets, model and policy digest, and **no
+  matched text**.
+
+  The record goes to a logger that owns its own level (`propagate = False`,
+  pinned INFO) rather than litellm's `verbose_proxy_logger`, which is swallowed
+  unless `LITELLM_LOG=INFO`. That was measured too: the counter incremented
+  while no line reached the log. Hanging the audit trail off the proxy's global
+  verbosity would let a routine logging change silently delete it.
 
   Two consequences to design around rather than assume away:
 
-  - Correlating a block with its spend record requires joining across Langfuse
-    and Postgres on `request_id`; it is not one SQL query.
-  - If Langfuse is down, guardrail events are lost with no error on the request
-    path. The Prometheus counters survive, but they are aggregates and cannot
-    be attached to a request or a key.
+  - Correlating a block with its spend record means joining the log stream to
+    Postgres on `request_id`; it is not one SQL query.
+  - Log retention is now an audit-retention decision. Whatever collects
+    container logs defines how long a block stays resolvable, and nothing in
+    this repository sets that.
+  - The Prometheus counters remain, but they are aggregates and cannot be
+    attached to a request, a key, or an `event_id`.
 
   Until an event id can be looked up end to end, treat the `event_id` handed to
   a blocked user as a correlation token whose resolution is not yet guaranteed

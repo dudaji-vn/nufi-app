@@ -263,6 +263,12 @@ LLM security controls run inside the LiteLLM proxy. Design:
   un-slashed form answers `307` with an empty body, so a grep against it matches
   nothing on a perfectly healthy stack. `nufi_guardrail_enabled` is `0` for any
   control that is not enforcing.
+- **Audit trail** — guardrail events are emitted as single-line JSON log
+  records prefixed `nufi_guardrail_event`. Look one up with
+  `docker compose logs litellm-proxy | grep <event_id>`. They carry control,
+  risk, action, `enforced`, scores, offsets, model and policy digest, and never
+  the matched text. Request metadata does **not** carry them — see design §8;
+  log retention therefore defines how long a block stays resolvable.
 - **Wiring** — `npm run check:wired` reconciles `policy.yaml` against
   `config.yaml`. A control declared in one and missing from the other cannot
   report its own absence, because the module never loads.

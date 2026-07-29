@@ -29,8 +29,11 @@ in the audit trail itself.
 from __future__ import annotations
 
 import base64
+import json
+import logging
 import os
 import re
+import sys
 from collections.abc import Callable
 from typing import Any, TypeVar
 
@@ -113,6 +116,52 @@ class AuditRecordError(RuntimeError):
     hand-built event surfaces to the caller instead of vanishing as a
     successful-looking no-op.
     """
+
+
+# Metadata key carrying the guardrail audit trail to the callback loggers.
+# Namespaced with `nufi_` deliberately: litellm consumes or filters keys it
+# recognises, and both `guardrail_information` and
+# `standard_logging_guardrail_information` were measured absent from
+# `litellm_params["metadata"]` downstream. A key litellm has no meaning for
+# survives — this is the same mechanism `nufi_grounded_verified` already
+# relies on.
+NUFI_EVENTS_KEY = "nufi_guardrail_events"
+
+
+def _build_audit_logger() -> logging.Logger:
+    """A logger the audit trail owns, independent of litellm's verbosity.
+
+    `verbose_proxy_logger.info` is swallowed unless `LITELLM_LOG=INFO`, which
+    is unset by default — measured: the decision counter incremented while no
+    line reached the container log. Hanging the audit trail off the proxy's
+    global log level means a routine verbosity change silently deletes it,
+    which is the failure this subsystem exists to prevent.
+
+    `propagate = False` so litellm's root configuration cannot re-suppress it,
+    and the level is pinned to INFO here rather than inherited.
+    """
+    log = logging.getLogger("nufi.guardrail.audit")
+    log.setLevel(logging.INFO)
+    log.propagate = False
+    if not log.handlers:
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(logging.Formatter("%(message)s"))
+        log.addHandler(handler)
+    return log
+
+
+AUDIT_LOG = _build_audit_logger()
+
+
+def log_event(event: dict[str, Any]) -> None:
+    """Emit one event as single-line JSON, prefixed for grepping by event_id.
+
+    This is the only route measured to reach a durable store. Request metadata
+    does not carry a guardrail event to any logging backend in litellm
+    1.83.10 — three separate keys were tried and all were absent downstream
+    (see the comment at the call site in entrypoints._emit).
+    """
+    AUDIT_LOG.info("nufi_guardrail_event %s", json.dumps(event, sort_keys=True))
 
 
 def new_event_id() -> str:
@@ -300,6 +349,25 @@ def record(data: dict[str, Any], event: dict[str, Any]) -> None:
             f"got {type(bucket).__name__}"
         )
     bucket.append(event)
+
+    # Second, namespaced copy. `guardrail_information` above is OURS but shares
+    # a name with keys litellm recognises, and neither it nor
+    # `standard_logging_guardrail_information` survives into
+    # `litellm_params["metadata"]` — measured on the live stack, both absent
+    # from the spend-log row and from the Langfuse observation, while
+    # `nufi_grounded_verified` (a key litellm has no meaning for, written to
+    # the same dict from the same hook) arrives intact.
+    #
+    # So the trail is carried on a key litellm cannot claim. This is the only
+    # copy proven to reach a durable store; the two above are kept because
+    # in-process consumers and the LiteLLM helper read them.
+    mirror = metadata.setdefault(NUFI_EVENTS_KEY, [])
+    if not isinstance(mirror, list):
+        raise AuditRecordError(
+            f"record: metadata[{NUFI_EVENTS_KEY!r}] must be a list, "
+            f"got {type(mirror).__name__}"
+        )
+    mirror.append(event)
 
 
 def canonical_transforms(items: list[Canonical]) -> tuple[str, ...]:
