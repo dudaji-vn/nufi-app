@@ -12,10 +12,11 @@ from guardrails.canonical import canonicalize
 from guardrails.policy import ControlConfig, Policy, decide
 from guardrails.scanners.injection import InjectionScanner
 from guardrails.scanners.nufi_injection import NufiInjectionScanner
+from guardrails.scanners.nufi_pii import NufiPiiScanner
 from guardrails.scanners.patterns import scan_exfil, scan_secrets, scan_system_echo
 from guardrails.scanners.pii import PiiScanner
 from guardrails.spans import extract_spans
-from guardrails.types import Action, Decision, Span, SpanSource
+from guardrails.types import Action, Decision, Finding, Span, SpanSource
 from litellm._logging import verbose_proxy_logger
 from litellm.integrations.custom_guardrail import CustomGuardrail
 
@@ -327,6 +328,13 @@ class _StreamState:
 class BaseNufiGuardrail(CustomGuardrail):
     control_id: str = ""
 
+    # Set by every control that detects (G1, G2a, G2b); consumed by
+    # `_scan_all`. Annotation only, with no default: a control that calls
+    # `_scan_all` without having built its scanners raises AttributeError at
+    # once, rather than inheriting a shared empty list and reporting a clean
+    # scan it never performed.
+    _scanners: list[Any]
+
     # Can THIS control's outage path ever actually change what happens to a
     # request/response — block it, withhold it — or does every path through
     # `_on_outage` end in returning the input unchanged regardless of what
@@ -571,6 +579,28 @@ class BaseNufiGuardrail(CustomGuardrail):
         for processor in processors.values():
             await processor.verify()
 
+    async def _scan_all(self, spans: list[Span]) -> list[Finding]:
+        """Run every scanner this control owns and pool their findings.
+
+        Each `Finding` carries its own `detector`, so `policy.decide` prices
+        them separately (see `detector_thresholds`), the audit event names
+        which one fired, and `ControlConfig._corroborated` can count how many
+        DISTINCT detectors reached a verdict.
+
+        Every scanner runs on every request, and a scanner that cannot run
+        raises out of here rather than being skipped. That is the whole
+        arrangement: G1's `require_corroboration` can only spend what both of
+        its detectors produce, so an absent second detector is not a degraded
+        G1, it is a G1 that silently stops enforcing on user spans -- and for
+        G2a/G2b an absent Korean detector is a control that reports every
+        Korean identifier clean. Neither may present as a quiet scan. The
+        caller's `_on_outage` decides what an outage costs.
+        """
+        findings: list[Finding] = []
+        for scanner in self._scanners:
+            findings.extend(await scanner.scan(spans))
+        return findings
+
     def _exempt(self, data: dict[str, Any] | None) -> bool:
         """Is this request's model exempt from THIS control in policy.yaml?
 
@@ -709,12 +739,9 @@ class G1Injection(BaseNufiGuardrail):
         # The ML classifier has recall and cannot separate intent from
         # phrasing; the regex detector has precision and misses attacks the
         # classifier catches. policy.yaml's `require_corroboration` is what
-        # spends the pair -- and it can only spend what both of them produce,
-        # so an absent second detector is not a degraded G1, it is a G1 that
-        # silently stops enforcing on user spans. Which is why a scanner that
-        # cannot run raises out of `scan` into `_on_outage` below rather than
-        # being skipped.
-        self._scanners: list[Any] = [
+        # spends the pair -- see `_scan_all` for why an absent one is an
+        # outage rather than a smaller scan.
+        self._scanners = [
             scanner
             or InjectionScanner(base_url=SCANNER_API_BASE, timeout_s=SCANNER_TIMEOUT_S),
             nufi_scanner or NufiInjectionScanner(),
@@ -766,14 +793,7 @@ class G1Injection(BaseNufiGuardrail):
 
         started = time.perf_counter()
         try:
-            # Findings from EVERY detector, concatenated. Each carries its own
-            # `Finding.detector`, so `policy.decide` prices them separately
-            # (see G1's `detector_thresholds`), the audit event names which one
-            # fired, and `ControlConfig._corroborated` can count how many
-            # distinct detectors reached a verdict.
-            findings = []
-            for scanner in self._scanners:
-                findings.extend(await scanner.scan(spans))
+            findings = await self._scan_all(spans)
         except Exception as exc:
             # Caught broadly, not just `ScannerUnavailable`: a scanner that
             # raises a type this hook does not recognise must still respect
@@ -981,6 +1001,60 @@ def _default_pii_scanner(control: ControlConfig) -> PiiScanner:
     )
 
 
+# Fallback only, exactly like `_DEFAULT_PII_ENTITIES` above: the real list is
+# `options.nufi_entities` in policy.yaml, because which Korean identifiers a
+# deployment redacts is a policy question. Both lists live in the same control
+# block there, which is where the two engines' coverage should be compared.
+#
+# The three below are the ones measured to earn their place. Presidio returns
+# NOTHING actionable on any of them (KR_RRN and KR_PHONE: no result at all;
+# KR_BRN: PHONE_NUMBER at 0.40, under G2b's 0.50 threshold), so this is
+# coverage the gateway did not have, not a second opinion on coverage it did.
+#
+# What is NOT here matters more, and each exclusion is a measured number rather
+# than a preference -- see policy.yaml, where the numbers are recorded next to
+# the list an operator would edit.
+_DEFAULT_NUFI_PII_ENTITIES = (
+    "KR_RRN",
+    "KR_FOREIGNER_REG",
+    "KR_PHONE",
+)
+
+# Optional override for the vendored rules file. Unset by default: the rules
+# ship at `litellm/guardrails/nufi_patterns.yaml` and the scanner resolves that
+# to an absolute path off its own location. See `nufi_pii.VENDORED_PATTERNS_PATH`
+# for why the library's own discovery is never used.
+NUFI_PII_PATTERNS_PATH = os.environ.get("NUFI_PII_PATTERNS_PATH") or None
+
+
+def _nufi_pii_entities(control: ControlConfig) -> list[str]:
+    """Entity types this control asks the Korean PII engine for.
+
+    Same shape and same reasoning as `_pii_entities`, and a separate key
+    because the two engines have different vocabularies: `EMAIL_ADDRESS` is
+    Presidio's name and `EMAIL` is theirs, and pretending one list could serve
+    both would mean silently dropping whichever names the other engine does not
+    know. A name this engine cannot produce is refused at construction rather
+    than filtered to nothing -- see `NufiPiiScanner.__init__`.
+    """
+    configured = control.options.get("nufi_entities")
+    if configured is None:
+        return list(_DEFAULT_NUFI_PII_ENTITIES)
+    if not isinstance(configured, list) or not configured:
+        raise ValueError(
+            f"{control.id}: options.nufi_entities must be a non-empty list of "
+            f"nufi-security rule names, got {configured!r}"
+        )
+    return [str(entity) for entity in configured]
+
+
+def _default_nufi_pii_scanner(control: ControlConfig) -> NufiPiiScanner:
+    return NufiPiiScanner(
+        entities=_nufi_pii_entities(control),
+        patterns_path=NUFI_PII_PATTERNS_PATH,
+    )
+
+
 class G2aPiiInput(BaseNufiGuardrail):
     """Detects PII in the prompt. Logs only — the prompt is never rewritten.
 
@@ -1000,10 +1074,22 @@ class G2aPiiInput(BaseNufiGuardrail):
     outage_can_enforce = False
 
     def __init__(
-        self, policy: Policy | None = None, scanner: Any | None = None, **kwargs: Any
+        self,
+        policy: Policy | None = None,
+        scanner: Any | None = None,
+        nufi_scanner: Any | None = None,
+        **kwargs: Any,
     ) -> None:
         super().__init__(policy=policy, **kwargs)
-        self._scanner = scanner or _default_pii_scanner(self._control)
+        # Two PII detectors, both run on every request, both reported --
+        # alongside each other, not one replacing the other. Presidio is
+        # English-centric and cannot see a Korean resident-registration number
+        # at all; the local engine cannot see an IBAN or a US SSN. Neither is a
+        # superset, so both run and `policy.decide` prices the pooled findings.
+        self._scanners = [
+            scanner or _default_pii_scanner(self._control),
+            nufi_scanner or _default_nufi_pii_scanner(self._control),
+        ]
 
     async def async_pre_call_hook(
         self, user_api_key_dict: Any, cache: Any, data: dict[str, Any], call_type: str
@@ -1040,7 +1126,7 @@ class G2aPiiInput(BaseNufiGuardrail):
 
         started = time.perf_counter()
         try:
-            findings = await self._scanner.scan(spans) + scan_secrets(spans)
+            findings = await self._scan_all(spans) + scan_secrets(spans)
         except Exception as exc:
             # Caught broadly, not just `ScannerUnavailable`, matching
             # `G1Injection`: `PiiScanner.scan` is documented to raise only
@@ -1136,10 +1222,20 @@ class G2bPiiOutput(BaseNufiGuardrail):
     outage_can_enforce = False
 
     def __init__(
-        self, policy: Policy | None = None, scanner: Any | None = None, **kwargs: Any
+        self,
+        policy: Policy | None = None,
+        scanner: Any | None = None,
+        nufi_scanner: Any | None = None,
+        **kwargs: Any,
     ) -> None:
         super().__init__(policy=policy, **kwargs)
-        self._scanner = scanner or _default_pii_scanner(self._control)
+        # Both engines, for the reason `G2aPiiInput.__init__` gives. This is
+        # the control where it shows: G2b REDACTS, so a Korean identifier
+        # Presidio cannot see is one that reaches the user's screen.
+        self._scanners = [
+            scanner or _default_pii_scanner(self._control),
+            nufi_scanner or _default_nufi_pii_scanner(self._control),
+        ]
 
     @staticmethod
     def redact(text: str, findings: list[Any]) -> str:
@@ -1269,7 +1365,7 @@ class G2bPiiOutput(BaseNufiGuardrail):
             spans = [Span(text=item, source=SpanSource.UNTRUSTED, message_index=0)]
             started = time.perf_counter()
             try:
-                findings = await self._scanner.scan(spans) + scan_secrets(spans)
+                findings = await self._scan_all(spans) + scan_secrets(spans)
             except Exception as exc:
                 # Caught broadly for the same reason as `G2aPiiInput`: neither
                 # `PiiScanner.scan` nor `scan_secrets`'s documented contract
@@ -1411,7 +1507,7 @@ class _PiiStream(_StreamState):
 
     async def _scan(self, text: str) -> list[Any]:
         spans = [Span(text=text, source=SpanSource.UNTRUSTED, message_index=0)]
-        return await self._guard._scanner.scan(spans) + scan_secrets(spans)
+        return await self._guard._scan_all(spans) + scan_secrets(spans)
 
     async def feed(self, text: str, *, final: bool) -> str:
         self._pending += text

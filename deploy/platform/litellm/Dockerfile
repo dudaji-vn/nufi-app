@@ -78,6 +78,23 @@ WORKDIR /app
 # instead of the installed litellm==1.83.10. Same failure shape as the pip
 # install above: a change that looks like hardening while quietly swapping out
 # what the proxy runs on.
+# This also ships guardrails/nufi_patterns.yaml, and that is not incidental.
+# `pip install nufi-egress` delivers the library's Python packages but NOT its
+# `config/` directory -- the distribution names seven packages and no data
+# directory -- so `DetectionPipeline()` raises FileNotFoundError looking for
+# `<site-packages>/config/patterns.yaml`. The Korean PII rules are therefore
+# vendored into this repo, byte-identical to the pinned commit's
+# `config/patterns.yaml` (digest and source commit are asserted by
+# tests/test_nufi_pii_scanner.py against the ARG below), and ride in on this
+# line. `guardrails/scanners/nufi_pii.py` resolves them to an absolute path off
+# its own location and passes that explicitly.
+#
+# Deliberately NOT copied to /app/config, which is exactly where the library's
+# own discovery would find it given that nufi-security lands in /app. Leaving
+# their discovery unable to succeed means the explicit path is the only thing
+# that works, in the image as well as in CI -- their resolution is relative to
+# `egress_audit/__file__`'s grandparent and was measured to depend on how the
+# process was started, so it must never be the mechanism anything relies on.
 COPY guardrails /app/guardrails
 COPY callbacks /app/callbacks
 COPY config.yaml /app/config.yaml

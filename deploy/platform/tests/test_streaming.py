@@ -378,6 +378,41 @@ async def test_g2b_redacts_an_email_split_at_every_index(policy_path, head, tail
     assert "[EMAIL_ADDRESS]" in assembled
 
 
+# A checksum-valid Korean resident-registration number, in a sentence long
+# enough to split. Presidio returns NOTHING on this text -- measured against
+# the running analyzer with the entity list G2b ships -- so the only detector
+# that can see it is the local Korean engine, and the only way it reaches this
+# code path is `_PiiStream._scan` running BOTH scanners.
+KOREAN_PII_TEXT = (
+    "고객님 안내드립니다. 등록하신 주민등록번호는 900101-1234568 이며 "
+    "확인 절차가 정상적으로 완료되었음을 알려드립니다."
+)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("head,tail", splits(KOREAN_PII_TEXT))
+async def test_g2b_redacts_a_korean_rrn_split_at_every_index(policy_path, head, tail):
+    """The streaming half of the Korean coverage, and it needs its own test.
+
+    `apply_guardrail` and `_PiiStream.feed` are different code paths with
+    different scanner call sites, so a non-streamed test proves nothing about
+    the wire. Mutating `_PiiStream._scan` to use Presidio alone left the entire
+    suite green until this existed -- a streamed Korean identifier going out
+    unredacted while the audit trail said the response was clean.
+
+    `SubstringPii("no-such-string")` stands in for Presidio here because that
+    is what the real analyzer does on this input: nothing.
+    """
+    guard = g2b(policy_path, SubstringPii("no-such-string"))
+
+    assembled = await drive(guard, content_chunks([head, tail]), {"stream": True})
+
+    assert "900101-1234568" not in assembled, (
+        f"split {head!r}|{tail!r} let the RRN through"
+    )
+    assert "[KR_RRN]" in assembled
+
+
 @pytest.mark.asyncio
 async def test_g2b_streamed_redaction_is_recorded_as_enforced(policy_path):
     guard = g2b(policy_path, SubstringPii("billing@acme.co"))

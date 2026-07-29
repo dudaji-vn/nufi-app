@@ -29,15 +29,23 @@ _FAIL = frozenset({"open", "closed"})
 # exists to express, with zero signal that the override was never applied.
 # guardrails.scanners.injection.InjectionScanner,
 # guardrails.scanners.nufi_injection.NufiInjectionScanner,
-# guardrails.scanners.pii.PiiScanner and guardrails.scanners.patterns
-# (secrets / system_echo / exfil) are the scanners shipped so far. Add a new
-# scanner's detector name here when it needs a detector_thresholds override.
+# guardrails.scanners.pii.PiiScanner, guardrails.scanners.nufi_pii.NufiPiiScanner
+# and guardrails.scanners.patterns (secrets / system_echo / exfil) are the
+# scanners shipped so far. Add a new scanner's detector name here when it needs
+# a detector_thresholds override.
+#
+# `nufi_pii` is listed even though policy.yaml sets no override for it today.
+# Its score says HOW a match was made -- 0.99 checksum-validated, 0.85 regex
+# only -- so `nufi_pii: 0.90` is the one line that narrows G2a/G2b to
+# checksum-validated identifiers, and a deployment reaching for it must not be
+# met with "unknown detector_thresholds key".
 _KNOWN_DETECTORS = frozenset(
     {
         "injection",
         "nufi_injection",
         "coverage_gap",
         "presidio",
+        "nufi_pii",
         "secrets",
         "system_echo",
         "exfil",

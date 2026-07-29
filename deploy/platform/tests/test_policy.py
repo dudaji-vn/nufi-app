@@ -282,6 +282,49 @@ def test_presidio_detector_threshold_parses():
     assert control.detector_thresholds == {"presidio": 0.7}
 
 
+def test_nufi_pii_detector_threshold_parses_and_narrows_to_checksummed_findings():
+    """`NufiPiiScanner` scores 0.99 for a checksum-validated match and 0.85 for
+    a regex-only one, so `nufi_pii: 0.90` is the one line that narrows G2a/G2b
+    to checksum-validated identifiers. That has to parse, and it has to be
+    consulted -- an accepted-but-ignored key would be a security setting that
+    does nothing.
+    """
+    body = {
+        "risk": "LLM02",
+        "thresholds": _ALL_THRESHOLDS,
+        "action": "redact",
+        "detector_thresholds": {"nufi_pii": 0.90},
+    }
+    control = _parse_control("G2b", body)
+    assert control.detector_thresholds == {"nufi_pii": 0.90}
+
+    checksummed = Finding(
+        risk="LLM02", detector="nufi_pii", score=0.99,
+        source=SpanSource.UNTRUSTED, start=0, end=14, entity="KR_RRN",
+    )
+    regex_only = Finding(
+        risk="LLM02", detector="nufi_pii", score=0.85,
+        source=SpanSource.UNTRUSTED, start=0, end=13, entity="PHONE_NUMBER",
+    )
+
+    decision = decide(control, [checksummed, regex_only], grounded=False)
+
+    # Per-source thresholds are 0.50 in `_ALL_THRESHOLDS`, so both findings
+    # would cross without the override. Only the checksummed one may survive.
+    assert [f.entity for f in decision.findings] == ["KR_RRN"]
+
+
+def test_typo_in_the_nufi_pii_detector_threshold_key_is_still_refused():
+    body = {
+        "risk": "LLM02",
+        "thresholds": _ALL_THRESHOLDS,
+        "detector_thresholds": {"nufi_pll": 0.9},
+    }
+
+    with pytest.raises(ValueError, match=r"G2b:.*nufi_pll.*expected one of"):
+        _parse_control("G2b", body)
+
+
 def test_typo_in_the_presidio_detector_threshold_key_is_still_refused():
     """The guard must stay sharp after `presidio` is added to
     `_KNOWN_DETECTORS`: a near-miss spelling is still an unknown key, not a

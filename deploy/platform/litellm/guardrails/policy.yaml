@@ -130,6 +130,59 @@ controls:
         - US_SSN
         - IBAN_CODE
         - IP_ADDRESS
+      # The SECOND PII engine's entity list. Separate key because the two
+      # engines have different vocabularies -- `EMAIL_ADDRESS` above is
+      # Presidio's name, `EMAIL` below would be nufi-security's -- and one list
+      # could not serve both without silently dropping whichever names the
+      # other engine does not know. A name this engine cannot produce is
+      # refused at startup, not filtered to nothing.
+      #
+      # Why a second engine at all: measured against the running
+      # presidio-analyzer with the list above, 2026-07-29 --
+      #
+      #   제 주민등록번호는 900101-1234568 입니다  ->  []
+      #   연락처는 010-1234-5678 입니다            ->  []
+      #   계좌번호 110-1234-567890                 ->  []
+      #   사업자등록번호는 220-81-62517            ->  PHONE_NUMBER 0.40
+      #
+      # Nothing actionable on any Korean identifier (0.40 is under the 0.50
+      # threshold above). NUFI serves Korean customers.
+      #
+      # What is IN, and why these three: KR_RRN and KR_FOREIGNER_REG are the
+      # resident- and foreigner-registration numbers -- the Korean counterpart
+      # of US_SSN above -- and both are checksum-validated (score 0.99), which
+      # is a real filter and not a formality: `900101-1234567` is correctly NOT
+      # flagged because its check digit is wrong. KR_PHONE has no checksum but
+      # its measured false-positive surface is numbers with a LEADING ZERO,
+      # which is rare outside deliberately zero-padded identifiers (0.5% of
+      # random hex/uuid-shaped strings, 0 on 2000 bare 10-digit ids).
+      #
+      # What is OUT, with the number that decided it. All measured on
+      # realistic machine identifiers, 2000 samples each, 2026-07-29:
+      #
+      #   KR_ACCOUNT         100% of ISO-8601 dates. `2026-07-29` is a bank
+      #                      account number to this rule. G2b REDACTS, so
+      #                      every answer mentioning a date would come back
+      #                      with [KR_ACCOUNT] in it -- the LOCATION problem
+      #                      again, worse. This is the headline example in
+      #                      docs/2026-07-29-nufi-security-integration.md §2b;
+      #                      it holds for the identifier and not for the rule.
+      #   KR_BRN             ~10% of bare 10-digit numbers, INCLUDING every
+      #                      Unix epoch-seconds timestamp (204/2000). A
+      #                      checksum over 10 digits only removes 9 in 10.
+      #                      Enable it where business-registration numbers
+      #                      matter more than timestamps in answers.
+      #   KR_DRIVER_LICENSE  no checksum; matches any 12-digit run.
+      #   KR_PASSPORT        no checksum; `S12345678` is a support ticket id.
+      #   EMAIL, CREDIT_CARD Presidio already reports both at score 1.00. A
+      #                      second detector for the same entity doubles the
+      #                      false-positive surface and buys no coverage.
+      #
+      # Adding one is one line here. The numbers above are what it costs.
+      nufi_entities:
+        - KR_RRN
+        - KR_FOREIGNER_REG
+        - KR_PHONE
 
   G2b:
     risk: LLM02
@@ -156,6 +209,19 @@ controls:
         - US_SSN
         - IBAN_CODE
         - IP_ADDRESS
+      # Same list and the same measurements as G2a above -- and this is the
+      # control the measurements were taken FOR. G2a logs; G2b rewrites the
+      # answer a user reads, so every false positive here is visible damage
+      # and every miss is a Korean identifier on someone's screen.
+      #
+      # Kept identical to G2a deliberately. The two controls differ in what
+      # they DO with a finding, not in what they can see, and a G2a that
+      # detected more than G2b would make the audit trail describe a control
+      # that was never in force.
+      nufi_entities:
+        - KR_RRN
+        - KR_FOREIGNER_REG
+        - KR_PHONE
 
   G3:
     risk: LLM07

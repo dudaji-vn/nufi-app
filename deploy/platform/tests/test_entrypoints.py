@@ -14,6 +14,7 @@ from guardrails.entrypoints import (
 )
 from guardrails.policy import Policy
 from guardrails.scanners.base import ScannerUnavailable
+from guardrails.scanners.nufi_pii import NufiPiiScanner
 from guardrails.types import Finding, SpanSource
 
 
@@ -2276,6 +2277,183 @@ def test_empty_entity_list_is_refused(policy_path):
 
     with pytest.raises(ValueError, match="non-empty list"):
         entrypoints._pii_entities(control)
+
+
+# --- the second PII engine: Korean coverage, also from policy --------------
+
+
+@pytest.mark.parametrize("control_id", ["G2a", "G2b"])
+def test_the_korean_entity_list_comes_from_policy_not_code(policy_path, control_id):
+    """Two assertions for the reason `test_entities_default_excludes_location`
+    records: reading through policy_path alone tests what policy.yaml says, and
+    a code default that had drifted would leave that green.
+    """
+    control = Policy.load(policy_path).control(control_id)
+
+    from_policy = entrypoints._nufi_pii_entities(control)
+    assert "KR_RRN" in from_policy
+    assert "KR_FOREIGNER_REG" in from_policy
+    # The exclusions that carry a measured number. KR_ACCOUNT fires on 100% of
+    # ISO-8601 dates and KR_BRN on ~10% of bare 10-digit numbers (every Unix
+    # timestamp); G2b REDACTS, so each would land in users' answers.
+    assert "KR_ACCOUNT" not in from_policy
+    assert "KR_BRN" not in from_policy
+
+    from_code_default = entrypoints._nufi_pii_entities(replace(control, options={}))
+    assert "KR_RRN" in from_code_default
+    assert "KR_ACCOUNT" not in from_code_default
+    assert "KR_BRN" not in from_code_default
+
+
+def test_g2a_and_g2b_ask_for_the_same_korean_entities(policy_path):
+    """A G2a that detected more than G2b would make the audit trail describe a
+    control that was never in force: an event saying "PII found" for something
+    G2b could not have redacted."""
+    policy = Policy.load(policy_path)
+
+    assert entrypoints._nufi_pii_entities(policy.control("G2a")) == (
+        entrypoints._nufi_pii_entities(policy.control("G2b"))
+    )
+
+
+def test_policy_nufi_entities_override_the_code_default(policy_path):
+    control = replace(
+        Policy.load(policy_path).control("G2b"), options={"nufi_entities": ["KR_ACCOUNT"]}
+    )
+
+    assert entrypoints._nufi_pii_entities(control) == ["KR_ACCOUNT"]
+
+
+@pytest.mark.parametrize("configured", [[], "KR_RRN", {}])
+def test_an_unusable_nufi_entity_list_is_refused(policy_path, configured):
+    control = replace(
+        Policy.load(policy_path).control("G2b"), options={"nufi_entities": configured}
+    )
+
+    with pytest.raises(ValueError, match="non-empty list"):
+        entrypoints._nufi_pii_entities(control)
+
+
+@pytest.mark.parametrize("control_id", ["G2a", "G2b"])
+def test_the_shipped_policy_entity_list_is_one_the_engine_can_produce(
+    policy_path, control_id
+):
+    """policy.yaml and the vendored rules file must agree.
+
+    A name no rule declares would filter every finding away and report clean
+    traffic forever; the scanner refuses it at construction, and this is the
+    test that runs that refusal against the list actually shipped.
+    """
+    control = Policy.load(policy_path).control(control_id)
+
+    scanner = NufiPiiScanner(entities=entrypoints._nufi_pii_entities(control))
+
+    assert scanner.name == "nufi_pii"
+
+
+@pytest.mark.parametrize("builder", [G2aPiiInput, G2bPiiOutput])
+def test_g2_builds_both_pii_scanners_by_default(policy_path, builder):
+    """The default wiring, not just the injectable one.
+
+    Every other G2 test passes a fake Presidio, so a control that had quietly
+    stopped constructing the Korean engine would leave all of them green while
+    the proxy ran without Korean coverage.
+    """
+    guard = builder(policy=Policy.load(policy_path))
+
+    assert [type(s).__name__ for s in guard._scanners] == [
+        "PiiScanner",
+        "NufiPiiScanner",
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("control_id", ["G2a", "G2b"])
+async def test_both_pii_scanners_run_on_every_request(policy_path, control_id):
+    """A scanner that is constructed but never called is the absence this
+    project exists to detect, one layer inside a control that reports healthy.
+    """
+    seen = []
+
+    class Recording:
+        name = "nufi_pii"
+
+        async def scan(self, spans):
+            seen.append([s.text for s in spans])
+            return []
+
+    policy = Policy.load(policy_path)
+    if control_id == "G2a":
+        guard = G2aPiiInput(
+            policy=policy, scanner=FakePii(), nufi_scanner=Recording()
+        )
+        await guard.async_pre_call_hook(
+            FakeKey(), None, _data("주민번호 900101-1234568"), "acompletion"
+        )
+    else:
+        guard = G2bPiiOutput(
+            policy=policy, scanner=FakePii(), nufi_scanner=Recording()
+        )
+        await _apply_text(guard, "주민번호 900101-1234568")
+
+    assert seen == [["주민번호 900101-1234568"]]
+
+
+@pytest.mark.asyncio
+async def test_g2b_redacts_a_korean_identifier_presidio_cannot_see(policy_path):
+    """The end-to-end point of this integration, with a REAL Korean engine and
+    a Presidio that reports nothing -- which is what the live analyzer does on
+    this input (measured: `[]` for a resident-registration number).
+    """
+    guard = _g2b(policy_path, FakePii())
+
+    result = await _apply_text(
+        guard, "고객 주민등록번호는 900101-1234568 이고 확인되었습니다."
+    )
+
+    assert "900101-1234568" not in result
+    assert "[KR_RRN]" in result
+
+
+@pytest.mark.asyncio
+async def test_g2b_leaves_benign_korean_alone(policy_path):
+    """The half that must never regress. With KR_ACCOUNT enabled this date
+    would come back as [KR_ACCOUNT]."""
+    text = "배포는 2026-07-29 에 완료될 예정이며 회의는 오후 3시입니다."
+
+    assert await _apply_text(_g2b(policy_path, FakePii()), text) == text
+
+
+@pytest.mark.asyncio
+async def test_a_korean_engine_outage_is_recorded_and_fails_open(policy_path):
+    """Both scanners pool into one findings list, so a failure in either is an
+    outage for the text -- and G2b's `fail: open` means the response is
+    delivered unredacted with an event to say so, never silently.
+    """
+
+    class Broken:
+        name = "nufi_pii"
+
+        async def scan(self, spans):
+            raise ScannerUnavailable("nufi_pii: rules file vanished")
+
+    guard = G2bPiiOutput(
+        policy=Policy.load(policy_path), scanner=FakePii(), nufi_scanner=Broken()
+    )
+    guard._control = Policy.load(policy_path).control("G2b").with_mode("post_call")
+
+    before = GUARDRAIL_DECISIONS.labels(
+        control="G2b", risk="LLM02", action="block", enforced="false"
+    )._value.get()
+
+    result = await _apply_text(guard, "주민번호 900101-1234568")
+
+    assert result == "주민번호 900101-1234568"
+    after = GUARDRAIL_DECISIONS.labels(
+        control="G2b", risk="LLM02", action="block", enforced="false"
+    )._value.get()
+    assert after == before + 1
+    assert _degraded_gauge("G2b") == 1
 
 
 # --- what a blocked user is told -------------------------------------------
