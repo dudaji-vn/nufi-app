@@ -145,10 +145,27 @@ class GuardrailBlocked(Exception):
     task does not have to rediscover it.
     """
 
+    # Discriminator on the wire. litellm builds its error body with
+    # `type=getattr(e, "type", "None")` and `param=getattr(e, "param", "None")`
+    # (proxy/common_request_processing.py:1656-1657), so an exception carrying
+    # these attributes gets them verbatim in the response.
+    #
+    # Design section 7 recorded that no discriminator survives to the client and
+    # left the carrier as an open decision. The measurement was right -- every
+    # block did arrive as `"type": "None"` -- but the conclusion was wrong: the
+    # field was always available, we simply never set it. Without it a client
+    # can only tell a policy refusal from a malfunction by matching on the
+    # message prose, which is why apps/chat still introduces a refusal with
+    # "Something went wrong".
+    type = "nufi_guardrail_blocked"
+
     def __init__(
         self, code: str, event_id: str, detail: str, status_code: int = 400
     ) -> None:
         self.code = code
+        # `param` carries the risk code (LLM01_INJECTION, ...) so a client can
+        # key its refusal copy off a stable identifier instead of the prose.
+        self.param = code
         self.event_id = event_id
         self.detail = detail
         self.status_code = status_code

@@ -314,8 +314,22 @@ discarding our payload.
 
 Three consequences, all of which were previously stated here as settled:
 
-- **Matching on `type` is unavailable.** There is no discriminator on the wire
-  that distinguishes a guardrail block from any other 400.
+- ~~**Matching on `type` is unavailable.**~~ **RESOLVED 2026-07-29.** The
+  measurement was right — every block did arrive as `"type": "None"` — but the
+  conclusion was wrong. litellm builds its error body with
+  `type=getattr(e, "type", "None")` and `param=getattr(e, "param", "None")`
+  (`proxy/common_request_processing.py:1656-1657`), so the field was always
+  available; `GuardrailBlocked` simply never set it. It now carries
+  `type = "nufi_guardrail_blocked"` and `param = <risk code>`, verified on the
+  wire:
+
+  ```json
+  {"error": {"message": "This request was blocked by a security policy … (reference: grd_…)",
+             "type": "nufi_guardrail_blocked", "param": "LLM01_INJECTION", "code": "400"}}
+  ```
+
+  A client can now tell a policy refusal from a malfunction without matching on
+  prose, and key its copy off `param` rather than parsing the message.
 - **Resolving refusal text from `code` through i18n is unavailable.** `code`
   carries the HTTP status, so there is nothing to key i18n on. The argument
   that this removes a model call from the block path depends on a code that
