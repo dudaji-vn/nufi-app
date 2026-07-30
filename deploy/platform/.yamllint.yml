@@ -21,9 +21,19 @@ rules:
 # forever. Their CI lints it under their own rules. This mirrors the ruff exclude
 # in pyproject.toml, which was added when the snapshot landed; missing it here is
 # what turned the first CI run on this branch red.
+#
+# `**/nufi-security/` and not `litellm/nufi-security/`, and that is not
+# cosmetic. yamllint resolves an ignore pattern against the WORKING DIRECTORY,
+# not against the directory holding this config, and a pattern containing a
+# slash is anchored there (gitignore semantics). CI runs
+# `ibiqlik/action-yamllint` from the repository root with
+# `file_or_dir: deploy/platform`, so an anchored `litellm/...` matches nothing
+# while the same pattern passes locally from inside `deploy/platform`. It did:
+# clean here, red there, on the very next run. `**/` matches at any depth and so
+# behaves the same from both.
 ignore: |-
   node_modules/
   .venv/
   .git/
-  litellm/nufi-security/
+  **/nufi-security/
   monitoring/grafana/dashboards/
