@@ -20,18 +20,35 @@
 # the tests exercise the version production runs.
 prometheus-client==0.20.0
 
-# G1's second, independent detector. Pinned to the same COMMIT the Dockerfile's
-# vendoring stage installs, so the test venv and the image run identical
-# patterns -- tests/test_nufi_injection_scanner.py asserts which sentences it
-# fires on, and those assertions are only meaningful if the version under test
-# is the version that ships.
+# G1's second, independent detector. No longer fetched from GitHub: it is a
+# vendored source snapshot at litellm/nufi-security/, recorded in
+# litellm/nufi-security.provenance.md, and this installs THAT TREE.
 #
-# Unlike the image, this line lets pip resolve nufi-security's two declared
-# dependencies (PyYAML>=6.0, cryptography>=41.0). That is correct HERE and
-# would not be in the Dockerfile: a test venv is built from scratch by one
-# resolver run, while the image has an existing, litellm-chosen dependency set
-# that no resolver may be pointed at. See litellm/Dockerfile for that argument
-# in full.
+# EDITABLE (-e), for three reasons that a plain path install and a `pythonpath`
+# entry both fail:
 #
-# The repository is public; no credential is needed to install it.
-nufi-egress @ git+https://github.com/dudaji/nufi-security@5eb9a027cbdd9c5d3142d4609782110a737c67e0
+#   1. One copy of the bytes. A non-editable install copies the source into
+#      site-packages, so two copies exist and path order decides which one a
+#      process imported -- which would make the assertions in
+#      tests/test_nufi_injection_scanner.py about which sentences fire
+#      assertions about an unknown copy.
+#   2. Subprocesses see it. pytest's `pythonpath` applies only to code pytest
+#      itself runs; tests/test_health.py spawns `python -c "import guardrails"`
+#      to prove an import-time failure is loud, and that subprocess inherits no
+#      such path. Measured: it failed with "the nufi-security package is not
+#      importable" instead of the violation it was asserting on.
+#   3. `nufi.__version__` is correct. It is read from the root VERSION file
+#      relative to the package, which only exists in the source tree -- an
+#      editable install points there, so the version is 0.10.0 rather than the
+#      "0.0.0" fallback the previous pip-from-git build produced.
+#
+# The path is relative to the CWD pip runs in, NOT to this file: CI's step sets
+# working-directory: deploy/platform (.github/workflows/platform-ci.yml).
+# tests/test_nufi_pii_scanner.py asserts the path resolves from there. Run from
+# anywhere else it fails loudly, which is the acceptable failure.
+#
+# This also supplies the library's two declared dependencies (PyYAML>=6.0,
+# cryptography>=41.0) -- correct HERE, where the venv is built from scratch by
+# one resolver run, and never in the image, which already carries both and
+# where no resolver may run at all. See litellm/Dockerfile for that argument.
+-e ./litellm/nufi-security

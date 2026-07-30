@@ -5,6 +5,14 @@ requires-python = ">=3.12"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Not `litellm/nufi-security`: the vendored snapshot is installed editable by
+# litellm/requirements.txt, so it is importable by every process in the venv --
+# including the subprocesses tests/test_health.py spawns, which a `pythonpath`
+# entry here would not reach. Adding it as well would put the same tree on
+# sys.path twice under two names.
+#
+# `testpaths` keeps their own 18,027-line suite out of our collection. To run
+# it: cd litellm/nufi-security && pytest.
 pythonpath = ["litellm"]
 markers = [
     "contract: requires a live sidecar or Presidio; skipped by default",

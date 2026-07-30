@@ -48,6 +48,9 @@ from guardrails.types import Finding, Span, SpanSource
 
 PLATFORM = Path(__file__).resolve().parent.parent
 
+# The vendored nufi-security snapshot. See litellm/nufi-security.provenance.md.
+SNAPSHOT = PLATFORM / "litellm" / "nufi-security"
+
 DEFAULT_ENTITIES = ["KR_RRN", "KR_FOREIGNER_REG", "KR_PHONE"]
 
 # Generated, never copied. See the module docstring.
@@ -712,18 +715,98 @@ def test_the_vendored_rules_file_has_not_been_edited():
     )
 
 
-def test_the_rules_file_matches_the_library_commit_the_image_installs():
-    """The drift this catches: bumping NUFI_SECURITY_COMMIT without
-    re-vendoring the rules, leaving one version's code running against another
-    version's patterns with nothing to say so.
+def test_the_rules_file_matches_the_librarys_own_copy():
+    """The drift this catches: re-snapshotting the library without re-vendoring
+    the rules, leaving one version's code running against another version's
+    patterns with nothing to say so.
+
+    Under the pip-from-git build this could only be asserted INDIRECTLY, by
+    checking that a commit pin in the Dockerfile equalled a commit string in
+    this repo -- two of our own strings agreeing with each other. The snapshot
+    puts the library's own config/patterns.yaml in the tree, so the comparison
+    is now the actual bytes the shipped code was written against, with no
+    network and no pin to trust.
+    """
+    library_copy = SNAPSHOT / "config" / "patterns.yaml"
+
+    assert library_copy.is_file(), (
+        f"{library_copy} is missing. The rules the adapter ships are a copy of "
+        "that file; without it nothing can say the copy is still faithful."
+    )
+    assert hashlib.sha256(library_copy.read_bytes()).hexdigest() == PATTERNS_SHA256, (
+        "litellm/guardrails/nufi_patterns.yaml and the snapshot's own "
+        "config/patterns.yaml have diverged. Re-vendor the rules from the "
+        "snapshot and update PATTERNS_SHA256 in the same commit."
+    )
+
+
+def test_the_snapshot_is_the_commit_the_rules_came_from():
+    """PATTERNS_SOURCE_COMMIT is what the network contract test below fetches.
+    If the snapshot is re-taken at a newer commit and this string is left
+    behind, that test verifies the vendored rules against the wrong upstream
+    revision and passes for the wrong reason.
+    """
+    provenance = (PLATFORM / "litellm" / "nufi-security.provenance.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert PATTERNS_SOURCE_COMMIT in provenance, (
+        "litellm/nufi-security.provenance.md does not name "
+        f"{PATTERNS_SOURCE_COMMIT}. Either the snapshot moved and "
+        "PATTERNS_SOURCE_COMMIT in guardrails/scanners/nufi_pii.py was not "
+        "updated with it, or the reverse."
+    )
+
+
+def test_the_image_does_not_fetch_the_library_over_the_network():
+    """The property this commit exists to create, and the one a later edit is
+    most likely to undo by reflex.
+
+    A build that reaches GitHub for this package is a build whose detector can
+    change without a diff in this repo, and it is how the delimiter fix ended up
+    needing a pull request into someone else's repository. The snapshot is the
+    fix; re-adding an install would quietly revert it while everything still
+    passed.
     """
     dockerfile = (PLATFORM / "litellm" / "Dockerfile").read_text(encoding="utf-8")
+
+    installs = [
+        line
+        for line in dockerfile.splitlines()
+        if not line.lstrip().startswith("#")
+        and "nufi-security" in line
+        and ("pip install" in line or "git+" in line)
+    ]
+
+    assert not installs, (
+        "litellm/Dockerfile installs nufi-security instead of copying the "
+        f"vendored snapshot: {installs}"
+    )
+
+
+def test_the_test_venv_installs_the_snapshot_and_not_a_remote():
+    """The path in requirements.txt is resolved by pip against its WORKING
+    DIRECTORY, not against the requirements file. CI sets that to
+    deploy/platform; this asserts the path is correct from there, so a moved
+    snapshot fails here rather than in a CI install step.
+    """
     requirements = (PLATFORM / "litellm" / "requirements.txt").read_text(encoding="utf-8")
 
-    pinned = re.search(r"ARG NUFI_SECURITY_COMMIT=([0-9a-f]{40})", dockerfile)
-    assert pinned, "litellm/Dockerfile no longer pins NUFI_SECURITY_COMMIT to a commit"
-    assert pinned.group(1) == PATTERNS_SOURCE_COMMIT
-    assert f"nufi-security@{PATTERNS_SOURCE_COMMIT}" in requirements
+    assert "git+https://github.com/dudaji/nufi-security" not in requirements, (
+        "the test venv installs nufi-security from GitHub again; it must "
+        "install the vendored snapshot, or the tests assert on bytes that are "
+        "not the bytes that ship"
+    )
+
+    editable = [
+        line.split(maxsplit=1)[1].strip()
+        for line in requirements.splitlines()
+        if line.startswith("-e ")
+    ]
+    assert editable == ["./litellm/nufi-security"], editable
+    assert (PLATFORM / editable[0]).resolve() == SNAPSHOT.resolve(), (
+        f"{editable[0]} does not resolve to {SNAPSHOT} from deploy/platform"
+    )
 
 
 @pytest.mark.contract

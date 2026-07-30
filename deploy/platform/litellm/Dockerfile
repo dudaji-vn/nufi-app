@@ -28,37 +28,31 @@
 # DEPENDENCY SET". A resolver is the thing that can silently move a pin.
 #
 # G1 needs a second, independent detector (docs/2026-07-29-nufi-security-
-# integration.md §7 step 1), and it is a Python package. The builder stage
-# below installs it at a pinned COMMIT, with --no-deps, into an empty
-# directory, and the runtime stage COPYs the result. No pip, no resolver and
-# no dependency metadata ever touch the runtime image -- which is also the
-# only way it could be done here: this base image is Wolfi and ships neither
-# pip nor git (verified: `pip: not found`, `git: not found`,
+# integration.md §7 step 1), and it is a Python package. It arrives as a
+# VENDORED SOURCE SNAPSHOT at nufi-security/, recorded in
+# nufi-security.provenance.md, and is copied in as plain files. No pip, no
+# resolver and no dependency metadata ever touch the runtime image -- which is
+# also the only way it could be done here: this base image is Wolfi and ships
+# neither pip nor git (verified: `pip: not found`, `git: not found`,
 # `No module named pip`). A literal `RUN pip install ...` in the runtime stage
 # would not build.
 #
-# --no-deps is safe to assert rather than hope: nufi-security declares exactly
-# two runtime dependencies, `PyYAML>=6.0` and `cryptography>=41.0`, and the
-# table above shows the image already carries 6.0.3 and 46.0.7. Both
-# constraints are satisfied by what litellm already chose, so there is nothing
-# for a resolver to do -- and with --no-deps there is no resolver to do it.
+# A builder stage used to `pip install --no-deps` the package from GitHub at a
+# pinned commit. That is gone, and DELIBERATELY: this build must not reach the
+# network for it. Two reasons, both measured, both in the provenance file --
+# a fix to their code needed a pull request into a repository we do not own,
+# and pip never delivered the root VERSION file, so the library reported
+# `__version__ == '0.0.0'` inside a running container while actually being
+# 0.10.0.
+#
+# The dependency argument the builder stage relied on still holds and is why
+# copying source is safe: nufi-security declares exactly two runtime
+# dependencies, `PyYAML>=6.0` and `cryptography>=41.0`, and the table above
+# shows the image already carries 6.0.3 and 46.0.7. Both constraints are
+# satisfied by what litellm already chose. Now there is no resolver at all.
 #
 # litellm/requirements.txt is for the CI/test venv
 # (.github/workflows/platform-ci.yml), never for this image.
-
-# Vendoring stage. Pinned to a COMMIT, never a branch: nufi-security is
-# v0.10.0 with an API declared stable through `nufi/__init__.py`'s `__all__`,
-# but it is a young internal package and a branch pin would let its behaviour
-# change under a rebuild -- including the regex patterns G1 now enforces on
-# user spans with.
-#
-# The repository is public: verified with an unauthenticated
-# `GIT_TERMINAL_PROMPT=0 git clone` and an unauthenticated API call, so no
-# build credential is needed and none is plumbed in.
-FROM python:3.13.13-bookworm AS nufi-security
-ARG NUFI_SECURITY_COMMIT=5eb9a027cbdd9c5d3142d4609782110a737c67e0
-RUN pip install --no-cache-dir --no-deps --target /opt/nufi-security \
-    "git+https://github.com/dudaji/nufi-security@${NUFI_SECURITY_COMMIT}"
 
 FROM ghcr.io/berriai/litellm:v1.83.10-stable
 
@@ -107,13 +101,33 @@ COPY config.yaml /app/config.yaml
 # image that moved to 3.14 would silently create a directory nothing reads.
 #
 # `import nufi` pulls `egress_audit`, `enforcement` and `gateway` (its
-# `__init__` imports from all three), so the whole install tree is copied
-# rather than a hand-picked subset -- a partial copy is a package whose own
-# imports may or may not resolve, decided by which functions get called.
+# `__init__` imports from all three), so every package the distribution
+# declares is copied rather than a hand-picked subset -- a partial copy is a
+# package whose own imports may or may not resolve, decided by which functions
+# get called. The list below is exactly `[tool.setuptools] packages` from
+# nufi-security/pyproject.toml, and tests/test_nufi_pii_scanner.py asserts the
+# two have not drifted apart.
 #
-# If this copy is ever missing or broken, the proxy does not start: G1
+# The REST of the snapshot -- its tests, docs, benchmarks, its own Dockerfile
+# and Helm chart -- deliberately does not ship. It is 4.5 MB of things a
+# gateway does not run.
+COPY nufi-security/nufi /app/nufi
+COPY nufi-security/enforcement /app/enforcement
+COPY nufi-security/egress_audit /app/egress_audit
+COPY nufi-security/capture /app/capture
+COPY nufi-security/nufi_client /app/nufi_client
+COPY nufi-security/gateway /app/gateway
+
+# Not incidental, and not covered by the package list above. `nufi/__init__.py`
+# reads `__version__` from this file and falls back to "0.0.0" if it is absent.
+# The distribution declares seven packages and no data files, so the previous
+# pip-based build never delivered it and the running container reported
+# `nufi.__version__ == '0.0.0'` for a 0.10.0 library -- measured, not inferred.
+# `enforcement/` resolves the same file by several different relative paths.
+COPY nufi-security/VERSION /app/VERSION
+
+# If any of the copies above is missing or broken, the proxy does not start: G1
 # constructs NufiInjectionScanner at import time and its constructor proves the
 # detector fires on a known attack and stays quiet on a known benign sentence
 # (guardrails/scanners/nufi_injection.py). A detector that cannot do its job
 # must not be able to return a value that looks like success.
-COPY --from=nufi-security /opt/nufi-security /app
