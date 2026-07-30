@@ -1,0 +1,20 @@
+{
+  "backend": "onnx-int8",
+  "split": "test",
+  "per_class_recall": {
+    "CREDIT_CARD": 1.0,
+    "EMAIL": 1.0,
+    "KR_ACCOUNT": 1.0,
+    "KR_BRN": 1.0,
+    "KR_DRIVER_LICENSE": 1.0,
+    "KR_FOREIGNER_REG": 1.0,
+    "KR_LOCATION": 1.0,
+    "KR_PASSPORT": 1.0,
+    "KR_PERSON": 0.9651,
+    "KR_PHONE": 1.0,
+    "KR_RRN": 1.0,
+    "SECRET": 1.0
+  },
+  "pii_recall": 0.9801,
+  "strong_recall": 1.0
+}

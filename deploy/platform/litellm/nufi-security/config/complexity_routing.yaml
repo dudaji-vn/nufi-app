@@ -1,0 +1,60 @@
+version: 1
+# RouteLLM 복잡도 라우팅 설정 (CMP-293 Phase 2).
+# 프롬프트 복잡도에 따라 저비용/고성능 모델을 자동 선택한다.
+
+# 복잡도 라우팅 활성화 여부
+enabled: true
+
+# 복잡한 요청에 사용할 고성능 모델
+strong_model: gpt-4o
+
+# 단순한 요청에 사용할 저비용 모델
+weak_model: gpt-4o-mini
+
+# 복잡도 임계값 (0.0 ~ 1.0)
+# score >= threshold → strong_model (복잡)
+# score < threshold  → weak_model (단순)
+threshold: 0.5
+
+# simple/moderate 분기 임계값 (선택)
+# null이면 threshold * 0.6 자동 계산
+moderate_threshold: null
+
+# sigmoid bias (음수 = 단순 편향, 양수 = 복잡 편향)
+bias: -1.5
+
+# 피처 가중치 오버라이드 (null이면 기본 가중치 사용)
+# weights:
+#   token_count: 0.003
+#   technical_density: 0.35
+#   multi_step_count: 0.25
+
+# --- 비용 대시보드 설정 ---
+dashboard:
+  # 기준 모델 (모든 요청을 이 모델로 보냈을 때의 비용 대비 절약 계산)
+  baseline_model: gpt-4o
+
+# --- A/B 테스트 설정 ---
+ab_tests:
+  - id: complexity_routing_v1
+    name: "복잡도 라우팅 v1"
+    description: "GPT-4o vs GPT-4o-mini 복잡도 기반 분배 효과 검증"
+    enabled: true
+    variants:
+      - name: control
+        model: gpt-4o
+        weight: 0.5
+      - name: treatment
+        model: gpt-4o-mini
+        weight: 0.5
+  - id: strong_model_comparison
+    name: "고성능 모델 비교"
+    description: "GPT-4o vs Claude-3.5-Sonnet 품질 비교"
+    enabled: false
+    variants:
+      - name: gpt4o
+        model: gpt-4o
+        weight: 0.5
+      - name: claude
+        model: claude-3-5-sonnet
+        weight: 0.5

@@ -1,0 +1,39 @@
+name: docs-guard
+
+# CMP-117: docs 정합성 자동 가드. 흐름을 바꾸는 PR 이 문서 동시 갱신을 빠뜨리면 CI 실패.
+# ARCHITECTURE.md §7 드리프트 방지 체크리스트를 기계가 강제한다.
+
+on:
+  pull_request:
+    paths:
+      - "docs/**"
+      - "**/*.md"
+      - "**/*.py"
+      - "config/**"
+      - "VERSION"
+      - "CHANGELOG.md"
+      - "README.md"
+      - "scripts/check_docs.py"
+      - "scripts/check_doc_style.py"
+      - ".github/workflows/docs-guard.yml"
+  push:
+    branches: [main]
+
+jobs:
+  docs-consistency:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      # stdlib 만 사용 → 의존성 설치 불필요.
+      - name: docs 정합성 가드 (Mermaid · 식별자 · 버전 · 링크)
+        run: python scripts/check_docs.py --verbose
+      - name: 문서 스타일 가드 (내부 식별자 · 명령 표기 규약)
+        run: python scripts/check_doc_style.py --verbose
+      - name: 드리프트 단위 테스트 (green-on-main + 의도적 드리프트 재현)
+        run: python -m pytest tests/test_docs_consistency.py tests/test_doc_style_guard.py -q

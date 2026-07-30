@@ -1,0 +1,25 @@
+# EDM 등록 명세 (오프라인 배치 입력). 빌드: scripts/build_edm_index.py
+# 여기 경로의 원문은 인덱스에 저장되지 않는다 — 해시/시그니처만 index.json 에 기록.
+thresholds:
+  k_of_n: 2            # structured 강신호 동시매치 임계
+  doc_high: 0.45       # 문서 고유사도 → block
+  doc_med: 0.22        # 문서 중유사도 → warn
+
+# 저(低)카디널리티/공통 값 제외 (오탐 관리, §3.1)
+stop_values: ["김", "이", "박", "최", "정", "서울", "VIP", "GOLD", "SILVER"]
+
+structured:
+  - dataset: customers
+    csv: samples/edm/customers.csv
+    fields:
+      - { column: name,  field: name,  class: CONFIDENTIAL, min_cardinality: 3 }
+      - { column: phone, field: phone, class: CONFIDENTIAL, min_cardinality: 3 }
+      - { column: grade, field: grade, class: CONFIDENTIAL, min_cardinality: 1 }
+
+documents:
+  - doc_id: contract-2026-q2
+    file: samples/edm/contract_doc.txt
+    class: CONFIDENTIAL
+    k: 8
+    window: 4
+    num_perm: 64

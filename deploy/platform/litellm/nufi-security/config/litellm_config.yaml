@@ -1,0 +1,79 @@
+version: 1
+# LiteLLM Proxy 설정 — PII 기반 하이브리드 라우팅 (CMP-244).
+#   기동: litellm --config config/litellm_config.yaml
+#   callback: gateway/litellm_hook.py 의 EgressAuditHook (PII 라우팅 + 감사 로깅)
+#
+# 라우팅 전략:
+#   1. 모든 요청에 PII 감지 실행
+#   2. PII 감지 → nufi-local (온프렘 모델)로 강제 라우팅
+#   3. PII 없음 → nufi-cloud (클라우드 모델) 허용
+#   4. 프로바이더 장애 시 자동 폴백
+
+model_list:
+  # --- 로컬 모델 (온프렘, PII 안전) ---
+  - model_name: nufi-local
+    litellm_params:
+      model: openai/local-llm
+      api_base: http://localhost:8000/v1
+      api_key: "sk-local-noauth"
+    model_info:
+      egress_class: private
+      description: "온프렘 LLM — PII 포함 요청 처리"
+
+  # --- 클라우드 모델 (PII 미포함 시 허용) ---
+  - model_name: nufi-cloud
+    litellm_params:
+      model: anthropic/claude-3-5-sonnet-20241022
+      api_key: os.environ/ANTHROPIC_API_KEY
+    model_info:
+      egress_class: public
+      description: "클라우드 LLM — PII 미포함 요청만 허용"
+
+  - model_name: nufi-cloud-fast
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      egress_class: public
+      description: "경량 클라우드 LLM — 단순 요청용"
+
+  # --- 레거시 호환 (기존 nufi-default 사용 코드 지원) ---
+  - model_name: nufi-default
+    litellm_params:
+      model: openai/local-llm
+      api_base: http://localhost:8000/v1
+      api_key: "sk-local-noauth"
+    model_info:
+      egress_class: private
+
+router_settings:
+  # 프로바이더 장애 시 자동 폴백
+  fallbacks:
+    - nufi-cloud: ["nufi-cloud-fast"]
+    - nufi-cloud-fast: ["nufi-local"]
+    - nufi-default: ["nufi-cloud"]
+  # 재시도 설정
+  num_retries: 2
+  retry_after: 5
+  # 타임아웃
+  timeout: 30
+
+litellm_settings:
+  # PII 라우팅 + 감사 로깅 콜백
+  callbacks: gateway.litellm_hook.egress_audit_hook
+  # 비용 추적 활성화
+  success_callback: ["langfuse"]  # 선택: 외부 관측성
+  # 요청별 메타데이터 전달
+  set_verbose: false
+
+# PII 라우팅 설정 (gateway/pii_router.py 에서 참조)
+pii_routing:
+  enabled: true
+  local_model: nufi-local
+  cloud_model: nufi-cloud
+  # PII 감지 시 무조건 로컬로 보낼 엔티티 타입 (빈 목록 = 모든 PII)
+  force_local_entities: []
+  # 감지 오류 시 로컬로 폴백 (fail-closed)
+  fail_closed: true
+
+# public/private 판정은 model_info.egress_class 또는 provider 매핑(router.py)으로.

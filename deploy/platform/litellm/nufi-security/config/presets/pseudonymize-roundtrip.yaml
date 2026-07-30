@@ -1,0 +1,40 @@
+# 프리셋: pseudonymize-roundtrip — 가역 가명화·원복(효용 보존)
+#
+# 누구를 위한 것: public LLM 의 답변 품질은 유지하면서 PII 노출은 막고 싶은 조직.
+# 핵심: 약한 PII(인명/전화/이메일/사업자번호/지명)를 구조보존 가명토큰으로 치환해
+#       모델에 보내고(pre_call), 응답에서 원래 값으로 원복(post_call)한다(M3 가역 경로).
+#       비밀(SECRET)·카드·주민/외국인/여권/면허는 가명화로도 내보내지 않고 차단 유지.
+#       enforcement 는 fail-open(가용성 우선).
+#
+# 전제: 가역 원복은 ReversibleEgress + MappingVault(M3) 경로에서 동작.
+preset: pseudonymize-roundtrip
+version: 1
+description: 약한 PII 를 가역 가명화로 치환·원복(효용 보존), 강한 PII·비밀은 차단 유지(fail-open).
+fail_closed_default: false
+
+overlay:
+  policy:
+    default_action: warn
+    blocking_actions: [block]   # 강한 PII·비밀은 여전히 차단
+    entities:
+      # 가역 대상(REVERSIBLE_ENTITIES) = 가명화. KR_LOCATION 은 베이스 warn → 가명화로 승격.
+      KR_PERSON:   { action: pseudonymize, severity: medium }
+      KR_PHONE:    { action: pseudonymize, severity: medium }
+      EMAIL:       { action: pseudonymize, severity: low }
+      KR_BRN:      { action: pseudonymize, severity: medium }
+      KR_LOCATION: { action: pseudonymize, severity: low }
+      # 강한 PII·비밀은 차단 유지(명시) — 가명화로도 송신 금지.
+      KR_RRN:           { action: block, severity: critical }
+      KR_FOREIGNER_REG: { action: block, severity: critical }
+      KR_PASSPORT:      { action: block, severity: high }
+      KR_DRIVER_LICENSE: { action: block, severity: high }
+      CREDIT_CARD:      { action: block, severity: critical }
+      KR_ACCOUNT:       { action: block, severity: high }
+      SECRET:           { action: block, severity: critical }
+    enforcement:
+      fail_mode: open
+
+  audit_profiles:
+    profiles:
+      public:
+        retain_raw: false   # 가명화 통과본만 저장(원문 미보존)

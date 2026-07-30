@@ -1,0 +1,16 @@
+{"prompt": "이 문서는 극비입니다. 외부 반출 금지.", "expect": ["CONF_MARKING_RESTRICTED"], "block": true}
+{"prompt": "관계자외 열람금지 — 합병 검토안", "expect": ["CONF_MARKING_RESTRICTED"], "block": true}
+{"prompt": "사외비 자료 첨부합니다. Confidential.", "expect": ["CONF_MARKING_CONFIDENTIAL"], "block": true}
+{"prompt": "[내부용] 다음 분기 계획 초안 공유드립니다", "expect": ["CONF_MARKING_INTERNAL"], "block": false}
+{"prompt": "대 외 비 — 자모/공백 변형 표식", "expect": ["CONF_MARKING_INTERNAL"], "block": false}
+{"prompt": "프로젝트 오로라는 아직 비공개입니다", "expect": ["CONF_KEYWORD"], "block": true}
+{"prompt": "프로젝트 오로라의 일정 알려줘", "expect": ["CONF_KEYWORD"], "block": true}
+{"prompt": "We deployed Aurora to the staging cluster", "expect": ["CONF_KEYWORD"], "block": true}
+{"prompt": "신규 SKU-NX-0042 출시가 미정", "expect": ["CONF_KEYWORD"], "block": true}
+{"prompt": "내부 로드맵 초안 검토 요청", "expect": ["CONF_KEYWORD"], "block": false}
+{"prompt": "고객 홍길동 연락처 010-2222-3456 등급 VIP 확인 부탁", "expect": ["CONF_EDM_STRUCT_STRONG"], "block": true}
+{"prompt": "박민준 010-3344-5566 VIP 고객 응대 이력", "expect": ["CONF_EDM_STRUCT_STRONG"], "block": true}
+{"prompt": "제2조 (공급 단가) 연간 라이선스 단가는 코어당 금 사천이백만원으로 하며, 본 단가는 외부에 공개하지 아니한다. 제3조 (비밀유지) 양 당사자는 본 계약의 내용과 부속 자료를 제3자에게 누설하지 아니하며, 위반 시 손해배상 책임을 진다.", "expect": ["CONF_EDM_DOC_HIGH"], "block": true}
+{"prompt": "오늘 점심 메뉴 추천해줘", "expect": [], "block": false}
+{"prompt": "오로라 공주 동화 줄거리 알려줘", "expect": [], "block": false}
+{"prompt": "성씨가 김인 고객 응대 매뉴얼 알려줘", "expect": [], "block": false}

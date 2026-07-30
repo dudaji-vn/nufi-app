@@ -15,7 +15,11 @@ asyncio_mode = "auto"
 [tool.ruff]
 target-version = "py312"
 line-length = 100
-exclude = ["scripts/e2e"]
+# `litellm/nufi-security` is a vendored snapshot of another repository
+# (litellm/nufi-security.provenance.md). Linting it would report someone else's
+# style as our defects, and any fix would be a diff upstream has to carry
+# forever. Their own CI lints it under their own rules.
+exclude = ["scripts/e2e", "litellm/nufi-security"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]

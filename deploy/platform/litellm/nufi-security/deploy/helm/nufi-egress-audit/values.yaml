@@ -1,0 +1,37 @@
+# NuFi Egress-Audit Helm 스텁 값 (CMP-122). 단일 파드 기동 검증용.
+image:
+  repository: nufi-egress-audit
+  tag: "0.0.2-dev"
+  # 에어갭 클러스터: load-bundle 로 노드에 이미지 사전 로드 후 IfNotPresent.
+  pullPolicy: IfNotPresent
+
+# NER 백엔드: gazetteer(기본·외부호출 0) | transformers | auto
+nerBackend: gazetteer
+
+gateway:
+  port: 4000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+auditBot:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+service:
+  type: ClusterIP
+  port: 4000
+
+# 공유 감사 로그 큐. 스텁 기본은 파드 수명 emptyDir.
+# 프로덕션 영속화는 후속 이슈(PVC) 범위.
+logsVolume:
+  emptyDir: {}

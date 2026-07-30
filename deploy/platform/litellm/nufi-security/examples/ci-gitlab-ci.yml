@@ -1,0 +1,56 @@
+# NuFi GitLab CI 템플릿 — PR(MR) 별 PII 스캔 + MR 코멘트 자동 게시.
+# CMP-295: GitLab CI/CD 통합.
+#
+# 사용법:
+#   1) 이 파일의 내용을 프로젝트 .gitlab-ci.yml 에 include 하거나 복사
+#      include:
+#        - local: 'examples/ci-gitlab-ci.yml'
+#   2) CI/CD > Variables 에 GITLAB_TOKEN (api scope) 설정 (MR 코멘트용, 선택)
+#
+# 필요 조건: pip install nufi-egress (또는 requirements.txt)
+
+stages:
+  - security
+
+nufi-pii-scan:
+  stage: security
+  image: python:3.12-slim
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  before_script:
+    - pip install -r requirements.txt
+    - pip install -e .
+  script:
+    - |
+      set +e
+      nufi-egress scan . --profile ci --count-only | tee nufi-summary.txt
+      SCAN_EXIT=${PIPESTATUS[0]}
+      echo "SCAN_EXIT=$SCAN_EXIT" >> scan.env
+
+      # MR 코멘트 자동 게시 (GITLAB_TOKEN 설정 시)
+      if [ -n "$GITLAB_TOKEN" ] && [ -n "$CI_MERGE_REQUEST_IID" ]; then
+        if [ "$SCAN_EXIT" -eq 0 ]; then
+          STATUS="✅ PASS — 개인정보(PII) 미감지"
+        else
+          STATUS="❌ FAIL — PII 감지됨. 개인정보를 제거하거나 가명화 후 다시 푸시하세요."
+        fi
+
+        SUMMARY=$(cat nufi-summary.txt)
+        BODY="## NuFi PII Scan — ${STATUS}\n\n\`\`\`\n${SUMMARY}\n\`\`\`"
+
+        curl --fail --silent \
+          --request POST \
+          --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+          --header "Content-Type: application/json" \
+          --data "{\"body\": \"${BODY}\"}" \
+          "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/merge_requests/${CI_MERGE_REQUEST_IID}/notes" \
+          || echo "WARNING: MR 코멘트 게시 실패 (GITLAB_TOKEN 권한 확인)"
+      fi
+
+      exit $SCAN_EXIT
+  artifacts:
+    when: always
+    paths:
+      - nufi-summary.txt
+    expire_in: 7 days
