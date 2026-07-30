@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import os
 import re
 from typing import Dict, List, Optional, Tuple
 
@@ -27,13 +28,63 @@ TAG_OF: Dict[str, str] = {
 }
 _TYPE_OF_TAG = {v: k for k, v in TAG_OF.items()}
 
-# 불투명 델리미터: U+27E6 ⟦ … U+27E7 ⟧ (일반 텍스트/코드에 거의 없음 → 충돌 0).
-LB, RB = "⟦", "⟧"
-_EXACT = re.compile(LB + r"([A-Z]{1,2})(\d+)" + RB)
-# 관용 매칭(LLM 이 토큰을 변형: ⟦P1⟧ → [P1] / (P1)). 안전망 폴백용.
-_LENIENT = re.compile(r"[\[\(" + LB + r"]([A-Z]{1,2})(\d+)[\]\)" + RB + r"]")
-# 미완결 토큰의 최대 길이 상한(스트리밍 홀드 상한). ⟦ + 2자태그 + 6자리 + ⟧ 여유.
-MAX_SURROGATE_LEN = 16
+# 델리미터. 기본값은 U+27E6 ⟦ … U+27E7 ⟧ (일반 텍스트/코드에 거의 없음 → 충돌 0).
+#
+# 환경변수 NUFI_SURROGATE_DELIMS 로 교체 가능하다. 형식은 "<여는>,<닫는>"
+# (예: "<,>"). 기본 동작은 바뀌지 않는다.
+#
+# 왜 필요한가 — 측정 결과(2026-07-29, gemini-2.5-flash, 같은 프롬프트 n=6,
+# temperature 1.0). "모델이 토큰을 그대로 되돌려주는가":
+#
+#     ⟦E1⟧    0/6      ← 기본값. 델리미터를 통째로 제거하고 E1 만 반환한다.
+#     [[E1]]  2/6
+#     <E1>    6/6
+#
+# ⟦E1⟧ → E1 이 되면 _LENIENT 는 양쪽 괄호를 요구하므로 매칭되지 않고, 복원이
+# 조용히 실패한다. 사용자는 자기 이메일 대신 "E1" 을 보게 된다.
+#
+# _LENIENT 를 괄호 없이 넓히는 것은 해법이 아니다 — 맨 E1/P1/T2 는 셀 참조·
+# 부품번호 같은 평범한 문자열이므로 정상 텍스트를 손상시킨다. 양쪽 괄호 요구는
+# 유지하고, 델리미터 쪽을 배포 환경에 맞게 고를 수 있게 한다.
+#
+# n=6 은 보장이 아니라 "6회 중 실패 없음"이다. 모델이 토큰을 그대로 반복하는지는
+# 샘플링 결과이므로, 호출측은 복원 실패를 별도로 탐지해야 한다.
+_DEFAULT_LB, _DEFAULT_RB = "⟦", "⟧"
+
+
+def _load_delims() -> tuple[str, str]:
+    raw = os.environ.get("NUFI_SURROGATE_DELIMS", "")
+    if raw.count(",") == 1:
+        left, right = (part.strip() for part in raw.split(","))
+        if left and right:
+            return left, right
+    return _DEFAULT_LB, _DEFAULT_RB
+
+
+def _compile(lb: str, rb: str) -> tuple[re.Pattern, re.Pattern]:
+    exact = re.compile(re.escape(lb) + r"([A-Z]{1,2})(\d+)" + re.escape(rb))
+    # 관용 매칭(LLM 이 토큰을 변형: ⟦P1⟧ → [P1] / (P1)). 안전망 폴백용.
+    # 양쪽 괄호는 계속 요구한다 — 위 주석 참고.
+    opens = "|".join(re.escape(c) for c in dict.fromkeys((lb, "[", "(")))
+    closes = "|".join(re.escape(c) for c in dict.fromkeys((rb, "]", ")")))
+    lenient = re.compile(f"(?:{opens})" + r"([A-Z]{1,2})(\d+)" + f"(?:{closes})")
+    return exact, lenient
+
+
+LB, RB = _load_delims()
+_EXACT, _LENIENT = _compile(LB, RB)
+# 미완결 토큰의 최대 길이 상한(스트리밍 홀드 상한). 델리미터 길이를 반영한다.
+MAX_SURROGATE_LEN = 14 + len(LB) + len(RB)
+
+
+def set_delimiters(lb: str, rb: str) -> None:
+    """델리미터를 런타임에 교체(주로 테스트용). 정규식도 함께 재컴파일한다."""
+    global LB, RB, _EXACT, _LENIENT, MAX_SURROGATE_LEN
+    if not lb or not rb:
+        raise ValueError("delimiters must both be non-empty")
+    LB, RB = lb, rb
+    _EXACT, _LENIENT = _compile(lb, rb)
+    MAX_SURROGATE_LEN = 14 + len(lb) + len(rb)
 
 
 def make_surrogate(tag: str, n: int) -> str:
