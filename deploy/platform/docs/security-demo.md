@@ -131,7 +131,12 @@ Project $M. My email is secret.person@$M.com and my card is 4111111111111111. Re
 > một lời từ chối an toàn ("I cannot process, store, or accept sensitive personal
 > information…"), lời từ chối đó nằm lại trong lịch sử, và lượt 2 bị chặn.
 >
-> Đó là một lỗi thật ở phía guardrail, không phải ở người test — đang được sửa.
+> Đó là một lỗi thật ở phía guardrail, không phải ở người test, và **đã được sửa
+> ngày 2026-07-30**: lượt trả lời của model giờ là một span source riêng
+> (`SpanSource.ASSISTANT`) và chỉ chặn khi HAI detector độc lập cùng đồng ý, nên
+> một lời từ chối an toàn không còn giết cả cuộc hội thoại. Kiểm tra 6d trong
+> `scripts/staging-readiness.sh` khẳng định điều này trên stack đang chạy.
+>
 > Nhưng ngay cả sau khi sửa, gộp vào một tin vẫn là cách demo đúng: nó cho
 > observability đúng **một** request để tra, thay vì hai request phải đoán cái nào.
 
