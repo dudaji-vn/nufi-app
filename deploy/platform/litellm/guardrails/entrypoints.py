@@ -840,12 +840,14 @@ class G1Injection(BaseNufiGuardrail):
         # the control is switched on; `enforceable()` says this particular
         # verdict came from a source the control may act on, with whatever
         # corroboration that source requires. G1 detects on every span; it
-        # blocks on `untrusted` from either detector alone, and on `user` only
+        # blocks on `untrusted` (a tool or function result, or an unrecognised
+        # role) from either detector alone, and on `user` or `assistant` only
         # when BOTH detectors crossed their thresholds -- because the
         # classifier scores "Ignore the previous draft and start over"
-        # identically to a real injection, and as sentences they ARE the same
-        # sentence. What separates them is whose text it is, and whether a
-        # second, independent detector agrees.
+        # identically to a real injection, and scores the model's own safety
+        # refusal 1.0000 as well. As sentences they ARE the same sentence. What
+        # separates them is whose text it is, and whether a second, independent
+        # detector agrees.
         #
         # A verdict that fails either test still goes through _emit with
         # enforced=false, so it is counted and auditable; it just does not stop
@@ -1379,6 +1381,15 @@ class G2bPiiOutput(BaseNufiGuardrail):
                 rewritten.append(item)
                 continue
 
+            # `UNTRUSTED` and not `ASSISTANT`, even though this text IS the
+            # model's output. `SpanSource.ASSISTANT` (2026-07-30) exists to give
+            # a PRIOR assistant turn a different ENFORCEMENT rule in G1 --
+            # corroboration -- and G2b has no `enforce_sources` or
+            # `require_corroboration` at all, so the label here only selects a
+            # threshold. policy.yaml sets G2b's `assistant` and `untrusted` to
+            # the same value precisely so this choice cannot change what G2b
+            # redacts either way; left as `UNTRUSTED` so the split touched one
+            # control's behaviour and not four.
             spans = [Span(text=item, source=SpanSource.UNTRUSTED, message_index=0)]
             started = time.perf_counter()
             try:
@@ -1523,6 +1534,11 @@ class _PiiStream(_StreamState):
         self._scans = 0
 
     async def _scan(self, text: str) -> list[Any]:
+        # `UNTRUSTED`, not `ASSISTANT` — same reasoning as the non-streamed path
+        # in `G2bPiiOutput.apply_guardrail`, and it must stay the SAME as that
+        # path: this is the streaming half of one control, and a control whose
+        # streamed and non-streamed halves scored against different thresholds
+        # would be a protection that depends on `stream: true`.
         spans = [Span(text=text, source=SpanSource.UNTRUSTED, message_index=0)]
         return await self._guard._scan_all(spans) + scan_secrets(spans)
 

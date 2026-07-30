@@ -96,13 +96,16 @@ class ControlConfig:
     # What separates them is WHOSE text it is. A user instructing their own
     # assistant crosses no privilege boundary; prompt injection is untrusted
     # content steering the model on someone else's behalf -- a retrieved
-    # document, a tool result, a prior assistant turn. So G1 detects on every
-    # source (all of it is recorded and counted) and enforces only on
-    # `untrusted`.
+    # document, a tool result. So G1 detects on every source (all of it is
+    # recorded and counted) and originally enforced only on `untrusted`.
     #
     # Since `require_corroboration` below exists, `user` is back in this list
     # for G1: the reason to exclude it was never "user text does not matter",
-    # it was "one detector cannot tell these apart". Two can.
+    # it was "one detector cannot tell these apart". Two can. `assistant` is in
+    # the list on the same terms as of 2026-07-30 -- it used to be `untrusted`,
+    # which meant a model's own safety refusal (classifier score 1.0000,
+    # measured) stopped the request on one detector and killed the conversation
+    # it appeared in.
     enforce_sources: frozenset[SpanSource]
     # Sources where ONE detector crossing its threshold is not enough to act.
     #
@@ -125,7 +128,16 @@ class ControlConfig:
     # Untrusted spans are not named: a jailbreak string inside a retrieved
     # document is near-certain attack whichever detector saw it, and requiring
     # a second opinion there would just narrow the control to the intersection
-    # of both detectors' recall.
+    # of both detectors' recall. Measured on 2026-07-30 against six realistic
+    # indirect-injection payloads, that intersection is TWO of six -- so naming
+    # `untrusted` here would turn four live detections into log lines.
+    #
+    # `assistant` IS named, and the reason is the same one that named `user`:
+    # the model's own output is benign text. Measured, the classifier scores a
+    # safety refusal 1.0000, so while assistant turns were `untrusted` any
+    # conversation containing a refusal was blocked from that turn onward. The
+    # regex detector fires on none of three realistic refusals, so the
+    # requirement costs nothing there -- see `guardrails.spans`.
     require_corroboration: frozenset[SpanSource]
     options: dict[str, Any]
 
@@ -136,6 +148,12 @@ class ControlConfig:
         source this control may act on AND carries whatever corroboration that
         source requires. A verdict that fails either test is still recorded --
         it just does not stop the request.
+
+        The loop is over findings rather than over sources, which is what makes
+        a mixed request behave correctly: a request carrying an uncorroborated
+        `assistant` verdict and a lone `untrusted` verdict still enforces, on
+        the untrusted one. `any(...)` over sources would have been wrong in both
+        directions.
 
         `findings` is the tuple `decide()` already narrowed to the findings
         that CROSSED their thresholds, so "two distinct detectors" here means

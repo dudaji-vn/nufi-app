@@ -399,13 +399,13 @@ direction.
 
 | Control | Mode | Notes |
 |---|---|---|
-| G1 injection | **enforcing on untrusted spans** | Detects everywhere, blocks only on `untrusted` — see below. |
+| G1 injection | **enforcing** | Detects everywhere. Blocks a tool/function result on one detector, and user or assistant text only when two independent detectors agree — see below. |
 | G2a PII input | detect-only | Action is `log`; it never masks, so there is nothing to enforce. |
 | G2b PII output | **enforcing** | Redacts structured identifiers. 0 false positives across 8 benign technical responses after `PERSON` and `LOCATION` were removed from the entity list. |
 | G3 prompt leak | **enforcing** | Verbatim-echo detection only; a paraphrased leak is not caught. |
 | G4 output handling | **enforcing** | Strips external images, `javascript:` URLs and raw HTML — **on non-streamed responses only.** LiteLLM yields stream chunks before the guardrail sees them, so a streamed response is recorded with `enforced=false` rather than silently claimed as protected. Chat streams by default, so this covers the minority path. |
 
-### Why G1 blocks only untrusted content
+### Why G1 needs a second opinion on some sources and not others
 
 Measured against the shipped classifier — all four score **1.0000**:
 
@@ -420,17 +420,57 @@ They are the same sentence. **No threshold separates them**, so enforcing on
 score alone blocks ordinary conversational English — which is precisely how the
 previous generation of these guardrails ended up switched off.
 
-What separates them is *whose text it is*. A user instructing their own
-assistant crosses no privilege boundary. Prompt injection is untrusted content
-steering the model on someone else's behalf: a retrieved document, a tool
-result, a prior assistant turn. `enforce_sources: [untrusted]` in `policy.yaml`
-encodes exactly that.
+What separates them is *whose text it is*, and how much agreement a verdict on
+that text needs. `policy.yaml` splits the question in two: `enforce_sources`
+says whose text may stop a request, `require_corroboration` says how much
+evidence a verdict on it needs.
 
-User-authored hits are still detected, recorded and counted with
+| Span source | Message roles | May block | Evidence required |
+|---|---|---|---|
+| `untrusted` | `tool`, `function`, any unrecognised role | yes | one detector |
+| `user` | `user` | yes | two distinct detectors |
+| `assistant` | `assistant` | yes | two distinct detectors |
+| `system` | `system`, `developer` | no (threshold 1.01) | — |
+
+`tool` and `function` results are content that arrived from somewhere else
+mid-conversation, which is where indirect injection actually lands. Measured
+against six realistic indirect-injection payloads, the regex detector sees only
+two of them — so requiring agreement there would drop the other four to
+log-only. That is the attack path the control exists for, so it keeps the
+single-detector rule.
+
+`assistant` was part of `untrusted` until 2026-07-30, and that was a live
+defect, not a nuance. The classifier scores the model's *own safety refusal*
+**1.0000**:
+
+```
+Thank you for providing the project ID. However, I cannot process, store, or
+accept sensitive personal information such as email addresses or credit card
+numbers.                                                    ← injection=1.0000
+```
+
+Because `untrusted` needs no corroboration, that refusal blocked its own
+conversation with a 400, on every subsequent turn, forever — recoverable only
+by starting a new chat, and worst in exactly the safety-conscious exchanges the
+control is meant to protect. A model's prior turn is the model's own words:
+benign text the user has already read, so it gets the same corroboration
+requirement as the user's. The regex detector fires on none of three realistic
+refusals, so the requirement costs nothing there — while a real injection
+echoed back as an assistant turn is flagged by both detectors and still blocks.
+
+`thresholds.assistant` is **0.50**, the same as `untrusted` rather than a
+midpoint toward `user`'s 0.90. A refusal scores 1.0000, so no threshold ≤ 1.0
+could have separated it from an attack; raising the number would look like a fix
+and would not be one. What the number *does* control is what reaches the audit
+trail and which findings can corroborate — and at 0.90 a classifier hit of 0.85
+alongside a `critical` regex hit would stop crossing, turning a corroborated
+attack into a log line.
+
+Hits that cannot enforce are still detected, recorded and counted with
 `enforced=false`. Read `nufi_guardrail_decisions_total` to see what a wider
 policy would have stopped before widening it.
 
-### Turning a control on### Turning a control on
+### Turning a control on
 
 1. Run in `logging_only` for several days and read
    `nufi_guardrail_decisions_total` — an action with `enforced="false"` is what

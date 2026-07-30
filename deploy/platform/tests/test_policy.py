@@ -2,7 +2,11 @@ import pytest
 from guardrails.policy import Policy, _parse_control, decide
 from guardrails.types import Action, Finding, SpanSource
 
-_ALL_THRESHOLDS = {"user": 0.5, "untrusted": 0.5, "system": 1.01}
+# Written out rather than derived from `SpanSource`, deliberately. Deriving it
+# would let a future enum member slip into every test in this file unread; as a
+# literal, adding one turns ~40 tests red with `missing threshold(s) for [...]`,
+# which is the forcing function `_parse_control` was built to be.
+_ALL_THRESHOLDS = {"user": 0.5, "assistant": 0.5, "untrusted": 0.5, "system": 1.01}
 
 
 @pytest.fixture
@@ -203,7 +207,7 @@ def test_detector_threshold_overrides_the_source_threshold_for_that_detector():
     body = {
         "risk": "LLM01",
         "action": "block",
-        "thresholds": {"user": 0.99, "untrusted": 0.99, "system": 1.01},
+        "thresholds": {"user": 0.99, "assistant": 0.99, "untrusted": 0.99, "system": 1.01},
         "detector_thresholds": {"coverage_gap": 0.5},
     }
     control = _parse_control("G1", body)
@@ -371,8 +375,8 @@ def _corroborating(**overrides) -> dict:
     body = {
         "risk": "LLM01",
         "thresholds": _ALL_THRESHOLDS,
-        "enforce_sources": ["user", "untrusted"],
-        "require_corroboration": ["user"],
+        "enforce_sources": ["user", "assistant", "untrusted"],
+        "require_corroboration": ["user", "assistant"],
     }
     body.update(overrides)
     return body
@@ -429,10 +433,93 @@ def test_a_source_that_does_not_require_corroboration_enforces_alone():
     assert control.enforceable((_f("injection", SpanSource.UNTRUSTED),)) is True
 
 
+# --- assistant spans (2026-07-30) -------------------------------------------
+#
+# `assistant` was `untrusted` until then, which put the model's own words on the
+# single-detector path. Measured on the live classifier, a model safety refusal
+# scores 1.0000 -- so any conversation containing a refusal returned 400 from
+# that turn on, forever, and the user could only start a new chat.
+#
+# The two tests below are the two halves of the fix, and they must fail for
+# DIFFERENT mutations. Dropping `assistant` from `require_corroboration` must
+# break the first; adding `untrusted` to it must break `..._enforces_alone`
+# above; requiring corroboration everywhere must break both.
+
+
+def test_one_detector_on_an_assistant_span_cannot_enforce():
+    """The model's own refusal must not be able to stop the conversation.
+
+    This is the live defect, reduced to the unit that decided it. The classifier
+    scores a refusal 1.0000, so no threshold can catch this -- only the evidence
+    requirement can.
+    """
+    control = _parse_control("G1", _corroborating())
+
+    assert control.enforceable((_f("injection", SpanSource.ASSISTANT),)) is False
+
+
+def test_two_distinct_detectors_on_an_assistant_span_enforce():
+    """And a real injection echoed back as an assistant turn still blocks.
+
+    The other half. A `require_corroboration` that included `assistant` but
+    could never be satisfied on it would pass the test above and silently delete
+    the conversation-history injection path -- which is exactly the half of G1
+    that the 2026-07-29 rollout kept.
+    """
+    control = _parse_control("G1", _corroborating())
+
+    findings = (
+        _f("injection", SpanSource.ASSISTANT),
+        _f("nufi_injection", SpanSource.ASSISTANT),
+    )
+
+    assert control.enforceable(findings) is True
+
+
+def test_an_assistant_verdict_does_not_corroborate_a_user_verdict():
+    """Two sources, two opinions, neither corroborated.
+
+    `assistant` and `user` now BOTH require corroboration, which makes a
+    per-request "two detectors fired somewhere" shortcut look correct. It is
+    not: the model's refusal and the user's benign imperative are two separate
+    false positives, and counting them as agreement would block the exact
+    conversation this change exists to unblock.
+    """
+    control = _parse_control("G1", _corroborating())
+
+    findings = (
+        _f("injection", SpanSource.USER),
+        _f("nufi_injection", SpanSource.ASSISTANT),
+    )
+
+    assert control.enforceable(findings) is False
+
+
+def test_an_untrusted_verdict_still_enforces_alongside_a_shadowed_assistant_one():
+    """A mixed request enforces on the source that may act alone.
+
+    `enforceable` iterates findings, not sources, and this is the case that
+    distinguishes it from an implementation that returned early on the first
+    source it could not act on -- a tool result carrying a real payload in the
+    same request as a benign refusal.
+    """
+    control = _parse_control("G1", _corroborating())
+
+    findings = (
+        _f("injection", SpanSource.ASSISTANT),
+        _f("injection", SpanSource.UNTRUSTED),
+    )
+
+    assert control.enforceable(findings) is True
+
+
 def test_corroboration_is_counted_per_source_not_across_sources():
     """A second detector firing on somebody ELSE's text is not agreement about
     this text."""
-    control = _parse_control("G1", _corroborating(enforce_sources=["user"]))
+    control = _parse_control(
+        "G1",
+        _corroborating(enforce_sources=["user"], require_corroboration=["user"]),
+    )
 
     findings = (_f("injection"), _f("nufi_injection", SpanSource.SYSTEM))
 
@@ -488,11 +575,52 @@ def test_the_shipped_G1_enforces_on_user_spans_only_with_corroboration(policy):
 
     If `require_corroboration` were ever dropped from policy.yaml while `user`
     stayed in `enforce_sources`, G1 would start blocking on the classifier
-    alone -- and the classifier scores ordinary conversational English 1.0000.
+    alone -- and the classifier scores ordinary conversational English 1.0000,
+    and a model safety refusal 1.0000.
+
+    Both halves are equalities, not `in` checks. `untrusted` MISSING from
+    `require_corroboration` is as load-bearing as `assistant` being present:
+    adding it would drop four of six measured indirect-injection payloads to
+    log-only, and no dashboard distinguishes that from a quiet week.
     """
     control = policy.control("G1")
 
     assert control.enforce_sources == frozenset(
-        {SpanSource.USER, SpanSource.UNTRUSTED}
+        {SpanSource.USER, SpanSource.ASSISTANT, SpanSource.UNTRUSTED}
     )
-    assert control.require_corroboration == frozenset({SpanSource.USER})
+    assert control.require_corroboration == frozenset(
+        {SpanSource.USER, SpanSource.ASSISTANT}
+    )
+
+
+def test_the_shipped_G1_scores_assistant_spans_as_closely_as_untrusted(policy):
+    """The threshold is not what fixed the refusal false positive.
+
+    A refusal scores 1.0000, so no value <= 1.0 separates it from an attack.
+    Raising `assistant` toward `user`'s 0.90 would therefore fix nothing while
+    silently costing the corroborated path: a classifier hit at 0.85 plus a
+    `critical` regex hit is the two-detector evidence this control accepts, and
+    at 0.90 the classifier half would not cross.
+    """
+    control = policy.control("G1")
+
+    assert control.thresholds[SpanSource.ASSISTANT] == (
+        control.thresholds[SpanSource.UNTRUSTED]
+    )
+    assert control.thresholds[SpanSource.ASSISTANT] < control.thresholds[SpanSource.USER]
+
+
+def test_every_control_prices_the_assistant_source(policy):
+    """No control may leave the new source implicit.
+
+    `_parse_control` refuses a missing threshold, so this cannot regress by
+    omission -- what it CAN do is regress by someone writing `assistant: 1.01`
+    to make a red test green, which reads as a threshold and acts as an
+    exemption. G2a/G2b/G3/G4 are asserted equal to their `untrusted` value
+    because the 2026-07-30 split was meant to change exactly one control.
+    """
+    for control_id in ("G2a", "G2b", "G3", "G4"):
+        control = policy.control(control_id)
+        assert control.thresholds[SpanSource.ASSISTANT] == (
+            control.thresholds[SpanSource.UNTRUSTED]
+        ), control_id

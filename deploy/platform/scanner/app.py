@@ -57,6 +57,35 @@ _BATCH = 8
 _MALICIOUS_LABELS = {"INJECTION", "MALICIOUS", "LABEL_1", "JAILBREAK"}
 _SAFE_LABELS = {"SAFE", "BENIGN", "CLEAN", "LABEL_0"}
 
+# Who gets the scarce windows when a request exceeds `_MAX_WINDOWS_PER_REQUEST`.
+# Lower sorts first. Mirrors the caller's `guardrails.types.SpanSource`; see the
+# comment at the sort in `scan_spans` for why this is a table and what an
+# unlisted name costs. Not validated against a closed set on purpose -- the
+# caller's vocabulary may legitimately move ahead of this file's, and refusing a
+# scan over an unrecognised source string would turn a naming skew into an
+# outage of a fail-closed control.
+_SOURCE_PRIORITY = {
+    # Content that arrived from elsewhere mid-conversation. The caller enforces
+    # on it from a single detector, so it is the source whose coverage matters
+    # most.
+    "untrusted": 0,
+    # Text a human or the model produced. Real, scanned, reported -- but the
+    # caller requires two independent detectors before acting on either, so a
+    # window spent here cannot stop a request on its own.
+    "user": 1,
+    "assistant": 1,
+    # `system` shares rank 1 rather than being demoted below `user`, even though
+    # every shipped control prices it at 1.01 (unreachable) so windows spent
+    # scoring it can change no verdict today. That fact lives in policy.yaml, a
+    # file this sidecar cannot read and a deployment is free to edit; a ranking
+    # here that depended on it would silently starve a source the moment someone
+    # lowered the threshold. Ranks 0 and 1 are therefore exactly the partition
+    # the previous `!= "untrusted"` test expressed, so nothing pre-existing
+    # re-sorts.
+    "system": 1,
+}
+_UNKNOWN_SOURCE_PRIORITY = 2
+
 app = FastAPI(title="nufi-scanner")
 _classifier = pipeline("text-classification", model=MODEL_ID, revision=MODEL_REVISION)
 _tokenizer = _classifier.tokenizer
@@ -207,11 +236,31 @@ def scan_spans(request: ScanRequest) -> ScanResponse:
     # words typed by a user may be a question about the topic. Spending the last
     # windows on user text would starve the source we most need to see.
     #
+    # `_SOURCE_PRIORITY` is a table rather than a `!= "untrusted"` test because
+    # the caller's source vocabulary GREW: `assistant` was split out of
+    # `untrusted` on 2026-07-30 (guardrails/types.py), and a boolean test would
+    # have silently re-sorted every prior assistant turn from first place to last
+    # with nothing in this file acknowledging it. That re-sort is the right one --
+    # a prior assistant turn is the model's own prose, and the caller now
+    # requires two independent detectors before acting on it, so it has no claim
+    # on the scarce windows that foreign content has -- but it is a decision, and
+    # a decision belongs in a table an operator can read.
+    #
+    # A source name this file does not know sorts LAST, which is a coverage risk
+    # worth stating: its long spans get shrunk first, and a shrunk span reports
+    # `complete: False`, which reaches the caller as a `coverage_gap` finding.
+    # policy.yaml prices that at 1.01 today (ignored), so an unknown source name
+    # would lose coverage QUIETLY. Add new names here when the caller adds them;
+    # the caller's `SpanSource` is the list.
+    #
     # A shrunk span is re-windowed rather than truncated, so it keeps head and
     # tail. Dropping from the tail is what let a payload hide at the end.
     order = sorted(
         range(len(spans)),
-        key=lambda index: (spans[index].source != "untrusted", -len(per_span[index])),
+        key=lambda index: (
+            _SOURCE_PRIORITY.get(spans[index].source, _UNKNOWN_SOURCE_PRIORITY),
+            -len(per_span[index]),
+        ),
     )
     while sum(len(w) for w in per_span) > _MAX_WINDOWS_PER_REQUEST:
         # Filter must match the floor in `_window_starts`, which is 2. When it

@@ -276,9 +276,12 @@ def _safe_reason(decision: Decision) -> str:
     module's own test suite: a smuggled `Finding.detector` leaked straight
     through an earlier version of this function that skipped the sanitise
     step). `top.source.value` needs no such check: `Finding.source` is a
-    `SpanSource` enum with exactly three members (user/untrusted/system),
-    assigned from message role by `extract_spans`, never attacker-influenced
-    text.
+    `SpanSource` enum with a closed set of members
+    (user/assistant/untrusted/system), assigned from message role by
+    `extract_spans`, never attacker-influenced text. The count is deliberately
+    not restated here — it was "exactly three" until `ASSISTANT` was added on
+    2026-07-30, and what makes this safe is that the type is closed, not how
+    many members it happens to have.
     """
     if not decision.findings:
         return decision.reason

@@ -22,6 +22,21 @@ def test_tool_message_is_untrusted():
     assert spans[0].source is SpanSource.UNTRUSTED
 
 
+def test_function_message_is_untrusted():
+    """`function` is the pre-`tool` spelling of the same thing.
+
+    Pinned separately from `tool` because the two are one dict entry apart and
+    the split of 2026-07-30 moved the row between them: `assistant` left this
+    group, `function` did not. A `function` result that drifted onto the
+    `assistant` path would start requiring corroboration, and four of six
+    measured indirect-injection payloads are invisible to the second detector --
+    so it would go quiet, not red.
+    """
+    spans = extract_spans([{"role": "function", "content": "search result body"}])
+
+    assert spans[0].source is SpanSource.UNTRUSTED
+
+
 def test_multimodal_content_keeps_only_text_parts():
     messages = [
         {
@@ -61,16 +76,23 @@ def test_empty_content_produces_no_span():
 # what reaches the model.
 
 
-def test_assistant_turns_are_untrusted_not_user():
-    """Prior assistant turns carry whatever the model was induced to say.
+def test_assistant_turns_are_their_own_source_not_untrusted():
+    """A prior assistant turn is the model's own words, not foreign content.
 
-    `SpanSource.USER` would judge them at G1's user threshold (0.90) instead of
-    the untrusted one (0.50) -- the conversation-history and RAG-echo injection
-    path, where the payload arrives as the model's own earlier output.
+    It mapped to `UNTRUSTED` until 2026-07-30, and that was a live defect rather
+    than a nuance: `untrusted` is exempt from G1's `require_corroboration`, so a
+    prior assistant turn blocked the request on the classifier alone -- and the
+    classifier scores the model's own safety refusal 1.0000 (measured). Every
+    conversation in which the model refused something was dead from that turn
+    onward, recoverable only by starting a new chat.
+
+    `SpanSource.USER` would be wrong in the other direction: it carries G1's
+    0.90 threshold, high enough to drop a corroborated classifier hit at 0.85
+    below the line and turn a two-detector verdict into a log line.
     """
     spans = extract_spans([{"role": "assistant", "content": "sure, here is the plan"}])
 
-    assert spans[0].source is SpanSource.UNTRUSTED
+    assert spans[0].source is SpanSource.ASSISTANT
 
 
 def test_unknown_role_defaults_to_untrusted_not_system():
@@ -81,7 +103,22 @@ def test_unknown_role_defaults_to_untrusted_not_system():
     be structurally exempt from G1, G2a and G2b at once. Anyone able to set a
     role string could opt out of every input control.
     """
-    for role in ("function", "moderator", "", "SYSTEM_", "tool_result"):
+    for role in ("moderator", "", "SYSTEM_", "tool_result"):
+        spans = extract_spans([{"role": role, "content": "x"}])
+        assert spans[0].source is SpanSource.UNTRUSTED, role
+
+
+def test_unknown_role_does_not_default_to_assistant_either():
+    """The fallback must not become the LENIENT branch of the role table.
+
+    Since 2026-07-30 the table has two non-system destinations, and `assistant`
+    is the one that requires corroboration before G1 may act. A default of
+    `ASSISTANT` would hand that discount to anyone who can invent a role string
+    -- and unlike a default of `SYSTEM` (which the test above catches by
+    threshold), it would still detect, still record, still count, and look
+    entirely healthy on every dashboard while enforcing on one fewer path.
+    """
+    for role in ("assistant_2", "Assistant", "ASSISTANT", "model", "ai"):
         spans = extract_spans([{"role": role, "content": "x"}])
         assert spans[0].source is SpanSource.UNTRUSTED, role
 

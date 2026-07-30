@@ -152,6 +152,10 @@ def scan_system_echo(output: str, system_prompt: str, n: int = 8) -> list[Findin
             risk="LLM07",
             detector="system_echo",
             score=min(1.0, score),
+            # `UNTRUSTED` rather than `ASSISTANT` (added 2026-07-30): this is
+            # G3's verdict on model OUTPUT, and G3 declares no
+            # `enforce_sources`/`require_corroboration`, so the label only picks
+            # a threshold — which policy.yaml keeps identical for both sources.
             source=SpanSource.UNTRUSTED,
             start=0,
             end=len(output),
@@ -317,6 +321,10 @@ def scan_exfil(output: str, allowlist: list[str]) -> list[Finding]:
                 risk="LLM05",
                 detector="exfil",
                 score=1.0,
+                # `UNTRUSTED` rather than `ASSISTANT`, same reason as
+                # `scan_system_echo` above: G4's verdict on model output, and G4
+                # enforces on every source with no corroboration rule, so the
+                # label selects a threshold that policy.yaml keeps equal.
                 source=SpanSource.UNTRUSTED,
                 start=start,
                 end=end,
