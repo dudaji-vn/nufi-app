@@ -1,7 +1,7 @@
 # Integrating `dudaji/nufi-security` into the LLM security gateway
 
-**Status:** steps 1 and 2 shipped. Step 3 unblocked as of 2026-07-30; step 4 not
-started.
+**Status:** steps 1, 2 and 3 shipped (step 3 is complete AND off by default --
+§7.3b). Step 4, compliance reporting, not started.
 **Companion:** `docs/2026-07-27-llm-security-gateway-design.md` (the gateway this
 integrates into).
 **Subject:** `https://github.com/dudaji/nufi-security` @ `5eb9a02`,
@@ -15,7 +15,7 @@ LICENSE file).
 `deploy/platform/litellm/nufi-security.provenance.md`. This replaced a
 `pip install git+https://…@5eb9a02` on 2026-07-30, for two measured reasons: a
 one-line fix to their code needed a pull request into a repository we do not
-own, which is where step 3 stalled; and `pip` does not deliver their root
+own, which is where step 3 had stalled; and `pip` does not deliver their root
 `VERSION` file, so the running container reported `nufi.__version__ == '0.0.0'`
 for a 0.10.0 library, with nothing to say so. The author's own stated intent —
 *"I want to merge my nufi-security repo to sun's codebase"* (2026-07-10) — is
@@ -390,12 +390,19 @@ a way Presidio is not.
    `config/` directory does not ship with the wheel, so the rules are vendored
    at `litellm/guardrails/nufi_patterns.yaml` and the path handed to
    `DetectionPipeline` is absolute — their own discovery is never used.
-3. Pseudonymize-and-restore as a policy action, replacing `redact` for G2b and
-   making a non-destructive G2a possible. **Unblocked 2026-07-30.** It was
-   stalled on the surrogate delimiter, which is now configurable in the snapshot
-   (`a28f5e614`). What remains is the gateway side: a `pseudonymize` action in
-   `policy.py`, a vault lifetime, and the streaming hold. **This is one of the
-   two features the author asked for by name**, the other being step 2.
+3. ~~Pseudonymize-and-restore as a policy action~~ **DONE 2026-07-30**, and
+   **OFF by default** -- see §7.3b for why that is the finished state and not an
+   unfinished one. `Action.PSEUDONYMIZE`, G2a mints and G2b restores across a
+   process-wide vault, on the non-streaming path (`070e78c71`, `4e55a9634`) and
+   the streaming one (`8f817b14d`). Verified through the proxy both ways: the
+   client receives its own value, Langfuse holds the token and not the value, and
+   `stream_unenforced_total` stays absent. **This is one of the two features the
+   author asked for by name**, the other being step 2.
+
+   What "done" does NOT mean here: it is not enabled on live traffic. Enabling it
+   is a per-workload decision, because a request that asks ABOUT a value cannot
+   be served with the value hidden. The recommendation is to leave general chat
+   on `redact` and enable it per key for workloads that only carry values.
 
    **Measured, 2026-07-30, `gemini-2.5-flash`, temperature 1.0** — seven prompt
    shapes (signature rewrite, summary, translation, markdown table, `repeat
