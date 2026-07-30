@@ -347,15 +347,16 @@ a way Presidio is not.
 
 ## 6. Risks, stated before anyone commits
 
-- **No LICENSE file.** `pyproject.toml` says `Proprietary`, README says "Dudaji
-  PoC". **This is now the blocking risk, not a background one**: as of
-  2026-07-30 the code is copied into this repository rather than installed from
-  theirs, so the branch carries 52,523 lines of proprietary source with no
-  licence granting it. The author's intent to merge is on record; intent is not
-  a licence. **A LICENSE file and his explicit agreement to the snapshot are
-  required before this reaches `main`.** Separate from, and on top of, the
-  unpaid licence debt this platform already carries (MongoDB SSPL, MinIO AGPL,
-  Redis tri-license).
+- **Licence — decided, not open.** `pyproject.toml` says `Proprietary` and the
+  upstream repository has no LICENSE file. Both organisations are Dudaji, and on
+  **2026-07-30** the owner of this repository, who holds the authority to decide
+  it, ruled that the snapshot is **first-party code** rather than a third-party
+  dependency. Earlier revisions of this section treated it as a blocker on
+  reaching `main`; that gate is lifted. What remains is bookkeeping, not risk:
+  the subtree's own `Proprietary` declaration is now a statement about our code
+  and should be reconciled with whatever terms this monorepo settles on. The
+  platform's unpaid licence debt is unrelated and untouched — MongoDB SSPL,
+  MinIO AGPL and the Redis tri-license still block any SaaS launch.
 - **v0.0.1, one tag.** The API is declared stable via `nufi/__init__.py`'s
   `__all__`, which is good discipline, but the version says early. The snapshot
   records a commit for exactly that reason — no tag or version number here

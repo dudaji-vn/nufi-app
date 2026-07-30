@@ -121,13 +121,25 @@ diff -r --brief \
 
 Differences should be exactly our own commits, listed above.
 
-## The unresolved part
+## Licence
 
-`pyproject.toml` declares `license = "Proprietary"` and the repository has no
-LICENSE file. This snapshot exists because its author wrote, on 2026-07-10:
+`pyproject.toml` declares `license = "Proprietary"` and the upstream repository
+has no LICENSE file. Both organisations are Dudaji, and the snapshot exists
+because its author wrote, on 2026-07-10:
 
 > sooner or later, I want to merge my nufi-security repo to sun's codebase.
 > Especially, I want to merge PII and pseudonymization feature for KR.
 
-That is intent, not a licence. Until there is a LICENSE file and the author's
-explicit agreement to this snapshot, this branch does not go to `main`.
+**Decided 2026-07-30** by the owner of this repository, who holds the authority
+to make it: this subtree is first-party code, on the same footing as anything
+else in `deploy/platform/`. It is not a third-party dependency and is not
+treated as one. Earlier revisions of this file gated the branch on a LICENSE
+file and the author's written agreement; that gate is lifted by that decision
+and the record of it is here rather than removed.
+
+Note what this does **not** settle. `pyproject.toml` still says `Proprietary`,
+which is now a statement about our own code and should be reconciled with
+whatever terms this monorepo settles on — the root has no LICENSE, while
+`apps/chat` and `apps/admin-panel` each carry their own. Separately, the
+platform's existing licence debt is untouched and unrelated: MongoDB SSPL, MinIO
+AGPL and the Redis tri-license still block any SaaS launch.
