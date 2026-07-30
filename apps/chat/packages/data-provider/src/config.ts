@@ -2022,6 +2022,26 @@ export enum ErrorTypes {
    * SSE stream 404 — job completed, expired, or was deleted before the subscriber connected
    */
   STREAM_EXPIRED = 'stream_expired',
+  /**
+   * Request refused by the LLM security gateway. A policy decision, not a failure:
+   * the value matches the `type` the gateway puts on the wire, and the risk code it
+   * sends as `param` selects the copy.
+   */
+  GUARDRAIL_BLOCKED = 'nufi_guardrail_blocked',
+}
+
+/**
+ * OWASP risk codes the LLM security gateway sends as `param` on a blocked request.
+ * Each maps to its own user-facing explanation; an unrecognised code falls back to a
+ * generic policy refusal rather than to the gateway's own English prose.
+ */
+export enum GuardrailRisks {
+  /** Prompt injection — an attempt to override the assistant's instructions */
+  INJECTION = 'LLM01_INJECTION',
+  /** System prompt leak — a response that appeared to disclose the assistant's configuration */
+  SYSTEM_PROMPT_LEAK = 'LLM07_SYSTEM_PROMPT_LEAK',
+  /** A security check could not run, so the request was refused rather than sent unchecked */
+  UNAVAILABLE = 'GUARDRAIL_UNAVAILABLE',
 }
 
 /**

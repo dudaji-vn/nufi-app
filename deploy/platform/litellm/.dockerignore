@@ -1,0 +1,8 @@
+# Host bytecode must never reach the image: the dev venv is CPython 3.12, the
+# base image is 3.13, so these caches are dead weight at best.
+**/__pycache__
+**/*.pyc
+
+# CI/test-venv pins only -- deliberately not installed into the image, see the
+# comment block at the top of Dockerfile.
+requirements.txt

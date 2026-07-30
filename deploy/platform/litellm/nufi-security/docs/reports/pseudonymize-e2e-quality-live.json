@@ -1,0 +1,118 @@
+{
+  "benchmark": "pseudonymize-e2e-quality",
+  "llm_backend": "claude",
+  "mock_fallback": true,
+  "eval_set": "data/pii_qa_eval.jsonl",
+  "n_samples": 170,
+  "n_pii_samples": 150,
+  "n_control_samples": 20,
+  "seed": 20260708,
+  "targets": {
+    "rouge_l": 0.9,
+    "pii_protection_rate": 1.0,
+    "roundtrip_fidelity": 0.95
+  },
+  "scores": {
+    "utility_retention_rouge_l": 0.9971,
+    "exact_match_rate": 0.9706,
+    "exact_match_n": "165/170",
+    "pii_protection_rate": 1.0,
+    "pii_protection_n": "290/290",
+    "roundtrip_fidelity": 0.9828,
+    "roundtrip_fidelity_n": "285/290"
+  },
+  "latency": {
+    "pseudonymize_ms": {
+      "p50": 0.44,
+      "p95": 0.59,
+      "p99": 0.74
+    },
+    "deanonymize_ms": {
+      "p50": 0.04,
+      "p95": 0.06,
+      "p99": 0.08
+    }
+  },
+  "by_type": {
+    "EMAIL": {
+      "total": 50,
+      "leaked": 0,
+      "restored": 45,
+      "protection_rate": 1.0,
+      "roundtrip_fidelity": 0.9
+    },
+    "KR_BRN": {
+      "total": 25,
+      "leaked": 0,
+      "restored": 25,
+      "protection_rate": 1.0,
+      "roundtrip_fidelity": 1.0
+    },
+    "KR_LOCATION": {
+      "total": 25,
+      "leaked": 0,
+      "restored": 25,
+      "protection_rate": 1.0,
+      "roundtrip_fidelity": 1.0
+    },
+    "KR_PERSON": {
+      "total": 135,
+      "leaked": 0,
+      "restored": 135,
+      "protection_rate": 1.0,
+      "roundtrip_fidelity": 1.0
+    },
+    "KR_PHONE": {
+      "total": 55,
+      "leaked": 0,
+      "restored": 55,
+      "protection_rate": 1.0,
+      "roundtrip_fidelity": 1.0
+    }
+  },
+  "by_category": {
+    "customer_service": {
+      "n": 29,
+      "em": 29,
+      "avg_rouge_l": 1.0,
+      "em_rate": 1.0
+    },
+    "document_summary": {
+      "n": 29,
+      "em": 29,
+      "avg_rouge_l": 1.0,
+      "em_rate": 1.0
+    },
+    "hr": {
+      "n": 28,
+      "em": 28,
+      "avg_rouge_l": 1.0,
+      "em_rate": 1.0
+    },
+    "legal": {
+      "n": 28,
+      "em": 28,
+      "avg_rouge_l": 1.0,
+      "em_rate": 1.0
+    },
+    "medical": {
+      "n": 28,
+      "em": 23,
+      "avg_rouge_l": 0.9821,
+      "em_rate": 0.8214
+    },
+    "payment": {
+      "n": 28,
+      "em": 28,
+      "avg_rouge_l": 1.0,
+      "em_rate": 1.0
+    }
+  },
+  "degraded_samples": [],
+  "acceptance": {
+    "rouge_l>=0.9": true,
+    "pii_protection_rate==1.0": true,
+    "roundtrip_fidelity>=0.95": true
+  },
+  "acceptance_pass": true
+}

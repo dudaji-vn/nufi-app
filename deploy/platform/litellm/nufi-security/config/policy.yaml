@@ -1,0 +1,84 @@
+# Egress-Audit 정책 (NFR3: 운영자가 갱신 가능한 외부 설정)
+# 엔티티 클래스별 동작: block | redact | pseudonymize | warn | allow
+# 강한 PII·비밀정보 = block, 약한 PII = pseudonymize/redact, 그 외 = warn
+version: 1
+
+# 기본 동작 (매핑에 없는 엔티티)
+default_action: warn
+
+# 하나의 요청에서 아래 동작이 하나라도 결정되면 그 요청은 차단된다.
+blocking_actions: [block]
+
+entities:
+  # --- 강한 PII (기본 차단) ---
+  KR_RRN:           { action: block, severity: critical }   # 주민등록번호
+  KR_FOREIGNER_REG: { action: block, severity: critical }   # 외국인등록번호
+  KR_PASSPORT:      { action: block, severity: high }        # 여권번호
+  KR_DRIVER_LICENSE: { action: block, severity: high }       # 운전면허번호
+  CREDIT_CARD:      { action: block, severity: critical }    # 카드번호 (Luhn)
+  KR_ACCOUNT:       { action: block, severity: high }        # 계좌번호
+
+  # --- 약한 PII (가명화/마스킹; 가역 원복은 M3) ---
+  KR_BRN:           { action: pseudonymize, severity: medium } # 사업자등록번호
+  KR_PHONE:         { action: pseudonymize, severity: medium } # 전화번호
+  EMAIL:            { action: pseudonymize, severity: low }
+  KR_PERSON:        { action: pseudonymize, severity: medium } # 인명 (NER)
+  KR_LOCATION:      { action: warn, severity: low }            # 지명 (NER)
+
+  # --- 비밀정보 (기본 차단) ---
+  SECRET:           { action: block, severity: critical }
+
+  # --- M4 기밀 (신규) ---
+  # marking = 분류 표식(강신호, 등급 직결). EDM = 등록 데이터/문서 지문.
+  CONF_MARKING_RESTRICTED:   { action: block, severity: critical }
+  CONF_MARKING_CONFIDENTIAL: { action: block, severity: high }
+  CONF_MARKING_INTERNAL:     { action: warn,  severity: medium }   # 운영 선택 시 block
+  CONF_EDM_STRUCT_STRONG:    { action: block, severity: high }      # k-of-n 충족
+  CONF_EDM_STRUCT_WEAK:      { action: warn,  severity: medium }    # 단일 필드
+  CONF_EDM_DOC_HIGH:         { action: block, severity: high }      # 고유사도
+  CONF_EDM_DOC_MED:          { action: warn,  severity: low }       # 중유사도
+  # CONF_KEYWORD 는 entities 에 두지 않는다 — 아래 conf_class_actions 로 등급 분기.
+
+# 기밀 키워드(CONF_KEYWORD)의 class→action 보조표(§4.1).
+# entities 에 명시 매핑이 없는 기밀 finding 은 운반된 class 로 동작을 정한다.
+conf_class_actions:
+  RESTRICTED:   { action: block, severity: critical }
+  CONFIDENTIAL: { action: block, severity: high }
+  INTERNAL:     { action: warn,  severity: medium }
+  PUBLIC:       { action: allow, severity: low }
+
+# --- 프롬프트 인젝션 정책 ---
+# Guard(check_injection=True) 시 인젝션 탐지 결과에 적용하는 동작.
+#   action: block(차단) | warn(findings에 추가, 차단하지 않음) | log(로그만, findings 미추가)
+#   min_severity: low | medium | high | critical — 이 수준 이상만 반응
+injection:
+  action: block          # block | warn | log
+  min_severity: medium   # low | medium | high | critical
+
+# --- Egress Enforcement (트랙 B · CMP-94, 모델 (a) nftables 허용목록) ---
+# 우회(게이트웨이 미경유) public LLM 직결 패킷의 L3/L4 실제 drop 토글.
+# 정책 단일 출처(A7): public 목적지·게이트웨이는 routing.yaml 에서 파생/재사용.
+enforcement:
+  fail_mode: open          # open(기본·가용성 우선) | closed(옵트인·실패 시 전면 차단)
+  table: nufi_egress       # nftables inet 테이블명
+  # 게이트웨이 화이트리스트 셀렉터(선적용·1순위). 비우면 applier 가 routing.yaml
+  # gateway.process_names → 실행 중 프로세스 uid 로 런타임 해석.
+  gateway_uids: []         # 예: [1000]
+  gateway_cgroups: []      # 예: ["system.slice/nufi-gateway.service"]
+  cgroup_level: 2
+  # 운영 예외(임시 허용) — "host:port"/"ip:port". 변경 시 CPO 리뷰·사유 기록(§5.3).
+  allow_extra: []
+
+# --- 출력측(Output-side) 가드레일 정책 ---
+# OutputGuard 가 LLM 응답 본문 검사 시 적용하는 동작.
+output_guard:
+  # 시스템 프롬프트 유출 탐지
+  leak_action: block            # block | warn | log
+  leak_min_severity: medium     # low | medium | high | critical
+
+  # 응답 내 PII 재노출 처리
+  pii_action: redact            # block | redact | warn
+
+  # 유해 콘텐츠 필터링
+  harmful_action: block         # block | warn | log
+  harmful_min_severity: medium  # low | medium | high | critical

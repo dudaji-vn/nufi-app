@@ -1,0 +1,40 @@
+{
+  "benchmark": "injection",
+  "total_samples": 215,
+  "total_injection": 134,
+  "total_benign": 81,
+  "tp": 134,
+  "fn": 0,
+  "fp": 0,
+  "tn": 81,
+  "recall": 1.0,
+  "precision": 1.0,
+  "f1": 1.0,
+  "benign_fp_rate": 0.0,
+  "severity": {
+    "critical": {
+      "tp": 27,
+      "fn": 0,
+      "total": 27,
+      "recall": 1.0
+    },
+    "high": {
+      "tp": 58,
+      "fn": 0,
+      "total": 58,
+      "recall": 1.0
+    },
+    "low": {
+      "tp": 17,
+      "fn": 0,
+      "total": 17,
+      "recall": 1.0
+    },
+    "medium": {
+      "tp": 32,
+      "fn": 0,
+      "total": 32,
+      "recall": 1.0
+    }
+  }
+}

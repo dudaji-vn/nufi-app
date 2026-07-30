@@ -1,7 +1,18 @@
+> **SUPERSEDED — 2026-07-29.** The app-layer guardrails that emitted these
+> `guardrail_*` audit events were removed from `apps/chat`. The audit-log
+> plumbing (the `category=security` filter, the admin panel Security page) still
+> exists but nothing writes to it any more, so the Security page renders empty.
+> LLM security audit now happens at the LiteLLM gateway — see
+> [`docs/2026-07-27-llm-security-gateway-design.md`](../../../../docs/2026-07-27-llm-security-gateway-design.md)
+> (repo root). Re-homing the admin Security page onto the gateway's audit events
+> is open follow-up work.
+>
+> Kept as the design record of a shipped security control.
+
 # Guardrail security events → admin audit log + Security page
 
 **Date:** 2026-07-01
-**Status:** Approved (design)
+**Status:** Superseded 2026-07-29 (was: approved design)
 **Repos touched:** `dudaji-vn/nufichat` (backend + data-schemas), `dudaji-vn/nufichat-admin-panel` (UI)
 **Follows:** [2026-06-29-app-layer-guardrails-design.md](./2026-06-29-app-layer-guardrails-design.md)
 

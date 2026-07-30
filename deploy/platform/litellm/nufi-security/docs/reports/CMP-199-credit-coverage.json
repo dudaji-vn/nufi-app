@@ -1,0 +1,42 @@
+{
+  "report": "CMP-199 I3 — 개인신용정보(신용정보법) 커버리지 판정",
+  "basis": "CMP-198 I2 baseline (onnx-int8, samples/gold/test.jsonl)",
+  "law": "신용정보법(개인신용정보 보호) — 개인신용정보 분류별 탐지 커버리지",
+  "scope_principle": "정규식/체크섬 + NER 엔티티 탐지기는 '구조적 식별자'를 다룬다. 연체·소득·부도 등 신용도판단정보는 자유텍스트 의미 신호 → 정책/컴플라이언스 매핑 계층(CIA-PII 통제) 소관, 엔티티 추출 범위 밖.",
+  "coverage_matrix": [
+    {"category": "식별정보(성명)", "signal": "고객명", "class": "KR_PERSON", "i2_recall": 0.9048, "i2_ci_low": 0.8409, "verdict": "충분(단, CI하한은 I2 §5 게이트 추적)"},
+    {"category": "식별정보(고유식별번호)", "signal": "주민등록번호", "class": "KR_RRN", "i2_recall": 1.0, "i2_ci_low": 0.8241, "verdict": "충분"},
+    {"category": "식별정보(외국인)", "signal": "외국인등록번호", "class": "KR_FOREIGNER_REG", "i2_recall": 1.0, "i2_ci_low": 0.7575, "verdict": "충분"},
+    {"category": "식별정보(연락처)", "signal": "전화번호", "class": "KR_PHONE", "i2_recall": 1.0, "i2_ci_low": 0.7961, "verdict": "충분"},
+    {"category": "식별정보(이메일)", "signal": "이메일", "class": "EMAIL", "i2_recall": 1.0, "i2_ci_low": 0.7008, "verdict": "충분"},
+    {"category": "신용거래정보(계좌)", "signal": "은행/가상 계좌번호", "class": "KR_ACCOUNT", "i2_recall": 1.0, "i2_ci_low": 0.7575, "verdict": "부족 → 규칙 확장(아래 gap 참조)"},
+    {"category": "신용거래정보(카드)", "signal": "신용카드번호", "class": "CREDIT_CARD", "i2_recall": 1.0, "i2_ci_low": 0.7575, "verdict": "충분(Luhn 검증)"},
+    {"category": "신용거래정보(사업자)", "signal": "사업자등록번호", "class": "KR_BRN", "i2_recall": 1.0, "i2_ci_low": 0.7575, "verdict": "충분(BRN 검증)"},
+    {"category": "신용도판단정보", "signal": "연체·부도·대위변제 상태", "class": null, "verdict": "범위밖 — 자유텍스트 의미 신호, 정책/CIA-PII 통제 소관(신규 엔티티 부적합)"},
+    {"category": "신용거래능력정보", "signal": "소득·재산·채무 총액", "class": null, "verdict": "범위밖 — 금액/서술 의미 신호, 정책 계층 소관"},
+    {"category": "공공정보", "signal": "개인회생·파산·체납", "class": null, "verdict": "범위밖 — 서술 의미 신호, 정책 계층 소관"}
+  ],
+  "determination": "구조적 식별자 계열(계좌·카드·식별번호·연락처)의 개인신용정보는 기존 엔티티 클래스가 거의 충분히 커버(I2 실측 recall 1.0). 단, KR_ACCOUNT 에 1건의 구조적 누락 확인 → 확장. 신용도판단/거래능력/공공정보는 엔티티 추출 범위 밖(정책·컴플라이언스 매핑 계층에서 CIA-PII 통제로 처리)으로 판정.",
+  "gap_found": {
+    "class": "KR_ACCOUNT",
+    "issue": "구 정규식 세그먼트 폭 {2,6} 이 7~8자리 세그먼트 계좌를 구조적으로 미탐. 신한 3-7-2(예 356-0123456-78) 등 표준 은행 포맷과 4-2-7/3-2-7 입금전용 가상계좌가 개인신용정보 계좌 신호임에도 누락.",
+    "fix": "config/patterns.yaml KR_ACCOUNT 정규식 세그먼트 폭 {2,6}→{2,8}(중간·말단). 음성 150행 benign FP=0 확인(오탐 무증가).",
+    "eval_samples_added": "goldset/generate.py 에 개인신용정보 계좌 표본 20건(신한 3-7-2, 4-2-7/3-2-7/3-8-2 가상계좌) 추가 — 독립 rng(SEED+29)+sort-last _cls 로 append하여 기존 sealed NER 행 바이트 보존(I2 onnx baseline 유효)."
+  },
+  "measurement": {
+    "class": "KR_ACCOUNT",
+    "backend": "gazetteer(정규식 계열은 백엔드 무관 — onnx-int8 동일)",
+    "split": "test",
+    "before": {"hit": 12, "exp": 12, "recall": 1.0, "ci95": [0.7575, 1.0]},
+    "after":  {"hit": 24, "exp": 24, "recall": 1.0, "ci95": [0.862, 1.0], "fp": 0, "benign_false_block": 0.0},
+    "regex_impact_on_added_samples": {"old_regex_hit": 0, "new_regex_hit": 12, "credit_test_rows": 12},
+    "note": "표본 확대(12→24)로 recall CI 하한 0.7575→0.862 로 정직화. 추가 표본은 확장 규칙으로만 탐지됨(구 규칙 0/12 → 신 규칙 12/12)이 규칙 확장의 실측 검증(회귀 가드)."
+  },
+  "acceptance": {
+    "coverage_report": true,
+    "new_rule_if_needed": true,
+    "class_recall_ci_low_measured": true,
+    "kr_account_ci_low>=0.85": true
+  },
+  "compliance_link": "enforcement/compliance_catalog.yaml CIA-PII(개인신용정보 탐지·차단·마스킹) 통제가 KR_ACCOUNT+CREDIT_CARD 탐지에 매핑 — 본 확장으로 계좌 신호 커버리지 강화."
+}

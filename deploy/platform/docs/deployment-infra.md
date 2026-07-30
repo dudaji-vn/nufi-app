@@ -20,7 +20,7 @@ Runs all platform services via Docker Compose.
 | Service | CPU cap | Mem cap |
 |---|---|---|
 | ClickHouse | 2 | 4 GB |
-| LLM Guard sidecar | 1 | 2 GB |
+| nufi-scanner sidecar | 1 | 2 GB |
 | Presidio | 0.5 | 1 GB |
 | Postgres | 1 | 2 GB |
 | MongoDB | 1 | 2 GB |

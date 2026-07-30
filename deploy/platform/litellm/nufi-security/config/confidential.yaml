@@ -1,0 +1,39 @@
+# 기밀 키워드/표식 사전 — 외부화 (SPEC_M4 §2, NFR3).
+# 운영자가 갱신·리로드. 코어는 로드만 하고 매칭 전 §2.2 정규화를 통과시킨다.
+# 등급(class): RESTRICTED > CONFIDENTIAL > INTERNAL > PUBLIC (policy.yaml 동작 직결).
+version: 1
+ruleset_version: conf-2026.06.25
+default_conf_action: warn          # 미지정 등급 매치 기본 동작
+
+markings:                          # 문서 분류 표식 (강신호·고정밀)
+  - name: MARK_RESTRICTED
+    class: RESTRICTED
+    phrases: ["극비", "관계자외 열람금지", "관계자 외 열람 금지", "대외주의"]
+  - name: MARK_CONFIDENTIAL
+    class: CONFIDENTIAL
+    phrases: ["기밀", "사외비", "Confidential", "Company Confidential"]
+  - name: MARK_INTERNAL
+    class: INTERNAL
+    phrases: ["대외비", "사내한", "사내 한정", "내부용", "Internal Use Only", "내부 자료"]
+
+keywords:                          # 회사 고유 기밀어 (운영자 등록 — 예시 시드)
+  - name: PROJECT_CODENAMES
+    class: CONFIDENTIAL
+    match_mode: word               # exact | word | substring | regex
+    case_sensitive: false
+    terms: ["프로젝트 오로라", "Aurora", "NuFi-X2"]
+    min_len: 4                     # 너무 짧은 일반어 충돌 방지
+    allow_context: []              # 예외 문맥(아래 등장 시 규칙 전체 무시)
+  - name: UNRELEASED_SKU
+    class: CONFIDENTIAL
+    match_mode: regex
+    terms: ['(?i)\bSKU-NX-\d{4}\b']
+  - name: ROADMAP_INTERNAL
+    class: INTERNAL
+    match_mode: word
+    case_sensitive: false
+    terms: ["내부 로드맵", "미공개 단가표"]
+    min_len: 4
+
+allowlist:                         # 전역 오탐 예외 (일반어/공개어)
+  terms: ["서울", "오로라 공주", "오로라공주"]

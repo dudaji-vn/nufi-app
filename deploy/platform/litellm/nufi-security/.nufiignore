@@ -1,0 +1,13 @@
+# NuFi scan exclusions
+# Binary/build artifacts
+*.pyc
+__pycache__/**
+.git/**
+node_modules/**
+venv/**
+.venv/**
+# Logs (already audited)
+logs/**
+# Test fixtures (intentionally contain PII samples)
+samples/**
+tests/**

@@ -1,0 +1,16 @@
+{"id": "rrn-1", "prompt": "고객 김민수님의 주민등록번호는 900101-1234568 입니다. 확인 부탁드립니다.", "expect": ["KR_RRN", "KR_PERSON"]}
+{"id": "rrn-2", "prompt": "신규 가입자 주민번호 0503023456789 등록 처리해줘.", "expect": ["KR_RRN"]}
+{"id": "foreigner-1", "prompt": "외국인등록번호 880615-5678907 비자 연장 건입니다.", "expect": ["KR_FOREIGNER_REG"]}
+{"id": "brn-1", "prompt": "두다지 사업자등록번호 123-45-67891 로 세금계산서 발행해주세요.", "expect": ["KR_BRN"]}
+{"id": "brn-2", "prompt": "거래처 사업자번호 2208812340 확인했습니다.", "expect": ["KR_BRN"]}
+{"id": "phone-1", "prompt": "담당자 박지영 연락처는 010-1234-5678 입니다.", "expect": ["KR_PHONE", "KR_PERSON"]}
+{"id": "phone-2", "prompt": "서울 본사 대표번호 02-123-4567 로 전화주세요.", "expect": ["KR_PHONE", "KR_LOCATION"]}
+{"id": "account-1", "prompt": "우리은행 계좌 1002-345-678901 로 환불 처리 바랍니다.", "expect": ["KR_ACCOUNT"]}
+{"id": "card-1", "prompt": "결제 카드번호 4532-0111-2345-6788 승인 요청합니다.", "expect": ["CREDIT_CARD"]}
+{"id": "card-2", "prompt": "마스터카드 5105123456789018 한도 조회해줘.", "expect": ["CREDIT_CARD"]}
+{"id": "passport-1", "prompt": "여권번호 M12345678 로 항공권 예약했습니다.", "expect": ["KR_PASSPORT"]}
+{"id": "license-1", "prompt": "운전면허번호 12-34-567890-12 갱신 안내드립니다.", "expect": ["KR_DRIVER_LICENSE"]}
+{"id": "email-1", "prompt": "회신은 hong.gildong@dudaji.com 으로 보내주세요.", "expect": ["EMAIL"]}
+{"id": "person-loc-1", "prompt": "이순신 부장이 부산 지사로 발령되었습니다.", "expect": ["KR_PERSON", "KR_LOCATION"]}
+{"id": "person-2", "prompt": "최강록 셰프와 정약용 선생에 대한 자료를 정리해줘.", "expect": ["KR_PERSON"]}
+{"id": "mixed-1", "prompt": "환자 강서연, 주민번호 0503023456789, 연락처 010-9876-5432, 서울 강남구 거주.", "expect": ["KR_PERSON", "KR_RRN", "KR_PHONE", "KR_LOCATION"]}

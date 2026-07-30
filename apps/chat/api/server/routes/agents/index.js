@@ -8,14 +8,7 @@ const {
   messageIpLimiter,
   configMiddleware,
   messageUserLimiter,
-  shouldBufferOutput,
 } = require('~/server/middleware');
-const { GraphEvents } = require('@librechat/agents');
-const { shouldStreamRedact } = require('~/server/middleware/guardrails/outputGuard');
-const {
-  createStreamingRedactor,
-  redactStreamEvent,
-} = require('~/server/middleware/guardrails/streamRedactor');
 const { saveMessage } = require('~/models');
 const responses = require('./responses');
 const openai = require('./openai');
@@ -116,36 +109,7 @@ router.get('/chat/stream/:streamId', async (req, res) => {
     }
   };
 
-  // Buffer-then-release for the LLM-security output guardrail: when output
-  // guarding is active, suppress live content chunks so a model-leaked PII
-  // value never flashes on screen before the redacted final message. The
-  // client receives only the final (redacted) event via onDone. Trades the
-  // live "typing" effect for a guaranteed no-PII-flash render. Disable with
-  // GUARDRAIL_BUFFER_OUTPUT=false.
-  const bufferOutput = shouldBufferOutput();
-  const streamRedact = shouldStreamRedact(job.metadata?.usedRag);
-  // On resume we cannot rebuild the per-stream redactor's sliding-window state,
-  // so fall back to buffer semantics (suppress the raw replay; deliver only the
-  // final redacted event) — a reconnect must never replay un-redacted deltas.
-  const suppress = bufferOutput || (streamRedact && isResume);
-
-  let emitChunk;
-  if (suppress) {
-    emitChunk = () => {};
-  } else if (streamRedact) {
-    // Tier-2: mask PII inline as content streams, so nothing flashes before it
-    // is redacted, while normal text keeps streaming. The final saved message is
-    // redacted by applyOutputGuard with the same inline style, so the two agree.
-    const redactor = createStreamingRedactor();
-    emitChunk = (event) => {
-      const out = redactStreamEvent(event, redactor, GraphEvents.ON_MESSAGE_DELTA);
-      if (out !== null) {
-        writeEvent(out);
-      }
-    };
-  } else {
-    emitChunk = writeEvent;
-  }
+  const emitChunk = writeEvent;
 
   let result;
 
@@ -153,7 +117,7 @@ router.get('/chat/stream/:streamId', async (req, res) => {
     const { subscription, resumeState, pendingEvents } =
       await GenerationJobManager.subscribeWithResume(streamId, emitChunk, onDone, onError);
 
-    if (!suppress && !res.writableEnded) {
+    if (!res.writableEnded) {
       if (resumeState) {
         res.write(
           `event: message\ndata: ${JSON.stringify({ sync: true, resumeState, pendingEvents })}\n\n`,

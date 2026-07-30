@@ -1,0 +1,33 @@
+[project]
+name = "nufi-platform-guardrails"
+version = "0.1.0"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Not `litellm/nufi-security`: the vendored snapshot is installed editable by
+# litellm/requirements.txt, so it is importable by every process in the venv --
+# including the subprocesses tests/test_health.py spawns, which a `pythonpath`
+# entry here would not reach. Adding it as well would put the same tree on
+# sys.path twice under two names.
+#
+# `testpaths` keeps their own 18,027-line suite out of our collection. To run
+# it: cd litellm/nufi-security && pytest.
+pythonpath = ["litellm"]
+markers = [
+    "contract: requires a live sidecar or Presidio; skipped by default",
+]
+addopts = "-m 'not contract'"
+asyncio_mode = "auto"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+# `litellm/nufi-security` is a vendored snapshot of another repository
+# (litellm/nufi-security.provenance.md). Linting it would report someone else's
+# style as our defects, and any fix would be a diff upstream has to carry
+# forever. Their own CI lints it under their own rules.
+exclude = ["scripts/e2e", "litellm/nufi-security"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]

@@ -1,0 +1,5 @@
+{"epoch_ms": 1780358400000, "pii_recall": 0.93, "latency_p95_ms": 118.0, "coverage_pct": 100.0, "backend": "int8", "host_class": "production", "note": "주간 벤치(goldset) + 온프렘 p95"}
+{"epoch_ms": 1780444800000, "pii_recall": 0.92, "latency_p95_ms": 126.0, "coverage_pct": 100.0, "backend": "int8", "note": "재측정"}
+{"epoch_ms": 1780963200000, "pii_recall": 0.91, "latency_p95_ms": 131.0, "coverage_pct": 99.6, "backend": "int8", "note": "주간 벤치"}
+{"epoch_ms": 1781568000000, "pii_recall": 0.86, "latency_p95_ms": 140.0, "coverage_pct": 99.2, "backend": "fp32", "note": "회귀 — recall 하락(위반)"}
+{"epoch_ms": 1782172800000, "pii_recall": 0.94, "latency_p95_ms": 168.0, "coverage_pct": 100.0, "backend": "int8", "host_class": "dev", "note": "dev 호스트 — p95 초과(위반)"}

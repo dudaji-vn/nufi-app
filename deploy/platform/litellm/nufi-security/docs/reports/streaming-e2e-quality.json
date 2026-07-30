@@ -1,0 +1,105 @@
+{
+  "benchmark": "streaming-e2e-quality",
+  "eval_set": "data/pii_qa_eval.jsonl",
+  "n_samples": 170,
+  "chunk_sizes": [
+    1,
+    3,
+    5,
+    10,
+    "random"
+  ],
+  "seed": 20260709,
+  "targets": {
+    "streaming_match_rate": 1.0
+  },
+  "scores": {
+    "streaming_match_rate": 1.0,
+    "streaming_match_n": "170/170"
+  },
+  "by_chunk_size": {
+    "1": {
+      "match_rate": 1.0,
+      "match_n": "170/170",
+      "latency_ms": {
+        "p50": 0.08,
+        "p95": 0.094,
+        "p99": 0.105
+      }
+    },
+    "3": {
+      "match_rate": 1.0,
+      "match_n": "170/170",
+      "latency_ms": {
+        "p50": 0.05,
+        "p95": 0.059,
+        "p99": 0.065
+      }
+    },
+    "5": {
+      "match_rate": 1.0,
+      "match_n": "170/170",
+      "latency_ms": {
+        "p50": 0.043,
+        "p95": 0.051,
+        "p99": 0.058
+      }
+    },
+    "10": {
+      "match_rate": 1.0,
+      "match_n": "170/170",
+      "latency_ms": {
+        "p50": 0.038,
+        "p95": 0.043,
+        "p99": 0.053
+      }
+    },
+    "random": {
+      "match_rate": 1.0,
+      "match_n": "170/170",
+      "latency_ms": {
+        "p50": 0.041,
+        "p95": 0.048,
+        "p99": 0.055
+      }
+    }
+  },
+  "by_category": {
+    "customer_service": {
+      "match": 29,
+      "n": 29,
+      "match_rate": 1.0
+    },
+    "document_summary": {
+      "match": 29,
+      "n": 29,
+      "match_rate": 1.0
+    },
+    "hr": {
+      "match": 28,
+      "n": 28,
+      "match_rate": 1.0
+    },
+    "legal": {
+      "match": 28,
+      "n": 28,
+      "match_rate": 1.0
+    },
+    "medical": {
+      "match": 28,
+      "n": 28,
+      "match_rate": 1.0
+    },
+    "payment": {
+      "match": 28,
+      "n": 28,
+      "match_rate": 1.0
+    }
+  },
+  "mismatches": [],
+  "n_mismatches": 0,
+  "acceptance": {
+    "streaming_match_rate==1.0": true
+  },
+  "acceptance_pass": true
+}

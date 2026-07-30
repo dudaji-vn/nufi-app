@@ -1,0 +1,29 @@
+{
+  "mode": "location-union(model ∪ P2-rules)",
+  "channel": "KR_LOCATION",
+  "split": "test",
+  "source": "live(onnx-int8)",
+  "benign_false_block": {
+    "model": 0.0,
+    "rule": 0.0,
+    "union": 0.0
+  },
+  "pii_precision": {
+    "model": 0.9632,
+    "union": 0.9632
+  },
+  "precision_note": "location-union 은 모델 출력에 KR_LOCATION 규칙 스팬만 더한다 — 인명 등 다른 채널은 불변(정밀도 영향은 주소 채널로 한정). rule 의 pii_precision 은 gazetteer 전체(인명 포함) 값이라 주소 유니온의 정밀도 비용을 과대평가한다. benign FP 0 유지.",
+  "location_recall": {
+    "model": 1.0,
+    "rule": 1.0,
+    "union": 1.0
+  },
+  "positive_rows": 62,
+  "union_gain_vs_model": 0.0,
+  "union_gain_vs_rule": 0.0,
+  "dod": {
+    "union_ge_max": true,
+    "benign_zero": true
+  },
+  "dod_pass": true
+}

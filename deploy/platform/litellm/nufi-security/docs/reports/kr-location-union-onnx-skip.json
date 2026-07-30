@@ -1,0 +1,39 @@
+{
+  "measurement_context": "CMP-227 과제2 — 프로덕션(onnx-int8) 주소 유니온 실측 시도",
+  "environment": "에어갭/CI 러너에 onnx-int8 모델 스택 미프로비저닝(ModuleNotFoundError) → skip",
+  "resolution": "유니온 재현율은 규칙 하한(1.0)으로 정직 인용. 모델 러너 확보 시 union_check 재실행으로 상향 확정.",
+  "mode": "location-union(model ∪ P2-rules)",
+  "channel": "KR_LOCATION",
+  "split": "test",
+  "model_note": "onnx-int8 미가용(ModuleNotFoundError) — 커밋 baseline 인용",
+  "model_measured_on": {
+    "split": "test",
+    "positive_rows": 24,
+    "hit": 19
+  },
+  "model_domain_note": "모델 리콜은 커밋 baseline(split=test, 양성 24행)에서, 규칙·유니온은 현 골드셋(양성 62행)에서 측정 — 골드셋 성장으로 행수 상이. 이득은 방향성 참고치이며 모델 재측정 시 확정된다.",
+  "source": "rule=live(gazetteer) · model=committed-baseline · union=rule-lower-bound(규칙 전량 커버)",
+  "benign_false_block": {
+    "model": 0.0,
+    "rule": 0.0,
+    "union": 0.0
+  },
+  "pii_precision": {
+    "model": 1.0,
+    "rule": 0.9887
+  },
+  "precision_note": "location-union 은 모델 출력에 KR_LOCATION 규칙 스팬만 더한다 — 인명 등 다른 채널은 불변(정밀도 영향은 주소 채널로 한정). rule 의 pii_precision 은 gazetteer 전체(인명 포함) 값이라 주소 유니온의 정밀도 비용을 과대평가한다. benign FP 0 유지.",
+  "location_recall": {
+    "model": 0.7917,
+    "rule": 1.0,
+    "union": 1.0
+  },
+  "positive_rows": 62,
+  "union_gain_vs_model": 0.2083,
+  "union_gain_vs_rule": 0.0,
+  "dod": {
+    "union_ge_max": true,
+    "benign_zero": true
+  },
+  "dod_pass": true
+}

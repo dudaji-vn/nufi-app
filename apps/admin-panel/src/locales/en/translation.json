@@ -580,7 +580,6 @@
   "com_config_field_selectPlaceholder": "Select placeholder",
   "com_config_field_searchPlaceholderCode": "Search placeholder code",
   "com_config_field_selectPlaceholderCode": "Select placeholder code",
-
   "com_config_field_grant_types_supported_item": "grant type",
   "com_config_field_token_endpoint_auth_methods_supported_item": "method",
   "com_config_field_response_types_supported_item": "response type",
@@ -592,7 +591,6 @@
   "com_config_field_custom_item": "item",
   "com_config_field_paramDefinitions_item": "parameter definition",
   "com_config_field_options_item": "option",
-
   "com_config_field_dropParams_item": "parameter",
   "com_config_field_supportedIds_item": "ID",
   "com_config_field_excludedIds_item": "ID",
@@ -1005,7 +1003,7 @@
   "com_security_summary_injection": "Injections blocked",
   "com_security_summary_pii_input": "PII blocked (input)",
   "com_security_summary_pii_output": "PII redacted (output)",
-  "com_security_empty": "No security events found",
+  "com_security_empty": "No events from this source — the app-layer guardrails were removed",
   "com_security_entry_count": "{{count}} event",
   "com_security_entry_count_plural": "{{count}} events",
   "com_a11y_filters": "Filters",
@@ -1052,5 +1050,7 @@
   "com_litellm_sync_failed": "Sync failed",
   "com_litellm_not_synced": "Not synced",
   "com_litellm_resync": "Re-sync",
-  "com_litellm_resync_aria": "Re-sync {{name}}"
+  "com_litellm_resync_aria": "Re-sync {{name}}",
+  "com_security_moved_title": "Guardrail events moved to the gateway",
+  "com_security_moved_body": "The application-layer guardrails that fed this page were removed on 2026-07-29. Security controls now run in the LiteLLM gateway, and their events are not yet readable from here. An empty table below means this page has no source — not that nothing was blocked."
 }

@@ -1,0 +1,54 @@
+# TEST ENVIRONMENT ONLY. Consumed by .github/workflows/platform-ci.yml (and the
+# local .venv) so `pytest` can import the guardrail package without pulling the
+# whole proxy image. Deliberately NOT installed into litellm/Dockerfile -- the
+# base image already carries everything the package imports.
+#
+# Pin only what `pip install litellm==1.83.10` does not already provide, and
+# never restate a version litellm pins itself. Measured on python:3.12-slim: a
+# bare litellm install gives httpx 0.28.1 and PyYAML 6.0.3, and no
+# prometheus_client at all (that one lives in litellm's `proxy-runtime` extra).
+#
+# This file used to pin httpx==0.27.2 as well. litellm==1.83.10 pins
+# httpx==0.28.1 at the top level, so the workflow's single
+# `pip install ... litellm==1.83.10 -r litellm/requirements.txt` was
+# unsatisfiable and the CI Python job died at its install step -- before ruff,
+# before the wiring check, before all 453 tests. It never surfaced because the
+# branch had not been pushed, and the local .venv had resolved httpx to 0.28.1
+# anyway, so the pin was never in force even locally.
+#
+# 0.20.0 rather than the newest release: that is what the proxy image ships, so
+# the tests exercise the version production runs.
+prometheus-client==0.20.0
+
+# G1's second, independent detector. No longer fetched from GitHub: it is a
+# vendored source snapshot at litellm/nufi-security/, recorded in
+# litellm/nufi-security.provenance.md, and this installs THAT TREE.
+#
+# EDITABLE (-e), for three reasons that a plain path install and a `pythonpath`
+# entry both fail:
+#
+#   1. One copy of the bytes. A non-editable install copies the source into
+#      site-packages, so two copies exist and path order decides which one a
+#      process imported -- which would make the assertions in
+#      tests/test_nufi_injection_scanner.py about which sentences fire
+#      assertions about an unknown copy.
+#   2. Subprocesses see it. pytest's `pythonpath` applies only to code pytest
+#      itself runs; tests/test_health.py spawns `python -c "import guardrails"`
+#      to prove an import-time failure is loud, and that subprocess inherits no
+#      such path. Measured: it failed with "the nufi-security package is not
+#      importable" instead of the violation it was asserting on.
+#   3. `nufi.__version__` is correct. It is read from the root VERSION file
+#      relative to the package, which only exists in the source tree -- an
+#      editable install points there, so the version is 0.10.0 rather than the
+#      "0.0.0" fallback the previous pip-from-git build produced.
+#
+# The path is relative to the CWD pip runs in, NOT to this file: CI's step sets
+# working-directory: deploy/platform (.github/workflows/platform-ci.yml).
+# tests/test_nufi_pii_scanner.py asserts the path resolves from there. Run from
+# anywhere else it fails loudly, which is the acceptable failure.
+#
+# This also supplies the library's two declared dependencies (PyYAML>=6.0,
+# cryptography>=41.0) -- correct HERE, where the venv is built from scratch by
+# one resolver run, and never in the image, which already carries both and
+# where no resolver may run at all. See litellm/Dockerfile for that argument.
+-e ./litellm/nufi-security

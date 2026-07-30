@@ -1,0 +1,127 @@
+{
+  "dataset": "KDPII",
+  "dataset_url": "https://github.com/skan0779/korean-guardrail-dataset",
+  "backend": "gazetteer",
+  "total_rows": 7766,
+  "elapsed_seconds": 2.23,
+  "rows_per_second": 3481.36,
+  "errors": 0,
+  "overall": {
+    "recall": 0.5763,
+    "precision": 0.6544,
+    "f1": 0.6128,
+    "tp": 4678,
+    "fn": 3440,
+    "fp": 2471
+  },
+  "span_level": {
+    "exact_tp": 3436,
+    "partial": 1317,
+    "fn": 3995,
+    "fp": 3469,
+    "exact_recall": 0.4624,
+    "exact_precision": 0.4976
+  },
+  "per_type": {
+    "CREDIT_CARD": {
+      "expected": 792,
+      "detected": 58,
+      "tp": 56,
+      "fn": 736,
+      "fp": 2,
+      "recall": 0.0707,
+      "precision": 0.9655,
+      "f1": 0.1318
+    },
+    "EMAIL": {
+      "expected": 602,
+      "detected": 602,
+      "tp": 602,
+      "fn": 0,
+      "fp": 0,
+      "recall": 1.0,
+      "precision": 1.0,
+      "f1": 1.0
+    },
+    "KR_ACCOUNT": {
+      "expected": 792,
+      "detected": 1580,
+      "tp": 786,
+      "fn": 6,
+      "fp": 794,
+      "recall": 0.9924,
+      "precision": 0.4975,
+      "f1": 0.6627
+    },
+    "KR_DRIVER_LICENSE": {
+      "expected": 194,
+      "detected": 150,
+      "tp": 150,
+      "fn": 44,
+      "fp": 0,
+      "recall": 0.7732,
+      "precision": 1.0,
+      "f1": 0.8721
+    },
+    "KR_FOREIGNER_REG": {
+      "expected": 198,
+      "detected": 20,
+      "tp": 20,
+      "fn": 178,
+      "fp": 0,
+      "recall": 0.101,
+      "precision": 1.0,
+      "f1": 0.1835
+    },
+    "KR_LOCATION": {
+      "expected": 1902,
+      "detected": 2769,
+      "tp": 1253,
+      "fn": 649,
+      "fp": 1516,
+      "recall": 0.6588,
+      "precision": 0.4525,
+      "f1": 0.5365
+    },
+    "KR_PASSPORT": {
+      "expected": 185,
+      "detected": 129,
+      "tp": 129,
+      "fn": 56,
+      "fp": 0,
+      "recall": 0.6973,
+      "precision": 1.0,
+      "f1": 0.8217
+    },
+    "KR_PERSON": {
+      "expected": 1985,
+      "detected": 579,
+      "tp": 420,
+      "fn": 1565,
+      "fp": 159,
+      "recall": 0.2116,
+      "precision": 0.7254,
+      "f1": 0.3276
+    },
+    "KR_PHONE": {
+      "expected": 1282,
+      "detected": 1242,
+      "tp": 1242,
+      "fn": 40,
+      "fp": 0,
+      "recall": 0.9688,
+      "precision": 1.0,
+      "f1": 0.9842
+    },
+    "KR_RRN": {
+      "expected": 186,
+      "detected": 20,
+      "tp": 20,
+      "fn": 166,
+      "fp": 0,
+      "recall": 0.1075,
+      "precision": 1.0,
+      "f1": 0.1942
+    }
+  }
+}

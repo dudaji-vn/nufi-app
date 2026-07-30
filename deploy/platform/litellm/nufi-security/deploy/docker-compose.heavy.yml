@@ -1,0 +1,22 @@
+# 옵트인 오버레이 — 무거운 한국어 NER 백엔드(transformers/ONNX) 번들.
+# 베이스 compose 와 함께 적용:
+#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.heavy.yml up -d --build
+#
+# 코어 경량 번들과 분리된 별도 태그(...-heavy)로 빌드되어 에어갭 코어 이미지를
+# 가볍게 유지한다. 백엔드 미설치 시 코어는 gazetteer 로 폴백한다.
+name: nufi-egress-audit
+
+services:
+  gateway:
+    build:
+      args:
+        INSTALL_HEAVY: "1"
+    image: nufi-egress-audit:${NUFI_TAG:-0.0.2-dev}-heavy
+    environment:
+      EGRESS_NER_BACKEND: transformers
+
+  audit-bot:
+    image: nufi-egress-audit:${NUFI_TAG:-0.0.2-dev}-heavy
+    command: ["python3", "-m", "egress_audit.audit_bot", "--daemon", "--ner-backend", "transformers"]
+    environment:
+      EGRESS_NER_BACKEND: transformers

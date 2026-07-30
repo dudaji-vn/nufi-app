@@ -1,0 +1,69 @@
+{
+  "title": "KR_LOCATION v0.2.0 릴리스 측정 게이트",
+  "gate_conditions": {
+    "kr_location_wilson_ci_lower_bound": ">= 0.90",
+    "benign_false_block": "== 0.0",
+    "overall_pii_precision": "~1.0 (>= 0.98)"
+  },
+  "backend_note": "프로덕션 백엔드(onnx-int8)는 optimum 미프로비저닝(에어갭)으로 라이브 재실행 불가 → after 는 확장규칙(gazetteer, P2) 라이브 하한을 인용. 모델∪규칙 유니온(P3)은 규칙 스팬을 모델 출력에 더하므로 recall 은 이 하한 이상, benign FP 는 모델 0 ∪ 규칙 0 = 0 유지. before 모델 recall 은 커밋 baseline 인용.",
+  "before_v0.1.0": {
+    "backend": "onnx-int8 (committed baseline)",
+    "split": "test",
+    "kr_location_recall": 0.7917,
+    "kr_location_hit_exp": [
+      19,
+      24
+    ],
+    "kr_location_ci95_low": 0.5953,
+    "benign_false_block": 0.0,
+    "pii_precision": 1.0
+  },
+  "after_v0.2.0": {
+    "test": {
+      "kr_location_recall": 1.0,
+      "kr_location_hit_exp": [
+        62,
+        62
+      ],
+      "kr_location_ci95": [
+        0.9417,
+        1.0
+      ],
+      "kr_location_ci95_low": 0.9417,
+      "kr_location_fp": 0,
+      "benign_false_block": 0.0,
+      "benign_false_block_n": "0/90",
+      "pii_precision": 0.9887
+    },
+    "dev": {
+      "kr_location_recall": 1.0,
+      "kr_location_hit_exp": [
+        40,
+        40
+      ],
+      "kr_location_ci95": [
+        0.9124,
+        1.0
+      ],
+      "kr_location_ci95_low": 0.9124,
+      "kr_location_fp": 0,
+      "benign_false_block": 0.0,
+      "benign_false_block_n": "0/60",
+      "pii_precision": 0.9885
+    }
+  },
+  "gates_per_split": {
+    "test": {
+      "kr_location_ci_low>=0.90": true,
+      "benign_fp==0.0": true,
+      "pii_precision~1.0(>=0.98)": true
+    },
+    "dev": {
+      "kr_location_ci_low>=0.90": true,
+      "benign_fp==0.0": true,
+      "pii_precision~1.0(>=0.98)": true
+    }
+  },
+  "gate_pass": true,
+  "union_gain_vs_model_recall": 0.2083
+}

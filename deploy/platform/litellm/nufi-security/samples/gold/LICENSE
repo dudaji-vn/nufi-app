@@ -1,0 +1,19 @@
+NuFi 한국어 PII 골드 평가셋 — 라이선스
+
+Copyright (c) 2026 Dudaji / NuFi
+
+본 평가셋(samples/gold/dev.jsonl, samples/gold/test.jsonl, samples/gold/manifest.json)은
+전량 합성(synthetic)으로 생성되었습니다. 실제 고객·개인 데이터를 일절 포함하지 않으며,
+포함된 모든 식별번호(주민등록번호·외국인등록번호·사업자등록번호·신용카드번호 등)는
+형식·체크섬만 유효한 무작위 합성값으로, 실재 인물·기관과 무관합니다.
+
+라이선스: CC0 1.0 Universal (Public Domain Dedication)
+SPDX-License-Identifier: CC0-1.0
+
+본 저작물의 작성자는 법이 허용하는 한도 내에서 저작권 및 관련·인접 권리를 전 세계적으로
+포기하여 퍼블릭 도메인에 헌정합니다. 허가 없이 복제·수정·배포·상업적 이용이 가능하며
+출처 표기 의무가 없습니다(표기는 권장).
+
+전체 법적 문안: https://creativecommons.org/publicdomain/zero/1.0/legalcode
+
+본 평가셋은 "있는 그대로(AS IS)" 제공되며 어떠한 보증도 하지 않습니다.

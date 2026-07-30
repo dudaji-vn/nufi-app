@@ -1,0 +1,64 @@
+# 감사 프로파일 + 본문 보존 정책 (NFR3: 운영자가 갱신 가능한 외부 설정)
+# CMP-86 P0: 메시지 스토어의 분리 싱크 위치와 본문 보존 정책을 외부화한다.
+# private/public 별로 본문 원문 보존 여부를 운영자가 토글한다.
+version: 1
+
+# 분리 메시지 스토어 (P0). 싱크 = {base_dir}/{egress_class}/YYYY-MM-DD.jsonl
+message_store:
+  base_dir: logs/messages          # private/ · public/ 하위 디렉터리 자동 생성
+  rotation: daily                  # 파일명 = 날짜(YYYY-MM-DD).jsonl
+
+# egress_class 별 본문 보존 정책.
+#   retain_raw: true  → 원문(raw) 그대로 저장
+#   retain_raw: false → 인라인 정책 통과본(가명화/마스킹본) 저장
+profiles:
+  private:
+    # 온프렘·경계 내 잔류 → 기본 원문 보존(감사·내부자 오남용 추적).
+    retain_raw: true
+
+  public:
+    # 경계 밖 전송 → 기본은 가명화 통과본만 저장(원문 미보존).
+    # retain_raw 를 true 로 켜면 egress 원문이 디스크에 남으므로,
+    # 접근 제어·보존기간을 README(보존정책)에 명시하고 CPO 리뷰 후 CEO 정렬 필요.
+    retain_raw: false
+
+# --- P2(비동기 감사 봇) 차등 탐지 프로파일 (NFR3: 운영자 갱신). ---
+# egress_class 별 탐지기 집합·샘플링률·심각도 임계값을 운영자가 조정한다.
+# 카테고리: secrets · strong_pii · weak_pii · confidential_keywords · bypass_correlation
+detection:
+  private:
+    # 경량: 비밀 + 강한 PII(컴플라이언스/내부자 오남용 로깅). 샘플링 허용.
+    detectors: [secrets, strong_pii]
+    sampling_rate: 1.0                   # <1.0 이면 결정적 샘플링(source_id 해시)
+    severity_threshold: high             # high 미만 finding 은 미생성(경량)
+  public:
+    # 풀: 강·약 PII + 비밀 + 기밀 키워드 + 게이트웨이 우회 상관.
+    detectors: [secrets, strong_pii, weak_pii, confidential_keywords, bypass_correlation]
+    sampling_rate: 1.0
+    severity_threshold: low              # 약 PII(low)까지 전부 finding
+
+# 기밀 키워드 사전(공개 프로파일 confidential_keywords 탐지기, NFR3 외부화).
+confidential_keywords:
+  - 대외비
+  - 기밀
+  - 사내한
+  - 내부용
+  - 영업비밀
+  - confidential
+  - proprietary
+  - "do not distribute"
+
+# 비동기 감사 봇 런타임(producer/consumer). 단일 노드 파일 큐(NFR6), 외부 브로커 0(NFR1).
+audit_bot:
+  poll_interval_sec: 0.25                # 워처 폴 주기(준실시간 NFR5)
+  workers: 4                             # consumer 워커 수(N)
+  findings_path: logs/audit_findings.jsonl
+  alerts_path: logs/alerts.jsonl         # high·critical finding 사본(+webhook 훅 자리)
+  state_path: logs/audit_state/offsets.json   # 무손실 오프셋 커밋(NFR6)
+  flow_dir: logs/packets/public          # P1 flow tap 출력(우회 탐지 입력: flow-*.jsonl)
+  # 우회 판정은 P1 이 기록한 flow 레코드의 bypass/via_gateway 를 우선 신뢰한다.
+  # 아래 식별자는 그 두 필드가 없는 외부 입력에 대한 휴리스틱 폴백(P1 config/capture_targets.yaml 정렬).
+  gateway_identity:
+    hosts: [127.0.0.1, "::1", localhost, 0.0.0.0]
+    ips: [127.0.0.1, "::1"]
+    process_names: [litellm, gateway, uvicorn, egress-gateway]

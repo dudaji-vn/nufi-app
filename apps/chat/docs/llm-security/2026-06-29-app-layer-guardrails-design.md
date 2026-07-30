@@ -1,7 +1,17 @@
+> **SUPERSEDED — 2026-07-29.** The application-layer guardrails this document
+> designs were removed from `apps/chat`; `api/server/middleware/guardrails/` and
+> every `GUARDRAIL_*` environment variable no longer exist. LLM security now runs
+> at the LiteLLM gateway — see
+> [`docs/2026-07-27-llm-security-gateway-design.md`](../../../../docs/2026-07-27-llm-security-gateway-design.md)
+> (repo root) and `deploy/platform/litellm/guardrails/policy.yaml`.
+>
+> Kept as the design record of a shipped security control. Nothing below
+> describes running code.
+
 # LLM Security Guardrails — Application-Layer (nufichat backend)
 
 **Date:** 2026-06-29
-**Status:** Design approved, pending implementation
+**Status:** Superseded 2026-07-29 (was: design approved, pending implementation)
 **Author:** nufi team (with Claude Code)
 **Repo:** `dudaji-vn/nufichat` (LibreChat fork) — `api/` backend
 **Target demo:** today, on `chat.nufi.me` (Railway)

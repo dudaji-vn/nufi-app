@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nufi.fullname" . }}
+  labels:
+    {{- include "nufi.labels" . | nindent 4 }}
+spec:
+  # 단일 파드 스텁 — HA 는 후속 이슈 범위.
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "nufi.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "nufi.selectorLabels" . | nindent 8 }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        # 게이트웨이(인라인 EgressGuard) — OpenAI 호환 :{{ .Values.gateway.port }}
+        - name: gateway
+          image: {{ include "nufi.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python3", "-m", "uvicorn", "gateway.app:app", "--host", "0.0.0.0", "--port", "{{ .Values.gateway.port }}"]
+          env:
+            - name: EGRESS_NER_BACKEND
+              value: {{ .Values.nerBackend | quote }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.gateway.port }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.gateway.resources | nindent 12 }}
+          volumeMounts:
+            - name: audit-logs
+              mountPath: /app/logs
+        # 감사 봇(탐지코어 임베드) — 공유 emptyDir 큐 tail, 외부 호출 0.
+        - name: audit-bot
+          image: {{ include "nufi.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python3", "-m", "egress_audit.audit_bot", "--daemon", "--ner-backend", "{{ .Values.nerBackend }}"]
+          env:
+            - name: EGRESS_NER_BACKEND
+              value: {{ .Values.nerBackend | quote }}
+          livenessProbe:
+            exec:
+              command:
+                - python3
+                - -c
+                - "import os,sys; sys.exit(0 if any('audit_bot' in open('/proc/%s/cmdline'%p,'rb').read().decode('utf-8','ignore') for p in os.listdir('/proc') if p.isdigit() and os.path.exists('/proc/%s/cmdline'%p)) else 1)"
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.auditBot.resources | nindent 12 }}
+          volumeMounts:
+            - name: audit-logs
+              mountPath: /app/logs
+      volumes:
+        - name: audit-logs
+          {{- toYaml .Values.logsVolume | nindent 10 }}

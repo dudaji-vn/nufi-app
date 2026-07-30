@@ -1,0 +1,31 @@
+__pycache__/
+*.pyc
+logs/
+.venv/
+*.egg-info/
+models/
+*.onnx
+dist/
+
+# 내부 영업/GTM 자산은 공개 저장소에 두지 않는다 (CMP-82, board 2026-06-28)
+docs/gtm/
+*_GTM_*.zip
+*GTM_package*
+
+# 데모 실행 시 재생성되는 산출물 (scripts/demo_*.sh) — 큐레이트된 샘플
+# (.md/.zip/.txt/.jsonl, 이미 추적 중)만 커밋하고, 재생성 산출물은 무시 (CMP-187)
+demo_outputs/**/*.json
+demo_outputs/**/*.html
+demo_outputs/**/*.stderr
+demo_outputs/compliance_mapping/
+demo_outputs/multitenancy/
+
+# pytest-benchmark 로컬 결과 (CI 에서만 cache 로 관리)
+.benchmarks/
+
+# 외부 데이터셋 캐시·다운로드 (CMP-307/CMP-308)
+goldset/.cache/
+data/external/
+data/external_datasets/
+data/.hf_cache/
+data/external_datasets/

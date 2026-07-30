@@ -84,6 +84,26 @@ export function SecurityPage() {
         <p className="text-sm text-muted-foreground">{localize('com_security_subtitle')}</p>
       </div>
 
+      {/*
+        Shown unconditionally, not only when the table is empty. This page reads
+        the app-layer guardrails' audit events, and that layer was removed; the
+        endpoint still answers 200 with zero rows, so without this the page says
+        "No security events found" on a system where controls are running and
+        blocking. A dashboard that reports quiet when it is actually
+        disconnected is the exact failure the gateway was built to end.
+      */}
+      <div
+        role="status"
+        className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3"
+      >
+        <div className="text-sm font-medium text-foreground">
+          {localize('com_security_moved_title')}
+        </div>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {localize('com_security_moved_body')}
+        </p>
+      </div>
+
       <div
         className="grid grid-cols-3 gap-3"
         role="group"

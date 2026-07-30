@@ -1,0 +1,177 @@
+{
+  "backend": "transformers",
+  "split": "test",
+  "targets": {
+    "pii_recall": 0.9,
+    "pii_precision": 0.85,
+    "strong_recall": 0.98,
+    "person_recall": 0.85,
+    "location_recall": 0.85,
+    "secret_recall": 0.9,
+    "benign_false_block": 0.02
+  },
+  "ner_backend_active": "transformers",
+  "scores": {
+    "n_rows": 854,
+    "pii_recall": 0.9961,
+    "pii_recall_ci95": [
+      0.9885,
+      0.9987
+    ],
+    "pii_precision": 0.9666,
+    "strong_recall": 1.0,
+    "strong_recall_ci95": [
+      0.9821,
+      1.0
+    ],
+    "person_recall": 0.9914,
+    "person_unlisted_recall": 0.9571,
+    "person_unlisted_n": 70,
+    "location_recall": 1.0,
+    "secret_recall": 1.0,
+    "benign_false_block": 0.0,
+    "benign_false_block_n": "0/90",
+    "span_exact_recall": 0.9777,
+    "span_recall_incl_partial": 0.9961,
+    "span_precision": 0.907,
+    "span_partial": 14,
+    "per_class": {
+      "CREDIT_CARD": {
+        "recall": 1.0,
+        "hit": 35,
+        "exp": 35,
+        "ci95": [
+          0.9011,
+          1.0
+        ],
+        "fp": 0
+      },
+      "EMAIL": {
+        "recall": 1.0,
+        "hit": 36,
+        "exp": 36,
+        "ci95": [
+          0.9036,
+          1.0
+        ],
+        "fp": 0
+      },
+      "KR_ACCOUNT": {
+        "recall": 1.0,
+        "hit": 36,
+        "exp": 36,
+        "ci95": [
+          0.9036,
+          1.0
+        ],
+        "fp": 0
+      },
+      "KR_BRN": {
+        "recall": 1.0,
+        "hit": 35,
+        "exp": 35,
+        "ci95": [
+          0.9011,
+          1.0
+        ],
+        "fp": 0
+      },
+      "KR_DRIVER_LICENSE": {
+        "recall": 1.0,
+        "hit": 35,
+        "exp": 35,
+        "ci95": [
+          0.9011,
+          1.0
+        ],
+        "fp": 0
+      },
+      "KR_FOREIGNER_REG": {
+        "recall": 1.0,
+        "hit": 35,
+        "exp": 35,
+        "ci95": [
+          0.9011,
+          1.0
+        ],
+        "fp": 0
+      },
+      "KR_LOCATION": {
+        "recall": 1.0,
+        "hit": 62,
+        "exp": 62,
+        "ci95": [
+          0.9417,
+          1.0
+        ],
+        "fp": 0
+      },
+      "KR_PASSPORT": {
+        "recall": 1.0,
+        "hit": 35,
+        "exp": 35,
+        "ci95": [
+          0.9011,
+          1.0
+        ],
+        "fp": 0
+      },
+      "KR_PERSON": {
+        "recall": 0.9914,
+        "hit": 345,
+        "exp": 348,
+        "ci95": [
+          0.975,
+          0.9971
+        ],
+        "fp": 0
+      },
+      "KR_PHONE": {
+        "recall": 1.0,
+        "hit": 36,
+        "exp": 36,
+        "ci95": [
+          0.9036,
+          1.0
+        ],
+        "fp": 0
+      },
+      "KR_RRN": {
+        "recall": 1.0,
+        "hit": 35,
+        "exp": 35,
+        "ci95": [
+          0.9011,
+          1.0
+        ],
+        "fp": 0
+      },
+      "SECRET": {
+        "recall": 1.0,
+        "hit": 36,
+        "exp": 36,
+        "ci95": [
+          0.9036,
+          1.0
+        ],
+        "fp": 0
+      }
+    },
+    "person_recall_ci_low": 0.975,
+    "account_recall_ci_low": 0.9036,
+    "secret_recall_ci_low": 0.9036
+  },
+  "acceptance": {
+    "pii_recall>=0.90": true,
+    "pii_precision>=0.85": true,
+    "strong_recall>=0.98": true,
+    "person_recall>=0.85": true,
+    "person_recall_ci_low>=0.93": true,
+    "account_recall_ci_low>=0.9": true,
+    "location_recall>=0.85": true,
+    "secret_recall>=0.90": true,
+    "secret_recall_ci_low>=0.9": true,
+    "benign_false_block<=0.02": true
+  },
+  "acceptance_pass": true
+}

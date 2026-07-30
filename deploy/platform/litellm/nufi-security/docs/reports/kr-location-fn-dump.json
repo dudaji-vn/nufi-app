@@ -1,0 +1,330 @@
+{
+  "entity": "KR_LOCATION",
+  "backend_requested": "gazetteer",
+  "ner_backend_active": "gazetteer",
+  "note": "gazetteer per_class recall 은 행-레벨(행에 KR_LOCATION finding 이 하나라도 있으면 hit) — 골드 스팬 자체를 잡았다는 뜻은 아니다. false negative = 행에 KR_LOCATION 이 전혀 안 잡힌 케이스.",
+  "per_split": {
+    "test": {
+      "loc_rows": 24,
+      "hit": 15,
+      "fn": 9,
+      "recall": 0.625
+    },
+    "dev": {
+      "loc_rows": 16,
+      "hit": 8,
+      "fn": 8,
+      "recall": 0.5
+    }
+  },
+  "totals": {
+    "loc_rows": 40,
+    "hit": 23,
+    "fn": 17,
+    "recall": 0.575
+  },
+  "class_counts": {
+    "d_boundary": 14,
+    "c_oov_proper": 17
+  },
+  "false_negatives": [
+    {
+      "id": "KR_LOCATION-0411",
+      "split": "test",
+      "class": "c_oov_proper",
+      "subtype": "신도시/국제도시",
+      "gold": [
+        "송도국제도시"
+      ],
+      "gazetteer_unlisted": true
+    },
+    {
+      "id": "KR_LOCATION-0412",
+      "split": "test",
+      "class": "c_oov_proper",
+      "subtype": "복합몰/상업",
+      "gold": [
+        "센텀시티"
+      ],
+      "gazetteer_unlisted": true
+    },
+    {
+      "id": "KR_LOCATION-0414",
+      "split": "test",
+      "class": "c_oov_proper",
+      "subtype": "산업/테크노단지",
+      "gold": [
+        "판교테크노밸리"
+      ],
+      "gazetteer_unlisted": true
+    },
+    {
+      "id": "KR_LOCATION-0415",
+      "split": "test",
+      "class": "c_oov_proper",
+      "subtype": "개발지구",
+      "gold": [
+        "마곡지구"
+      ],
+      "gazetteer_unlisted": true
+    },
+    {
+      "id": "KR_LOCATION-0421",
+      "split": "test",
+      "class": "c_oov_proper",
+      "subtype": "복합몰/상업",
+      "gold": [
+        "동대문디자인플라자"
+      ],
+      "gazetteer_unlisted": true
+    },
+    {
+      "id": "KR_LOCATION-0422",
+      "split": "test",
+      "class": "c_oov_proper",
+      "subtype": "공원/랜드마크",
+      "gold": [
+        "광교호수공원"
+      ],
+      "gazetteer_unlisted": true
+    },
+    {
+      "id": "KR_LOCATION-0427",
+      "split": "test",
+      "class": "c_oov_proper",
+      "subtype": "공원/랜드마크",
+      "gold": [
+        "광교호수공원"
+      ],
+      "gazetteer_unlisted": true
+    },
+    {
+      "id": "KR_LOCATION-0429",
+      "split": "test",
+      "class": "c_oov_proper",
+      "subtype": "산업/테크노단지",
+      "gold": [
+        "판교테크노밸리"
+      ],
+      "gazetteer_unlisted": true
+    },
+    {
+      "id": "KR_LOCATION-0430",
+      "split": "test",
+      "class": "c_oov_proper",
+      "subtype": "복합몰/상업",
+      "gold": [
+        "코엑스몰"
+      ],
+      "gazetteer_unlisted": true
+    },
+    {
+      "id": "KR_LOCATION-0416",
+      "split": "dev",
+      "class": "c_oov_proper",
+      "subtype": "복합몰/상업",
+      "gold": [
+        "동대문디자인플라자"
+      ],
+      "gazetteer_unlisted": true
+    },
+    {
+      "id": "KR_LOCATION-0417",
+      "split": "dev",
+      "class": "c_oov_proper",
+      "subtype": "신도시/국제도시",
+      "gold": [
+        "송도국제도시"
+      ],
+      "gazetteer_unlisted": true
+    },
+    {
+      "id": "KR_LOCATION-0418",
+      "split": "dev",
+      "class": "c_oov_proper",
+      "subtype": "개발지구",
+      "gold": [
+        "마곡지구"
+      ],
+      "gazetteer_unlisted": true
+    },
+    {
+      "id": "KR_LOCATION-0419",
+      "split": "dev",
+      "class": "c_oov_proper",
+      "subtype": "복합몰/상업",
+      "gold": [
+        "코엑스몰"
+      ],
+      "gazetteer_unlisted": true
+    },
+    {
+      "id": "KR_LOCATION-0420",
+      "split": "dev",
+      "class": "c_oov_proper",
+      "subtype": "공원/랜드마크",
+      "gold": [
+        "광교호수공원"
+      ],
+      "gazetteer_unlisted": true
+    },
+    {
+      "id": "KR_LOCATION-0424",
+      "split": "dev",
+      "class": "c_oov_proper",
+      "subtype": "산업/테크노단지",
+      "gold": [
+        "판교테크노밸리"
+      ],
+      "gazetteer_unlisted": true
+    },
+    {
+      "id": "KR_LOCATION-0425",
+      "split": "dev",
+      "class": "c_oov_proper",
+      "subtype": "산업/테크노단지",
+      "gold": [
+        "판교테크노밸리"
+      ],
+      "gazetteer_unlisted": true
+    },
+    {
+      "id": "KR_LOCATION-0428",
+      "split": "dev",
+      "class": "c_oov_proper",
+      "subtype": "신도시/국제도시",
+      "gold": [
+        "송도국제도시"
+      ],
+      "gazetteer_unlisted": true
+    }
+  ],
+  "boundary_cases": [
+    {
+      "id": "KR_LOCATION-0393",
+      "split": "test",
+      "class": "d_boundary",
+      "gold": [
+        "청주시"
+      ],
+      "gazetteer_unlisted": false
+    },
+    {
+      "id": "KR_LOCATION-0394",
+      "split": "test",
+      "class": "d_boundary",
+      "gold": [
+        "성남시 분당구"
+      ],
+      "gazetteer_unlisted": false
+    },
+    {
+      "id": "KR_LOCATION-0400",
+      "split": "test",
+      "class": "d_boundary",
+      "gold": [
+        "포항시"
+      ],
+      "gazetteer_unlisted": false
+    },
+    {
+      "id": "KR_LOCATION-0401",
+      "split": "test",
+      "class": "d_boundary",
+      "gold": [
+        "포항시"
+      ],
+      "gazetteer_unlisted": false
+    },
+    {
+      "id": "KR_LOCATION-0403",
+      "split": "test",
+      "class": "d_boundary",
+      "gold": [
+        "용인시 기흥구"
+      ],
+      "gazetteer_unlisted": false
+    },
+    {
+      "id": "KR_LOCATION-0405",
+      "split": "test",
+      "class": "d_boundary",
+      "gold": [
+        "수원시"
+      ],
+      "gazetteer_unlisted": false
+    },
+    {
+      "id": "KR_LOCATION-0406",
+      "split": "test",
+      "class": "d_boundary",
+      "gold": [
+        "포항시"
+      ],
+      "gazetteer_unlisted": false
+    },
+    {
+      "id": "KR_LOCATION-0407",
+      "split": "test",
+      "class": "d_boundary",
+      "gold": [
+        "수원시"
+      ],
+      "gazetteer_unlisted": false
+    },
+    {
+      "id": "KR_LOCATION-0423",
+      "split": "test",
+      "class": "d_boundary",
+      "gold": [
+        "여의도 IFC"
+      ],
+      "gazetteer_unlisted": true
+    },
+    {
+      "id": "KR_LOCATION-0426",
+      "split": "test",
+      "class": "d_boundary",
+      "gold": [
+        "여의도 IFC"
+      ],
+      "gazetteer_unlisted": true
+    },
+    {
+      "id": "KR_LOCATION-0397",
+      "split": "dev",
+      "class": "d_boundary",
+      "gold": [
+        "청주시"
+      ],
+      "gazetteer_unlisted": false
+    },
+    {
+      "id": "KR_LOCATION-0404",
+      "split": "dev",
+      "class": "d_boundary",
+      "gold": [
+        "강남구 역삼동"
+      ],
+      "gazetteer_unlisted": false
+    },
+    {
+      "id": "KR_LOCATION-0409",
+      "split": "dev",
+      "class": "d_boundary",
+      "gold": [
+        "포항시"
+      ],
+      "gazetteer_unlisted": false
+    },
+    {
+      "id": "KR_LOCATION-0410",
+      "split": "dev",
+      "class": "d_boundary",
+      "gold": [
+        "용인시 기흥구"
+      ],
+      "gazetteer_unlisted": false
+    }
+  ]
+}

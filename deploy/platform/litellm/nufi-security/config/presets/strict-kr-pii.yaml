@@ -1,0 +1,42 @@
+# 프리셋: strict-kr-pii — 한국어 PII/비밀 최대 보호(fail-closed)
+#
+# 누구를 위한 것: 규제/컴플라이언스가 강한 조직, "의심스러우면 막는다" 가 기본.
+# 핵심: 강·약 PII 와 기밀 신호 전부 차단(block), 미지의 엔티티도 기본 차단,
+#       우회 패킷 enforcement 는 fail-closed(집행 실패 시 전면 차단).
+#
+# 이 파일은 "오버레이"다 — config/*.yaml(베이스)에 deep-merge 된다.
+# 동일 식별자/스키마를 유지(docs-guard 교차검증 정렬). raw 편집은 파워유저 탈출구.
+preset: strict-kr-pii
+version: 1
+description: 한국어 PII·비밀·기밀을 최대로 차단. 미지 엔티티 기본 차단, enforcement fail-closed.
+fail_closed_default: true
+
+overlay:
+  policy:
+    # 매핑에 없는 엔티티도 기본 차단(보수적).
+    default_action: block
+    blocking_actions: [block]
+    entities:
+      # 약한 PII 를 차단으로 격상(베이스는 pseudonymize/warn).
+      KR_BRN:      { action: block, severity: high }
+      KR_PHONE:    { action: block, severity: high }
+      EMAIL:       { action: block, severity: medium }
+      KR_PERSON:   { action: block, severity: high }
+      KR_LOCATION: { action: block, severity: medium }
+      # 기밀 신호도 약신호까지 차단으로 격상.
+      CONF_MARKING_INTERNAL:  { action: block, severity: high }
+      CONF_EDM_STRUCT_WEAK:   { action: block, severity: medium }
+      CONF_EDM_DOC_MED:       { action: block, severity: medium }
+    # 기밀 키워드 등급 보조표: INTERNAL 도 차단.
+    conf_class_actions:
+      INTERNAL: { action: block, severity: high }
+    enforcement:
+      fail_mode: closed   # 집행 실패 시 전면 차단(가용성보다 보호 우선)
+
+  audit_profiles:
+    profiles:
+      public:
+        retain_raw: false   # 경계 밖 원문 미보존
+    detection:
+      private:
+        severity_threshold: low   # 약신호까지 전부 감사

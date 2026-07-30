@@ -1,0 +1,17 @@
+#!/usr/sbin/nft -f
+# NuFi Egress Enforcement — 생성물, 직접 편집 금지.
+# policy_src=routing.yaml+policy.yaml  source=enforcement.rule_builder
+# kind=panic-fail-closed fail_mode=open table=inet/nufi_egress
+add table inet nufi_egress
+delete table inet nufi_egress
+table inet nufi_egress {
+	set public_dst {
+		type ipv4_addr . inet_service
+		elements = { 203.0.113.10 . 443, 203.0.113.20 . 443 }
+	}
+	chain output {
+		type filter hook output priority 0; policy accept;
+		# fail-closed: 화이트리스트 없음 — 전 출처 public drop
+		ip daddr . th dport @public_dst log prefix "nufi-egress-block " drop
+	}
+}

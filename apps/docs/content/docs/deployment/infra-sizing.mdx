@@ -19,13 +19,15 @@ without strain. Past that, split.
 
 ## Per-service caps
 
-Compose declares CPU and memory caps so one runaway service does not
-starve the rest. Reference defaults:
+Recommended CPU and memory caps, so one runaway service does not starve the
+rest. These are **guidance, not configuration** — `docker-compose.yml`
+declares no `deploy:` limits today, so nothing enforces them. Apply them
+explicitly if you need the isolation:
 
 | Service            | CPU cap   | RAM cap   |
 |--------------------|-----------|-----------|
 | ClickHouse         | 2 vCPU    | 4 GB      |
-| LLM Guard          | 1 vCPU    | 2 GB      |
+| Injection scanner  | 1 vCPU    | 2 GB      |
 | Presidio Analyzer  | 1 vCPU    | 1.5 GB    |
 | Gateway            | 2 vCPU    | 2 GB      |
 | Chat               | 2 vCPU    | 2 GB      |

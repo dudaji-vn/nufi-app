@@ -1,0 +1,160 @@
+# CMP-296 — 성능 벤치마크 CI 워크플로우 (예시)
+#
+# pytest-benchmark 기반 p95 레이턴시 자동 측정 + 리그레션 게이트.
+# .github/workflows/ 에 복사하여 사용.
+#
+# 기능:
+#   1. PR 마다 벤치마크 실행 + 기존 baseline 대비 리그레션 감지
+#   2. main 머지 시 새 baseline 저장
+#   3. 메모리 프로파일링 (tracemalloc)
+#   4. 벤치마크 결과를 PR 코멘트로 게시
+name: NuFi Performance Benchmark
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write       # baseline 커밋용
+  pull-requests: write  # PR 코멘트용
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest pytest-benchmark
+
+      - name: Restore benchmark baseline
+        uses: actions/cache/restore@v4
+        with:
+          path: .benchmarks
+          key: benchmark-${{ matrix.python-version }}-${{ github.base_ref || 'main' }}
+          restore-keys: |
+            benchmark-${{ matrix.python-version }}-main
+
+      # ── 벤치마크 실행 ──────────────────────────────────
+      - name: Run benchmarks
+        id: bench
+        env:
+          EGRESS_NER_BACKEND: gazetteer
+        run: |
+          # 기본 벤치마크 실행 + 결과 저장
+          python -m pytest tests/test_perf_benchmark.py \
+            --benchmark-enable \
+            --benchmark-save=current \
+            --benchmark-sort=mean \
+            --benchmark-warmup=on \
+            --benchmark-min-rounds=5 \
+            -v 2>&1 | tee benchmark_output.txt
+
+          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      # ── 리그레션 게이트 (baseline 이 있을 때만) ────────
+      - name: Regression gate (compare with baseline)
+        if: github.event_name == 'pull_request'
+        env:
+          EGRESS_NER_BACKEND: gazetteer
+        run: |
+          # baseline 이 있으면 비교, 없으면 스킵
+          BASELINE=$(find .benchmarks -name "*_baseline.json" 2>/dev/null | head -1)
+          if [ -n "$BASELINE" ]; then
+            echo "Comparing against baseline: $BASELINE"
+            python -m pytest tests/test_perf_benchmark.py \
+              --benchmark-enable \
+              --benchmark-compare=0001 \
+              --benchmark-compare-fail=mean:15% \
+              --benchmark-sort=mean \
+              -v || echo "REGRESSION_DETECTED=true" >> "$GITHUB_ENV"
+          else
+            echo "No baseline found — skipping regression comparison"
+          fi
+
+      # ── Baseline 갱신 (main 푸시 시) ───────────────────
+      - name: Save baseline
+        if: github.ref == 'refs/heads/main' && matrix.python-version == '3.12'
+        uses: actions/cache/save@v4
+        with:
+          path: .benchmarks
+          key: benchmark-${{ matrix.python-version }}-main-${{ github.sha }}
+
+      # ── PR 코멘트로 결과 게시 ──────────────────────────
+      - name: Post benchmark results as PR comment
+        if: github.event_name == 'pull_request' && matrix.python-version == '3.12'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const output = fs.readFileSync('benchmark_output.txt', 'utf8');
+
+            // 벤치마크 테이블 영역만 추출
+            const lines = output.split('\n');
+            const tableStart = lines.findIndex(l => l.includes('benchmark'));
+            const tableEnd = lines.findIndex((l, i) => i > tableStart && l.startsWith('='));
+            const table = lines.slice(
+              Math.max(0, tableStart - 2),
+              tableEnd > 0 ? tableEnd + 1 : lines.length
+            ).join('\n');
+
+            const regression = process.env.REGRESSION_DETECTED === 'true';
+            const icon = regression ? '⚠️' : '✅';
+
+            const body = [
+              `## ${icon} NuFi Performance Benchmark (Python ${{ matrix.python-version }})`,
+              '',
+              '```',
+              table.substring(0, 3000),  // GitHub 코멘트 크기 제한
+              '```',
+              '',
+              regression
+                ? '> **⚠️ 성능 리그레션 감지**: mean 레이턴시가 baseline 대비 15% 초과 증가.'
+                : '> ✅ 성능 리그레션 없음.',
+              '',
+              `커밋: \`${context.sha.substring(0, 8)}\``,
+            ].join('\n');
+
+            // 기존 벤치마크 코멘트 업데이트 또는 새로 생성
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c =>
+              c.body.includes('NuFi Performance Benchmark')
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
+      # ── 리그레션 시 실패 ───────────────────────────────
+      - name: Fail on regression
+        if: env.REGRESSION_DETECTED == 'true'
+        run: |
+          echo "::error::성능 리그레션 감지 — mean 레이턴시가 baseline 대비 15% 초과."
+          exit 1
