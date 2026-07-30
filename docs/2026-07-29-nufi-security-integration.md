@@ -426,6 +426,72 @@ a way Presidio is not.
    70/70 — it is markup, and a markdown renderer may swallow it, turning a
    visible wrong token into an invisible missing one. `[[E1]]` renders
    literally.
+
+   ### 7.3a Survival is not usefulness — and the first survival numbers were confounded
+
+   `G2aPiiInput`'s docstring records why that control never rewrites a request:
+   *the previous system masked PII on input and the model began answering the
+   placeholder instead of the question — a user asking about `sun@dudaji.com` got
+   a reply about `<PERSON>`.* The hypothesis for a surrogate being different is
+   that `⟦E1⟧` is opaque, so there is nothing to answer *about*. **Measured, and
+   the hypothesis is false.** `gemini-2.5-flash`, temperature 0, no instruction:
+
+   ```
+   signature  raw    → Jane Doe, Support / jane.doe@acme-industrial.example
+              pseudo → Please tell me what "⟦E1⟧" represents!
+                       Assuming "⟦E1⟧" is the Company Name, here are a few options…
+   domain     raw    → acme-industrial.example        pseudo → "Expressions"
+   valid      raw    → Yes                            pseudo → No.
+   company    raw    → Acme                           pseudo → Unknown
+   ```
+
+   The canonical use case — write me a signature — broke, in exactly the way the
+   docstring recorded, with a different placeholder.
+
+   **The earlier survival measurement was confounded.** Its prompts said *"keep
+   every contact detail exactly as written"* and *"preserve the customer's
+   contact details verbatim"* — which tell the model what the token is. A real
+   user's prompt does not. The 68/70 measured token survival under scaffolding
+   that a production request would not carry.
+
+   **An injected instruction restores it, for one class of prompt.** With a
+   system message stating that `⟦…⟧` stands in for a withheld value, to be
+   reproduced exactly and never explained or guessed at:
+
+   | class | prompt | token carried | answer |
+   |---|---|---|---|
+   | payload | signature | **3/3** | correct, restores to a perfect signature |
+   | payload | send-to | **3/3** | correct |
+   | payload | markdown table | **3/3** | correct |
+   | subject | what domain is this | 3/3 | **wrong** — returns the whole address |
+   | subject | is this valid | 0/3 | **wrong** — `No.` where raw gives `Yes` |
+
+   A control request with no PII was undisturbed by the instruction.
+
+   ### 7.3b What this means the feature is
+
+   Two classes of prompt, and the split is not a tuning problem:
+
+   - **Payload** — the value is carried, not reasoned about (sign this, send to,
+     put it in the table). Pseudonymization works, 9/9, given the instruction.
+   - **Subject** — the answer depends on the value's content. Pseudonymization
+     **cannot** work, in principle: the model is being asked about a value that
+     is being hidden from it. No delimiter, threshold or prompt fixes this.
+
+   **The gateway cannot tell which class a request is.** So pseudonymization
+   must be **opt-in — per virtual key or per request — and not the default.** A
+   deployment whose workload is payload-shaped (support-desk drafting, ticket
+   summarisation) gets non-destructive PII handling; general chat keeps `redact`,
+   and `G2aPiiInput`'s recorded rationale stands as the default it always was.
+
+   The injected instruction is a real cost and belongs only on requests where
+   pseudonymization is active: it is a prompt *we* add, it consumes tokens on
+   every such request, and it can conflict with the user's own system prompt.
+
+   This narrows what the upstream author asked for. "Merge PII and
+   pseudonymization feature for KR" is deliverable for the payload case and is
+   not deliverable as a blanket default for a general chat product — and the
+   evidence for that is his own system's recorded failure, reproduced.
 4. Compliance reporting as an offline command, out of the request path. Not
    started; 48 controls of evidence we currently cannot produce at all, across
    five Korean frameworks. If "merge my repo" includes this for him, it is the
