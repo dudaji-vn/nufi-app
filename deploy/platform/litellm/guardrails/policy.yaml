@@ -188,11 +188,14 @@ controls:
     # The gateway cannot tell those two apart, so switching this to
     # `pseudonymize` also requires each workload to opt in via its key's
     # metadata (`nufi_pseudonymize: true`), unless `require_opt_in: false` below
-    # states that ALL of this deployment's traffic is of the first kind. Streamed
-    # requests are skipped outright and counted in
-    # `nufi_guardrail_pseudonym_skipped_total{reason="stream"}` — the restore path
-    # for streaming is not built, and raw tokens reaching a client would be worse
-    # than the redaction they replaced.
+    # states that ALL of this deployment's traffic is of the first kind.
+    #
+    # Streaming IS supported (since 2026-07-30). It was not at first, and the
+    # difficulty was not the boundary buffer: `_StreamState.verify` re-scans what
+    # a control sent, and a correctly restored address is PII by G2b's own
+    # detector -- restoring inside `feed` made every pseudonymized stream report
+    # itself as a leak. `deliver` exists to keep the wire and the self-check
+    # looking at different strings.
     #
     # Full measurement: docs/2026-07-29-nufi-security-integration.md §7.3a/§7.3b.
     action: log

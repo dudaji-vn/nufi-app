@@ -202,16 +202,17 @@ async def test_require_opt_in_false_serves_every_request(policy_path, tmp_path):
     assert EMAIL not in str(out["messages"])
 
 
-async def test_a_streamed_request_is_not_pseudonymized(policy_path):
-    """Restoration on the streaming path is not built, so a streamed request must
-    keep ordinary redaction rather than receive raw surrogates."""
+async def test_a_streamed_request_is_pseudonymized_too(policy_path):
+    """Streaming is the chat default, so a feature that skipped it would be a
+    feature nobody in chat ever gets. It was skipped and counted until the
+    restore path existed; this asserts it no longer is."""
     guard = _g2a(policy_path)
     data = _request(f"a {EMAIL}", stream=True)
 
     out = await guard.async_pre_call_hook(_Key(), None, data, "acompletion")
 
-    assert EMAIL in out["messages"][0]["content"]
-    assert pseudonymize.SESSION_KEY not in (out.get("metadata") or {})
+    assert EMAIL not in str(out["messages"])
+    assert out["metadata"][pseudonymize.SESSION_KEY].startswith("grd-pseudo-")
 
 
 async def test_no_pii_leaves_the_request_and_the_vault_alone(policy_path):
@@ -314,3 +315,175 @@ async def test_restoration_happens_even_when_g2b_is_not_enforcing(policy_path):
     )
 
     assert EMAIL in out["texts"][0]
+
+
+# --- the streaming leg -------------------------------------------------------
+#
+# The hard part of streaming is not the restore, it is that what goes on the
+# WIRE and what `verify` judges must differ. `feed` returns what redaction
+# produced (surrogates); `deliver` puts the values back on the way out. If
+# restoration leaked into `record_sent`, `verify` would re-scan a correctly
+# restored address, find PII, and report every pseudonymized stream as a leak on
+# `nufi_guardrail_stream_unenforced_total` -- the one counter here that is
+# supposed to sit at zero and mean something when it does not.
+
+
+async def _streamed(guard, data, texts):
+    """Drive the real iterator hook and return what a client would assemble."""
+    from guardrails import streaming as _streaming
+
+    from tests.test_streaming import aiter, content_chunks
+
+    out: list[str] = []
+    async for chunk in guard.async_post_call_streaming_iterator_hook(
+        user_api_key_dict=_Key(), response=aiter(content_chunks(texts)), request_data=data
+    ):
+        for _, content, _ in _streaming.iter_deltas(chunk):
+            if content:
+                out.append(content)
+    return "".join(out)
+
+
+async def test_a_streamed_response_restores_the_users_value(policy_path):
+    g2a, g2b = _g2a(policy_path), _g2b(policy_path)
+    data = await g2a.async_pre_call_hook(
+        _Key(), None, _request(f"sign off with {EMAIL}", stream=True), "acompletion"
+    )
+
+    assembled = await _streamed(g2b, data, ["Best regards,\n", "Jane Doe\n", "⟦E1⟧"])
+
+    assert assembled.endswith(EMAIL), assembled
+    assert "⟦" not in assembled
+
+
+@pytest.mark.parametrize("head,tail", [("⟦E1⟧"[:i], "⟦E1⟧"[i:]) for i in range(5)])
+async def test_a_surrogate_split_across_a_chunk_boundary_still_restores(
+    policy_path, head, tail
+):
+    """Every split of the token, including the degenerate ones. A boundary buffer
+    that got this wrong would emit half a token and then the other half, and the
+    client's concatenation would show `⟦E` followed by `1⟧` -- no value restored
+    and nothing raised."""
+    g2a, g2b = _g2a(policy_path), _g2b(policy_path)
+    data = await g2a.async_pre_call_hook(
+        _Key(), None, _request(f"a {EMAIL}", stream=True), "acompletion"
+    )
+
+    assembled = await _streamed(g2b, data, ["contact ", head, tail, " today"])
+
+    assert assembled == f"contact {EMAIL} today", assembled
+
+
+async def test_a_streamed_restore_is_not_reported_as_a_leak(policy_path):
+    """The reason `deliver` exists. `verify` re-scans what `feed` produced, and a
+    restored address is PII by G2b's own detector -- if restoration ran inside
+    `feed`, this counter would move on every correct round trip."""
+    from guardrails import audit as _audit
+
+    def unenforced() -> float:
+        for metric in _audit.REGISTRY.collect():
+            if metric.name != "nufi_guardrail_stream_unenforced":
+                continue
+            return sum(
+                s.value for s in metric.samples
+                if s.name.endswith("_total") and s.labels.get("control") == "G2b"
+            )
+        return 0.0
+
+    g2a, g2b = _g2a(policy_path), _g2b(policy_path)
+    data = await g2a.async_pre_call_hook(
+        _Key(), None, _request(f"a {EMAIL}", stream=True), "acompletion"
+    )
+
+    before = unenforced()
+    assembled = await _streamed(g2b, data, ["here it is: ", "⟦E1⟧"])
+
+    assert EMAIL in assembled, "the round trip must actually have happened"
+    assert unenforced() == before, "a correct restore was reported as an unenforced leak"
+
+
+async def test_the_session_is_wiped_when_the_stream_ends(policy_path):
+    """`apply_guardrail` cannot do this for a stream: it runs before the chunks
+    are consumed, so wiping there would destroy the mapping mid-stream."""
+    g2a, g2b = _g2a(policy_path), _g2b(policy_path)
+    data = await g2a.async_pre_call_hook(
+        _Key(), None, _request(f"a {EMAIL}", stream=True), "acompletion"
+    )
+    assert pseudonymize.shared().active_count() == 1
+
+    await _streamed(g2b, data, ["done ⟦E1⟧"])
+
+    assert pseudonymize.shared().active_count() == 0
+
+
+async def test_a_streamed_response_with_no_session_is_untouched(policy_path):
+    g2b = _g2b(policy_path)
+    assembled = await _streamed(g2b, _request("x", stream=True), ["plain ⟦E1⟧ text"])
+
+    assert assembled == "plain ⟦E1⟧ text"
+
+
+async def test_model_pii_is_still_redacted_while_a_surrogate_is_restored(policy_path):
+    """Both jobs, in one stream. Restoration must not become a hole in
+    redaction."""
+    g2a = _g2a(policy_path)
+    data = await g2a.async_pre_call_hook(
+        _Key(), None, _request(f"a {EMAIL}", stream=True), "acompletion"
+    )
+
+    invented = "someone.else@other-vendor.com"
+    g2b = _g2b(policy_path)
+    g2b._scanners = [_EmailScanner(needle=invented), _NoopScanner()]
+
+    assembled = await _streamed(g2b, data, [f"yours ⟦E1⟧ and theirs {invented} end"])
+
+    assert EMAIL in assembled
+    assert invented not in assembled
+    assert "[EMAIL_ADDRESS]" in assembled
+
+
+async def test_a_stream_ending_mid_token_still_delivers_the_tail(policy_path):
+    """The stream ends while the boundary buffer is HOLDING an incomplete token.
+
+    Two things are only reachable through this case, and mutation testing found
+    both were uncovered:
+
+      * `flush()` at `final`. Without it the held text never reaches the client
+        and is silently dropped, while `record_sent` says it was delivered.
+      * the `not delivered` half of the main loop's `content is None` guard. The
+        final delta carries no content, so a guard that only checked `emitted`
+        would `continue` before `set_delta` and throw the flushed tail away.
+
+    The tail is emitted as-is rather than dropped: a token the model mangled is a
+    visible oddity, while swallowing it truncates the answer.
+    """
+    g2a, g2b = _g2a(policy_path), _g2b(policy_path)
+    data = await g2a.async_pre_call_hook(
+        _Key(), None, _request(f"a {EMAIL}", stream=True), "acompletion"
+    )
+
+    assembled = await _streamed(g2b, data, ["contact ", "⟦E"])
+
+    assert assembled == "contact ⟦E", assembled
+
+
+async def test_apply_guardrail_does_not_restore_a_second_time_for_a_stream(policy_path):
+    """litellm routes the end-of-stream leg through `apply_guardrail` as well, so
+    it runs for a streamed request too. It must not act: restoring again would
+    double-count `restored_total` against a rewrite litellm discards, and wiping
+    the session would destroy the mapping the chunks are still using."""
+    g2a, g2b = _g2a(policy_path), _g2b(policy_path)
+    data = await g2a.async_pre_call_hook(
+        _Key(), None, _request(f"a {EMAIL}", stream=True), "acompletion"
+    )
+
+    out = await g2b.apply_guardrail(
+        inputs={"texts": ["here: ⟦E1⟧"]}, request_data=data, input_type="response"
+    )
+
+    assert out["texts"][0] == "here: ⟦E1⟧", "the streaming leg owns restoration"
+    assert pseudonymize.shared().active_count() == 1, "the mapping must survive for the chunks"
+
+    # And the stream that follows still works, which is the point of not wiping.
+    assembled = await _streamed(g2b, data, ["here: ⟦E1⟧"])
+    assert EMAIL in assembled

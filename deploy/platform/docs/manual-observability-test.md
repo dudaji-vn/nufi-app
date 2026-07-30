@@ -100,9 +100,15 @@ trị thật đang giữ trong RAM, và đó là store PII thứ hai của platf
 session được mint mà không được wipe — một kho PII đang phình trong tiến trình,
 và TTL 300 giây là lưới cuối chứ không phải cơ chế chính.
 
-Nếu thấy `pseudonym_skipped_total{reason="stream"}` tăng: có workload đã opt-in
-nhưng đang gửi request streaming, và họ đang nhận `redact` chứ không phải
-pseudonymization. Đó là hành vi đúng, nhưng người vận hành cần biết.
+`restored_total` có hai nguồn và **không** phân biệt được ở nhãn: đường không
+streaming đếm trong `apply_guardrail`, đường streaming đếm khi stream kết thúc
+(lấy từ `stats` mà bộ phục hồi của họ tự tích luỹ). Cả hai đều phải khớp với
+`minted_total` khi mọi thứ khoẻ.
+
+Kiểm cùng lúc `nufi_guardrail_stream_unenforced_total{control="G2b"}`: nó phải
+**không tăng**. Một lần phục hồi đúng đưa email thật ra dây, và chính G2b coi đó
+là PII — nếu số này nhích lên theo mỗi stream pseudonymized thì bộ tự kiểm đang
+đọc text sau phục hồi, và cảnh báo đó là giả.
 
 Rồi so với policy:
 

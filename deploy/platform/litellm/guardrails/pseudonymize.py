@@ -299,7 +299,7 @@ class Pseudonymizer:
         out, stats = _sg.deanonymize(text, self._vault, ref)
         fallback = int(stats.get("fallback", 0))
         if fallback:
-            out = self._relabel(out)
+            out = self.relabel(out)
         out, mangled = self._repair_mangled(out, ref)
         return RestoreResult(
             text=out,
@@ -364,8 +364,15 @@ class Pseudonymizer:
         return out
 
     @staticmethod
-    def _relabel(text: str) -> str:
-        """Rewrite their fallback labels into our vocabulary."""
+    def relabel(text: str) -> str:
+        """Rewrite their fallback labels into our vocabulary.
+
+        Public because the streaming path needs it per chunk: their
+        `StreamingDeanonymizer` writes their own type label for an unmapped
+        surrogate, and the client must only ever receive labels from one
+        vocabulary. Safe per chunk -- a label is produced whole by one `_restore`
+        call, so it cannot be split across a boundary.
+        """
         for theirs, ours in _THEIR_LABEL_TO_OURS.items():
             text = text.replace(theirs, ours)
         return text

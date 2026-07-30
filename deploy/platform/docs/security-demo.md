@@ -289,11 +289,10 @@ Nêu thẳng nếu bị hỏi. Một demo bị bắt nói quá sẽ mất luôn 
     hợp lệ không"* trả lời `No.` khi bản không pseudonymize trả lời `Yes`. Không
     thể hỏi model về một giá trị đang bị che khỏi nó — không ngưỡng nào sửa được,
     nên nó cần workload opt-in chứ không thể bật toàn cục.
-  - **Không chạy trên streaming**, mà streaming là mặc định của chat. Request
-    streaming quay về `redact` và được đếm ở
-    `nufi_guardrail_pseudonym_skipped_total{reason="stream"}`. Nghĩa là **trong
-    demo qua chat UI, pseudonymization không tham gia** — muốn xem nó làm việc thì
-    gọi API không streaming.
+  - **Streaming đã chạy** từ 2026-07-30, nên nó tham gia được cả trong demo qua
+    chat UI. Kiểm chứng trên stack thật: client lắp lại đúng email của mình từ
+    các chunk SSE, không lọt token thô, và `stream_unenforced` **không** tăng —
+    tức bộ tự kiểm không nhầm một lần phục hồi đúng thành một lần rò rỉ.
 - **Thời hạn lưu log chính là thời hạn lưu audit**, và không chỗ nào trong repo
   đặt nó. Vault pseudonymization là ngoại lệ duy nhất có thời hạn rõ ràng (TTL
   300 giây, wipe sau response).

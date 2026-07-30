@@ -284,6 +284,38 @@ class _StreamState:
             )
         return cut.index
 
+    def deliver(self, text: str, *, final: bool) -> str:
+        """Last transform before the text goes on the wire. Identity by default.
+
+        Separate from `feed` for one reason, and it is the reason the streaming
+        restore path was not built with the rest of pseudonymization: what goes
+        on the WIRE and what gets recorded as SENT must be allowed to differ.
+
+        `record_sent` feeds `verify`, which re-scans the control's own emitted
+        text and reports a leak if its policy still trips. A correctly restored
+        email address IS PII by G2b's own detector, so restoring inside `feed`
+        would make `verify` report every pseudonymized stream as a leak --
+        `nufi_guardrail_stream_unenforced_total`, the one counter in this module
+        that is supposed to sit at zero and mean something when it does not.
+
+        So `feed` returns what redaction produced (surrogates and all), that is
+        what `record_sent` records and what `verify` judges, and this method puts
+        the user's own values back on the way out. The two questions stay
+        separate: did redaction reach the wire, and did the round trip complete.
+
+        May return LESS than it was given -- a surrogate split across a chunk
+        boundary is held until it completes. Anything still held when `final` is
+        true must be flushed by the implementation, or it never reaches the
+        client while `record_sent` claims it did.
+        """
+        return text
+
+    def finalize(self) -> None:
+        """Called once per processor after `verify`, whatever the mode. No-op by
+        default. G2b uses it to wipe the vault session for a streamed response,
+        which `apply_guardrail` cannot do -- on a streamed request it runs before
+        the stream has been consumed."""
+
     def record_sent(self, text: str) -> None:
         self._sent += text
 
@@ -571,31 +603,67 @@ class BaseNufiGuardrail(CustomGuardrail):
                 if processor is None:
                     processor = processors[index] = make_processor()
                 emitted = await processor.feed(content or "", final=final)
-                if content is None and not emitted:
+                # `deliver` is what reaches the client; `emitted` is what the
+                # control decided and what `verify` is judged against. They are
+                # the same for every control but G2b -- see `_StreamState.deliver`
+                # for why they must be allowed to differ.
+                delivered = processor.deliver(emitted, final=final)
+                if content is None and not delivered:
                     # Do not turn a `content: null` delta into `content: ""`;
                     # that is a wire-shape change with no benefit.
+                    #
+                    # Tested on `delivered` and NOT on `emitted`, because this
+                    # decides what goes on the WIRE and `delivered` is what goes
+                    # on the wire. For every control but G2b `deliver` is the
+                    # identity, so the two are the same string and this reads
+                    # exactly as it did before. For G2b they can differ, and an
+                    # earlier draft read `not emitted and not delivered` -- which
+                    # needs G2b's own buffer to be empty while the restorer still
+                    # holds a token. I could not construct that state, so rather
+                    # than leave a clause no test reaches, the condition now
+                    # depends only on the value whose emptiness actually matters.
                     continue
-                if streaming.set_delta(chunk, index, emitted):
+                if streaming.set_delta(chunk, index, delivered):
                     processor.record_sent(emitted)
                 else:
                     processor.record_undelivered(content or "")
             yield chunk
 
         for index, processor in processors.items():
+            # A finished processor is skipped, and that is safe rather than
+            # lucky: `deliver(..., final=True)` already ran for it in the main
+            # loop, so its boundary buffer is empty. An earlier draft called
+            # `deliver` here too, "in case it is still holding" -- mutation
+            # testing showed that branch was semantically identical to skipping,
+            # which makes it dead code rather than a safeguard.
             if processor.finished:
                 continue
-            residue = await processor.feed("", final=True)
+            # `emitted` and `residue` are recorded and delivered SEPARATELY, and
+            # conflating them is a real defect rather than a tidiness point:
+            # `residue` is post-restore text, so `record_sent(residue)` would
+            # write real PII into the string `verify` re-scans and make it report
+            # a leak on a correct round trip. `_sent` only ever receives what
+            # `feed` produced.
+            emitted = await processor.feed("", final=True)
+            residue = processor.deliver(emitted, final=True)
             if not residue:
+                if emitted:
+                    # Redaction produced text that `deliver` is still holding
+                    # with nothing left to flush it.
+                    processor.record_undelivered(emitted)
                 continue
             tail = streaming.tail_chunk(template, index, residue)
             if tail is None:
-                processor.record_undelivered(residue)
+                processor.record_undelivered(emitted or residue)
                 continue
-            processor.record_sent(residue)
+            # A no-op when `emitted` is empty, which is the finished-but-holding
+            # case: that text was recorded in the main loop already.
+            processor.record_sent(emitted)
             yield tail
 
         for processor in processors.values():
             await processor.verify()
+            processor.finalize()
 
     async def _scan_all(self, spans: list[Span]) -> list[Finding]:
         """Run every scanner this control owns and pool their findings.
@@ -1151,30 +1219,6 @@ class G2aPiiInput(BaseNufiGuardrail):
         rewriting = self._control.action is Action.PSEUDONYMIZE and self._opted_in(
             user_api_key_dict
         )
-        if rewriting and bool(data.get("stream")):
-            # Restoration on the streaming path is NOT built, and a streamed
-            # request must therefore not be pseudonymized: the client would
-            # receive raw `⟦E1⟧` tokens where its values should be. Ordinary
-            # redaction still applies, so nothing is less protected -- the user
-            # just loses their own values, which is the behaviour they had
-            # before opting in.
-            #
-            # Why it is not built: `G2bPiiOutput._restore_all` runs after
-            # redaction on one complete text. The streaming equivalent has to
-            # restore inside the shared driver loop that all four controls
-            # share, hold back a surrogate split across a chunk boundary, and --
-            # the part that is not mechanical -- keep restoration OUT of
-            # `record_sent`, because `_StreamState.verify` re-scans what was
-            # sent and a correctly restored address is PII by G2b's own
-            # detector. It would report every pseudonymized stream as a leak.
-            #
-            # Counted rather than silent: a workload that opted in and received
-            # no pseudonymization is otherwise indistinguishable from one whose
-            # requests carried no PII.
-            audit.GUARDRAIL_PSEUDONYM_SKIPPED.labels(
-                control=self.control_id, reason="stream"
-            ).inc()
-            rewriting = False
 
         started = time.perf_counter()
         try:
@@ -1600,7 +1644,13 @@ class G2bPiiOutput(BaseNufiGuardrail):
         successful response into an error.
         """
         ref = self.pseudonym_ref(request_data)
-        if not ref:
+        if not ref or self.streamed(request_data):
+            # On a streamed request this method still runs (litellm routes the
+            # end-of-stream leg through `apply_guardrail` too) but `_PiiStream`
+            # already restored every chunk on the wire. Restoring again here
+            # would double-count `restored_total` against a rewrite litellm
+            # discards, and wiping the session would destroy the mapping the
+            # chunks are still using.
             return list(texts)
 
         engine = pseudonymize.shared()
@@ -1759,6 +1809,83 @@ class _PiiStream(_StreamState):
         self._grounded = grounded
         self._enforced = enforced
         self._scans = 0
+        # One restorer per CHOICE, one vault session per REQUEST. `n>1` produces
+        # several independent output streams from one pseudonymized prompt, so
+        # each needs its own boundary buffer while resolving against the same
+        # mapping.
+        self._ref = guard.pseudonym_ref(data)
+        self._restorer = pseudonymize.shared().stream_restorer(self._ref)
+        self._restore_failed = False
+
+    def deliver(self, text: str, *, final: bool) -> str:
+        """Put the user's own values back, on the wire only.
+
+        `text` is what redaction produced and has already been recorded as sent;
+        the return value is what the client receives. See `_StreamState.deliver`
+        for why those must be different strings here.
+
+        Their `StreamingDeanonymizer` owns the hard part: a surrogate split
+        across a chunk boundary is held in its buffer until it completes, bounded
+        by `MAX_SURROGATE_LEN`. `flush` releases whatever is left at the end,
+        including an incomplete token -- which is emitted as-is rather than
+        dropped, because a token the model mangled is a visible oddity while
+        silently swallowing the tail truncates the answer.
+
+        Never raises. A failure here would turn a completed response into an
+        error for the sake of cosmetics: the surrogate carries no PII, so the
+        worst case is the user seeing a token instead of their own address.
+        """
+        if self._restorer is None:
+            return text
+        try:
+            out = pseudonymize.shared().relabel(self._restorer.feed(text)) if text else ""
+            if final:
+                out += pseudonymize.shared().relabel(self._restorer.flush())
+                # The bare-tag repair, which their buffer cannot do: a model that
+                # strips the delimiters produces text that matches neither of
+                # their patterns. Run once over the whole tail rather than
+                # per-chunk, because a chunk boundary could split `E1` itself.
+                out, mangled = pseudonymize.shared().repair_stream_tail(out, self._ref)
+                if mangled:
+                    audit.GUARDRAIL_PSEUDONYM_RESTORED.labels(
+                        control=self._guard.control_id, outcome="mangled"
+                    ).inc(mangled)
+            return out
+        except Exception as exc:  # noqa: BLE001 - see the docstring
+            if not self._restore_failed:
+                self._restore_failed = True
+                verbose_proxy_logger.warning(
+                    "guardrail %s could not restore pseudonyms on a stream (%s): %s",
+                    self._guard.control_id,
+                    type(exc).__name__,
+                    exc,
+                )
+            return text
+
+    def finalize(self) -> None:
+        """Wipe the mapping once the stream is done.
+
+        `apply_guardrail` cannot do it for a streamed request: it runs before the
+        stream has been consumed, so wiping there would destroy the mapping the
+        chunks still need. `purge_session` is idempotent, so several choices
+        finalising against one session is fine.
+        """
+        engine = pseudonymize.shared()
+        if self._restorer is not None:
+            # Their restorer accumulates these across every chunk, which is the
+            # only place the streamed round trip is observable at all: without
+            # them `restored_total` would only ever move on the non-streaming
+            # path, and a streamed workload would look like one carrying no PII.
+            stats = getattr(self._restorer, "stats", None) or {}
+            for outcome in ("restored", "fallback"):
+                count = int(stats.get(outcome, 0))
+                if count:
+                    audit.GUARDRAIL_PSEUDONYM_RESTORED.labels(
+                        control=self._guard.control_id, outcome=outcome
+                    ).inc(count)
+        if self._ref:
+            engine.end_session(self._ref)
+            audit.GUARDRAIL_PSEUDONYM_SESSIONS.set(engine.active_count())
 
     async def _scan(self, text: str) -> list[Any]:
         # `UNTRUSTED`, not `ASSISTANT` — same reasoning as the non-streamed path

@@ -165,19 +165,6 @@ GUARDRAIL_PSEUDONYM_SESSIONS = _register(
     "Vault mappings currently held in memory across all sessions.",
     (),
 )
-# A workload that opted in and then got ordinary redaction instead. Without this
-# the two are indistinguishable: no minted tokens and no restored tokens looks
-# exactly like a request that carried no PII. `reason="stream"` is the one that
-# matters today -- restoration on the streaming path is not built, so a streamed
-# request is deliberately not pseudonymized rather than served raw surrogates.
-GUARDRAIL_PSEUDONYM_SKIPPED = _register(
-    Counter,
-    "nufi_guardrail_pseudonym_skipped_total",
-    "Requests eligible for pseudonymization that were not pseudonymized "
-    "(reason: stream = the response is streamed and the restore path for it is "
-    "not implemented).",
-    ("control", "reason"),
-)
 
 _CONTEXT_KEYS = ("key_alias", "team_id", "model", "policy_digest")
 _LABEL_KEYS = ("control", "risk", "action")

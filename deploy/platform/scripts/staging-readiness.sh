@@ -582,13 +582,6 @@ elif [ "${sessions%.*}" = "0" ]; then
 else
   bad "vault still holds ${sessions} mapping(s) with no request in flight -- sessions are being minted and not wiped; that is retained PII"
 fi
-# A workload that opted in and then streamed gets ordinary redaction, not
-# pseudonymization. Correct behaviour, but the operator has to know: the two are
-# indistinguishable from the outside without this counter.
-skipped_stream=$(metric_sum 'nufi_guardrail_pseudonym_skipped_total{control="G2a",reason="stream"')
-if [ -n "${skipped_stream}" ] && [ "${skipped_stream%.*}" != "0" ]; then
-  note "${skipped_stream} request(s) opted into pseudonymization while streaming and received redaction instead (docs/security-demo.md)"
-fi
 
 echo "==> 9/10 Contract tests against the REAL sidecars"
 # These are the only tests that exercise the live Presidio and classifier
