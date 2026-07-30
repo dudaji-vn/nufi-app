@@ -97,21 +97,38 @@ groups:
             check default_on in config.yaml and the registered mode.
 
       # --- rollout signals ------------------------------------------------
-      - alert: GuardrailEnforcingUnexpectedly
-        # Every control ships logging_only. This fires on the transition, so
-        # an unintended enforce (a bad deploy, an edited policy.yaml) is
-        # noticed rather than discovered by users getting 400s.
-        expr: nufi_guardrail_enabled > 0
+      - alert: MandatoryControlStoppedEnforcing
+        # The risk inverted when the rollout happened. This slot previously held
+        # GuardrailEnforcingUnexpectedly, written when every control shipped
+        # logging_only: it alerted on `nufi_guardrail_enabled > 0`. After G1,
+        # G2b, G3 and G4 were deliberately enabled it fired permanently, which
+        # is worse than useless -- an alert that is always on gets silenced, and
+        # silencing it takes the whole guardrails group with it.
+        #
+        # What matters now is the opposite: a control that was enforcing and
+        # STOPPED. G1 and G4 are mandatory:true in policy.yaml, so either
+        # reporting 0 means the policy drifted, a deploy shipped an older
+        # policy.yaml, or someone edited it. That is precisely the failure this
+        # subsystem exists to make impossible to miss.
+        #
+        # Deploy-time drift is caught earlier and more precisely by
+        # scripts/check-guardrails-wired.sh and staging-readiness.sh check 4,
+        # which compare the running state against policy.yaml directly.
+        # Prometheus cannot read that file; this catches the same thing at
+        # runtime, from the outside.
+        expr: |
+          nufi_guardrail_enabled{control=~"G1|G4"} == 0
         for: 5m
         labels:
-          severity: warning
+          severity: critical
           service: guardrails
         annotations:
-          summary: "Guardrail {{ $labels.control }} is ENFORCING"
+          summary: "Mandatory guardrail {{ $labels.control }} is no longer enforcing"
           description: >-
-            {{ $labels.control }} is in mode {{ $labels.mode }} and enforcing.
-            Expected during a deliberate rollout; otherwise policy.yaml has
-            drifted. Silence this rule when the rollout is intentional.
+            {{ $labels.control }} is mandatory in policy.yaml but reports
+            enabled=0 in mode {{ $labels.mode }}. Either the policy drifted or a
+            deploy shipped an older one. Compare with
+            `npm run check:wired` and policy.yaml.
 
       - alert: GuardrailBlockRateHigh
         # Once a control enforces, this is the false-positive tripwire. The
