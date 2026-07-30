@@ -1,12 +1,25 @@
 # Integrating `dudaji/nufi-security` into the LLM security gateway
 
-**Status:** design, not yet implemented.
+**Status:** steps 1 and 2 shipped. Step 3 unblocked as of 2026-07-30; step 4 not
+started.
 **Companion:** `docs/2026-07-27-llm-security-gateway-design.md` (the gateway this
 integrates into).
 **Subject:** `https://github.com/dudaji/nufi-security` @ `5eb9a02`,
 distribution `nufi_egress` **0.10.0** — the repo's only git tag is `v0.0.1`,
-which is *not* the package version, so pin the commit rather than either
-number. ~34,700 lines Python, `license = "Proprietary"` (no LICENSE file).
+which is *not* the package version, so neither number identifies a revision.
+52,523 lines Python, of which 18,027 are tests. `license = "Proprietary"` (no
+LICENSE file).
+
+**How it is consumed:** as a **vendored source snapshot** at
+`deploy/platform/litellm/nufi-security/`, recorded in
+`deploy/platform/litellm/nufi-security.provenance.md`. This replaced a
+`pip install git+https://…@5eb9a02` on 2026-07-30, for two measured reasons: a
+one-line fix to their code needed a pull request into a repository we do not
+own, which is where step 3 stalled; and `pip` does not deliver their root
+`VERSION` file, so the running container reported `nufi.__version__ == '0.0.0'`
+for a 0.10.0 library, with nothing to say so. The author's own stated intent —
+*"I want to merge my nufi-security repo to sun's codebase"* (2026-07-10) — is
+this, not a dependency edge.
 
 ---
 
@@ -335,12 +348,24 @@ a way Presidio is not.
 ## 6. Risks, stated before anyone commits
 
 - **No LICENSE file.** `pyproject.toml` says `Proprietary`, README says "Dudaji
-  PoC". Internal use is fine; **anything shipped to a customer needs a licence
-  decision first**, and this branch already carries unpaid licence debt
-  (MongoDB SSPL, MinIO AGPL, Redis tri-license).
+  PoC". **This is now the blocking risk, not a background one**: as of
+  2026-07-30 the code is copied into this repository rather than installed from
+  theirs, so the branch carries 52,523 lines of proprietary source with no
+  licence granting it. The author's intent to merge is on record; intent is not
+  a licence. **A LICENSE file and his explicit agreement to the snapshot are
+  required before this reaches `main`.** Separate from, and on top of, the
+  unpaid licence debt this platform already carries (MongoDB SSPL, MinIO AGPL,
+  Redis tri-license).
 - **v0.0.1, one tag.** The API is declared stable via `nufi/__init__.py`'s
-  `__all__`, which is good discipline, but the version says early. Pin a commit,
-  not a branch.
+  `__all__`, which is good discipline, but the version says early. The snapshot
+  records a commit for exactly that reason — no tag or version number here
+  identifies a revision.
+- **Divergence, in the other direction now.** Under a git pin, upstream could
+  change under us. Under a snapshot, we can change under upstream. Each of our
+  edits is therefore a separate commit touching only that subtree, so
+  `git log -- deploy/platform/litellm/nufi-security/` is a reviewable list for
+  him rather than a merged blob. One such commit exists today: the configurable
+  surrogate delimiter.
 - **Two `Finding` types.** Theirs and ours differ; the adapter in layer ② is
   where they meet, which is exactly what that layer is for. Do not let their
   type leak into `policy.py`.
@@ -365,8 +390,21 @@ a way Presidio is not.
    at `litellm/guardrails/nufi_patterns.yaml` and the path handed to
    `DetectionPipeline` is absolute — their own discovery is never used.
 3. Pseudonymize-and-restore as a policy action, replacing `redact` for G2b and
-   making a non-destructive G2a possible.
-4. Compliance reporting as an offline command, out of the request path.
+   making a non-destructive G2a possible. **Unblocked 2026-07-30.** It was
+   stalled on the surrogate delimiter: `⟦E1⟧` survived a round trip through
+   `gemini-2.5-flash` 0/6 times, `[[E1]]` 2/6, `<E1>` 6/6, and when the
+   delimiter is stripped `_LENIENT` no longer matches, so restoration fails
+   *without raising* — the response ships with the surrogate still in it while
+   the audit trail says the value was restored. Which delimiter survives is a
+   property of the deployed model, so it has to be selectable; that patch is now
+   in the snapshot (`a28f5e614`). What remains is the gateway side: a
+   `pseudonymize` action in `policy.py`, a vault lifetime, and the streaming
+   hold. **This is one of the two features the author asked for by name**, the
+   other being step 2.
+4. Compliance reporting as an offline command, out of the request path. Not
+   started; 48 controls of evidence we currently cannot produce at all, across
+   five Korean frameworks. If "merge my repo" includes this for him, it is the
+   largest unstarted piece.
 
 Each step is a scanner or an action behind the existing interfaces. None of
 them requires a second gateway.
