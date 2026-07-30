@@ -391,16 +391,40 @@ a way Presidio is not.
    `DetectionPipeline` is absolute — their own discovery is never used.
 3. Pseudonymize-and-restore as a policy action, replacing `redact` for G2b and
    making a non-destructive G2a possible. **Unblocked 2026-07-30.** It was
-   stalled on the surrogate delimiter: `⟦E1⟧` survived a round trip through
-   `gemini-2.5-flash` 0/6 times, `[[E1]]` 2/6, `<E1>` 6/6, and when the
-   delimiter is stripped `_LENIENT` no longer matches, so restoration fails
-   *without raising* — the response ships with the surrogate still in it while
-   the audit trail says the value was restored. Which delimiter survives is a
-   property of the deployed model, so it has to be selectable; that patch is now
-   in the snapshot (`a28f5e614`). What remains is the gateway side: a
-   `pseudonymize` action in `policy.py`, a vault lifetime, and the streaming
-   hold. **This is one of the two features the author asked for by name**, the
-   other being step 2.
+   stalled on the surrogate delimiter, which is now configurable in the snapshot
+   (`a28f5e614`). What remains is the gateway side: a `pseudonymize` action in
+   `policy.py`, a vault lifetime, and the streaming hold. **This is one of the
+   two features the author asked for by name**, the other being step 2.
+
+   **Measured, 2026-07-30, `gemini-2.5-flash`, temperature 1.0** — seven prompt
+   shapes (signature rewrite, summary, translation, markdown table, `repeat
+   exactly`, Korean, long-form), three delimiters, n=4–6 each:
+
+   | delimiter | all tokens intact | partial (a token leaks) |
+   |---|---|---|
+   | `⟦E1⟧` (default) | 68/70 | **0/70** |
+   | `[[E1]]` | 70/70 | **0/70** |
+   | `<E1>` | 70/70 | **0/70** |
+
+   This **did not reproduce** an earlier figure of 0/6 for the default
+   delimiter, taken on a single prompt; that claim is withdrawn. Two findings
+   survive and both shape the design:
+
+   - **Partial return never happened.** When it fails, every bracket is stripped
+     at once, not some — so the case "one value restores and another leaks" was
+     not observed. The failure is uniform, which makes it detectable.
+   - **The failure is silent.** A bracket-stripped `E1` does not match
+     `_LENIENT`, which requires brackets on both sides and is deliberately not
+     widened (`E1`, `P1`, `T2` are ordinary strings — cell references, part
+     numbers). So restoration does nothing while reporting success, and the user
+     sees `E1` where their own email should be.
+
+   The design consequence: **68/70 is not a guarantee, so the control must
+   detect a failed restoration rather than assume one**, and must never record
+   `restored` for a value it did not restore. `<E1>` is rejected despite scoring
+   70/70 — it is markup, and a markdown renderer may swallow it, turning a
+   visible wrong token into an invisible missing one. `[[E1]]` renders
+   literally.
 4. Compliance reporting as an offline command, out of the request path. Not
    started; 48 controls of evidence we currently cannot produce at all, across
    five Korean frameworks. If "merge my repo" includes this for him, it is the

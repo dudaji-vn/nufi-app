@@ -23,14 +23,21 @@ in the gateway imports it.
 The build previously installed the package from GitHub at this same commit. Two
 measured problems ended that.
 
-**A fix to their code could not be made.** Reversible pseudonymization —
+**A change to their code could not be made.** Reversible pseudonymization —
 integration step 3, and one of the two features the upstream author asked for by
-name — is blocked on the surrogate delimiter. `⟦E1⟧` survives a round trip
-through `gemini-2.5-flash` **0 times out of 6**: the model strips the brackets,
-`_LENIENT` requires them on both sides, and restoration then fails without
-raising. Making the delimiter configurable is a small change to *their* file, and
-under a git pin the only route to it is a pull request into a repository we do
-not own. The feature stalled there.
+name — needs the surrogate delimiter to be selectable, because whether a token
+comes back intact is a property of the deployed model and the prompt, not of the
+library. Making it configurable is a small change to *their* file, and under a
+git pin the only route to it is a pull request into a repository we do not own.
+The feature stalled there.
+
+(An earlier measurement put `⟦E1⟧` at 0/6 through `gemini-2.5-flash` and was
+cited as a bug in that delimiter. A wider re-measurement on 2026-07-30 — seven
+prompt shapes, three delimiters — returned **54/54 intact** and did not
+reproduce it. The configurability argument above does not depend on that figure;
+the claim that the default delimiter is broken did, and has been withdrawn. What
+survives both rounds is the failure *shape*: when brackets are stripped,
+`_LENIENT` will not match a bare `E1`, so restoration fails without raising.)
 
 **The package reported the wrong version of itself.** `nufi/__init__.py` reads
 `__version__` from the root `VERSION` file and falls back to `"0.0.0"` when the
