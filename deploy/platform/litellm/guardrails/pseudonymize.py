@@ -226,8 +226,18 @@ class Pseudonymizer:
 
     # -- request leg ----------------------------------------------------------
 
-    def pseudonymize(self, text: str, findings: list[Any]) -> PseudonymizeResult:
-        """Replace reversible findings in `text` with surrogates."""
+    def pseudonymize(
+        self, text: str, findings: list[Any], ref: str | None = None
+    ) -> PseudonymizeResult:
+        """Replace reversible findings in `text` with surrogates.
+
+        `ref` lets a caller put several texts into ONE session, which is what a
+        multi-message request needs: the response leg gets one place to look and
+        one thing to wipe. It also makes the same value appearing in two messages
+        mint the same surrogate, because their minter deduplicates within a
+        session — so a conversation that repeats an address does not accumulate
+        `⟦E1⟧`, `⟦E2⟧`, `⟦E3⟧` for it.
+        """
         shims = [
             _EngineFinding(
                 entity_type=_TO_ENGINE_ENTITY[entity],
@@ -244,7 +254,10 @@ class Pseudonymizer:
         if not shims:
             return PseudonymizeResult(text=text, ref=None, count=0)
 
-        ref = f"grd-pseudo-{uuid.uuid4().hex}"
+        # A caller-supplied ref is reused; `purge_session` below would otherwise
+        # wipe mappings a previous message in the same request already stored.
+        supplied = ref is not None
+        ref = ref or f"grd-pseudo-{uuid.uuid4().hex}"
         out, count = _sg.pseudonymize(
             text,
             shims,  # type: ignore[arg-type]
@@ -260,9 +273,14 @@ class Pseudonymizer:
         if count == 0:
             # Their filter rejected everything after all. Do not hand back a ref
             # that would make the response leg open a session on an empty
-            # mapping, and do not leave the session allocated.
-            self._vault.purge_session(ref)
-            return PseudonymizeResult(text=text, ref=None, count=0)
+            # mapping, and do not leave the session allocated -- unless the ref
+            # came from the caller, whose EARLIER messages may already have
+            # mappings in it. Purging then would silently drop them and the
+            # response leg would restore nothing.
+            if not supplied:
+                self._vault.purge_session(ref)
+                return PseudonymizeResult(text=text, ref=None, count=0)
+            return PseudonymizeResult(text=text, ref=ref, count=0)
 
         return PseudonymizeResult(
             text=out,
@@ -382,3 +400,72 @@ class Pseudonymizer:
 
         repaired = _BARE_TAG.sub(_replace, text)
         return (repaired, count) if count else (text, 0)
+
+
+#: Where the request leg leaves the vault session id for the response leg. Under
+#: `metadata` because that is the convention `verified_grounded` already uses,
+#: and because litellm treats `metadata` as internal — it is not forwarded to the
+#: provider, so the correlation id does not travel with the request.
+SESSION_KEY = "nufi_pseudonym_ref"
+
+#: Key metadata flag a workload sets to opt in. Read off `UserAPIKeyAuth`, not
+#: off the request body: turning pseudonymization ON is not a security downgrade,
+#: but WHICH workloads are payload-shaped is a deployment fact and not a caller's
+#: choice — and a caller who could enable it could break their own subject-class
+#: questions in a way that looks like a model fault.
+OPT_IN_KEY = "nufi_pseudonymize"
+
+#: Injected as a system message on requests where pseudonymization is active, and
+#: only those. Without it the model asks what the token means or guesses:
+#: measured, a signature request answered *"Please tell me what ⟦E1⟧ represents!
+#: Assuming ⟦E1⟧ is the Company Name…"*. With it, payload-class prompts carried
+#: the token 9/9 with correct answers
+#: (`docs/2026-07-29-nufi-security-integration.md` §7.3a).
+#:
+#: This is a prompt WE add to a user's request. It costs tokens on every such
+#: request and it can conflict with the user's own system prompt — which is why
+#: the action is opt-in rather than free, and why this is attached only when a
+#: token was actually minted.
+INSTRUCTION = (
+    "Text in ⟦…⟧ is a placeholder standing in for a real value that has been "
+    "withheld for privacy — ⟦E1⟧ is an email address, ⟦T1⟧ a phone number. "
+    "Treat each as the value it stands for. Reproduce it exactly, including the "
+    "brackets, wherever the value belongs in your answer. Never explain, expand, "
+    "guess at, or ask about a placeholder."
+)
+
+_SHARED: Pseudonymizer | None = None
+
+
+def shared() -> Pseudonymizer:
+    """The one instance per process.
+
+    Process-wide rather than per-control because the two legs live in different
+    control objects: `G2aPiiInput` mints and `G2bPiiOutput` restores. A
+    per-control vault would leave every session unresolvable from the other side
+    — restoration would report `fallback` for every token, the user would receive
+    labels instead of values, and the audit trail would report a completed round
+    trip. That is the failure this accessor exists to make impossible.
+
+    Lazy so that importing this module does not require `cryptography` at import
+    time. The first caller pays, and the vault raises rather than falling back to
+    plaintext storage if it is missing.
+    """
+    global _SHARED
+    if _SHARED is None:
+        _SHARED = Pseudonymizer()
+    return _SHARED
+
+
+def instructed(messages: list[Any]) -> list[Any]:
+    """Return `messages` with `INSTRUCTION` prepended as a system message.
+
+    Prepended rather than spliced into an existing system message: rewriting the
+    user's own system prompt is a larger intrusion than adding a message beside
+    it, and a merge would have to guess where in their text to put it.
+
+    A NEW list, never a mutation. The caller's list is the one inside the request
+    dict litellm holds, which is also what spend logging and the audit trail
+    read.
+    """
+    return [{"role": "system", "content": INSTRUCTION}, *messages]

@@ -167,6 +167,34 @@ controls:
       system: 1.01
     # Input PII is never masked. Masking corrupts the user's task — the model
     # starts answering the placeholder instead of the question (W5.1, May 2026).
+    #
+    # `pseudonymize` is the one alternative, and it is NOT a general improvement
+    # on this line. It replaces each value with an opaque token that G2b restores
+    # on the way back, so the provider never sees the value and the user does not
+    # lose it. Re-measured 2026-07-30 against gemini-2.5-flash, because the W5.1
+    # failure above had to be checked with a surrogate rather than `<PERSON>`:
+    #
+    #   * With no injected instruction it fails the SAME way. A signature request
+    #     answered "Please tell me what ⟦E1⟧ represents! Assuming ⟦E1⟧ is the
+    #     Company Name…". W5.1 stands.
+    #   * With the instruction the gateway injects, prompts that CARRY the value
+    #     work: 3/3, 3/3, 3/3 with correct answers.
+    #   * Prompts that ask ABOUT the value cannot work at all. "Is this a valid
+    #     email address" answered `No.` where the raw request answered `Yes`;
+    #     "what domain is this on" returned the whole address. No threshold or
+    #     delimiter fixes this — the model is being asked about a value that is
+    #     being hidden from it.
+    #
+    # The gateway cannot tell those two apart, so switching this to
+    # `pseudonymize` also requires each workload to opt in via its key's
+    # metadata (`nufi_pseudonymize: true`), unless `require_opt_in: false` below
+    # states that ALL of this deployment's traffic is of the first kind. Streamed
+    # requests are skipped outright and counted in
+    # `nufi_guardrail_pseudonym_skipped_total{reason="stream"}` — the restore path
+    # for streaming is not built, and raw tokens reaching a client would be worse
+    # than the redaction they replaced.
+    #
+    # Full measurement: docs/2026-07-29-nufi-security-integration.md §7.3a/§7.3b.
     action: log
     options:
       # Which entity types count as sensitive disclosure is a POLICY question,

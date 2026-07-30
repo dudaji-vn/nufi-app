@@ -5,9 +5,10 @@ from __future__ import annotations
 import logging
 import os
 import time
+import uuid
 from typing import Any
 
-from guardrails import audit, log_masking, streaming
+from guardrails import audit, log_masking, pseudonymize, streaming
 from guardrails.canonical import canonicalize
 from guardrails.policy import ControlConfig, Policy, decide
 from guardrails.scanners.injection import InjectionScanner
@@ -1143,9 +1144,61 @@ class G2aPiiInput(BaseNufiGuardrail):
         if not spans:
             return data
 
+        # Whether this request will be rewritten is known BEFORE scanning, from
+        # the control's configured action and the key's opt-in -- `decide` only
+        # chooses between that action and ALLOW. It has to be known first,
+        # because it changes how the scan is performed.
+        rewriting = self._control.action is Action.PSEUDONYMIZE and self._opted_in(
+            user_api_key_dict
+        )
+        if rewriting and bool(data.get("stream")):
+            # Restoration on the streaming path is NOT built, and a streamed
+            # request must therefore not be pseudonymized: the client would
+            # receive raw `⟦E1⟧` tokens where its values should be. Ordinary
+            # redaction still applies, so nothing is less protected -- the user
+            # just loses their own values, which is the behaviour they had
+            # before opting in.
+            #
+            # Why it is not built: `G2bPiiOutput._restore_all` runs after
+            # redaction on one complete text. The streaming equivalent has to
+            # restore inside the shared driver loop that all four controls
+            # share, hold back a surrogate split across a chunk boundary, and --
+            # the part that is not mechanical -- keep restoration OUT of
+            # `record_sent`, because `_StreamState.verify` re-scans what was
+            # sent and a correctly restored address is PII by G2b's own
+            # detector. It would report every pseudonymized stream as a leak.
+            #
+            # Counted rather than silent: a workload that opted in and received
+            # no pseudonymization is otherwise indistinguishable from one whose
+            # requests carried no PII.
+            audit.GUARDRAIL_PSEUDONYM_SKIPPED.labels(
+                control=self.control_id, reason="stream"
+            ).inc()
+            rewriting = False
+
         started = time.perf_counter()
         try:
-            findings = await self._scan_all(spans) + scan_secrets(spans)
+            if rewriting:
+                # Scanned span by span, so each finding stays attached to the
+                # text its offsets index into. `Finding` records `start`/`end`
+                # and NOT which text they belong to, and the pooled scan below
+                # throws that away -- an offset with no referent cannot be used
+                # to rewrite anything. A first draft of this filtered the pooled
+                # findings on a `message_index` attribute `Finding` does not
+                # have, so every filter returned empty and the control rewrote
+                # nothing while the audit trail recorded `pseudonymize`.
+                #
+                # The same findings then drive both the decision and the
+                # rewrite. Re-scanning later for the rewrite alone would be a
+                # second, unaudited detection that could disagree with the one
+                # `_emit` recorded. The extra scanner calls are paid only by a
+                # workload that opted in.
+                per_span = [(span, await self._scan_all([span]) + scan_secrets([span]))
+                            for span in spans]
+                findings = [finding for _, found in per_span for finding in found]
+            else:
+                per_span = []
+                findings = await self._scan_all(spans) + scan_secrets(spans)
         except Exception as exc:
             # Caught broadly, not just `ScannerUnavailable`, matching
             # `G1Injection`: `PiiScanner.scan` is documented to raise only
@@ -1174,7 +1227,109 @@ class G2aPiiInput(BaseNufiGuardrail):
         decision = decide(self._control, findings, grounded=False)
         if decision.action is not Action.ALLOW:
             self._emit(data, decision, (), user_api_key_dict, self._enforcing())
+        if rewriting and decision.action is Action.PSEUDONYMIZE:
+            self._pseudonymize(data, per_span, messages)
         return data
+
+    def _opted_in(self, key: Any) -> bool:
+        """Has this workload asked for pseudonymization?
+
+        Two gates, and both are needed. `action: pseudonymize` in policy.yaml
+        says the deployment permits it at all; the key's own metadata says this
+        workload wants it. Measured: pseudonymization serves a request that
+        CARRIES a value and cannot serve one that asks ABOUT it -- `is this a
+        valid email address` answered `No.` where the unpseudonymized request
+        answered `Yes` (§7.3a). The gateway cannot tell the two apart from the
+        request, so the deployment declares which of its workloads are which.
+
+        `require_opt_in: false` in the control's options is for a deployment
+        whose traffic is entirely payload-shaped. It is an explicit statement,
+        not a default, for the same reason.
+        """
+        if not self._control.options.get("require_opt_in", True):
+            return True
+        metadata = getattr(key, "metadata", None)
+        return isinstance(metadata, dict) and metadata.get(pseudonymize.OPT_IN_KEY) is True
+
+    def _pseudonymize(
+        self,
+        data: dict[str, Any],
+        per_span: list[tuple[Span, list[Finding]]],
+        messages: list[Any],
+    ) -> None:
+        """Replace reversible values with surrogates, writing back onto `data`.
+
+        The ONE path in this control that writes to `data`. The class docstring's
+        "never rewrites, in any mode, on any finding" is now "never rewrites
+        unless a workload opted into this action", and the recorded rationale
+        behind the original rule is intact -- it is exactly why the opt-in
+        exists. Measured with a surrogate rather than `<PERSON>`: without the
+        injected instruction the model answers the placeholder instead of the
+        question, the same failure, so the instruction goes on every rewritten
+        request and the action is not a default.
+
+        ONE vault session for the whole request, not one per message: the
+        response leg gets one place to look and one thing to wipe, and the same
+        address appearing twice mints one surrogate rather than two.
+
+        All or nothing. Any exception wipes the session and leaves `data`
+        untouched. A partial rewrite -- some values replaced, no session id
+        stored -- would send the provider tokens the response leg cannot resolve,
+        so the user would receive `[EMAIL_ADDRESS]` for a value that never needed
+        redacting while the audit trail said `pseudonymize`.
+        """
+        engine = pseudonymize.shared()
+        ref = f"grd-pseudo-{uuid.uuid4().hex}"
+        by_index = {span.message_index: found for span, found in per_span if found}
+        rewritten: list[Any] = []
+        minted: list[str] = []
+        replaced = 0
+
+        try:
+            for index, message in enumerate(messages):
+                found = by_index.get(index)
+                content = message.get("content") if isinstance(message, dict) else None
+                if not found or not isinstance(content, str) or not content:
+                    rewritten.append(message)
+                    continue
+                result = engine.pseudonymize(content, found, ref=ref)
+                if result.count:
+                    replaced += result.count
+                    minted.extend(result.entities)
+                    rewritten.append({**message, "content": result.text})
+                else:
+                    rewritten.append(message)
+
+            if not replaced:
+                engine.end_session(ref)
+                return
+
+            metadata = data.get("metadata")
+            if metadata is None:
+                metadata = {}
+                data["metadata"] = metadata
+            if not isinstance(metadata, dict):
+                # Nowhere to tell the response leg where the mapping is, so the
+                # rewrite must not happen at all. Tokens the other leg cannot
+                # resolve are strictly worse than the values it would have
+                # redacted.
+                raise TypeError("'metadata' is not a dict")
+
+            metadata[pseudonymize.SESSION_KEY] = ref
+            data["messages"] = pseudonymize.instructed(rewritten)
+        except Exception as exc:  # noqa: BLE001 - see the docstring
+            engine.end_session(ref)
+            verbose_proxy_logger.warning(
+                "guardrail %s could not pseudonymize, request left unchanged (%s): %s",
+                self.control_id,
+                type(exc).__name__,
+                exc,
+            )
+            return
+
+        for entity in minted:
+            audit.GUARDRAIL_PSEUDONYM_MINTED.labels(control=self.control_id, entity=entity).inc()
+        audit.GUARDRAIL_PSEUDONYM_SESSIONS.set(engine.active_count())
 
     def _on_outage(self, data: dict[str, Any], key: Any, exc: Exception) -> dict[str, Any]:
         """Record the outage so it is visible, then let the request continue.
@@ -1420,7 +1575,79 @@ class G2bPiiOutput(BaseNufiGuardrail):
 
         if enforced:
             inputs["texts"] = rewritten
+
+        # Restoration runs AFTER redaction, and the order is load-bearing. A
+        # surrogate carries no PII, so redaction finds nothing in it; restoring
+        # first would put the original address back into the text and G2b would
+        # then immediately redact the value it had just recovered. Run this way,
+        # the two do different jobs on disjoint content: redaction removes PII
+        # the MODEL introduced, restoration returns values the USER already had.
+        #
+        # Applied to `inputs["texts"]` rather than `rewritten` because the
+        # redaction above is conditional on `enforced` while restoration is not:
+        # a shadow-mode G2b must still restore, or a workload that opted into
+        # pseudonymization would receive raw surrogates whenever the control was
+        # not enforcing.
+        inputs["texts"] = self._restore_all(inputs.get("texts") or texts, data)
         return inputs
+
+    def _restore_all(self, texts: list[str], request_data: dict[str, Any]) -> list[str]:
+        """Put the user's own values back into every text, and count the failures.
+
+        Never raises. A restoration that fails must leave the text as it is: the
+        surrogate carries no PII, so the worst case is a user seeing a token
+        rather than their address, and that is strictly better than turning a
+        successful response into an error.
+        """
+        ref = self.pseudonym_ref(request_data)
+        if not ref:
+            return list(texts)
+
+        engine = pseudonymize.shared()
+        out: list[str] = []
+        try:
+            for text in texts:
+                result = engine.restore(text, ref) if isinstance(text, str) else None
+                if result is None:
+                    out.append(text)
+                    continue
+                out.append(result.text)
+                for outcome, count in (
+                    ("restored", result.restored),
+                    ("fallback", result.fallback),
+                    ("mangled", result.mangled),
+                ):
+                    if count:
+                        audit.GUARDRAIL_PSEUDONYM_RESTORED.labels(
+                            control=self.control_id, outcome=outcome
+                        ).inc(count)
+        except Exception as exc:  # noqa: BLE001 - see the docstring
+            verbose_proxy_logger.warning(
+                "guardrail %s could not restore pseudonyms (%s): %s",
+                self.control_id,
+                type(exc).__name__,
+                exc,
+            )
+            return list(texts)
+        finally:
+            # Wiped here, on the non-streaming path, because this is where the
+            # round trip ends. The streaming path wipes in `_PiiStream.finish`,
+            # after the last chunk -- doing it here would destroy the mapping
+            # before the stream had used it. Either way the TTL is the backstop
+            # for a request that died in between.
+            if not self.streamed(request_data):
+                engine.end_session(ref)
+                audit.GUARDRAIL_PSEUDONYM_SESSIONS.set(engine.active_count())
+        return out
+
+    @staticmethod
+    def pseudonym_ref(request_data: dict[str, Any] | None) -> str | None:
+        """The vault session G2a left for this request, if any."""
+        metadata = (request_data or {}).get("metadata") or {}
+        if not isinstance(metadata, dict):
+            return None
+        ref = metadata.get(pseudonymize.SESSION_KEY)
+        return ref if isinstance(ref, str) and ref else None
 
     def _on_outage(self, text: str, request_data: Any, exc: Exception) -> str:
         """Record the outage, then fail open: return `text` unredacted.

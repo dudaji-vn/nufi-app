@@ -36,7 +36,14 @@ from guardrails.types import Finding, SpanSource
 PLATFORM = Path(__file__).resolve().parent.parent
 POLICY = PLATFORM / "litellm" / "guardrails" / "policy.yaml"
 
-EMAIL = "jane.doe@acme.example"
+# A DETECTABLE domain, and the TLD is the reason. Measured against the shipped
+# Presidio analyzer: `jane.doe@acme.example` scores `URL:0.5` and NO
+# `EMAIL_ADDRESS` at all, while `.com`, `.io` and `.co.kr` all score
+# `EMAIL_ADDRESS:1.0`. The stub scanners below make that irrelevant here, but a
+# constant copied out of this file into a live test would measure nothing --
+# which is exactly what happened to the first end-to-end smoke test of this
+# feature.
+EMAIL = "jane.doe@acme-industrial.com"
 PHONE = "+84 90 123 4567"
 
 
@@ -306,7 +313,7 @@ def test_one_sessions_values_never_reach_another(pseudo):
     holding the 'current' ref on `self` would restore one request's values into
     another's response, and every count would still look right."""
     a = pseudo.pseudonymize(f"a {EMAIL}", [_finding("EMAIL_ADDRESS", 2, 2 + len(EMAIL))])
-    other = "someone.else@other.example"
+    other = "someone.else@other-vendor.com"
     b = pseudo.pseudonymize(f"b {other}", [_finding("EMAIL_ADDRESS", 2, 2 + len(other))])
 
     assert pseudo.restore(a.text, a.ref).text == f"a {EMAIL}"

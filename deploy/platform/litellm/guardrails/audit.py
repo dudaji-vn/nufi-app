@@ -133,6 +133,51 @@ GUARDRAIL_STREAM_UNENFORCED = _register(
     "the rewrite could not be written back onto the chunk).",
     ("control", "reason"),
 )
+# Pseudonymization is the only action whose success is not observable from the
+# decision it recorded. `decisions_total{action="pseudonymize"}` says a token was
+# minted; whether the ORIGINAL came back is a property of what the model
+# returned, and the failure is silent -- their restorer reports
+# `restored: 0, fallback: 0` for a token whose delimiters were stripped and the
+# user sees `E1` where their address should be. These two counters are the only
+# thing that distinguishes a working round trip from a broken one.
+GUARDRAIL_PSEUDONYM_MINTED = _register(
+    Counter,
+    "nufi_guardrail_pseudonym_minted_total",
+    "Values replaced with a surrogate on the request leg.",
+    ("control", "entity"),
+)
+GUARDRAIL_PSEUDONYM_RESTORED = _register(
+    Counter,
+    "nufi_guardrail_pseudonym_restored_total",
+    "Surrogates resolved on the response leg (outcome: restored = the original "
+    "value was put back; fallback = the token came back with no mapping, so a "
+    "type label was substituted; mangled = the model returned the token with its "
+    "delimiters stripped, which the restorer cannot see and this counter is the "
+    "only report of).",
+    ("control", "outcome"),
+)
+# Should sit near zero and return to zero. A rising floor means sessions are
+# minted and never wiped -- a growing in-process store of PII, which is the one
+# new PII store this platform has and the reason it is bounded by a TTL as well.
+GUARDRAIL_PSEUDONYM_SESSIONS = _register(
+    Gauge,
+    "nufi_guardrail_pseudonym_sessions",
+    "Vault mappings currently held in memory across all sessions.",
+    (),
+)
+# A workload that opted in and then got ordinary redaction instead. Without this
+# the two are indistinguishable: no minted tokens and no restored tokens looks
+# exactly like a request that carried no PII. `reason="stream"` is the one that
+# matters today -- restoration on the streaming path is not built, so a streamed
+# request is deliberately not pseudonymized rather than served raw surrogates.
+GUARDRAIL_PSEUDONYM_SKIPPED = _register(
+    Counter,
+    "nufi_guardrail_pseudonym_skipped_total",
+    "Requests eligible for pseudonymization that were not pseudonymized "
+    "(reason: stream = the response is streamed and the restore path for it is "
+    "not implemented).",
+    ("control", "reason"),
+)
 
 _CONTEXT_KEYS = ("key_alias", "team_id", "model", "policy_digest")
 _LABEL_KEYS = ("control", "risk", "action")

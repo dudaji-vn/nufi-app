@@ -54,6 +54,18 @@ class Action(StrEnum):
     BLOCK = "block"
     REDACT = "redact"
     LOG = "log"
+    #: Replace the value with an opaque token on the way out and restore it on
+    #: the way back, so the provider never receives it and the user does not lose
+    #: it. Unlike every other member this one spans BOTH legs of a request: G2a
+    #: mints, G2b restores, and they share one process-wide vault.
+    #:
+    #: Measured to be usable only where the value is CARRIED rather than reasoned
+    #: about, and only when the gateway also injects an instruction explaining the
+    #: token -- `docs/2026-07-29-nufi-security-integration.md` §7.3a. A request
+    #: asking about the value ("is this a valid address?") cannot be served at
+    #: all with the value hidden, so this action requires per-workload opt-in and
+    #: is never a default. `guardrails/pseudonymize.py` carries the rest.
+    PSEUDONYMIZE = "pseudonymize"
 
 
 @dataclass(frozen=True)
