@@ -14,8 +14,16 @@ rules:
     spaces: 2
     indent-sequences: consistent
 
+# `litellm/nufi-security/` is a vendored snapshot of another repository
+# (litellm/nufi-security.provenance.md). Linting it reports someone else's style
+# as our defects -- 175 of them, across their Helm chart, their compose file and
+# their own policy presets -- and any fix would be a diff upstream has to carry
+# forever. Their CI lints it under their own rules. This mirrors the ruff exclude
+# in pyproject.toml, which was added when the snapshot landed; missing it here is
+# what turned the first CI run on this branch red.
 ignore: |-
   node_modules/
   .venv/
   .git/
+  litellm/nufi-security/
   monitoring/grafana/dashboards/
