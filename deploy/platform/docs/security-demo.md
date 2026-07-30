@@ -119,10 +119,21 @@ mặc định của chat.
 M="Demo$(date +%s)"; echo "marker: $M"
 ```
 
-**Gõ vào chat** (thay `$M` bằng giá trị vừa in ra):
+**Mở "New Chat", rồi gõ TẤT CẢ vào MỘT tin nhắn** (thay `$M` bằng giá trị vừa
+in ra — đừng bấm Enter giữa hai dòng):
 
-> Project $M. My email is secret.person@$M.com and my card is 4111111111111111.
-> Reply with exactly: noted.
+```
+Project $M. My email is secret.person@$M.com and my card is 4111111111111111. Reply with exactly: noted.
+```
+
+> **Vì sao phải là một tin nhắn.** Bản đầu của kịch bản này trình bày nó thành
+> hai dòng và người test đã gõ thành hai tin. Kết quả: model trả lời lượt 1 bằng
+> một lời từ chối an toàn ("I cannot process, store, or accept sensitive personal
+> information…"), lời từ chối đó nằm lại trong lịch sử, và lượt 2 bị chặn.
+>
+> Đó là một lỗi thật ở phía guardrail, không phải ở người test — đang được sửa.
+> Nhưng ngay cả sau khi sửa, gộp vào một tin vẫn là cách demo đúng: nó cho
+> observability đúng **một** request để tra, thay vì hai request phải đoán cái nào.
 
 Đợi ~15 giây cho observability kịp ghi, rồi chạy **từng lệnh một** và đọc kết quả
 ra:
