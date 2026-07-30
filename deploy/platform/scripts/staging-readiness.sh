@@ -558,6 +558,38 @@ else
   fi
 fi
 
+echo "==> 8b/10 The pseudonymization vault is not accumulating PII"
+# The vault is the platform's SECOND store of real PII, after LibreChat's chat
+# history -- token-to-value mappings, in the proxy's own memory. Everything else
+# in this script asks whether a control acted; this asks whether a store that
+# should be empty is empty.
+#
+# `sessions` is a gauge of live mappings. It must return to zero: a mapping
+# outliving its request is PII kept for no reason, and the 300s TTL is the
+# backstop rather than the mechanism -- `end_session` is. A rising floor is the
+# failure, and it is invisible in every other signal here.
+#
+# Absent is a legitimate PASS state and is treated as one, unlike most checks in
+# this file: an unlabelled gauge is registered at import, so its absence means
+# the guardrails module did not load at all -- which checks 1 and 3 already
+# report, precisely and first.
+sessions=$(metric 'nufi_guardrail_pseudonym_sessions ')
+if [ -z "${sessions}" ]; then
+  note "no pseudonymization gauge exported (checks 1 and 3 cover a missing module)"
+  ok "no vault state to account for"
+elif [ "${sessions%.*}" = "0" ]; then
+  ok "vault holds no mappings (${sessions})"
+else
+  bad "vault still holds ${sessions} mapping(s) with no request in flight -- sessions are being minted and not wiped; that is retained PII"
+fi
+# A workload that opted in and then streamed gets ordinary redaction, not
+# pseudonymization. Correct behaviour, but the operator has to know: the two are
+# indistinguishable from the outside without this counter.
+skipped_stream=$(metric_sum 'nufi_guardrail_pseudonym_skipped_total{control="G2a",reason="stream"')
+if [ -n "${skipped_stream}" ] && [ "${skipped_stream%.*}" != "0" ]; then
+  note "${skipped_stream} request(s) opted into pseudonymization while streaming and received redaction instead (docs/security-demo.md)"
+fi
+
 echo "==> 9/10 Contract tests against the REAL sidecars"
 # These are the only tests that exercise the live Presidio and classifier
 # contracts, and they are deselected by default (`-m 'not contract'`) and run

@@ -216,18 +216,57 @@ thoại của chính họ; họ phải xem lại được. Nói rằng "không l
 
 **Điều thật sự được bảo đảm — và đây mới là câu nên nói với khách hàng:**
 
-| Nơi | PII thật |
-|---|---|
-| Lịch sử chat (Mongo) | **có** — dữ liệu của chính người dùng |
-| Langfuse (observability) | không |
-| Postgres (chi phí/spend) | không |
-| Log container | không |
-| Bản ghi audit | không |
-| Nhãn Prometheus | không |
+| Nơi | PII thật | Thời hạn |
+|---|---|---|
+| Lịch sử chat (Mongo) | **có** — dữ liệu của chính người dùng | tới khi người dùng xoá |
+| Vault pseudonymization | **có, khi bật** — xem dưới | ≤ 300 giây, trong RAM |
+| Langfuse (observability) | không | — |
+| Postgres (chi phí/spend) | không | — |
+| Log container | không | — |
+| Bản ghi audit | không | — |
+| Nhãn Prometheus | không | — |
 
 **Bán kính ảnh hưởng của PII bị giới hạn trong đúng một hệ — cái mà người dùng
 sở hữu.** Nó không lan sang năm hệ phụ, nơi thời hạn lưu trữ, quyền truy cập và
 mức phơi bày cho nhà cung cấp bên thứ ba là hoàn toàn khác.
+
+### Vault pseudonymization — store PII thứ hai, và phải nói ra
+
+Dòng thứ hai trong bảng là mới, thêm ngày **2026-07-30**. Trước đó bảng này chỉ
+có một dòng "có", và nếu để nguyên thì tài liệu đang nói sai.
+
+Khi `G2a` chạy với `action: pseudonymize` (**mặc định không bật** — xem
+`policy.yaml`), gateway thay giá trị của người dùng bằng một token `⟦E1⟧`, gửi
+token đó cho nhà cung cấp, rồi trả giá trị thật lại vào câu trả lời. Muốn làm được
+việc đó, nó phải **giữ ánh xạ token → giá trị thật** trong lúc request đang bay.
+Ánh xạ đó là PII, và nó là một store.
+
+Nói đúng về nó:
+
+| | |
+|---|---|
+| Ở đâu | RAM của tiến trình proxy. Không đĩa, không Redis, không Postgres. |
+| Dạng lưu | AES-256-GCM, envelope encryption (DEK theo session, KEK bọc DEK) |
+| Khoá | `EGRESS_VAULT_KEK`; **không set thì sinh ngẫu nhiên mỗi lần boot** — restart là không giải mã được ánh xạ cũ, một kiểu fail an toàn |
+| Thời hạn | TTL 300 giây, và bị **wipe ngay** sau khi response được phục hồi |
+| Đọc ra được không | không có API dump; chỉ resolve đúng token trong đúng session |
+| Kiểm được không | `nufi_guardrail_pseudonym_sessions` — phải về **0** khi rảnh |
+
+```bash
+# Số ánh xạ đang giữ trong RAM. Sàn tăng dần = session không được wipe.
+curl -s http://localhost:4000/metrics/ | grep '^nufi_guardrail_pseudonym_sessions'
+```
+
+→ **`0`** khi không có request nào đang bay.
+
+**Đánh đổi, nói thẳng:** pseudonymization *giảm* phơi bày cho nhà cung cấp bên
+thứ ba — họ nhận `⟦E1⟧` chứ không phải email — nhưng *thêm* một store PII ngắn hạn
+trong tiến trình của mình. Đổi phơi bày ra ngoài lấy phơi bày trong nhà, cộng thêm
+việc người dùng không mất dữ liệu của chính họ. Với `redact` thì không có store
+nào, nhưng người dùng mất giá trị.
+
+Đo được (2026-07-30): với `⟦E1⟧` trong 8 trace Langfuse gần nhất, **giá trị thô
+xuất hiện 0 lần**, token xuất hiện 9 lần.
 
 Đó là khẳng định đáng nói, và nó kiểm chứng được ngay tại chỗ.
 
@@ -244,8 +283,20 @@ Nêu thẳng nếu bị hỏi. Một demo bị bắt nói quá sẽ mất luôn 
 - **G2b không phân biệt "dữ liệu của bạn" với "dữ liệu model bịa ra".** Nếu bạn
   tự đưa email của mình và xin soạn thư ký tên, nó vẫn đục — cơ chế xử lý ca này
   (`respect_grounded_hint`) đã có trong policy nhưng chưa nối vào chat.
+  Pseudonymization (`action: pseudonymize`) là cách sửa thật cho ca này và đã
+  chạy được, nhưng **mặc định tắt** và có hai giới hạn phải nói ra:
+  - **Không dùng được cho câu hỏi *về* giá trị.** Đo được: *"đây có phải email
+    hợp lệ không"* trả lời `No.` khi bản không pseudonymize trả lời `Yes`. Không
+    thể hỏi model về một giá trị đang bị che khỏi nó — không ngưỡng nào sửa được,
+    nên nó cần workload opt-in chứ không thể bật toàn cục.
+  - **Không chạy trên streaming**, mà streaming là mặc định của chat. Request
+    streaming quay về `redact` và được đếm ở
+    `nufi_guardrail_pseudonym_skipped_total{reason="stream"}`. Nghĩa là **trong
+    demo qua chat UI, pseudonymization không tham gia** — muốn xem nó làm việc thì
+    gọi API không streaming.
 - **Thời hạn lưu log chính là thời hạn lưu audit**, và không chỗ nào trong repo
-  đặt nó.
+  đặt nó. Vault pseudonymization là ngoại lệ duy nhất có thời hạn rõ ràng (TTL
+  300 giây, wipe sau response).
 - **Chưa có gì kiểm soát tài liệu vào RAG hay quyền dùng tool của agent**
   (OWASP LLM04 và LLM06) — hai khoảng trống đã ghi trong thiết kế, chưa ai nhận.
 
@@ -254,7 +305,7 @@ Nêu thẳng nếu bị hỏi. Một demo bị bắt nói quá sẽ mất luôn 
 ## Chạy tự động, nếu cần chứng minh cả cụm
 
 ```bash
-BENCH_MODEL=gemini-2.5-flash ./scripts/staging-readiness.sh   # 32 kiểm tra
+BENCH_MODEL=gemini-2.5-flash ./scripts/staging-readiness.sh   # 35 kiểm tra
 node scripts/guardrail-ui-test.mjs                            # 7 kịch bản qua UI
 node scripts/guardrail-block-render-test.mjs                   # 3 kịch bản render
 ```

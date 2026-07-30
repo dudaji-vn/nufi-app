@@ -84,6 +84,26 @@ curl -s http://localhost:4000/metrics/ | grep '^nufi_guardrail_enabled'
 Kỳ vọng hôm nay: G1/G2b/G3/G4 = `1`, G2a = `0` (action của nó là `log`, không có
 gì để enforce).
 
+### 3b — Vault pseudonymization phải rỗng
+
+```bash
+curl -s http://localhost:4000/metrics/ | grep -E '^nufi_guardrail_pseudonym'
+```
+
+Hôm nay `action: pseudonymize` **chưa bật**, nên kỳ vọng là chỉ có
+`nufi_guardrail_pseudonym_sessions 0` và **không** có series `minted`/`restored`
+nào — một Counter chỉ xuất hiện khi đã được tăng ít nhất một lần.
+
+**Vì sao đáng kiểm dù tính năng đang tắt:** `sessions` là số ánh xạ token → giá
+trị thật đang giữ trong RAM, và đó là store PII thứ hai của platform (xem
+`security-demo.md`). Số này phải **về 0** khi rảnh. Một cái sàn tăng dần nghĩa là
+session được mint mà không được wipe — một kho PII đang phình trong tiến trình,
+và TTL 300 giây là lưới cuối chứ không phải cơ chế chính.
+
+Nếu thấy `pseudonym_skipped_total{reason="stream"}` tăng: có workload đã opt-in
+nhưng đang gửi request streaming, và họ đang nhận `redact` chứ không phải
+pseudonymization. Đó là hành vi đúng, nhưng người vận hành cần biết.
+
 Rồi so với policy:
 
 ```bash
@@ -181,6 +201,6 @@ cd deploy/platform
 BENCH_MODEL=gemini-2.5-flash ./scripts/staging-readiness.sh
 ```
 
-32 kiểm tra, gồm hầu hết những thứ trên. Nó **exit 2 khi có mục bị skip**, không
+35 kiểm tra, gồm hầu hết những thứ trên. Nó **exit 2 khi có mục bị skip**, không
 phải 0 — một mục skip không phải một mục đạt. Nếu Langfuse không kết nối được mà
 nó báo xanh, thì chính bộ kiểm tra đang mắc đúng lỗi mà nó đi tìm.

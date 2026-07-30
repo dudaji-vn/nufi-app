@@ -140,7 +140,7 @@ Rồi thử số **sai checksum** — chỉ khác chữ số cuối:
 
 ```bash
 cd deploy/platform
-BENCH_MODEL=gemini-2.5-flash ./scripts/staging-readiness.sh   # 32 kiểm tra tự động
+BENCH_MODEL=gemini-2.5-flash ./scripts/staging-readiness.sh   # 35 kiểm tra tự động
 node scripts/guardrail-ui-test.mjs                             # 7 kịch bản qua UI
 ```
 
