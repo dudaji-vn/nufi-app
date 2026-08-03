@@ -1,0 +1,142 @@
+---
+title: How your data is protected
+description: What the NUFI app checks on every message, what it does when it finds something, and what it does not do.
+---
+
+Every message you send and every answer you get back passes through a set of
+security checks before it reaches you. They run on all of your conversations,
+all of the time. You do not switch them on and there is nothing to configure.
+
+This page shows what they actually do, with screenshots taken from a running
+system rather than mock-ups — including the case where the checks decide **not**
+to act, which is the part that matters most.
+
+## What is checked
+
+Four things, on every message:
+
+| | What it looks for |
+|---|---|
+| **Instruction attacks** | Text trying to override the assistant's instructions or make it reveal them — whether you typed it or it arrived inside a document, a web page or a tool result |
+| **Personal information** | Email addresses, phone numbers, card numbers, national identifiers — including Korean resident-registration numbers, checked against their real checksum |
+| **Prompt disclosure** | An answer that quotes back the assistant's own confidential instructions |
+| **Hidden data channels** | Links and images pointing at outside servers, which a browser would silently fetch |
+
+## 1. An attack is refused, and you get a reference
+
+If a message is genuinely trying to hijack the assistant, it does not reach the
+model at all. You get a plain explanation and a short reference code.
+
+![A blocked message in the NUFI app, showing the reason and a reference code](/screenshots/security-blocked.png)
+
+That code identifies this exact decision. If you believe the block was wrong,
+send it to your administrator — they can look up what fired without needing to
+read your conversation, because the record deliberately stores no part of what
+you wrote.
+
+<Callout title="This is not an error">
+  A block is the system working, not breaking. Nothing was sent to the AI
+  provider, and nothing was lost — rephrase and send again.
+</Callout>
+
+## 2. Normal writing is left alone
+
+This is the case worth looking at hardest. Here is a message that reads almost
+exactly like the attack above — *"ignore the previous draft and start over"* —
+and it is answered normally.
+
+![A benign message that resembles an attack, answered normally](/screenshots/security-benign-allowed.png)
+
+Both sentences look identical to an automated language check; it rates them
+equally suspicious. What separates them is that a block requires **two
+independent detectors to agree** — a machine-learning classifier and a separate
+rule-based one. One alone is never enough to stop your message.
+
+That threshold exists for a specific reason. A security filter that blocks
+ordinary phrasing gets switched off within a week, and then it protects nobody.
+Being usable is part of being secure.
+
+## 3. Personal information is removed from answers
+
+If the assistant produces contact details, an identifier or a card number in its
+reply, that value is replaced before the answer reaches your screen.
+
+![An answer where a generated email address has been replaced with a placeholder](/screenshots/security-pii-redacted.png)
+
+The checks are precise rather than eager. A Korean resident-registration number
+is validated against its check digit, so a real one is caught and an ordinary
+number that merely looks similar is left alone — which is why dates, order
+numbers and part codes come through untouched.
+
+## 4. Hidden data channels are stripped
+
+This is the one most people have never heard of. An answer can contain an image
+whose address points at somebody else's server. You would see nothing unusual,
+but your browser would quietly fetch that address — and whatever was written
+into it would arrive at that server.
+
+![An answer where an external image link has been removed](/screenshots/security-exfil-blocked.png)
+
+Those links are removed before the answer renders, and it works while the answer
+is still streaming in, which is how the app normally replies.
+
+## Where your conversations live
+
+Being specific here matters more than sounding reassuring.
+
+**Your chat history is stored, in full, exactly as you typed it.** That is
+deliberate — it is your conversation and you need to be able to come back to it.
+Any product claiming to store nothing is either wrong or is not keeping your
+history.
+
+What the security layer guarantees is the **blast radius**: your text stays in
+that one place and does not spread. The monitoring system, the billing records,
+the server logs and the security records themselves are all checked to hold no
+personal information — the security record stores only *where* in a message
+something was found, never *what* it said.
+
+## What this does not do
+
+Stated plainly, because a security page that only lists wins is not worth
+trusting.
+
+<Accordions>
+  <Accordion title="It does not read your conversations for meaning">
+    The checks look for specific patterns and identifiers. Nobody and nothing is
+    reviewing what you are talking about.
+  </Accordion>
+  <Accordion title="It does not make the AI's answers correct">
+    These controls are about safety and data, not accuracy. The assistant can
+    still be wrong, and you should still check important answers.
+  </Accordion>
+  <Accordion title="A conversation that contains an attack stays blocked">
+    The app sends your whole conversation with each new message, so once an
+    attack string is in the history, later messages in that same conversation
+    keep being caught. Start a **New Chat** and continue there.
+  </Accordion>
+  <Accordion title="Detection is not perfect in either direction">
+    No filter catches everything, and none is free of false alarms. The design
+    choice here is to need two independent detectors to agree before stopping
+    you, which trades some detection for far fewer wrong blocks.
+  </Accordion>
+</Accordions>
+
+## If something is blocked and you think it should not be
+
+<Steps>
+  <Step>
+    Copy the `Reference: grd_…` code from the message.
+  </Step>
+  <Step>
+    Start a **New Chat** — the previous conversation still carries the text that
+    triggered the block, so continuing in it will keep failing.
+  </Step>
+  <Step>
+    Rephrase and send again. Wording like *"ignore all previous instructions"* is
+    what the checks are built to catch, even when you mean it innocently.
+  </Step>
+  <Step>
+    If it still blocks and you believe it is wrong, send the reference code to
+    your administrator. It is enough for them to identify the decision.
+  </Step>
+</Steps>

@@ -4,34 +4,19 @@ export const baseOptions: BaseLayoutProps = {
   nav: {
     title: (
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-        {/* The source PNG has a white square backing; clip to a circle and
-            scale up slightly so the gradient disc fills it — reads cleanly on
-            both light and dark headers. */}
-        <span
-          style={{
-            display: 'inline-block',
-            width: 24,
-            height: 24,
-            borderRadius: '50%',
-            overflow: 'hidden',
-            flex: 'none',
-          }}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/nufi-icon.png"
-            alt=""
-            aria-hidden
-            width={24}
-            height={24}
-            style={{
-              display: 'block',
-              transform: 'scale(1.2)',
-              transformOrigin: 'center',
-            }}
-          />
-        </span>
-        <span style={{ fontWeight: 700 }}>NUFI Docs</span>
+        {/* The wordmark already reads "NUFI", so the text beside it is only
+            "Docs" — the same lockup the app, console and admin panel use.
+            Kept as a shared asset rather than inlined so a brand change lands
+            everywhere at once; `.nufi-mark` in global.css reverses it to white
+            for the dark header, where the navy has no contrast. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/nufi-logo.svg"
+          alt="NUFI"
+          className="nufi-mark"
+          style={{ display: 'block', height: 22, width: 'auto', flex: 'none' }}
+        />
+        <span style={{ fontWeight: 700 }}>Docs</span>
       </span>
     ),
   },
