@@ -519,7 +519,12 @@ else
     -d "{\"model\":\"${MODEL}\",\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"Invent a fictional support contact for a company called ${marker}. Output exactly one line containing a realistic email address. No other text.\"}]}" \
     >/dev/null 2>&1
   sleep 15
-  auth=$(printf '%s:%s' "${LANGFUSE_PUBLIC_KEY}" "${LANGFUSE_SECRET_KEY}" | base64)
+  # `tr -d` is load-bearing: a Langfuse key pair is 85 characters, which base64
+  # expands to 116, and GNU coreutils wraps at 76 by default while macOS does
+  # not. The newline lands inside the Authorization header, curl fails, and this
+  # check reports "could not read Langfuse traces" -- so it passed on the
+  # author's Mac and skipped on every Linux host, which is where it runs.
+  auth=$(printf '%s:%s' "${LANGFUSE_PUBLIC_KEY}" "${LANGFUSE_SECRET_KEY}" | base64 | tr -d '\n')
   leaked=$(curl -fsS "${LANGFUSE_URL:-http://localhost:3000}/api/public/traces?limit=5" \
     -H "Authorization: Basic ${auth}" 2>/dev/null \
     | ${PY} -c "
@@ -540,7 +545,7 @@ else:
     yes)     bad "the Langfuse trace output holds the RAW address the client never saw"
              note "known: CustomStreamWrapper assembles the logged text before our hook runs"
              note "mitigate with Langfuse-side masking, or stop capturing content for streams" ;;
-    *)       skipped "could not read Langfuse traces" ;;
+    *)       skipped "could not read Langfuse traces -- check LANGFUSE_PUBLIC_KEY/SECRET_KEY are the API keys from Langfuse's project settings, and that LANGFUSE_URL (${LANGFUSE_URL:-http://localhost:3000}) serves /api/public/traces" ;;
   esac
 fi
 
