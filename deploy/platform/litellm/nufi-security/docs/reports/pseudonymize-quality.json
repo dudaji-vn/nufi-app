@@ -1,0 +1,229 @@
+{
+  "benchmark": "pseudonymize-quality",
+  "surface": [
+    "egress_audit/surrogate.py",
+    "egress_audit/pseudonymize.py",
+    "config/presets/pseudonymize-roundtrip.yaml"
+  ],
+  "seed": 20260630,
+  "source": "synth",
+  "targets": {
+    "roundtrip_exact": 1.0,
+    "streaming_match": 1.0,
+    "surrogate_collision_rate": 0.0,
+    "delimiter_corpus_collision": 0,
+    "reversible_determinism": true,
+    "block_retention": 1.0,
+    "pseudonymize_leak": 0,
+    "irreversible_consistency": 1.0,
+    "irreversible_collision_rate": 0.0,
+    "irreversible_structure_preserved": 1.0,
+    "irreversible_non_restorable": true
+  },
+  "scores": {
+    "reversible_targets": [
+      "KR_PERSON",
+      "KR_PHONE",
+      "EMAIL",
+      "KR_BRN",
+      "KR_LOCATION"
+    ],
+    "strong_block_targets": [
+      "KR_RRN",
+      "KR_FOREIGNER_REG",
+      "KR_PASSPORT",
+      "KR_DRIVER_LICENSE",
+      "CREDIT_CARD",
+      "KR_ACCOUNT",
+      "SECRET"
+    ],
+    "roundtrip": {
+      "n_prompts": 76,
+      "tokens_minted": 108,
+      "roundtrip_exact": 1.0,
+      "roundtrip_exact_n": "76/76",
+      "per_type": {
+        "EMAIL": {
+          "recall": 1.0,
+          "ok": 28,
+          "n": 28
+        },
+        "KR_BRN": {
+          "recall": 1.0,
+          "ok": 12,
+          "n": 12
+        },
+        "KR_LOCATION": {
+          "recall": 1.0,
+          "ok": 12,
+          "n": 12
+        },
+        "KR_PERSON": {
+          "recall": 1.0,
+          "ok": 28,
+          "n": 28
+        },
+        "KR_PHONE": {
+          "recall": 1.0,
+          "ok": 28,
+          "n": 28
+        }
+      },
+      "surrogate_collisions": 0,
+      "surrogate_collision_rate": 0.0,
+      "delimiter_corpus_collision": 0
+    },
+    "streaming": {
+      "n_prompts": 76,
+      "boundary_configs_tested": 456,
+      "streaming_match": 1.0,
+      "streaming_match_n": "76/76"
+    },
+    "collision_scale": {
+      "n_minted": 1000,
+      "distinct_originals": 1000,
+      "distinct_surrogates": 1000,
+      "collisions": 0,
+      "collision_rate": 0.0,
+      "same_original_stable": true
+    },
+    "determinism": {
+      "reversible_determinism": true,
+      "n_prompts": 76,
+      "sample": "연락처 ⟦T1⟧ 로 안내 문자 보내주세요."
+    },
+    "block_retention": {
+      "n_prompts": 56,
+      "block_retention": 1.0,
+      "block_retention_n": "56/56",
+      "pseudonymize_leak": 0,
+      "per_type": {
+        "CREDIT_CARD": {
+          "blocked": 8,
+          "n": 8
+        },
+        "KR_ACCOUNT": {
+          "blocked": 8,
+          "n": 8
+        },
+        "KR_DRIVER_LICENSE": {
+          "blocked": 8,
+          "n": 8
+        },
+        "KR_FOREIGNER_REG": {
+          "blocked": 8,
+          "n": 8
+        },
+        "KR_PASSPORT": {
+          "blocked": 8,
+          "n": 8
+        },
+        "KR_RRN": {
+          "blocked": 8,
+          "n": 8
+        },
+        "SECRET": {
+          "blocked": 8,
+          "n": 8
+        }
+      }
+    },
+    "irreversible": {
+      "n_values": 360,
+      "irreversible_consistency": 1.0,
+      "distinct_inputs": 359,
+      "distinct_tokens": 359,
+      "irreversible_collisions": 0,
+      "irreversible_collision_rate": 0.0,
+      "irreversible_non_restorable": true,
+      "irreversible_structure_preserved": 1.0,
+      "structure_samples": {
+        "KR_PHONE": {
+          "orig": "010-1234-5678",
+          "masked": "***-****-5678",
+          "ok": true
+        },
+        "KR_BRN": {
+          "orig": "123-45-67890",
+          "masked": "***-**-*****",
+          "ok": true
+        },
+        "KR_ACCOUNT": {
+          "orig": "110-234-567890",
+          "masked": "***-***-**7890",
+          "ok": true
+        },
+        "CREDIT_CARD": {
+          "orig": "4111-1111-1111-1111",
+          "masked": "****-****-****-1111",
+          "ok": true
+        },
+        "EMAIL": {
+          "orig": "hong.gildong@company.co.kr",
+          "masked": "****.*******@*******.**.**",
+          "ok": true
+        }
+      },
+      "token_sample": {
+        "KR_PERSON": "<KR_PERSON_fa2a85f7c4>",
+        "redact": "<KR_PHONE_REDACTED>"
+      }
+    }
+  },
+  "combined_surrogate_collisions": 0,
+  "acceptance": {
+    "roundtrip_exact==1.0": true,
+    "streaming_match==1.0": true,
+    "surrogate_collision_rate==0": true,
+    "delimiter_corpus_collision==0": true,
+    "reversible_determinism": true,
+    "block_retention==1.0": true,
+    "pseudonymize_leak==0": true,
+    "irreversible_consistency==1.0": true,
+    "irreversible_collision_rate==0": true,
+    "irreversible_structure_preserved==1.0": true,
+    "irreversible_non_restorable": true
+  },
+  "acceptance_pass": true,
+  "latency": {
+    "sizes": {
+      "256": {
+        "input_chars": 256,
+        "repeats": 20,
+        "p50_ms": 1.82,
+        "p95_ms": 1.88,
+        "p99_ms": 1.88,
+        "min_ms": 1.79,
+        "max_ms": 1.88
+      },
+      "1024": {
+        "input_chars": 1024,
+        "repeats": 20,
+        "p50_ms": 6.52,
+        "p95_ms": 7.15,
+        "p99_ms": 7.15,
+        "min_ms": 6.45,
+        "max_ms": 7.15
+      },
+      "4096": {
+        "input_chars": 4096,
+        "repeats": 20,
+        "p50_ms": 23.91,
+        "p95_ms": 26.41,
+        "p99_ms": 26.41,
+        "min_ms": 23.67,
+        "max_ms": 26.41
+      },
+      "16384": {
+        "input_chars": 16384,
+        "repeats": 20,
+        "p50_ms": 103.35,
+        "p95_ms": 191.67,
+        "p99_ms": 191.67,
+        "min_ms": 102.58,
+        "max_ms": 191.67
+      }
+    },
+    "ci_gate_16k_p95_le_200ms": true
+  }
+}

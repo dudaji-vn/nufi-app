@@ -16,3 +16,13 @@
 .prose {
   --tw-prose-body: var(--color-fd-foreground);
 }
+
+/* The brand mark is navy (#293069 / #3c4d8a) on white. Against the dark
+   header that darkest navy measures 1.44:1, so the "N" strokes disappear and
+   the mark breaks into disconnected pieces. No brightness filter can rescue
+   it while keeping the salmon accent — every value bright enough to lift the
+   navy clips the salmon to pure white — so dark mode gets the conventional
+   reversed lockup: one flat white, geometry intact, 17.6:1. */
+.dark .nufi-mark {
+  filter: brightness(0) invert(1);
+}

@@ -1,0 +1,9 @@
+apiVersion: v2
+name: nufi-egress-audit
+description: >-
+  NuFi Egress-Audit 단일 파드 스텁 (CMP-122 / v0.0.2 M1·D2). 게이트웨이 +
+  탐지코어 + 감사봇을 한 파드(2 컨테이너, emptyDir 공유 큐)로 기동. 단일파드
+  기동 검증용 스텁 — 프로덕션 HA/시크릿/스토리지는 후속 이슈 범위.
+type: application
+version: 0.1.0
+appVersion: "0.0.2-dev"

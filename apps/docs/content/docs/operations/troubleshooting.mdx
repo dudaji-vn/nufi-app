@@ -85,9 +85,9 @@ Common causes:
   persists, check `docker compose logs postgres` for crashes.
 - **Bad model in `litellm/config.yaml`** — typo in `model:`, missing
   env var. The gateway logs the offending entry.
-- **`LLM_GUARD_API_BASE` unreachable** — LLM Guard took longer than
-  expected to come up (DeBERTa cold-start). Wait, or set
-  `start_period: 180s` on its healthcheck.
+- **`SCANNER_API_BASE` unreachable** — the injection classifier took
+  longer than expected to come up (first boot downloads a ~700 MB DeBERTa
+  model). Wait, or raise `start_period` on its healthcheck.
 
 ## Langfuse traces stop appearing
 

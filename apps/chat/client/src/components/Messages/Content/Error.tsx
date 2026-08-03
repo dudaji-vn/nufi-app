@@ -1,5 +1,6 @@
 // file deepcode ignore HardcodedNonCryptoSecret: No hardcoded secrets
-import { ViolationTypes, ErrorTypes, alternateName } from 'librechat-data-provider';
+import { ViolationTypes, ErrorTypes, GuardrailRisks, alternateName } from 'librechat-data-provider';
+import type { TranslationKeys } from '~/hooks';
 import type { LocalizeFunction } from '~/common';
 import { formatJSON, extractJson, isJson } from '~/utils/json';
 import { useLocalize } from '~/hooks';
@@ -36,6 +37,41 @@ type TGenericError = {
   info: string;
 };
 
+type TGuardrailBlocked = {
+  risk?: string;
+  reference?: string;
+};
+
+/**
+ * Copy per OWASP risk code, so the explanation is localizable and the security gateway
+ * never has to know anything about locales. An unrecognised code — a control shipped
+ * ahead of the client — still reads as a policy decision rather than a malfunction.
+ */
+const guardrailRiskKeys: Record<string, TranslationKeys> = {
+  [GuardrailRisks.INJECTION]: 'com_error_guardrail_injection',
+  [GuardrailRisks.SYSTEM_PROMPT_LEAK]: 'com_error_guardrail_system_prompt_leak',
+  [GuardrailRisks.UNAVAILABLE]: 'com_error_guardrail_unavailable',
+};
+
+const GuardrailBlocked = ({
+  json,
+  localize,
+}: {
+  json: TGuardrailBlocked;
+  localize: LocalizeFunction;
+}) => (
+  <div className="flex flex-col gap-1">
+    <span className="font-medium">{localize('com_error_guardrail_title')}</span>
+    <span>{localize(guardrailRiskKeys[json.risk ?? ''] ?? 'com_error_guardrail_blocked')}</span>
+    {json.reference != null && json.reference !== '' && (
+      <span className="text-xs text-text-secondary">
+        {localize('com_error_guardrail_reference')}{' '}
+        <span className="select-all font-mono">{json.reference}</span>
+      </span>
+    )}
+  </div>
+);
+
 const errorMessages = {
   [ErrorTypes.MODERATION]: 'com_error_moderation',
   [ErrorTypes.NO_USER_KEY]: 'com_error_no_user_key',
@@ -45,6 +81,9 @@ const errorMessages = {
   [ErrorTypes.INVALID_ACTION]: `com_error_${ErrorTypes.INVALID_ACTION}`,
   [ErrorTypes.INVALID_REQUEST]: `com_error_${ErrorTypes.INVALID_REQUEST}`,
   [ErrorTypes.REFUSAL]: 'com_error_refusal',
+  [ErrorTypes.GUARDRAIL_BLOCKED]: (json: TGuardrailBlocked, localize: LocalizeFunction) => (
+    <GuardrailBlocked json={json} localize={localize} />
+  ),
   [ErrorTypes.MISSING_MODEL]: (json: TGenericError, localize: LocalizeFunction) => {
     const { info: endpoint } = json;
     const provider = (alternateName[endpoint ?? ''] as string | undefined) ?? endpoint ?? 'unknown';

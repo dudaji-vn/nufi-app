@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "source": "external",
+  "total": 421862,
+  "dev_size": 168737,
+  "test_size": 253125,
+  "content_hash": "sha256:136852937256327333766aeddcd225be9dc23063a9f85f00dd5c41964d5314eb",
+  "external_total": 421862,
+  "external_by_source": {
+    "external:ai4privacy": 414096,
+    "external:kdpii": 7766
+  },
+  "external_by_type": {
+    "KR_LOCATION": 103230,
+    "KR_PERSON": 320706,
+    "KR_DRIVER_LICENSE": 9624,
+    "KR_RRN": 10088,
+    "KR_PHONE": 73433,
+    "KR_BRN": 12218,
+    "EMAIL": 53558,
+    "KR_PASSPORT": 17704,
+    "CREDIT_CARD": 10960,
+    "KR_ACCOUNT": 792,
+    "KR_FOREIGNER_REG": 198
+  },
+  "external_datasets": [
+    {
+      "name": "ai4privacy/open-pii-masking-500k-ai4privacy",
+      "license": "CC-BY-4.0",
+      "url": "https://huggingface.co/datasets/ai4privacy/open-pii-masking-500k-ai4privacy",
+      "rows_used": 414096,
+      "note": "한국어 미포함. cross-lingual PII 패턴 벤치마크용."
+    },
+    {
+      "name": "KDPII (korean-guardrail-dataset)",
+      "license": "CC-BY-4.0",
+      "url": "https://github.com/skan0779/korean-guardrail-dataset",
+      "rows_used": 7766,
+      "note": "53,778건 한국어 대화 기반 PII 비식별화. 10개 NuFi 매핑 라벨."
+    }
+  ]
+}

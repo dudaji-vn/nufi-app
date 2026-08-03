@@ -1,0 +1,6 @@
+{"ts": "2026-06-28T11:00:01+0900", "src_ip": "127.0.0.1", "src_port": 52001, "dst_ip": "160.79.104.10", "dst_host": "api.anthropic.com", "sni": "api.anthropic.com", "dst_port": 443, "pid": 4101, "process": "litellm", "bytes": 2048}
+{"ts": "2026-06-28T11:00:02+0900", "src_ip": "127.0.0.1", "src_port": 52002, "dst_ip": "104.18.7.10", "dst_host": "api.openai.com", "sni": "api.openai.com", "dst_port": 443, "pid": 4101, "process": "litellm", "bytes": 1536}
+{"ts": "2026-06-28T11:00:04+0900", "src_ip": "127.0.0.1", "src_port": 52003, "dst_ip": "160.79.104.10", "dst_host": "api.anthropic.com", "sni": "api.anthropic.com", "dst_port": 443, "pid": 4101, "process": "litellm", "bytes": 3072}
+{"ts": "2026-06-28T11:00:05+0900", "src_ip": "127.0.0.1", "src_port": 52004, "dst_ip": "104.18.7.10", "dst_host": "api.openai.com", "sni": "api.openai.com", "dst_port": 443, "pid": 4101, "process": "litellm", "bytes": 2560}
+{"ts": "2026-06-28T11:00:07+0900", "src_ip": "10.20.30.12", "src_port": 49777, "dst_ip": "151.101.0.223", "dst_host": "pypi.org", "sni": "pypi.org", "dst_port": 443, "pid": 7011, "process": "pip", "bytes": 7200}
+{"ts": "2026-06-28T11:00:08+0900", "src_ip": "10.20.30.90", "src_port": 47010, "dst_ip": "10.20.30.10", "dst_host": "internal-db.corp.local", "sni": null, "dst_port": 5432, "pid": 7700, "process": "psql", "bytes": 640}

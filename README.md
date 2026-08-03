@@ -9,7 +9,7 @@ Single repo for the whole NuFi system. One clone = the whole picture.
 | `apps/admin-panel/` | Admin panel (TanStack Start + Bun; originally an ex-fork of ClickHouse/librechat-admin-panel) | `ghcr.io/dudaji-vn/nufichat-admin-panel` |
 | `apps/docs/` | Docs site (Fumadocs / Next.js) | — |
 | `deploy/railway/` | Railway staging wrapper (pulls the nufichat image, bakes `librechat.yaml`) | Railway service |
-| `deploy/platform/` | On-prem platform: LiteLLM, Langfuse, llm-guard, monitoring | docker-compose |
+| `deploy/platform/` | On-prem platform: LiteLLM, Langfuse, guardrails, monitoring | docker-compose |
 
 ## Rules of the road
 

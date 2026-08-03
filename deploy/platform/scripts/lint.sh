@@ -25,6 +25,19 @@ run() {
 }
 
 run "yamllint" yamllint -c .yamllint.yml .
+# Prefer the project venv: a bare `ruff` is usually absent, and `run`'s
+# `command -v` probe would then report the repo's ONLY Python linter as
+# "skipped" while still exiting 0 -- a check that cannot fail, reported as a
+# pass, in the tool meant to catch exactly that.
+if [ -x .venv/bin/ruff ]; then
+  run "ruff" .venv/bin/ruff check .
+else
+  run "ruff" ruff check .
+fi
+# Invoked via `bash` on purpose: `run` gates on `command -v "$1"`, so passing
+# the script directly would report "skipped (not installed)" the moment the
+# path changed — a security check that reports success while not running.
+run "guardrail wiring" bash ./scripts/check-guardrails-wired.sh
 
 dockerfiles=$(find . -name Dockerfile -not -path './.git/*')
 if [ -n "${dockerfiles}" ]; then

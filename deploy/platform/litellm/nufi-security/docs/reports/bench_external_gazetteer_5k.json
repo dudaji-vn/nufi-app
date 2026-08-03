@@ -1,0 +1,155 @@
+{
+  "backend": "gazetteer",
+  "total_rows": 5000,
+  "elapsed_seconds": 3.32,
+  "rows_per_second": 1506.22,
+  "errors": 0,
+  "overall": {
+    "recall": 0.1057,
+    "precision": 0.5872,
+    "f1": 0.1791,
+    "tp": 788,
+    "fn": 6670,
+    "fp": 554
+  },
+  "span_level": {
+    "exact_tp": 731,
+    "partial": 66,
+    "fn": 9062,
+    "fp": 569,
+    "exact_recall": 0.0746,
+    "exact_precision": 0.5623
+  },
+  "per_type": {
+    "CONF_KEYWORD": {
+      "expected": 0,
+      "detected": 1,
+      "tp": 0,
+      "fn": 0,
+      "fp": 1,
+      "recall": 0.0,
+      "precision": 0.0,
+      "f1": 0.0
+    },
+    "CONF_MARKING_CONFIDENTIAL": {
+      "expected": 0,
+      "detected": 6,
+      "tp": 0,
+      "fn": 0,
+      "fp": 6,
+      "recall": 0.0,
+      "precision": 0.0,
+      "f1": 0.0
+    },
+    "CREDIT_CARD": {
+      "expected": 127,
+      "detected": 10,
+      "tp": 7,
+      "fn": 120,
+      "fp": 3,
+      "recall": 0.0551,
+      "precision": 0.7,
+      "f1": 0.1022
+    },
+    "EMAIL": {
+      "expected": 681,
+      "detected": 678,
+      "tp": 678,
+      "fn": 3,
+      "fp": 0,
+      "recall": 0.9956,
+      "precision": 1.0,
+      "f1": 0.9978
+    },
+    "KR_ACCOUNT": {
+      "expected": 0,
+      "detected": 494,
+      "tp": 0,
+      "fn": 0,
+      "fp": 494,
+      "recall": 0.0,
+      "precision": 0.0,
+      "f1": 0.0
+    },
+    "KR_BRN": {
+      "expected": 169,
+      "detected": 18,
+      "tp": 12,
+      "fn": 157,
+      "fp": 6,
+      "recall": 0.071,
+      "precision": 0.6667,
+      "f1": 0.1283
+    },
+    "KR_DRIVER_LICENSE": {
+      "expected": 95,
+      "detected": 35,
+      "tp": 2,
+      "fn": 93,
+      "fp": 33,
+      "recall": 0.0211,
+      "precision": 0.0571,
+      "f1": 0.0308
+    },
+    "KR_FOREIGNER_REG": {
+      "expected": 0,
+      "detected": 1,
+      "tp": 0,
+      "fn": 0,
+      "fp": 1,
+      "recall": 0.0,
+      "precision": 0.0,
+      "f1": 0.0
+    },
+    "KR_LOCATION": {
+      "expected": 1273,
+      "detected": 0,
+      "tp": 0,
+      "fn": 1273,
+      "fp": 0,
+      "recall": 0.0,
+      "precision": 0.0,
+      "f1": 0.0
+    },
+    "KR_PASSPORT": {
+      "expected": 202,
+      "detected": 5,
+      "tp": 1,
+      "fn": 201,
+      "fp": 4,
+      "recall": 0.005,
+      "precision": 0.2,
+      "f1": 0.0097
+    },
+    "KR_PERSON": {
+      "expected": 3849,
+      "detected": 0,
+      "tp": 0,
+      "fn": 3849,
+      "fp": 0,
+      "recall": 0.0,
+      "precision": 0.0,
+      "f1": 0.0
+    },
+    "KR_PHONE": {
+      "expected": 933,
+      "detected": 93,
+      "tp": 88,
+      "fn": 845,
+      "fp": 5,
+      "recall": 0.0943,
+      "precision": 0.9462,
+      "f1": 0.1715
+    },
+    "KR_RRN": {
+      "expected": 129,
+      "detected": 1,
+      "tp": 0,
+      "fn": 129,
+      "fp": 1,
+      "recall": 0.0,
+      "precision": 0.0,
+      "f1": 0.0
+    }
+  }
+}

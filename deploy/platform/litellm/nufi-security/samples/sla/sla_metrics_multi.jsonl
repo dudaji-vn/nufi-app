@@ -1,0 +1,4 @@
+{"tenant": "acme", "epoch_ms": 1781568000000, "pii_recall": 0.94, "latency_p95_ms": 120.0, "coverage_pct": 100.0, "backend": "int8", "note": "acme 주간 벤치 — 충족"}
+{"tenant": "acme", "epoch_ms": 1782172800000, "pii_recall": 0.93, "latency_p95_ms": 128.0, "coverage_pct": 99.9, "backend": "int8", "note": "acme 재측정 — 충족"}
+{"tenant": "globex", "epoch_ms": 1781568000000, "pii_recall": 0.87, "latency_p95_ms": 132.0, "coverage_pct": 99.5, "backend": "fp32", "note": "globex recall 하락 — 위반"}
+{"tenant": "initech", "epoch_ms": 1782172800000, "pii_recall": 0.92, "latency_p95_ms": 172.0, "coverage_pct": 100.0, "backend": "int8", "host_class": "dev", "note": "initech dev 호스트 p95 초과 — 위반"}

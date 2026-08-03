@@ -1,0 +1,12 @@
+NuFi Egress-Audit 단일 파드 스텁이 배포되었습니다 (release: {{ .Release.Name }}).
+
+1) 파드 상태 확인 (gateway + audit-bot 2 컨테이너, Ready 2/2):
+   kubectl -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/instance={{ .Release.Name }}
+
+2) 게이트웨이 헬스체크 GREEN:
+   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "nufi.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }} &
+   curl -fsS http://localhost:{{ .Values.service.port }}/health
+   # → {"status":"ok","ner_backend":"{{ .Values.nerBackend }}"}
+
+주의(스텁 범위): replicas=1, 공유 큐는 파드 수명 emptyDir.
+프로덕션 HA·PVC 영속화·시크릿 관리는 후속 이슈 범위입니다.

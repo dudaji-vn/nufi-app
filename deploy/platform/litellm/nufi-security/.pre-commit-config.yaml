@@ -1,0 +1,19 @@
+# CMP-117: docs 정합성 자동 가드 (로컬 pre-commit).
+#   설치:  pip install pre-commit && pre-commit install
+#   수동:  pre-commit run docs-guard --all-files
+# 커밋 전에 Mermaid·식별자·버전·내부링크 정합을 검사 → 드리프트 시 커밋 차단.
+repos:
+  - repo: local
+    hooks:
+      - id: docs-guard
+        name: docs 정합성 가드 (CMP-117)
+        entry: python scripts/check_docs.py
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: doc-style-guard
+        name: 공개 문서 스타일 가드 (DOC_STYLE.md §4)
+        entry: python scripts/check_doc_style.py
+        language: system
+        pass_filenames: false
+        always_run: true

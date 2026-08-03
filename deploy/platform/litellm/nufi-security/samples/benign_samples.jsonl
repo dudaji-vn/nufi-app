@@ -1,0 +1,5 @@
+{"id": "benign-1", "prompt": "오늘 회의는 3시에 시작합니다. 안건은 분기 매출 리뷰입니다.", "expect": []}
+{"id": "benign-2", "prompt": "파이썬으로 리스트를 정렬하는 가장 빠른 방법이 뭐야?", "expect": []}
+{"id": "benign-3", "prompt": "제품 출시일은 2026년 7월 15일로 확정되었습니다.", "expect": []}
+{"id": "benign-4", "prompt": "주문 수량 12345개, 단가 6789원으로 견적 부탁해.", "expect": []}
+{"id": "benign-5", "prompt": "이 함수의 시간 복잡도는 O(n log n) 입니다.", "expect": []}

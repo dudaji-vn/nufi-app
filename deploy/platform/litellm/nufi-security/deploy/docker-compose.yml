@@ -1,0 +1,73 @@
+# NuFi Egress-Audit — 단일명령 배포 (CMP-122 / v0.0.2 M1·D2).
+#
+#   docker compose -f deploy/docker-compose.yml up -d --build
+#
+# 기동 구성:
+#   gateway   : 호스트:${GATEWAY_PORT:-4000} 에 OpenAI 호환 게이트웨이. /health GREEN.
+#   audit-bot : 비동기 감사 봇(탐지코어 임베드). internal-only 네트워크 → 외부 egress 0.
+# 두 서비스는 audit-logs 볼륨(/app/logs)으로만 통신 — 게이트웨이 message-store 를
+# 감사봇 파일 큐가 tail 한다. 외부 브로커/DB 0 (NFR1).
+#
+# 무거운 백엔드(transformers/ONNX)는 옵트인 오버레이로만:
+#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.heavy.yml up -d --build
+name: nufi-egress-audit
+
+services:
+  gateway:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        INSTALL_HEAVY: "0"
+    image: nufi-egress-audit:${NUFI_TAG:-0.0.2-dev}
+    container_name: nufi-gateway
+    environment:
+      EGRESS_NER_BACKEND: ${EGRESS_NER_BACKEND:-gazetteer}
+      EGRESS_PRIVATE_DOWN: ${EGRESS_PRIVATE_DOWN:-0}
+    ports:
+      - "${GATEWAY_PORT:-4000}:4000"
+    volumes:
+      - audit-logs:/app/logs
+    networks:
+      - edge
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:4000/health', timeout=2).status==200 else 1)"]
+      interval: 10s
+      timeout: 3s
+      start_period: 20s
+      retries: 6
+
+  audit-bot:
+    # 게이트웨이가 빌드한 동일 이미지 재사용(중복 빌드 없음).
+    image: nufi-egress-audit:${NUFI_TAG:-0.0.2-dev}
+    container_name: nufi-audit-bot
+    depends_on:
+      gateway:
+        condition: service_healthy
+    command: ["python3", "-m", "egress_audit.audit_bot", "--daemon", "--ner-backend", "${EGRESS_NER_BACKEND:-gazetteer}"]
+    environment:
+      EGRESS_NER_BACKEND: ${EGRESS_NER_BACKEND:-gazetteer}
+    volumes:
+      - audit-logs:/app/logs
+    networks:
+      - core
+    restart: unless-stopped
+    healthcheck:
+      # 데몬 프로세스 liveness — stdlib-only, /proc 스캔(외부 도구 0).
+      test: ["CMD", "python3", "-c", "import os,sys; sys.exit(0 if any('audit_bot' in open('/proc/%s/cmdline'%p,'rb').read().decode('utf-8','ignore') for p in os.listdir('/proc') if p.isdigit() and os.path.exists('/proc/%s/cmdline'%p)) else 1)"]
+      interval: 15s
+      timeout: 3s
+      start_period: 10s
+      retries: 5
+
+networks:
+  edge:
+    driver: bridge
+  core:
+    # 감사봇(탐지코어)을 외부 네트워크에서 격리 — 코어 외부 egress 0 (NFR1).
+    driver: bridge
+    internal: true
+
+volumes:
+  audit-logs:

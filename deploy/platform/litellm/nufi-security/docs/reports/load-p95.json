@@ -1,0 +1,88 @@
+{
+  "backend": "onnx-int8",
+  "chars": 512,
+  "p95_target_ms": 150.0,
+  "ner_backend_active": "onnx-int8",
+  "concurrency_sweep": {
+    "1": {
+      "concurrency": 1,
+      "requests": 150,
+      "lat_p50_ms": 29.767,
+      "lat_p95_ms": 41.0,
+      "lat_p99_ms": 45.991,
+      "lat_max_ms": 53.518,
+      "queue_delay_p95_ms": 4359.998,
+      "throughput_req_s": 32.4,
+      "wall_s": 4.636,
+      "p95_le_150ms": true
+    },
+    "2": {
+      "concurrency": 2,
+      "requests": 150,
+      "lat_p50_ms": 47.683,
+      "lat_p95_ms": 66.934,
+      "lat_p99_ms": 110.012,
+      "lat_max_ms": 130.257,
+      "queue_delay_p95_ms": 3561.073,
+      "throughput_req_s": 39.7,
+      "wall_s": 3.778,
+      "p95_le_150ms": true
+    },
+    "4": {
+      "concurrency": 4,
+      "requests": 150,
+      "lat_p50_ms": 96.065,
+      "lat_p95_ms": 198.204,
+      "lat_p99_ms": 246.849,
+      "lat_max_ms": 259.423,
+      "queue_delay_p95_ms": 3599.765,
+      "throughput_req_s": 37.7,
+      "wall_s": 3.975,
+      "p95_le_150ms": false
+    },
+    "8": {
+      "concurrency": 8,
+      "requests": 150,
+      "lat_p50_ms": 297.816,
+      "lat_p95_ms": 541.899,
+      "lat_p99_ms": 665.602,
+      "lat_max_ms": 685.454,
+      "queue_delay_p95_ms": 5271.469,
+      "throughput_req_s": 24.9,
+      "wall_s": 6.029,
+      "p95_le_150ms": false
+    },
+    "16": {
+      "concurrency": 16,
+      "requests": 150,
+      "lat_p50_ms": 725.543,
+      "lat_p95_ms": 1468.253,
+      "lat_p99_ms": 1767.156,
+      "lat_max_ms": 1834.151,
+      "queue_delay_p95_ms": 6130.29,
+      "throughput_req_s": 20.7,
+      "wall_s": 7.235,
+      "p95_le_150ms": false
+    }
+  },
+  "sustained": {
+    "concurrency": 4,
+    "duration_s": 8.1,
+    "total_requests": 272,
+    "throughput_req_s": 33.6,
+    "lat_p50_ms": 107.833,
+    "lat_p95_ms": 206.925,
+    "lat_p99_ms": 259.286,
+    "interval_p95_min_ms": 155.944,
+    "interval_p95_max_ms": 259.286,
+    "p95_le_150ms": false
+  },
+  "backpressure": {
+    "service_rate_mu_req_s": 22.4,
+    "mean_service_ms": 44.656,
+    "p95_service_ms": 67.25,
+    "lambda_safe_req_s": 22.4,
+    "note": "도착률 λ ≤ μ 이면 감사 큐 안정(유한 대기). λ>μ 면 큐 무한 증가→백프레셔."
+  },
+  "all_concurrency_p95_le_150ms": false
+}

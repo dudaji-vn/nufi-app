@@ -1,0 +1,82 @@
+version: 1
+default_action: block
+blocking_actions:
+- block
+entities:
+  KR_RRN:
+    action: block
+    severity: critical
+  KR_FOREIGNER_REG:
+    action: block
+    severity: critical
+  KR_PASSPORT:
+    action: block
+    severity: high
+  KR_DRIVER_LICENSE:
+    action: block
+    severity: high
+  CREDIT_CARD:
+    action: block
+    severity: critical
+  KR_ACCOUNT:
+    action: block
+    severity: high
+  KR_BRN:
+    action: block
+    severity: high
+  KR_PHONE:
+    action: block
+    severity: high
+  EMAIL:
+    action: block
+    severity: medium
+  KR_PERSON:
+    action: block
+    severity: high
+  KR_LOCATION:
+    action: block
+    severity: medium
+  SECRET:
+    action: block
+    severity: critical
+  CONF_MARKING_RESTRICTED:
+    action: block
+    severity: critical
+  CONF_MARKING_CONFIDENTIAL:
+    action: block
+    severity: high
+  CONF_MARKING_INTERNAL:
+    action: block
+    severity: high
+  CONF_EDM_STRUCT_STRONG:
+    action: block
+    severity: high
+  CONF_EDM_STRUCT_WEAK:
+    action: block
+    severity: medium
+  CONF_EDM_DOC_HIGH:
+    action: block
+    severity: high
+  CONF_EDM_DOC_MED:
+    action: block
+    severity: medium
+conf_class_actions:
+  RESTRICTED:
+    action: block
+    severity: critical
+  CONFIDENTIAL:
+    action: block
+    severity: high
+  INTERNAL:
+    action: block
+    severity: high
+  PUBLIC:
+    action: allow
+    severity: low
+enforcement:
+  fail_mode: closed
+  table: nufi_egress
+  gateway_uids: []
+  gateway_cgroups: []
+  cgroup_level: 2
+  allow_extra: []

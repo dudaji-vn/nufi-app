@@ -1,0 +1,42 @@
+version: 1
+# PII 라우팅 설정 (CMP-271).
+# 운영자가 코드 수정 없이 PII 라우팅 동작을 제어할 수 있다.
+# PiiRouter 초기화 시 이 파일을 읽어 파라미터를 결정한다.
+
+# PII 라우팅 활성화 여부
+enabled: true
+
+# PII 감지 시 요청을 보낼 로컬 모델명 (LiteLLM model_list의 model_name)
+local_model: nufi-local
+
+# PII 미감지 시 허용할 클라우드 모델명
+cloud_model: nufi-cloud
+
+# 감지 오류 시 로컬 모델로 안전 폴백 (true = fail-closed)
+fail_closed: true
+
+# 로컬 강제 대상 엔티티 타입 목록.
+# null 이면 모든 PII 엔티티가 로컬 라우팅 대상.
+# 특정 엔티티만 지정하면 해당 엔티티 감지 시에만 로컬 라우팅.
+# 예: [KR_RRN, SECRET, CREDIT_CARD]
+force_local_entities: null
+
+# 프롬프트 인젝션 검사 활성화 여부 (patch64).
+# true 이면 게이트웨이에서 PII 검사 이전에 인젝션 패턴을 탐지하여 차단.
+# 환경변수 NUFI_CHECK_INJECTION=1 로도 활성화 가능.
+check_injection: false
+
+# 커스텀 인젝션 패턴 파일 경로 (patch71).
+# 지정된 YAML 파일의 패턴이 내장 패턴에 추가 적용됩니다.
+# 파일이 없으면 내장 패턴만 사용.
+injection_patterns_path: config/injection_patterns.yaml
+
+# 활성화할 인젝션 패턴 카테고리 (patch80).
+# null 이면 모든 카테고리 활성화.
+# 특정 카테고리만 지정하면 해당 카테고리의 패턴만 탐지에 사용.
+# 유효값: korean, english, indirect, role_override
+injection_categories:
+  - korean      # 한국어 직접 인젝션
+  - english     # 영어 직접 인젝션
+  - indirect    # 간접 인젝션 (ChatML, HTML comment, etc.)
+  # - role_override  # 역할 변경 (disabled = fewer false positives)

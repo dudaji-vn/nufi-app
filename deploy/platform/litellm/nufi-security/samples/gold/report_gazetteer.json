@@ -1,0 +1,203 @@
+{
+  "backend": "gazetteer",
+  "split": "test",
+  "targets": {
+    "pii_recall": 0.9,
+    "pii_precision": 0.85,
+    "strong_recall": 0.98,
+    "person_recall": 0.85,
+    "location_recall": 0.85,
+    "secret_recall": 0.9,
+    "benign_false_block": 0.02
+  },
+  "ner_backend_active": "gazetteer",
+  "scores": {
+    "n_rows": 294,
+    "pii_recall": 0.8088,
+    "pii_recall_ci95": [
+      0.7494,
+      0.8569
+    ],
+    "pii_precision": 0.8906,
+    "strong_recall": 1.0,
+    "strong_recall_ci95": [
+      0.9493,
+      1.0
+    ],
+    "person_recall": 0.375,
+    "person_unlisted_recall": 0.087,
+    "person_unlisted_n": 23,
+    "location_recall": 0.625,
+    "secret_recall": 1.0,
+    "benign_false_block": 0.0333,
+    "benign_false_block_n": "3/90",
+    "span_exact_recall": 0.7549,
+    "span_recall_incl_partial": 0.8039,
+    "span_precision": 0.9535,
+    "span_partial": 10,
+    "per_class": {
+      "CREDIT_CARD": {
+        "recall": 1.0,
+        "hit": 12,
+        "exp": 12,
+        "ci95": [
+          0.7575,
+          1.0
+        ],
+        "fp": 0
+      },
+      "EMAIL": {
+        "recall": 1.0,
+        "hit": 9,
+        "exp": 9,
+        "ci95": [
+          0.7008,
+          1.0
+        ],
+        "fp": 0
+      },
+      "KR_ACCOUNT": {
+        "recall": 1.0,
+        "hit": 12,
+        "exp": 12,
+        "ci95": [
+          0.7575,
+          1.0
+        ],
+        "fp": 3
+      },
+      "KR_BRN": {
+        "recall": 1.0,
+        "hit": 12,
+        "exp": 12,
+        "ci95": [
+          0.7575,
+          1.0
+        ],
+        "fp": 0
+      },
+      "KR_DRIVER_LICENSE": {
+        "recall": 1.0,
+        "hit": 9,
+        "exp": 9,
+        "ci95": [
+          0.7008,
+          1.0
+        ],
+        "fp": 0
+      },
+      "KR_FOREIGNER_REG": {
+        "recall": 1.0,
+        "hit": 12,
+        "exp": 12,
+        "ci95": [
+          0.7575,
+          1.0
+        ],
+        "fp": 0
+      },
+      "KR_LOCATION": {
+        "recall": 0.625,
+        "hit": 15,
+        "exp": 24,
+        "ci95": [
+          0.4271,
+          0.7884
+        ],
+        "fp": 10
+      },
+      "KR_PASSPORT": {
+        "recall": 1.0,
+        "hit": 9,
+        "exp": 9,
+        "ci95": [
+          0.7008,
+          1.0
+        ],
+        "fp": 0
+      },
+      "KR_PERSON": {
+        "recall": 0.375,
+        "hit": 18,
+        "exp": 48,
+        "ci95": [
+          0.2522,
+          0.5164
+        ],
+        "fp": 0
+      },
+      "KR_PHONE": {
+        "recall": 1.0,
+        "hit": 15,
+        "exp": 15,
+        "ci95": [
+          0.7961,
+          1.0
+        ],
+        "fp": 0
+      },
+      "KR_RRN": {
+        "recall": 1.0,
+        "hit": 18,
+        "exp": 18,
+        "ci95": [
+          0.8241,
+          1.0
+        ],
+        "fp": 0
+      },
+      "SECRET": {
+        "recall": 1.0,
+        "hit": 24,
+        "exp": 24,
+        "ci95": [
+          0.862,
+          1.0
+        ],
+        "fp": 0
+      }
+    }
+  },
+  "latency": {
+    "backend": "gazetteer",
+    "buckets": {
+      "<=128": {
+        "p50": 1.2,
+        "p95": 2.88,
+        "p99": 6.02,
+        "req_per_s": 671.4,
+        "len_chars": 128
+      },
+      "512": {
+        "p50": 3.14,
+        "p95": 5.73,
+        "p99": 13.08,
+        "req_per_s": 270.2,
+        "len_chars": 512
+      },
+      "2048": {
+        "p50": 13.04,
+        "p95": 23.6,
+        "p99": 37.46,
+        "req_per_s": 69.5,
+        "len_chars": 2048
+      }
+    },
+    "p95_512_target_150ms": "PASS"
+  },
+  "prefilter": {
+    "regex_only(ner_off)": 5.463,
+    "always_ner(gazetteer)": 5.586,
+    "prefilter_faster": true
+  },
+  "acceptance": {
+    "pii_recall>=0.90": false,
+    "pii_precision>=0.85": true,
+    "strong_recall>=0.98": true,
+    "person_recall>=0.85": false,
+    "location_recall>=0.85": false,
+    "secret_recall>=0.90": true,
+    "benign_false_block<=0.02": false
+  },
+  "acceptance_pass": false
+}

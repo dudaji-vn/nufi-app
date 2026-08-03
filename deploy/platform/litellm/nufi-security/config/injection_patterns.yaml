@@ -1,0 +1,10 @@
+version: 1
+# 사용자 정의 프롬프트 인젝션 패턴.
+# 기본 내장 패턴에 추가로 적용됩니다.
+custom_patterns:
+  - pattern: "비밀번호를 알려"
+    severity: high
+    description: "비밀번호 요청 탈취 시도"
+  - pattern: "internal prompt"
+    severity: critical
+    description: "Internal prompt extraction attempt"

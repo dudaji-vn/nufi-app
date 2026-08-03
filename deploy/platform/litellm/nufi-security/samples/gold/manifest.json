@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "seed": 20260625,
+  "source": "synth",
+  "license": "CC0-1.0",
+  "total": 1414,
+  "positives": 1264,
+  "negatives": 150,
+  "class_counts": {
+    "KR_RRN": 30,
+    "KR_FOREIGNER_REG": 20,
+    "KR_BRN": 20,
+    "KR_PASSPORT": 15,
+    "KR_DRIVER_LICENSE": 15,
+    "CREDIT_CARD": 20,
+    "KR_ACCOUNT": 20,
+    "KR_PHONE": 25,
+    "EMAIL": 15,
+    "KR_PERSON": 210,
+    "KR_LOCATION": 40,
+    "SECRET": 40,
+    "benign_hard": 30,
+    "benign": 120,
+    "zz_kr_account_credit": 20,
+    "zz_kr_location_addr": 62,
+    "zz_kr_person_union": 100,
+    "zz_kr_phone_ext": 35,
+    "zz_email_ext": 45,
+    "zz_kr_account_ext": 20,
+    "zz_secret_ext": 20,
+    "zz_kr_rrn_expand": 27,
+    "zz_kr_foreigner_reg_expand": 37,
+    "zz_kr_brn_expand": 37,
+    "zz_kr_passport_expand": 42,
+    "zz_kr_driver_license_expand": 42,
+    "zz_credit_card_expand": 37,
+    "zz_kr_person_expand": 120,
+    "zz_kr_person_ci_expand": 150
+  },
+  "dev_size": 560,
+  "test_size": 854,
+  "must_classes": [
+    "KR_RRN",
+    "KR_FOREIGNER_REG",
+    "KR_PASSPORT",
+    "KR_DRIVER_LICENSE",
+    "KR_ACCOUNT",
+    "KR_BRN",
+    "CREDIT_CARD"
+  ],
+  "must_coverage": {
+    "KR_RRN": {
+      "dev": 12,
+      "test": 18
+    },
+    "KR_FOREIGNER_REG": {
+      "dev": 8,
+      "test": 12
+    },
+    "KR_PASSPORT": {
+      "dev": 6,
+      "test": 9
+    },
+    "KR_DRIVER_LICENSE": {
+      "dev": 6,
+      "test": 9
+    },
+    "KR_ACCOUNT": {
+      "dev": 8,
+      "test": 12
+    },
+    "KR_BRN": {
+      "dev": 8,
+      "test": 12
+    },
+    "CREDIT_CARD": {
+      "dev": 8,
+      "test": 12
+    }
+  },
+  "must_min": {
+    "dev": 5,
+    "test": 8
+  },
+  "person_unlisted_ratio": 0.562,
+  "person_unlisted_n": 118,
+  "split": {
+    "dev_pct": 0.4,
+    "test_pct": 0.6,
+    "stratified": true
+  },
+  "content_hash": "sha256:c66eed0577de362e7e0532a26cc75ee2794a3f9343bf1078c0409fe410fbd05c",
+  "note": "test 셋은 튜닝 중 열람 금지(누수 방지). person_unlisted_ratio ≥ 0.5 보장. content_hash 로 결정적 재현 검증(goldset/generate.py --verify)."
+}

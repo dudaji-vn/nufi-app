@@ -1,0 +1,209 @@
+{
+  "backend": "onnx-int8",
+  "split": "test",
+  "targets": {
+    "pii_recall": 0.9,
+    "pii_precision": 0.85,
+    "strong_recall": 0.98,
+    "person_recall": 0.85,
+    "location_recall": 0.85,
+    "secret_recall": 0.9,
+    "benign_false_block": 0.02
+  },
+  "ner_backend_active": "onnx-int8",
+  "scores": {
+    "n_rows": 854,
+    "pii_recall": 0.9908,
+    "pii_recall_ci95": [
+      0.9812,
+      0.9956
+    ],
+    "pii_precision": 0.9665,
+    "strong_recall": 1.0,
+    "strong_recall_ci95": [
+      0.9821,
+      1.0
+    ],
+    "person_recall": 0.9799,
+    "person_unlisted_recall": 0.9571,
+    "person_unlisted_n": 70,
+    "location_recall": 1.0,
+    "secret_recall": 1.0,
+    "benign_false_block": 0.0,
+    "benign_false_block_n": "0/90",
+    "span_exact_recall": 0.9712,
+    "span_recall_incl_partial": 0.9908,
+    "span_precision": 0.9066,
+    "span_partial": 15,
+    "per_class": {
+      "CREDIT_CARD": {
+        "recall": 1.0,
+        "hit": 35,
+        "exp": 35,
+        "ci95": [
+          0.9011,
+          1.0
+        ],
+        "fp": 0
+      },
+      "EMAIL": {
+        "recall": 1.0,
+        "hit": 36,
+        "exp": 36,
+        "ci95": [
+          0.9036,
+          1.0
+        ],
+        "fp": 0
+      },
+      "KR_ACCOUNT": {
+        "recall": 1.0,
+        "hit": 36,
+        "exp": 36,
+        "ci95": [
+          0.9036,
+          1.0
+        ],
+        "fp": 0
+      },
+      "KR_BRN": {
+        "recall": 1.0,
+        "hit": 35,
+        "exp": 35,
+        "ci95": [
+          0.9011,
+          1.0
+        ],
+        "fp": 0
+      },
+      "KR_DRIVER_LICENSE": {
+        "recall": 1.0,
+        "hit": 35,
+        "exp": 35,
+        "ci95": [
+          0.9011,
+          1.0
+        ],
+        "fp": 0
+      },
+      "KR_FOREIGNER_REG": {
+        "recall": 1.0,
+        "hit": 35,
+        "exp": 35,
+        "ci95": [
+          0.9011,
+          1.0
+        ],
+        "fp": 0
+      },
+      "KR_LOCATION": {
+        "recall": 1.0,
+        "hit": 62,
+        "exp": 62,
+        "ci95": [
+          0.9417,
+          1.0
+        ],
+        "fp": 0
+      },
+      "KR_PASSPORT": {
+        "recall": 1.0,
+        "hit": 35,
+        "exp": 35,
+        "ci95": [
+          0.9011,
+          1.0
+        ],
+        "fp": 0
+      },
+      "KR_PERSON": {
+        "recall": 0.9799,
+        "hit": 341,
+        "exp": 348,
+        "ci95": [
+          0.9591,
+          0.9902
+        ],
+        "fp": 0
+      },
+      "KR_PHONE": {
+        "recall": 1.0,
+        "hit": 36,
+        "exp": 36,
+        "ci95": [
+          0.9036,
+          1.0
+        ],
+        "fp": 0
+      },
+      "KR_RRN": {
+        "recall": 1.0,
+        "hit": 35,
+        "exp": 35,
+        "ci95": [
+          0.9011,
+          1.0
+        ],
+        "fp": 0
+      },
+      "SECRET": {
+        "recall": 1.0,
+        "hit": 36,
+        "exp": 36,
+        "ci95": [
+          0.9036,
+          1.0
+        ],
+        "fp": 0
+      }
+    },
+    "person_recall_ci_low": 0.9591,
+    "account_recall_ci_low": 0.9036,
+    "secret_recall_ci_low": 0.9036
+  },
+  "latency": {
+    "backend": "onnx-int8",
+    "buckets": {
+      "<=128": {
+        "p50": 6.47,
+        "p95": 6.66,
+        "p99": 6.8,
+        "req_per_s": 154.3,
+        "len_chars": 128
+      },
+      "512": {
+        "p50": 23.66,
+        "p95": 24.03,
+        "p99": 24.31,
+        "req_per_s": 42.2,
+        "len_chars": 512
+      },
+      "2048": {
+        "p50": 76.01,
+        "p95": 77.0,
+        "p99": 78.54,
+        "req_per_s": 13.1,
+        "len_chars": 2048
+      }
+    },
+    "p95_512_target_150ms": "PASS"
+  },
+  "prefilter": {
+    "regex_only(ner_off)": 1.707,
+    "always_ner(gazetteer)": 1.995,
+    "prefilter_faster": true
+  },
+  "acceptance": {
+    "pii_recall>=0.90": true,
+    "pii_precision>=0.85": true,
+    "strong_recall>=0.98": true,
+    "person_recall>=0.85": true,
+    "person_recall_ci_low>=0.93": true,
+    "account_recall_ci_low>=0.9": true,
+    "location_recall>=0.85": true,
+    "secret_recall>=0.90": true,
+    "secret_recall_ci_low>=0.9": true,
+    "benign_false_block<=0.02": true
+  },
+  "acceptance_pass": true
+}

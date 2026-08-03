@@ -1,0 +1,522 @@
+# =============================================================================
+# 컴플라이언스 통제 카탈로그 (control coverage) — 한국 규제 증빙 팩
+#
+# 금융보안원 「금융분야 인공지능 보안 안내서」(2026.6) 점검항목 + 「망분리
+# 혁신금융서비스(생성형 AI 연계) 보안대책」 평가기준 + **개인정보보호법(PIPA)·
+# 신용정보법(CIA)·ISMS-P 인증기준** ↔ NuFi 통제 매핑표.
+#
+# 이 카탈로그는 **정적 데이터(원천)** 이다. report compliance 가 이 카탈로그와
+# 기존 compliance 리포트 증빙(decisions/integrity_ok 등)을 결합해 항목별 충족
+# 상태를 산출한다. 새 측정 없음 — read-only.
+#
+# 프레임워크(framework) — 항목이 속한 규제:
+#   fsec-ai  — 금융분야 AI 보안 안내서 (C-* 행)
+#   net-sep  — 망분리 보안대책 (M-* 행)
+#   pipa     — 개인정보보호법
+#   cia      — 신용정보법
+#   isms-p   — ISMS-P 인증기준
+#
+# 교차참조(maps_to) — 동일 NuFi 통제 1개가 다중 규제를 충족할 때, 신규 규제 행이
+#   재사용하는 원천 통제 id 를 명시한다(예: PIPA-23 → maps_to: C-07). "한 번 통제,
+#   여러 규제 자동 증빙" — 한국 규제 증빙 팩의 핵심 가치.
+#
+# 충족유형(coverage_type):
+#   direct        — ✅ 자동판정. eval 규칙이 기존 리포트 증빙으로 status 산출.
+#   partial       — 🟡 부분충족(정적 라벨). remediation 트랙(P1~P3) 링크.
+#   out_of_scope  — ⛔ 범위밖(정적 라벨, MoSCoW Won't). 초점 보호 — 명시적 비범위.
+#
+# eval 규칙 타입(direct 항목만):
+#   action_count   {actions: [...], min: N}  — decisions.action_counts 합 > N
+#   decisions_total {min: N}                  — decisions.total > N
+#   field_true     {path: "<dotted>"}         — report[path] 가 truthy
+#   chain_ok       {path: "<dotted to chain>"}— 체인 dict 의 ok 가 True(엄격)
+#   nonempty       {path: "<dotted>"}         — dict/list 길이 > 0
+#   all_of         {rules: [ ... ]}           — 모든 하위 규칙 충족
+#   (존재성 검증 min:0 — 정보성, 임계 아님.)
+#
+# 종료코드 영향 없음: control coverage 는 **정보성**이다. 미충족 direct 가 있어도
+# report compliance 종료코드는 무결성 게이트(0 정상 / 1 변조)만 따른다.
+# =============================================================================
+version: "1.2"
+
+controls:
+  # ========================================================================== #
+  # 금융분야 AI 보안 안내서 (fsec-ai)
+  # ========================================================================== #
+  # --------------------------------------------------------------------------- #
+  # ✅ direct — 기존 리포트 증빙으로 자동판정
+  # --------------------------------------------------------------------------- #
+  - id: C-07
+    framework: fsec-ai
+    source: "안내서 점검 ⑦"
+    requirement: "입출력 고유식별정보·개인신용정보 탐지/마스킹"
+    control: "한국어 PII 탐지·차단·가명화"
+    coverage_type: direct
+    eval:
+      all_of:
+        - {type: action_count, actions: [mask, block, pseudonymize], min: 0}
+        - {type: nonempty, path: "decisions.blocked_by_entity"}
+
+  - id: C-26
+    framework: fsec-ai
+    source: "안내서 점검 26"
+    requirement: "데이터 국외이전 차단"
+    control: "egress 차단(국외 목적지) — 차단 결정으로 증빙"
+    coverage_type: direct
+    eval:
+      type: action_count
+      actions: [block]
+      min: 0
+
+  - id: C-24
+    framework: fsec-ai
+    source: "안내서 점검 24"
+    requirement: "자동화 접근 모니터링 + 최소권한"
+    control: "감사 결정 로깅 + 세션 RBAC(viewer/operator)"
+    coverage_type: direct
+    eval:
+      type: decisions_total
+      min: 0
+
+  - id: C-11
+    framework: fsec-ai
+    source: "안내서 점검 ⑪·32~35"
+    requirement: "실시간 모니터링·정기점검·보고"
+    control: "감사 결정 모니터링 + 정책 변경 보고(compliance report 산출)"
+    coverage_type: direct
+    eval:
+      all_of:
+        - {type: decisions_total, min: 0}
+        - {type: nonempty, path: "policy_change_audit.records"}
+
+  # --------------------------------------------------------------------------- #
+  # 🟡 partial — 부분충족(정적 라벨 + 보강 트랙)
+  # --------------------------------------------------------------------------- #
+  - id: C-06/09
+    framework: fsec-ai
+    source: "안내서 점검 ⑥·⑨"
+    requirement: "회피공격(프롬프트 인젝션·탈옥) 탐지"
+    control: "입출력 필터(룰) — 가드모델 미연동"
+    coverage_type: partial
+    remediation_ref: "P2 — 생성형 회피공격 인라인 가드모델"
+
+  - id: C-12
+    framework: fsec-ai
+    source: "안내서 점검 ⑫·망 2.6"
+    requirement: "사용자별 요청 횟수 제한"
+    control: "(미구현)"
+    coverage_type: partial
+    remediation_ref: "P1 — 테넌트/사용자별 rate limit"
+
+  - id: C-14/17
+    framework: fsec-ai
+    source: "안내서 점검 ⑭·⑰"
+    requirement: "자산·모델 파일 해시 인벤토리"
+    control: "감사 무결성(부분) — 자산 해시 인벤토리 미구현"
+    coverage_type: partial
+    remediation_ref: "P3 — 자산 무결성 인벤토리"
+
+  - id: C-25
+    framework: fsec-ai
+    source: "안내서 점검 25"
+    requirement: "킬스위치"
+    control: "bypass 차단·전 규칙 제거(부분) — 명시적 킬스위치 미정의"
+    coverage_type: partial
+    remediation_ref: "P3 — 명시적 킬스위치"
+
+  - id: C-23
+    framework: fsec-ai
+    source: "안내서 점검 23"
+    requirement: "모델·학습데이터 접근통제(RBAC)"
+    control: "리포트 RBAC(부분) — 자산 RBAC 미구현"
+    coverage_type: partial
+    remediation_ref: "P1+ — 자산 RBAC"
+
+  # --------------------------------------------------------------------------- #
+  # ⛔ out_of_scope — 범위밖(MoSCoW Won't, 초점 보호)
+  # --------------------------------------------------------------------------- #
+  - id: OOS-ROBUST
+    framework: fsec-ai
+    source: "안내서 7.6"
+    requirement: "판단형 적대적 robustness 검증"
+    control: "범위밖 — 파트너/이연"
+    coverage_type: out_of_scope
+
+  - id: OOS-POISON
+    framework: fsec-ai
+    source: "안내서 7.3"
+    requirement: "데이터·모델 오염 공격 방어"
+    control: "범위밖 — 파트너/이연"
+    coverage_type: out_of_scope
+
+  - id: OOS-SBOM
+    framework: fsec-ai
+    source: "안내서 7.4"
+    requirement: "공급망 SBOM"
+    control: "범위밖 — 파트너/이연"
+    coverage_type: out_of_scope
+
+  - id: OOS-EDU
+    framework: fsec-ai
+    source: "안내서 일반"
+    requirement: "AI 보안 교육"
+    control: "범위밖 — 파트너/이연"
+    coverage_type: out_of_scope
+
+  - id: OOS-3RDPARTY
+    framework: fsec-ai
+    source: "안내서 7.6"
+    requirement: "제3자 검증 프로세스"
+    control: "범위밖 — 파트너/이연"
+    coverage_type: out_of_scope
+
+  # ========================================================================== #
+  # 망분리 보안대책 (net-sep)
+  # ========================================================================== #
+  - id: M-1.2
+    framework: net-sep
+    source: "망분리 1.2"
+    requirement: "입출력 로그 보존"
+    control: "감사 해시체인 로그(보존 + 무결성)"
+    coverage_type: direct
+    eval:
+      all_of:
+        - {type: decisions_total, min: 0}
+        - {type: chain_ok, path: "decisions.chain"}
+
+  - id: M-2.4
+    framework: net-sep
+    source: "망분리 2.4"
+    requirement: "중요정보 입력 방지"
+    control: "입력측 PII 차단/마스킹 결정"
+    coverage_type: direct
+    # 현재 감사 모델은 입력/출력 방향을 구분하지 않는다 — 게이트웨이는 양방향을
+    # 동일 필터로 처리하므로 차단/마스킹 결정 존재를 입력측 통제 증빙으로 본다.
+    eval:
+      type: action_count
+      actions: [mask, block]
+      min: 0
+
+  - id: M-2.5
+    framework: net-sep
+    source: "망분리 2.5"
+    requirement: "출력/모델정보 노출 방지"
+    control: "출력측 필터(마스킹·가명화·차단) 결정"
+    coverage_type: direct
+    eval:
+      type: action_count
+      actions: [mask, block, pseudonymize]
+      min: 0
+
+  - id: M-3.1
+    framework: net-sep
+    source: "망분리 3.1"
+    requirement: "중요정보 업로드 차단"
+    control: "egress 업로드 차단 결정"
+    coverage_type: direct
+    eval:
+      type: action_count
+      actions: [block]
+      min: 0
+
+  - id: M-2.7
+    framework: net-sep
+    source: "망분리 2.7"
+    requirement: "위변조 방지 형상관리"
+    control: "감사·변경 해시체인 무결성(audit_chain + change_chain)"
+    coverage_type: direct
+    eval:
+      type: field_true
+      path: "integrity_ok"
+
+  # ========================================================================== #
+  # 개인정보보호법 (pipa) — 개인정보 처리 시점 보호조치
+  # 동일 NuFi 증빙이 다중 규제를 충족 — maps_to 로 원천 통제 교차참조.
+  # ========================================================================== #
+  - id: PIPA-23
+    framework: pipa
+    source: "개인정보보호법 §23(민감정보)"
+    requirement: "민감정보 처리제한"
+    control: "한국어 민감정보 탐지·마스킹·차단"
+    coverage_type: direct
+    maps_to: C-07
+    eval:
+      all_of:
+        - {type: action_count, actions: [mask, block], min: 0}
+        - {type: nonempty, path: "decisions.blocked_by_entity"}
+
+  - id: PIPA-24
+    framework: pipa
+    source: "개인정보보호법 §24(고유식별정보)"
+    requirement: "고유식별정보(주민·외국인등록·여권·운전면허) 처리제한"
+    control: "고유식별정보 탐지·차단·가명화"
+    coverage_type: direct
+    eval:
+      type: action_count
+      actions: [mask, block, pseudonymize]
+      min: 0
+
+  - id: PIPA-28-2
+    framework: pipa
+    source: "개인정보보호법 §28-2(가명정보)"
+    requirement: "가명정보 처리"
+    control: "가명화(pseudonymize) 결정"
+    coverage_type: direct
+    eval:
+      type: action_count
+      actions: [pseudonymize]
+      min: 0
+
+  - id: PIPA-29-LOG
+    framework: pipa
+    source: "개인정보보호법 §29(안전조치)"
+    requirement: "접속기록 보관"
+    control: "감사 해시체인 로그(보존)"
+    coverage_type: direct
+    maps_to: M-1.2
+    eval:
+      all_of:
+        - {type: decisions_total, min: 0}
+        - {type: chain_ok, path: "decisions.chain"}
+
+  - id: PIPA-29-INTEG
+    framework: pipa
+    source: "개인정보보호법 §29(안전조치)"
+    requirement: "위변조 방지"
+    control: "감사·변경 해시체인 무결성"
+    coverage_type: direct
+    maps_to: M-2.7
+    eval:
+      type: field_true
+      path: "integrity_ok"
+
+  - id: PIPA-17-18
+    framework: pipa
+    source: "개인정보보호법 §17·§18"
+    requirement: "국외이전·제3자 제공 제한"
+    control: "egress 국외 차단 결정"
+    coverage_type: direct
+    maps_to: C-26
+    eval:
+      type: action_count
+      actions: [block]
+      min: 0
+
+  - id: PIPA-29-AC
+    framework: pipa
+    source: "개인정보보호법 §29(안전조치)"
+    requirement: "접근통제 최소권한"
+    control: "리포트 RBAC(부분) — 자산 RBAC 미구현"
+    coverage_type: partial
+    remediation_ref: "P1+ — 자산 RBAC"
+
+  - id: PIPA-21
+    framework: pipa
+    source: "개인정보보호법 §21(파기)"
+    requirement: "개인정보 파기"
+    control: "범위밖 — 게이트웨이는 처리시점 통제(파기 라이프사이클 비범위)"
+    coverage_type: out_of_scope
+
+  - id: PIPA-15
+    framework: pipa
+    source: "개인정보보호법 §15(수집·이용)"
+    requirement: "개인정보 수집·이용 동의 기반 처리"
+    control: "범위밖 — 동의 수집·관리는 절차적 요건(게이트웨이 비범위)"
+    coverage_type: out_of_scope
+
+  - id: PIPA-34
+    framework: pipa
+    source: "개인정보보호법 §34(유출 통지)"
+    requirement: "개인정보 유출 시 정보주체·당국 통지"
+    control: "감사 알림 파이프라인(부분) — 법적 통지 절차·서식 미구현"
+    coverage_type: partial
+    remediation_ref: "P2 — 유출 통지 자동화(법적 서식 연동)"
+
+  # ========================================================================== #
+  # 신용정보법 (cia) — 개인신용정보 보호
+  # ========================================================================== #
+  - id: CIA-PII
+    framework: cia
+    source: "신용정보법(개인신용정보 보호)"
+    requirement: "개인신용정보(계좌·카드·신용) 탐지·마스킹"
+    control: "개인신용정보 탐지·차단·마스킹"
+    coverage_type: direct
+    maps_to: C-07
+    eval:
+      all_of:
+        - {type: action_count, actions: [mask, block], min: 0}
+        - {type: nonempty, path: "decisions.blocked_by_entity"}
+
+  - id: CIA-17-2
+    framework: cia
+    source: "신용정보법 §17-2(가명처리)"
+    requirement: "개인신용정보 가명처리"
+    control: "가명화(pseudonymize) 결정"
+    coverage_type: direct
+    eval:
+      type: action_count
+      actions: [pseudonymize]
+      min: 0
+
+  - id: CIA-20
+    framework: cia
+    source: "신용정보법 §20(이용·제공 기록)"
+    requirement: "신용정보 이용·제공 내역 기록 보존"
+    control: "감사로그 보존(해시체인)"
+    coverage_type: direct
+    maps_to: M-1.2
+    eval:
+      all_of:
+        - {type: decisions_total, min: 0}
+        - {type: chain_ok, path: "decisions.chain"}
+
+  - id: CIA-XBORDER
+    framework: cia
+    source: "신용정보법(국외이전·제공)"
+    requirement: "신용정보 국외이전·제공 제한"
+    control: "egress 차단 결정"
+    coverage_type: direct
+    maps_to: C-26
+    eval:
+      type: action_count
+      actions: [block]
+      min: 0
+
+  - id: CIA-19-INTEG
+    framework: cia
+    source: "신용정보법 §19(전산시스템 안전보호 — 위변조방지)"
+    requirement: "신용정보전산시스템 위변조방지"
+    control: "감사·변경 해시체인 무결성"
+    coverage_type: direct
+    maps_to: M-2.7
+    eval:
+      type: field_true
+      path: "integrity_ok"
+
+  - id: CIA-19-IDS
+    framework: cia
+    source: "신용정보법 §19(전산시스템 안전보호 — 침입탐지·접근통제)"
+    requirement: "신용정보전산시스템 침입탐지·접근통제"
+    control: "침입탐지(IDS) 미구현 — RBAC(부분)"
+    coverage_type: partial
+    remediation_ref: "P3 — 침입탐지·자산 RBAC"
+
+  - id: CIA-33-2
+    framework: cia
+    source: "신용정보법 §33-2(전송요구권)"
+    requirement: "개인신용정보 전송요구권(마이데이터)"
+    control: "범위밖 — 데이터 포터빌리티는 게이트웨이 비범위"
+    coverage_type: out_of_scope
+
+  - id: CIA-20-2
+    framework: cia
+    source: "신용정보법 §20-2(관리·보호인력)"
+    requirement: "개인신용정보 관리·보호 인력 지정"
+    control: "범위밖 — 조직·인력 운영은 절차적 요건(게이트웨이 비범위)"
+    coverage_type: out_of_scope
+
+  # ========================================================================== #
+  # ISMS-P 인증기준 (isms-p)
+  # ========================================================================== #
+  - id: ISMS-2.9.4
+    framework: isms-p
+    source: "ISMS-P 2.9.4"
+    requirement: "로그 및 접속기록 관리"
+    control: "감사 해시체인 로그"
+    coverage_type: direct
+    maps_to: M-1.2
+    eval:
+      all_of:
+        - {type: decisions_total, min: 0}
+        - {type: chain_ok, path: "decisions.chain"}
+
+  - id: ISMS-2.9.1
+    framework: isms-p
+    source: "ISMS-P 2.9.1"
+    requirement: "변경관리 위변조방지"
+    control: "변경 해시체인 무결성"
+    coverage_type: direct
+    maps_to: M-2.7
+    eval:
+      type: field_true
+      path: "integrity_ok"
+
+  - id: ISMS-2.6
+    framework: isms-p
+    source: "ISMS-P 2.6"
+    requirement: "접근통제"
+    control: "세션 RBAC(viewer/operator) — 자산 RBAC 미구현"
+    coverage_type: partial
+    remediation_ref: "P1+ — 자산 RBAC"
+
+  - id: ISMS-3.1
+    framework: isms-p
+    source: "ISMS-P 3.1"
+    requirement: "개인정보 수집 시 보호조치(입력측)"
+    control: "입력측 PII 차단/마스킹 결정"
+    coverage_type: direct
+    maps_to: M-2.4
+    eval:
+      type: action_count
+      actions: [mask, block]
+      min: 0
+
+  - id: ISMS-3.2
+    framework: isms-p
+    source: "ISMS-P 3.2"
+    requirement: "개인정보 이용·보유 보호조치"
+    control: "마스킹·가명화 결정"
+    coverage_type: direct
+    maps_to: M-2.5
+    eval:
+      type: action_count
+      actions: [mask, block, pseudonymize]
+      min: 0
+
+  - id: ISMS-3.3
+    framework: isms-p
+    source: "ISMS-P 3.3"
+    requirement: "개인정보 제공 보호조치(국외이전 포함)"
+    control: "egress 차단 결정"
+    coverage_type: direct
+    maps_to: C-26
+    eval:
+      type: action_count
+      actions: [block]
+      min: 0
+
+  - id: ISMS-3.4
+    framework: isms-p
+    source: "ISMS-P 3.4"
+    requirement: "개인정보 파기"
+    control: "범위밖 — 파기 라이프사이클 비범위"
+    coverage_type: out_of_scope
+
+  - id: ISMS-2.11/2.12
+    framework: isms-p
+    source: "ISMS-P 2.11·2.12"
+    requirement: "사고 예방·대응 / 재해복구"
+    control: "범위밖 — 파트너/이연"
+    coverage_type: out_of_scope
+
+  - id: ISMS-2.5
+    framework: isms-p
+    source: "ISMS-P 2.5"
+    requirement: "인증 및 권한관리"
+    control: "세션 RBAC(viewer/operator) — 자산·사용자 인증 미구현"
+    coverage_type: partial
+    remediation_ref: "P1+ — 자산 RBAC·인증 체계"
+
+  - id: ISMS-2.7
+    framework: isms-p
+    source: "ISMS-P 2.7"
+    requirement: "암호화 적용(전송·저장)"
+    control: "범위밖 — TLS 종단은 인프라 레이어(게이트웨이 비범위)"
+    coverage_type: out_of_scope
+
+  - id: ISMS-3.5
+    framework: isms-p
+    source: "ISMS-P 3.5"
+    requirement: "정보주체 권리보호(열람·정정·삭제·처리정지)"
+    control: "범위밖 — 정보주체 권리 이행은 절차적 요건(게이트웨이 비범위)"
+    coverage_type: out_of_scope

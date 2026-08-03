@@ -1,0 +1,560 @@
+{
+  "dataset": "ai4privacy/open-pii-masking-500k",
+  "total_rows": 5000,
+  "total_annotations": 7458,
+  "overall_recall": 0.3131,
+  "overall_recall_ci95": [
+    0.3027,
+    0.3237
+  ],
+  "overall_precision": 0.7759,
+  "span_exact_recall": 0.1009,
+  "span_recall_incl_partial": 0.2364,
+  "span_precision": 0.4361,
+  "span_gold_total": 9859,
+  "span_pred_total": 5345,
+  "per_class": {
+    "CREDIT_CARD": {
+      "recall": 0.0551,
+      "hit": 7,
+      "exp": 127,
+      "ci95": [
+        0.027,
+        0.1094
+      ]
+    },
+    "EMAIL": {
+      "recall": 0.9956,
+      "hit": 678,
+      "exp": 681,
+      "ci95": [
+        0.9871,
+        0.9985
+      ]
+    },
+    "KR_BRN": {
+      "recall": 0.071,
+      "hit": 12,
+      "exp": 169,
+      "ci95": [
+        0.0411,
+        0.12
+      ]
+    },
+    "KR_DRIVER_LICENSE": {
+      "recall": 0.0211,
+      "hit": 2,
+      "exp": 95,
+      "ci95": [
+        0.0058,
+        0.0735
+      ]
+    },
+    "KR_LOCATION": {
+      "recall": 0.0652,
+      "hit": 83,
+      "exp": 1273,
+      "ci95": [
+        0.0529,
+        0.0801
+      ]
+    },
+    "KR_PASSPORT": {
+      "recall": 0.005,
+      "hit": 1,
+      "exp": 202,
+      "ci95": [
+        0.0009,
+        0.0275
+      ]
+    },
+    "KR_PERSON": {
+      "recall": 0.3804,
+      "hit": 1464,
+      "exp": 3849,
+      "ci95": [
+        0.3651,
+        0.3958
+      ]
+    },
+    "KR_PHONE": {
+      "recall": 0.0943,
+      "hit": 88,
+      "exp": 933,
+      "ci95": [
+        0.0772,
+        0.1148
+      ]
+    },
+    "KR_RRN": {
+      "recall": 0.0,
+      "hit": 0,
+      "exp": 129,
+      "ci95": [
+        0.0,
+        0.0289
+      ]
+    }
+  },
+  "per_language": {
+    "de": {
+      "recall": 0.5996,
+      "hit": 608,
+      "exp": 1014,
+      "ci95": [
+        0.5691,
+        0.6293
+      ]
+    },
+    "en": {
+      "recall": 0.141,
+      "hit": 286,
+      "exp": 2028,
+      "ci95": [
+        0.1266,
+        0.1569
+      ]
+    },
+    "es": {
+      "recall": 0.3192,
+      "hit": 302,
+      "exp": 946,
+      "ci95": [
+        0.2903,
+        0.3496
+      ]
+    },
+    "fr": {
+      "recall": 0.3915,
+      "hit": 628,
+      "exp": 1604,
+      "ci95": [
+        0.3679,
+        0.4156
+      ]
+    },
+    "hi": {
+      "recall": 0.2435,
+      "hit": 93,
+      "exp": 382,
+      "ci95": [
+        0.2031,
+        0.2889
+      ]
+    },
+    "it": {
+      "recall": 0.219,
+      "hit": 175,
+      "exp": 799,
+      "ci95": [
+        0.1917,
+        0.249
+      ]
+    },
+    "nl": {
+      "recall": 0.4149,
+      "hit": 139,
+      "exp": 335,
+      "ci95": [
+        0.3634,
+        0.4684
+      ]
+    },
+    "te": {
+      "recall": 0.2971,
+      "hit": 104,
+      "exp": 350,
+      "ci95": [
+        0.2517,
+        0.347
+      ]
+    }
+  },
+  "language_class_detail": {
+    "de": {
+      "CREDIT_CARD": {
+        "recall": 0.0,
+        "hit": 0,
+        "exp": 23
+      },
+      "EMAIL": {
+        "recall": 1.0,
+        "hit": 110,
+        "exp": 110
+      },
+      "KR_BRN": {
+        "recall": 0.0,
+        "hit": 0,
+        "exp": 18
+      },
+      "KR_DRIVER_LICENSE": {
+        "recall": 0.0,
+        "hit": 0,
+        "exp": 11
+      },
+      "KR_LOCATION": {
+        "recall": 0.0833,
+        "hit": 13,
+        "exp": 156
+      },
+      "KR_PASSPORT": {
+        "recall": 0.0312,
+        "hit": 1,
+        "exp": 32
+      },
+      "KR_PERSON": {
+        "recall": 0.9162,
+        "hit": 470,
+        "exp": 513
+      },
+      "KR_PHONE": {
+        "recall": 0.112,
+        "hit": 14,
+        "exp": 125
+      },
+      "KR_RRN": {
+        "recall": 0.0,
+        "hit": 0,
+        "exp": 26
+      }
+    },
+    "en": {
+      "CREDIT_CARD": {
+        "recall": 0.0769,
+        "hit": 2,
+        "exp": 26
+      },
+      "EMAIL": {
+        "recall": 1.0,
+        "hit": 149,
+        "exp": 149
+      },
+      "KR_BRN": {
+        "recall": 0.1915,
+        "hit": 9,
+        "exp": 47
+      },
+      "KR_DRIVER_LICENSE": {
+        "recall": 0.0435,
+        "hit": 1,
+        "exp": 23
+      },
+      "KR_LOCATION": {
+        "recall": 0.0106,
+        "hit": 4,
+        "exp": 376
+      },
+      "KR_PASSPORT": {
+        "recall": 0.0,
+        "hit": 0,
+        "exp": 53
+      },
+      "KR_PERSON": {
+        "recall": 0.0924,
+        "hit": 99,
+        "exp": 1071
+      },
+      "KR_PHONE": {
+        "recall": 0.0873,
+        "hit": 22,
+        "exp": 252
+      },
+      "KR_RRN": {
+        "recall": 0.0,
+        "hit": 0,
+        "exp": 31
+      }
+    },
+    "es": {
+      "CREDIT_CARD": {
+        "recall": 0.0,
+        "hit": 0,
+        "exp": 19
+      },
+      "EMAIL": {
+        "recall": 1.0,
+        "hit": 81,
+        "exp": 81
+      },
+      "KR_BRN": {
+        "recall": 0.0,
+        "hit": 0,
+        "exp": 24
+      },
+      "KR_DRIVER_LICENSE": {
+        "recall": 0.0526,
+        "hit": 1,
+        "exp": 19
+      },
+      "KR_LOCATION": {
+        "recall": 0.232,
+        "hit": 42,
+        "exp": 181
+      },
+      "KR_PASSPORT": {
+        "recall": 0.0,
+        "hit": 0,
+        "exp": 25
+      },
+      "KR_PERSON": {
+        "recall": 0.3488,
+        "hit": 165,
+        "exp": 473
+      },
+      "KR_PHONE": {
+        "recall": 0.1193,
+        "hit": 13,
+        "exp": 109
+      },
+      "KR_RRN": {
+        "recall": 0.0,
+        "hit": 0,
+        "exp": 15
+      }
+    },
+    "fr": {
+      "CREDIT_CARD": {
+        "recall": 0.1154,
+        "hit": 3,
+        "exp": 26
+      },
+      "EMAIL": {
+        "recall": 0.9887,
+        "hit": 175,
+        "exp": 177
+      },
+      "KR_BRN": {
+        "recall": 0.0714,
+        "hit": 2,
+        "exp": 28
+      },
+      "KR_DRIVER_LICENSE": {
+        "recall": 0.0,
+        "hit": 0,
+        "exp": 18
+      },
+      "KR_LOCATION": {
+        "recall": 0.0402,
+        "hit": 10,
+        "exp": 249
+      },
+      "KR_PASSPORT": {
+        "recall": 0.0,
+        "hit": 0,
+        "exp": 43
+      },
+      "KR_PERSON": {
+        "recall": 0.4994,
+        "hit": 418,
+        "exp": 837
+      },
+      "KR_PHONE": {
+        "recall": 0.1,
+        "hit": 20,
+        "exp": 200
+      },
+      "KR_RRN": {
+        "recall": 0.0,
+        "hit": 0,
+        "exp": 26
+      }
+    },
+    "hi": {
+      "CREDIT_CARD": {
+        "recall": 0.0,
+        "hit": 0,
+        "exp": 6
+      },
+      "EMAIL": {
+        "recall": 1.0,
+        "hit": 30,
+        "exp": 30
+      },
+      "KR_BRN": {
+        "recall": 0.0,
+        "hit": 0,
+        "exp": 13
+      },
+      "KR_DRIVER_LICENSE": {
+        "recall": 0.0,
+        "hit": 0,
+        "exp": 6
+      },
+      "KR_LOCATION": {
+        "recall": 0.0328,
+        "hit": 2,
+        "exp": 61
+      },
+      "KR_PASSPORT": {
+        "recall": 0.0,
+        "hit": 0,
+        "exp": 12
+      },
+      "KR_PERSON": {
+        "recall": 0.2969,
+        "hit": 57,
+        "exp": 192
+      },
+      "KR_PHONE": {
+        "recall": 0.0727,
+        "hit": 4,
+        "exp": 55
+      },
+      "KR_RRN": {
+        "recall": 0.0,
+        "hit": 0,
+        "exp": 7
+      }
+    },
+    "it": {
+      "CREDIT_CARD": {
+        "recall": 0.1053,
+        "hit": 2,
+        "exp": 19
+      },
+      "EMAIL": {
+        "recall": 0.9865,
+        "hit": 73,
+        "exp": 74
+      },
+      "KR_BRN": {
+        "recall": 0.0,
+        "hit": 0,
+        "exp": 14
+      },
+      "KR_DRIVER_LICENSE": {
+        "recall": 0.0,
+        "hit": 0,
+        "exp": 12
+      },
+      "KR_LOCATION": {
+        "recall": 0.0147,
+        "hit": 2,
+        "exp": 136
+      },
+      "KR_PASSPORT": {
+        "recall": 0.0,
+        "hit": 0,
+        "exp": 22
+      },
+      "KR_PERSON": {
+        "recall": 0.229,
+        "hit": 90,
+        "exp": 393
+      },
+      "KR_PHONE": {
+        "recall": 0.0678,
+        "hit": 8,
+        "exp": 118
+      },
+      "KR_RRN": {
+        "recall": 0.0,
+        "hit": 0,
+        "exp": 11
+      }
+    },
+    "nl": {
+      "CREDIT_CARD": {
+        "recall": 0.0,
+        "hit": 0,
+        "exp": 3
+      },
+      "EMAIL": {
+        "recall": 1.0,
+        "hit": 30,
+        "exp": 30
+      },
+      "KR_BRN": {
+        "recall": 0.0,
+        "hit": 0,
+        "exp": 10
+      },
+      "KR_DRIVER_LICENSE": {
+        "recall": 0.0,
+        "hit": 0,
+        "exp": 3
+      },
+      "KR_LOCATION": {
+        "recall": 0.0938,
+        "hit": 6,
+        "exp": 64
+      },
+      "KR_PASSPORT": {
+        "recall": 0.0,
+        "hit": 0,
+        "exp": 5
+      },
+      "KR_PERSON": {
+        "recall": 0.5464,
+        "hit": 100,
+        "exp": 183
+      },
+      "KR_PHONE": {
+        "recall": 0.0938,
+        "hit": 3,
+        "exp": 32
+      },
+      "KR_RRN": {
+        "recall": 0.0,
+        "hit": 0,
+        "exp": 5
+      }
+    },
+    "te": {
+      "CREDIT_CARD": {
+        "recall": 0.0,
+        "hit": 0,
+        "exp": 5
+      },
+      "EMAIL": {
+        "recall": 1.0,
+        "hit": 30,
+        "exp": 30
+      },
+      "KR_BRN": {
+        "recall": 0.0667,
+        "hit": 1,
+        "exp": 15
+      },
+      "KR_DRIVER_LICENSE": {
+        "recall": 0.0,
+        "hit": 0,
+        "exp": 3
+      },
+      "KR_LOCATION": {
+        "recall": 0.08,
+        "hit": 4,
+        "exp": 50
+      },
+      "KR_PASSPORT": {
+        "recall": 0.0,
+        "hit": 0,
+        "exp": 10
+      },
+      "KR_PERSON": {
+        "recall": 0.3476,
+        "hit": 65,
+        "exp": 187
+      },
+      "KR_PHONE": {
+        "recall": 0.0952,
+        "hit": 4,
+        "exp": 42
+      },
+      "KR_RRN": {
+        "recall": 0.0,
+        "hit": 0,
+        "exp": 8
+      }
+    }
+  },
+  "latency": {
+    "p50_ms": 13.87,
+    "p95_ms": 22.56,
+    "p99_ms": 27.49,
+    "mean_ms": 14.67,
+    "rows_per_sec": 68.2
+  },
+  "wall_time_sec": 73.4,
+  "backend": "transformers"
+}

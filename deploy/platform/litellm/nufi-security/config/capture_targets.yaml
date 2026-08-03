@@ -1,0 +1,25 @@
+# 캡처 대상(public LLM 목적지) — CMP-87 P1.
+# routing.yaml 의 egress_class: public 백엔드에서 파생(NFR3).
+# 갱신: python3 -m capture.targets --refresh
+# gateway 섹션 = 우회 판정 기준(이 출처가 아니면 우회로 본다).
+version: 1
+gateway:
+  hosts:
+  - 127.0.0.1
+  - ::1
+  - localhost
+  - 0.0.0.0
+  process_names:
+  - litellm
+  - gateway
+  - uvicorn
+  - egress-gateway
+targets:
+- host: api.anthropic.com
+  port: 443
+  backend: claude-3-5-sonnet
+  provider: anthropic
+- host: api.openai.com
+  port: 443
+  backend: gpt-4o-mini
+  provider: openai

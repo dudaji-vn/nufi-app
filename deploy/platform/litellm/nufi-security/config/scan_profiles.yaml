@@ -1,0 +1,34 @@
+version: 1
+# Scan profiles — predefined sets of scan options for common use cases.
+# Usage: nufi-egress scan . --profile ci
+# Profile settings can be overridden by explicit CLI flags.
+
+scan_profiles:
+  development:
+    check_injection: false
+    min_severity: high
+    fail_on_pii: false
+    parallel: 1
+  ci:
+    check_injection: true
+    min_severity: medium
+    fail_on_pii: true
+    parallel: 4
+    format: sarif
+  strict:
+    check_injection: true
+    min_score: 0.5
+    fail_on_pii: true
+    parallel: 4
+  standard:
+    only_types: "KR_RRN,CREDIT_CARD,KR_ACCOUNT,EMAIL"
+    min_score: 0.7
+    fail_on_pii: false
+  minimal:
+    only_types: "KR_RRN,CREDIT_CARD"
+    min_score: 0.9
+    fail_on_pii: false
+  financial:
+    only_types: "KR_ACCOUNT,CREDIT_CARD,KR_RRN"
+    min_score: 0.7
+    fail_on_pii: true

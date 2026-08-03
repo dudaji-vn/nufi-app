@@ -17,6 +17,7 @@ const {
   getProviderConfig,
   memoryInstructions,
   createTokenCounter,
+  formatRunError,
   applyContextToAgent,
   isMemoryAgentEnabled,
   recordCollectedUsage,
@@ -61,7 +62,6 @@ const { resolveConfigServers } = require('~/server/services/MCP');
 const { getMCPServerTools } = require('~/server/services/Config');
 const BaseClient = require('~/app/clients/BaseClient');
 const { getMCPManager } = require('~/config');
-const { withSecuritySystemPrompt } = require('~/server/middleware/guardrails/systemPrompt');
 const db = require('~/models');
 
 const loadAgent = (params) => loadAgentFn(params, { getAgent: db.getAgent, getMCPServerTools });
@@ -254,11 +254,9 @@ class AgentClient extends BaseClient {
     /** @type {number | undefined} */
     let promptTokens;
 
-    /** Normalize instruction fields before applying per-run context. Also
-     * prepends the guardrail security preamble (Tier-1 "shift-left" defense) when
-     * GUARDRAIL_ENABLED is on — a no-op otherwise, so behavior is unchanged. */
+    /** Normalize instruction fields before applying per-run context. */
     const normalizeInstructions = (agent) => {
-      agent.instructions = withSecuritySystemPrompt(agent.instructions);
+      agent.instructions = agent.instructions?.trim() || undefined;
       agent.additional_instructions = agent.additional_instructions?.trim() || undefined;
       return agent;
     };
@@ -1093,7 +1091,7 @@ class AgentClient extends BaseClient {
         );
         this.contentParts.push({
           type: ContentTypes.ERROR,
-          [ContentTypes.ERROR]: `An error occurred while processing the request${err?.message ? `: ${err.message}` : ''}`,
+          [ContentTypes.ERROR]: formatRunError(err),
         });
       }
     } finally {

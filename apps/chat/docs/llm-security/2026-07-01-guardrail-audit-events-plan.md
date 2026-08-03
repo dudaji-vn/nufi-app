@@ -1,3 +1,14 @@
+> **SUPERSEDED — 2026-07-29.** This plan was implemented and then decommissioned:
+> the app-layer guardrail emitter that wrote `guardrail_*` audit events was
+> removed from `apps/chat`. The `category=security` read filter and the admin
+> panel Security page still exist but no longer receive events. LLM security now
+> runs at the LiteLLM gateway — see
+> [`docs/2026-07-27-llm-security-gateway-design.md`](../../../../docs/2026-07-27-llm-security-gateway-design.md)
+> (repo root).
+>
+> Do not execute the steps below. Kept as the implementation record of a shipped
+> security control.
+
 # Guardrail Security Events → Audit Log + Security Page — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

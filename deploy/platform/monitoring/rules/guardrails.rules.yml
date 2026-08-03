@@ -1,0 +1,152 @@
+# Alert rules for the NUFI guardrail pipeline.
+#
+# These exist because the failure this subsystem was built to end is not a
+# control that breaks loudly — it is a control that stops running while every
+# dashboard stays green. Metrics that nothing watches are the same failure with
+# extra steps, so each rule below names a specific way a control can go quiet.
+#
+# Design: docs/2026-07-27-llm-security-gateway-design.md §9.
+#
+# NOTE ON `absent()`: a control that never loads emits NO series at all, which
+# a threshold rule can never fire on — `nufi_guardrail_enabled == 0` matches
+# nothing when the metric is missing entirely. Absence and zero are different
+# failures and need different rules; that distinction is the whole point.
+
+groups:
+  - name: guardrails
+    interval: 30s
+    rules:
+      # --- the control is not there at all ------------------------------
+      - alert: GuardrailMetricsAbsent
+        # The proxy is up (so this is not just an outage) but exports no
+        # guardrail series. Either the guardrails module never imported, or
+        # config.yaml stopped referencing it. `npm run check:wired` catches
+        # this before deploy; this catches it after.
+        expr: |
+          up{job="litellm"} == 1
+            and
+          absent(nufi_guardrail_enabled)
+        for: 5m
+        labels:
+          severity: critical
+          service: guardrails
+        annotations:
+          summary: "Guardrail pipeline is not loaded"
+          description: >-
+            litellm is up but exports no nufi_guardrail_* series. The
+            guardrails module is not being imported — check that config.yaml
+            still lists the controls (scripts/check-guardrails-wired.sh).
+
+      - alert: MandatoryControlMissing
+        # G1 and G4 are mandatory:true in policy.yaml. A mandatory control with
+        # no series is not "quiet", it is gone.
+        expr: |
+          up{job="litellm"} == 1
+            and
+          (
+            absent(nufi_guardrail_enabled{control="G1"})
+              or
+            absent(nufi_guardrail_enabled{control="G4"})
+          )
+        for: 5m
+        labels:
+          severity: critical
+          service: guardrails
+        annotations:
+          summary: "A mandatory guardrail control is missing"
+          description: >-
+            G1 or G4 exports no nufi_guardrail_enabled series. Both are
+            mandatory in policy.yaml; a missing series means the control never
+            loaded, not that it is idle.
+
+      # --- the control is there but failing open ------------------------
+      - alert: GuardrailDegraded
+        # Set while a control fails open because its detector is unreachable.
+        # If G1 is enforcing (fail: closed) this is user-visible 503s; if it is
+        # in shadow, requests pass UNSCANNED and nothing else says so.
+        expr: nufi_guardrail_degraded > 0
+        for: 2m
+        labels:
+          severity: critical
+          service: guardrails
+        annotations:
+          summary: "Guardrail {{ $labels.control }} is failing open"
+          description: >-
+            {{ $labels.control }}'s detector is unavailable. Requests are
+            passing unscanned by this control. Check nufi-scanner and the
+            presidio sidecars.
+
+      # --- the control is there and has gone silent ----------------------
+      - alert: GuardrailSilent
+        # G1 and G2a run on every chat request, so a live proxy serving traffic
+        # with zero G1 scans means the hook stopped being called. Gated on
+        # actual traffic so an idle stack does not page.
+        expr: |
+          sum(rate(litellm_proxy_total_requests_metric_total[15m])) > 0
+            and
+          sum(rate(nufi_guardrail_latency_seconds_count{control="G1"}[15m])) == 0
+        for: 15m
+        labels:
+          severity: warning
+          service: guardrails
+        annotations:
+          summary: "G1 has stopped scanning while traffic continues"
+          description: >-
+            The proxy is serving requests but G1 recorded no scans for 15
+            minutes. The control is loaded but its hook is not running —
+            check default_on in config.yaml and the registered mode.
+
+      # --- rollout signals ------------------------------------------------
+      - alert: MandatoryControlStoppedEnforcing
+        # The risk inverted when the rollout happened. This slot previously held
+        # GuardrailEnforcingUnexpectedly, written when every control shipped
+        # logging_only: it alerted on `nufi_guardrail_enabled > 0`. After G1,
+        # G2b, G3 and G4 were deliberately enabled it fired permanently, which
+        # is worse than useless -- an alert that is always on gets silenced, and
+        # silencing it takes the whole guardrails group with it.
+        #
+        # What matters now is the opposite: a control that was enforcing and
+        # STOPPED. G1 and G4 are mandatory:true in policy.yaml, so either
+        # reporting 0 means the policy drifted, a deploy shipped an older
+        # policy.yaml, or someone edited it. That is precisely the failure this
+        # subsystem exists to make impossible to miss.
+        #
+        # Deploy-time drift is caught earlier and more precisely by
+        # scripts/check-guardrails-wired.sh and staging-readiness.sh check 4,
+        # which compare the running state against policy.yaml directly.
+        # Prometheus cannot read that file; this catches the same thing at
+        # runtime, from the outside.
+        expr: |
+          nufi_guardrail_enabled{control=~"G1|G4"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          service: guardrails
+        annotations:
+          summary: "Mandatory guardrail {{ $labels.control }} is no longer enforcing"
+          description: >-
+            {{ $labels.control }} is mandatory in policy.yaml but reports
+            enabled=0 in mode {{ $labels.mode }}. Either the policy drifted or a
+            deploy shipped an older one. Compare with
+            `npm run check:wired` and policy.yaml.
+
+      - alert: GuardrailBlockRateHigh
+        # Once a control enforces, this is the false-positive tripwire. The
+        # previous generation of these guardrails was switched off because it
+        # blocked legitimate traffic; the point is to see that happening
+        # within minutes rather than after complaints.
+        expr: |
+          sum(rate(nufi_guardrail_decisions_total{enforced="true"}[10m]))
+            /
+          clamp_min(sum(rate(litellm_proxy_total_requests_metric_total[10m])), 1e-10)
+            > 0.05
+        for: 10m
+        labels:
+          severity: warning
+          service: guardrails
+        annotations:
+          summary: "Guardrails are blocking >5% of requests"
+          description: >-
+            More than 5% of requests are being acted on with enforced=true over
+            10 minutes. Check the false-positive risks in the platform README
+            before assuming this is real traffic.

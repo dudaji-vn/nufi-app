@@ -1,0 +1,250 @@
+{
+"ruleset_version": "edm-2026.06.25",
+"thresholds": {
+"k_of_n": 2,
+"doc_high": 0.45,
+"doc_med": 0.22
+},
+"stop_hashes": [
+"0962da8aa6bde8c4b8ef1da0f9b74e37",
+"10b1fff17bb1b4f9f0dbf5ce26fd52bd",
+"2b5f06fa5ef37b013bc3dfe3769ec526",
+"4368b0edb0a1b20a5ce499d4371d564e",
+"5512267aed42fbab98766f86b58b2b71",
+"68314d4db40e902df4958483c7418f02",
+"7f73bb3fd88181bf2ef9201bd3d805a1",
+"a6f095ae682354806e340dc745a9cb2f",
+"b8d05548677c2001fdfdc6cb5f8d65d3"
+],
+"struct": [
+{
+"kind": "edm_struct",
+"dataset": "customers",
+"class": "CONFIDENTIAL",
+"n_fields": 3,
+"hash_index": {
+"9b19ee533b9f6cf637970d1dd8880761": [
+{
+"rec": "customers#r0",
+"field": "name"
+}
+],
+"29efb275d3d7159d9eaba4b07b2b675b": [
+{
+"rec": "customers#r0",
+"field": "phone"
+}
+],
+"4368b0edb0a1b20a5ce499d4371d564e": [
+{
+"rec": "customers#r0",
+"field": "grade"
+},
+{
+"rec": "customers#r2",
+"field": "grade"
+}
+],
+"6b607eb3af491c524b97111e06183d2f": [
+{
+"rec": "customers#r1",
+"field": "name"
+}
+],
+"d8e4da2665d8d38ca23902d48f05e1e2": [
+{
+"rec": "customers#r1",
+"field": "phone"
+}
+],
+"0962da8aa6bde8c4b8ef1da0f9b74e37": [
+{
+"rec": "customers#r1",
+"field": "grade"
+},
+{
+"rec": "customers#r4",
+"field": "grade"
+}
+],
+"496ec6c76f834e72ae0f5b7864aae599": [
+{
+"rec": "customers#r2",
+"field": "name"
+}
+],
+"1149a3f863b9bccfe6c916077bdfdbbd": [
+{
+"rec": "customers#r2",
+"field": "phone"
+}
+],
+"01491397a53bc21107ca4bee52f00bbf": [
+{
+"rec": "customers#r3",
+"field": "name"
+}
+],
+"8b60e7b87a9f4f29264b19457871f009": [
+{
+"rec": "customers#r3",
+"field": "phone"
+}
+],
+"2b5f06fa5ef37b013bc3dfe3769ec526": [
+{
+"rec": "customers#r3",
+"field": "grade"
+}
+],
+"48ba62b7e59d4f9bbc8146cad3872793": [
+{
+"rec": "customers#r4",
+"field": "name"
+}
+],
+"b8413ef3606eacffb970c901352e8665": [
+{
+"rec": "customers#r4",
+"field": "phone"
+}
+]
+},
+"records": [
+{
+"rec": "customers#r0",
+"fields": {
+"name": "9b19ee533b9f6cf637970d1dd8880761",
+"phone": "29efb275d3d7159d9eaba4b07b2b675b",
+"grade": "4368b0edb0a1b20a5ce499d4371d564e"
+}
+},
+{
+"rec": "customers#r1",
+"fields": {
+"name": "6b607eb3af491c524b97111e06183d2f",
+"phone": "d8e4da2665d8d38ca23902d48f05e1e2",
+"grade": "0962da8aa6bde8c4b8ef1da0f9b74e37"
+}
+},
+{
+"rec": "customers#r2",
+"fields": {
+"name": "496ec6c76f834e72ae0f5b7864aae599",
+"phone": "1149a3f863b9bccfe6c916077bdfdbbd",
+"grade": "4368b0edb0a1b20a5ce499d4371d564e"
+}
+},
+{
+"rec": "customers#r3",
+"fields": {
+"name": "01491397a53bc21107ca4bee52f00bbf",
+"phone": "8b60e7b87a9f4f29264b19457871f009",
+"grade": "2b5f06fa5ef37b013bc3dfe3769ec526"
+}
+},
+{
+"rec": "customers#r4",
+"fields": {
+"name": "48ba62b7e59d4f9bbc8146cad3872793",
+"phone": "b8413ef3606eacffb970c901352e8665",
+"grade": "0962da8aa6bde8c4b8ef1da0f9b74e37"
+}
+}
+],
+"field_meta": {
+"name": {
+"class": "CONFIDENTIAL",
+"min_cardinality": 3,
+"cardinality": 5
+},
+"phone": {
+"class": "CONFIDENTIAL",
+"min_cardinality": 3,
+"cardinality": 5
+},
+"grade": {
+"class": "CONFIDENTIAL",
+"min_cardinality": 1,
+"cardinality": 3
+}
+}
+}
+],
+"docs": [
+{
+"doc_id": "contract-2026-q2",
+"class": "CONFIDENTIAL",
+"k": 8,
+"window": 4,
+"num_perm": 64,
+"n_fp": 107,
+"signature": [
+64893399457059218,
+26800661283988848,
+4506167582149742,
+13464172382014532,
+10181765327305263,
+70117039132779174,
+14312819085569819,
+20766964895099399,
+15019712725904485,
+41851698376319060,
+16118925365134378,
+4754348064157865,
+69237913056105048,
+3017997844229114,
+42233737849820424,
+9125844200285761,
+29498118897221,
+2883908681421718,
+16252916361832168,
+33796569217329663,
+14444668240134081,
+4792259146199981,
+21684746818540622,
+501748582613191,
+10354075387216626,
+2824386428863565,
+22856737370100745,
+15830817699748630,
+1940615343402525,
+59909685921250555,
+5374924499509802,
+8322105282780100,
+16310386086437242,
+25282042854662928,
+494090063891679,
+34643215626544417,
+8053833677101082,
+1502000540814045,
+71880897454381050,
+44633776877254495,
+23421131098836654,
+11083035336641717,
+1543377623998629,
+23450872516725635,
+28522732893524500,
+72423053620975040,
+109134608472388,
+16492403830513785,
+19383734713709037,
+1780411804987354,
+12966841219608260,
+12770407965727351,
+5124378030148078,
+20876723373297203,
+6124693379981281,
+33617938819628298,
+3530164454889707,
+18753274317110186,
+3911908722911312,
+5596663341174993,
+6597762870981985,
+35150997848259168,
+19690321457471266,
+7360847536318498
+]
+}
+]
+}

@@ -561,8 +561,28 @@ class GenerationJobManagerClass {
       return;
     }
 
-    // Immediate cleanup if configured (default: true) - only for successful completions
-    if (this._cleanupOnComplete) {
+    /**
+     * Same race as the error branch above, on the success path: a run can finish
+     * before the client that started it has connected to the SSE stream. The POST
+     * that mints the streamId has to return before the browser can subscribe, so
+     * any run shorter than that round trip loses — measured at ~600ms for requests
+     * refused upstream (security policy blocks, content filters), which finish far
+     * faster than a real completion.
+     *
+     * Deleting here made that unrecoverable: the subscribe 404s, and for a NEW
+     * conversation the client has no conversationId yet to refetch by, so the
+     * empty assistant placeholder stayed on screen — the response was persisted
+     * and readable in the database, but invisible to the user until reload.
+     *
+     * `hasSubscriber` is set by subscribe(). While it is false the runtime state
+     * still holds finalEvent and earlyEventBuffer, which is exactly what a late
+     * subscriber replays, so the job is kept for the periodic cleanup window
+     * (~60s) instead. Once a subscriber has attached, immediate cleanup is
+     * unchanged.
+     */
+    const awaitingFirstSubscriber = runtime != null && !runtime.hasSubscriber;
+
+    if (this._cleanupOnComplete && !awaitingFirstSubscriber) {
       this.runtimeState.delete(streamId);
       // Don't cleanup eventTransport here - let the done event fully transmit first.
       // EventTransport will be cleaned up when subscribers disconnect or by periodic cleanup.

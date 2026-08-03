@@ -1,0 +1,23 @@
+# NuFi Egress-Audit Gateway — PoC 의존성
+#
+# [필수] 코어 탐지 + standalone 게이트웨이 (이것만으로 acceptance 통과)
+PyYAML>=6.0
+fastapi>=0.110
+uvicorn>=0.29
+pydantic>=2.0          # serve_cmd.py request/response 모델 (fastapi>=0.100 필수)
+httpx>=0.27            # FastAPI TestClient (테스트용)
+cryptography>=41.0     # M3 매핑 Vault AES-256-GCM 봉투암호화(at-rest). 평문 폴백 금지.
+
+# [선택·프로덕션] SPEC 권장 스택. 미설치 시 코어가 폴백으로 동작.
+#   - LiteLLM Proxy (MIT): config/litellm_config.yaml + gateway/litellm_hook.py
+# litellm>=1.40
+#   - Presidio (MIT): 한국 인식기 + 가역 가명화(M3)
+# presidio-analyzer>=2.2
+# presidio-anonymizer>=2.2
+#   - KoELECTRA NER (한국어 PII recall ≥ 0.9 목표용). ONNX 권장.
+# transformers>=4.40
+# onnxruntime>=1.17
+#   - detect-secrets (Apache-2.0): 비밀정보 보강 스캔
+# detect-secrets>=1.5
+#
+# 라이선스 금지(NFR4, 인라인 사용 불가): Piiranha(CC-BY-NC-ND), gliner_ko(CC-BY-NC), TruffleHog(AGPL)

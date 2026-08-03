@@ -1,0 +1,41 @@
+# 프리셋: audit-only — 차단 없이 전수 관찰·기록(가시성 우선)
+#
+# 누구를 위한 것: 먼저 "무엇이 새는지" 보고 싶은 도입 초기 조직, 섀도 IT 가시화.
+# 핵심: 어떤 요청도 차단하지 않는다(blocking_actions 비움 + 모든 엔티티 warn).
+#       본문은 변형 없이 통과시키되, 탐지 finding 은 전부 감사 로그에 남긴다.
+#       enforcement 는 fail-open(우회 차단도 하지 않음 — 순수 관찰 모드).
+#
+# 주의: 보호가 아닌 "관찰" 모드다. 운영 차단이 필요하면 strict-kr-pii / pseudonymize-roundtrip.
+preset: audit-only
+version: 1
+description: 차단·변형 없이 전수 탐지·로깅만. 도입 초기 가시성 확보용(fail-open).
+fail_closed_default: false
+
+# directive: 오버레이 적용 후 모든 엔티티 action 을 강제 일괄 설정(베이스 신규 엔티티에도 견고).
+directives:
+  force_entity_action: warn
+
+overlay:
+  policy:
+    default_action: warn
+    blocking_actions: []        # ← 무엇도 차단하지 않음
+    conf_class_actions:
+      RESTRICTED:   { action: warn, severity: critical }
+      CONFIDENTIAL: { action: warn, severity: high }
+      INTERNAL:     { action: warn, severity: medium }
+      PUBLIC:       { action: allow, severity: low }
+    enforcement:
+      fail_mode: open
+
+  audit_profiles:
+    profiles:
+      private:
+        retain_raw: true
+      public:
+        retain_raw: true        # 관찰 모드 — 포렌식 위해 원문 보존(보존기간·접근통제 운영 필요)
+    detection:
+      private:
+        detectors: [secrets, strong_pii, weak_pii, confidential_keywords]
+        severity_threshold: low
+      public:
+        severity_threshold: low
