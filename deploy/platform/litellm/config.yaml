@@ -37,7 +37,32 @@
 #       backend_type: gpu                      # gpu | npu | cloud
 #       hardware_id: gpu-node-01               # used by cost / usage reports
 #       supports_vision: false                 # set true for multimodal models
-model_list: []
+model_list:
+  # Registered here rather than only in the LiteLLM DB so a redeploy or a host
+  # migration reproduces the gateway's model set. `store_model_in_db: true`
+  # below still applies to anything added from the admin UI.
+  - model_name: gemini
+    litellm_params:
+      model: gemini/gemini-2.5-flash
+      api_key: os.environ/GEMINI_API_KEY
+    model_info:
+      backend_type: cloud
+      hardware_id: gemini-cloud
+      supports_vision: false
+  # Title-generation alias. Same upstream model as `gemini`, separate name so
+  # policy.yaml can exempt it from G1: LibreChat wraps the whole conversation in
+  # ~3000 characters of instructions to title it, which scores 0.987 against
+  # G1's 0.90 threshold on benign chats. librechat.yaml's `titleModel` points
+  # here. Anything selecting this alias skips G1 — watch
+  # nufi_guardrail_exemptions_total if it starts rising faster than conversations.
+  - model_name: gemini-2.5-flash-title
+    litellm_params:
+      model: gemini/gemini-2.5-flash
+      api_key: os.environ/GEMINI_API_KEY
+    model_info:
+      backend_type: cloud
+      hardware_id: gemini-cloud
+      supports_vision: false
 router_settings:
   # Simple round-robin across replicas of the same model_name. Switch to
   # `weighted-pick` later so the Canary slider can split GPU/NPU traffic.
