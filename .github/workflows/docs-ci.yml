@@ -1,0 +1,29 @@
+name: docs-ci
+
+on:
+  pull_request:
+    paths: ['apps/docs/**', '.github/workflows/docs-ci.yml']
+
+concurrency:
+  group: docs-ci-${{ github.ref_name }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: apps/docs
+
+jobs:
+  build:
+    name: Docs build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      # The docs build is the test. It fails on a missing screenshot, on an MDX
+      # syntax error, and on a code-fence language Shiki does not bundle — the
+      # last of which produced a stack trace naming the file but not the cause,
+      # and was only caught by building locally because nothing ran here.
+      - name: Build
+        run: bun run build
