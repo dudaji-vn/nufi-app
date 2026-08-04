@@ -1,0 +1,98 @@
+[
+  {
+    "adapterType": "claude_local",
+    "enabled": true,
+    "runtimeImage": "ghcr.io/paperclipai/agent-runtime-claude:v1",
+    "envKeys": [
+      "ANTHROPIC_API_KEY"
+    ],
+    "allowFqdns": [
+      "api.codechi.me"
+    ],
+    "probeCommand": [
+      "claude",
+      "--version"
+    ],
+    "defaultEnv": {
+      "ANTHROPIC_BASE_URL": "https://api.codechi.me"
+    }
+  },
+  {
+    "adapterType": "codex_local",
+    "enabled": true,
+    "runtimeImage": "ghcr.io/paperclipai/agent-runtime-codex:v1",
+    "envKeys": [
+      "OPENAI_API_KEY"
+    ],
+    "allowFqdns": [
+      "api.codechi.me"
+    ],
+    "probeCommand": [
+      "codex",
+      "--version"
+    ],
+    "defaultEnv": {
+      "OPENAI_BASE_URL": "https://api.codechi.me/v1"
+    }
+  },
+  {
+    "adapterType": "opencode_local",
+    "enabled": true,
+    "runtimeImage": "ghcr.io/paperclipai/agent-runtime-opencode:v1",
+    "envKeys": [
+      "ANTHROPIC_API_KEY",
+      "OPENAI_API_KEY"
+    ],
+    "allowFqdns": [
+      "api.codechi.me"
+    ],
+    "probeCommand": [
+      "opencode",
+      "--version"
+    ],
+    "defaultEnv": {
+      "ANTHROPIC_BASE_URL": "https://api.codechi.me",
+      "OPENAI_BASE_URL": "https://api.codechi.me/v1"
+    }
+  },
+  {
+    "adapterType": "pi_local",
+    "enabled": true,
+    "runtimeImage": "ghcr.io/paperclipai/agent-runtime-pi:v1",
+    "envKeys": [
+      "ANTHROPIC_API_KEY"
+    ],
+    "allowFqdns": [
+      "api.codechi.me"
+    ],
+    "probeCommand": [
+      "pi",
+      "--version"
+    ],
+    "defaultEnv": {
+      "ANTHROPIC_BASE_URL": "https://api.codechi.me"
+    }
+  },
+  {
+    "adapterType": "cursor_local",
+    "enabled": false,
+    "runtimeImage": "ghcr.io/paperclipai/agent-runtime-cursor:v1",
+    "envKeys": [],
+    "allowFqdns": [],
+    "probeCommand": [
+      "cursor-agent",
+      "--version"
+    ]
+  },
+  {
+    "adapterType": "gemini_local",
+    "enabled": false,
+    "runtimeImage": "ghcr.io/paperclipai/agent-runtime-gemini:v1",
+    "envKeys": [],
+    "allowFqdns": [],
+    "probeCommand": [
+      "gemini",
+      "--version"
+    ]
+  }
+]

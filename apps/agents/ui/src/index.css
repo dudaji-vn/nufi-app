@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./nufi-brand.css";
 @plugin "@tailwindcss/typography";
 
 @font-face {

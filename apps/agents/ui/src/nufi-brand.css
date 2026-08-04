@@ -1,0 +1,73 @@
+/*
+ * NuFi brand layer.
+ *
+ * This is the ONLY stylesheet in apps/agents that NuFi owns. Everything else
+ * under apps/agents/ is vendored from paperclipai/paperclip and must stay
+ * byte-identical to the upstream tag so `git subtree pull` keeps working —
+ * see docs/2026-08-03-nufi-agent-app-design.md §6 and §7, and the allowlist
+ * enforced by .github/workflows/agents-fork-guard.yml.
+ *
+ * Selectors are deliberately doubled (`:root:root`, `.dark.dark`). That raises
+ * specificity above upstream's single-class declarations, so these values win
+ * regardless of import order. Upstream can restyle index.css freely; this file
+ * does not conflict with it.
+ *
+ * Only the shadcn brand/surface tokens are overridden. Upstream's status
+ * hues, agent-capsule gradients, chip colours and chart scales are left alone:
+ * index.css documents them as AA-tuned per status, and re-tinting them would
+ * trade a measured contrast guarantee for a cosmetic one.
+ *
+ * Palette source: apps/chat/client/src/style.css (`--brand-*`).
+ *
+ *   primary        #7b82f0     hover  #6970e0     secondary  #e8967f
+ *   navy-900       #080810     navy-800  #0d1020  navy-700   #111620
+ *   navy-600       #151823     navy-500  #1a1e2a
+ *
+ * Contrast, measured (WCAG 2.1, sRGB relative luminance):
+ *
+ *   #7b82f0 on #ffffff  →  3.34:1   fails AA for body text
+ *   #7b82f0 on #080810  →  5.98:1   passes AA
+ *   #6268c0 on #ffffff  →  4.93:1   passes AA
+ *
+ * Hence the split: dark mode uses the brand primary as-is against navy, light
+ * mode uses #6268c0 — the same hue darkened until white label text clears 4.5:1.
+ */
+
+:root:root {
+  /* Brand primary, darkened for AA against white foreground (4.93:1). */
+  --primary: #6268c0;
+  --primary-foreground: #ffffff;
+  --ring: #7b82f0;
+
+  --sidebar-primary: #6268c0;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-ring: #7b82f0;
+}
+
+.dark.dark {
+  /* NuFi navy surfaces, matching apps/chat dark mode (hsl(240 22% 5%)). */
+  --background: #080810;
+  --card: #0d1020;
+  --popover: #0d1020;
+  --sidebar: #0d1020;
+
+  --secondary: #151823;
+  --muted: #151823;
+  --accent: #1a1e2a;
+  --sidebar-accent: #1a1e2a;
+
+  /* Brand primary unmodified — 5.98:1 against navy-900 foreground. */
+  --primary: #7b82f0;
+  --primary-foreground: #080810;
+  --ring: #7b82f0;
+
+  --sidebar-primary: #7b82f0;
+  --sidebar-primary-foreground: #080810;
+  --sidebar-ring: #7b82f0;
+
+  /*
+   * --border, --input and --sidebar-border stay upstream's white alpha
+   * overlays (oklch(1 0 0 / 10%)). They compose correctly over any dark
+   * surface, so re-pinning them to a navy hex would only make them brittle.
+   */
+}

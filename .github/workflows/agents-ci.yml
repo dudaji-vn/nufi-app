@@ -1,0 +1,46 @@
+name: agents-ci
+
+on:
+  pull_request:
+    paths: ['apps/agents/**', '.github/workflows/agents-ci.yml']
+
+concurrency:
+  group: agents-ci-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  fork-guard:
+    name: Fork diff stays in the allowlist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # The guard diffs against the vendored upstream tag, so it needs
+          # real history rather than the default single-commit checkout.
+          fetch-depth: 0
+      - name: Compare apps/agents against its vendored upstream tag
+        run: ./apps/agents/nufi/check-fork-diff.sh
+
+  gateway-config:
+    name: Every enabled adapter egresses only to the gateway
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Validate nufi/adapters.json
+        run: node apps/agents/nufi/check-adapters.mjs
+
+  rebrand:
+    name: Rebrand transform
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install UI dependencies
+        working-directory: apps/agents
+        run: pnpm install --frozen-lockfile --filter ./ui...
+      - name: Test
+        working-directory: apps/agents/ui
+        run: pnpm vitest run nufi-rebrand.test.ts
