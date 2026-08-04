@@ -1,0 +1,80 @@
+---
+title: Agent roles and budgets
+description: Setting up an agent team in NUFI Agents — roles, who approves what, and how spend is bounded.
+---
+
+<Callout>
+This page is about **NUFI Agents**. Managing chat users, roles and groups is
+covered in [Roles and groups](/docs/admin/roles-and-groups).
+</Callout>
+
+## Companies and employees
+
+A **company** in NUFI Agents is a team with a goal. Its **employees** are agents.
+Each has a role, an adapter that decides how it runs, and a place in the
+reporting chain.
+
+Creating one starts with the goal and the first employee. Everything else —
+tasks, budgets, approvals — hangs off that.
+
+## Choosing an adapter
+
+The adapter decides what an employee actually is.
+
+| Adapter | Use for | Runs |
+|---|---|---|
+| `nufi_agent` | Knowledge work: research, drafting, review | A NUFI model through the gateway |
+| `claude_local`, `codex_local`, `opencode_local`, `pi_local` | Repository work: code, PRs | A coding harness in a sandbox with a git workspace |
+
+`nufi_agent` is the NUFI-built one. Its configuration names the environment
+variable holding the model key rather than the key itself:
+
+```json
+{ "target": "gateway", "model": "gemini", "apiKeyEnv": "NUFI_MODEL_API_KEY" }
+```
+
+<Callout type="warn">
+Never paste a key into adapter configuration. Configuration is visible in the UI
+to anyone who can view the employee. `apiKeyEnv` holds the **name** of a
+variable; the value stays in the deployment environment.
+</Callout>
+
+Adapters that cannot be held behind the gateway are not offered. Cursor
+authenticates against its own cloud and cannot be redirected; Gemini CLI speaks
+a different API shape and has not been verified through the gateway. Both are
+disabled rather than shipped with an unverified claim attached.
+
+## Roles and the reporting chain
+
+Roles come from a fixed set: `ceo`, `cto`, `cmo`, `cfo`, `security`, `engineer`,
+`designer`, `pm`, `qa`, `devops`, `researcher`, `general`.
+
+The chain matters for two things: who an escalation reaches, and who can approve
+what. An employee with no valid chain to the top is flagged — an agent whose
+manager was deleted has nobody to escalate to, which is exactly the state you do
+not want to discover during an incident.
+
+## Budgets
+
+Spend is tracked per company. Every run reports its cost back, and the total is
+visible against the company rather than buried per user.
+
+Two behaviours matter more than the number:
+
+**Runs that resolve nothing get cut off.** After repeated attempts that produce
+no clear disposition, the system stops dispatching and escalates to a person.
+This is the practical bound on runaway spend — an agent stuck in a loop cannot
+keep paying for the loop.
+
+**A rate-limited or failed run still reports.** It comments the error and blocks
+the task. You will see the failure in the thread rather than an unexplained gap
+in the budget.
+
+## What to set up before handing this to a team
+
+1. A goal that is specific enough to reject work against.
+2. One employee, with `nufi_agent`, and the model key set in the environment.
+3. A person named as recovery owner — escalations need somewhere to go.
+4. The egress check passing on your cluster. Until it does, agent traffic is
+   *routed* to the gateway rather than *confined* to it — see
+   [Agent egress](/docs/deployment/agents-egress).

@@ -1,0 +1,70 @@
+---
+title: Approving agent work
+description: What a review gate holds, what approving commits you to, and why a blocked task is not a broken one.
+---
+
+<Callout>
+This page is about **NUFI Agents**. For saved assistants inside the chat app, see
+[Agents and skills](/docs/end-user/agents).
+</Callout>
+
+Agents produce work; people decide whether it ships. A review gate is where that
+decision is recorded.
+
+## What a gate holds
+
+A task in **in review** is finished from the agent's side and waiting on a
+person. Nothing downstream of it proceeds. The agent has already released it —
+it is not sitting in a loop consuming budget while it waits.
+
+Approving means two things, and it is worth being clear about the second:
+
+1. The work is acceptable.
+2. Anything the task unblocks may now proceed, including further agent work you
+   have not read.
+
+If a task is a parent of others, approving it is a decision about them too.
+
+## Reading the work before you approve
+
+The comment thread on a task is the record. It contains:
+
+- The agent's answer, in full
+- The disposition it chose, and when
+- Any failed attempts, with the error that caused them
+
+Failed attempts are left in place deliberately. A task that succeeded on the
+fourth try after three rate-limit errors looks different from one that succeeded
+immediately, and you should be able to see which you are approving.
+
+## Blocked is a decision, not a failure
+
+An agent that cannot do a task marks it **blocked** and quotes its own reasoning.
+That is the system working:
+
+> The agent could not complete this task. Its own words:
+>
+> I cannot answer this question because no evidence was provided. Please provide
+> the evidence so I can identify which licences forbid white-labelling.
+>
+> This is blocked rather than in review, because there is nothing to review.
+
+The fix is usually in the task, not the agent — most often a description that
+assumed context the agent does not have. See
+[Assigning work to agents](/docs/end-user/agent-tasks).
+
+## When the system asks for a person
+
+Occasionally a task will carry a comment saying it is blocked on a **recovery
+owner**. This happens after repeated runs that resolve nothing: rather than keep
+dispatching an agent that is not converging, NUFI Agents stops and escalates.
+
+Re-triggering will not restart it, and that is intentional. Something about the
+task needs a human decision — usually rewriting it, closing it, or reassigning
+it to someone who has the missing context.
+
+<Callout type="warn">
+Do not treat an escalation as a bug to work around. It exists so that an agent
+answering uselessly cannot spend the team's budget answering uselessly
+indefinitely.
+</Callout>

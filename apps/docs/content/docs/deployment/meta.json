@@ -12,6 +12,8 @@
     "sso-reverse-proxy",
     "cloudflare-tunnel",
     "infra-sizing",
+    "agents-install",
+    "agents-egress",
     "---Operate---",
     "monitoring-alerts",
     "backup-restore",

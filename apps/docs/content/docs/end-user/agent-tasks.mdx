@@ -1,0 +1,96 @@
+---
+title: Assigning work to agents
+description: Goals, tasks and runs in NUFI Agents — how work gets assigned, what an agent does with it, and how you read the result.
+---
+
+<Callout>
+This page is about **NUFI Agents**, a separate app for handing work to a team of
+agents and tracking it. If you are looking for saved assistants inside the chat
+app — instructions and tools you reuse in a conversation — see
+[Agents and skills](/docs/end-user/agents) instead.
+</Callout>
+
+## The shape of the work
+
+Everything in NUFI Agents hangs off a **goal**. A goal is the reason the team
+exists — "ship the localisation pipeline", "keep the docs current". Every task
+traces back to one through its parents, and an agent is shown the goal alongside
+the task it has been given.
+
+That constraint is the point. An agent that cannot see why it is doing something
+optimises the wrong thing.
+
+| Object | What it is |
+|---|---|
+| **Goal** | The top-level outcome. Everything else hangs off it |
+| **Task** | A unit of work. Has one assignee, a status, and a parent |
+| **Run** | One attempt by an agent at a task. Produces a comment and a status change |
+
+## Writing a task an agent can act on
+
+A task is a prompt with a status attached. The description is what the agent
+actually reads, and it is read literally — the agent does not have your screen,
+your files, or your last conversation.
+
+**Put the material in the task.** This is the single biggest difference between
+a useful run and a useless one:
+
+<Callout type="warn">
+A task with a title and no description does not fail. The agent answers anyway,
+from nothing, and sounds confident doing it. Measured during development: given
+only *"Summarise what the agent-app design decided"*, an agent with no access to
+that document described NUFI as a cryptocurrency product, in fluent prose.
+</Callout>
+
+Good:
+
+> **Which licences forbid white-labelling, given this evidence**
+>
+> - Dify: "you may not remove or modify the LOGO or copyright information…"
+> - Suna: Elastic License 2.0 — "You may not alter, remove, or obscure any…"
+> - n8n: Sustainable Use License — "only for your own internal business purposes"
+>
+> Name each project and the clause that decides it, in under 80 words.
+
+Not good:
+
+> **Check the licences**
+
+The first ran and produced a correct answer. The second has nothing to work from.
+
+## What happens when you assign it
+
+1. **Checkout.** The agent claims the task. If another agent already holds it,
+   yours stops — it does not queue and it does not retry.
+2. **Context.** It reads the task, its description, and the company goal.
+3. **The run.** It does the work. Every model call goes through the NUFI gateway,
+   where the security checks run.
+4. **Disposition.** It comments with the result and moves the task.
+
+## Reading the result
+
+A finished run always leaves the task in one of two states. Never neither.
+
+| Status | Means |
+|---|---|
+| **In review** | The agent produced an answer and it is waiting on you |
+| **Blocked** | The agent could not do it. The comment says why, in its own words |
+
+"Blocked" is not a malfunction. An agent that cannot answer and says so is
+behaving correctly, and blocking is how it hands the problem back rather than
+leaving the task looking active.
+
+If a run fails outright — the model was unavailable, a rate limit was hit — the
+task is still blocked and still commented, with the error text. You should never
+find a task that was worked on and shows no trace of it.
+
+## When nothing happens
+
+If a task sits untouched after you assign it, the usual causes are:
+
+- **Another agent holds it.** Check the assignee.
+- **The system stopped trying.** After repeated runs that resolve nothing, NUFI
+  Agents stops dispatching and escalates to a person rather than looping. Look
+  for a comment saying the task is blocked on a recovery owner — that is the
+  system asking for a human, and re-triggering will not change its mind.
+- **Nothing was assigned.** An agent with an empty queue exits quietly.
