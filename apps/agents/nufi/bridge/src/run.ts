@@ -17,7 +17,9 @@ export interface RunDeps {
       agentId: string,
       runId: string,
     ): Promise<{ ok: boolean; conflict?: boolean }>;
-    heartbeatContext(issueId: string): Promise<{ title: string; body: string }>;
+    heartbeatContext(
+      issueId: string,
+    ): Promise<{ title: string; description: string; goal: string | null }>;
     comment(issueId: string, body: string, runId: string): Promise<void>;
     setStatus(issueId: string, status: string, runId: string): Promise<void>;
   };
@@ -45,8 +47,17 @@ export async function handleRun(deps: RunDeps, payload: RunPayload): Promise<Run
 
   const issue = await deps.paperclip.heartbeatContext(taskId);
 
+  const prompt = [
+    issue.goal ? `Company goal: ${issue.goal}` : null,
+    `Task: ${issue.title}`,
+    "",
+    issue.description,
+  ]
+    .filter((line) => line !== null)
+    .join("\n");
+
   try {
-    const answer = await deps.chat.complete(`${issue.title}\n\n${issue.body}`);
+    const answer = await deps.chat.complete(prompt);
     await deps.paperclip.comment(taskId, answer, payload.runId);
     await deps.paperclip.setStatus(taskId, "in_review", payload.runId);
     return { status: "succeeded" };

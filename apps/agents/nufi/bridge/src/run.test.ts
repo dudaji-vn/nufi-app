@@ -18,7 +18,7 @@ function deps(overrides: Record<string, unknown> = {}) {
     },
     heartbeatContext: async () => {
       calls.push("context");
-      return { title: "Translate the login screen", body: "Vietnamese to English." };
+      return { title: "Translate the login screen", description: "Vietnamese to English.", goal: null };
     },
     comment: async (_id: string, body: string) => {
       calls.push(`comment:${body}`);

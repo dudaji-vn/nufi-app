@@ -15,6 +15,34 @@ function headers(runId?: string) {
   return h;
 }
 
+export interface IssueContext {
+  title: string;
+  description: string;
+  goal: string | null;
+}
+
+/**
+ * Exported so it can be tested against a real captured response rather than an
+ * assumed shape. The assumption is what broke it the first time.
+ */
+export function parseHeartbeatContext(raw: unknown): IssueContext {
+  const data = raw as {
+    issue?: { title?: string; description?: string };
+    goal?: { title?: string } | null;
+  };
+
+  const title = data.issue?.title ?? "";
+  const description = data.issue?.description ?? "";
+
+  if (!description) {
+    throw new Error(
+      `heartbeat-context returned no description for "${title}" — refusing to prompt on a title alone`,
+    );
+  }
+
+  return { title, description, goal: data.goal?.title ?? null };
+}
+
 export const paperclip = {
   async checkout(issueId: string, agentId: string, runId: string) {
     const res = await fetch(`${API_URL}/api/issues/${issueId}/checkout`, {
@@ -29,13 +57,24 @@ export const paperclip = {
     return { ok: res.ok };
   },
 
+  /**
+   * The field is `description`, not `body`. Reading `body` yields undefined and
+   * the agent receives a title with no detail — which does not fail, it
+   * fabricates. Measured: given only "Summarise what the NUFI agent-app design
+   * decided", the model invented a non-custodial crypto product and said so
+   * confidently. A silently empty prompt is the worst shape this can fail in,
+   * so `parseHeartbeatContext` asserts the field is there.
+   *
+   * `goal` is included because it is the whole point of Paperclip's model —
+   * every task traces to the company goal, and an agent that cannot see the
+   * goal cannot honour it.
+   */
   async heartbeatContext(issueId: string) {
     const res = await fetch(`${API_URL}/api/issues/${issueId}/heartbeat-context`, {
       headers: headers(),
     });
     if (!res.ok) throw new Error(`heartbeat-context ${res.status}`);
-    const data = (await res.json()) as { issue?: { title?: string; body?: string } };
-    return { title: data.issue?.title ?? "", body: data.issue?.body ?? "" };
+    return parseHeartbeatContext(await res.json());
   },
 
   async comment(issueId: string, body: string, runId: string) {
