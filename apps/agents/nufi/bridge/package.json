@@ -1,0 +1,12 @@
+{
+  "name": "@nufi/agents-bridge",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "hono": "^4.6.14"
+  }
+}
