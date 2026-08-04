@@ -35,12 +35,17 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v4
+        with:
+          # The repo root has no package.json on purpose (see README), so the
+          # action cannot infer a version from it and fails with
+          # "No pnpm version is specified".
+          package_json_file: apps/agents/package.json
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - name: Install UI dependencies
         working-directory: apps/agents
-        run: pnpm install --frozen-lockfile --filter ./ui...
+        run: pnpm install --frozen-lockfile --filter @paperclipai/ui
       - name: Test
         working-directory: apps/agents/ui
-        run: pnpm vitest run nufi-rebrand.test.ts
+        run: pnpm exec vitest run nufi-rebrand.test.ts
