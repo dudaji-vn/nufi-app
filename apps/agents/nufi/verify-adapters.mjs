@@ -46,9 +46,9 @@ const ALLOWED_KEYS = new Set([
  *   adapter: cursor_local
  *
  * Reproduce the list with:
- *   for d in packages/adapters/*/; do
- *     grep -hoE 'export const type = "[a-z_]+"' "$d/src/index.ts"
- *   done
+ *   grep -hoE 'export const type = "[a-z_]+"' packages/adapters/-/src/index.ts
+ * replacing the dash with a shell glob (a literal one cannot be written here:
+ * it would close this comment).
  */
 const KNOWN_ADAPTERS = new Set([
   "claude_local",
