@@ -91,6 +91,42 @@ argument in the design doc §3 C2 is wrong for this deployment.
 
 ---
 
+## Running it locally
+
+```bash
+cd apps/agents
+pnpm install --frozen-lockfile --node-linker=isolated
+```
+
+**`--node-linker=isolated` is not optional if your pnpm is configured otherwise.**
+`ui/vite.config.ts` aliases lexical to a hardcoded `./node_modules/lexical/dist/Lexical.mjs`,
+which only exists under pnpm's default isolated layout. With `node-linker=hoisted`
+the package lands at the workspace root instead and the build dies with:
+
+```
+[vite:load-fallback] Could not load .../ui/node_modules/lexical/dist/Lexical.mjs
+  (imported by ../node_modules/@mdxeditor/editor/dist/index.js): ENOENT
+```
+
+The setting can come from a global file — on macOS `~/Library/Preferences/pnpm/rc`
+— so `.npmrc` in the repo looking clean does not mean the layout is. Check with
+`pnpm config get node-linker`. CI uses a clean runner and gets the default, so
+this only ever bites locally.
+
+### Install size
+
+The install pulls `@openai/codex`, whose platform binaries are published as
+version suffixes (`0.142.5-darwin-arm64`, `-linux-x64`, `-win32-x64`, …) rather
+than as separate `os`/`cpu`-tagged packages. pnpm's `supportedArchitectures`
+filters the latter, not the former, so every platform is fetched — roughly
+550 MB, most of it unusable on any one machine. It lands in the shared pnpm
+store, so it is paid once per machine rather than once per clone.
+
+Nothing here fixes it: the dependency is upstream's and the packaging choice is
+OpenAI's. Worth revisiting if install time becomes a problem — the honest fix is
+upstream making the codex adapter an optional install, which is a pull request,
+not a local patch.
+
 ## Known white-label debt
 
 - `ui/public/paperclip-thinking.svg` — a 14×14 inline glyph in `BoardChat.tsx`.
