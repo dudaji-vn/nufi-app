@@ -127,6 +127,47 @@ OpenAI's. Worth revisiting if install time becomes a problem — the honest fix 
 upstream making the codex adapter an optional install, which is a pull request,
 not a local patch.
 
+## The rename is partial, on purpose
+
+`ui/nufi-rebrand.ts` rewrites the product name only in props the client
+**renders** (`children`, `title`, `placeholder`, `label`, `hint`, …). It does not
+rewrite every string, and the reason is a bug that version had.
+
+`ui/src/lib/successful-run-handoff.ts` holds:
+
+```ts
+const SUCCESSFUL_RUN_HANDOFF_REQUIRED_NOTICE_BODY =
+  "Paperclip needs a disposition before this issue can continue.";
+…
+return trimmed === SUCCESSFUL_RUN_HANDOFF_REQUIRED_NOTICE_BODY;
+```
+
+The value being compared is a comment body **the server wrote**, and the server
+is not transformed — this is a Vite plugin, so it only reaches the browser
+bundle. Renaming the constant makes that equality fail silently: the UI stops
+recognising its own system notices and renders them as ordinary comments.
+Nothing throws, nothing logs.
+
+So `message`, `body`, `detail`, `error` and `name` are deliberately excluded —
+measured against the built bundle, that is where server-authored notice bodies
+live.
+
+Measured on the current build:
+
+| | Rewrite every string | Rendered props only |
+|---|---|---|
+| `Paperclip` left in bundle | 4 | **172** |
+| `NUFI` in bundle | 257 | **89** |
+| Handoff comparison | **broken** | intact |
+
+The second column is worse branding and correct behaviour. A missed rename is
+cosmetic; a broken equality is a production bug found by a user.
+
+**The real fix is to rename on both sides** so client and server agree, at which
+point the whole-string rewrite becomes safe again. That is a follow-up, not a
+prototype step, and until it lands the app will show "Paperclip" in some error
+and notice text.
+
 ## Known white-label debt
 
 - `ui/public/paperclip-thinking.svg` — a 14×14 inline glyph in `BoardChat.tsx`.

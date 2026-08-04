@@ -41,20 +41,93 @@ import type { Plugin } from "vite";
 const BRAND = "NUFI";
 const PRODUCT = "NUFI Agents";
 
-/** Double/single quoted (single line) or backtick (multi-line) literals. */
-const STRING_LITERAL = /"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`/g;
+/**
+ * WHY THIS IS AN ALLOW-LIST AND NOT "EVERY STRING".
+ *
+ * An earlier version rewrote the product name inside every string literal. That
+ * is unsafe, and measurably so. `ui/src/lib/successful-run-handoff.ts` holds
+ *
+ *   const SUCCESSFUL_RUN_HANDOFF_REQUIRED_NOTICE_BODY =
+ *     "Paperclip needs a disposition before this issue can continue.";
+ *   …
+ *   return trimmed === SUCCESSFUL_RUN_HANDOFF_REQUIRED_NOTICE_BODY;
+ *
+ * The value on the left comes from a comment body the SERVER wrote, and the
+ * server is not transformed — this is a Vite plugin, so it only ever reaches the
+ * browser bundle. Renaming the constant therefore breaks the comparison
+ * silently: the UI stops recognising its own system notices and renders them as
+ * ordinary comments. Nothing throws.
+ *
+ * So the rule is: rewrite what the client RENDERS, never what it COMPARES.
+ * After React's transform, rendered text is a prop on a `_jsx(...)` call, which
+ * is what the property allow-list below targets. A bare string constant is left
+ * alone, because a constant is exactly the shape a protocol value takes.
+ *
+ * The cost of this is coverage: a string passed as a bare argument
+ * (`toast("Paperclip failed")`) is not rewritten. That is the intended trade —
+ * a missed rename is cosmetic, a broken equality is a bug you find in
+ * production.
+ */
+const RENDERED_PROPS = [
+  "children",
+  "title",
+  "placeholder",
+  "alt",
+  "label",
+  "description",
+  "summary",
+  "tooltip",
+  "helpText",
+  "helperText",
+  "guidanceMd",
+  "hint",
+  "heading",
+  "subtitle",
+  "caption",
+  "aria-label",
+  "ariaLabel",
+];
 
-/** Whole word `Paperclip`, not in JSX element position. */
+/**
+ * Deliberately NOT on the list: `message`, `body`, `detail`, `error`, `name`.
+ * Measured against the built bundle, those are where the server-authored notice
+ * bodies live — the same family as the handoff constant above. They are the
+ * strings most likely to be compared, and least safe to rewrite from one side.
+ */
+
+const RENDERED_PROP_STRING = new RegExp(
+  String.raw`(["']?(?:${RENDERED_PROPS.join("|")})["']?\s*:\s*)` +
+    String.raw`("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|` + "`(?:[^`\\\\]|\\\\.)*`)",
+  "g",
+);
+
+/** Whole word `Paperclip`, never in JSX or identifier position. */
 const PRODUCT_NAME = /(?<![<\/\w])\bPaperclip\b/g;
 
 export function rebrandStrings(code: string): string {
-  return code.replace(STRING_LITERAL, (literal) => literal.replace(PRODUCT_NAME, BRAND));
+  return code.replace(
+    RENDERED_PROP_STRING,
+    (_match, prefix: string, literal: string) => prefix + literal.replace(PRODUCT_NAME, BRAND),
+  );
 }
 
+/**
+ * ORDERING MATTERS. This plugin must run AFTER @vitejs/plugin-react, so it is
+ * registered after `react()` in vite.config.ts and deliberately carries no
+ * `enforce: "pre"`.
+ *
+ * Most of the product name is JSX text — `<h1>Welcome to Paperclip</h1>` — which
+ * is not a string literal in the source at all. Running first missed all of it
+ * (93 occurrences survived into the bundle). Running after React's transform,
+ * that text has become `_jsx("h1", { children: "Welcome to Paperclip" })`, which
+ * the string-literal rule does reach.
+ *
+ * The icon stays safe for the same reason: `<Paperclip />` compiles to
+ * `_jsx(Paperclip, {})`, an identifier, never a string.
+ */
 export function nufiRebrand(): Plugin {
   return {
     name: "nufi-rebrand",
-    enforce: "pre",
 
     transform(code, id) {
       if (!/\.[jt]sx?$/.test(id)) return null;

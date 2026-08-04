@@ -6,7 +6,9 @@ import { createUiDevWatchOptions } from "./src/lib/vite-watch";
 import { nufiRebrand } from "./nufi-rebrand";
 
 export default defineConfig(({ mode }) => ({
-  plugins: [nufiRebrand(), react(), tailwindcss()],
+  // nufiRebrand must follow react(): it rewrites string literals, and most of
+  // the product name is JSX text that only becomes one after React's transform.
+  plugins: [react(), nufiRebrand(), tailwindcss()],
   build: {
     minify: "esbuild",
   },
