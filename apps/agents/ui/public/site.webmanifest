@@ -1,0 +1,30 @@
+{
+  "id": "/",
+  "name": "NUFI Agents",
+  "short_name": "NUFI Agents",
+  "description": "Agent work management — goals, tasks, budgets and approval gates for a team of agents.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "browser",
+  "orientation": "any",
+  "theme_color": "#080810",
+  "background_color": "#080810",
+  "icons": [
+    {
+      "src": "/android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
