@@ -11,6 +11,7 @@ fails the build if that is violated.
 | Path | What it is |
 |---|---|
 | `nufi/` | This directory — configuration and notes. Never in upstream |
+| `nufi/verify-adapters.mjs` | Asserts the gateway invariant. **Not** named `check-*.mjs`: upstream's `.gitignore:20` ignores that pattern, and the file silently never gets committed |
 | `ui/src/nufi-brand.css` | Brand tokens. Doubled selectors so they win without editing upstream values |
 | `ui/nufi-rebrand.ts` | Build-time product-name transform |
 | `ui/nufi-rebrand.test.ts` | Its tests |

@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Validate nufi/adapters.json
-        run: node apps/agents/nufi/check-adapters.mjs
+        run: node apps/agents/nufi/verify-adapters.mjs
 
   rebrand:
     name: Rebrand transform
