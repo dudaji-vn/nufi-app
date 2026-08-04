@@ -1,0 +1,119 @@
+import { describe, expect, it } from "bun:test";
+
+import { runWith, type ExecutionContext } from "./execute";
+
+function ctx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
+  return {
+    runId: "run_1",
+    agent: { id: "agent_1", companyId: "co_1" },
+    config: {},
+    context: { taskId: "issue_1" },
+    onLog: async () => {},
+    ...overrides,
+  };
+}
+
+function deps(overrides: Record<string, unknown> = {}) {
+  const calls: string[] = [];
+  return {
+    calls,
+    fetchIssue: async () => {
+      calls.push("fetch");
+      return { title: "Draft the approvals page", description: "Cover review gates.", goal: null };
+    },
+    complete: async () => {
+      calls.push("complete");
+      return "A review gate holds a run until a named role approves it.";
+    },
+    comment: async (_id: string, body: string) => {
+      calls.push(`comment:${body.slice(0, 24)}`);
+    },
+    setStatus: async (_id: string, s: string) => {
+      calls.push(`status:${s}`);
+    },
+    ...overrides,
+  };
+}
+
+describe("runWith", () => {
+  it("answers, comments, and settles the issue in review", async () => {
+    const d = deps();
+    const result = await runWith(d, ctx());
+
+    expect(result.exitCode).toBe(0);
+    expect(d.calls).toEqual([
+      "fetch",
+      "complete",
+      "comment:A review gate holds a ru",
+      "status:in_review",
+    ]);
+  });
+
+  it("blocks the issue when the model refuses, rather than leaving it open", async () => {
+    const d = deps({ complete: async () => "I cannot answer this without the document." });
+    const result = await runWith(d, ctx());
+
+    expect(result.exitCode).toBe(0);
+    expect(d.calls.at(-1)).toBe("status:blocked");
+  });
+
+  /**
+   * The spike's finding, encoded: an issue left untouched is what made Paperclip
+   * escalate to a recovery owner and then stop dispatching. A failed run still
+   * owes a disposition.
+   */
+  it("still settles the issue when the model call throws", async () => {
+    const d = deps({
+      complete: async () => {
+        throw new Error("gateway 503");
+      },
+    });
+    const result = await runWith(d, ctx());
+
+    expect(result.exitCode).toBe(1);
+    expect(result.errorMessage).toBe("gateway 503");
+    expect(d.calls).toContain("status:blocked");
+  });
+
+  it("still settles the issue when the task has no description", async () => {
+    const d = deps({
+      fetchIssue: async () => ({ title: "Do the thing", description: "", goal: null }),
+    });
+    const result = await runWith(d, ctx());
+
+    expect(result.exitCode).toBe(1);
+    expect(result.errorMessage).toContain("no description");
+    expect(d.calls).toContain("status:blocked");
+  });
+
+  /**
+   * Observed on a live server: a timer heartbeat with nothing assigned produced
+   * `paperclip-run-unassigned-…` and reported `Status: failed` while the agent
+   * was in fact working correctly on another issue. An idle tick must be a
+   * clean exit, or every quiet heartbeat looks like a fault and buries the real
+   * ones.
+   */
+  it("exits cleanly, not as a failure, when there is no task to work on", async () => {
+    const d = deps();
+    const result = await runWith(d, ctx({ context: {} }));
+
+    expect(result.exitCode).toBe(0);
+    expect(result.summary).toBe("Idle — no task assigned");
+    expect(d.calls).toEqual([]);
+  });
+
+  it("does not mask the original failure when settling also fails", async () => {
+    const d = deps({
+      complete: async () => {
+        throw new Error("gateway 503");
+      },
+      comment: async () => {
+        throw new Error("api down");
+      },
+    });
+    const result = await runWith(d, ctx());
+
+    expect(result.exitCode).toBe(1);
+    expect(result.errorMessage).toBe("gateway 503");
+  });
+});

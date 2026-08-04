@@ -63,16 +63,19 @@ const KNOWN_ADAPTERS = new Set([
   // Built-in server types rather than packages under packages/adapters/.
   "http",
   "process",
+  // First-party external adapter, nufi/adapter, registered through
+  // ~/.paperclip/adapter-plugins.json.
+  "nufi_agent",
 ]);
 
 /**
- * `http` is a webhook adapter: Paperclip POSTs to an external service that
- * calls back into /api. It runs no harness, so it has no runtimeImage, no
- * sandbox and no model egress of its own — the gateway invariant applies to
- * whatever it calls, not to it. Holding it to the harness rules would force a
- * fake runtimeImage and a meaningless allowFqdns.
+ * Adapters that reach a model over HTTPS instead of running a harness in a
+ * sandbox. They have no runtimeImage, no pod and therefore no egress policy of
+ * their own — the gateway invariant applies to the endpoint they call, which
+ * for `nufi_agent` is the gateway by construction (see nufi/adapter/src/index.ts).
+ * Holding them to the harness rules would only force fake values.
  */
-const WEBHOOK_ADAPTERS = new Set(["http"]);
+const WEBHOOK_ADAPTERS = new Set(["http", "nufi_agent"]);
 
 const registry = JSON.parse(readFileSync(join(HERE, "adapters.json"), "utf8"));
 const problems = [];
