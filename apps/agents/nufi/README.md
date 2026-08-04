@@ -201,3 +201,66 @@ done here, and the design doc records the gap rather than hiding it.
   is still LibreChat's feather, while `favicon-32x32.png` is the real NuFi mark.
   The icons here were generated from `nufi-logo.svg` rather than copied, for
   exactly that reason.
+
+## The NuFi adapter
+
+`nufi/adapter` is a first-party **external** adapter (`nufi_agent`). It lives
+here rather than under `packages/adapters/` because that directory is vendored
+upstream and the fork guard rejects additions to it — which is the point:
+`docs/adapters/external-adapters.md` says external adapters need no upstream
+source change at all.
+
+Register it for development by writing `~/.paperclip/adapter-plugins.json`:
+
+```json
+[{
+  "packageName": "@nufi/paperclip-adapter",
+  "localPath": "<repo>/apps/agents/nufi/adapter",
+  "type": "nufi_agent",
+  "installedAt": "2026-08-04T08:00:00.000Z"
+}]
+```
+
+Then `pnpm --dir nufi/adapter build` and restart the server. Confirmation looks
+like:
+
+```
+Loaded external adapters from plugin store {"count":1,"adapters":["nufi_agent"]}
+reconciled adapter availability … "enabled":[… ,"nufi_agent"]
+```
+
+### It owns the disposition, not just the answer
+
+This is the requirement the spike produced. Paperclip does not treat "the agent
+said something" as progress; it wants a disposition, and when three consecutive
+runs failed to give it one it escalated to a recovery owner and then stopped
+dispatching (`docs/2026-08-04-nufi-agents-spike-findings.md` §3).
+
+So every run ends in exactly one of two states and never in neither:
+
+| Outcome | Status set | Comment |
+|---|---|---|
+| A substantive answer | `in_review` | the answer |
+| The model declines or returns nothing | `blocked` | the model's own words, so a human can judge |
+| The run throws | `blocked` | the error |
+
+The error path is not theoretical. Observed with a rate-limited key, three runs
+in a row posted `The agent run failed: gateway 429: … Remaining: 0` and left the
+issue readable instead of silently stalled.
+
+### Config
+
+The key is named, never stored: `apiKeyEnv` holds the **name** of an env var,
+because adapter config is visible in the UI.
+
+```json
+{ "target": "gateway", "model": "gemini", "apiKeyEnv": "NUFI_MODEL_API_KEY" }
+```
+
+`target: "chat"` swaps the gateway for an `apps/chat` agent (`chatUrl`,
+`chatAgentId`), which brings RAG and tools. The spike ran against the gateway
+only, so that path is written but unproven.
+
+Do not lower `maxTokens` (default 4096). The model spends its reasoning budget
+before emitting text — a 20-token cap returned empty content with no error, and
+`resolveDisposition` would then block the issue for entirely the wrong reason.

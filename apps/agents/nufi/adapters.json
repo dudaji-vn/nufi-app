@@ -45,7 +45,7 @@
     }
   },
   {
-    "adapterType": "http",
+    "adapterType": "nufi_agent",
     "enabled": true
   }
 ]
