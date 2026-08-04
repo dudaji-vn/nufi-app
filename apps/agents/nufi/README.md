@@ -168,6 +168,27 @@ point the whole-string rewrite becomes safe again. That is a follow-up, not a
 prototype step, and until it lands the app will show "Paperclip" in some error
 and notice text.
 
+## Theme coverage
+
+The brand layer reaches anything styled through a shadcn token and nothing
+styled with a literal Tailwind palette class. Measured in `ui/src`:
+
+```bash
+grep -rhoE "\b(bg|text|border)-(background|foreground|card|popover|primary|secondary|muted|accent|sidebar|border)\b" \
+  . --include="*.tsx" | wc -l          # → 8642  token-driven, themed
+grep -rhoE "\b(bg|text|border)-(zinc|neutral|gray|slate|stone)-[0-9]{2,3}\b" \
+  . --include="*.ts*" | wc -l          # → 215   hardcoded, NOT themed
+```
+
+About 97.6% of styled surfaces follow the tokens. The remaining 215 — mostly
+`bg-neutral-950`, `border-zinc-800`, `text-zinc-400` — stay upstream neutral
+grey, which is why some secondary panels still read grey rather than NuFi navy.
+
+Fixing them means editing upstream components, which the allowlist forbids and
+`git subtree pull` would punish. The cheap approximation, if it ever matters, is
+a Tailwind config mapping those palette scales onto the brand ramp. It is not
+done here, and the design doc records the gap rather than hiding it.
+
 ## Known white-label debt
 
 - `ui/public/paperclip-thinking.svg` — a 14×14 inline glyph in `BoardChat.tsx`.

@@ -35,11 +35,29 @@ const ALLOWED_KEYS = new Set([
   "defaultEnv",
 ]);
 
+/**
+ * The adapter type each package actually declares, read from its
+ * `export const type` — NOT from the kubernetes provider's `adapter-defaults.ts`,
+ * whose REGISTRY keys disagree (it says `cursor_local`; the adapter itself says
+ * `cursor`). The server validates against the installed adapters, so getting
+ * this from the wrong source makes it refuse to boot:
+ *
+ *   Error: PAPERCLIP_ADAPTERS declares adapter type(s) with no installed
+ *   adapter: cursor_local
+ *
+ * Reproduce the list with:
+ *   for d in packages/adapters/*/; do
+ *     grep -hoE 'export const type = "[a-z_]+"' "$d/src/index.ts"
+ *   done
+ */
 const KNOWN_ADAPTERS = new Set([
   "claude_local",
   "codex_local",
+  "cursor",
+  "cursor_cloud",
   "gemini_local",
-  "cursor_local",
+  "grok_local",
+  "openclaw_gateway",
   "opencode_local",
   "pi_local",
 ]);
