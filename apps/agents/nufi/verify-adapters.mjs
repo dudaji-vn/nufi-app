@@ -60,7 +60,19 @@ const KNOWN_ADAPTERS = new Set([
   "openclaw_gateway",
   "opencode_local",
   "pi_local",
+  // Built-in server types rather than packages under packages/adapters/.
+  "http",
+  "process",
 ]);
+
+/**
+ * `http` is a webhook adapter: Paperclip POSTs to an external service that
+ * calls back into /api. It runs no harness, so it has no runtimeImage, no
+ * sandbox and no model egress of its own — the gateway invariant applies to
+ * whatever it calls, not to it. Holding it to the harness rules would force a
+ * fake runtimeImage and a meaningless allowFqdns.
+ */
+const WEBHOOK_ADAPTERS = new Set(["http"]);
 
 const registry = JSON.parse(readFileSync(join(HERE, "adapters.json"), "utf8"));
 const problems = [];
@@ -83,11 +95,12 @@ for (const entry of registry) {
     problems.push(`${name}: not an adapter type upstream ships`);
   }
 
-  if (!entry.runtimeImage) {
+  if (!entry.runtimeImage && !WEBHOOK_ADAPTERS.has(name)) {
     problems.push(`${name}: runtimeImage is required`);
   }
 
   if (!entry.enabled) continue;
+  if (WEBHOOK_ADAPTERS.has(name)) continue;
 
   const egress = entry.allowFqdns ?? [];
   if (egress.length === 0) {

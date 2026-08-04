@@ -43,5 +43,9 @@
     "defaultEnv": {
       "ANTHROPIC_BASE_URL": "https://api.codechi.me"
     }
+  },
+  {
+    "adapterType": "http",
+    "enabled": true
   }
 ]
