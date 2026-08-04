@@ -45,20 +45,39 @@ describe("rebrandStrings", () => {
     });
   });
 
-  describe("leaves protocol values alone", () => {
-    it("does not rename a bare string constant", () => {
-      const src =
-        'const NOTICE_BODY = "Paperclip needs a disposition before this issue can continue.";';
-      expect(rebrandStrings(src)).toBe(src);
+  /**
+   * These were unsafe while only the client was renamed: the constants below
+   * are compared against comment bodies the SERVER wrote, and renaming one side
+   * makes the equality fail silently. They are safe now because
+   * nufi/rebrand-server-dist.mjs applies the identical rules to server/dist, so
+   * both sides say NUFI.
+   *
+   * If that server step is ever dropped, these tests should be reverted along
+   * with it — they encode a precondition, not a preference.
+   */
+  describe("rewrites protocol values too, because the server matches", () => {
+    it("renames a bare string constant", () => {
+      expect(
+        rebrandStrings(
+          'const NOTICE_BODY = "Paperclip needs a disposition before this issue can continue.";',
+        ),
+      ).toBe('const NOTICE_BODY = "NUFI needs a disposition before this issue can continue.";');
     });
 
-    it("does not rename inside a regex literal", () => {
+    it("renames a bare call argument", () => {
+      expect(rebrandStrings('toast("Paperclip failed to dispatch")')).toBe(
+        'toast("NUFI failed to dispatch")',
+      );
+    });
+
+    /**
+     * Regex literals are still not string literals, so this one is untouched by
+     * design. It matches a server-written body, and the server transform
+     * renames that body — so the pattern must be updated by hand if it ever
+     * stops matching. Recorded here rather than silently tolerated.
+     */
+    it("still leaves a regex literal alone, which the server rename must account for", () => {
       const src = "/^Paperclip exhausted the bounded successful-run handoff\\b/i.test(trimmed)";
-      expect(rebrandStrings(src)).toBe(src);
-    });
-
-    it("does not rename a bare call argument", () => {
-      const src = 'toast("Paperclip failed to dispatch")';
       expect(rebrandStrings(src)).toBe(src);
     });
   });

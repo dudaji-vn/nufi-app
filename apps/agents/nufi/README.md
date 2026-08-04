@@ -127,7 +127,62 @@ OpenAI's. Worth revisiting if install time becomes a problem — the honest fix 
 upstream making the codex adapter an optional install, which is a pull request,
 not a local patch.
 
-## The rename is partial, on purpose
+## The rename covers both bundles
+
+`nufi/rebrand.mjs` holds the rules. Two consumers apply them, and they must
+never diverge:
+
+| Bundle | Applied by | When |
+|---|---|---|
+| `ui/dist` | `ui/nufi-rebrand.ts`, a Vite plugin | every `vite build` |
+| `server/dist` | `nufi/rebrand-server-dist.mjs` | **must be run after every `tsc`** |
+
+The server step is not optional. Skip it and the two sides disagree: the client
+looks for `"NUFI needs a disposition…"` while the server keeps writing
+`"Paperclip needs a disposition…"`, and every comparison between them stops
+matching with no error. `--check` exists to catch that:
+
+```bash
+pnpm --filter @paperclipai/server build
+node nufi/rebrand-server-dist.mjs server/dist          # apply
+node nufi/rebrand-server-dist.mjs --check server/dist  # assert, exit 1 if not
+```
+
+Measured on a clean build: 42 of 336 emitted files carried the upstream name;
+after the pass, `--check` is green and all three of `server/dist/**/*.js`,
+`server/dist/**/*.d.ts` and `ui/dist/assets/*.js` contain the identical
+sentence. Declarations are included deliberately — tsc emits literal types for
+exported string constants, and a `.d.ts` that disagrees with its own `.js` is
+worse than none.
+
+### The test suite cannot catch a rename regression
+
+`ui/vitest.config.ts` is standalone: it does not extend `vite.config.ts`, so the
+plugin never runs under vitest. Tests therefore execute against the **upstream**
+strings while the shipped bundle carries the renamed ones.
+
+That is not a bug to fix here — wiring the plugin into vitest would make every
+upstream test assert NuFi copy, which is a much larger diff and exactly what
+§7's thin-fork rule forbids. But it means the guarantee is one-sided: 955 of 956
+`src/lib` tests pass and cannot say anything about the rename either way. (The
+one failure, `attention.test.ts`, is a timezone-dependent date-bucketing test
+and is unrelated — the plugin does not run there at all.)
+
+One concrete residue, recorded rather than hidden:
+`ui/src/lib/successful-run-handoff.ts:71` matches with a **regex literal**,
+which the transform does not touch:
+
+```
+/^Paperclip exhausted the bounded successful-run handoff correction\b/i
+```
+
+Nothing currently emits that sentence — 0 occurrences in `server/src` and
+`server/dist`; it appears only in the client's own test fixture. So it is inert
+today. If upstream starts emitting it, this fork will silently fail to match,
+because the server will say NUFI and the pattern still says Paperclip. Anyone
+rebasing onto a tag that adds that message needs to update the pattern by hand.
+
+## The rename was partial, and why it no longer is
 
 `ui/nufi-rebrand.ts` rewrites the product name only in props the client
 **renders** (`children`, `title`, `placeholder`, `label`, `hint`, …). It does not
