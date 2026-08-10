@@ -12,6 +12,7 @@ import {
   PROXY_TARGET,
 } from "./src/customization/config-constants";
 import { createAccessTokenExpireSecondsDefinition } from "./vite-env-definitions";
+import { nufiRebrand } from "../../nufi/rebrand";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
@@ -76,6 +77,7 @@ export default defineConfig(({ mode }) => {
       ),
     },
     plugins: [
+      nufiRebrand(),
       react(),
       svgr(),
       tsconfigPaths(),
