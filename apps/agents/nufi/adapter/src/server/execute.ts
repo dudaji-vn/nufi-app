@@ -30,7 +30,7 @@ export interface ExecutionResult {
 }
 
 export interface ExecuteDeps {
-  fetchIssue(issueId: string): Promise<{ title: string; description: string; goal: string | null }>;
+  fetchIssue(issueId: string): Promise<{ title: string; description: string; goal: string | null; status: string }>;
   complete(prompt: string): Promise<string>;
   comment(issueId: string, body: string): Promise<void>;
   setStatus(issueId: string, status: string): Promise<void>;
@@ -82,6 +82,29 @@ export async function runWith(
 
   try {
     const issue = await deps.fetchIssue(issueId);
+
+    /**
+     * Work that is already answered is not work.
+     *
+     * Paperclip re-dispatches an agent that still has an assignment, and an
+     * adapter that answers every time it is asked will answer the same task
+     * forever. Measured: one task collected four full answers in twenty
+     * seconds, and a human could not close it — every attempt to mark it done
+     * was undone by the next run within ten seconds.
+     *
+     * That is a budget leak, not just a demo annoyance: the loop has no natural
+     * end and every lap costs a model call.
+     */
+    if (issue.status === "in_review" || issue.status === "done") {
+      await ctx.onLog("stdout", `Already answered and awaiting a person; nothing to add.\n`);
+      return {
+        exitCode: 0,
+        signal: null,
+        timedOut: false,
+        summary: "Idle — already answered, waiting on review",
+      };
+    }
+
     const prompt = buildPrompt(issue);
 
     await ctx.onLog("stdout", `> ${issue.title}\n`);
@@ -103,6 +126,19 @@ export async function runWith(
     const message = err instanceof Error ? err.message : String(err);
 
     /**
+     * A task that cannot be worked on is not a failed run.
+     *
+     * `buildPrompt` throws when a task carries no description — that is the
+     * adapter doing its job, not breaking. Reporting it as exitCode 1 made
+     * Paperclip raise "Research Agent run failed" toasts for a decision the
+     * agent got right, which reads to anyone watching as the app crashing.
+     *
+     * A genuine failure — the gateway refusing, the network gone — still
+     * reports non-zero, because that one should page someone.
+     */
+    const unworkable = /no description/.test(message);
+
+    /**
      * A failure still owes the issue a disposition. Leaving it untouched is the
      * exact behaviour that made Paperclip escalate and then stop dispatching
      * during the spike, so the comment and the status go out even on the error
@@ -116,7 +152,9 @@ export async function runWith(
       // Reported through exitCode below; nothing further to try.
     }
 
-    await ctx.onLog("stderr", `${message}\n`);
-    return { exitCode: 1, signal: null, timedOut: false, errorMessage: message };
+    await ctx.onLog(unworkable ? "stdout" : "stderr", `${message}\n`);
+    return unworkable
+      ? { exitCode: 0, signal: null, timedOut: false, summary: "Blocked — task is not workable as written" }
+      : { exitCode: 1, signal: null, timedOut: false, errorMessage: message };
   }
 }
