@@ -1,0 +1,104 @@
+/*
+ * NuFi brand layer for the nufi-agent (Langflow) fork.
+ *
+ * This is the ONLY stylesheet under apps/nufi-agent/ that NuFi owns for
+ * colour. Everything else under src/frontend/ is vendored from
+ * langflow-ai/langflow and must stay byte-identical to the upstream tag so
+ * `git subtree pull` keeps working — see nufi/README.md and
+ * nufi/check-fork-diff.sh.
+ *
+ * Selectors are deliberately doubled (`:root:root`, `.dark.dark`), the same
+ * technique used by apps/agents/ui/src/nufi-brand.css for the Paperclip
+ * fork. That raises specificity above upstream's single-class declarations
+ * in src/frontend/src/style/index.css, so these values win regardless of
+ * import order, without editing a single upstream declaration.
+ *
+ * IMPORTANT — value format. Unlike Paperclip's brand.css, these tokens are
+ * NOT hex. Langflow's tailwind.config.mjs consumes them as
+ * `hsl(var(--primary))` etc. (see `theme.extend.colors`), so every value
+ * here must be a bare "H S% L%" triplet — the same convention already used
+ * by every colour var in style/index.css. A hex value here would make
+ * `hsl(var(--primary))` an invalid CSS value at the point of use, which
+ * silently drops the declaration rather than falling back to anything.
+ * Three tokens — `--ice`, `--selected`, `--hover` — are consumed as
+ * `var(--x)` directly with no hsl() wrapper; none of those are brand/accent
+ * surfaces, so none are touched here.
+ *
+ * Only the shadcn brand/surface tokens are overridden: --primary and its
+ * satellites (used for buttons, links, focus rings) in both themes, plus
+ * the dark-theme neutral surfaces (--background, --card, --popover,
+ * --secondary, --muted, --accent). Left alone: status colours
+ * (--status-*), the --datatype-* type-badge scale, --warning/--error/
+ * --success/--info, the --accent-emerald/-indigo/-blue/-pink/-purple
+ * accent scale, the --accent-assistant-* mascot palette, --note-*,
+ * --border/--input, and the (unused — see nufi/README.md) --sidebar-*
+ * tokens. Rationale for each is in nufi/README.md, not repeated per-line
+ * here.
+ *
+ * Palette source: apps/chat/client/src/style.css (`--brand-*`) — the same
+ * source Paperclip's brand.css cites, so nufi-agent, apps/chat and the
+ * Paperclip-based apps/agents all read as one company.
+ *
+ *   primary        #7b82f0  ->  236.4 79.6% 71.2%
+ *   primary-hover  #6970e0  ->  236.5 65.7% 64.5%
+ *   primary (AA)   #6268c0  ->  236.2 42.7% 56.9%   (light-mode text-on-primary variant)
+ *   navy-900       #080810  ->  240.0 33.3%  4.7%   (--background)
+ *   navy-800       #0d1020  ->  230.5 42.2%  8.8%   (--card, --popover)
+ *   navy-600       #151823  ->  227.1 25.0% 11.0%   (--secondary, --muted)
+ *   navy-500       #1a1e2a  ->  225.0 23.5% 13.3%   (--accent)
+ *
+ * Contrast, measured (WCAG 2.1, sRGB relative luminance) — identical
+ * reasoning to Paperclip's brand.css, since it's the same two brand colours:
+ *
+ *   #7b82f0 on #ffffff  ->  3.34:1   fails AA for body text
+ *   #7b82f0 on #080810  ->  5.98:1   passes AA
+ *   #6268c0 on #ffffff  ->  4.93:1   passes AA
+ *
+ * Hence the split: dark mode uses the brand primary as-is (button bg
+ * #7b82f0, button text navy-900) against navy; light mode uses #6268c0 —
+ * the same hue darkened until white button text clears 4.5:1.
+ *
+ * --primary-hover has no counterpart in Paperclip's brand.css (shadcn/
+ * Paperclip doesn't define that token) — Langflow does
+ * (`primary.hover` in tailwind.config.mjs, consumed by hover: states on
+ * primary buttons), and leaving it at upstream's near-black/near-white
+ * default would flip a hovered primary button off-brand. apps/chat defines
+ * `--brand-primary-hover: #6970e0` as a single value shared by its light
+ * and dark themes (not two shades), so it is applied unchanged in both
+ * modes here too.
+ */
+
+:root:root {
+  /* Brand primary, darkened for AA against white button text (4.93:1). */
+  --primary: 236.2 42.7% 56.9%; /* #6268c0 */
+  --primary-foreground: 0 0% 100%; /* #ffffff */
+  --primary-hover: 236.5 65.7% 64.5%; /* #6970e0 */
+  --ring: 236.4 79.6% 71.2%; /* #7b82f0 — unmodified brand primary; non-text contrast, no AA darkening needed */
+}
+
+.dark.dark {
+  /* NuFi navy surfaces, matching apps/chat dark mode and Paperclip's brand.css. */
+  --background: 240 33.3% 4.7%; /* #080810 */
+  --card: 230.5 42.2% 8.8%; /* #0d1020 */
+  --popover: 230.5 42.2% 8.8%; /* #0d1020 */
+  --secondary: 227.1 25% 11%; /* #151823 */
+  --muted: 227.1 25% 11%; /* #151823 */
+  --accent: 225 23.5% 13.3%; /* #1a1e2a */
+
+  /* Brand primary unmodified — 5.98:1 against navy-900 button text. */
+  --primary: 236.4 79.6% 71.2%; /* #7b82f0 */
+  --primary-foreground: 240 33.3% 4.7%; /* #080810 */
+  --primary-hover: 236.5 65.7% 64.5%; /* #6970e0 — same value as light mode, see file header */
+  --ring: 236.4 79.6% 71.2%; /* #7b82f0 */
+
+  /*
+   * --border and --input stay upstream's solid neutral greys
+   * (hsl(240 5% 26%) / hsl(240 5% 34%)). Unlike Paperclip's alpha-overlay
+   * borders, these are opaque and were tuned against Langflow's original
+   * hsl(240 6% 10%) background, not navy-900 — they still read as visible
+   * hairlines against the darker navy background (contrast only improves),
+   * just with a faint hue mismatch. Re-tuning them to navy hue would be a
+   * cosmetic pass with no accessibility requirement behind it, so it's left
+   * for a follow-up rather than guessed at here.
+   */
+}

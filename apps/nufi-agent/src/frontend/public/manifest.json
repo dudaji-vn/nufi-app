@@ -1,7 +1,9 @@
 {
-  "name": "Langflow",
-  "short_name": "Langflow",
-  "description": "Langflow is a low-code builder that makes it easier to build powerful AIs that can use any API, model, or database.",
+  "name": "NuFi Agent",
+  "short_name": "NuFi Agent",
+  "description": "NuFi Agent is a low-code builder that makes it easier to build powerful AIs that can use any API, model, or database.",
+  "theme_color": "#080810",
+  "background_color": "#080810",
   "icons": [
     {
       "src": "icons/32x32.png",
