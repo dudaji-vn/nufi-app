@@ -1,7 +1,7 @@
 {
   "name": "NuFi Agent",
   "short_name": "NuFi Agent",
-  "description": "NuFi Agent is a low-code builder that makes it easier to build powerful AIs that can use any API, model, or database.",
+  "description": "NuFi Agent is a visual editor for building, testing, and running AI workflows that connect language models, APIs, and data sources.",
   "theme_color": "#080810",
   "background_color": "#080810",
   "icons": [
