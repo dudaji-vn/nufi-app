@@ -71,7 +71,7 @@ export function buildDeps(ctx: ExecutionContext): ExecuteDeps {
       if (!res.ok) throw new Error(`heartbeat-context ${res.status}`);
 
       const data = (await res.json()) as {
-        issue?: { title?: string; description?: string };
+        issue?: { title?: string; description?: string; status?: string };
         goal?: { title?: string } | null;
       };
       // `description`, not `body` — see disposition.ts and the spike findings.
@@ -79,6 +79,7 @@ export function buildDeps(ctx: ExecutionContext): ExecuteDeps {
         title: data.issue?.title ?? "",
         description: data.issue?.description ?? "",
         goal: data.goal?.title ?? null,
+        status: data.issue?.status ?? "todo",
       };
     },
 

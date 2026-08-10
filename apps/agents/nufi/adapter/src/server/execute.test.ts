@@ -19,7 +19,7 @@ function deps(overrides: Record<string, unknown> = {}) {
     calls,
     fetchIssue: async () => {
       calls.push("fetch");
-      return { title: "Draft the approvals page", description: "Cover review gates.", goal: null };
+      return { title: "Draft the approvals page", description: "Cover review gates.", goal: null, status: "todo" };
     },
     complete: async () => {
       calls.push("complete");
@@ -76,14 +76,58 @@ describe("runWith", () => {
     expect(d.calls).toContain("status:blocked");
   });
 
-  it("still settles the issue when the task has no description", async () => {
+  /**
+   * A task that cannot be worked on is a correct decision, not a failed run.
+   * Reporting non-zero made Paperclip raise "run failed" toasts for the agent
+   * getting it right, which looks like a crash to anyone watching.
+   */
+  /**
+   * Paperclip re-dispatches while an assignment stands. Without this, one task
+   * collected four answers in twenty seconds and could not be closed: every
+   * approval was undone by the next run. The loop has no natural end and every
+   * lap costs a model call.
+   */
+  it("does no work when the task is already answered and awaiting review", async () => {
     const d = deps({
-      fetchIssue: async () => ({ title: "Do the thing", description: "", goal: null }),
+      fetchIssue: async () => ({ title: "T", description: "D", goal: null, status: "in_review" }),
+    });
+    const result = await runWith(d, ctx());
+
+    expect(result.exitCode).toBe(0);
+    expect(result.summary).toContain("already answered");
+    // No model call, no comment, no status write — the point is that a second
+    // dispatch costs nothing.
+    expect(d.calls).toEqual([]);
+  });
+
+  it("does no work on a task a person has already closed", async () => {
+    const d = deps({
+      fetchIssue: async () => ({ title: "T", description: "D", goal: null, status: "done" }),
+    });
+    await runWith(d, ctx());
+    expect(d.calls).toEqual([]);
+  });
+
+  it("blocks an unworkable task WITHOUT reporting the run as failed", async () => {
+    const d = deps({
+      fetchIssue: async () => ({ title: "Do the thing", description: "", goal: null, status: "todo" }),
+    });
+    const result = await runWith(d, ctx());
+
+    expect(result.exitCode).toBe(0);
+    expect(result.summary).toContain("not workable");
+    expect(d.calls).toContain("status:blocked");
+  });
+
+  it("still reports non-zero when the gateway genuinely fails", async () => {
+    const d = deps({
+      complete: async () => {
+        throw new Error("gateway 503");
+      },
     });
     const result = await runWith(d, ctx());
 
     expect(result.exitCode).toBe(1);
-    expect(result.errorMessage).toContain("no description");
     expect(d.calls).toContain("status:blocked");
   });
 
