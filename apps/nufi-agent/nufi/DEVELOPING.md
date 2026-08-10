@@ -1,14 +1,24 @@
 # Local development — the delta from upstream
 
-This is **only** the delta from [`../DEVELOPMENT.md`](../DEVELOPMENT.md).
-Read that first — it covers the actual walkthrough (installing `uv`/`npm`,
-running `make init`, hot-reload, adding components, VS Code debug configs,
-the Docusaurus docs server). Repeating any of it here means maintaining two
-copies that drift on every `git subtree pull` — the same reasoning
-`nufi/README.md` gives for keeping this fork's diff small. This file exists
-because four things about running Langflow in *this* monorepo genuinely
-differ from a standalone `langflow-ai/langflow` checkout, verified by
-actually doing them (see `task-6-report.md` for the full transcript).
+**Run [`nufi/init.sh`](./init.sh) to set up this project, not upstream's
+`make init`.** `make init`'s last step, `uvx pre-commit install`, would
+install a git hook into this monorepo's one shared `.git/hooks/` that can
+break commits everywhere in it, not only here — see "`nufi/init.sh`, not
+`make init`" below for the full trace and a verified before/after.
+`nufi/init.sh` runs the same two dependency-install targets and stops
+there.
+
+This is otherwise **only** the delta from
+[`../DEVELOPMENT.md`](../DEVELOPMENT.md). Read that first — it covers the
+actual walkthrough (installing `uv`/`npm`, hot-reload, adding components,
+VS Code debug configs, the Docusaurus docs server) — just substitute
+`nufi/init.sh` wherever it says `make init`, for the reason above.
+Repeating any more of it here means maintaining two copies that drift on
+every `git subtree pull` — the same reasoning `nufi/README.md` gives for
+keeping this fork's diff small. This file exists because a handful of
+things about running Langflow in *this* monorepo genuinely differ from a
+standalone `langflow-ai/langflow` checkout, verified by actually doing
+them (see `task-6-report.md` for the full transcript).
 
 ## Skip "Set up Git Repository Fork"
 
@@ -67,29 +77,58 @@ lists the full CLI (`run`, `superuser`, `migrate-mcp`, `copy-db`,
 `migration`, `api-key`, `lfx`) — the whole dependency graph imports
 cleanly.
 
-## Skip `make init`'s pre-commit step in this monorepo
+## `nufi/init.sh`, not `make init` — and why that's a hard requirement, not a preference
 
 `make init` ends with `uvx pre-commit install`, which upstream's doc frames
 as optional-but-recommended. In a standalone `langflow` checkout that's
-fine. In this monorepo it is not, because there is exactly one `.git/hooks/`
-directory shared by every app — `apps/chat`, `apps/console`, `apps/docs`,
-`deploy/*`, all of it. `apps/nufi-agent/.pre-commit-config.yaml` was written
-for a repo where it *is* the root: several of its hooks have no path
-restriction at all (`trailing-whitespace`), or restrict only by extension
-with no directory prefix (`end-of-file-fixer`, `mixed-line-ending`: `files:
-\.(py|js|ts)$`). Installed as-is, the hook fires on **every** commit
-anywhere in this monorepo and inspects every staged `.py`/`.js`/`.ts` file
-repo-wide, not just files under `apps/nufi-agent/`.
+fine. In this monorepo it is worse than merely unsafe — it plausibly
+**breaks every commit in the entire monorepo**, not just ones touching
+`apps/nufi-agent`. There is exactly one `.git/hooks/` directory shared by
+every app here — `apps/chat`, `apps/agents`, `apps/console`, `apps/docs`,
+`deploy/*`, all of it. `apps/nufi-agent/.pre-commit-config.yaml`'s local
+hooks use `language: system` (`.pre-commit-config.yaml:18-19`,
+`entry: uv run ruff check`) — pre-commit always runs a `language: system`
+hook's `entry` **from the git root**, not from wherever the config file
+lives. The git root here is the monorepo root, which has no `uv` project
+at all: `uv run ruff check` invoked from there fails immediately, on
+every commit, everywhere, until someone works out the cause is a stray
+`.git/hooks/pre-commit` and deletes it by hand. (Several other hooks in
+that same config also have no path restriction — `trailing-whitespace` at
+all, `end-of-file-fixer`/`mixed-line-ending` by extension only, `files:
+\.(py|js|ts)$` — which would additionally reformat files repo-wide even
+before the `uv run` failure is diagnosed.)
 
-Not run here for that reason. Fixing it properly would mean prefixing every
-`files:` pattern in `.pre-commit-config.yaml` with `^apps/nufi-agent/` —
-which is itself an upstream-file edit outside the current `nufi/`
-allowlist, so it's a real decision (new allowlist entry + a stated reason
-in `nufi/README.md`, per `check-fork-diff.sh`'s own failure message), not
-a quick fix. Flagged here so nobody loses time to a monorepo-wide lint
-storm the way `nufi-agent-ci.yml`'s `package_json_file` comment (mirrored
-in this task's CI job — see below) says someone already lost time to a
-different flavor of the same "tool assumes it owns the repo root" problem.
+**Use [`nufi/init.sh`](./init.sh) instead of `make init`.** It runs the
+same `install_backend`/`install_frontend` targets and stops there — no
+`uvx pre-commit install`, nothing written to `.git/hooks/`. Verified
+directly, not just reasoned about:
+
+```
+$ ls -la "$(git rev-parse --git-path hooks)/pre-commit"
+ls: .git/hooks/pre-commit: No such file or directory
+$ ./apps/nufi-agent/nufi/init.sh
+Installing backend dependencies (make install_backend)...
+...
+Installing frontend dependencies (make install_frontend)...
+...
+OK -- backend and frontend dependencies installed.
+$ ls -la "$(git rev-parse --git-path hooks)/pre-commit"
+ls: .git/hooks/pre-commit: No such file or directory
+```
+
+Fixing `.pre-commit-config.yaml` itself (scoping every `files:` pattern to
+`^apps/nufi-agent/`, and giving the `language: system` hooks a `uv run
+--project apps/nufi-agent ...`-shaped entry that works from the git root)
+is a separate, real decision — it's an upstream-file edit outside the
+current `nufi/` allowlist, so it needs a new allowlist entry and a stated
+reason in `nufi/README.md`, per `check-fork-diff.sh`'s own failure
+message, not a quick fix folded into this task. `nufi/init.sh` is the
+barrier in the meantime: it makes the unsafe command avoidable by default
+instead of merely documented as dangerous. Same underlying lesson
+`nufi-agent-ci.yml`'s `package_json_file` comment (mirrored in this task's
+CI job — see below) already states for a different tool: this repo's root
+having no `package.json`/`pyproject.toml` is not a gap other tools handle
+gracefully, it's a well-known-locally, non-obvious way to lose time.
 
 ## Port conflicts with `deploy/platform`
 
@@ -115,11 +154,26 @@ Desktop bound to all of those).
   **Sharper than the port number:** `Makefile.frontend`'s `run_frontend`
   target — what `make frontend` actually calls — runs
   `kill -9 \`lsof -t -i:3000\`` unconditionally, before starting Vite, with
-  the port hardcoded rather than parameterized. Contrast `make backend`,
-  whose equivalent kill is `kill -9 $(lsof -t -i:$(port))` — scoped to
-  whatever `port=` you actually pass. Overriding Vite's own port with
-  `VITE_PORT` (see below) does **not** change what `run_frontend` tries to
-  kill first. On this machine, the process holding port 3000 is Docker
+  the port hardcoded. **Correction:** an earlier version of this doc
+  claimed `make backend`'s equivalent kill is parameterized on `$(port)`,
+  in contrast. That's wrong — checked again against the actual line:
+
+  ```
+  Makefile:290    @-kill -9 $$(lsof -t -i:7860) || true
+  ```
+
+  `make backend` hardcodes `7860` exactly the same way the frontend
+  hardcodes `3000` — `make backend port=8080` does **not** scope the kill
+  to `8080`; it still kills whatever holds `7860`. Both targets pre-kill a
+  hardcoded port, full stop. The asymmetry that actually matters is
+  elsewhere: 7860 does not collide with anything `deploy/platform` runs
+  today, and 3000 does — so the backend's hardcoded kill is currently
+  harmless and the frontend's isn't, not because one is safer code, only
+  because of what happens to be listening on each port on this machine
+  right now. Overriding Vite's own port with `VITE_PORT` (see below) does
+  **not** change what `run_frontend` tries to kill first, and overriding
+  `make backend port=`  does not change what `backend` tries to kill
+  first either. On this machine, the process holding port 3000 is Docker
   Desktop's host-side port-forwarder for `langfuse-web`, not a stray Vite
   process — running `make frontend` (or `make run_frontend`) while
   `deploy/platform` is up would `kill -9` that forwarder and take
