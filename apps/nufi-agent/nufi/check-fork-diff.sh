@@ -35,6 +35,9 @@ ALLOWLIST=(
   "src/frontend/src/assets/langflow_logo_black.svg"
   "src/frontend/src/assets/logo_dark.png"
   "src/frontend/src/assets/logo_light.png"
+  "src/frontend/src/assets/langflow_assistant.svg"
+  "src/frontend/src/assets/langflow_assistant_idle.svg"
+  "src/frontend/src/assets/MCPLangflow.png"
 )
 
 echo "Comparing apps/nufi-agent against ${REPO} @ ${TAG}"

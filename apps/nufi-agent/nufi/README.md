@@ -22,19 +22,47 @@ fails the build if that is violated.
 | `src/frontend/src/assets/langflow_logo_black.svg` | Light-background logo variant | Same as above — currently unreferenced, kept under its upstream name for the same reason |
 | `src/frontend/src/assets/logo_dark.png` | Dark-theme hero mark | Imported in `pages/MainPage/pages/empty-page.tsx` — the empty-project placeholder graphic |
 | `src/frontend/src/assets/logo_light.png` | Light-theme hero mark | Same call site as `logo_dark.png`, the light-theme counterpart |
+| `src/frontend/src/assets/langflow_assistant.svg` | The assistant panel's mascot icon | Imported in 5 non-test files: `canvasControlsComponent/CanvasControls.tsx` and four states of the assistant panel (`assistant-message.tsx`, `assistant-empty-state.tsx`, `assistant-disabled-state.tsx`, `assistant-no-models-state.tsx`). Rendered today, not reserved for later |
+| `src/frontend/src/assets/langflow_assistant_idle.svg` | The assistant icon's idle/dimmed state | Imported in `canvasControlsComponent/CanvasControls.tsx:8` — the canvas toolbar, which is always visible while editing a flow |
+| `src/frontend/src/assets/MCPLangflow.png` | MCP composer notice illustration | Imported in `mcp-server-notice.tsx:30`, rendered inline in the sidebar |
 
-Zero edited upstream lines committed by this task — Task 1 is vendor-and-guard
-only. The rows above are the surface a later white-labeling task is allowed to
-touch; none of it is edited yet.
+Two edited upstream lines pending, zero committed by this task — Task 1 is
+vendor-and-guard only. The rows above are the surface a later white-labeling
+task is allowed to touch; none of it is edited yet.
 
-## What's deliberately not in this list
+## Asset sweep: what's rendered vs. what's genuinely inert
 
-`src/frontend/src/assets/` also ships `DataStaxLogo.svg`, `MCPLangflow.png`,
-`langflow-icon-smooth.{png,svg}`, `langflow_assistant.svg` and
-`langflow_assistant_idle.svg`. These are real Langflow-branded assets but the
-task brief did not ask for them, so they stay pure upstream. Anyone who wires
-one of them into a NuFi-facing surface later must add it here first, or the
-guard will flag the diff.
+The first draft of this file grouped five unlisted Langflow/DataStax-branded
+assets together as "not our concern yet." That was wrong for three of them —
+they render on screen today, not just in some future rebrand pass. An
+unlisted asset nobody touches costs nothing; an unlisted asset a later task
+must replace turns CI red on a path nobody's expecting, mid-branding-change.
+So every file under `src/frontend/src/assets/` and `src/frontend/public/`
+carrying Langflow or DataStax branding was checked for a non-test import site,
+not just its filename:
+
+| Asset | Rendered (non-test import)? | Allowlisted? | Notes |
+|---|---|---|---|
+| `LangflowLogo.svg` | Yes — 15 files | Yes | see table above |
+| `LangflowLogoColor.svg` | Yes — 1 file | Yes | see table above |
+| `langflow_logo_white.svg` | No — 0 files | Yes | reserved for a future theming pass |
+| `langflow_logo_black.svg` | No — 0 files | Yes | reserved for a future theming pass |
+| `logo_dark.png` | Yes — 1 file | Yes | see table above |
+| `logo_light.png` | Yes — 1 file | Yes | see table above |
+| `langflow_assistant.svg` | **Yes — 5 files** | **Yes** | added in this fix round |
+| `langflow_assistant_idle.svg` | **Yes — 1 file** | **Yes** | added in this fix round |
+| `MCPLangflow.png` | **Yes — 1 file** | **Yes** | added in this fix round |
+| `DataStaxLogo.svg` | No — 0 files | **No, deliberately** | genuinely inert, *and* it's a third-party company's mark (DataStax), not NuFi's to rebrand even if it were wired in |
+| `langflow-icon-smooth.svg` | No — 0 files | **No, deliberately** | genuinely inert |
+| `langflow-icon-smooth.png` | No — 0 files | **No, deliberately** | genuinely inert |
+
+`src/frontend/public/` has only `favicon.ico` and `manifest.json`, both
+already allowlisted above — nothing else there carries Langflow branding.
+
+12 assets swept, 9 rendered, 9 allowlisted, 3 genuinely inert and kept off the
+list on purpose. If `DataStaxLogo.svg` or `langflow-icon-smooth.*` ever gain a
+real import site, that changes the DataStax-ownership question, not just the
+allowlist — treat it as a decision, not a reflex addition.
 
 ## Resyncing
 
