@@ -299,6 +299,7 @@ map, not nested — namespace here means the dotted prefix):
 | Error and empty states | `crash`, `emptyPage`, a **curated** subset of `errors` (32 of 92), `success` (14 of 29), `alerts` (8 of 11), plus `common`, `header`, `nav`, `misc` | A demo that hits a network hiccup or an empty project and switches to raw English mid-sentence looks broken, not just untranslated |
 | Settings entry points | `settings.title`/`description`/`languageTitle`/`languageDescription`/`languageRecommended`/`languageSelectAriaLabel`/`saveButton`/`generalTitle`/`generalDescription` and all of `settings.nav.*` (the left-rail menu labels) — **not** the remaining deep configuration screens behind most entries (API key management, DB provider wiring, model provider credentials, …) | "Entry points," not "the whole Settings section" — literally the brief's wording. The Language picker itself (`settings.nav.label`, `languageTitle`, …) matters more than usual here: it's how an evaluator would switch into Korean during the demo |
 | Deployments and MCP (**Fix round 1**) | `deployments.*` in full (220 keys), `mcp.*` in full (82 keys), `settings.mcpClient.*` in full (11 keys) | Not one of the original six — added after review flagged that `mainPage.tabDeployments`/`misc.deploy` and `sidebar.mcp.*`/`settings.nav.mcpServers` were already translated **doors**, opening onto entirely-English **rooms**. See "A translated door into an English room" below |
+| Shared table/pagination chrome (**Fix round 2**) | `table.*` in full (23 keys), `paginator.*` in full (8 keys) | Not a door — a hole inside surfaces already declared covered (the playground session view, the `editNode`/`inspectionPanel` "Open Table" field, and pagination on every translated list view). Fixed as a defect against the declared scope, not a scope expansion. See "Standing constraint" below |
 
 **Deliberately excluded, and why (so a gap doesn't read as a missed key):**
 
@@ -320,15 +321,20 @@ map, not nested — namespace here means the dotted prefix):
   `assistant` (93), `memory` (85), `agentTab` (72), `modelProviders` (59),
   `trace` (56), `store` (34), `globalVars` (34), `admin` (29),
   `auth`/`authModal` (56 combined), `shortcuts` (42), `voice` (20),
-  `fileManager`/`files` (60 combined), `table`/`paginator` (31 combined),
-  `messages` (8), and the deep-settings keys under `settings.dbProviders.*`
-  / `settings.apiKeys.*` / `modal.secretKey.*` — are real features, just not
-  ones a first-look demo walkthrough of the canvas/sidebar/playground/save
-  flow reaches. **Unlike `deployments`/`mcp` above, none of these currently
-  sit directly behind an already-translated click target** — see the
-  door/room sweep below for the full evidence on that claim, including the
-  ones that came close. Auth in particular is arguably "first thing an
-  evaluator sees," but the brief's six named surfaces don't include it, and
+  `fileManager`/`files` (60 combined), `messages` (8), and the deep-settings
+  keys under `settings.dbProviders.*` / `settings.apiKeys.*` /
+  `modal.secretKey.*` — are real features, just not ones a first-look demo
+  walkthrough of the canvas/sidebar/playground/save flow reaches.
+  **Correction, Fix round 1:** an earlier version of this bullet claimed
+  none of these sit behind an already-translated click target. That
+  claim was checked properly in Fix round 1 and turned out to be wrong for
+  12 of these namespaces — see "Standing constraint" below for the full
+  list, which is why those 12 are treated as an active constraint on demo
+  scripting, not just a scope footnote. (`table`/`paginator`, the other
+  namespace the sweep flagged, is no longer in this excluded list — Fix
+  round 2 translated both; see the surface table above.) Auth in
+  particular is arguably "first thing an evaluator sees," but the brief's
+  six named surfaces don't include it, and
   login screens for a live agency demo are typically pre-authenticated
   before the evaluator sits down — so it stayed out rather than being added
   by inference.
@@ -387,29 +393,140 @@ round:
 | **`editNode.openTable` / the playground session view** (already in scope, already translated) | `components/core/.../tableComponent/*`, `modals/IOModal/components/session-view.tsx` → `table.*` | 23 keys, 0% | **Flagged separately below — this one sits *inside* an already-claimed-covered surface, not behind a new door** |
 | Any translated list view (Main Page, Deployments, Knowledge) | `components/common/paginatorComponent/*` → `paginator.*` | 8 keys, 0% | Cross-cutting — shared pagination chrome under nearly every list in the app |
 
-**Two of these are a different, more serious shape than the rest and are
-called out on their own:** `table.*` and `paginator.*` are not behind a
-*new* door — they're generic shared components used *inside* surfaces this
-document already claims as covered (`table.*` backs the playground's
-session view and the `editNode`/`inspectionPanel` "Open Table" field type;
-`paginator.*` backs pagination on every list view, including the
-now-translated Main Page and Deployments tabs). That means the current
-"flow canvas / sidebar / run-playground / settings-entry-points" coverage
-claim has a real hole in it today, not a hypothetical one for a future
-click. Recommend prioritizing these 31 keys highest of everything in this
-table if scope expands again, specifically because they undercut a claim
-already made rather than adding a new one.
+**`table.*` and `paginator.*` were a different, more serious shape than the
+rest, and were fixed in Fix round 2 rather than left as a reported
+candidate.** They are not behind a *new* door — they're generic shared
+components used *inside* surfaces this document already claims as covered
+(`table.*` backed the playground's session view and the
+`editNode`/`inspectionPanel` "Open Table" field type; `paginator.*` backs
+pagination on every list view, including the Main Page and Deployments
+tabs). A Korean playground with an English "Rows per page" is a hole in a
+room already declared finished — a defect against the *declared* scope,
+not a scope-boundary question the other 12 doors are. Both namespaces (31
+keys total) are now fully translated; see "Key count" below.
 
-The rest (`knowledge` down through `messages`, 608 keys, none currently
-behind a translated door within the demo-path table above) are reported so
-a scope decision can be made deliberately, not fixed here.
+The other 12 doors (`knowledge` down through `messages`, 608 keys) are a
+different kind of decision — genuine scope boundaries, not defects — and
+stay unfixed. Reported so the decision can be made deliberately by whoever
+owns native review, not fixed by default. **That decision was made
+explicitly after this report:** do not translate them, and instead treat
+the boundary itself as something a demo builder must respect. See the next
+section.
+
+### Standing constraint: the demo script must not route through these 12 doors
+
+This is not a finding anymore — it's a rule anyone building a demo from
+this repo needs before they script a walkthrough, and it won't be in a
+task report they may never read. It lives here because `nufi/README.md` is
+where a future contributor actually looks when `apps/nufi-agent` behaves
+oddly, not because it's the most natural place for a translation matrix.
+
+**Until a door below is either (a) translated, or (b) its own entry point
+reverted to English, a Korean-language demo must not click through it.**
+Clicking through renders a screen that is 0% Korean behind a label that
+promised otherwise — worse than if the label itself had stayed in English,
+for the same reason `deployments`/`mcp` mattered enough to fix in Fix
+round 1 (see "A translated door into an English room" above). This list
+*is* current coverage as of this commit; if a later change translates one
+of these namespaces, delete its row here rather than leaving a stale
+warning.
+
+| Do not click, in Korean demo mode | Translated label | Room | Size |
+|---|---|---|---|
+| Sidebar → Knowledge | `sidebar.knowledge` ("지식") | `knowledge.*` | 162 keys, 0% |
+| Sidebar → Agent tab | `sidebar.nav.agent` ("에이전트") | `agentTab.*` | 72 keys, 0% |
+| Sidebar → My Files | `sidebar.myFiles` ("내 파일") | `files.*`+`fileManager.*` | 60 keys, 0% |
+| Sidebar → Traces | `sidebar.nav.traces` ("트레이스") | `trace.*` | 56 keys, 0% |
+| Settings → Model Providers | `settings.nav.modelProviders` ("모델 제공업체") | `modelProviders.*` | 59 keys, 0% |
+| Settings → Shortcuts | `settings.nav.shortcuts` ("단축키") | `shortcuts.*` | 42 keys, 0% |
+| Settings → DB Providers | `settings.nav.dbProviders` ("DB 제공업체") | `settings.dbProviders.*` | 44 keys, 0% |
+| Settings → Global Variables | `settings.nav.globalVariables` ("전역 변수") | `globalVars.*` | 34 keys, 0% |
+| Settings → Store | `settings.nav.store` ("Langflow 스토어") | `store.*` | 34 keys, 0% |
+| Settings → API Keys | `settings.nav.apiKeys` ("Langflow API 키") | `settings.apiKeys*`+`modal.secretKey.*` | 22 keys, 0% |
+| Sidebar → Versions / Version History | `sidebar.nav.versions`/`versionHistory` ("버전"/"버전 기록") | `flowVersion.*` | 15 keys, 0% |
+| Settings → Messages | `settings.nav.messages` ("메시지") | `messages.*` | 8 keys, 0% |
+
+**If you are building a demo script from this repo:** stage the flow
+before the recording/live session so the canvas, sidebar palette, save,
+export, and playground panels are already the state shown — none of that
+requires visiting the table above. If the script needs to show a
+deployment or MCP server, that's fine now (Fix round 1 closed both). If it
+needs to show Knowledge Bases, file management, traces, model-provider
+config, or version history, either accept English there deliberately and
+say so out loud, or get those specific keys translated and reviewed first
+— don't let an evaluator discover the boundary by clicking into it live.
+
+### Can a guard catch a *new* door automatically? Considered, not built.
+
+Asked directly: is it cheap and reliable to assert "no key in the declared
+demo-path list is an entry point into a namespace with zero coverage,"
+so a resync that adds a new nav item pointing at a new untranslated
+namespace fails CI instead of shipping silently? **Conclusion: no — not
+cheap, and what would be cheap isn't reliable. Not built; the standing
+constraint above is the mitigation instead.**
+
+Why it isn't cheap: "is an entry point into" is not a fact `en.json` or
+`ko.json` contains anywhere. `check-locale-parity.sh`'s existing checks
+are cheap *because* they're pure set operations on two flat key lists —
+orphans and coverage are directly readable from the JSON. "Does clicking
+this translated label navigate to that untranslated namespace" is a UI-
+navigation fact that lives in which React component renders which
+click target and what it renders afterward. Finding the 12 doors above
+took reading component source (`grep -rl "t("knowledge\."` etc.,
+cross-referenced against which file imports which nav constant) and
+judgment about which co-located usages were real navigation versus
+incidental. Nothing in the data models that.
+
+Two ways to mechanize it, both rejected:
+
+1. **Hand-maintain a mapping file** (`entry-point key` → `target namespace
+   prefix`) alongside this table, and have a script assert every mapped
+   namespace has non-zero coverage. This is cheap to build but doesn't
+   solve the actual problem: the mapping itself has no mechanical way to
+   verify it's still *true* — that `sidebar.knowledge` still really opens
+   `knowledge.*` in whatever the source tree looks like after a resync —
+   without re-doing the same source read by hand. It would only catch a
+   translator forgetting to update `ko.json` for a door *already known*,
+   which the constraint table above and `check-locale-parity.sh` already
+   cover between them. It would silently miss every *new* door, which is
+   the actual ask, while looking like it was checking for one — a false
+   sense of coverage is worse than an honestly-manual process.
+2. **Real static analysis** — parse the route/component tree, correlate
+   each navigation trigger (route change, modal-open state, sidebar link)
+   with the i18n namespace(s) the resulting component consumes. This
+   could genuinely work, but it's disproportionate: dynamically
+   constructed keys (`` t(`${prefix}.title`) ``), namespaces shared across
+   multiple call sites with different navigational meaning (`table.*`
+   itself is the counter-example — sometimes behind a door, sometimes
+   inside one), and indirect composition (a modal opened from a hook
+   rather than inline JSX) would all need handling for the analysis to be
+   trustworthy. A partial version that handles the easy cases and misses
+   the hard ones is the worst outcome here: green CI with real gaps
+   underneath it, discovered the same way this round's findings were —
+   by an evaluator clicking somewhere nobody checked.
+
+The heuristic in between — flag any zero-coverage namespace whose name
+shares a substring with a translated key (`trace` ~ `sidebar.nav.traces`)
+— was checked against this round's own findings and fails immediately:
+`sidebar.myFiles` shares no token at all with its actual target,
+`fileManager.*`/`files.*`. A heuristic that misses a door already known to
+exist isn't a safety net, it's a coin flip with a green checkmark on it.
+
+**What actually mitigates this instead:** the standing-constraint table
+above, kept current by hand, plus an explicit manual step added to the
+resync checklist below — re-run the same `grep -rl` sweep this round used
+and diff the door list, every time `apps/nufi-agent` resyncs against
+upstream. Manual, but specific and documented, which is what the reviewer
+who asked for this explicitly said to prefer over a guard that looks
+solid and isn't.
 
 ### Key count
 
-**864 of 2,230 keys translated (38.7%)** — `en.json` has 2,230 flat keys,
+**895 of 2,230 keys translated (40.1%)** — `en.json` has 2,230 flat keys,
 not 2,232 (`wc -l` counts the file's opening/closing braces as lines too).
 551 from the original six-surface pass, 313 more from Fix round 1
-(`deployments.*`, `mcp.*`, `settings.mcpClient.*`).
+(`deployments.*`, `mcp.*`, `settings.mcpClient.*`), 31 more from Fix round 2
+(`table.*`, `paginator.*`).
 
 Generated and typo-checked by `nufi/build-ko-locale.py` — the translation
 source of truth; `ko.json` **and** `nufi/demo-path-keys.txt` are both its
@@ -438,7 +555,7 @@ print('ko.json key count:', len(ko))
 orphans = [k for k in ko if k not in en]
 print('orphans:', orphans)
 "
-ko.json key count: 864
+ko.json key count: 895
 orphans: []
 ```
 
@@ -446,8 +563,9 @@ Also checked programmatically: every `{{interpolation}}` placeholder and
 every react-i18next `<1>…</1>` Trans-tag marker in each translated value
 matches its English source exactly (a translation that drops or
 mistranslates a placeholder throws at render time, or worse, silently
-strips a variable) — zero mismatches across all 864 keys. Re-run after Fix
-round 1's 313-key addition with the same result: 0 orphans, 0 placeholder
+strips a variable) — zero mismatches across all 895 keys. Re-run after
+every fix round (Fix round 1's 313-key addition, Fix round 2's 31-key
+addition) with the same result each time: 0 orphans, 0 placeholder
 mismatches, 0 tag mismatches.
 
 ### Terminology decisions
@@ -535,7 +653,7 @@ conventional Korean UI pattern, not an inconsistency to flag.
 ### `nufi/demo-path-keys.txt`
 
 The frozen list `check-locale-parity.sh` checks `ko.json` against — see
-that file's own header comment for what it asserts and why. It's the 864
+that file's own header comment for what it asserts and why. It's the 895
 keys above, one dotted key per line.
 
 **Fix round 1: this file is now generated, not hand-maintained.** It used
@@ -581,6 +699,36 @@ state — but an upstream release that **renames or removes** an English key
 `ko.json` still references turns into an orphan key, which
 `check-locale-parity.sh`'s first check catches. Langflow ships `de`, `es`,
 `fr`, `ja`, `pt`, `zh-Hans` and `en`, not `ko` (design doc §5).
+
+**Also manual, not guarded — re-check the door list.** No automated check
+catches a resync introducing a *new* door (a translated nav item newly
+pointing at a zero-coverage namespace) or silently fixing/breaking one of
+the 12 documented in "Standing constraint" above — see "Can a guard catch
+a new door automatically?" for why that's a considered, deliberate gap,
+not an oversight. After a resync, re-run the same sweep this round used
+and diff against the standing-constraint table:
+
+```bash
+cd apps/nufi-agent/src/frontend/src
+# For every sidebar.*/settings.nav.* key that's translated (grep ko.json),
+# find what screen it opens and whether that namespace has 0% coverage:
+grep -rl 't("knowledge\.' .          # repeat per candidate namespace
+python3 -c "
+import json
+en = json.load(open('locales/en.json'))
+ko = json.load(open('locales/ko.json'))
+for ns in ['knowledge','agentTab','files','fileManager','trace','modelProviders',
+           'shortcuts','globalVars','store','messages','flowVersion']:
+    total = sum(1 for k in en if k.startswith(ns + '.'))
+    covered = sum(1 for k in ko if k.startswith(ns + '.'))
+    print(f'{ns}: {covered}/{total}')
+"
+```
+
+If a namespace's coverage changed from what "Standing constraint" states,
+or a newly-translated nav item opens onto a namespace not in that table at
+all, update the table (and either translate the new room or add it to the
+"do not click" list) before the resync ships.
 
 ## Verifying the guard
 

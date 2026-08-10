@@ -999,6 +999,53 @@ T.update({
   "settings.mcpClient.claudeCode.step2": "또는 JSON 설정을 ~/.claude.json에 직접 추가하십시오",
 })
 
+# ---- Fix round 2: table.* / paginator.* --------------------------------
+#
+# Not a new door -- these sit INSIDE surfaces already declared covered
+# (the playground session view, the editNode/inspectionPanel "Open Table"
+# field type, and pagination on every list view including the now-
+# translated Main Page and Deployments tabs). A Korean playground with an
+# English "Rows per page" is a hole in a room already declared finished,
+# which is a defect against the declared scope -- distinct from the 12
+# genuine doors in nufi/README.md, which stay unfixed as a deliberate
+# scope boundary. See "Standing constraint" in nufi/README.md for why
+# those 12 are different and must not be routed through in a demo script.
+# 23 + 8 = 31 keys, taking total coverage to 895/2230 (~40.1%).
+T.update({
+  "table.noDataTitle": "사용 가능한 데이터 없음",
+  "table.noDataMessage": "표시할 데이터가 없습니다. 나중에 다시 확인해 주십시오.",
+  "table.noColumnTitle": "열 정의 없음",
+  "table.noColumnDescription": "이 테이블에 사용할 수 있는 열 정의가 없습니다.",
+  "table.addRow": "새 행 추가",
+  "table.dataTable": "데이터 테이블",
+  "table.endFocusBoundary": "{{tableLabel}} 끝 포커스 경계",
+  "table.rows": "{{tableLabel}} 행",
+  "table.startFocusBoundary": "{{tableLabel}} 시작 포커스 경계",
+  "table.selectToDuplicate": "복제할 항목 선택",
+  "table.duplicateSelected": "선택한 항목 복제",
+  "table.selectToDelete": "삭제할 항목 선택",
+  "table.deleteSelected": "선택한 항목 삭제",
+  "table.resetColumns": "열 초기화",
+  "table.noRowsToShow": "표시할 행 없음",
+  "table.page": "페이지",
+  "table.of": "/",
+  "table.to": "~",
+  "table.nextPage": "다음 페이지",
+  "table.lastPage": "마지막 페이지",
+  "table.firstPage": "첫 페이지",
+  "table.previousPage": "이전 페이지",
+  "table.paginationInfo": "페이지 정보",
+
+  "paginator.placeholder": "1",
+  "paginator.ofItems": "{{total}}개 항목",
+  "paginator.ofComponents": "{{total}}개 컴포넌트",
+  "paginator.ofFlows": "{{total}}개 플로우",
+  "paginator.ofPages": "/ {{maxIndex}}페이지",
+  "paginator.previousPage": "이전 페이지로 이동",
+  "paginator.nextPage": "다음 페이지로 이동",
+  "paginator.pageLabel": "페이지",
+})
+
 DEMO_PATH_KEYS_HEADER = """\
 # GENERATED FILE -- do not hand-edit. Regenerate with:
 #   python3 apps/nufi-agent/nufi/build-ko-locale.py
