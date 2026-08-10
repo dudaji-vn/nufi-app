@@ -44,3 +44,32 @@ jobs:
         run: npm ci
       - name: Build and verify nufi/brand.css survived the build
         run: ./apps/nufi-agent/nufi/check-brand-css.sh
+
+  rebrand:
+    name: Rebrand transform
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+        with:
+          # Pinned to the version this job was verified against locally
+          # (1.3.1). Unlike pnpm/action-setup (see agents-ci.yml's own
+          # `rebrand` job and its package_json_file comment), setup-bun does
+          # not need to be told where to look: bun-version and
+          # bun-version-file both default to unset in its action.yml, and
+          # omitting both just installs latest -- there's no root
+          # package.json lookup here to fail the way pnpm's does. Pinned
+          # anyway for reproducibility, not to avoid that failure mode.
+          bun-version: 1.3.x
+      - name: Test nufi/rebrand.ts against nufi/rebrand.test.ts
+        # No install step first, on purpose: nufi/rebrand.test.ts has no
+        # package.json of its own (see its own header comment -- it's
+        # standalone, like apps/agents/nufi/adapter) and only imports
+        # bun:test (built in) and ./rebrand, whose only external import is
+        # `import type { Plugin } from "vite"` -- a type-only import Bun
+        # elides at parse time and never resolves at runtime. Installing
+        # the real src/frontend node_modules first (mirroring agents-ci.yml's
+        # pnpm install) would contradict that standalone design for no
+        # benefit this test actually needs.
+        working-directory: apps/nufi-agent/nufi
+        run: bun test rebrand.test.ts
