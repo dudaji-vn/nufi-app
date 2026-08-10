@@ -34,6 +34,26 @@ export interface ExecuteDeps {
   complete(prompt: string): Promise<string>;
   comment(issueId: string, body: string): Promise<void>;
   setStatus(issueId: string, status: string): Promise<void>;
+  /** Most recent comment body, or null. Used to suppress repeated identical failures. */
+  lastComment(issueId: string): Promise<string | null>;
+}
+
+/**
+ * Comment only if this is not a repeat of the last one.
+ *
+ * The disposition contract says a failed run must leave a trace. It does not
+ * say it must leave twenty. Observed while preparing a demo: a rate-limited
+ * gateway produced ~20 identical `gateway 429` comments on a single task,
+ * because Paperclip retries and every retry failed the same way. The signal —
+ * "this task is stuck on the rate limit" — was in the first comment; the other
+ * nineteen buried it.
+ *
+ * The status is still set every time. Only the comment is suppressed.
+ */
+async function commentOnce(deps: ExecuteDeps, issueId: string, body: string): Promise<void> {
+  const previous = await deps.lastComment(issueId);
+  if (previous !== null && previous.trim() === body.trim()) return;
+  await deps.comment(issueId, body);
 }
 
 /**
@@ -68,7 +88,7 @@ export async function runWith(
     const answer = await deps.complete(prompt);
 
     const disposition = resolveDisposition(answer);
-    await deps.comment(issueId, disposition.comment);
+    await commentOnce(deps, issueId, disposition.comment);
     await deps.setStatus(issueId, disposition.status);
 
     await ctx.onLog("stdout", `\n[disposition: ${disposition.status}]\n`);
@@ -90,7 +110,7 @@ export async function runWith(
      * pretending.
      */
     try {
-      await deps.comment(issueId, `The agent run failed: ${message}`);
+      await commentOnce(deps, issueId, `The agent run failed: ${message}`);
       await deps.setStatus(issueId, "blocked");
     } catch {
       // Reported through exitCode below; nothing further to try.

@@ -31,6 +31,7 @@ function deps(overrides: Record<string, unknown> = {}) {
     setStatus: async (_id: string, s: string) => {
       calls.push(`status:${s}`);
     },
+    lastComment: async () => null,
     ...overrides,
   };
 }
@@ -100,6 +101,41 @@ describe("runWith", () => {
     expect(result.exitCode).toBe(0);
     expect(result.summary).toBe("Idle — no task assigned");
     expect(d.calls).toEqual([]);
+  });
+
+  /**
+   * A rate-limited gateway made Paperclip retry, and every retry failed the
+   * same way — producing ~20 identical `gateway 429` comments on one task. The
+   * signal was in the first; the rest buried it.
+   */
+  it("does not repeat a failure comment that is already the latest one", async () => {
+    const d = deps({
+      complete: async () => {
+        throw new Error("gateway 429");
+      },
+      lastComment: async () => "The agent run failed: gateway 429",
+    });
+    const result = await runWith(d, ctx());
+
+    expect(result.exitCode).toBe(1);
+    expect(d.calls.some((c) => c.startsWith("comment"))).toBe(false);
+    expect(d.calls).toContain("status:blocked");
+  });
+
+  it("still comments when the latest comment is a different failure", async () => {
+    const posted: string[] = [];
+    const d = deps({
+      complete: async () => {
+        throw new Error("gateway 503");
+      },
+      comment: async (_id: string, body: string) => {
+        posted.push(body);
+      },
+      lastComment: async () => "The agent run failed: gateway 429",
+    });
+    await runWith(d, ctx());
+
+    expect(posted).toEqual(["The agent run failed: gateway 503"]);
   });
 
   it("does not mask the original failure when settling also fails", async () => {

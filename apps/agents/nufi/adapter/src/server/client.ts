@@ -111,6 +111,22 @@ export function buildDeps(ctx: ExecutionContext): ExecuteDeps {
       if (!res.ok) throw new Error(`comment ${res.status}`);
     },
 
+    async lastComment(issueId) {
+      const res = await fetch(`${apiUrl}/api/issues/${issueId}/comments`, { headers: pcHeaders });
+      if (!res.ok) return null;
+      const raw = (await res.json()) as unknown;
+      const list = (Array.isArray(raw) ? raw : ((raw as { comments?: unknown[] }).comments ?? [])) as {
+        body?: string;
+        createdAt?: string;
+      }[];
+      if (list.length === 0) return null;
+      // The API returns newest first; fall back to sorting if that ever changes.
+      const newest = list[0]?.createdAt
+        ? [...list].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))[0]
+        : list[0];
+      return newest?.body ?? null;
+    },
+
     async setStatus(issueId, status) {
       const res = await fetch(`${apiUrl}/api/issues/${issueId}`, {
         method: "PATCH",
