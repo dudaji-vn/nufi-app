@@ -8,10 +8,57 @@ rationale: `docs/2026-08-10-nufi-agent-langflow-fork.md`.
 so `git subtree pull` keeps working. `.github/workflows/nufi-agent-ci.yml`
 fails the build if that is violated.
 
+> ## ⚠ This app ships with authentication disabled by default
+>
+> `src/lfx/src/lfx/services/settings/auth.py:83` — `AUTO_LOGIN: bool =
+> Field(default=True, # TODO: Set to False in v2.0)`, environment variable
+> **`LANGFLOW_AUTO_LOGIN`** (confirmed against the settings class:
+> `model_config = SettingsConfigDict(..., env_prefix="LANGFLOW_")` at
+> `auth.py:307`, so the field name `AUTO_LOGIN` becomes
+> `LANGFLOW_AUTO_LOGIN` in the environment — matching what
+> `vite.config.mts` and `constants/constants.ts` already reference). The
+> field's own docstring, verbatim: *"Enable automatic login with a
+> configured or generated bootstrap account. **SECURITY WARNING: This
+> bypasses authentication** and should only be used in development
+> environments. Set to False in production."*
+>
+> With `AUTO_LOGIN` at its default, anyone who can reach the deployment —
+> not anyone with credentials, anyone who can open the URL — is
+> automatically logged in as the bootstrap superuser and can author,
+> run, and delete any flow. There is no login screen to bypass by
+> exploiting a bug; there is simply no login screen, by design, until an
+> operator sets one environment variable. This is **not** the same finding
+> as "Langflow has no RBAC, no audit log and no approval gate"
+> (`docs/2026-08-10-nufi-agent-langflow-fork.md` §7) — that describes
+> *authorization* gaps once you're in. This is *authentication* being off,
+> which is a precondition for authorization to mean anything at all. A
+> system with no RBAC but a real login wall is missing a feature. A system
+> with `AUTO_LOGIN=true` has no wall.
+>
+> **Required for any deployment reachable by anyone other than a single
+> trusted operator on a private network:**
+>
+> ```
+> LANGFLOW_AUTO_LOGIN=false
+> ```
+>
+> This is a default this fork did **not** change. Silently flipping a
+> security default in a vendored dependency is its own risk (it becomes
+> upstream drift the next `git subtree pull` has to reconcile, and — more
+> importantly — a security-relevant behavior change buried in a rebrand PR
+> is exactly the kind of thing a reviewer should see named, not discover).
+> Documenting it here, prominently, is the deliberate alternative: an
+> operator must set `LANGFLOW_AUTO_LOGIN=false` explicitly before this
+> reaches anything but a single trusted operator's own machine. See
+> `nufi/egress/README.md` for how this interacts with (and is not covered
+> by) the network egress policy — the egress policy constrains where a flow
+> can call *out*; it does nothing about who can walk in the front door and
+> author that flow in the first place.
+
 | Path | What it is | Why it earned a place |
 |---|---|---|
 | `nufi/` | This directory — configuration and notes. Never in upstream | The one place a fork can hold arbitrary files without ever conflicting with `git subtree pull` |
-| `src/frontend/index.html` | The HTML shell | Carries `<title>Langflow</title>` and the `<link rel="icon">` / `<link rel="manifest">` tags — the one entry point where the product name and marks are wired in before any JS runs |
+| `src/frontend/index.html` | The HTML shell | Carries `<title>NuFi Agent</title>` (upstream shipped `<title>Langflow</title>` here) and the `<link rel="icon">` / `<link rel="manifest">` tags — the one entry point where the product name and marks are wired in before any JS runs |
 | `src/frontend/src/style/index.css` | The real CSS entry point — imported first in `index.tsx`, ahead of `App.css` and `applies.css` | Holds the Tailwind/shadcn `:root` CSS variable tokens (`--foreground`, `--background`, `--primary`, …). This is where brand colours get overridden, the same role `apps/agents/ui/src/index.css` plays for Paperclip. **Note:** the task brief named this file `src/frontend/src/index.css`; that path does not exist in `v1.11.2` — the file was moved to `src/frontend/src/style/index.css` at some point in Langflow's history. The allowlist below uses the real path so a future brand-token edit here doesn't turn CI red |
 | `src/frontend/vite.config.mts` | The Vite build config | Where a NuFi rebrand plugin will be registered, mirroring `nufiRebrand()` in `apps/agents/ui/vite.config.ts` — a build-time product-name transform rather than 62 hand-edited files (see design doc §3) |
 | `src/frontend/public/favicon.ico` | Browser-tab icon | Swapped for the NuFi mark |
@@ -28,6 +75,10 @@ fails the build if that is violated.
 | `src/frontend/src/locales/ko.json` | Korean translation bundle | Doesn't exist upstream at all — Langflow ships `de`, `en`, `es`, `fr`, `ja`, `pt`, `zh-Hans`, not `ko`. `loadLanguage()` in `i18n.ts` dynamically imports `./locales/${lang}.json`, so the file has to physically sit here for Vite to bundle it. See "Korean locale (demo path)" below — this is a **provisional, machine-authored, unreviewed** partial translation, not the full 2,232-key set |
 | `src/frontend/src/i18n.ts` | i18next setup | One line added to the hardcoded `SUPPORTED_LANGUAGES` array (`"ko"`) so `normalizeLanguage()` accepts the new locale instead of silently falling back to `en`. No other line touched |
 | `src/frontend/src/constants/languages.ts` | Language-picker labels | One line added (`{ code: "ko", label: "한국어" }`) so the Settings → Language picker offers Korean. No other line touched |
+| `src/frontend/src/customization/components/custom-langflow-counts.tsx` | Header override seam for the GitHub-star/Discord-member counter | Renders `null` instead of upstream's `LangflowCounts` — see "Third-party brand/link sweep" below |
+| `src/frontend/src/customization/components/custom-get-started-progress.tsx` | Sidebar override seam for the "Get Started" onboarding checklist | Renders `null` instead of upstream's `GetStartedProgress`, whose "Star Repo"/"Join Community" steps linked to langflow-ai/langflow's own channels — see "Third-party brand/link sweep" below |
+| `src/frontend/src/customization/components/custom-empty-page.tsx` | Empty-project welcome-screen override seam | No longer delegates to `pages/MainPage/pages/empty-page.tsx`'s `EmptyPageCommunity` (upstream, not allowlisted, left byte-identical); owns a NuFi-authored copy of the same layout with the GitHub-star/Discord-member cards removed — see "Third-party brand/link sweep" below |
+| `src/frontend/src/customization/utils/urls.ts` | Misc. URL-building override seam | `LangflowButtonRedirectTarget()` no longer returns `https://langflow.org` — see "Third-party brand/link sweep" below |
 
 Two edited upstream lines, both from Task 4: one in `i18n.ts`, one in
 `constants/languages.ts`, each adding exactly one array entry. A Vite
@@ -38,6 +89,108 @@ the exact failure class this fork keeps fighting elsewhere (see the
 rebrand-transform design note under "Brand tokens and marks"). Two edited
 lines fail as a merge conflict on the next `git subtree pull` instead,
 which is loud.
+
+## Third-party brand/link sweep
+
+The final whole-branch review before this fork ships found the app header
+rendering Langflow's live GitHub star count and a Discord member count
+(`components/core/appHeaderComponent/index.tsx`, backed by
+`stores/darkStore.ts`'s `refreshStars`/`refreshDiscordCount`, which call
+`api.github.com` and `discord.com` — see `nufi/egress/README.md` for the
+network-policy angle), each linking off "NuFi Agent" to
+langflow-ai/langflow's own community channels. One click from the header
+and an evaluator is looking at the fork's own upstream project — the exact
+opposite of what a white-label is for.
+
+**The fix that mattered more than any single badge: `src/frontend/src/
+customization/` already existed.** Upstream ships 41 override components
+under that directory — `custom-langflow-counts.tsx`, `custom-store-button.tsx`,
+`custom-terms-links.tsx`, and so on — built for exactly this situation: a
+downstream fork swaps behaviour by editing the thin wrapper Langflow already
+calls, instead of editing the upstream component the wrapper delegates to.
+Every prior task in this fork's history reached for the rebrand transform,
+the CSS override layer, or a direct allowlisted edit — nobody had opened
+this directory before this sweep. It is cheaper than all three: no build
+step to verify (unlike `check-brand-css.sh`), no regex to get subtly wrong
+(unlike `nufi/rebrand.ts`), and no two-line upstream edit to justify
+(unlike `i18n.ts`/`constants/languages.ts` above) — just a component that
+already sits on every call site upstream itself put it on, waiting to be
+told what to render instead. **Reach for `customization/` before anything
+else in this list.**
+
+### What the sweep found
+
+Every one of the 41 files was read (not just grepped) for anything that
+puts a third-party brand, link, or live counter on screen — a full pass,
+not a sample:
+
+| File | Finding | Fix |
+|---|---|---|
+| `components/custom-langflow-counts.tsx` | Delegated to `LangflowCounts` — the header's live GitHub-star/Discord-member badge, both linking to langflow-ai/langflow's channels | Renders `null` |
+| `components/custom-get-started-progress.tsx` | Delegated to `GetStartedProgress` — a sidebar onboarding checklist shown to every signed-in user with a fresh project until dismissed, whose "Star Repo"/"Join Community" steps (`sidebar.starRepo`/`sidebar.joinCommunity`) are live click targets to the same GitHub repo and Discord server via `GITHUB_URL`/`DISCORD_URL`. Worse than the header badge in one respect: it's an active call-to-action, not a passive counter | Renders `null` — see "What was traded away" below for the one cosmetic side effect and why the checklist wasn't forked instead |
+| `components/custom-empty-page.tsx` | Delegated to `pages/MainPage/pages/empty-page.tsx`'s `EmptyPageCommunity` — the empty-project welcome screen, the *first screen a fresh install shows*. Two large cards below the welcome text: a GitHub-star card and a Discord-member card, both with descriptive copy and an external-link affordance, both wired to the same upstream channels | No longer delegates to `EmptyPageCommunity`; owns a NuFi-authored copy of the same layout (logo, welcome text, drag-and-drop wrapper, "create first flow" button) with both cards removed — see "What was traded away" below |
+| `utils/urls.ts` (`LangflowButtonRedirectTarget`) | Backs the playground/publish view's "Built with Langflow" badge (`modals/IOModal/playground-modal.tsx`, gated on `ENABLE_PUBLISH` — `true` in `customization/feature-flags.ts`, so this is live on any published flow, not dead code). `nufi/rebrand.ts` already rewrites the badge's own label to "Built with NuFi Agent" at build time (it's sourced from `locales/en.json`), but the transform deliberately never touches URL literals so real links keep working — which meant a badge that *reads* "Built with NuFi Agent" still sent a click to `https://langflow.org`, a competitor's homepage, dressed up as NuFi's own attribution link | Returns `/` (the app's own root) instead. No NuFi marketing URL exists to point at yet; self-referential was judged strictly better than off-brand |
+| `components/custom-terms-links.tsx`, `custom-header.tsx`, `custom-banner.tsx`, `custom-header-menu-items-title.tsx`, `custom-feedback-dialog.tsx`, `custom-api-generator.tsx` | Already render nothing (`<></>`) in upstream `v1.11.2` itself — these are upstream's own OSS-build no-ops, not something this fork touched | None needed |
+| `components/custom-store-button.tsx`, `custom-loader.tsx` | Real content (a "Store" sidebar button; a DataStax-flavoured loading state), but both gated on `ENABLE_DATASTAX_LANGFLOW` — `false` in `customization/feature-flags.ts` — confirmed dead at the only call site (`folderSidebarComponent/.../sideBarFolderButtons/index.tsx:526`) | None needed; noted here so a future flip of that flag doesn't silently resurrect a Langflow-branded store button without this file being re-checked |
+| `config-constants.ts` (`DOCS_LINK = "https://docs.langflow.org"`), `utils/custom-get-app-latest-version.ts`, `utils/analytics.ts` | A real third-party URL and two network-shaped functions, but all three confirmed dead: `DOCS_LINK` has no import site anywhere in the tree; `customGetAppVersions`/`customGetLatestVersion` already return `null` (no GitHub release check); `track`/`trackFlowBuild`/`trackDataLoaded` already no-op (no analytics beacon) | None needed |
+| Remaining ~30 files (`custom-AccountMenu.tsx`, `custom-chat-input.tsx`, `custom-NodeStatus.tsx`, `custom-mcp-*.ts`, hooks/, types/, and the rest) | No third-party URL, brand string, or counter of any kind — thin pass-throughs to internal (not upstream-community-facing) components | None needed |
+
+### What was traded away
+
+Both `custom-empty-page.tsx` and `custom-get-started-progress.tsx` involved
+a real decision, not a mechanical `return null`:
+
+- **`custom-empty-page.tsx` now owns a full copy of the welcome-screen
+  layout** instead of forwarding to upstream's version. The alternative —
+  add `pages/MainPage/pages/empty-page.tsx` to `check-fork-diff.sh`'s
+  allowlist and edit it directly — was rejected: `customization/` is
+  already the place a fork is *expected* to diverge (that's the entire
+  point of the seam upstream built), so an edit there costs nothing extra
+  on the next `git subtree pull`, while an edit to `empty-page.tsx` itself
+  adds a second, unrelated-looking diff to a file upstream actively
+  changes. The real cost of this choice: this component no longer inherits
+  upstream's future redesigns of the empty state automatically — a
+  `git subtree pull` that reshapes this screen shows up as silence here
+  (old layout keeps working, new one doesn't arrive) rather than a merge
+  conflict. Judged the right side of the trade for a small, purely
+  presentational leaf page; would not make the same call for something
+  upstream changes often or that carries real logic.
+- **`custom-get-started-progress.tsx` renders `null` rather than forking
+  the checklist to keep its one legitimate step** ("create a flow";
+  `hasFlows` was one of three steps contributing to the progress
+  percentage, alongside the two Langflow-community steps). Every other
+  entry point in the app already offers "create a flow" (the empty page's
+  own button above, the main-page header, the folder page), so nothing is
+  lost by removing the checklist outright, and it avoids duplicating
+  upstream's percentage/step logic — a maintenance liability with no
+  offsetting benefit here. **Known side effect:** `header-buttons.tsx`
+  (core, not edited) renders a `<hr>` divider unconditionally alongside
+  where this component would have shown, so a stray divider line with
+  nothing above it can appear in the sidebar until the widget's parent
+  gate (`!hideGettingStartedProgress && !isDismissedDialog && userData`)
+  turns false. Cosmetic only; judged cheaper than forking the checklist or
+  adding a second core-file edit to remove one `<hr>`.
+
+### What this sweep did not fix, and why
+
+`stores/darkStore.ts`'s `refreshStars()`/`refreshDiscordCount()` — the
+functions that actually call `api.github.com` and `discord.com` — are
+still invoked unconditionally on every app load, from
+`pages/AppInitPage/index.tsx`'s init `useEffect`, regardless of whether
+anything renders their result. Nothing in `customization/` intercepts
+*that* call: `AppInitPage` is core, not an override seam, and the one
+customization hook already wired into it
+(`hooks/use-custom-primary-loading.ts`) gates a different, unrelated
+loading query. Fixing this would mean adding `pages/AppInitPage/index.tsx`
+to the fork-diff allowlist and editing a core file directly — a real
+option, but a different, separately-owned decision from "does the
+customization seam cover this," which is what this sweep set out to
+answer. Left as a documented gap rather than fixed by reaching past the
+seam: after this sweep, the two calls are now dead weight (nothing reads
+`stars`/`discordCount` from the store any more) that will simply fail
+under the egress network policy once applied — see
+`nufi/egress/README.md`'s "what else needs egress" list, which names both
+calls and says the failure is expected.
 
 ## Asset sweep: what's rendered vs. what's genuinely inert
 
@@ -254,6 +407,36 @@ and `--accent-assistant-brand`/`-purple` in `style/index.css` already
 establish "same brand asset in both themes" as the norm in this codebase,
 not an exception.
 
+## Rebrand boundary: frontend only
+
+Everything above — `nufi/rebrand.ts`, `nufi/brand.css`, the logo/favicon/
+manifest swaps, `index.html`'s title — rewrites what the **frontend** (the
+Vite-built React app under `src/frontend/`) ships. **None of it touches the
+backend.** `src/backend/base/langflow/main.py:700` constructs the FastAPI
+app as `FastAPI(title="Langflow", ...)`, unedited and not allowlisted. Two
+concrete, live consequences, both confirmed against this tree rather than
+assumed from the general shape of a FastAPI app:
+
+- **`GET /docs`** (FastAPI's built-in Swagger UI) renders with the browser
+  tab and page heading reading "Langflow" — the same page a Korean
+  evaluator's technical reviewer would plausibly open to inspect the API
+  surface, unrebranded, sitting directly behind the rebranded frontend.
+- **`GET /openapi.json`**'s `info.title` field is the literal string
+  `"Langflow"`. Anything that generates a client from this spec — an
+  internal integration, a codegen tool, an API catalog — inherits that
+  name into its own output.
+
+**This is a documented boundary, not a bug being deferred for later.**
+Fixing it means editing `main.py` — a core upstream file not on the
+allowlist — which is a real, deliberate scope decision (does this fork
+start editing backend Python for cosmetic reasons, and if so, where does
+that stop?) that deserves its own call, not a drive-by one-line change
+made in passing while writing this paragraph. Left alone here on purpose;
+if backend-facing branding becomes a requirement (e.g. the RFP evaluators
+are shown `/docs` directly), revisit as its own scoped task with `main.py`
+added to the allowlist and a stated reason, the same way every other
+allowlist entry in this file is justified.
+
 ## Korean locale (demo path)
 
 > **PROVISIONAL — every string in `ko.json` is machine-authored and has not
@@ -386,12 +569,30 @@ round:
 | `settings.nav.shortcuts` ("단축키") | `pages/SettingsPage/pages/ShortcutsPage/*` → `shortcuts.*` | 42 keys, 0% | Medium |
 | `settings.nav.dbProviders` ("DB 제공업체") | in-namespace → `settings.dbProviders.*` | 44 keys, 0% | Medium |
 | `settings.nav.globalVariables` ("전역 변수") | `pages/SettingsPage/pages/GlobalVariablesPage/*` → `globalVars.*` | 34 keys, 0% | Medium |
-| `settings.nav.store` ("Langflow 스토어") | `pages/StorePage/*` → `store.*` | 34 keys, 0% | Medium |
 | `settings.nav.apiKeys` ("Langflow API 키") | `pages/SettingsPage/pages/ApiKeysPage/*` → `settings.apiKeys*` + `modal.secretKey.*` | 22 keys, 0% | Lower |
 | `sidebar.nav.versions` / `versionHistory` ("버전"/"버전 기록") | `flowSidebarComponent/components/FlowVersionSidebar/*` → `flowVersion.*` | 15 keys, 0% | Lower — the generic save/restore-version strings a user reads *are* translated (`flow.saveVersion`, `flow.restoreVersion`, `modal.restoreVersion`); only the version-list panel's own chrome is English |
 | `settings.nav.messages` ("메시지") | `pages/SettingsPage/pages/messagesPage/*` → `messages.*` | 8 keys, 0% | Lower — small room |
 | **`editNode.openTable` / the playground session view** (already in scope, already translated) | `components/core/.../tableComponent/*`, `modals/IOModal/components/session-view.tsx` → `table.*` | 23 keys, 0% | **Flagged separately below — this one sits *inside* an already-claimed-covered surface, not behind a new door** |
 | Any translated list view (Main Page, Deployments, Knowledge) | `components/common/paginatorComponent/*` → `paginator.*` | 8 keys, 0% | Cross-cutting — shared pagination chrome under nearly every list in the app |
+
+**Correction: `settings.nav.store` is not a door — it doesn't exist as a
+click target at all, in either language.** An earlier version of this table
+listed `settings.nav.store` ("Langflow 스토어") as a translated door onto
+the 34-key `store.*` room, same shape as the other eleven rows. That was
+wrong: `customization/feature-flags.ts:3` sets
+`ENABLE_LANGFLOW_STORE = false`, and `pages/SettingsPage/index.tsx:118`
+only pushes the Store nav item when that flag is true
+(`CustomStoreSidebar(true, ENABLE_LANGFLOW_STORE)` in
+`customization/components/custom-store-sidebar.tsx` — `hasStore` gates the
+`settings.nav.store` item's inclusion in the sidebar array entirely, not
+just its visibility). The item never renders, in English or Korean, so
+there is no door to walk through and nothing for the demo-script
+constraint below to warn about. `settings.nav.store` remains a real,
+correctly-translated key in `ko.json` — it's just a translated label for a
+control nobody can click, English or Korean, until that flag flips. Left
+untranslated-vs-translated is moot here; noted so this table stays
+source-verified rather than presenting one wrong row among eleven correct
+ones.
 
 **`table.*` and `paginator.*` were a different, more serious shape than the
 rest, and were fixed in Fix round 2 rather than left as a reported
@@ -441,10 +642,14 @@ warning.
 | Settings → Shortcuts | `settings.nav.shortcuts` ("단축키") | `shortcuts.*` | 42 keys, 0% |
 | Settings → DB Providers | `settings.nav.dbProviders` ("DB 제공업체") | `settings.dbProviders.*` | 44 keys, 0% |
 | Settings → Global Variables | `settings.nav.globalVariables` ("전역 변수") | `globalVars.*` | 34 keys, 0% |
-| Settings → Store | `settings.nav.store` ("Langflow 스토어") | `store.*` | 34 keys, 0% |
 | Settings → API Keys | `settings.nav.apiKeys` ("Langflow API 키") | `settings.apiKeys*`+`modal.secretKey.*` | 22 keys, 0% |
 | Sidebar → Versions / Version History | `sidebar.nav.versions`/`versionHistory` ("버전"/"버전 기록") | `flowVersion.*` | 15 keys, 0% |
 | Settings → Messages | `settings.nav.messages` ("메시지") | `messages.*` | 8 keys, 0% |
+
+**Settings → Store is not in this table on purpose, not by omission** — see
+the correction above the door/room sweep table: `ENABLE_LANGFLOW_STORE` is
+`false`, so that nav item never renders and there is nothing to warn a demo
+builder away from.
 
 **If you are building a demo script from this repo:** stage the flow
 before the recording/live session so the canvas, sidebar palette, save,
@@ -747,13 +952,13 @@ reverting:
 ```
 $ ./apps/nufi-agent/nufi/check-fork-diff.sh
 Comparing apps/nufi-agent against https://github.com/langflow-ai/langflow.git @ v1.11.2
-changed: 0  allowlisted: 0  violations: 0
+changed: 33  allowlisted: 33  violations: 0
 OK — the fork diff is confined to the NuFi allowlist.
 
 $ echo "// drift" >> apps/nufi-agent/src/frontend/src/App.tsx && git commit -am "test drift"
 $ ./apps/nufi-agent/nufi/check-fork-diff.sh
 Comparing apps/nufi-agent against https://github.com/langflow-ai/langflow.git @ v1.11.2
-changed: 1  allowlisted: 0  violations: 1
+changed: 34  allowlisted: 33  violations: 1
 
 These files diverge from upstream but are not NuFi-owned:
   src/frontend/src/App.tsx
@@ -762,9 +967,12 @@ exit 1
 
 $ git reset --hard HEAD~1
 $ ./apps/nufi-agent/nufi/check-fork-diff.sh
-changed: 0  allowlisted: 0  violations: 0
+Comparing apps/nufi-agent against https://github.com/langflow-ai/langflow.git @ v1.11.2
+changed: 33  allowlisted: 33  violations: 0
 OK — the fork diff is confined to the NuFi allowlist.
 ```
+
+(`33` is the allowlist size as of the final fix wave — 29 at Task 6's close, plus the four `customization/` files touched in the third-party brand/link sweep below. Re-run this yourself after any allowlist change; the number drifts, the mechanism doesn't.)
 
 The script diffs `HEAD:apps/nufi-agent` (the committed tree) against the
 fetched upstream tag, not the working tree — this matches what CI actually
@@ -821,6 +1029,80 @@ proxy for it: it also catches a renamed/emptied `nufi/brand.css`, a broken
 import path, or `brand.css` losing its `:root:root`/`.dark.dark` selectors.
 The build costs ~20s once dependencies are installed, paid once per PR that
 touches `apps/nufi-agent`, not per commit.
+
+## Verifying the rebrand-wiring guard (C2)
+
+The whole white-label rests on two lines in an upstream-owned file —
+`src/frontend/vite.config.mts`'s `import { nufiRebrand } from
+"../../nufi/rebrand";` and `nufiRebrand()` in the `plugins` array. Before
+this fix, nothing checked that either line survived a resync:
+`check-fork-diff.sh` only diffs file *paths*, and `vite.config.mts` is
+allowlisted, so *any* edit to it — including deleting the plugin line —
+passes that guard cleanly. `check-brand-css.sh`'s CSS half only asserted
+the `nufi/brand.css` override survived; it said nothing about the JS-side
+product-name rewrite. The `rebrand` CI job unit-tests `rewrite()` in
+isolation (`nufi/rebrand.test.ts`) and never touches the actual build —
+re-running it after a resync proves the transform's regex still works on
+sample strings, nothing about whether the transform is still *invoked*.
+Drop the plugin entry in a resync and the app would ship as literal
+"Langflow" everywhere — title, buttons, error strings, the "Built with
+Langflow" badge un-rewritten — with `check-fork-diff.sh`,
+`check-brand-css.sh`'s CSS assertions, `check-locale-parity.sh`, and
+`rebrand.test.ts` all green.
+
+`check-brand-css.sh` now also asserts `grep -c '\bLangflow\b'
+build/assets/*.js` is `0` against the same build it already produces for
+the CSS check (case-sensitive and word-bounded is deliberate: it excludes
+asset-filename string literals like `LangflowLogo.svg`/`MCPLangflow.png` —
+no word boundary between "Langflow" and the letters glued to it — and the
+lower-case `docs.langflow.org` URLs the rebrand transform deliberately
+never touches, since case-sensitive `\bLangflow\b` never matches lower-case
+`langflow`).
+
+Proven red, then green, by disabling the exact line C2 is worried about and
+restoring it — same discipline as every other guard in this fork:
+
+```
+$ ./apps/nufi-agent/nufi/check-brand-css.sh
+Building apps/nufi-agent/src/frontend...
+OK      :root:root carries --primary (light-mode brand primary)
+OK      .dark.dark carries --background (dark-mode navy surface)
+OK -- the compiled CSS carries the NuFi brand tokens in both theme scopes.
+OK      compiled JS carries 0 occurrences of the literal word "Langflow"
+OK -- the rebrand transform is wired in and the build reflects it.
+
+$ # comment out `nufiRebrand(),` in src/frontend/vite.config.mts's plugins array
+$ ./apps/nufi-agent/nufi/check-brand-css.sh
+Building apps/nufi-agent/src/frontend...
+OK      :root:root carries --primary (light-mode brand primary)
+OK      .dark.dark carries --background (dark-mode navy surface)
+OK -- the compiled CSS carries the NuFi brand tokens in both theme scopes.
+
+MISSING compiled JS still carries 298 occurrence(s) of the
+literal word "Langflow" -- the rebrand transform did not rewrite them.
+
+The usual cause: the nufi-rebrand plugin is no longer wired into
+src/frontend/vite.config.mts. Check:
+  grep -n "nufiRebrand" apps/nufi-agent/src/frontend/vite.config.mts
+...
+exit 1
+
+$ # restore `nufiRebrand(),`
+$ ./apps/nufi-agent/nufi/check-brand-css.sh
+Building apps/nufi-agent/src/frontend...
+OK      :root:root carries --primary (light-mode brand primary)
+OK      .dark.dark carries --background (dark-mode navy surface)
+OK -- the compiled CSS carries the NuFi brand tokens in both theme scopes.
+OK      compiled JS carries 0 occurrences of the literal word "Langflow"
+OK -- the rebrand transform is wired in and the build reflects it.
+```
+
+Note what the CSS check passing throughout this transcript demonstrates on
+its own: the CSS override (`nufi/brand.css`) and the JS product-name
+rewrite (`nufi/rebrand.ts`) are two independent mechanisms wired in by two
+independent lines, and losing one does not affect the other — which is
+exactly why C2 needed its own assertion rather than assuming the existing
+CSS check already covered it.
 
 ## Verifying the locale-parity guard
 
