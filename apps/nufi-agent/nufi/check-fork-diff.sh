@@ -11,8 +11,22 @@
 #
 # Usage: apps/nufi-agent/nufi/check-fork-diff.sh
 # Exits 0 when every changed path is allowlisted, 1 otherwise.
+# Requires bash >= 4 (uses `mapfile`, added in bash 4.0). macOS ships bash
+# 3.2 as its system /bin/bash for licensing reasons (GPLv3 vs. Apple's
+# GPLv2 cutoff) -- this script only works there because a newer Homebrew
+# bash resolves first on PATH via `#!/usr/bin/env bash`. The guard below
+# makes that requirement a clear message instead of a cryptic
+# "mapfile: command not found" further down.
 
 set -euo pipefail
+
+if ((BASH_VERSINFO[0] < 4)); then
+  echo "This script requires bash >= 4 (uses \`mapfile\`); running under ${BASH_VERSION}." >&2
+  echo "macOS ships bash 3.2 as /bin/bash. Install a newer bash (e.g. \`brew install bash\`)" >&2
+  echo "and either put it ahead of /bin/bash on PATH, or run explicitly:" >&2
+  echo "  \$(brew --prefix)/bin/bash $0" >&2
+  exit 1
+fi
 
 cd "$(dirname "$0")/../../.."   # repo root
 
@@ -48,7 +62,27 @@ ALLOWLIST=(
 )
 
 echo "Comparing apps/nufi-agent against ${REPO} @ ${TAG}"
-git fetch --depth 1 --quiet "$REPO" "refs/tags/${TAG}" 2>/dev/null
+
+# `set -euo pipefail` means a failed `git fetch` would otherwise kill the
+# script immediately -- but the old `2>/dev/null` threw away git's own
+# error text first, so that death was silent: no message distinguishing
+# "couldn't reach upstream" (network down, rate-limited, VPN/proxy
+# required) from "the fork actually drifted" (a real violation, the thing
+# this guard exists to catch). Capturing git's stderr and checking the
+# fetch's own exit code explicitly, before touching the tree diff at all,
+# means a network failure now says so.
+FETCH_LOG="$(mktemp)"
+trap 'rm -f "$FETCH_LOG"' EXIT
+if ! git fetch --depth 1 --quiet "$REPO" "refs/tags/${TAG}" 2>"$FETCH_LOG"; then
+  echo
+  echo "FAILED to fetch ${REPO} @ refs/tags/${TAG} -- cannot compare against upstream." >&2
+  echo "This is a network/access failure, not a fork-diff violation:" >&2
+  cat "$FETCH_LOG" >&2
+  echo >&2
+  echo "Check network access to github.com (or GITHUB_TOKEN rate limits in CI)" >&2
+  echo "before assuming apps/nufi-agent has drifted." >&2
+  exit 1
+fi
 
 # Both sides are trees, so diff paths come out relative to apps/nufi-agent/.
 mapfile -t CHANGED < <(git diff --name-only FETCH_HEAD^{tree} HEAD:apps/nufi-agent)

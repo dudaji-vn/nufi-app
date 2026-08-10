@@ -38,8 +38,18 @@
 #
 # Usage: apps/nufi-agent/nufi/check-locale-parity.sh
 # Exits 0 when both checks pass, 1 otherwise.
+# Requires bash >= 4 (uses `mapfile`, added in bash 4.0) -- see
+# check-fork-diff.sh's identical guard for why macOS needs this spelled out.
 
 set -euo pipefail
+
+if ((BASH_VERSINFO[0] < 4)); then
+  echo "This script requires bash >= 4 (uses \`mapfile\`); running under ${BASH_VERSION}." >&2
+  echo "macOS ships bash 3.2 as /bin/bash. Install a newer bash (e.g. \`brew install bash\`)" >&2
+  echo "and either put it ahead of /bin/bash on PATH, or run explicitly:" >&2
+  echo "  \$(brew --prefix)/bin/bash $0" >&2
+  exit 1
+fi
 
 cd "$(dirname "$0")/.."   # apps/nufi-agent
 
