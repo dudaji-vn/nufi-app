@@ -3,6 +3,14 @@ name: nufi-agent-ci
 on:
   pull_request:
     paths: ['apps/nufi-agent/**', '.github/workflows/nufi-agent-ci.yml']
+  # A pull_request-only trigger never runs these guards on a direct push to
+  # the default branch (a protected-branch bypass, an admin merge without a
+  # PR, or a merge commit pushed straight from a local clone) -- the exact
+  # class of change check-fork-diff.sh/check-brand-css.sh exist to catch
+  # would ship un-checked. Same path filter as above.
+  push:
+    branches: [main]
+    paths: ['apps/nufi-agent/**', '.github/workflows/nufi-agent-ci.yml']
 
 concurrency:
   group: nufi-agent-ci-${{ github.ref_name }}

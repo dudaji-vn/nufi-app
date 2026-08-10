@@ -17,8 +17,8 @@
 # commit in the entire monorepo, not just ones touching
 # apps/nufi-agent -- until someone works out the cause is a stray
 # .git/hooks/pre-commit and deletes it by hand. Full trace in
-# nufi/DEVELOPING.md, under "Skip make init's pre-commit step in this
-# monorepo".
+# nufi/DEVELOPING.md, under "`nufi/init.sh`, not `make init` -- and why
+# that's a hard requirement, not a preference".
 #
 # This script runs the same two install targets `make init` runs and
 # stops there. It does not call `uvx pre-commit install`, and it does not
