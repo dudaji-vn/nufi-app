@@ -1,0 +1,156 @@
+import os
+import socket
+from unittest.mock import AsyncMock, patch
+
+import httpcore
+import pytest
+from lfx.utils.ssrf_httpx import (
+    ssrf_protected_httpx_client_kwargs_for_url,
+    ssrf_safe_async_get,
+    ssrf_safe_async_post,
+    ssrf_safe_httpx_get,
+)
+from lfx.utils.ssrf_protection import SSRFProtectionError
+from lfx.utils.ssrf_transport import SSRFProtectedSyncTransport, SSRFProtectedTransport
+
+
+class TestSSRFSafeHTTPX:
+    def test_client_kwargs_pin_idn_under_httpx_connect_host(self):
+        with (
+            patch(
+                "lfx.utils.ssrf_httpx.validate_and_resolve_connector_url",
+                return_value=("https://exämple.com/v1", ["93.184.216.34"]),
+            ),
+            patch("lfx.utils.ssrf_httpx.is_ssrf_protection_enabled", return_value=True),
+        ):
+            sync_kwargs, async_kwargs = ssrf_protected_httpx_client_kwargs_for_url("https://exämple.com/v1")
+
+        sync_transport = sync_kwargs["transport"]
+        async_transport = async_kwargs["transport"]
+        assert isinstance(sync_transport, SSRFProtectedSyncTransport)
+        assert isinstance(async_transport, SSRFProtectedTransport)
+        assert sync_transport.pinned_ips == {"xn--exmple-cua.com": ["93.184.216.34"]}
+        assert async_transport.pinned_ips == {"xn--exmple-cua.com": ["93.184.216.34"]}
+
+    def test_literal_loopback_is_allowed_by_connector_policy(self):
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "LANGFLOW_SSRF_PROTECTION_ENABLED": "true",
+                    "LANGFLOW_CONNECTOR_SSRF_VALIDATION_ENABLED": "true",
+                    "LANGFLOW_CONNECTOR_SSRF_ALLOW_LOOPBACK": "true",
+                },
+                clear=True,
+            ),
+            patch("httpx.Client.get") as mock_get,
+        ):
+            ssrf_safe_httpx_get("http://127.0.0.1:1234/v1/models", timeout=5)
+
+        mock_get.assert_called_once()
+
+    def test_literal_loopback_is_blocked_when_connector_policy_opts_out(self):
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "LANGFLOW_SSRF_PROTECTION_ENABLED": "true",
+                    "LANGFLOW_CONNECTOR_SSRF_VALIDATION_ENABLED": "true",
+                    "LANGFLOW_CONNECTOR_SSRF_ALLOW_LOOPBACK": "false",
+                },
+                clear=True,
+            ),
+            patch("httpx.Client.get") as mock_get,
+            pytest.raises(SSRFProtectionError, match=r"127\.0\.0\.1.*blocked"),
+        ):
+            ssrf_safe_httpx_get("http://127.0.0.1:1234/v1/models", timeout=5)
+
+        mock_get.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("request_fn", "client_method"),
+        [(ssrf_safe_async_get, "get"), (ssrf_safe_async_post, "post")],
+    )
+    async def test_async_literal_loopback_is_allowed_by_connector_policy(self, request_fn, client_method):
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "LANGFLOW_SSRF_PROTECTION_ENABLED": "true",
+                    "LANGFLOW_CONNECTOR_SSRF_VALIDATION_ENABLED": "true",
+                    "LANGFLOW_CONNECTOR_SSRF_ALLOW_LOOPBACK": "true",
+                },
+                clear=True,
+            ),
+            patch(f"httpx.AsyncClient.{client_method}", new_callable=AsyncMock) as mock_request,
+        ):
+            await request_fn("http://127.0.0.1:1234/v1/models", timeout=5)
+
+        mock_request.assert_awaited_once()
+
+    @pytest.mark.parametrize(
+        ("request_fn", "client_method"),
+        [(ssrf_safe_async_get, "get"), (ssrf_safe_async_post, "post")],
+    )
+    async def test_async_literal_loopback_is_blocked_when_connector_policy_opts_out(self, request_fn, client_method):
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "LANGFLOW_SSRF_PROTECTION_ENABLED": "true",
+                    "LANGFLOW_CONNECTOR_SSRF_VALIDATION_ENABLED": "true",
+                    "LANGFLOW_CONNECTOR_SSRF_ALLOW_LOOPBACK": "false",
+                },
+                clear=True,
+            ),
+            patch(f"httpx.AsyncClient.{client_method}", new_callable=AsyncMock) as mock_request,
+            pytest.raises(SSRFProtectionError, match=r"127\.0\.0\.1.*blocked"),
+        ):
+            await request_fn("http://127.0.0.1:1234/v1/models", timeout=5)
+
+        mock_request.assert_not_awaited()
+
+    def test_direct_internal_ip_is_blocked(self):
+        with (
+            patch.dict(os.environ, {"LANGFLOW_SSRF_PROTECTION_ENABLED": "true"}),
+            patch("httpx.Client.get") as mock_get,
+            pytest.raises(SSRFProtectionError),
+        ):
+            ssrf_safe_httpx_get("http://169.254.169.254/latest/meta-data/", timeout=5)
+        mock_get.assert_not_called()
+
+    def test_sync_dns_pinning_prevents_rebinding_attack(self):
+        call_count = 0
+        connected_to_ip = None
+
+        def mock_getaddrinfo(_hostname, _port, *_args, **_kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", 0))]
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 0))]
+
+        def mock_connect_tcp(_self, host, port, **_kwargs):
+            nonlocal connected_to_ip
+            assert port == 8080
+            connected_to_ip = host
+            return httpcore.MockStream(
+                [
+                    b"HTTP/1.1 200 OK\r\n",
+                    b"Content-Type: application/json\r\n",
+                    b"Content-Length: 15\r\n",
+                    b"\r\n",
+                    b'{"status":"ok"}',
+                ]
+            )
+
+        with (
+            patch("socket.getaddrinfo", side_effect=mock_getaddrinfo),
+            patch.dict(os.environ, {"LANGFLOW_SSRF_PROTECTION_ENABLED": "true"}),
+            patch.object(httpcore.SyncBackend, "connect_tcp", mock_connect_tcp),
+        ):
+            response = ssrf_safe_httpx_get("http://rebinding.test:8080/models", timeout=5)
+
+        assert response.status_code == 200
+        assert call_count == 1
+        assert connected_to_ip == "8.8.8.8"
