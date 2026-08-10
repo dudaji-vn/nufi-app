@@ -21,6 +21,14 @@ jobs:
       - name: Compare apps/nufi-agent against its vendored upstream tag
         run: ./apps/nufi-agent/nufi/check-fork-diff.sh
 
+  locale-parity:
+    name: ko.json stays a clean, declared subset of en.json
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check ko.json has no orphan keys and covers the declared demo path
+        run: ./apps/nufi-agent/nufi/check-locale-parity.sh
+
   brand-css:
     name: Compiled CSS carries the NuFi brand tokens
     runs-on: ubuntu-latest

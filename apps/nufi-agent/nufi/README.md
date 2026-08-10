@@ -25,10 +25,19 @@ fails the build if that is violated.
 | `src/frontend/src/assets/langflow_assistant.svg` | The assistant panel's mascot icon | Imported in 5 non-test files: `canvasControlsComponent/CanvasControls.tsx` and four states of the assistant panel (`assistant-message.tsx`, `assistant-empty-state.tsx`, `assistant-disabled-state.tsx`, `assistant-no-models-state.tsx`). Rendered today, not reserved for later |
 | `src/frontend/src/assets/langflow_assistant_idle.svg` | The assistant icon's idle/dimmed state | Imported in `canvasControlsComponent/CanvasControls.tsx:8` — the canvas toolbar, which is always visible while editing a flow |
 | `src/frontend/src/assets/MCPLangflow.png` | MCP composer notice illustration | Imported in `mcp-server-notice.tsx:30`, rendered inline in the sidebar |
+| `src/frontend/src/locales/ko.json` | Korean translation bundle | Doesn't exist upstream at all — Langflow ships `de`, `en`, `es`, `fr`, `ja`, `pt`, `zh-Hans`, not `ko`. `loadLanguage()` in `i18n.ts` dynamically imports `./locales/${lang}.json`, so the file has to physically sit here for Vite to bundle it. See "Korean locale (demo path)" below — this is a **provisional, machine-authored, unreviewed** partial translation, not the full 2,232-key set |
+| `src/frontend/src/i18n.ts` | i18next setup | One line added to the hardcoded `SUPPORTED_LANGUAGES` array (`"ko"`) so `normalizeLanguage()` accepts the new locale instead of silently falling back to `en`. No other line touched |
+| `src/frontend/src/constants/languages.ts` | Language-picker labels | One line added (`{ code: "ko", label: "한국어" }`) so the Settings → Language picker offers Korean. No other line touched |
 
-Two edited upstream lines pending, zero committed by this task — Task 1 is
-vendor-and-guard only. The rows above are the surface a later white-labeling
-task is allowed to touch; none of it is edited yet.
+Two edited upstream lines, both from Task 4: one in `i18n.ts`, one in
+`constants/languages.ts`, each adding exactly one array entry. A Vite
+transform that injected all three allowlisted paths without touching
+upstream was considered and rejected — a transform that rewrites an array
+silently stops working the moment upstream reformats that array, which is
+the exact failure class this fork keeps fighting elsewhere (see the
+rebrand-transform design note under "Brand tokens and marks"). Two edited
+lines fail as a merge conflict on the next `git subtree pull` instead,
+which is loud.
 
 ## Asset sweep: what's rendered vs. what's genuinely inert
 
@@ -245,6 +254,183 @@ and `--accent-assistant-brand`/`-purple` in `style/index.css` already
 establish "same brand asset in both themes" as the norm in this codebase,
 not an exception.
 
+## Korean locale (demo path)
+
+> **PROVISIONAL — every string in `ko.json` is machine-authored and has not
+> been reviewed by a native Korean speaker.** Register, terminology, and
+> grammar are believed correct but unverified. **A native speaker must sign
+> off on this file before it is shown to a customer.** Treat it the same way
+> you'd treat an unreviewed machine translation anywhere else in the
+> product: good enough to demo the mechanism, not good enough to represent
+> the product in front of the actual evaluation panel without a human
+> checking it first.
+
+### Why demo-path only, not all 2,232 keys
+
+Langflow ships `de`, `en`, `es`, `fr`, `ja`, `pt`, `zh-Hans` — no Korean —
+and this is being pitched to a Korean public agency, so that gap isn't
+optional. But `i18n.ts:58` sets `fallbackLng: "en"` with
+`returnEmptyString: false` (confirmed on this tree before writing a single
+key): any key absent from `ko.json` renders its English string, never a
+blank or a raw key path. Partial coverage degrades gracefully by design —
+so the question is which subset is worth the translation risk, not whether
+100% is required for the app to function.
+
+A machine translation of 2,232 keys of Korean public-sector vocabulary
+carries more risk than value. A string that reads wrong in front of a JDC
+evaluation panel says "we don't understand this market" — worse than an
+English string, which just says "not localized yet." So this translates
+**the screens an evaluator actually sees during a live demo**, translated
+carefully, formally registered, and flagged provisional — not the whole
+app translated fast and unevenly.
+
+### The demo path, surface by surface
+
+The six surfaces named in the task brief, mapped to the actual `en.json`
+namespaces that render them (`en.json` is a flat `"namespace.key": "…"`
+map, not nested — namespace here means the dotted prefix):
+
+| Surface | Namespaces included | Why |
+|---|---|---|
+| Flow canvas and its controls | `flow.*` (minus `flow.defaultDescription.*`, see below), `canvas`, `canvasControls`, `nodeToolbar`, `node`, `editNode`, `noteNode`, `dialog` (the canvas toolbar's icon tooltips — export/settings/logs/code/chat/prompt), `deleteModal` (delete confirmations for a flow/component/item), `mainPage` (the flow list an evaluator lands on before opening a flow) | Where 80% of a live demo happens: opening a flow, wiring nodes, saving, locking, renaming |
+| Component sidebar | `sidebar.*` in full, including every `sidebar.category.*` label | The searchable component palette evaluators watch get dragged onto the canvas |
+| Run/playground panel | `playground`, `playgroundComponent`, `chat`, `output`, `inspectionPanel`, `input`, `humanInput`, `ioModal` | Running a flow and reading its output is the payoff moment of any demo |
+| Save and export | `apiModal`, plus the save/export/duplicate strings already inside `flow.*`, `misc.*` (`export`, `deploy`, `share`, `apiAccess`, `embedIntoSite`, …), and the relevant `errors.*`/`success.*` entries below | What an evaluator asks about right after seeing a flow run: "can we take this with us" |
+| Error and empty states | `crash`, `emptyPage`, a **curated** subset of `errors` (32 of 92), `success` (14 of 29), `alerts` (8 of 11), plus `common`, `header`, `nav`, `misc` | A demo that hits a network hiccup or an empty project and switches to raw English mid-sentence looks broken, not just untranslated |
+| Settings entry points | `settings.title`/`description`/`languageTitle`/`languageDescription`/`languageRecommended`/`languageSelectAriaLabel`/`saveButton`/`generalTitle`/`generalDescription` and all of `settings.nav.*` (the left-rail menu labels) — **not** the ~85 remaining keys for the deep configuration screens behind each entry (API key management, DB provider wiring, model provider credentials, …) | "Entry points," not "the whole Settings section" — literally the brief's wording. The Language picker itself (`settings.nav.label`, `languageTitle`, …) matters more than usual here: it's how an evaluator would switch into Korean during the demo |
+
+**Deliberately excluded, and why (so a gap doesn't read as a missed key):**
+
+- `flow.defaultDescription.0`–`.60` (61 keys) — whimsical placeholder
+  taglines for a brand-new untitled flow ("Chain the Words, Master
+  Language!", "Promptly Ingenious!", …), confirmed by grep to be the *only*
+  thing `flow_constants.tsx` uses that key range for. Cosmetic flavor text,
+  not something an evaluator reads for meaning, and translating 61
+  English wordplay puns well is exactly the kind of effort-for-no-signal
+  this task explicitly says to skip.
+- `common.langflowLogo` / `common.langflowLogoLight` / `common.langflowLogoDark`
+  — image alt text whose *entire content* is the bare product word. The
+  build-time rebrand transform (`nufi/rebrand.ts`) already rewrites
+  `"Langflow"` to `"NuFi Agent"` in every locale JSON value; a Korean
+  translation here would only be `"Langflow 로고"`-shaped noise around a
+  word the transform already owns, with no informational content of its
+  own to localize.
+- Everything else outside the table above — `knowledge` (162 keys),
+  `deployments` (220), `mcp` (82), `assistant` (93), `memory` (85),
+  `agentTab` (72), `modelProviders` (59), `trace` (56), `store` (34),
+  `globalVars` (34), `admin` (29), `auth`/`authModal` (56 combined), `voice`
+  (20), and the ~85 deep-settings keys under `settings.dbProviders.*` /
+  `settings.apiKeys.*` — are real features, just not ones a first-look demo
+  walkthrough of the canvas/sidebar/playground/save flow reaches. Auth in
+  particular is arguably "first thing an evaluator sees," but the brief's
+  six named surfaces don't include it, and login screens for a live
+  agency demo are typically pre-authenticated before the evaluator sits
+  down — so it stayed out rather than being added by inference.
+
+### Key count
+
+**551 of 2,230 keys translated (24.7%)** — `en.json` has 2,230 flat keys,
+not 2,232 (`wc -l` counts the file's opening/closing braces as lines too).
+Generated and typo-checked by `nufi/build-ko-locale.py` — the translation
+source of truth; `ko.json` is its generated artifact. Regenerate with:
+
+```bash
+python3 apps/nufi-agent/nufi/build-ko-locale.py
+```
+
+Re-running it reproduces `ko.json` byte-for-byte (verified: `diff` against
+the committed file after a fresh run is empty).
+
+### Typo check: every ko.json key programmatically verified against en.json
+
+A typo in a key path is invisible by inspection — it falls back to English
+silently and looks exactly like a key someone chose not to translate. Every
+key was checked to be a real `en.json` key, not eyeballed:
+
+```
+$ python3 -c "
+import json
+with open('locales/en.json') as f: en=json.load(f)
+with open('locales/ko.json') as f: ko=json.load(f)
+print('ko.json key count:', len(ko))
+orphans = [k for k in ko if k not in en]
+print('orphans:', orphans)
+"
+ko.json key count: 551
+orphans: []
+```
+
+Also checked programmatically: every `{{interpolation}}` placeholder and
+every react-i18next `<1>…</1>` Trans-tag marker in each translated value
+matches its English source exactly (a translation that drops or
+mistranslates a placeholder throws at render time, or worse, silently
+strips a variable) — zero mismatches across all 551 keys.
+
+### Terminology decisions
+
+Register throughout is formal/public-sector Korean (`-습니다`/`-십시오`
+endings), per the task brief's examples: `승인` approve, `검토` review,
+`저장` save, `실행` run.
+
+- **`플로우` (loanword) for the product noun "Flow," not `업무 흐름`.** The
+  brief's glossary lists `업무 흐름` for "flow." That fits when "flow"
+  means the general concept of a business process. But most instances in
+  this scope are the concrete UI noun — a saved flow chart a user names,
+  opens, and exports ("New Flow," "Flow name," "Untitled Flow") — and
+  Korean localizations of comparable tools (n8n, Make.com) render that as
+  the loanword `플로우`, the same way `컴포넌트`/`노드` are loanwords here
+  rather than translated. `업무 흐름` (or `흐름 제어` for the CS concept
+  "flow control") is used instead where the English source means the
+  general concept, e.g. `sidebar.category.flowControl` → `흐름 제어`.
+  **This is a judgment call, not dictated by the brief, and is exactly the
+  kind of thing a native-speaker review should confirm or overrule.**
+- **`매개변수` over `파라미터` for "parameter."** Formal Sino-Korean matches
+  the public-sector register; `파라미터` (the English loanword) is more
+  common in casual developer speech.
+- **`"Langflow"` kept as a literal English token wherever the English
+  source contains it** (e.g. `crash.restartButton`, `settings.nav.mcpClient`,
+  `settings.description`), rather than translated or dropped. The
+  build-time rebrand transform (`nufi/rebrand.ts`) runs on every `.json`
+  module in the Vite graph — including a dynamically `import()`-ed locale
+  file, the same way it already does for `en.json` — and rewrites the
+  bare word `"Langflow"` to `"NuFi Agent"`. Translating it into Korean, or
+  hardcoding `"NuFi Agent"` directly in `ko.json`, would both produce text
+  the transform can no longer find and rewrite consistently with the rest
+  of the app. **Not independently re-verified for `ko.json` specifically
+  beyond confirming the transform's own logic applies to any `.json`
+  module id** — worth a specific look during native-speaker review if the
+  compiled bundle is ever spot-checked.
+- **Interpolation-adjacent particles.** Korean's subject/object/topic
+  particles (`이`/`가`, `을`/`를`, `은`/`는`, `으로`/`로`) take a different
+  form depending on whether the preceding syllable ends in a consonant —
+  unknowable ahead of time for an interpolated `{{name}}`/`{{id}}`. Handled
+  three ways, in order of preference: (1) restructured so no such particle
+  sits directly after the variable (`"{{name}} 다운로드 완료"` instead of
+  attaching a particle to the name itself); (2) a particle-invariant
+  marker instead (`에`, `의`, `보다`, counters like `개`/`년`/`시간`, all
+  of which don't change form); (3) where neither was natural, the dual
+  form `이(가)` / `을(를)` — the standard Korean UI-localization
+  convention for exactly this ambiguity (used in `deleteModal.body`,
+  `node.replaceConfirmBody`).
+- **Korean has no grammatical plural**, so every i18next `_one`/`_other`
+  pair in scope (`chat.deleteSessionsCount_*`,
+  `chat.sessionsDeletedSuccess_*`, `mainPage.timeElapsed.*_one`/`_other`)
+  carries the identical Korean string in both forms — not a copy-paste
+  omission, i18next's Korean pluralization rule genuinely collapses to one
+  form.
+- **Left in English / kept as proper nouns, deliberately, not by
+  omission:** `crash.githubIssues` ("GitHub Issues," the literal name of
+  GitHub's own page), `Discord`/`GitHub`/`MCP`/`API`/`JSON`/`CSV`/`PDF`/
+  `URL` throughout (acronyms and third-party product names, not English
+  prose — translating a protocol acronym or another company's product
+  name isn't localization, it's just wrong).
+
+### `nufi/demo-path-keys.txt`
+
+The frozen list `check-locale-parity.sh` checks `ko.json` against — see
+that file's own header comment for what it asserts and why. It's the
+551 keys above, one dotted key per line.
+
 ## Resyncing
 
 ```bash
@@ -252,9 +438,12 @@ git fetch --depth 1 langflow refs/tags/<newtag>:refs/tags/langflow-<newtag>
 git subtree pull --prefix=apps/nufi-agent langflow-<newtag> --squash
 ```
 
-Then re-run `nufi/rebrand.test.ts` and `check-locale-parity.sh` once those
-exist (see `nufi/upstream.json` → `resyncAlsoDo`). An upstream release that
-adds English keys silently leaves Korean gaps — Langflow ships `de`, `es`,
+Then re-run `nufi/rebrand.test.ts` and `nufi/check-locale-parity.sh` (see
+`nufi/upstream.json` → `resyncAlsoDo`). An upstream release that adds
+English keys doesn't need a Korean response — that's the intended partial
+state — but an upstream release that **renames or removes** an English key
+`ko.json` still references turns into an orphan key, which
+`check-locale-parity.sh`'s first check catches. Langflow ships `de`, `es`,
 `fr`, `ja`, `pt`, `zh-Hans` and `en`, not `ko` (design doc §5).
 
 ## Verifying the guard
@@ -348,3 +537,67 @@ proxy for it: it also catches a renamed/emptied `nufi/brand.css`, a broken
 import path, or `brand.css` losing its `:root:root`/`.dark.dark` selectors.
 The build costs ~20s once dependencies are installed, paid once per PR that
 touches `apps/nufi-agent`, not per commit.
+
+## Verifying the locale-parity guard
+
+```bash
+./nufi/check-locale-parity.sh
+```
+
+Exits 0 when `ko.json` has no orphan keys and every key in
+`nufi/demo-path-keys.txt` is present in `ko.json`, 1 otherwise, naming every
+offending key. Wired into `nufi-agent-ci.yml` as its own job
+(`locale-parity`) — it only needs `node` to parse two JSON files, no build,
+so it doesn't share `fork-guard`'s or `brand-css`'s setup.
+
+Demonstrated failing in **both** directions it's meant to catch, not just
+one — two prior guards in this fork shipped without ever being seen to
+fail; this one wasn't going to be the third. All four runs, back to back:
+
+```
+$ ./apps/nufi-agent/nufi/check-locale-parity.sh
+OK    no orphan keys -- every ko.json key exists in en.json
+OK    all 551 declared demo-path keys are present in ko.json
+OK -- ko.json is a clean, declared subset of en.json.
+
+$ # inject a key into ko.json that doesn't exist in en.json
+$ ./apps/nufi-agent/nufi/check-locale-parity.sh
+FAIL  orphan keys in ko.json with no matching key in en.json:
+  sidebar.thisKeyDoesNotExistUpstream
+  (an upstream rename/removal, or a typo when ko.json was authored --
+  either way, i18next's lookup on this key now silently misses.)
+OK    all 551 declared demo-path keys are present in ko.json
+exit 1
+
+$ # remove it
+$ ./apps/nufi-agent/nufi/check-locale-parity.sh
+OK    no orphan keys -- every ko.json key exists in en.json
+OK    all 551 declared demo-path keys are present in ko.json
+OK -- ko.json is a clean, declared subset of en.json.
+
+$ # delete a key that IS declared in nufi/demo-path-keys.txt
+$ python3 -c "... del ko['flow.savedSuccessfully'] ..."
+$ ./apps/nufi-agent/nufi/check-locale-parity.sh
+OK    no orphan keys -- every ko.json key exists in en.json
+FAIL  demo-path keys declared in nufi/demo-path-keys.txt but missing from ko.json:
+  flow.savedSuccessfully
+  (coverage shrank. If that's deliberate, remove the key from
+  nufi/demo-path-keys.txt in the same change; otherwise restore it in ko.json.)
+exit 1
+
+$ # restore it
+$ ./apps/nufi-agent/nufi/check-locale-parity.sh
+OK    no orphan keys -- every ko.json key exists in en.json
+OK    all 551 declared demo-path keys are present in ko.json
+OK -- ko.json is a clean, declared subset of en.json.
+```
+
+After the fourth run, `ko.json` matches what `nufi/build-ko-locale.py`
+regenerates byte-for-byte — confirmed by re-running the generator and
+diffing.
+
+Note what this guard deliberately does **not** check: that `en.json` keys
+outside the declared demo path are absent from `ko.json` (they may be, by
+construction, but that's incidental, not asserted), and it never fails on
+`en.json` having keys `ko.json` doesn't — that's the intended partial-
+coverage state this whole task is built around, not a defect to flag.
