@@ -1,0 +1,22 @@
+name: nufi-agent-ci
+
+on:
+  pull_request:
+    paths: ['apps/nufi-agent/**', '.github/workflows/nufi-agent-ci.yml']
+
+concurrency:
+  group: nufi-agent-ci-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  fork-guard:
+    name: Fork diff stays in the allowlist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # The guard diffs against the vendored upstream tag, so it needs
+          # real history rather than the default single-commit checkout.
+          fetch-depth: 0
+      - name: Compare apps/nufi-agent against its vendored upstream tag
+        run: ./apps/nufi-agent/nufi/check-fork-diff.sh

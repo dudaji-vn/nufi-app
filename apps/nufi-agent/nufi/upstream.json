@@ -1,0 +1,10 @@
+{
+  "repository": "https://github.com/langflow-ai/langflow.git",
+  "tag": "v1.11.2",
+  "commit": "73629e2df63b4d0852808b8b5019f1be55f1f29d",
+  "license": "MIT",
+  "vendoredAt": "2026-08-10",
+  "method": "git subtree add --prefix=apps/nufi-agent <tag> --squash",
+  "resync": "git fetch --depth 1 langflow refs/tags/<newtag>:refs/tags/langflow-<newtag> && git subtree pull --prefix=apps/nufi-agent langflow-<newtag> --squash",
+  "resyncAlsoDo": "Re-run nufi/rebrand.test.ts and check-locale-parity.sh; an upstream release that adds English keys silently leaves Korean gaps."
+}
