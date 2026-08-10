@@ -371,46 +371,84 @@ Report the visual check as `NOT RUN — needs a human`, with the URL to open and
 
 ---
 
-## Task 4: Korean interface
+## Task 4: Korean interface, demo path first
 
 **Files:**
-- Create: `apps/nufi-agent/nufi/locales/ko.json`
+- Create: `apps/nufi-agent/src/frontend/src/locales/ko.json`
 - Create: `apps/nufi-agent/nufi/check-locale-parity.sh`
+- Modify: `apps/nufi-agent/src/frontend/src/i18n.ts` (1 line)
+- Modify: `apps/nufi-agent/src/frontend/src/constants/languages.ts` (1 line)
+- Modify: `apps/nufi-agent/nufi/check-fork-diff.sh` (3 new allowlist entries)
 - Modify: `.github/workflows/nufi-agent-ci.yml`
 
-Langflow ships `de`, `en`, `es`, `fr`, `ja`, `pt`, `zh-Hans`. There is no Korean. For a Korean public-sector bid that is not optional.
+Langflow ships `de`, `en`, `es`, `fr`, `ja`, `pt`, `zh-Hans`. There is no Korean, and for a Korean public-sector bid that is not optional.
 
-- [ ] **Step 1: Confirm the key set and how a locale registers**
+**Scope decision, stated so nobody assumes otherwise.** This translates the **demo path only** — the screens a JDC evaluator actually sees — not all 2,232 keys. Two reasons. A machine translation of 2,232 strings of Korean public-sector vocabulary carries more risk than value: a translation that reads wrong in front of an evaluation panel says we do not understand the market, which is worse than an English string. And `i18n.ts:58` sets `fallbackLng: "en"` with `returnEmptyString: false`, so any key absent from `ko.json` renders its English string rather than a blank or a raw key path. Partial coverage degrades gracefully by design.
+
+Every translated string is provisional until a native speaker signs off.
+
+**Why three allowlist entries and two edited upstream lines.** `i18n.ts:8-13` holds a hardcoded supported-language list and `constants/languages.ts:5-9` holds the picker labels; `loadLanguage()` then dynamically imports `./locales/${lang}.json`, so the file must physically sit in the upstream locales directory for Vite to bundle it. A Vite transform could inject all three without touching upstream, and was rejected: a transform that rewrites an array silently stops working when upstream reformats that array, which is the failure class this plan keeps fighting. Two edited lines fail as a merge conflict instead, which is loud.
+
+- [ ] **Step 1: Confirm the mechanism before editing anything**
 
 ```bash
-cd apps/nufi-agent/src/frontend
-wc -l src/locales/en.json
-grep -n "zh-Hans\|ja\|locales" src/i18n.ts | head -20
+cd apps/nufi-agent/src/frontend/src
+sed -n '1,20p' i18n.ts
+sed -n '1,15p' constants/languages.ts
+grep -n "fallbackLng\|returnEmptyString" i18n.ts
 ```
-Record exactly how `src/i18n.ts` enumerates locales. That determines whether `ko` can be added without editing it. **If `i18n.ts` must be edited, it becomes a 13th allowlist entry: add it deliberately and say why in `nufi/README.md`.**
+Expected: a hardcoded language array, a labels array, and `fallbackLng: "en"`. If any of that differs from this description, **stop and report** — the scope decision above depends on the fallback behaviour being real.
 
-- [ ] **Step 2: Author `ko.json`**
+- [ ] **Step 2: Pick the demo path and write it down first**
 
-Translate every key from `en.json` (2,232 lines). Rules:
-- Use the same key set exactly. A missing key renders English mid-sentence.
+Before translating anything, list the surfaces a JDC evaluator sees: the flow canvas and its controls, the component sidebar, the run/playground panel, save and export, error and empty states, and the settings entry points. Record that list in `nufi/README.md` as the definition of "demo path", so the next person can tell a deliberate gap from a missed key.
+
+Extract the matching keys from `en.json`. Report how many keys that is out of 2,232.
+
+- [ ] **Step 3: Author `ko.json`**
+
+Rules:
+- Use the exact key paths from `en.json`. A typo in a key silently falls back to English and looks like a missed translation.
 - Do not translate the product name; the rebrand transform owns it.
-- Prefer the vocabulary a Korean public agency uses.
+- Use the vocabulary a Korean public agency uses: `승인` approve, `검토` review, `업무 흐름` flow, `실행` run, `저장` save.
+- Do not invent keys that do not exist in `en.json`.
 
-- [ ] **Step 3: Guard parity in CI**
+- [ ] **Step 4: Register the locale**
 
-`check-locale-parity.sh`: compare the key sets of `en.json` and `ko.json`, exit non-zero listing any key present in one and absent in the other.
+Add `"ko"` to the supported list in `i18n.ts` and `{ code: "ko", label: "한국어" }` to `constants/languages.ts`. One line each, no reformatting of the surrounding array.
 
-This matters at resync. An upstream release that adds English keys silently leaves Korean gaps, and nothing else would notice. Wire it into `nufi-agent-ci.yml` as a second job.
+Add the three new paths to `ALLOWLIST` in `nufi/check-fork-diff.sh`.
 
-- [ ] **Step 4: Prove it fails**
+- [ ] **Step 5: Guard the subset, not full parity**
 
-Delete one key from `ko.json`, run the script, confirm exit 1 naming that key, restore it, confirm exit 0. Paste both outputs.
+`nufi/check-locale-parity.sh` must assert two things, and **not** assert full coverage:
+1. **No orphan keys** — every key in `ko.json` still exists in `en.json`. This is the one that matters at resync: upstream renaming or removing a key leaves a Korean entry that silently never renders.
+2. **The declared demo-path keys are all present** in `ko.json`, read from a list the script owns, so shrinking coverage is a deliberate edit rather than an accident.
 
-- [ ] **Step 5: Commit**
+Do not fail on English keys absent from Korean — that is the intended state.
+
+- [ ] **Step 6: Prove it fails, both ways**
+
+Add an orphan key to `ko.json`, run the script, confirm exit 1 naming that key, remove it, confirm exit 0. Then delete a declared demo-path key, confirm exit 1, restore, confirm exit 0. Paste all four outputs. A guard that has never failed is not known to work.
+
+Wire it into `nufi-agent-ci.yml`.
+
+- [ ] **Step 7: Verify and commit**
 
 ```bash
-git commit -m "feat(nufi-agent): korean interface with a locale parity guard"
+cd apps/nufi-agent/src/frontend && npm run build
+./apps/nufi-agent/nufi/check-fork-diff.sh
+./apps/nufi-agent/nufi/check-locale-parity.sh
 ```
+Report the in-browser language switch as `NOT RUN — needs a human`.
+
+```bash
+git commit -m "feat(nufi-agent): korean for the demo path, with a subset parity guard"
+```
+
+- [ ] **Step 8: Mark the translation provisional**
+
+In `nufi/README.md`, state plainly that every Korean string is machine-authored and unreviewed, and that a native speaker must sign off before this is shown to a customer. Do not let it be mistaken for finished work.
 
 ---
 
