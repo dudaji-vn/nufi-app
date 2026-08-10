@@ -37,6 +37,20 @@ const REFUSAL_MARKERS = [
 
 const REFUSAL_WINDOW = 120;
 
+/**
+ * Matched on WORD BOUNDARIES, not as substrings.
+ *
+ * Plain `includes` misfires on our own product name: "NUFI cannot white-label
+ * Dify" lowercases to "nufi cannot …", which contains "i cannot". A correct
+ * answer about what a licence forbids was therefore filed as the agent refusing
+ * to work — observed on a real run, and the kind of thing no amount of reading
+ * the list would have shown.
+ */
+const REFUSAL_PATTERN = new RegExp(
+  `\\b(?:${REFUSAL_MARKERS.map((m) => m.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\b`,
+  "i",
+);
+
 export function resolveDisposition(answer: string): Disposition {
   const trimmed = answer.trim();
 
@@ -49,8 +63,8 @@ export function resolveDisposition(answer: string): Disposition {
     };
   }
 
-  const opening = trimmed.slice(0, REFUSAL_WINDOW).toLowerCase();
-  const refused = REFUSAL_MARKERS.some((marker) => opening.includes(marker));
+  const opening = trimmed.slice(0, REFUSAL_WINDOW);
+  const refused = REFUSAL_PATTERN.test(opening);
 
   if (refused) {
     return {

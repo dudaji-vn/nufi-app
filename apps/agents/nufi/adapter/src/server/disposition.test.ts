@@ -37,6 +37,21 @@ describe("resolveDisposition", () => {
     expect(d.comment).toContain("I don't have access to the repository.");
   });
 
+  /**
+   * Our own product name ends in "I". Substring matching turned
+   * "NUFI cannot white-label Dify" into a refusal and filed a correct answer as
+   * the agent giving up — seen on a real run, not imagined.
+   */
+  it("does not read the brand name as a refusal", () => {
+    const answer =
+      "NUFI cannot white-label the following projects due to their clauses: Dify forbids removing the logo; Suna forbids obscuring notices.";
+    expect(resolveDisposition(answer).status).toBe("in_review");
+  });
+
+  it("still catches a real refusal that opens with the same words", () => {
+    expect(resolveDisposition("I cannot answer without the document.").status).toBe("blocked");
+  });
+
   it("does not treat a long answer that merely mentions 'cannot' as a refusal", () => {
     const answer =
       "The licence cannot be changed retroactively, so Dify remains unusable for white-labelling. " +
