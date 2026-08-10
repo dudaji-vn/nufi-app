@@ -78,6 +78,26 @@
 # template — update `endpointSelector.matchLabels` to match if it differs,
 # and update `verify-egress.sh`'s `POD_LABEL_SELECTOR` default to match too.
 #
+# WHAT HAPPENS IF THE SELECTOR IS WRONG: `kubectl apply` accepts this
+# manifest and reports success even if `endpointSelector` matches zero
+# pods. Cilium does not reject or warn about an unselected policy — it just
+# never applies to anything, silently. A pod that is never selected by any
+# CiliumNetworkPolicy keeps Cilium's default-allow egress, i.e. it can reach
+# the entire internet, which is the exact failure this whole task exists to
+# prevent, and `kubectl apply`'s clean exit gives no signal that it
+# happened. Two ways to catch it:
+#   1. `verify-egress.sh` catches it as a byproduct: an unselected pod has
+#      open egress, so the vendor probe in that script correctly reports
+#      FAIL ("api.openai.com is reachable") rather than PASS. This is the
+#      only check in this repo that would notice.
+#   2. Check enforcement directly, before ever running the vendor probe:
+#        kubectl -n <namespace> get ciliumendpoints -o wide
+#      Look for the target pod's row and confirm its EGRESS ENFORCEMENT
+#      column reads `true`/enabled. If it reads `false`/disabled, or the
+#      pod does not appear in the list at all, `endpointSelector` above is
+#      not matching this pod's real labels — fix the label before trusting
+#      anything else about this policy.
+#
 # THIS IS UNVERIFIED. See egress/README.md — until verify-egress.sh has run
 # against a real cluster, this file encodes an intention, not a measurement.
 apiVersion: cilium.io/v2
