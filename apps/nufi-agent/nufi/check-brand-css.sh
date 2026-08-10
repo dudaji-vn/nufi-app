@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 #
 # Fail if the compiled frontend CSS does not carry the NuFi brand override
-# tokens in both theme scopes: :root:root (light) and .dark.dark (dark).
+# tokens in both theme scopes: :root:root (light) and .dark.dark (dark), OR
+# if the compiled JS still carries the literal word "Langflow" -- evidence
+# that the rebrand transform isn't actually running.
 #
 # nufi/brand.css is wired in by exactly one line in
 # src/frontend/src/style/index.css: `@import "../../../../nufi/brand.css";`
@@ -30,12 +32,36 @@
 # dependencies are installed; that cost is paid once per PR that touches
 # apps/nufi-agent, not per commit.
 #
+# THE SECOND CHECK (JS rebrand wiring) exists for a sharper reason: the
+# whole white-label rests on two lines in an upstream-owned file --
+# src/frontend/vite.config.mts's `import { nufiRebrand } from "../../nufi/
+# rebrand"` and `nufiRebrand()` in the plugins array. check-fork-diff.sh
+# only diffs paths (vite.config.mts is allowlisted, so ANY edit to it,
+# including deleting the plugin line, passes that guard). check-brand-css.sh
+# until now only asserted the CSS override survived -- it said nothing about
+# whether the JS-side product-name rewrite (nufi/rebrand.ts, which turns the
+# bare word "Langflow" into "NuFi Agent" across every .ts/.tsx/.json module)
+# is still wired in. Drop the plugin entry in a resync and the app would
+# ship as literal "Langflow" everywhere -- title, buttons, error strings --
+# with all three guards (fork-diff, brand-css's CSS half, locale-parity)
+# green. `grep -c '\bLangflow\b' build/assets/*.js` closes that gap: it's
+# case-sensitive (so the deliberately-untouched lower-case
+# `docs.langflow.org` URLs never trip it) and word-bounded (so it doesn't
+# false-positive on compound identifiers baked into the bundle as string
+# literals -- asset filenames like `LangflowLogo.svg`/`MCPLangflow.png`,
+# where "Langflow" has no boundary against the letters glued to it). Proven
+# to actually go red: commented out the `nufiRebrand()` line, ran this
+# script, confirmed MISSING with a nonzero hit count, then restored the line
+# and confirmed OK again -- see nufi/README.md "Verifying the rebrand-wiring
+# guard" for the full transcript.
+#
 # Usage: apps/nufi-agent/nufi/check-brand-css.sh
 # Requires: apps/nufi-agent/src/frontend's dependencies already installed
 # (`npm ci` in that directory). This script only builds and inspects the
 # output -- it does not install anything, matching check-fork-diff.sh's
 # separation of "install" from "check".
-# Exits 0 when the compiled CSS contains the NuFi tokens in both scopes,
+# Exits 0 when the compiled CSS contains the NuFi tokens in both scopes AND
+# the compiled JS contains zero occurrences of the bare word "Langflow",
 # 1 otherwise.
 
 set -euo pipefail
@@ -101,3 +127,47 @@ MSG
 fi
 
 echo "OK -- the compiled CSS carries the NuFi brand tokens in both theme scopes."
+
+JS_FILES=(build/assets/*.js)
+if [[ ! -e "${JS_FILES[0]}" ]]; then
+  echo "No compiled JS found under build/assets/ -- did the build output layout change?"
+  exit 1
+fi
+
+# -h suppresses the "filename:" prefix grep -o would otherwise add per
+# match with multiple files; -o so `wc -l` counts occurrences, not just
+# matching lines (a minified bundle is often one enormous line, where
+# grep -c would report "1" no matter how many times "Langflow" appears
+# on it). Case-sensitive, word-bounded per the header comment above.
+# `|| true` on grep itself (not the pipeline): under `set -o pipefail`,
+# grep's own exit status is 1 when it finds nothing -- which is the PASS
+# case here -- and pipefail would otherwise turn that into a script-ending
+# failure via `set -e` before LANGFLOW_HITS is ever read, so this check
+# would abort silently on exactly the outcome it's supposed to report as
+# OK. Grouped so `|| true` only absorbs grep's exit status, not wc/tr's.
+LANGFLOW_HITS="$({ grep -ohE '\bLangflow\b' "${JS_FILES[@]}" || true; } | wc -l | tr -d '[:space:]')"
+
+if [[ "$LANGFLOW_HITS" -ne 0 ]]; then
+  cat <<MSG
+
+MISSING compiled JS still carries ${LANGFLOW_HITS} occurrence(s) of the
+literal word "Langflow" -- the rebrand transform did not rewrite them.
+
+The usual cause: the nufi-rebrand plugin is no longer wired into
+src/frontend/vite.config.mts. Check:
+
+  grep -n "nufiRebrand" apps/nufi-agent/src/frontend/vite.config.mts
+
+Both the import (\`import { nufiRebrand } from "../../nufi/rebrand";\`) and
+the call in the \`plugins\` array (\`nufiRebrand(),\`) must be present. If
+both are present, a hit here means a new hardcoded "Langflow" string shipped
+somewhere the transform's own exclusions (import specifiers, URLs,
+LANGFLOW_* env names, lower-case langflow.* module paths) don't cover --
+see nufi/rebrand.ts's own header comment for what those exclusions are and
+why.
+MSG
+  exit 1
+fi
+
+echo "OK      compiled JS carries 0 occurrences of the literal word \"Langflow\""
+echo "OK -- the rebrand transform is wired in and the build reflects it."

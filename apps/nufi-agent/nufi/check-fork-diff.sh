@@ -41,6 +41,10 @@ ALLOWLIST=(
   "src/frontend/src/locales/ko.json"
   "src/frontend/src/i18n.ts"
   "src/frontend/src/constants/languages.ts"
+  "src/frontend/src/customization/components/custom-langflow-counts.tsx"
+  "src/frontend/src/customization/components/custom-get-started-progress.tsx"
+  "src/frontend/src/customization/components/custom-empty-page.tsx"
+  "src/frontend/src/customization/utils/urls.ts"
 )
 
 echo "Comparing apps/nufi-agent against ${REPO} @ ${TAG}"
