@@ -35,9 +35,31 @@ one:
   URL is the fat fork this entire plan exists to avoid.
 
 **Consequence: the network egress boundary is not the second layer of
-defence for NuFi Agent's model traffic. It is the only one.** An unverified
-claim about the only layer of defence is worse than no claim, which is why
-this directory exists and why Step 4 below is not optional.
+defence for NuFi Agent's *model traffic*. It is the only one.** An
+unverified claim about the only layer of defence for that traffic is worse
+than no claim, which is why this directory exists and why Step 4 below is
+not optional.
+
+**Correction: "the only layer of defence" describes model-traffic egress
+specifically, not the deployment as a whole, and stating it that broadly
+understates a bigger gap.** This directory governs *outbound* traffic — the
+`toFQDNs`/`api.codechi.me` boundary above answers "where can a flow's model
+calls go." It says nothing about *inbound* traffic: who can reach NuFi
+Agent and author a flow in the first place. That is a separate,
+**currently unaddressed**, layer — see `nufi/README.md`'s "This app ships
+with authentication disabled by default": `AUTO_LOGIN` defaults to `true`
+in the vendored settings, meaning anyone who can open the deployment's URL
+is auto-authenticated as the bootstrap superuser, with no login wall to
+get past at all. An egress policy that perfectly contains model traffic
+does nothing about that — it constrains where an already-authenticated
+(here: automatically-authenticated) flow author's traffic can go, not who
+gets to be a flow author. Treat "gateway-confined model traffic" and
+"authenticated access" as two independent claims this fork can make, only
+one of which (egress, once `verify-egress.sh` actually runs) this
+directory is about. The other — ingress/authentication — is unaddressed
+and is a precondition, not a redundant second layer: a contained pod that
+anyone can walk into and reconfigure is not meaningfully more contained
+than an open one.
 
 ## The citation that shapes the policy shape — verified against this repo
 
@@ -227,21 +249,87 @@ directly from that:
    either the same label the selector already matches, or its own
    CiliumNetworkPolicy authored deliberately, not inherited by assumption.
 
-5. **Telemetry is on by default and this policy blocks it, incidentally.**
-   `src/lfx/src/lfx/services/settings/groups/telemetry.py:17` sets
-   `telemetry_base_url = "https://langflow.gateway.scarf.sh"`, gated only by
-   `do_not_track` / the `DO_NOT_TRACK` env var (checked: `service.py:49`
-   reads `DO_NOT_TRACK` from the environment; default is tracking **on**).
-   This is not fatal to anything — `send_telemetry_data` in
-   `src/lfx/src/lfx/services/telemetry/service.py:110-123` wraps the whole
-   HTTP call in `try/except Exception` off an async queue, so a blocked
-   telemetry call cannot crash or hang the app — but it will emit
-   `Telemetry send failed` / `Telemetry response …` debug-level log lines
-   continuously, in the same log stream as a real startup problem, and
-   nobody reading logs after this policy ships should mistake "expected,
-   harmless, policy-blocked telemetry noise" for a genuine connectivity
-   fault. Set `DO_NOT_TRACK=true` on the NuFi Agent deployment to silence it
-   at the source rather than filtering it out of logs after the fact.
+5. **Telemetry is on by default, and for an agency with a
+   network-separation requirement that is a compliance fact, not a log-noise
+   annoyance.** `src/lfx/src/lfx/services/settings/groups/telemetry.py:17`
+   sets `telemetry_base_url = "https://langflow.gateway.scarf.sh"`, gated
+   only by `do_not_track` / the `DO_NOT_TRACK` env var (checked:
+   `service.py:49` reads `DO_NOT_TRACK` from the environment; default is
+   tracking **on**). An earlier version of this section framed
+   `DO_NOT_TRACK` purely as a way to quiet the `Telemetry send failed` /
+   `Telemetry response …` log lines this policy's block would otherwise
+   cause (`send_telemetry_data` in
+   `src/lfx/src/lfx/services/telemetry/service.py:110-123` wraps the call in
+   `try/except Exception` off an async queue, so a blocked call cannot crash
+   or hang the app — that part is still true). But log noise is the wrong
+   frame for the audience this policy exists for: a deployment built
+   specifically to demonstrate network separation to a Korean public agency
+   is, by default, phoning a third-party vendor's telemetry endpoint on
+   every run unless an operator opts out. Whether or not the policy blocks
+   it, an unreviewed outbound beacon from a system pitched on network
+   isolation is itself the finding an evaluator or auditor would flag — the
+   policy blocking it after the fact doesn't retroactively make the default
+   correct, it just means the beacon fails silently instead of succeeding
+   silently. **Checked: `DO_NOT_TRACK` is currently set nowhere in this
+   branch's actual deployment path** — it appears only in upstream's own
+   CI test workflows (`.github/workflows/python_test.yml`,
+   `cross-platform-test.yml`, both unrelated to how NuFi Agent itself gets
+   deployed) and in vendored docs pages, not in `.env.example`, not in
+   `deploy/`, not anywhere a NuFi Agent operator would see it before first
+   boot. Set `DO_NOT_TRACK=true` on the NuFi Agent deployment — both to
+   silence the log noise this policy would otherwise cause, and, more to
+   the point, so the deployment stops sending the beacon in the first
+   place rather than merely having it fail closed.
+
+6. **NuFi Agent's own frontend makes hardcoded outbound calls to
+   langflow-ai's GitHub infrastructure, independent of scarf.sh telemetry
+   above — all of them fail under this policy, and that failure is
+   expected, not a bug in the policy.** Whoever applies this policy to a
+   real cluster and then notices a broken examples gallery should find that
+   documented here before they go looking for what they broke:
+
+   - **`api.github.com`** — `stores/darkStore.ts:41`'s `getRepoStars()`,
+     the live GitHub star count. `nufi/README.md`'s "Third-party brand/link
+     sweep" removed every place this fetched value is *displayed*
+     (`customization/components/custom-langflow-counts.tsx`,
+     `custom-get-started-progress.tsx`, `custom-empty-page.tsx` all now
+     render without it) — **but that sweep deliberately did not touch the
+     fetch itself.** `pages/AppInitPage/index.tsx` still calls
+     `refreshStars()`/`refreshDiscordCount()` unconditionally on every app
+     load; there is no `customization/` override seam for "should this
+     store hydrate at all," only for "what renders the result," so
+     removing the call itself would mean editing a core file directly — see
+     that section's "What this sweep did not fix, and why" for the full
+     reasoning. Net effect for this policy: the call still fires, is now
+     fetching data nothing reads, and will simply fail (blocked) once this
+     policy is enforced. Cosmetically invisible (nothing renders the
+     result either way) but worth naming so a blocked-`api.github.com`
+     log line doesn't get mistaken for something this policy broke.
+   - **`api.github.com`** (again, different endpoint) **and
+     `raw.githubusercontent.com`** — `controllers/API/api.tsx:151-153`'s
+     `isAuthorizedURL` allowlist names
+     `raw.githubusercontent.com/langflow-ai/langflow_examples` and
+     `api.github.com/repos/langflow-ai/langflow_examples` — upstream's
+     starter-template/examples gallery, fetched live from langflow-ai's own
+     GitHub repo rather than shipped with the app. Under this policy that
+     fetch fails, and the examples gallery — a first-run UI surface a new
+     user or evaluator plausibly opens — comes up empty or errors. This is
+     a real, currently-unfixed product gap in this fork (the gallery
+     depends on a public GitHub repo NuFi does not control and that this
+     policy is specifically designed to block), reported here rather than
+     fixed, since fixing it means either mirroring the examples
+     server-side or shipping them locally — both real scoped work, not a
+     one-line change.
+   - **`langflow.gateway.scarf.sh`** — the telemetry beacon covered in
+     item 5 above. Included here again only for completeness of this list;
+     see item 5 for the full treatment and the `DO_NOT_TRACK` fix.
+
+   None of these three should be added to `networkpolicy.yaml`'s allowlist
+   to "fix" the failure — they're upstream community-facing infrastructure
+   this fork has already decided (via the brand/link sweep and this
+   egress policy alike) NuFi Agent should not be calling in a contained
+   deployment. The correct fix for the examples gallery specifically is
+   product work (serve examples another way), not a policy exception.
 
 ## Assumptions this policy makes, spelled out
 

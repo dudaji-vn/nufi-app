@@ -140,6 +140,19 @@ probe() {
 }
 
 # classify EXIT_CODE STDERR_TEXT -- prints one of: reached | blocked | inconclusive
+#
+# Known imprecision, deliberately not fixed here: curl's own internal init
+# failures (exit codes 1-5 -- unsupported protocol, failed init, malformed
+# URL, not built-in, couldn't resolve proxy) fall through the checks below
+# into the "blocked" bucket, not "inconclusive", even though they mean the
+# probe never really attempted the network call at all. This is harmless in
+# practice only because of this script's call ORDER, not because the bucket
+# is right: the gateway sanity probe always runs before the vendor
+# falsification attempt (see below), so a curl-internal failure hits the
+# gateway probe first and prints FAIL ("fix connectivity") rather than
+# silently letting a mis-classified vendor probe read as PASS. If a future
+# change ever probed the vendor without probing the gateway first, this
+# imprecision would stop being harmless.
 classify() {
   local exit_code="$1" stderr_text="$2"
   if [ "$exit_code" -eq 0 ]; then
