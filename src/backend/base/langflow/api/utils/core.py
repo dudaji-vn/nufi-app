@@ -1,0 +1,644 @@
+from __future__ import annotations
+
+import copy
+import json as _json
+import re
+from datetime import timedelta
+from enum import Enum
+from typing import TYPE_CHECKING, Annotated, Any
+from urllib.parse import parse_qsl, quote, urlsplit
+
+from fastapi import Depends, HTTPException, Path, Query
+from fastapi_pagination import Params
+from lfx.log.logger import logger
+from lfx.services.deps import injectable_session_scope, injectable_session_scope_readonly
+from lfx.utils.validate_cloud import raise_error_if_astra_cloud_disable_component
+from sqlmodel.ext.asyncio.session import AsyncSession
+
+from langflow.services.auth.utils import get_current_active_user, get_current_active_user_mcp
+from langflow.services.database.models.flow.model import Flow
+from langflow.services.database.models.user.model import User
+from langflow.services.store.utils import get_lf_version_from_pypi
+from langflow.utils.constants import LANGFLOW_GLOBAL_VAR_HEADER_PREFIX
+
+if TYPE_CHECKING:
+    from langflow.services.store.schema import StoreComponentCreate
+
+
+API_WORDS = ["api", "key", "token"]
+
+_SECRET_NAME_PARTS = frozenset({"credential", "credentials", "passwd", "password", "secret"})
+_SECRET_COMPOUND_NAMES = frozenset(
+    {
+        "access_key",
+        "api_key",
+        "apikey",
+        "authorization",
+        "client_secret",
+        "connection_string",
+        "cookie",
+        "database_uri",
+        "database_url",
+        "dsn",
+        "private_key",
+        "proxy_authorization",
+        "set_cookie",
+    }
+)
+
+MAX_PAGE_SIZE = 50
+MIN_PAGE_SIZE = 1
+
+CurrentActiveUser = Annotated[User, Depends(get_current_active_user)]
+CurrentActiveMCPUser = Annotated[User, Depends(get_current_active_user_mcp)]
+# DbSession with auto-commit for write operations
+DbSession = Annotated[AsyncSession, Depends(injectable_session_scope)]
+# DbSessionReadOnly for read-only operations (no auto-commit, reduces lock contention)
+DbSessionReadOnly = Annotated[AsyncSession, Depends(injectable_session_scope_readonly)]
+
+
+def _get_validated_path_segment(value: str, *, label: str = "name") -> str:
+    """Validate a path segment to prevent path traversal attacks."""
+    if ".." in value or "/" in value or "\\" in value:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid {label}. Use a simple {label} without directory paths or '..'.",
+        )
+    return value
+
+
+def _get_validated_file_name(file_name: str = Path()) -> str:
+    return _get_validated_path_segment(file_name, label="file name")
+
+
+def _get_validated_folder_name(folder_name: str = Path()) -> str:
+    return _get_validated_path_segment(folder_name, label="folder name")
+
+
+ValidatedFileName = Annotated[str, Depends(_get_validated_file_name)]
+ValidatedFolderName = Annotated[str, Depends(_get_validated_folder_name)]
+
+# Message to raise if we're in an Astra cloud environment and a component or endpoint is not supported
+disable_endpoint_in_astra_cloud_msg = "This endpoint is not supported in Astra cloud environment."
+
+
+class EventDeliveryType(str, Enum):
+    STREAMING = "streaming"
+    DIRECT = "direct"
+    POLLING = "polling"
+
+
+def has_api_terms(word: str):
+    return "api" in word and ("key" in word or ("token" in word and "tokens" not in word))
+
+
+def _get_provider_from_template(template: dict) -> str | None:
+    """Return provider name from template's model field, if any."""
+    model_field = template.get("model")
+    if not isinstance(model_field, dict):
+        return None
+    raw = model_field.get("value")
+    if isinstance(raw, list) and len(raw) > 0 and isinstance(raw[0], dict):
+        return raw[0].get("provider")
+    return None
+
+
+def remove_api_keys(flow: dict):
+    """Remove api keys from flow data."""
+    for node in flow.get("data", {}).get("nodes", []):
+        node_data = node.get("data")
+        if not isinstance(node_data, dict):
+            continue
+        node_inner = node_data.get("node")
+        if not isinstance(node_inner, dict):
+            continue
+        template = node_inner.get("template")
+        if not isinstance(template, dict):
+            continue
+        for value in template.values():
+            if isinstance(value, dict) and "name" in value and has_api_terms(value["name"]) and value.get("password"):
+                value["value"] = None
+
+    return flow
+
+
+def strip_secret_field_values(flow_data: dict | None) -> dict | None:
+    """Return a deep copy of ``flow_data`` with every secret field value removed.
+
+    Unlike :func:`remove_api_keys` (which only nulls password fields whose name
+    looks like an API key), this nulls the value of *every* template field marked
+    ``password`` regardless of its name. It is meant for exposing a flow to
+    unauthenticated callers (e.g. ``GET /flows/public_flow/{id}``), where any
+    stored secret — API key, token, password, connection string — must not leak.
+
+    ``flow_data`` is the flow's ``data`` mapping (``{"nodes": [...], ...}``). The
+    input is not mutated: a deep copy is returned so the caller never persists the
+    nulled values back onto the ORM object.
+
+    This function recursively processes group nodes, which contain nested flows at
+    ``node.data.node.flow.data.nodes[...]``, ensuring secrets are stripped at all
+    nesting levels.
+    """
+    if not flow_data:
+        return flow_data
+
+    scrubbed = copy.deepcopy(flow_data)
+    _strip_secrets_from_nodes(scrubbed.get("nodes", []))
+    return scrubbed
+
+
+def _normalized_secret_name(value: object) -> str:
+    """Normalize snake/kebab/camel-case names for secret-name classification."""
+    name = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", str(value or ""))
+    return re.sub(r"[^a-zA-Z0-9]+", "_", name).strip("_").lower()
+
+
+def _is_secret_name(value: object) -> bool:
+    normalized = _normalized_secret_name(value)
+    if normalized in _SECRET_COMPOUND_NAMES:
+        return True
+    parts = set(normalized.split("_"))
+    is_token_value = normalized == "token" or normalized.endswith("_token")
+    return bool(parts & _SECRET_NAME_PARTS) or is_token_value or {"api", "key"}.issubset(parts)
+
+
+def _contains_url_credentials(value: str) -> bool:
+    """Return whether a URL reference contains userinfo or secret-named parameters."""
+    try:
+        parsed = urlsplit(value)
+    except ValueError:
+        return False
+    if parsed.username is not None or parsed.password is not None:
+        return True
+    return any(
+        _is_secret_name(key)
+        for component in (parsed.query, parsed.fragment)
+        for key, _ in parse_qsl(component, keep_blank_values=True)
+    )
+
+
+def _strip_structured_secret_values(value: object) -> object:
+    """Recursively null secret-named values in dict/list component inputs."""
+    if isinstance(value, dict):
+        scrubbed = copy.deepcopy(value)
+        # Key/value inputs use ``key``; other integrations commonly serialize the same pair
+        # with ``name`` or ``header``. Treat all three as secret-name discriminators.
+        discriminator = next(
+            (scrubbed.get(key) for key in ("key", "name", "header") if _is_secret_name(scrubbed.get(key))),
+            None,
+        )
+        if discriminator is not None and "value" in scrubbed:
+            scrubbed["value"] = None
+        for key, nested_value in scrubbed.items():
+            if key == "value" and discriminator is not None:
+                continue
+            scrubbed[key] = None if _is_secret_name(key) else _strip_structured_secret_values(nested_value)
+        return scrubbed
+    if isinstance(value, list):
+        return [_strip_structured_secret_values(item) for item in value]
+    if isinstance(value, str) and _contains_url_credentials(value):
+        return None
+    return value
+
+
+def _strip_template_field_value(field: dict) -> None:
+    """Strip a template field according to its secret metadata and value shape."""
+    if field.get("password") or _is_secret_name(field.get("name")):
+        field["value"] = None
+        return
+
+    field_type = str(field.get("type") or "").lower()
+    input_type = str(field.get("_input_type") or "").lower()
+    if field_type == "mcp" or input_type == "mcpinput":
+        # The server name is safe and needed to render the public flow; embedded config is not.
+        value = field.get("value")
+        name = value.get("name") if isinstance(value, dict) else None
+        field["value"] = {"name": name} if name else None
+        return
+
+    field["value"] = _strip_structured_secret_values(field.get("value"))
+
+
+def _strip_secrets_from_nodes(nodes: list) -> None:
+    """Recursively strip secret field values from a list of nodes.
+
+    This helper processes both regular nodes and group nodes (which contain nested
+    flows). Group nodes have their nested flows recursively processed to ensure
+    secrets are stripped at all nesting levels.
+
+    Args:
+        nodes: A list of node dictionaries to process in-place.
+    """
+    for node in nodes:
+        if isinstance(node, dict):
+            node_data = node.get("data")
+            if isinstance(node_data, dict):
+                node_inner = node_data.get("node")
+                if isinstance(node_inner, dict):
+                    template = node_inner.get("template")
+                    if isinstance(template, dict):
+                        for value in template.values():
+                            if isinstance(value, dict):
+                                _strip_template_field_value(value)
+
+                    flow = node_inner.get("flow")
+                    if isinstance(flow, dict):
+                        flow_data = flow.get("data")
+                        if isinstance(flow_data, dict):
+                            nested_nodes = flow_data.get("nodes")
+                            if isinstance(nested_nodes, list):
+                                _strip_secrets_from_nodes(nested_nodes)
+
+
+# ---------------------------------------------------------------------------
+# Export normalisation
+# ---------------------------------------------------------------------------
+
+# Top-level fields that vary between instances / users without changing logic.
+_VOLATILE_TOP_LEVEL: frozenset[str] = frozenset(
+    {"updated_at", "created_at", "user_id", "folder_id", "access_type", "gradient"}
+)
+
+# Node-level fields that track UI interaction state (position, drag, selection).
+_VOLATILE_NODE_FIELDS: frozenset[str] = frozenset({"positionAbsolute", "dragging", "selected"})
+
+
+def _split_code_to_lines(flow: dict) -> None:
+    """In-place: split code template field values from strings to line arrays.
+
+    Converts ``template.<field>.value`` from a single string to a
+    ``list[str]`` (one element per line) when the field type is ``"code"``.
+    This gives git line-level diffs instead of a single opaque blob.
+    """
+    for node in flow.get("data", {}).get("nodes", []):
+        template = node.get("data", {}).get("node", {}).get("template", {})
+        if not isinstance(template, dict):
+            continue
+        for field_data in template.values():
+            if not isinstance(field_data, dict):
+                continue
+            if field_data.get("type") == "code":
+                value = field_data.get("value")
+                if isinstance(value, str):
+                    # split("\n") — not splitlines() — so that the trailing newline
+                    # is preserved as a final empty string, keeping the round-trip
+                    # lossless: "\n".join(s.split("\n")) == s for any string s.
+                    field_data["value"] = value.split("\n")
+
+
+def _join_code_from_lines(flow: dict) -> None:
+    """In-place: rejoin code template line arrays back to strings.
+
+    Inverse of :func:`_split_code_to_lines`.  Safe to call on flows that
+    already use the string format — ``isinstance`` guard means it's a no-op.
+    """
+    for node in flow.get("data", {}).get("nodes", []):
+        template = node.get("data", {}).get("node", {}).get("template", {})
+        if not isinstance(template, dict):
+            continue
+        for field_data in template.values():
+            if not isinstance(field_data, dict):
+                continue
+            if field_data.get("type") == "code":
+                value = field_data.get("value")
+                if isinstance(value, list):
+                    field_data["value"] = "\n".join(value)
+
+
+def normalize_flow_for_export(flow: dict) -> dict:
+    """Return a git-friendly, deterministic copy of a flow dict.
+
+    Applied to every flow before it is written into a download ZIP.
+
+    Transformations
+    ---------------
+    * Strips volatile top-level fields (``updated_at``, ``created_at``,
+      ``user_id``, ``folder_id``, ``access_type``, ``gradient``) — these
+      change between instances / users without affecting flow logic.
+    * Strips node UI-state fields (``positionAbsolute``, ``dragging``,
+      ``selected``) — these change on every canvas interaction.
+    * Converts ``template.<field>.value`` strings to ``list[str]`` for
+      ``type == "code"`` fields, enabling line-level git diffs.
+
+    Key sorting is handled at serialisation time via
+    ``orjson_dumps(sort_keys=True)``.
+    """
+    import copy
+
+    flow = copy.deepcopy(flow)
+
+    # Strip volatile top-level metadata
+    for key in _VOLATILE_TOP_LEVEL:
+        flow.pop(key, None)
+
+    # Strip node UI state
+    for node in flow.get("data", {}).get("nodes", []):
+        for key in _VOLATILE_NODE_FIELDS:
+            node.pop(key, None)
+
+    # Code → line arrays
+    _split_code_to_lines(flow)
+
+    return flow
+
+
+def normalize_code_for_import(flow: dict) -> dict:
+    """Rejoin code-as-lines back to strings for backward-compatible import.
+
+    Accepts both the list format produced by :func:`normalize_flow_for_export`
+    and the legacy single-string format, so this function is safe to call
+    unconditionally on every uploaded flow.
+    """
+    import copy
+
+    flow = copy.deepcopy(flow)
+    _join_code_from_lines(flow)
+    return flow
+
+
+def build_input_keys_response(langchain_object, artifacts):
+    """Build the input keys response."""
+    input_keys_response = {
+        "input_keys": dict.fromkeys(langchain_object.input_keys, ""),
+        "memory_keys": [],
+        "handle_keys": artifacts.get("handle_keys", []),
+    }
+
+    # Set the input keys values from artifacts
+    for key, value in artifacts.items():
+        if key in input_keys_response["input_keys"]:
+            input_keys_response["input_keys"][key] = value
+    # If the object has memory, that memory will have a memory_variables attribute
+    # memory variables should be removed from the input keys
+    if hasattr(langchain_object, "memory") and hasattr(langchain_object.memory, "memory_variables"):
+        # Remove memory variables from input keys
+        input_keys_response["input_keys"] = {
+            key: value
+            for key, value in input_keys_response["input_keys"].items()
+            if key not in langchain_object.memory.memory_variables
+        }
+        # Add memory variables to memory_keys
+        input_keys_response["memory_keys"] = langchain_object.memory.memory_variables
+
+    if hasattr(langchain_object, "prompt") and hasattr(langchain_object.prompt, "template"):
+        input_keys_response["template"] = langchain_object.prompt.template
+
+    return input_keys_response
+
+
+def validate_is_component(flows: list[Flow]) -> list[Flow]:
+    """Return flows with ``is_component`` inferred from flow data when unset.
+
+    Note: mutates the ORM instances in-place because SQLAlchemy requires
+    mutation for dirty-tracking.  This is an intentional exception to the
+    immutability guideline — creating copies would detach them from the session.
+    """
+    for flow in flows:
+        if not flow.data or flow.is_component is not None:
+            continue
+
+        is_component = get_is_component_from_data(flow.data)
+        if is_component is not None:
+            flow.is_component = is_component
+        else:
+            flow.is_component = len(flow.data.get("nodes", [])) == 1
+    return flows
+
+
+def get_is_component_from_data(data: dict):
+    """Returns True if the data is a component."""
+    return data.get("is_component")
+
+
+async def check_langflow_version(component: StoreComponentCreate) -> None:
+    from langflow.utils.version import get_version_info
+
+    __version__ = get_version_info()["version"]
+
+    if not component.last_tested_version:
+        component.last_tested_version = __version__
+
+    langflow_version = await get_lf_version_from_pypi()
+    if langflow_version is None:
+        raise HTTPException(status_code=500, detail="Unable to verify the latest version of Langflow")
+    if langflow_version != component.last_tested_version:
+        await logger.awarning(
+            f"Your version of Langflow ({component.last_tested_version}) is outdated. "
+            f"Please update to the latest version ({langflow_version}) and try again."
+        )
+
+
+def format_elapsed_time(elapsed_time: float) -> str:
+    """Format elapsed time to a human-readable format coming from perf_counter().
+
+    - Less than 1 second: returns milliseconds
+    - Less than 1 minute: returns seconds rounded to 1 decimal
+    - 1 minute or more: returns minutes and seconds
+    """
+    delta = timedelta(seconds=elapsed_time)
+    if delta < timedelta(seconds=1):
+        milliseconds = round(delta / timedelta(milliseconds=1))
+        return f"{milliseconds} ms"
+
+    if delta < timedelta(minutes=1):
+        seconds = round(elapsed_time, 1)
+        unit = "second" if seconds == 1 else "seconds"
+        return f"{seconds} {unit}"
+
+    minutes = delta // timedelta(minutes=1)
+    seconds = round((delta - timedelta(minutes=minutes)).total_seconds(), 1)
+    minutes_unit = "minute" if minutes == 1 else "minutes"
+    seconds_unit = "second" if seconds == 1 else "seconds"
+    return f"{minutes} {minutes_unit}, {seconds} {seconds_unit}"
+
+
+def format_syntax_error_message(exc: SyntaxError) -> str:
+    """Format a SyntaxError message for returning to the frontend."""
+    if exc.text is None:
+        return f"Syntax error in code. Error on line {exc.lineno}"
+    return f"Syntax error in code. Error on line {exc.lineno}: {exc.text.strip()}"
+
+
+def get_causing_exception(exc: BaseException) -> BaseException:
+    """Get the causing exception from an exception.
+
+    Walks the ``__cause__`` chain to the root, but stops at a bundle-shim
+    ``ModuleNotFoundError`` whose curated "components moved to ..." message is
+    raised ``from`` the raw ``No module named '<x>'`` it wraps, so the curated
+    message wins instead of unwrapping past it to the bare cause underneath.
+    """
+    # A raw import error reads "No module named '<x>'"; anything else is a
+    # curated message (e.g. a bundle shim) that should win over its cause.
+    if isinstance(exc, ModuleNotFoundError) and not str(exc).startswith("No module named"):
+        return exc
+    if getattr(exc, "__cause__", None):
+        return get_causing_exception(exc.__cause__)
+    return exc
+
+
+def format_exception_message(exc: Exception) -> str:
+    """Format an exception message for returning to the frontend."""
+    # We need to check if the __cause__ is a SyntaxError
+    # If it is, we need to return the message of the SyntaxError
+    from lfx.utils.exceptions import module_not_found_hint
+
+    causing_exception = get_causing_exception(exc)
+    if isinstance(causing_exception, SyntaxError):
+        return format_syntax_error_message(causing_exception)
+    hint = module_not_found_hint(causing_exception)
+    if hint is not None:
+        return hint
+    return str(exc)
+
+
+def get_top_level_vertices(graph, vertices_ids):
+    """Retrieves the top-level vertices from the given graph based on the provided vertex IDs.
+
+    Args:
+        graph (Graph): The graph object containing the vertices.
+        vertices_ids (list): A list of vertex IDs.
+
+    Returns:
+        list: A list of top-level vertex IDs.
+
+    """
+    top_level_vertices = []
+    for vertex_id in vertices_ids:
+        vertex = graph.get_vertex(vertex_id)
+        if vertex.parent_is_top_level:
+            top_level_vertices.append(vertex.parent_node_id)
+        else:
+            top_level_vertices.append(vertex_id)
+    return top_level_vertices
+
+
+def parse_exception(exc):
+    """Parse the exception message."""
+    if hasattr(exc, "body"):
+        return exc.body["message"]
+    return str(exc)
+
+
+def get_suggestion_message(outdated_components: list[str]) -> str:
+    """Get the suggestion message for the outdated components."""
+    count = len(outdated_components)
+    if count == 0:
+        return "The flow contains no outdated components."
+    if count == 1:
+        return (
+            "The flow contains 1 outdated component. "
+            f"We recommend updating the following component: {outdated_components[0]}."
+        )
+    components = ", ".join(outdated_components)
+    return (
+        f"The flow contains {count} outdated components. We recommend updating the following components: {components}."
+    )
+
+
+def parse_value(value: Any, input_type: str) -> Any:
+    """Helper function to parse the value based on input type."""
+    if value == "":
+        return {} if input_type == "DictInput" else value
+    if input_type == "IntInput":
+        return int(value) if value is not None else None
+    if input_type == "FloatInput":
+        return float(value) if value is not None else None
+    if input_type == "DictInput":
+        if isinstance(value, dict):
+            return value
+        try:
+            parsed = _json.loads(value) if value is not None else {}
+            return parsed if isinstance(parsed, dict) else {}
+        except (ValueError, TypeError):
+            return {}
+    return value
+
+
+def custom_params(
+    page: int | None = Query(None),
+    size: int | None = Query(None),
+):
+    if page is None and size is None:
+        return None
+    return Params(page=page or MIN_PAGE_SIZE, size=size or MAX_PAGE_SIZE)
+
+
+# Well-known authentication headers that can be propagated to nested MCP calls
+# when ``include_auth_headers=True`` is passed. These are stored under their
+# lowercase header names so that nested server configs can reference them
+# directly, e.g. ``{"x-api-key": "x-api-key"}`` in the MCP server headers config.
+_AUTH_HEADERS_TO_PROPAGATE = frozenset({"x-api-key", "authorization"})
+
+
+def extract_global_variables_from_headers(headers, *, include_auth_headers: bool = False) -> dict[str, str]:
+    """Extract global variables from HTTP headers.
+
+    By default, only headers with the ``X-LANGFLOW-GLOBAL-VAR-*`` prefix are
+    extracted. When ``include_auth_headers=True``, the well-known authentication
+    headers ``x-api-key`` and ``authorization`` are additionally captured under
+    their lowercase names so that nested MCP server configs can reference them
+    directly (e.g. ``{"x-api-key": "x-api-key"}``).
+
+    SECURITY NOTE: Only pass ``include_auth_headers=True`` from MCP call sites
+    (see ``api/v1/mcp_projects.py``). On non-MCP routes such as ``/run`` and
+    ``/workflow``, ``x-api-key`` is Langflow's own authentication key — exposing
+    it in ``request_variables`` would make it readable by any component that
+    reads the graph context.
+
+    Args:
+        headers: HTTP headers object (e.g., from FastAPI Request.headers).
+        include_auth_headers: When True, also extract well-known authentication
+            headers (``x-api-key``, ``authorization``) under their lowercase
+            names. Should only be set by MCP request handlers that need to
+            propagate these values to nested MCP calls.
+
+    Returns:
+        Dictionary mapping variable names to their values.
+
+    Example:
+        headers = {"X-LANGFLOW-GLOBAL-VAR-API-KEY": "secret", "x-api-key": "mykey"}
+        extract_global_variables_from_headers(headers)
+        # Returns: {"API-KEY": "secret"}
+        extract_global_variables_from_headers(headers, include_auth_headers=True)
+        # Returns: {"API-KEY": "secret", "x-api-key": "mykey"}
+    """
+    variables: dict[str, str] = {}
+
+    try:
+        for header_name, header_value in headers.items():
+            header_lower = header_name.lower()
+            if header_lower.startswith(LANGFLOW_GLOBAL_VAR_HEADER_PREFIX):
+                var_name = header_lower[len(LANGFLOW_GLOBAL_VAR_HEADER_PREFIX) :].upper()
+                variables[var_name] = header_value
+            elif include_auth_headers and header_lower in _AUTH_HEADERS_TO_PROPAGATE:
+                variables[header_lower] = header_value
+    except Exception as exc:  # noqa: BLE001
+        # Log the error but don't raise - we want to continue execution
+        logger.exception("Failed to extract global variables from headers: %s", exc)
+
+    return variables
+
+
+def raise_error_if_astra_cloud_env():
+    """Raise an error if we're in an Astra cloud environment."""
+    try:
+        raise_error_if_astra_cloud_disable_component(disable_endpoint_in_astra_cloud_msg)
+    except Exception as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
+
+
+_FORBIDDEN_HEADER_CHARS = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def build_content_disposition(filename: str) -> str:
+    """Build a RFC 5987-compliant Content-Disposition header value.
+
+    Strips ASCII control chars (CR/LF/NUL/etc.) to prevent header injection,
+    then produces a dual-param header: an ASCII fallback (with backslash and
+    double-quote escaped per RFC 6266 §4.1) and a percent-encoded UTF-8 param
+    so both legacy and modern clients receive an unambiguous filename.
+    """
+    safe_filename = _FORBIDDEN_HEADER_CHARS.sub("_", filename)
+    ascii_fallback = safe_filename.encode("ascii", "replace").decode("ascii").replace("\\", "\\\\").replace('"', '\\"')
+    encoded = quote(safe_filename, safe="")
+    return f"attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{encoded}"
