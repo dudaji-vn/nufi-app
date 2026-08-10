@@ -18,17 +18,18 @@ describe("rewrite", () => {
     );
   });
 
-  it("rewrites the same word inside a locale JSON value", () => {
-    expect(rewrite('{"welcome": "Langflow guide"}')).toBe('{"welcome": "NuFi Agent guide"}');
+  it("rewrites the same word inside a locale JSON value (json: true)", () => {
+    expect(rewrite('{"welcome": "Langflow guide"}', true)).toBe('{"welcome": "NuFi Agent guide"}');
   });
 
   /**
    * 308 of the 471 brand hits are locale VALUES. Keys are addressed by code
    * and must survive, or every lookup misses and the UI renders raw key
-   * paths.
+   * paths. The key exclusion only applies when `json` is true — see FIX
+   * ROUND 1 below for why it must not apply unconditionally.
    */
-  it("never rewrites a locale key", () => {
-    expect(rewrite('{"langflow_version": "1.11.2"}')).toBe('{"langflow_version": "1.11.2"}');
+  it("never rewrites a locale key (json: true)", () => {
+    expect(rewrite('{"langflow_version": "1.11.2"}', true)).toBe('{"langflow_version": "1.11.2"}');
   });
 
   /**
@@ -38,8 +39,43 @@ describe("rewrite", () => {
    * accident of case: the key here DOES contain the exact word, and only
    * the value gets rewritten.
    */
-  it("never rewrites a locale key even when it contains the exact product word", () => {
-    expect(rewrite('{"Langflow": "Langflow guide"}')).toBe('{"Langflow": "NuFi Agent guide"}');
+  it("never rewrites a locale key even when it contains the exact product word (json: true)", () => {
+    expect(rewrite('{"Langflow": "Langflow guide"}', true)).toBe('{"Langflow": "NuFi Agent guide"}');
+  });
+
+  /**
+   * FIX ROUND 1 — review finding: "JSON_KEY cannot distinguish a locale key
+   * from a ternary branch, and the miss is silent."
+   *
+   * The pre-fix implementation applied the colon-following-quoted-string
+   * exclusion unconditionally, so it also matched a ternary true-branch, an
+   * object-literal key, and a TS type-literal member — none of which are
+   * JSON, none of which need the product name preserved. The miss produced
+   * no test failure, no build error, and no fork-guard signal: a stray
+   * "Langflow" would simply ship in a shape that resembles source used
+   * nowhere in the v1.11.2 baseline today but is a common enough React/TS
+   * idiom to show up in a future upstream sync. These three all reproduce
+   * the review's examples and default `json` to false (the caller passes
+   * nothing — this is the codepath every non-JSON file in the app takes).
+   */
+  describe("FIX ROUND 1 — the JSON-key exclusion must not fire outside JSON", () => {
+    it("rewrites a ternary true-branch in a non-JSON (.tsx-shaped) context", () => {
+      expect(rewrite('const label = isBar ? "Langflow" : other;')).toBe(
+        'const label = isBar ? "NuFi Agent" : other;',
+      );
+    });
+
+    it("rewrites a TS type-literal member in a non-JSON (.tsx-shaped) context", () => {
+      expect(rewrite('type T = { "Langflow": string };')).toBe('type T = { "NuFi Agent": string };');
+    });
+
+    it("rewrites an object-literal key in a non-JSON (.tsx-shaped) context", () => {
+      expect(rewrite('const x = {"Langflow": 1};')).toBe('const x = {"NuFi Agent": 1};');
+    });
+
+    it("still leaves the same shape untouched when json: true is passed explicitly", () => {
+      expect(rewrite('{"Langflow": "1.11.2"}', true)).toBe('{"Langflow": "1.11.2"}');
+    });
   });
 
   /**
