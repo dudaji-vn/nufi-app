@@ -450,7 +450,7 @@ T.update({
   "misc.addChatInputOutput": "플로우에 접근하려면 채팅 입력 또는 채팅 출력을 추가하세요",
   "misc.textInputModalTitle": "텍스트 내용 편집",
   "misc.fetchError": "연결을 설정할 수 없습니다.",
-  "misc.fetchErrorDesc": "모든 항목이 정상적으로 작동하는지 확인한 후 다시 시도하세요.",
+  "misc.fetchErrorDesc": "모든 항목이 정상적으로 작동하는지 확인한 후 다시 시도하십시오.",
   "misc.timeoutError": "서버가 요청을 처리하는 동안 잠시 기다려 주십시오.",
   "misc.timeoutErrorDesc": "서버가 사용 중입니다.",
   "misc.fsErrorText": "파일이 다음 확장자 중 하나인지 확인하십시오:",
@@ -458,7 +458,7 @@ T.update({
   "misc.editorNotAvailable": "편집기를 사용할 수 없습니다",
   "misc.unableToCopy": "클립보드에 복사할 수 없습니다. 직접 복사해 주십시오.",
   "misc.copyJson": "JSON을 클립보드에 복사",
-  "misc.fetchErrorDescription": "서버가 실행 중인지 확인한 후 다시 시도하세요.",
+  "misc.fetchErrorDescription": "서버가 실행 중인지 확인한 후 다시 시도하십시오.",
   "misc.fetchErrorMessage": "서버에 연결할 수 없습니다",
   "misc.timeoutErrorDescription": "서버 응답 시간이 너무 오래 걸리고 있습니다.",
   "misc.timeoutErrorMessage": "연결 시간이 초과되었습니다",
@@ -498,7 +498,7 @@ T.update({
   "errors.generic": "문제가 발생했습니다. 다시 시도해 주십시오.",
   "errors.missedFields": "입력하지 않은 항목이 있습니다",
   "errors.missingInfo": "필수 정보가 누락되었습니다:",
-  "errors.incompleteLoop": "플로우에 완료되지 않은 루프가 있습니다. 연결 상태를 확인한 후 다시 시도하세요.",
+  "errors.incompleteLoop": "플로우에 완료되지 않은 루프가 있습니다. 연결 상태를 확인한 후 다시 시도하십시오.",
   "errors.invalidFile": "올바른 파일을 선택하십시오. 다음 파일 형식만 허용됩니다:",
   "errors.fileTooLarge": "파일 크기가 너무 큽니다. {{maxSizeMB}}보다 작은 파일을 선택하십시오.",
   "errors.wrongFileType": "잘못된 파일 형식입니다",
@@ -655,10 +655,396 @@ T.update({
   "flow.never": "없음",
 })
 
+# ---- Fix round 1: deployments.* / mcp.* / settings.mcpClient.* ---------
+#
+# Added after review found "a translated door into an English room": the
+# Main Page "Deployments" tab (mainPage.tabDeployments) and the canvas
+# toolbar's Deploy button (misc.deploy) were already translated, but the
+# 220-key deployments.* namespace behind them -- the entire deploy wizard,
+# provider selection, connections, environment variables -- was 0%
+# translated. Same pattern for MCP: sidebar.mcp.* and settings.nav.mcpServers
+# were translated, but the 82-key mcp.* namespace (the actual Add/Edit MCP
+# Server modal, tool selection, auth) and the 11-key settings.mcpClient.*
+# (the connection guide) were not -- and the customer requirement (SFR-008)
+# names MCP servers explicitly, so this is not an incidental corner.
+# 220 + 82 + 11 = 313 keys, bringing total coverage to 864/2230 (~38.7%).
+#
+# Terminology added here: environment=환경 provider=제공업체 connection=연결
+# (noun) draft=초안 live=라이브 publish=게시 instance=인스턴스. "watsonx
+# Orchestrate" is a third-party product name, kept in English throughout
+# (same treatment as "Discord"/"GitHub" elsewhere in this file) -- exact
+# casing preserved per source string ("Watsonx Orchestrate" vs "watsonx
+# Orchestrate" both occur in en.json and are reproduced as-is, not
+# normalized, since normalizing would be inventing a spelling upstream
+# didn't choose.
+T.update({
+  "deployments.selectDeployment": "배포 선택",
+  "deployments.selectProvider": "제공업체 선택",
+  "deployments.reviewUpdate": "업데이트 검토",
+  "deployments.reviewUpdateDescription": "업데이트될 배포 버전을 검토하십시오.",
+  "deployments.chooseDeployedVersion": "배포된 버전 선택",
+  "deployments.selectDeployedToolToReplace": "교체할 배포된 도구 선택",
+  "deployments.willBeReplaced": "교체 예정",
+  "deployments.updateDeploymentDescription": "현재 플로우 버전으로 교체할 배포된 플로우 버전을 선택하십시오.",
+  "deployments.selectedTarget": "선택한 대상",
+  "deployments.flowVersion": "플로우 버전",
+  "deployments.replaceVersionNotice": "배포된 {{current}}을(를) 현재 플로우 {{next}}(으)로 교체하려고 합니다.",
+  "deployments.selectVersionToReplace": "교체할 버전 선택",
+  "deployments.selectedDeployedVersionWillUpdate": "선택한 배포 버전이 현재 플로우 {{next}}(으)로 업데이트됩니다.",
+  "deployments.currentDeploymentTarget": "현재 배포 대상",
+  "deployments.deployedVersion": "배포된 버전",
+  "deployments.willBeReplacedByVersion": "{{next}}(으)로 교체 예정",
+  "deployments.replaceVersionWithVersion": "{{current}}을(를) {{next}}(으)로 교체",
+  "deployments.singleAttachmentTarget": "교체 가능한 배포 버전이 하나뿐입니다",
+  "deployments.deploymentType": "배포 유형",
+  "deployments.provider": "제공업체",
+  "deployments.attachFlows": "플로우 연결",
+  "deployments.reviewAndConfirm": "검토 및 확인",
+  "deployments.noDeployments": "배포 없음",
+  "deployments.noEnvironments": "환경 없음",
+  "deployments.addFirstEnvironment": "첫 번째 환경을 추가하여 플로우 배포를 시작하십시오.",
+  "deployments.addEnvironment": "환경 추가",
+  "deployments.createNewDeployment": "새 배포 만들기",
+  "deployments.current": "현재",
+  "deployments.new": "신규",
+  "deployments.noFlowsAttached": "연결된 플로우 없음",
+  "deployments.agentChat": "에이전트 채팅",
+  "deployments.columnName": "이름",
+  "deployments.columnType": "유형",
+  "deployments.columnAttached": "연결됨",
+  "deployments.columnProvider": "제공업체",
+  "deployments.columnLastModified": "최종 수정",
+  "deployments.columnTest": "테스트",
+  "deployments.columnUrl": "URL",
+  "deployments.columnProviderKey": "제공업체 키",
+  "deployments.columnCreated": "생성일",
+  "deployments.labelType": "유형",
+  "deployments.labelCreated": "생성일",
+  "deployments.labelName": "이름",
+  "deployments.labelModified": "수정일",
+  "deployments.labelDesc": "설명",
+  "deployments.labelModel": "모델",
+  "deployments.labelProvider": "제공업체",
+  "deployments.placeholderSalesBot": "예: Sales Bot",
+  "deployments.placeholderAgentPurpose": "에이전트의 목적을 설명하세요...",
+  "deployments.placeholderMessage": "메시지",
+  "deployments.placeholderApiUrl": "https://api.example.com",
+  "deployments.placeholderApiKey": "API 키를 입력하세요",
+  "deployments.placeholderEnvironmentName": "예: Production",
+  "deployments.placeholderSearchConnections": "연결 검색...",
+  "deployments.placeholderConnectionName": "예: SALES_BOT_PROD",
+  "deployments.placeholderKey": "키",
+  "deployments.placeholderValue": "값",
+  "deployments.ariaExistingEnvironments": "기존 환경",
+  "deployments.ariaDeploymentType": "배포 유형",
+  "deployments.ariaSendMessage": "메시지 보내기",
+  "deployments.detachFlow": "플로우 연결 해제",
+  "deployments.undoDetach": "연결 해제 실행 취소",
+  "deployments.confirm": "확인",
+  "deployments.editToolName": "도구 이름 편집",
+  "deployments.reviewDetails": "생성하기 전에 배포 세부 정보를 검토하십시오.",
+  "deployments.deploymentLabel": "배포",
+  "deployments.existingConnections": "기존 연결",
+  "deployments.newConnections": "새 연결",
+  "deployments.detaching": "연결 해제 중",
+  "deployments.unknownFlow": "알 수 없는 플로우",
+  "deployments.removing": "제거 중",
+  "deployments.toolsWillBeDetached": "이 도구들은 에이전트에서 연결 해제됩니다. 제공업체 테넌트에서는 계속 사용할 수 있습니다.",
+  "deployments.available": "사용 가능",
+  "deployments.attached": "연결됨",
+  "deployments.removed": "제거됨",
+  "deployments.selectOrCreateConnection": "연결 선택 또는 새로 만들기",
+  "deployments.availableConnections": "사용 가능한 연결",
+  "deployments.createConnection": "연결 만들기",
+  "deployments.noConnectionsYet": "아직 연결이 없습니다",
+  "deployments.noConnectionsDescription": "연결을 만들어 이 플로우에 자격 증명을 연결하십시오.",
+  "deployments.createFirstConnection": "첫 번째 연결 만들기",
+  "deployments.noConnectionsMatch": '"{{query}}"와(과) 일치하는 연결이 없습니다',
+  "deployments.connectionNameLabel": "연결 이름",
+  "deployments.connectionNameExists": "이 이름의 연결이 이미 있습니다.",
+  "deployments.environmentVariables": "환경 변수",
+  "deployments.variablesAutoDetected_one": "선택한 플로우 버전에서 변수 {{count}}개를 자동으로 감지했습니다.",
+  "deployments.variablesAutoDetected_other": "선택한 플로우 버전에서 변수 {{count}}개를 자동으로 감지했습니다.",
+  "deployments.globalVariables": "전역 변수",
+  "deployments.addVariable": "+ 변수 추가",
+  "deployments.changeFlow": "플로우 변경",
+  "deployments.skip": "건너뛰기",
+  "deployments.attachConnectionToFlow": "플로우에 연결 추가",
+  "deployments.availableFlows": "사용 가능한 플로우",
+  "deployments.attachedFlowsCount": "연결된 플로우 ({{count}})",
+  "deployments.attachedFlowsLabel": "연결된 플로우",
+  "deployments.loadingAttachedFlows": "연결된 플로우 로딩 중...",
+  "deployments.failedToLoadFlows": "연결된 플로우를 불러오지 못했습니다",
+  "deployments.untitled": "제목 없음",
+  "deployments.loadingDeploymentData": "배포 데이터 로딩 중...",
+  "deployments.updateDeployment": "배포 업데이트",
+  "deployments.createNewDeploymentTitle": "새 배포 만들기",
+  "deployments.stepOf": "{{current}}/{{total}} 단계",
+  "deployments.close": "닫기",
+  "deployments.cancel": "취소",
+  "deployments.back": "뒤로",
+  "deployments.update": "업데이트",
+  "deployments.deploy": "배포",
+  "deployments.updating": "업데이트 중...",
+  "deployments.deploying": "배포 중...",
+  "deployments.connecting": "연결 중...",
+  "deployments.next": "다음",
+  "deployments.test": "테스트",
+  "deployments.review": "검토",
+  "deployments.done": "완료",
+  "deployments.deploymentSuccessful": "배포 성공",
+  "deployments.deployedToDraft": "{{providerName}}에 초안으로 배포됨",
+  "deployments.publishDraftToLive": "다음 위치에서 초안을 라이브로 게시",
+  "deployments.testDeployment": "배포 테스트",
+  "deployments.agentTypeLabel": "에이전트",
+  "deployments.mcpTypeLabel": "MCP",
+  "deployments.agentTypeDescription": "채팅 인터페이스와 도구 호출을 지원하는 대화형 에이전트",
+  "deployments.nameRequired": "이름은 필수입니다.",
+  "deployments.actionsForDeployment": "{{name}} 작업",
+  "deployments.noChangesToSave": "저장할 변경 사항이 없습니다",
+  "deployments.chooseType": "유형 선택",
+  "deployments.agentName": "에이전트 이름",
+  "deployments.agentNameFormatError": "에이전트 이름은 문자로 시작해야 합니다.",
+  "deployments.agentNameCannotChange": "생성 후에는 이름을 변경할 수 없습니다.",
+  "deployments.agentNameAlreadyExists": "이미 존재하는 에이전트 이름입니다. 다른 이름을 선택하십시오.",
+  "deployments.agentNameAvailable": "사용할 수 있는 에이전트 이름입니다.",
+  "deployments.loadingModels": "모델 로딩 중...",
+  "deployments.selectModel": "모델 선택",
+  "deployments.noModelsForEnvironment": "선택한 환경에 사용 가능한 모델이 없습니다",
+  "deployments.descriptionLabel": "설명",
+  "deployments.duplicateToolName": "이 배포 내에서 도구 이름이 중복되었습니다",
+  "deployments.editToolNameExists": "도구 이름 편집(제공업체에 이미 존재함)",
+  "deployments.deleteDeploymentConfirm": "Langflow 및 Watsonx Orchestrate에서 배포 {{name}}을(를) 영구적으로 삭제합니다.",
+  "deployments.typeNameToConfirm": "확인하려면 배포 이름을 입력하십시오:",
+  "deployments.cannotAutoDetectEnvVars": "환경 변수를 자동으로 감지할 수 없습니다",
+  "deployments.addManuallyInConnection": "연결 양식에서 직접 추가하십시오.",
+  "deployments.emptyStateDescription": "첫 번째 배포를 만들어 플로우를 운영 환경에서 실행하십시오.",
+  "deployments.createDeployment": "배포 만들기",
+  "deployments.subTabDeployments": "배포",
+  "deployments.subTabEnvironments": "배포 환경",
+  "deployments.environmentLabel": "환경:",
+  "deployments.newEnvironment": "새 환경",
+  "deployments.newDeployment": "새 배포",
+  "deployments.environmentsDescription": "이 환경은 배포를 만들거나 실행할 때 사용됩니다.",
+  "deployments.stepFlows": "플로우",
+  "deployments.deployed": "배포됨",
+  "deployments.failedToCreateProviderAccount": "제공업체 계정 생성에 실패했습니다",
+  "deployments.failedToCreateDeployment": "배포 생성에 실패했습니다",
+  "deployments.failedToUpdateDeployment": "배포 업데이트에 실패했습니다",
+  "deployments.failedToPrepareDeployment": "배포 준비에 실패했습니다",
+  "deployments.fieldServiceInstanceUrl": "서비스 인스턴스 URL",
+  "deployments.fieldApiKey": "API 키",
+  "deployments.fieldName": "이름",
+  "deployments.optional": "선택 사항",
+  "deployments.hideApiKey": "API 키 숨기기",
+  "deployments.showApiKey": "API 키 표시",
+  "deployments.leaveBlankCredential": "현재 자격 증명을 유지하려면 비워 두십시오.",
+  "deployments.chooseExistingEnvironment": "기존 환경 선택",
+  "deployments.addNewEnvironment": "새 환경 추가",
+  "deployments.selectFromExistingEnvironments": "기존 환경 중에서 선택하십시오",
+  "deployments.wxoConfigureCredentials": "아래에서 watsonx Orchestrate 자격 증명을 구성하십시오. wxO가 처음이신가요?",
+  "deployments.wxoSignUp": "watsonx Orchestrate 가입하기",
+  "deployments.wxoAlreadyHaveAccount": "이미 계정이 있으신가요?",
+  "deployments.wxoFindCredentials": "자격 증명 찾기",
+  "deployments.deploymentsOnProvider": "이 플로우에 대한 {{name}}의 배포 목록입니다.",
+  "deployments.selectDeploymentDescription": "업데이트할 배포를 선택하거나 새로 만드십시오.",
+  "deployments.deploymentTypeLabel": "{{type}} 배포",
+  "deployments.deployment": "배포",
+  "deployments.newDeploymentOnProvider": "{{name}}의 새 배포",
+  "deployments.setupNewDeployment": "새 배포를 처음부터 설정",
+  "deployments.continue": "계속",
+  "deployments.chooseProviderDesc": "배포할 제공업체 환경을 선택하거나 처음부터 새 배포를 만드십시오.",
+  "deployments.loadingVersions": "버전 로딩 중...",
+  "deployments.noVersionsFound": "버전을 찾을 수 없습니다",
+  "deployments.selectFlow": "버전을 보려면 플로우를 선택하십시오",
+  "deployments.selectVersion": "이 배포에 연결할 버전을 선택하십시오",
+  "deployments.updatedDesc": '"{{name}}"이(가) 업데이트되었습니다.',
+  "deployments.updatedTitle": "배포 업데이트됨",
+  "deployments.updatingDesc": "배포를 업데이트하는 중입니다.",
+  "deployments.updatingTitle": "배포 업데이트 중",
+  "deployments.versionCreated": "생성일: {{date}}",
+  "deployments.columnEnvironment": "환경",
+  "deployments.labelEnvironment": "환경",
+  "deployments.oneVersion": "1개 버전",
+  "deployments.manyVersions": "{{count}}개 버전",
+  "deployments.removedCount": "{{count}}개 제거됨",
+  "deployments.deployFromDraft": "현재 초안에서 버전을 만들어 이 플로우를 배포",
+  "deployments.createFromDraft": "초안에서 만들기",
+  "deployments.attach": "연결",
+  "deployments.details": "세부 정보",
+  "deployments.edit": "편집",
+  "deployments.delete": "삭제",
+  "deployments.flow": "플로우",
+  "deployments.flows": "플로우",
+  "deployments.updateAction": "업데이트",
+  "deployments.createVersionFromDraftError": "초안에서 버전 생성에 실패했습니다",
+  "deployments.testDeploymentAriaLabel": "{{name}} 테스트",
+  "deployments.failedToLoadDetails": "배포 세부 정보를 불러오지 못했습니다",
+  "deployments.failedToUpdate": "배포 업데이트에 실패했습니다",
+  "deployments.confirmToolName": "확인",
+  "deployments.deployingTitle": "배포 중...",
+  "deployments.deployingDescription": "배포를 프로비저닝하는 중입니다. 보통 몇 초 정도 걸립니다.",
+  "deployments.deploymentLiveNamed": '"{{name}}"이(가) 라이브 상태이며 사용할 준비가 되었습니다.',
+  "deployments.deploymentLive": "배포가 라이브 상태이며 사용할 준비가 되었습니다.",
+  "deployments.errorDeletingDeployment": "배포 삭제 중 오류가 발생했습니다",
+  "deployments.errorDeletingEnvironment": "환경 삭제 중 오류가 발생했습니다",
+  "deployments.failedToUpdateEnvironment": "환경 업데이트에 실패했습니다",
+  "deployments.failedToCreateEnvironment": "환경 생성에 실패했습니다",
+  "deployments.configureEnvironment": "환경 구성",
+  "deployments.enterNewApiKey": "새 API 키 입력",
+  "deployments.enterApiKey": "API 키 입력",
+  "deployments.cancelButton": "취소",
+  "deployments.saving": "저장 중...",
+  "deployments.updateButton": "업데이트",
+  "deployments.saveButton": "저장",
+  "deployments.noProviderSnapshot": "선택한 배포에서 이 플로우의 제공업체 스냅샷을 찾을 수 없습니다.",
+})
+
+T.update({
+  "mcp.servers.title": "MCP 서버",
+  "mcp.servers.description": "플로우에서 사용할 MCP 서버를 관리합니다.",
+  "mcp.servers.addButton": "MCP 서버 추가",
+  "mcp.servers.noServersAdded": "추가된 MCP 서버가 없습니다",
+  "mcp.servers.addedServers": "추가된 MCP 서버",
+  "mcp.servers.statusTimeout": "시간 초과",
+  "mcp.servers.statusError": "오류",
+  "mcp.servers.statusLoading": "로딩 중...",
+  "mcp.servers.statusNoTools": "도구를 찾을 수 없음",
+  "mcp.servers.toolsCount_one": "도구 {{count}}개",
+  "mcp.servers.toolsCount_other": "도구 {{count}}개",
+  "mcp.servers.editMenuItem": "편집",
+  "mcp.servers.deleteMenuItem": "삭제",
+  "mcp.servers.errorFetching": "서버를 불러오는 중 오류가 발생했습니다",
+  "mcp.servers.errorDeleting": "서버 삭제 중 오류가 발생했습니다",
+  "mcp.servers.toolsCount": "도구 {{count}}개",
+  "mcp.servers.actionsMenu": "{{name}} 작업",
+  "mcp.modal.addTitle": "MCP 서버 추가",
+  "mcp.modal.updateTitle": "MCP 서버 업데이트",
+  "mcp.modal.descriptionSettings": "여러 플로우에서 사용할 MCP 서버를 추가하고 저장하십시오.",
+  "mcp.modal.descriptionFlow": "MCP 서버를 추가하고 저장하십시오. 서버는",
+  "mcp.modal.descriptionFlowLink": "설정에서 관리할 수 있습니다.",
+  "mcp.modal.tabJson": "JSON",
+  "mcp.modal.tabStdio": "STDIO",
+  "mcp.modal.tabStreamableHttp": "Streamable HTTP/SSE",
+  "mcp.modal.lockedTitle": "MCP 서버 관리가 잠겨 있습니다",
+  "mcp.modal.lockedDescription": "외부 MCP 서버를 관리하려면 관리자에게 문의하십시오.",
+  "mcp.modal.jsonTabLabel": "JSON 설정 붙여넣기",
+  "mcp.modal.jsonPlaceholder": "서버를 추가하려면 JSON 설정을 붙여넣으세요",
+  "mcp.modal.fieldName": "이름",
+  "mcp.modal.fieldCommand": "명령",
+  "mcp.modal.fieldArguments": "인수",
+  "mcp.modal.fieldEnvironmentVariables": "환경 변수",
+  "mcp.modal.fieldStreamableUrl": "Streamable HTTP/SSE URL",
+  "mcp.modal.fieldHeaders": "헤더",
+  "mcp.modal.placeholderServerName": "서버 이름을 입력하세요...",
+  "mcp.modal.placeholderCommand": "명령을 입력하세요...",
+  "mcp.modal.placeholderArgument": "인수를 입력하세요...",
+  "mcp.modal.placeholderHttpName": "이름",
+  "mcp.modal.placeholderHttpUrl": "Streamable HTTP/SSE URL",
+  "mcp.modal.addArgumentButton": "인수 추가",
+  "mcp.modal.cancelButton": "취소",
+  "mcp.modal.addServerButton": "서버 추가",
+  "mcp.modal.updateServerButton": "서버 업데이트",
+  "mcp.modal.errorNameCommandRequired": "이름과 명령은 필수입니다.",
+  "mcp.modal.errorDuplicateEnvKeys": "환경 변수에 중복된 키가 있습니다.",
+  "mcp.modal.errorNameUrlRequired": "이름과 URL은 필수입니다.",
+  "mcp.modal.errorDuplicateHeaders": "헤더에 중복된 키가 있습니다.",
+  "mcp.modal.errorNoServerFound": "입력한 내용에서 유효한 MCP 서버를 찾을 수 없습니다.",
+  "mcp.modal.errorFailedAdd": "MCP 서버 추가에 실패했습니다.",
+  "mcp.modal.errorFailedAddMultiple": "하나 이상의 MCP 서버 추가에 실패했습니다.",
+  "mcp.modal.streamableHttp": "Streamable HTTP",
+  "mcp.installedSuccessfully": "{{client}}에 MCP 서버를 설치했습니다. 변경 사항을 적용하려면 클라이언트를 재시작해야 할 수 있습니다.",
+  "mcp.serverTitle": "MCP 서버",
+  "mcp.serverDescription": "프로젝트의 플로우를 MCP 서버 내 도구로 접근할 수 있습니다. 자세한 내용은",
+  "mcp.serverGuideLink": "MCP 서버로서의 프로젝트 가이드에서 확인하십시오.",
+  "mcp.autoInstall": "자동 설치",
+  "mcp.configError": "MCP 서버 구성 오류",
+  "mcp.configErrorFix": "MCP 서버 구성을 생성하려면 프로젝트 설정에서 OAuth 구성을 수정하십시오.",
+  "mcp.flowsTools": "플로우/도구",
+  "mcp.flowsTooltip": "이 프로젝트의 플로우는 호출 가능한 MCP 도구로 노출할 수 있습니다.",
+  "mcp.toolsTitle": "MCP 서버 도구",
+  "mcp.toolsDescription": "이 서버에 추가할 도구를 선택하십시오",
+  "mcp.editTools": "도구 편집",
+  "mcp.auth": "인증:",
+  "mcp.authNone": "없음(공개)",
+  "mcp.editAuth": "인증 편집",
+  "mcp.addAuth": "인증 추가",
+  "mcp.loading": "로딩 중...",
+  "mcp.serverNotRunning": "MCP 서버가 실행 중이 아닙니다: {{message}}",
+  "mcp.installDisabledWarning": "로컬 머신에서 Langflow 서버가 실행 중이 아니므로 원클릭 설치가 비활성화되어 있습니다. JSON 탭을 사용해 클라이언트를 수동으로 구성하십시오.",
+  "mcp.installTooltip": "자동 설치를 사용하려면 {{name}}을(를) 설치하십시오.",
+  "mcp.failedToInstall": "{{client}}에 MCP 서버 설치를 실패했습니다",
+  "mcp.loadingTools": "로딩 중...",
+  "mcp.noToolsFound": "도구를 찾을 수 없음",
+  "mcp.toolCount_one": "도구 {{count}}개",
+  "mcp.toolCount_other": "도구 {{count}}개",
+  "mcp.loadingServers": "서버 로딩 중...",
+  "mcp.selectServer": "서버를 선택하세요...",
+  "mcp.refreshServer": "MCP 서버 새로고침",
+  "mcp.searchServers": "MCP 서버 검색...",
+  "mcp.addServer": "MCP 서버 추가",
+})
+
+T.update({
+  "settings.mcpClient.title": "Langflow MCP 클라이언트",
+  "settings.mcpClient.description": "코딩 에이전트를 연결하여 이 Langflow 인스턴스에서 플로우를 빌드하고 실행합니다.",
+  "settings.mcpClient.configFileLabel": "설정 파일:",
+  "settings.mcpClient.apiKeyInfo": "API 키를 제공하지 않으면 에이전트가",
+  "settings.mcpClient.apiKeyInfoMiddle": "도구를 사용해 사용자 이름과 비밀번호로 로그인해야 합니다. API 키는 다음에서 생성할 수 있습니다.",
+  "settings.mcpClient.apiKeysSettings": "API 키 설정",
+  "settings.mcpClient.bob.step1": "Bob을 열고 설정 > MCP로 이동하십시오",
+  "settings.mcpClient.bob.step2": '"Edit Global MCP"(또는 프로젝트별 설정은 "Edit Project MCP")를 클릭하십시오',
+  "settings.mcpClient.bob.step3": "아래 JSON 설정을 붙여넣고 저장하십시오",
+  "settings.mcpClient.claudeCode.step1": "터미널에서 아래 명령을 실행하십시오:",
+  "settings.mcpClient.claudeCode.step2": "또는 JSON 설정을 ~/.claude.json에 직접 추가하십시오",
+})
+
+DEMO_PATH_KEYS_HEADER = """\
+# GENERATED FILE -- do not hand-edit. Regenerate with:
+#   python3 apps/nufi-agent/nufi/build-ko-locale.py
+#
+# The demo-path key list, derived directly from the T dict in
+# build-ko-locale.py (the same dict that generates ko.json) so this file
+# and ko.json's key set cannot drift apart the way two independently
+# hand-maintained copies could -- there is exactly one place to add or
+# remove a key (T), and one command that regenerates both outputs from it
+# together. (Fix round 1: this file used to be typed by hand as a second
+# copy of the same key list; a key added to T without a matching line
+# here, or vice versa, was possible and undetected until the guard ran
+# against a real mismatch. Deriving both from T removes that failure mode
+# structurally instead of relying on remembering to update both.)
+#
+# What this list IS: the fixed set of src/frontend/src/locales/ko.json
+# keys that Task 4
+# (docs/superpowers/sdd/2026-08-10-nufi-agent-fork-whitelabel/task-4-brief.md)
+# and its Fix round 1 review decided is the demo path: the flow canvas and
+# its controls, the component sidebar, the run/playground panel, save and
+# export, error and empty states, the settings entry points, and (Fix
+# round 1) the deployments and MCP surfaces those entry points open into.
+# See nufi/README.md for the full surface-by-surface reasoning.
+#
+# check-locale-parity.sh fails if any line below is missing from ko.json.
+# It does NOT require ko.json to contain only these keys -- ko.json may
+# carry more without failing this check, though nothing currently does
+# (T generates both files, so today they're identical by construction).
+# The list exists to catch an ACCIDENTAL shrink (a bad merge, a resync
+# that drops a key, a hand-edit to ko.json that bypasses this script) as a
+# loud CI failure, not to gate what "in scope" means going forward --
+# extending Korean coverage later is a normal edit to T in
+# build-ko-locale.py, which regenerates this file automatically.
+#
+# One dotted en.json/ko.json key per line. Blank lines and lines starting
+# with # are ignored by check-locale-parity.sh.
+
+"""
+
+
 if __name__ == "__main__":
-    locales_dir = Path(__file__).resolve().parent.parent / "src/frontend/src/locales"
+    nufi_dir = Path(__file__).resolve().parent
+    locales_dir = nufi_dir.parent / "src/frontend/src/locales"
     en_path = locales_dir / "en.json"
     ko_path = locales_dir / "ko.json"
+    demo_path_keys_path = nufi_dir / "demo-path-keys.txt"
 
     with en_path.open() as f:
         en = json.load(f)
@@ -675,5 +1061,13 @@ if __name__ == "__main__":
     with ko_path.open("w") as f:
         json.dump(T, f, ensure_ascii=False, indent=2, sort_keys=True)
         f.write("\n")
-
     print(f"Wrote {ko_path}")
+
+    # demo-path-keys.txt is derived from the SAME T dict, in the SAME run,
+    # so it and ko.json's key set cannot diverge -- see the header comment
+    # above for why this replaced a hand-maintained second copy.
+    with demo_path_keys_path.open("w") as f:
+        f.write(DEMO_PATH_KEYS_HEADER)
+        for key in sorted(T):
+            f.write(key + "\n")
+    print(f"Wrote {demo_path_keys_path}")

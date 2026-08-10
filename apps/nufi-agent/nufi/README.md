@@ -297,7 +297,8 @@ map, not nested — namespace here means the dotted prefix):
 | Run/playground panel | `playground`, `playgroundComponent`, `chat`, `output`, `inspectionPanel`, `input`, `humanInput`, `ioModal` | Running a flow and reading its output is the payoff moment of any demo |
 | Save and export | `apiModal`, plus the save/export/duplicate strings already inside `flow.*`, `misc.*` (`export`, `deploy`, `share`, `apiAccess`, `embedIntoSite`, …), and the relevant `errors.*`/`success.*` entries below | What an evaluator asks about right after seeing a flow run: "can we take this with us" |
 | Error and empty states | `crash`, `emptyPage`, a **curated** subset of `errors` (32 of 92), `success` (14 of 29), `alerts` (8 of 11), plus `common`, `header`, `nav`, `misc` | A demo that hits a network hiccup or an empty project and switches to raw English mid-sentence looks broken, not just untranslated |
-| Settings entry points | `settings.title`/`description`/`languageTitle`/`languageDescription`/`languageRecommended`/`languageSelectAriaLabel`/`saveButton`/`generalTitle`/`generalDescription` and all of `settings.nav.*` (the left-rail menu labels) — **not** the ~85 remaining keys for the deep configuration screens behind each entry (API key management, DB provider wiring, model provider credentials, …) | "Entry points," not "the whole Settings section" — literally the brief's wording. The Language picker itself (`settings.nav.label`, `languageTitle`, …) matters more than usual here: it's how an evaluator would switch into Korean during the demo |
+| Settings entry points | `settings.title`/`description`/`languageTitle`/`languageDescription`/`languageRecommended`/`languageSelectAriaLabel`/`saveButton`/`generalTitle`/`generalDescription` and all of `settings.nav.*` (the left-rail menu labels) — **not** the remaining deep configuration screens behind most entries (API key management, DB provider wiring, model provider credentials, …) | "Entry points," not "the whole Settings section" — literally the brief's wording. The Language picker itself (`settings.nav.label`, `languageTitle`, …) matters more than usual here: it's how an evaluator would switch into Korean during the demo |
+| Deployments and MCP (**Fix round 1**) | `deployments.*` in full (220 keys), `mcp.*` in full (82 keys), `settings.mcpClient.*` in full (11 keys) | Not one of the original six — added after review flagged that `mainPage.tabDeployments`/`misc.deploy` and `sidebar.mcp.*`/`settings.nav.mcpServers` were already translated **doors**, opening onto entirely-English **rooms**. See "A translated door into an English room" below |
 
 **Deliberately excluded, and why (so a gap doesn't read as a missed key):**
 
@@ -316,30 +317,111 @@ map, not nested — namespace here means the dotted prefix):
   word the transform already owns, with no informational content of its
   own to localize.
 - Everything else outside the table above — `knowledge` (162 keys),
-  `deployments` (220), `mcp` (82), `assistant` (93), `memory` (85),
-  `agentTab` (72), `modelProviders` (59), `trace` (56), `store` (34),
-  `globalVars` (34), `admin` (29), `auth`/`authModal` (56 combined), `voice`
-  (20), and the ~85 deep-settings keys under `settings.dbProviders.*` /
-  `settings.apiKeys.*` — are real features, just not ones a first-look demo
-  walkthrough of the canvas/sidebar/playground/save flow reaches. Auth in
-  particular is arguably "first thing an evaluator sees," but the brief's
-  six named surfaces don't include it, and login screens for a live
-  agency demo are typically pre-authenticated before the evaluator sits
-  down — so it stayed out rather than being added by inference.
+  `assistant` (93), `memory` (85), `agentTab` (72), `modelProviders` (59),
+  `trace` (56), `store` (34), `globalVars` (34), `admin` (29),
+  `auth`/`authModal` (56 combined), `shortcuts` (42), `voice` (20),
+  `fileManager`/`files` (60 combined), `table`/`paginator` (31 combined),
+  `messages` (8), and the deep-settings keys under `settings.dbProviders.*`
+  / `settings.apiKeys.*` / `modal.secretKey.*` — are real features, just not
+  ones a first-look demo walkthrough of the canvas/sidebar/playground/save
+  flow reaches. **Unlike `deployments`/`mcp` above, none of these currently
+  sit directly behind an already-translated click target** — see the
+  door/room sweep below for the full evidence on that claim, including the
+  ones that came close. Auth in particular is arguably "first thing an
+  evaluator sees," but the brief's six named surfaces don't include it, and
+  login screens for a live agency demo are typically pre-authenticated
+  before the evaluator sits down — so it stayed out rather than being added
+  by inference.
+
+### A translated door into an English room (Fix round 1 finding, fixed)
+
+Translating a nav item or button label makes a promise: click here and the
+Korean continues. `mainPage.tabDeployments` ("배포") and `misc.deploy`
+("배포") were translated in the original pass; the `deployments.*`
+namespace behind them — the entire deploy wizard, provider selection,
+connection management, environment variables, the whole thing — was 220
+keys at 0%. Same shape of bug at `sidebar.mcp.*`/`settings.nav.mcpServers`
+opening onto the 82-key `mcp.*` Add/Edit Server modal and the 11-key
+`settings.mcpClient.*` connection guide, both untranslated. MCP has a
+second reason this one mattered more than an ordinary gap: the customer
+requirement (SFR-008) names "multi-agent architecture with MCP servers"
+explicitly, so an evaluator clicking through to MCP is checking the
+requirement, not wandering off the demo path.
+
+This inverts the graceful-degradation argument the rest of this document
+makes for staying partial: English sitting among English degrades
+gracefully (see "Why demo-path only" above). **A Korean tab that promises
+Korean and then breaks mid-click reads as a failed translation, not a
+scoping decision** — worse than if the tab had stayed in English to begin
+with. All 313 keys (`deployments.*` + `mcp.*` + `settings.mcpClient.*`) were
+translated in Fix round 1 to close this specific gap. Verified in the
+compiled bundle, not just the source JSON: `build/assets/ko-*.js` after
+`npm run build` shows zero literal `"Langflow"` and the expected
+`"NuFi Agent ..."` rewrites for every string in the new namespaces that
+named the product, e.g. `NuFi Agent 및 Watsonx Orchestrate에서 배포
+{{name}}을(를) 영구적으로 삭제합니다.` (from `deployments.deleteDeploymentConfirm`)
+— and `"Watsonx Orchestrate"` / `"watsonx Orchestrate"`, a third-party
+product name, survives untouched in both castings, as it should.
+
+**Door/room sweep — the rest of the exclusion list, checked against the
+same lens.** Every remaining translated sidebar/settings nav item was
+traced to the actual screen component it opens (`grep`, not guesswork —
+see the file paths below), and every namespace behind it was counted. This
+is a report, not a silent fix — none of the below is translated in this
+round:
+
+| Translated door | Opens (confirmed by source) | Room size | Risk |
+|---|---|---|---|
+| `sidebar.knowledge` ("지식") | `modals/knowledgeBaseUploadModal/*` → `knowledge.*` | 162 keys, 0% | High — larger than the original `deployments` gap, one click from the sidebar |
+| `sidebar.nav.agent` ("에이전트") | `pages/FlowPage/components/AgentMainContent/*` → `agentTab.*` | 72 keys, 0% | High — reached from the canvas, not a settings sub-page |
+| `sidebar.myFiles` ("내 파일") | `modals/fileManagerModal/*` → `files.*` + `fileManager.*` | 60 keys, 0% | Medium-high |
+| `sidebar.nav.traces` ("트레이스") | `pages/FlowPage/components/TraceComponent/*` → `trace.*` | 56 keys, 0% | Medium-high — the run/observability panel, adjacent to the already-translated playground |
+| `settings.nav.modelProviders` ("모델 제공업체") | `modals/modelProviderModal/*` → `modelProviders.*` | 59 keys, 0% | Medium |
+| `settings.nav.shortcuts` ("단축키") | `pages/SettingsPage/pages/ShortcutsPage/*` → `shortcuts.*` | 42 keys, 0% | Medium |
+| `settings.nav.dbProviders` ("DB 제공업체") | in-namespace → `settings.dbProviders.*` | 44 keys, 0% | Medium |
+| `settings.nav.globalVariables` ("전역 변수") | `pages/SettingsPage/pages/GlobalVariablesPage/*` → `globalVars.*` | 34 keys, 0% | Medium |
+| `settings.nav.store` ("Langflow 스토어") | `pages/StorePage/*` → `store.*` | 34 keys, 0% | Medium |
+| `settings.nav.apiKeys` ("Langflow API 키") | `pages/SettingsPage/pages/ApiKeysPage/*` → `settings.apiKeys*` + `modal.secretKey.*` | 22 keys, 0% | Lower |
+| `sidebar.nav.versions` / `versionHistory` ("버전"/"버전 기록") | `flowSidebarComponent/components/FlowVersionSidebar/*` → `flowVersion.*` | 15 keys, 0% | Lower — the generic save/restore-version strings a user reads *are* translated (`flow.saveVersion`, `flow.restoreVersion`, `modal.restoreVersion`); only the version-list panel's own chrome is English |
+| `settings.nav.messages` ("메시지") | `pages/SettingsPage/pages/messagesPage/*` → `messages.*` | 8 keys, 0% | Lower — small room |
+| **`editNode.openTable` / the playground session view** (already in scope, already translated) | `components/core/.../tableComponent/*`, `modals/IOModal/components/session-view.tsx` → `table.*` | 23 keys, 0% | **Flagged separately below — this one sits *inside* an already-claimed-covered surface, not behind a new door** |
+| Any translated list view (Main Page, Deployments, Knowledge) | `components/common/paginatorComponent/*` → `paginator.*` | 8 keys, 0% | Cross-cutting — shared pagination chrome under nearly every list in the app |
+
+**Two of these are a different, more serious shape than the rest and are
+called out on their own:** `table.*` and `paginator.*` are not behind a
+*new* door — they're generic shared components used *inside* surfaces this
+document already claims as covered (`table.*` backs the playground's
+session view and the `editNode`/`inspectionPanel` "Open Table" field type;
+`paginator.*` backs pagination on every list view, including the
+now-translated Main Page and Deployments tabs). That means the current
+"flow canvas / sidebar / run-playground / settings-entry-points" coverage
+claim has a real hole in it today, not a hypothetical one for a future
+click. Recommend prioritizing these 31 keys highest of everything in this
+table if scope expands again, specifically because they undercut a claim
+already made rather than adding a new one.
+
+The rest (`knowledge` down through `messages`, 608 keys, none currently
+behind a translated door within the demo-path table above) are reported so
+a scope decision can be made deliberately, not fixed here.
 
 ### Key count
 
-**551 of 2,230 keys translated (24.7%)** — `en.json` has 2,230 flat keys,
+**864 of 2,230 keys translated (38.7%)** — `en.json` has 2,230 flat keys,
 not 2,232 (`wc -l` counts the file's opening/closing braces as lines too).
+551 from the original six-surface pass, 313 more from Fix round 1
+(`deployments.*`, `mcp.*`, `settings.mcpClient.*`).
+
 Generated and typo-checked by `nufi/build-ko-locale.py` — the translation
-source of truth; `ko.json` is its generated artifact. Regenerate with:
+source of truth; `ko.json` **and** `nufi/demo-path-keys.txt` are both its
+generated artifacts (see that section below for why the second one changed
+from hand-maintained to generated in Fix round 1). Regenerate both with:
 
 ```bash
 python3 apps/nufi-agent/nufi/build-ko-locale.py
 ```
 
-Re-running it reproduces `ko.json` byte-for-byte (verified: `diff` against
-the committed file after a fresh run is empty).
+Re-running it reproduces both files byte-for-byte (verified: `diff`
+against the committed files after a fresh run is empty).
 
 ### Typo check: every ko.json key programmatically verified against en.json
 
@@ -356,7 +438,7 @@ print('ko.json key count:', len(ko))
 orphans = [k for k in ko if k not in en]
 print('orphans:', orphans)
 "
-ko.json key count: 551
+ko.json key count: 864
 orphans: []
 ```
 
@@ -364,13 +446,31 @@ Also checked programmatically: every `{{interpolation}}` placeholder and
 every react-i18next `<1>…</1>` Trans-tag marker in each translated value
 matches its English source exactly (a translation that drops or
 mistranslates a placeholder throws at render time, or worse, silently
-strips a variable) — zero mismatches across all 551 keys.
+strips a variable) — zero mismatches across all 864 keys. Re-run after Fix
+round 1's 313-key addition with the same result: 0 orphans, 0 placeholder
+mismatches, 0 tag mismatches.
 
 ### Terminology decisions
 
-Register throughout is formal/public-sector Korean (`-습니다`/`-십시오`
-endings), per the task brief's examples: `승인` approve, `검토` review,
-`저장` save, `실행` run.
+Register is formal/public-sector Korean (`-습니다`/`-십시오` endings), per
+the task brief's examples: `승인` approve, `검토` review, `저장` save, `실행`
+run.
+
+**Correction (Fix round 1):** the original text here claimed this
+register was applied "throughout," full stop. That claim was checked, not
+just asserted, and it was wrong: a full sentence-form scan (106 values)
+found three error-description strings using the softer `-세요` ending
+(`errors.incompleteLoop`, `misc.fetchErrorDesc`,
+`misc.fetchErrorDescription`, all "please try again" phrasing) sitting
+next to eight near-identical strings using `-십시오` for the same "please
+retry" instruction. Same surface, same sentence, two speech levels — that
+is a real inconsistency, not a stylistic choice. Fixed in Fix round 1: all
+three now use `-십시오`, matching the other eight. **Left alone
+deliberately:** the softer `-세요`/`-요` form that appears in placeholder
+hints and inline prompts (`"정수를 입력하세요"`, `"메시지를 입력하세요..."`,
+and similar) — that register split (formal for messages that interrupt
+the user, softer for inline hints the user is already typing into) is a
+conventional Korean UI pattern, not an inconsistency to flag.
 
 - **`플로우` (loanword) for the product noun "Flow," not `업무 흐름`.** The
   brief's glossary lists `업무 흐름` for "flow." That fits when "flow"
@@ -423,13 +523,49 @@ endings), per the task brief's examples: `승인` approve, `검토` review,
   GitHub's own page), `Discord`/`GitHub`/`MCP`/`API`/`JSON`/`CSV`/`PDF`/
   `URL` throughout (acronyms and third-party product names, not English
   prose — translating a protocol acronym or another company's product
-  name isn't localization, it's just wrong).
+  name isn't localization, it's just wrong). Fix round 1 added
+  `deployments.*`, which introduces `"watsonx Orchestrate"` — a third-party
+  deployment target's product name, same treatment. Both castings that
+  occur in `en.json` (`"Watsonx Orchestrate"` in
+  `deployments.deleteDeploymentConfirm`, `"watsonx Orchestrate"` in the
+  `wxo*` onboarding strings) are reproduced exactly as upstream wrote them,
+  not normalized to one casing — normalizing would mean inventing a
+  spelling upstream didn't choose.
 
 ### `nufi/demo-path-keys.txt`
 
 The frozen list `check-locale-parity.sh` checks `ko.json` against — see
-that file's own header comment for what it asserts and why. It's the
-551 keys above, one dotted key per line.
+that file's own header comment for what it asserts and why. It's the 864
+keys above, one dotted key per line.
+
+**Fix round 1: this file is now generated, not hand-maintained.** It used
+to be typed by hand as a second copy of the same key list `ko.json` comes
+from — two authoring surfaces for one piece of information, which is
+exactly the "stale second copy" failure mode `check-locale-parity.sh`'s
+own header warns about. `check-locale-parity.sh` only fails when a
+declared key goes *missing* from `ko.json`; it never notices `ko.json`
+growing past the declared list, or someone editing one file and
+forgetting the other — so the two could still silently drift by omission,
+just not by an outright removed key. `build-ko-locale.py` now writes both
+`ko.json` and `nufi/demo-path-keys.txt` from the same `T` dict in the same
+run, so there is exactly one place to add or remove a key. Proved this
+closes the gap, not just narrows it, two ways:
+
+1. **Hand-editing `demo-path-keys.txt` directly no longer sticks.**
+   Appended a bogus line; the guard caught it as usual (declared-but-missing,
+   the same check it always ran); regenerating from `T` — the only
+   sanctioned edit path — silently dropped the hand-edit back to the
+   correct 864, because the file is now fully overwritten from `T` on
+   every run rather than patched.
+2. **Editing `T` moves both files together, automatically, in one
+   command.** Added `voice.selectLanguage` (a real `en.json` key not
+   previously in `T`) to `T`; one `python3 build-ko-locale.py` run put it
+   in `ko.json` *and* `nufi/demo-path-keys.txt` simultaneously (865/865,
+   guard still green); removing it from `T` and re-running dropped it from
+   both files together (back to 864/864, guard still green). There was no
+   second file to remember.
+
+Full transcript in "Verifying the locale-parity guard" below.
 
 ## Resyncing
 
@@ -552,12 +688,14 @@ so it doesn't share `fork-guard`'s or `brand-css`'s setup.
 
 Demonstrated failing in **both** directions it's meant to catch, not just
 one — two prior guards in this fork shipped without ever being seen to
-fail; this one wasn't going to be the third. All four runs, back to back:
+fail; this one wasn't going to be the third. Re-run in full at the Fix
+round 1 baseline (864 keys, after `deployments.*`/`mcp.*`/
+`settings.mcpClient.*` were added) — all four runs, back to back:
 
 ```
 $ ./apps/nufi-agent/nufi/check-locale-parity.sh
 OK    no orphan keys -- every ko.json key exists in en.json
-OK    all 551 declared demo-path keys are present in ko.json
+OK    all 864 declared demo-path keys are present in ko.json
 OK -- ko.json is a clean, declared subset of en.json.
 
 $ # inject a key into ko.json that doesn't exist in en.json
@@ -566,29 +704,31 @@ FAIL  orphan keys in ko.json with no matching key in en.json:
   sidebar.thisKeyDoesNotExistUpstream
   (an upstream rename/removal, or a typo when ko.json was authored --
   either way, i18next's lookup on this key now silently misses.)
-OK    all 551 declared demo-path keys are present in ko.json
+OK    all 864 declared demo-path keys are present in ko.json
 exit 1
 
-$ # remove it
+$ # restore via regeneration
+$ python3 apps/nufi-agent/nufi/build-ko-locale.py
 $ ./apps/nufi-agent/nufi/check-locale-parity.sh
 OK    no orphan keys -- every ko.json key exists in en.json
-OK    all 551 declared demo-path keys are present in ko.json
+OK    all 864 declared demo-path keys are present in ko.json
 OK -- ko.json is a clean, declared subset of en.json.
 
 $ # delete a key that IS declared in nufi/demo-path-keys.txt
-$ python3 -c "... del ko['flow.savedSuccessfully'] ..."
+$ python3 -c "... del ko['deployments.deploy'] ..."
 $ ./apps/nufi-agent/nufi/check-locale-parity.sh
 OK    no orphan keys -- every ko.json key exists in en.json
 FAIL  demo-path keys declared in nufi/demo-path-keys.txt but missing from ko.json:
-  flow.savedSuccessfully
+  deployments.deploy
   (coverage shrank. If that's deliberate, remove the key from
   nufi/demo-path-keys.txt in the same change; otherwise restore it in ko.json.)
 exit 1
 
-$ # restore it
+$ # restore via regeneration
+$ python3 apps/nufi-agent/nufi/build-ko-locale.py
 $ ./apps/nufi-agent/nufi/check-locale-parity.sh
 OK    no orphan keys -- every ko.json key exists in en.json
-OK    all 551 declared demo-path keys are present in ko.json
+OK    all 864 declared demo-path keys are present in ko.json
 OK -- ko.json is a clean, declared subset of en.json.
 ```
 
@@ -601,3 +741,62 @@ outside the declared demo path are absent from `ko.json` (they may be, by
 construction, but that's incidental, not asserted), and it never fails on
 `en.json` having keys `ko.json` doesn't — that's the intended partial-
 coverage state this whole task is built around, not a defect to flag.
+
+### The two-copy-drift fix (Fix round 1), demonstrated
+
+`nufi/demo-path-keys.txt` "Fix round 1" section above explains why this
+file changed from hand-maintained to generated. Both halves of that claim
+— hand-edits don't stick, and `T` edits move both files together — proved
+live, not just argued:
+
+```
+$ # Proof 1: a hand-edit to demo-path-keys.txt no longer survives regeneration
+$ echo "bogus.hand.edited.key" >> apps/nufi-agent/nufi/demo-path-keys.txt
+$ ./apps/nufi-agent/nufi/check-locale-parity.sh
+OK    no orphan keys -- every ko.json key exists in en.json
+FAIL  demo-path keys declared in nufi/demo-path-keys.txt but missing from ko.json:
+  bogus.hand.edited.key
+  ...
+exit 1
+$ python3 apps/nufi-agent/nufi/build-ko-locale.py   # the only sanctioned edit path
+Translated 864 keys of 2230 total (38.7%)
+$ grep -c "bogus.hand.edited.key" apps/nufi-agent/nufi/demo-path-keys.txt
+0   # gone -- the file was fully overwritten from T, not patched
+$ ./apps/nufi-agent/nufi/check-locale-parity.sh
+OK    no orphan keys -- every ko.json key exists in en.json
+OK    all 864 declared demo-path keys are present in ko.json
+OK -- ko.json is a clean, declared subset of en.json.
+
+$ # Proof 2: adding a REAL en.json key to T updates both files together, in one run
+$ # (added "voice.selectLanguage": "..." to T in build-ko-locale.py)
+$ python3 apps/nufi-agent/nufi/build-ko-locale.py
+Translated 865 keys of 2230 total (38.8%)
+$ grep -c '"voice.selectLanguage"' apps/nufi-agent/src/frontend/src/locales/ko.json
+1
+$ grep -c "^voice.selectLanguage$" apps/nufi-agent/nufi/demo-path-keys.txt
+1
+$ ./apps/nufi-agent/nufi/check-locale-parity.sh
+OK    no orphan keys -- every ko.json key exists in en.json
+OK    all 865 declared demo-path keys are present in ko.json
+OK -- ko.json is a clean, declared subset of en.json.
+
+$ # removed it from T again, back to 864 in both files simultaneously
+$ python3 apps/nufi-agent/nufi/build-ko-locale.py
+Translated 864 keys of 2230 total (38.7%)
+$ ./apps/nufi-agent/nufi/check-locale-parity.sh
+OK    no orphan keys -- every ko.json key exists in en.json
+OK    all 864 declared demo-path keys are present in ko.json
+OK -- ko.json is a clean, declared subset of en.json.
+```
+
+What this doesn't prove: that a human can no longer hand-edit `ko.json`
+itself (bypassing `build-ko-locale.py` entirely) and add a key without
+touching `T`. That remains possible at the filesystem level — nothing
+stops a future edit from writing straight into `ko.json`. What changed is
+narrower and specific to the finding: the *second hand-maintained copy of
+the same key list* is gone, replaced by one generation step from one
+source. A direct `ko.json` hand-edit is still caught by the orphan check
+if the key is a typo, and is otherwise the same "documented but not
+mechanically enforced" convention every other generated file in this repo
+relies on (`ko.json` and `nufi/demo-path-keys.txt` both carry a "generated,
+do not hand-edit" header for exactly this reason).

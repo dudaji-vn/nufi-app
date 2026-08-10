@@ -1,24 +1,38 @@
-# The demo-path key list, owned by this file and asserted by
-# check-locale-parity.sh.
+# GENERATED FILE -- do not hand-edit. Regenerate with:
+#   python3 apps/nufi-agent/nufi/build-ko-locale.py
 #
-# This is NOT "every key we'd like translated eventually" -- it is the
-# fixed set of src/frontend/src/locales/ko.json keys that Task 4
+# The demo-path key list, derived directly from the T dict in
+# build-ko-locale.py (the same dict that generates ko.json) so this file
+# and ko.json's key set cannot drift apart the way two independently
+# hand-maintained copies could -- there is exactly one place to add or
+# remove a key (T), and one command that regenerates both outputs from it
+# together. (Fix round 1: this file used to be typed by hand as a second
+# copy of the same key list; a key added to T without a matching line
+# here, or vice versa, was possible and undetected until the guard ran
+# against a real mismatch. Deriving both from T removes that failure mode
+# structurally instead of relying on remembering to update both.)
+#
+# What this list IS: the fixed set of src/frontend/src/locales/ko.json
+# keys that Task 4
 # (docs/superpowers/sdd/2026-08-10-nufi-agent-fork-whitelabel/task-4-brief.md)
-# decided is the demo path: the flow canvas and its controls, the
-# component sidebar, the run/playground panel, save and export, error and
-# empty states, and the settings entry points. See nufi/README.md for the
-# full surface-by-surface reasoning.
+# and its Fix round 1 review decided is the demo path: the flow canvas and
+# its controls, the component sidebar, the run/playground panel, save and
+# export, error and empty states, the settings entry points, and (Fix
+# round 1) the deployments and MCP surfaces those entry points open into.
+# See nufi/README.md for the full surface-by-surface reasoning.
 #
 # check-locale-parity.sh fails if any line below is missing from ko.json.
 # It does NOT require ko.json to contain only these keys -- ko.json may
-# carry more without failing this check, though nothing currently does.
+# carry more without failing this check, though nothing currently does
+# (T generates both files, so today they're identical by construction).
 # The list exists to catch an ACCIDENTAL shrink (a bad merge, a resync
-# that drops a key) as a loud CI failure, not to gate what "in scope"
-# means going forward -- extending Korean coverage later is a normal edit
-# to both this file and ko.json together, not a violation of it.
+# that drops a key, a hand-edit to ko.json that bypasses this script) as a
+# loud CI failure, not to gate what "in scope" means going forward --
+# extending Korean coverage later is a normal edit to T in
+# build-ko-locale.py, which regenerates this file automatically.
 #
 # One dotted en.json/ko.json key per line. Blank lines and lines starting
-# with # are ignored.
+# with # are ignored by check-locale-parity.sh.
 
 alerts.apiKeyCopied
 alerts.buildStopped
@@ -124,6 +138,226 @@ deleteModal.items
 deleteModal.noteFolderContents
 deleteModal.noteMessageHistory
 deleteModal.title
+deployments.actionsForDeployment
+deployments.addEnvironment
+deployments.addFirstEnvironment
+deployments.addManuallyInConnection
+deployments.addNewEnvironment
+deployments.addVariable
+deployments.agentChat
+deployments.agentName
+deployments.agentNameAlreadyExists
+deployments.agentNameAvailable
+deployments.agentNameCannotChange
+deployments.agentNameFormatError
+deployments.agentTypeDescription
+deployments.agentTypeLabel
+deployments.ariaDeploymentType
+deployments.ariaExistingEnvironments
+deployments.ariaSendMessage
+deployments.attach
+deployments.attachConnectionToFlow
+deployments.attachFlows
+deployments.attached
+deployments.attachedFlowsCount
+deployments.attachedFlowsLabel
+deployments.available
+deployments.availableConnections
+deployments.availableFlows
+deployments.back
+deployments.cancel
+deployments.cancelButton
+deployments.cannotAutoDetectEnvVars
+deployments.changeFlow
+deployments.chooseDeployedVersion
+deployments.chooseExistingEnvironment
+deployments.chooseProviderDesc
+deployments.chooseType
+deployments.close
+deployments.columnAttached
+deployments.columnCreated
+deployments.columnEnvironment
+deployments.columnLastModified
+deployments.columnName
+deployments.columnProvider
+deployments.columnProviderKey
+deployments.columnTest
+deployments.columnType
+deployments.columnUrl
+deployments.configureEnvironment
+deployments.confirm
+deployments.confirmToolName
+deployments.connecting
+deployments.connectionNameExists
+deployments.connectionNameLabel
+deployments.continue
+deployments.createConnection
+deployments.createDeployment
+deployments.createFirstConnection
+deployments.createFromDraft
+deployments.createNewDeployment
+deployments.createNewDeploymentTitle
+deployments.createVersionFromDraftError
+deployments.current
+deployments.currentDeploymentTarget
+deployments.delete
+deployments.deleteDeploymentConfirm
+deployments.deploy
+deployments.deployFromDraft
+deployments.deployed
+deployments.deployedToDraft
+deployments.deployedVersion
+deployments.deploying
+deployments.deployingDescription
+deployments.deployingTitle
+deployments.deployment
+deployments.deploymentLabel
+deployments.deploymentLive
+deployments.deploymentLiveNamed
+deployments.deploymentSuccessful
+deployments.deploymentType
+deployments.deploymentTypeLabel
+deployments.deploymentsOnProvider
+deployments.descriptionLabel
+deployments.detachFlow
+deployments.detaching
+deployments.details
+deployments.done
+deployments.duplicateToolName
+deployments.edit
+deployments.editToolName
+deployments.editToolNameExists
+deployments.emptyStateDescription
+deployments.enterApiKey
+deployments.enterNewApiKey
+deployments.environmentLabel
+deployments.environmentVariables
+deployments.environmentsDescription
+deployments.errorDeletingDeployment
+deployments.errorDeletingEnvironment
+deployments.existingConnections
+deployments.failedToCreateDeployment
+deployments.failedToCreateEnvironment
+deployments.failedToCreateProviderAccount
+deployments.failedToLoadDetails
+deployments.failedToLoadFlows
+deployments.failedToPrepareDeployment
+deployments.failedToUpdate
+deployments.failedToUpdateDeployment
+deployments.failedToUpdateEnvironment
+deployments.fieldApiKey
+deployments.fieldName
+deployments.fieldServiceInstanceUrl
+deployments.flow
+deployments.flowVersion
+deployments.flows
+deployments.globalVariables
+deployments.hideApiKey
+deployments.labelCreated
+deployments.labelDesc
+deployments.labelEnvironment
+deployments.labelModel
+deployments.labelModified
+deployments.labelName
+deployments.labelProvider
+deployments.labelType
+deployments.leaveBlankCredential
+deployments.loadingAttachedFlows
+deployments.loadingDeploymentData
+deployments.loadingModels
+deployments.loadingVersions
+deployments.manyVersions
+deployments.mcpTypeLabel
+deployments.nameRequired
+deployments.new
+deployments.newConnections
+deployments.newDeployment
+deployments.newDeploymentOnProvider
+deployments.newEnvironment
+deployments.next
+deployments.noChangesToSave
+deployments.noConnectionsDescription
+deployments.noConnectionsMatch
+deployments.noConnectionsYet
+deployments.noDeployments
+deployments.noEnvironments
+deployments.noFlowsAttached
+deployments.noModelsForEnvironment
+deployments.noProviderSnapshot
+deployments.noVersionsFound
+deployments.oneVersion
+deployments.optional
+deployments.placeholderAgentPurpose
+deployments.placeholderApiKey
+deployments.placeholderApiUrl
+deployments.placeholderConnectionName
+deployments.placeholderEnvironmentName
+deployments.placeholderKey
+deployments.placeholderMessage
+deployments.placeholderSalesBot
+deployments.placeholderSearchConnections
+deployments.placeholderValue
+deployments.provider
+deployments.publishDraftToLive
+deployments.removed
+deployments.removedCount
+deployments.removing
+deployments.replaceVersionNotice
+deployments.replaceVersionWithVersion
+deployments.review
+deployments.reviewAndConfirm
+deployments.reviewDetails
+deployments.reviewUpdate
+deployments.reviewUpdateDescription
+deployments.saveButton
+deployments.saving
+deployments.selectDeployedToolToReplace
+deployments.selectDeployment
+deployments.selectDeploymentDescription
+deployments.selectFlow
+deployments.selectFromExistingEnvironments
+deployments.selectModel
+deployments.selectOrCreateConnection
+deployments.selectProvider
+deployments.selectVersion
+deployments.selectVersionToReplace
+deployments.selectedDeployedVersionWillUpdate
+deployments.selectedTarget
+deployments.setupNewDeployment
+deployments.showApiKey
+deployments.singleAttachmentTarget
+deployments.skip
+deployments.stepFlows
+deployments.stepOf
+deployments.subTabDeployments
+deployments.subTabEnvironments
+deployments.test
+deployments.testDeployment
+deployments.testDeploymentAriaLabel
+deployments.toolsWillBeDetached
+deployments.typeNameToConfirm
+deployments.undoDetach
+deployments.unknownFlow
+deployments.untitled
+deployments.update
+deployments.updateAction
+deployments.updateButton
+deployments.updateDeployment
+deployments.updateDeploymentDescription
+deployments.updatedDesc
+deployments.updatedTitle
+deployments.updating
+deployments.updatingDesc
+deployments.updatingTitle
+deployments.variablesAutoDetected_one
+deployments.variablesAutoDetected_other
+deployments.versionCreated
+deployments.willBeReplaced
+deployments.willBeReplacedByVersion
+deployments.wxoAlreadyHaveAccount
+deployments.wxoConfigureCredentials
+deployments.wxoFindCredentials
+deployments.wxoSignUp
 dialog.chat
 dialog.code
 dialog.codeDict
@@ -327,6 +561,88 @@ mainPage.timeElapsed.month_one
 mainPage.timeElapsed.month_other
 mainPage.timeElapsed.year_one
 mainPage.timeElapsed.year_other
+mcp.addAuth
+mcp.addServer
+mcp.auth
+mcp.authNone
+mcp.autoInstall
+mcp.configError
+mcp.configErrorFix
+mcp.editAuth
+mcp.editTools
+mcp.failedToInstall
+mcp.flowsTools
+mcp.flowsTooltip
+mcp.installDisabledWarning
+mcp.installTooltip
+mcp.installedSuccessfully
+mcp.loading
+mcp.loadingServers
+mcp.loadingTools
+mcp.modal.addArgumentButton
+mcp.modal.addServerButton
+mcp.modal.addTitle
+mcp.modal.cancelButton
+mcp.modal.descriptionFlow
+mcp.modal.descriptionFlowLink
+mcp.modal.descriptionSettings
+mcp.modal.errorDuplicateEnvKeys
+mcp.modal.errorDuplicateHeaders
+mcp.modal.errorFailedAdd
+mcp.modal.errorFailedAddMultiple
+mcp.modal.errorNameCommandRequired
+mcp.modal.errorNameUrlRequired
+mcp.modal.errorNoServerFound
+mcp.modal.fieldArguments
+mcp.modal.fieldCommand
+mcp.modal.fieldEnvironmentVariables
+mcp.modal.fieldHeaders
+mcp.modal.fieldName
+mcp.modal.fieldStreamableUrl
+mcp.modal.jsonPlaceholder
+mcp.modal.jsonTabLabel
+mcp.modal.lockedDescription
+mcp.modal.lockedTitle
+mcp.modal.placeholderArgument
+mcp.modal.placeholderCommand
+mcp.modal.placeholderHttpName
+mcp.modal.placeholderHttpUrl
+mcp.modal.placeholderServerName
+mcp.modal.streamableHttp
+mcp.modal.tabJson
+mcp.modal.tabStdio
+mcp.modal.tabStreamableHttp
+mcp.modal.updateServerButton
+mcp.modal.updateTitle
+mcp.noToolsFound
+mcp.refreshServer
+mcp.searchServers
+mcp.selectServer
+mcp.serverDescription
+mcp.serverGuideLink
+mcp.serverNotRunning
+mcp.serverTitle
+mcp.servers.actionsMenu
+mcp.servers.addButton
+mcp.servers.addedServers
+mcp.servers.deleteMenuItem
+mcp.servers.description
+mcp.servers.editMenuItem
+mcp.servers.errorDeleting
+mcp.servers.errorFetching
+mcp.servers.noServersAdded
+mcp.servers.statusError
+mcp.servers.statusLoading
+mcp.servers.statusNoTools
+mcp.servers.statusTimeout
+mcp.servers.title
+mcp.servers.toolsCount
+mcp.servers.toolsCount_one
+mcp.servers.toolsCount_other
+mcp.toolCount_one
+mcp.toolCount_other
+mcp.toolsDescription
+mcp.toolsTitle
 misc.activateToShare
 misc.addChatInputOutput
 misc.addChatInputOutputPlayground
@@ -467,6 +783,17 @@ settings.languageDescription
 settings.languageRecommended
 settings.languageSelectAriaLabel
 settings.languageTitle
+settings.mcpClient.apiKeyInfo
+settings.mcpClient.apiKeyInfoMiddle
+settings.mcpClient.apiKeysSettings
+settings.mcpClient.bob.step1
+settings.mcpClient.bob.step2
+settings.mcpClient.bob.step3
+settings.mcpClient.claudeCode.step1
+settings.mcpClient.claudeCode.step2
+settings.mcpClient.configFileLabel
+settings.mcpClient.description
+settings.mcpClient.title
 settings.nav.apiKeys
 settings.nav.dbProviders
 settings.nav.general
