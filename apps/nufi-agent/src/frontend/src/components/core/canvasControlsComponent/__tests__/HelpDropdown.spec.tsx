@@ -26,10 +26,6 @@ jest.mock("@/components/ui/dropdown-menu", () => ({
   ),
 }));
 
-jest.mock("@/components/ui/separator", () => ({
-  Separator: () => <div data-testid="separator" />,
-}));
-
 jest.mock("../DropdownControlButton", () => ({
   __esModule: true,
   default: ({ label, onClick, disabled, testId }) => (
@@ -62,10 +58,10 @@ describe("HelpDropdownView", () => {
     const onToggleHelperLines = jest.fn();
     const navigateTo = jest.fn();
     const openLink = jest.fn();
+    // NuFi: `bugReport`/`desktop` dropped along with the menu items that
+    // used them -- see HelpDropdown.tsx's header comment.
     const urls = {
       docs: "https://docs",
-      bugReport: "https://bugs",
-      desktop: "https://desktop",
     };
 
     render(
@@ -85,16 +81,6 @@ describe("HelpDropdownView", () => {
 
     fireEvent.click(screen.getByTestId("canvas_controls_dropdown_shortcuts"));
     expect(navigateTo).toHaveBeenCalledWith("/settings/shortcuts");
-
-    fireEvent.click(
-      screen.getByTestId("canvas_controls_dropdown_report_a_bug"),
-    );
-    expect(openLink).toHaveBeenCalledWith("https://bugs");
-
-    fireEvent.click(
-      screen.getByTestId("canvas_controls_dropdown_get_langflow_desktop"),
-    );
-    expect(openLink).toHaveBeenCalledWith("https://desktop");
 
     fireEvent.click(
       screen.getByTestId("canvas_controls_dropdown_enable_smart_guides"),

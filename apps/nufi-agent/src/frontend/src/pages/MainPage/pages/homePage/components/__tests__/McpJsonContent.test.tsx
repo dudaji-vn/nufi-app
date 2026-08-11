@@ -145,9 +145,11 @@ describe("McpJsonContent", () => {
   it("renders setup guide link", () => {
     render(<McpJsonContent {...defaultProps} />);
     const link = screen.getByText("setup guide").closest("a");
+    // NuFi: repointed off docs.langflow.org to NuFi's own docs -- see
+    // McpJsonContent.tsx's inline comment on the link.
     expect(link).toHaveAttribute(
       "href",
-      expect.stringContaining("docs.langflow.org"),
+      expect.stringContaining("docs.app.nufi.me"),
     );
   });
 

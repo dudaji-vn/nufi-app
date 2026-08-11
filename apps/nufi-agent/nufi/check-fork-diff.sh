@@ -59,6 +59,16 @@ ALLOWLIST=(
   "src/frontend/src/customization/components/custom-get-started-progress.tsx"
   "src/frontend/src/customization/components/custom-empty-page.tsx"
   "src/frontend/src/customization/utils/urls.ts"
+  "src/frontend/src/customization/components/custom-AccountMenu.tsx"
+  "src/frontend/src/components/core/canvasControlsComponent/HelpDropdown.tsx"
+  "src/frontend/src/components/core/canvasControlsComponent/HelpDropdownView.tsx"
+  "src/frontend/src/components/core/canvasControlsComponent/__tests__/HelpDropdown.spec.tsx"
+  "src/frontend/src/components/core/canvasControlsComponent/__tests__/Dropdowns.test.tsx"
+  "src/frontend/src/pages/MainPage/pages/homePage/components/McpServerTab.tsx"
+  "src/frontend/src/pages/MainPage/pages/homePage/components/McpJsonContent.tsx"
+  "src/frontend/src/pages/MainPage/pages/homePage/components/__tests__/McpJsonContent.test.tsx"
+  "src/frontend/src/modals/IOModal/components/chatView/chatInput/components/no-input.tsx"
+  "src/frontend/src/customization/config-constants.ts"
 )
 
 echo "Comparing apps/nufi-agent against ${REPO} @ ${TAG}"

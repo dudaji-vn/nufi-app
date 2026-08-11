@@ -6,9 +6,13 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Separator } from "@/components/ui/separator";
 import DropdownControlButton from "./DropdownControlButton";
 
+// NuFi: `bugReport` (github.com/langflow-ai/langflow/issues) and `desktop`
+// (langflow.org/desktop) dropped from this props type along with the menu
+// items that used them below -- see HelpDropdown.tsx's header comment for
+// the full reasoning. `docs` stays, now backed by NUFI_DOCS_URL rather than
+// upstream's DOCS_URL/DATASTAX_DOCS_URL.
 export type HelpDropdownViewProps = {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
@@ -18,8 +22,6 @@ export type HelpDropdownViewProps = {
   openLink: (url: string) => void;
   urls: {
     docs: string;
-    bugReport: string;
-    desktop: string;
   };
 };
 
@@ -67,21 +69,6 @@ export const HelpDropdownView = ({
           testId="canvas_controls_dropdown_shortcuts"
           label={t("help.shortcuts")}
           onClick={() => navigateTo("/settings/shortcuts")}
-        />
-        <DropdownControlButton
-          iconName="bug"
-          testId="canvas_controls_dropdown_report_a_bug"
-          externalLink
-          label={t("help.reportBug")}
-          onClick={() => openLink(urls.bugReport)}
-        />
-        <Separator />
-        <DropdownControlButton
-          iconName="download"
-          testId="canvas_controls_dropdown_get_langflow_desktop"
-          label={t("help.getLangflowDesktop")}
-          externalLink
-          onClick={() => openLink(urls.desktop)}
         />
         <DropdownControlButton
           iconName={!helperLineEnabled ? "UnfoldHorizontal" : "FoldHorizontal"}

@@ -6,6 +6,7 @@ import {
 } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import Loading from "@/components/ui/loading";
+import { NUFI_DOCS_URL } from "@/customization/utils/urls";
 
 const Trans = TransComponent as unknown as React.FC<TransProps<string>>;
 
@@ -51,6 +52,12 @@ const NoInputView: React.FC<NoInputViewProps> = ({
         )}
 
         <p className="text-muted-foreground">
+          {/* NuFi: was a deep link to docs.langflow.org/components-io#chat-input.
+              Reached via customization/components/custom-chat-input.tsx (and
+              its near-duplicate custom-chatView.tsx). Repointed to
+              NUFI_DOCS_URL's root rather than a guessed NuFi-docs path for
+              the same topic, which may not exist. See nufi/README.md
+              "Third-party brand/link sweep". */}
           <Trans
             i18nKey="playground.noInputHint"
             components={{
@@ -58,7 +65,7 @@ const NoInputView: React.FC<NoInputViewProps> = ({
                 <a
                   className="underline underline-offset-4"
                   target="_blank"
-                  href="https://docs.langflow.org/components-io#chat-input"
+                  href={NUFI_DOCS_URL}
                   rel="noopener noreferrer"
                 />
               ),

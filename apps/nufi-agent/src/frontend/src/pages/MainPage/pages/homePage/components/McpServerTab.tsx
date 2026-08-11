@@ -8,6 +8,7 @@ import type { MCPTransport } from "@/controllers/API/queries/mcp/use-patch-insta
 import { ENABLE_MCP_COMPOSER } from "@/customization/feature-flags";
 import { useCustomIsLocalConnection } from "@/customization/hooks/use-custom-is-local-connection";
 import useTheme from "@/customization/hooks/use-custom-theme";
+import { NUFI_DOCS_URL } from "@/customization/utils/urls";
 import AuthModal from "@/modals/authModal";
 import { useFolderStore } from "@/stores/foldersStore";
 import { cn, getOS } from "@/utils/utils";
@@ -74,9 +75,17 @@ const McpServerTab = ({ folderName }: { folderName: string }) => {
           </div>
           <div className="pb-4 text-mmd text-muted-foreground">
             {t("mcp.serverDescription")}
+            {/* NuFi: this "tab" (the project's MCP Server tab, reached via
+                customization/components/custom-McpServerTab.tsx -- the same
+                pass-through-seam pattern as the account menu, just for a tab
+                instead of a dropdown) linked out to docs.langflow.org/mcp-server.
+                Repointed to NUFI_DOCS_URL's root rather than a guessed NuFi-docs
+                path for the same topic, which may not exist. Its child,
+                McpJsonContent.tsx, had the same link and got the same fix.
+                See nufi/README.md "Third-party brand/link sweep". */}
             <a
               className="text-accent-pink-foreground"
-              href="https://docs.langflow.org/mcp-server"
+              href={NUFI_DOCS_URL}
               target="_blank"
               rel="noreferrer"
             >

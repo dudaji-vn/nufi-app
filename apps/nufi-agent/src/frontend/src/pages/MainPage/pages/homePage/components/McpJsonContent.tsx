@@ -5,6 +5,7 @@ import { ForwardedIconComponent } from "@/components/common/genericIconComponent
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs-button";
 import type { MCPTransport } from "@/controllers/API/queries/mcp/use-patch-install-mcp";
+import { NUFI_DOCS_URL } from "@/customization/utils/urls";
 import { cn } from "@/utils/utils";
 import {
   createSyntaxHighlighterStyle,
@@ -192,8 +193,14 @@ export const McpJsonContent = ({
       </div>
       <div className="px-2 text-mmd text-muted-foreground">
         {t("mcpJson.addConfigHint")}{" "}
+        {/* NuFi: was a deep link to docs.langflow.org/mcp-server#... .
+            Repointed to NUFI_DOCS_URL's root rather than a guessed NuFi-docs
+            path for the same anchor, which may not exist -- see
+            custom-McpServerTab.tsx's header comment (this component is its
+            child, reached the same way) and nufi/README.md "Third-party
+            brand/link sweep". */}
         <a
-          href="https://docs.langflow.org/mcp-server#connect-clients-to-use-the-servers-actions"
+          href={NUFI_DOCS_URL}
           target="_blank"
           rel="noreferrer"
           className="text-accent-pink-foreground"

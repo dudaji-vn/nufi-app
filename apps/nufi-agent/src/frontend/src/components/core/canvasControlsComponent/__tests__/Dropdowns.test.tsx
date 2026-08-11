@@ -26,10 +26,6 @@ jest.mock("@/components/ui/dropdown-menu", () => ({
   ),
 }));
 
-jest.mock("@/components/ui/separator", () => ({
-  Separator: () => <div data-testid="separator" />,
-}));
-
 jest.mock("@/components/common/genericIconComponent", () => ({
   __esModule: true,
   default: () => <span data-testid="icon" />,
@@ -38,15 +34,15 @@ jest.mock("@/components/common/genericIconComponent", () => ({
   ),
 }));
 
-jest.mock("@/constants/constants", () => ({
+// NuFi: HelpDropdown.tsx no longer sources its Docs link from
+// constants/constants.ts (DOCS_URL/DATASTAX_DOCS_URL, both upstream
+// langflow.org domains) -- it uses customization/utils/urls.ts's
+// NUFI_DOCS_URL instead. BUG_REPORT_URL/DESKTOP_URL are gone entirely
+// along with the menu items that used them. See HelpDropdown.tsx's header
+// comment for the full reasoning.
+jest.mock("@/customization/utils/urls", () => ({
   __esModule: true,
-  DATASTAX_DOCS_URL: "https://docs.datastax.com",
-  DOCS_URL: "https://docs.langflow.org",
-  DESKTOP_URL: "https://desktop.langflow.org",
-}));
-
-jest.mock("@/customization/feature-flags", () => ({
-  ENABLE_DATASTAX_LANGFLOW: false,
+  NUFI_DOCS_URL: "https://docs.app.nufi.me",
 }));
 
 jest.mock("@/utils/utils", () => ({
@@ -100,19 +96,11 @@ describe("HelpDropdown", () => {
 
     fireEvent.click(screen.getByTestId("canvas_controls_dropdown_docs"));
     expect(window.open).toHaveBeenCalledWith(
-      "https://docs.langflow.org",
+      "https://docs.app.nufi.me",
       "_blank",
     );
 
     fireEvent.click(screen.getByTestId("canvas_controls_dropdown_shortcuts"));
     expect(mockNavigate).toHaveBeenCalledWith("/settings/shortcuts");
-
-    fireEvent.click(
-      screen.getByTestId("canvas_controls_dropdown_get_langflow_desktop"),
-    );
-    expect(window.open).toHaveBeenCalledWith(
-      "https://desktop.langflow.org",
-      "_blank",
-    );
   });
 });

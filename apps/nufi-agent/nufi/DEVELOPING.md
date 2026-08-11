@@ -198,6 +198,77 @@ Desktop bound to all of those).
     first rather than trusting a hardcoded example to still be free by the
     time you read this.
 
+## Serving the app from one process: `langflow run`, not `make backend`
+
+`make backend` (`Makefile:290-300`) runs
+`uv run uvicorn --factory langflow.main:create_app --host 0.0.0.0 --port
+$(port) ...`. `create_app()` builds the FastAPI app and its routes only —
+it never calls `setup_static_files`. That call lives in `setup_app()`
+(`src/backend/base/langflow/main.py:1024-1036`), a *different* function
+that `create_app()` does not invoke and that nothing in `make backend`'s
+recipe calls either. So `make backend` alone serves the API but not the
+UI: hitting `http://localhost:7860/` 404s, and it's easy to read that as
+the app being broken rather than as the backend/frontend split being
+intentional (`AGENTS.md`'s own "Development Mode (Hot Reload)" section
+documents `make backend` + `make frontend` as two terminals for exactly
+this reason — the frontend is meant to come from Vite in dev, not from
+the backend's static-file mount).
+
+To serve the built frontend and the API from one process instead — e.g.
+to smoke-test a production-shaped build, or to hand someone a single
+`http://localhost:7860` URL — use the CLI directly, which calls
+`setup_app()` (via `setup_app(backend_only=False)`'s default), not
+`create_app()` alone:
+
+```
+.venv/bin/langflow run --host 127.0.0.1 --port 7860 --no-open-browser
+```
+
+`--no-open-browser` maps to the CLI's `open_browser` typer option
+(`src/backend/base/langflow/__main__.py`) — a `bool | None` option, which
+typer expands to the `--open-browser/--no-open-browser` pair automatically;
+useful here since there's no browser to open in this environment. Verified
+port `7860` was free on this machine while `deploy/platform` held `3000`
+and `3080` (same port-conflict class "Port conflicts with `deploy/platform`"
+above documents for `3000`) — one more reason this path, not `make
+frontend`'s Vite dev server, is the lower-hazard way to look at a built
+frontend here.
+
+## The frontend build has to be copied into the backend package first
+
+`langflow run` (previous section) still won't serve anything at `/` on
+its own if the step above it never ran. `get_static_files_dir()`
+(`main.py:1018-1021`) resolves to `langflow/frontend` **relative to
+`main.py`'s own package** — i.e.
+`src/backend/base/langflow/frontend`, a directory that does not exist
+until something populates it. It is *not*
+`src/frontend/build`, the directory `npm run build` actually writes to.
+Nothing links the two automatically; the copy is a separate, required
+step:
+
+```
+cp -r src/frontend/build/. src/backend/base/langflow/frontend
+```
+
+(This is exactly what `Makefile.frontend`'s `build_frontend` target does
+at line 45, via `make build_frontend` / `make run_cli` — those targets
+already chain this copy after `npm run build`. It only needs doing by
+hand when building the frontend directly with `npm run build`, e.g. for
+`nufi/check-brand-css.sh` or the workflow above.)
+
+Skip this and `setup_app()`'s own directory-existence check
+(`main.py:1030-1032`) raises `RuntimeError: Static files directory ...
+does not exist` outright if `backend_only` is false — or, if the stale
+copy from days ago is still sitting there, `/` silently serves an old
+build instead of erroring, which is worse: it looks like the app is
+running the current code when it isn't. Either way it's easy to lose
+time here concluding "the app is broken" when the real cause is a missing
+build-artifact copy, not a server or routing bug. The target directory
+(`src/backend/base/langflow/frontend/`) is gitignored
+(`apps/nufi-agent/.gitignore:267-268`), so this copy never shows up in
+`git status` and never touches the fork diff — safe to run as often as
+needed.
+
 ## CI: what `nufi-agent-ci.yml`'s `rebrand` job actually runs, and why not vitest
 
 The task brief for this change said to run
