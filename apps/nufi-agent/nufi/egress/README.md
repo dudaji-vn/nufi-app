@@ -288,28 +288,23 @@ directly from that:
    real cluster and then notices a broken examples gallery should find that
    documented here before they go looking for what they broke:
 
-   - **`api.github.com`** — `stores/darkStore.ts:41`'s `getRepoStars()`,
-     the live GitHub star count. `nufi/README.md`'s "Third-party brand/link
-     sweep" removed every place this fetched value is *displayed*
-     (`customization/components/custom-langflow-counts.tsx`,
-     `custom-get-started-progress.tsx`, `custom-empty-page.tsx` all now
-     render without it) — **but that sweep deliberately did not touch the
-     fetch itself.** `pages/AppInitPage/index.tsx` still calls
-     `refreshStars()`/`refreshDiscordCount()` unconditionally on every app
-     load; there is no `customization/` override seam for "should this
-     store hydrate at all," only for "what renders the result," so
-     removing the call itself would mean editing a core file directly — see
-     that section's "What this sweep did not fix, and why" for the full
-     reasoning. Net effect for this policy: the call still fires, is now
-     fetching data nothing reads, and will simply fail (blocked) once this
-     policy is enforced. Cosmetically invisible (nothing renders the
-     result either way) but worth naming so a blocked-`api.github.com`
-     log line doesn't get mistaken for something this policy broke.
-   - **`api.github.com`** (again, different endpoint) **and
-     `raw.githubusercontent.com`** — `controllers/API/api.tsx:151-153`'s
+   - **`api.github.com` and `discord.com` — no longer called (fixed
+     2026-08-17).** This entry used to describe a live GitHub star count
+     and Discord member count that kept firing after the UI displaying
+     them was removed. Measured against the running build, they were 2 and
+     6 requests per browsing session respectively. Both fetches were
+     removed at the network boundary
+     (`controllers/API/index.ts`'s `getRepoStars()`/`getDiscordCount()`
+     now return without a request), and `check-brand-css.sh` greps the
+     compiled bundle for both hosts so a resync cannot restore them
+     silently. This policy therefore no longer needs to account for them —
+     see `nufi/README.md`'s "The calls behind the removed links" for the
+     measurement and the guard transcript.
+   - **`raw.githubusercontent.com`** — `controllers/API/api.tsx`'s
      `isAuthorizedURL` allowlist names
-     `raw.githubusercontent.com/langflow-ai/langflow_examples` and
-     `api.github.com/repos/langflow-ai/langflow_examples` — upstream's
+     `raw.githubusercontent.com/langflow-ai/langflow_examples` (its two
+     sibling `api.github.com` entries were removed with the fetches above,
+     being dead config once nothing called those URLs) — upstream's
      starter-template/examples gallery, fetched live from langflow-ai's own
      GitHub repo rather than shipped with the app. Under this policy that
      fetch fails, and the examples gallery — a first-run UI surface a new

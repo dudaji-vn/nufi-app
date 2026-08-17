@@ -60,8 +60,9 @@
 # (`npm ci` in that directory). This script only builds and inspects the
 # output -- it does not install anything, matching check-fork-diff.sh's
 # separation of "install" from "check".
-# Exits 0 when the compiled CSS contains the NuFi tokens in both scopes AND
-# the compiled JS contains zero occurrences of the bare word "Langflow",
+# Exits 0 when the compiled CSS contains the NuFi tokens in both scopes, the
+# compiled JS contains zero occurrences of the bare word "Langflow", and the
+# compiled JS references no third-party host this product does not name;
 # 1 otherwise.
 
 set -euo pipefail
@@ -171,3 +172,64 @@ fi
 
 echo "OK      compiled JS carries 0 occurrences of the literal word \"Langflow\""
 echo "OK -- the rebrand transform is wired in and the build reflects it."
+
+# THE THIRD CHECK (third-party calls). Removing a link from the UI does not
+# remove the request behind it. Upstream's app header carried a live GitHub
+# star badge and a Discord member count; C1 removed both from the rendered
+# UI via the customization seam, and every guard stayed green -- while
+# AppInitPage went on calling api.github.com once per app init and
+# discord.com/api once per route change. Measured against the running build
+# before the fix: 2 requests to api.github.com and 6 to
+# discord.com/api/v9/invites over one browsing session, from a product that
+# names neither. That is a white-label leak (each request announces the
+# user's IP to a third party, attributed to the upstream project) and an
+# egress-policy hole (nufi/egress/networkpolicy.yaml would have to allow
+# two FQDNs for features with no UI).
+#
+# Grepping the compiled bundle rather than the source is deliberate, for
+# the same reason as the Langflow check above: it is what ships. Source
+# comments mentioning these hosts (controllers/API/index.ts and api.tsx
+# both explain the removal in prose) are stripped by the minifier, so they
+# do not trip this. A resync that restores upstream's getRepoStars body
+# would put the literal back in the bundle and fail here.
+#
+# Proven to actually go red: restored `axios.get("https://api.github.com/
+# repos/" + owner + "/" + repo)` in controllers/API/index.ts, ran this
+# script, confirmed MISSING with a nonzero hit count, then re-applied the
+# fix and confirmed OK again -- transcript in nufi/README.md.
+THIRD_PARTY_HOSTS=(
+  "api.github.com"
+  "discord.com/api"
+)
+
+TP_FAIL=0
+for host in "${THIRD_PARTY_HOSTS[@]}"; do
+  # -F: the dots are literal hostname characters, not regex wildcards.
+  # `|| true` for the same pipefail reason documented above -- no match is
+  # the PASS case here, and grep exits 1 on no match.
+  HITS="$({ grep -ohF "$host" "${JS_FILES[@]}" || true; } | wc -l | tr -d '[:space:]')"
+  if [[ "$HITS" -ne 0 ]]; then
+    echo "MISSING compiled JS calls out to ${host} (${HITS} occurrence(s))"
+    TP_FAIL=1
+  else
+    echo "OK      compiled JS carries 0 references to ${host}"
+  fi
+done
+
+if [[ "$TP_FAIL" -ne 0 ]]; then
+  cat <<'MSG'
+
+A third-party host this product does not name is back in the shipped
+bundle. The usual cause: a `git subtree pull` restored upstream's
+getRepoStars/getDiscordCount bodies in
+src/frontend/src/controllers/API/index.ts, or re-added the host to one of
+the domain lists in src/frontend/src/controllers/API/api.tsx.
+
+Both functions must return without making a network call, and neither
+api.github.com nor discord.com may appear in authorizedDomains or
+EXTERNAL_DOMAINS. See the comments in those two files for why.
+MSG
+  exit 1
+fi
+
+echo "OK -- the build makes no calls to hosts this product does not name."

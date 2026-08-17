@@ -1,5 +1,5 @@
 import type { Edge, Node, ReactFlowJsonObject } from "@xyflow/react";
-import axios, { type AxiosRequestConfig, type AxiosResponse } from "axios";
+import { type AxiosRequestConfig, type AxiosResponse } from "axios";
 import {
   customGetAppVersions,
   customGetLatestVersion,
@@ -13,30 +13,29 @@ import type {
 import type { FlowStyleType, FlowType } from "../../types/flow";
 import type { StoreComponentResponse } from "../../types/store";
 
-const GITHUB_API_URL = "https://api.github.com";
-const DISCORD_API_URL =
-  "https://discord.com/api/v9/invites/EqksyE2EX9?with_counts=true";
-
-export async function getRepoStars(owner: string, repo: string) {
-  try {
-    const response = await axios.get(
-      `${GITHUB_API_URL}/repos/${owner}/${repo}`,
-    );
-    return response?.data.stargazers_count;
-  } catch (error) {
-    console.error("Error fetching repository data:", error);
-    return null;
-  }
+// NuFi: upstream fetched its own GitHub star count and Discord member count
+// here, and AppInitPage called both on every app init (api.github.com once,
+// discord.com/api once per route change -- measured 2x and 6x respectively
+// over a single browsing session). The UI that displayed them is gone: the
+// star badge and Discord link were removed from the app header and the
+// account menu (see customization/components/custom-langflow-counts.tsx),
+// so the two calls were pure leakage -- every NuFi user's IP announcing
+// itself to GitHub and Discord, attributed to an upstream project this
+// product does not name. A white-labelled build must not phone a third
+// party it never mentions.
+//
+// The functions are kept (rather than deleted with their callers) so the
+// diff against upstream stays a leaf edit: DarkStoreType still declares
+// refreshStars/refreshDiscordCount, darkStore.ts still calls these, and
+// AppInitPage is untouched -- all core files this fork does not own.
+// check-brand-css.sh greps the compiled bundle for api.github.com and
+// discord.com/api so a resync cannot quietly restore them.
+export async function getRepoStars(_owner: string, _repo: string) {
+  return null;
 }
 
 export async function getDiscordCount() {
-  try {
-    const response = await axios.get(DISCORD_API_URL);
-    return response?.data.approximate_member_count;
-  } catch (error) {
-    console.error("Error fetching repository data:", error);
-    return null;
-  }
+  return null;
 }
 
 export const getAppVersions = customGetAppVersions;

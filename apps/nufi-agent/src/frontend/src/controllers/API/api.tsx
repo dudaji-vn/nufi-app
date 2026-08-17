@@ -147,10 +147,14 @@ function ApiInterceptor() {
     );
 
     const isAuthorizedURL = (url) => {
+      // NuFi: the two api.github.com entries were dropped along with the
+      // calls that used them (controllers/API/index.ts getRepoStars). They
+      // were dead config once nothing fetched those URLs, and leaving the
+      // strings in the bundle would trip check-brand-css.sh's third-party
+      // grep. raw.githubusercontent.com stays: it is upstream's example
+      // store host, still referenced below.
       const authorizedDomains = [
         "https://raw.githubusercontent.com/langflow-ai/langflow_examples/main/examples",
-        "https://api.github.com/repos/langflow-ai/langflow_examples/contents/examples",
-        "https://api.github.com/repos/langflow-ai/langflow",
         "auto_login",
       ];
 
@@ -174,9 +178,15 @@ function ApiInterceptor() {
 
     // Check for external url which we don't want to add custom headers to
     const isExternalURL = (url: string): boolean => {
+      // NuFi: api.github.com removed here too -- this list decides which
+      // hosts must NOT receive our auth headers, so an entry for a host we
+      // no longer call is dead weight, and the literal would fail the
+      // bundle grep. segment.io/sprig.com stay listed: they are upstream
+      // telemetry hosts that never fire in this build (measured: zero
+      // requests over a full session) but the list is the safety net if
+      // they ever do.
       const EXTERNAL_DOMAINS = [
         "https://raw.githubusercontent.com",
-        "https://api.github.com",
         "https://api.segment.io",
         "https://cdn.sprig.com",
       ];

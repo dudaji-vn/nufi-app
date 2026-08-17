@@ -95,9 +95,9 @@ which is loud.
 The final whole-branch review before this fork ships found the app header
 rendering Langflow's live GitHub star count and a Discord member count
 (`components/core/appHeaderComponent/index.tsx`, backed by
-`stores/darkStore.ts`'s `refreshStars`/`refreshDiscordCount`, which call
-`api.github.com` and `discord.com` — see `nufi/egress/README.md` for the
-network-policy angle), each linking off "NuFi Agent" to
+`stores/darkStore.ts`'s `refreshStars`/`refreshDiscordCount`, which called
+`api.github.com` and `discord.com` until those fetches were removed — see
+"The calls behind the removed links" below), each linking off "NuFi Agent" to
 langflow-ai/langflow's own community channels. One click from the header
 and an evaluator is looking at the fork's own upstream project — the exact
 opposite of what a white-label is for.
@@ -171,26 +171,69 @@ a real decision, not a mechanical `return null`:
   turns false. Cosmetic only; judged cheaper than forking the checklist or
   adding a second core-file edit to remove one `<hr>`.
 
-### What this sweep did not fix, and why
+### The calls behind the removed links (fixed 2026-08-17)
 
-`stores/darkStore.ts`'s `refreshStars()`/`refreshDiscordCount()` — the
-functions that actually call `api.github.com` and `discord.com` — are
-still invoked unconditionally on every app load, from
-`pages/AppInitPage/index.tsx`'s init `useEffect`, regardless of whether
-anything renders their result. Nothing in `customization/` intercepts
-*that* call: `AppInitPage` is core, not an override seam, and the one
-customization hook already wired into it
-(`hooks/use-custom-primary-loading.ts`) gates a different, unrelated
-loading query. Fixing this would mean adding `pages/AppInitPage/index.tsx`
-to the fork-diff allowlist and editing a core file directly — a real
-option, but a different, separately-owned decision from "does the
-customization seam cover this," which is what this sweep set out to
-answer. Left as a documented gap rather than fixed by reaching past the
-seam: after this sweep, the two calls are now dead weight (nothing reads
-`stars`/`discordCount` from the store any more) that will simply fail
-under the egress network policy once applied — see
-`nufi/egress/README.md`'s "what else needs egress" list, which names both
-calls and says the failure is expected.
+The sweep above removed everywhere the star count and Discord count are
+*displayed*. It deliberately left the fetches alone, on the grounds that
+`pages/AppInitPage/index.tsx` — which invokes
+`refreshStars()`/`refreshDiscordCount()` on every app load — is core, not
+an override seam, and that reaching past the seam was a separately-owned
+decision.
+
+That decision has since been made, because the gap was measured rather
+than reasoned about. Driving the running build through Playwright with
+every non-localhost request logged, over one browsing session:
+
+```
+3x  https://fonts.googleapis.com/css2?family=Chivo...      (Google Fonts)
+3x  https://fonts.gstatic.com/s/inter/v20/...woff2
+2x  https://api.github.com/repos/langflow-ai/langflow
+6x  https://discord.com/api/v9/invites/EqksyE2EX9?with_counts=true
+```
+
+Six requests to Discord — `refreshDiscordCount()` is unthrottled, so it
+fires again on every route change. A white-labelled product announcing its
+users' IP addresses to the upstream project's GitHub and Discord, for
+features with no UI, is not a documentation-grade gap; it is a leak.
+
+The fix is a leaf edit at the network boundary rather than at the caller,
+which keeps `AppInitPage` and `darkStore.ts` untouched:
+`controllers/API/index.ts`'s `getRepoStars()`/`getDiscordCount()` now
+return `null` without a request, and `controllers/API/api.tsx` drops the
+two now-dead `api.github.com` entries from `authorizedDomains` and
+`EXTERNAL_DOMAINS`. Two core files, both added to the fork-diff allowlist.
+Re-measured after the fix: only the two Google Fonts hosts remain.
+
+**Google Fonts is still an outbound call** — `src/frontend/index.html`
+loads Chivo, Inter and JetBrains Mono from `fonts.googleapis.com`. Same
+class of leak, but fixing it means self-hosting the woff2 files
+(`@fontsource-*` packages, ~1–2 MB into the bundle, plus
+`src/frontend/package.json` and its lockfile into the allowlist), so it is
+named here as a known, unfixed item rather than folded into this change.
+
+## Verifying the third-party-call guard
+
+`check-brand-css.sh` greps the compiled bundle for `api.github.com` and
+`discord.com/api`, so a `git subtree pull` that restores upstream's
+function bodies fails CI instead of quietly restoring the calls. Proven to
+go red before it was trusted green — restore the upstream fetch, run the
+guard, then put the fix back:
+
+```
+$ # with `fetch("https://api.github.com/repos/" + owner + "/" + repo)` restored
+$ ./nufi/check-brand-css.sh
+OK      compiled JS carries 0 occurrences of the literal word "Langflow"
+MISSING compiled JS calls out to api.github.com (1 occurrence(s))
+OK      compiled JS carries 0 references to discord.com/api
+   (exit 1)
+
+$ # with the fix restored
+$ ./nufi/check-brand-css.sh
+OK      compiled JS carries 0 references to api.github.com
+OK      compiled JS carries 0 references to discord.com/api
+OK -- the build makes no calls to hosts this product does not name.
+   (exit 0)
+```
 
 ## Asset sweep: what's rendered vs. what's genuinely inert
 

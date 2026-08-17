@@ -69,6 +69,8 @@ ALLOWLIST=(
   "src/frontend/src/pages/MainPage/pages/homePage/components/__tests__/McpJsonContent.test.tsx"
   "src/frontend/src/modals/IOModal/components/chatView/chatInput/components/no-input.tsx"
   "src/frontend/src/customization/config-constants.ts"
+  "src/frontend/src/controllers/API/index.ts"
+  "src/frontend/src/controllers/API/api.tsx"
 )
 
 echo "Comparing apps/nufi-agent against ${REPO} @ ${TAG}"
