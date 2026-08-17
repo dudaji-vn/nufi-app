@@ -607,16 +607,28 @@ function usePluginModuleLoader(contributions: PluginUiContribution[] | undefined
   useEffect(() => {
     if (!contributions || contributions.length === 0) return;
 
-    // Filter to contributions that haven't been loaded yet.
-    const unloaded = contributions.filter((c) => {
+    // Contributions this consumer still needs an answer about.
+    //
+    // "loading" is deliberately INCLUDED. `loadPluginModule` awaits the
+    // in-flight import for a module already being loaded, so waiting on it is
+    // how a second consumer learns the module arrived. Skipping it means the
+    // first consumer to run this effect keeps the only completion callback:
+    // every component that mounts while an import is in flight returns early,
+    // never re-renders, and reads a stale `isLoading === true` forever.
+    //
+    // Observed on a fresh page load of a plugin settings page — the sidebar
+    // (which does not gate on isLoading) rendered its entry while the page
+    // itself sat on "Loading..." until an unrelated re-render. The module had
+    // loaded; only the notification was missing.
+    const pending = contributions.filter((c) => {
       const state = pluginLoadStates.get(buildPluginModuleKey(c));
-      return state !== "loaded" && state !== "loading";
+      return state !== "loaded" && state !== "error";
     });
 
-    if (unloaded.length === 0) return;
+    if (pending.length === 0) return;
 
     let cancelled = false;
-    void ensurePluginModulesLoaded(unloaded).then(() => {
+    void ensurePluginModulesLoaded(pending).then(() => {
       // Re-render so the slot mount can resolve the newly-registered components.
       if (!cancelled) setTick((t) => t + 1);
     });

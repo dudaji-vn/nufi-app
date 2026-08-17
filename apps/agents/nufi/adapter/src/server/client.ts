@@ -24,10 +24,48 @@ interface NufiConfig {
   /** Name of the env var holding the key. NOT the key. */
   apiKeyEnv?: string;
   maxTokens?: number;
+  /**
+   * Environment bindings, already resolved by the control plane.
+   *
+   * Paperclip resolves an agent's env bindings before dispatch and merges the
+   * result into the adapter config it passes here. A `user_secret_ref` binding
+   * resolves against the run's responsible user, so this is how one agent hands
+   * each member their own gateway key.
+   *
+   * Typed `unknown` because it crosses a process boundary as JSON.
+   */
+  env?: unknown;
 }
 
 function str(v: unknown, fallback: string): string {
   return typeof v === "string" && v.trim() ? v.trim() : fallback;
+}
+
+/**
+ * Where the gateway credential comes from, in priority order.
+ *
+ * 1. `config.env` — a secret bound to this agent and resolved by the control
+ *    plane. With a `user_secret_ref` binding this is the running member's own
+ *    key, which is what makes per-user attribution and per-user budgets real
+ *    rather than a label on one shared key.
+ * 2. `process.env` — the deploy-time key. Still the right answer for a
+ *    single-tenant or air-gapped install; no longer the only one.
+ *
+ * A blank bound value falls through rather than winning. Paperclip writes
+ * `env: {}` whenever an agent has an env block at all, so "present but empty"
+ * is the ordinary shape of unconfigured — not an instruction to use no key.
+ */
+export function resolveModelKey(
+  config: { env?: unknown },
+  keyEnv: string,
+  processEnv: Record<string, string | undefined>,
+): string {
+  const bound = config.env;
+  if (bound && typeof bound === "object" && !Array.isArray(bound)) {
+    const value = (bound as Record<string, unknown>)[keyEnv];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return processEnv[keyEnv]?.trim() ?? "";
 }
 
 export function buildDeps(ctx: ExecutionContext): ExecuteDeps {
@@ -38,7 +76,7 @@ export function buildDeps(ctx: ExecutionContext): ExecuteDeps {
 
   const target = str(cfg.target, "gateway");
   const keyEnv = str(cfg.apiKeyEnv, "NUFI_MODEL_API_KEY");
-  const modelKey = process.env[keyEnv] ?? "";
+  const modelKey = resolveModelKey(cfg, keyEnv, process.env);
 
   /**
    * Generous by default. Gemini spends its reasoning budget before emitting
@@ -84,7 +122,11 @@ export function buildDeps(ctx: ExecutionContext): ExecuteDeps {
     },
 
     async complete(prompt) {
-      if (!modelKey) throw new Error(`${keyEnv} is not set — no credential to call the model with`);
+      if (!modelKey)
+        throw new Error(
+          `${keyEnv} is not set — no credential to call the model with. ` +
+            `Connect your NUFI account under Settings → NUFI, or set ${keyEnv} on the server.`,
+        );
       if (target === "chat" && !modelName) throw new Error("chatAgentId is required when target is chat");
 
       const res = await fetch(modelEndpoint, {

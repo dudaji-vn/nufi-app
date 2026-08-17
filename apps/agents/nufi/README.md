@@ -319,3 +319,90 @@ only, so that path is written but unproven.
 Do not lower `maxTokens` (default 4096). The model spends its reasoning budget
 before emitting text — a 20-token cap returned empty content with no error, and
 `resolveDisposition` would then block the issue for entirely the wrong reason.
+
+### Where the key comes from
+
+The adapter resolves `apiKeyEnv` from two places, in order:
+
+1. **`ctx.config.env`** — a secret bound to the agent, resolved by the control
+   plane before dispatch. With a `user_secret_ref` binding this is the running
+   member's own key, which is what makes per-member attribution and per-member
+   budgets real rather than a label on one shared credential.
+2. **`process.env`** — the deploy-time key. Still correct for a single-tenant or
+   air-gapped install; no longer the only option.
+
+`testEnvironment` therefore reports a missing `NUFI_MODEL_API_KEY` as `warn`,
+not `error`: it runs with no run context, so it cannot see a per-member secret,
+and calling a correctly configured install broken is worse than under-reporting.
+A run with no credential at all still fails loudly and names both fixes.
+
+## The connect plugin
+
+`nufi/connect-plugin` adds **Settings → NUFI**, where a member hands this app
+their own gateway key using the session they already have at NUFI chat. Design
+and threat model: `docs/superpowers/specs/2026-08-17-nufi-agents-connect-design.md`.
+
+It is a Paperclip plugin rather than a patch to `ui/src` for the usual reason —
+the fork guard rejects changes to vendored files, and upstream already provides
+this extension point. Remove the plugin and the app is stock Paperclip again.
+
+```bash
+pnpm --dir nufi/connect-plugin install
+pnpm --dir nufi/connect-plugin build
+pnpm paperclipai plugin install "$PWD/nufi/connect-plugin"
+```
+
+Then, as an instance admin, set **NUFI console URL** under Settings → Plugins →
+NUFI Connection, and list this app's origin in `AGENTS_ALLOWED_ORIGINS` on the
+console. Both are required; the console refuses to issue a key to an origin it
+was not told about, which is the only thing standing between this flow and a
+credential-theft page.
+
+Three things about the build are deliberate and easy to undo by accident:
+
+- **The SDK is bundled into the worker, through `sdk-entry.mjs` rather than the
+  package barrel.** The host `fork()`s the worker with plain Node, so a bare
+  `@paperclipai/plugin-sdk` specifier resolves against `nufi/connect-plugin`,
+  which is outside Paperclip's pnpm workspace on purpose. Bundling fixes that —
+  but the SDK's `index.ts` re-exports `zod`, the test harness and the dev
+  server, so going through it drags in `zod` and `@paperclipai/shared`, which
+  resolve only where the agents workspace is installed. That built on a laptop
+  and failed on a clean CI checkout. `sdk-entry.mjs` reaches past the barrel to
+  `define-plugin` and `worker-rpc-host`, whose subgraph imports nothing but Node
+  builtins: 53 kB, zero dependencies. CI asserts the built worker imports only
+  `node:` specifiers, so the coupling cannot come back unnoticed.
+- **The UI bundle keeps exactly three bare imports** (`react`,
+  `react/jsx-runtime`, `@paperclipai/plugin-sdk/ui`). The host rewrites those to
+  its own modules and imports the result from a blob URL — which has no base for
+  resolving a relative path, so everything else must be inlined, and bundling
+  React would give the page a second React.
+- **The worker does nothing.** The manifest requires a worker entrypoint and the
+  host starts one for every plugin, but this plugin's only server-side need is
+  its console URL, which is company-scoped operator config the host already
+  stores and serves. Reading it from `process.env` would not work anyway: the
+  host deliberately withholds its environment from plugin workers.
+
+## Upstream patches
+
+Files outside `nufi/` that we have changed, why, and when the change can go
+away. Each is allowlisted in `check-fork-diff.sh` and should be sent upstream.
+
+### `ui/src/plugins/slots.tsx` — plugin UI never finishes loading
+
+`usePluginModuleLoader` skipped contributions already in state `loading`, so the
+first consumer to run the effect kept the only completion callback. Every
+component that mounted while an import was in flight returned early and never
+re-rendered, leaving `isLoading` stale at `true`.
+
+Measured on a fresh page load of **Settings → NUFI**: the module was fetched
+(HTTP 200) and imported successfully, the sidebar entry rendered, and the page
+itself sat on "Loading..." indefinitely — until an unrelated in-app navigation
+forced a re-render. `CompanySettingsPluginPage` is the only consumer that gates
+its render on `isLoading`, which is why it is the only one that visibly hangs.
+
+The fix includes `loading` in the set this consumer waits on;
+`loadPluginModule` already awaits an in-flight import, so waiting is how a
+second consumer learns the module arrived. Verified in a browser before and
+after: stuck on a cold load, renders on a cold load.
+
+Drop the allowlist entry once an upstream release carries the fix.

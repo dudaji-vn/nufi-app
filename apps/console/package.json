@@ -10,6 +10,7 @@
     "build": "vite build",
     "start": "bun run server/index.ts",
     "smoke": "bun run scripts/smoke.ts",
+    "test": "bun test",
     "typecheck": "tsc --noEmit",
     "lint": "biome check",
     "lint:fix": "biome check --write",
