@@ -1,0 +1,322 @@
+/*
+ * NuFi brand layer for the nufi-agent (Langflow) fork.
+ *
+ * This is the ONLY stylesheet under apps/nufi-agent/ that NuFi owns for
+ * colour. Everything else under src/frontend/ is vendored from
+ * langflow-ai/langflow and must stay byte-identical to the upstream tag so
+ * `git subtree pull` keeps working — see nufi/README.md and
+ * nufi/check-fork-diff.sh.
+ *
+ * Selectors are deliberately doubled (`:root:root`, `.dark.dark`), the same
+ * technique used by apps/agents/ui/src/nufi-brand.css for the Paperclip
+ * fork. That raises specificity above upstream's single-class declarations
+ * in src/frontend/src/style/index.css, so these values win regardless of
+ * import order, without editing a single upstream declaration.
+ *
+ * IMPORTANT — value format. Unlike Paperclip's brand.css, these tokens are
+ * NOT hex. Langflow's tailwind.config.mjs consumes them as
+ * `hsl(var(--primary))` etc. (see `theme.extend.colors`), so every value
+ * here must be a bare "H S% L%" triplet — the same convention already used
+ * by every colour var in style/index.css. A hex value here would make
+ * `hsl(var(--primary))` an invalid CSS value at the point of use, which
+ * silently drops the declaration rather than falling back to anything.
+ * Three tokens — `--ice`, `--selected`, `--hover` — are consumed as
+ * `var(--x)` directly with no hsl() wrapper; none of those are brand/accent
+ * surfaces, so none are touched here.
+ *
+ * Only the shadcn brand/surface tokens are overridden: --primary and its
+ * satellites (used for buttons, links, focus rings) in both themes, plus
+ * the dark-theme neutral surfaces (--background, --card, --popover,
+ * --secondary, --muted, --accent). Left alone: status colours
+ * (--status-*), the --datatype-* type-badge scale, --warning/--error/
+ * --success/--info, the --accent-emerald/-indigo/-blue/-pink/-purple
+ * accent scale, the --accent-assistant-* mascot palette, --note-*,
+ * --border/--input, and the (unused — see nufi/README.md) --sidebar-*
+ * tokens. Rationale for each is in nufi/README.md, not repeated per-line
+ * here.
+ *
+ * Palette source: apps/chat/client/src/style.css (`--brand-*`) — the same
+ * source Paperclip's brand.css cites, so nufi-agent, apps/chat and the
+ * Paperclip-based apps/agents all read as one company.
+ *
+ *   primary        #7b82f0  ->  236.4 79.6% 71.2%
+ *   primary-hover  #6970e0  ->  236.5 65.7% 64.5%
+ *   primary (AA)   #6268c0  ->  236.2 42.7% 56.9%   (light-mode text-on-primary variant)
+ *   navy-900       #080810  ->  240.0 33.3%  4.7%   (--background)
+ *   navy-800       #0d1020  ->  230.5 42.2%  8.8%   (--card, --popover)
+ *   navy-600       #151823  ->  227.1 25.0% 11.0%   (--secondary, --muted)
+ *   navy-500       #1a1e2a  ->  225.0 23.5% 13.3%   (--accent)
+ *
+ * Contrast, measured (WCAG 2.1, sRGB relative luminance) — identical
+ * reasoning to Paperclip's brand.css, since it's the same two brand colours:
+ *
+ *   #7b82f0 on #ffffff  ->  3.34:1   fails AA for body text
+ *   #7b82f0 on #080810  ->  5.98:1   passes AA
+ *   #6268c0 on #ffffff  ->  4.93:1   passes AA
+ *
+ * Hence the split: dark mode uses the brand primary as-is (button bg
+ * #7b82f0, button text navy-900) against navy; light mode uses #6268c0 —
+ * the same hue darkened until white button text clears 4.5:1.
+ *
+ * --primary-hover has no counterpart in Paperclip's brand.css (shadcn/
+ * Paperclip doesn't define that token) — Langflow does
+ * (`primary.hover` in tailwind.config.mjs, consumed by hover: states on
+ * primary buttons), and leaving it at upstream's near-black/near-white
+ * default would flip a hovered primary button off-brand. apps/chat defines
+ * `--brand-primary-hover: #6970e0` as a single value shared by its light
+ * and dark themes (not two shades), so it is applied unchanged in both
+ * modes here too.
+ */
+
+/* -------------------------------------------------------------------------
+ * Self-hosted webfonts.
+ *
+ * Upstream's src/frontend/index.html loaded Chivo, Inter and JetBrains Mono
+ * from fonts.googleapis.com, with a preconnect to fonts.gstatic.com. That is
+ * an outbound call on every page load, from a product that never mentions
+ * Google, carrying each user's IP and Referer to a third party -- measured
+ * on the running build as 3 requests to fonts.googleapis.com and 3 to
+ * fonts.gstatic.com per browsing session. For a bid that has to answer
+ * questions about where data goes, "the UI fetches its fonts from a US CDN"
+ * is a question we should not have to answer at all.
+ *
+ * The three link tags are gone from index.html and the fonts ship with the
+ * app instead: nufi/fonts/ holds the variable woff2 files, and the
+ * @font-face blocks below re-declare them under the family names the app
+ * already asks for -- "Inter", "Chivo", "JetBrains Mono", as set in
+ * src/style/index.css's --font-sans/--font-mono/--font-chivo. Nothing else
+ * had to change: no component, no Tailwind config, no token.
+ *
+ * Provenance: copied verbatim from the @fontsource-variable packages
+ * (inter/chivo/jetbrains-mono 5.3.0), which repackage the Google Fonts
+ * originals. All three are SIL Open Font License 1.1 -- redistribution is
+ * permitted, and the licences travel with the files in nufi/fonts/. The
+ * packages themselves are NOT a dependency: keeping the woff2 under nufi/
+ * (already allowlisted wholesale) means this change adds nothing to
+ * src/frontend/package.json, its lockfile, or the fork-diff allowlist.
+ *
+ * Subsets: latin, latin-ext and vietnamese, in normal and italic, at the
+ * full 100-900 variable weight range -- 18 files, 616 KB on disk. Cyrillic
+ * and Greek are dropped (no shipped locale needs them); CJK was never in
+ * these families and continues to fall back to the system font, exactly as
+ * it did when Google served them. A browser downloads only the subsets the
+ * page actually uses, so the per-user cost is one or two files.
+ *
+ * check-brand-css.sh fails the build if fonts.googleapis.com or
+ * fonts.gstatic.com reappears in the compiled output.
+ * ------------------------------------------------------------------------- */
+
+/* inter-vietnamese-wght-normal */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("./fonts/inter-vietnamese-wght-normal.woff2") format('woff2-variations');
+  unicode-range: U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB;
+}
+
+/* inter-latin-ext-wght-normal */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("./fonts/inter-latin-ext-wght-normal.woff2") format('woff2-variations');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+
+/* inter-latin-wght-normal */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("./fonts/inter-latin-wght-normal.woff2") format('woff2-variations');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+/* inter-vietnamese-wght-italic */
+@font-face {
+  font-family: "Inter";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("./fonts/inter-vietnamese-wght-italic.woff2") format('woff2-variations');
+  unicode-range: U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB;
+}
+
+/* inter-latin-ext-wght-italic */
+@font-face {
+  font-family: "Inter";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("./fonts/inter-latin-ext-wght-italic.woff2") format('woff2-variations');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+
+/* inter-latin-wght-italic */
+@font-face {
+  font-family: "Inter";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("./fonts/inter-latin-wght-italic.woff2") format('woff2-variations');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+/* chivo-vietnamese-wght-normal */
+@font-face {
+  font-family: "Chivo";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("./fonts/chivo-vietnamese-wght-normal.woff2") format('woff2-variations');
+  unicode-range: U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB;
+}
+
+/* chivo-latin-ext-wght-normal */
+@font-face {
+  font-family: "Chivo";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("./fonts/chivo-latin-ext-wght-normal.woff2") format('woff2-variations');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+
+/* chivo-latin-wght-normal */
+@font-face {
+  font-family: "Chivo";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("./fonts/chivo-latin-wght-normal.woff2") format('woff2-variations');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+/* chivo-vietnamese-wght-italic */
+@font-face {
+  font-family: "Chivo";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("./fonts/chivo-vietnamese-wght-italic.woff2") format('woff2-variations');
+  unicode-range: U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB;
+}
+
+/* chivo-latin-ext-wght-italic */
+@font-face {
+  font-family: "Chivo";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("./fonts/chivo-latin-ext-wght-italic.woff2") format('woff2-variations');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+
+/* chivo-latin-wght-italic */
+@font-face {
+  font-family: "Chivo";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("./fonts/chivo-latin-wght-italic.woff2") format('woff2-variations');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+/* jetbrains-mono-vietnamese-wght-normal */
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url("./fonts/jetbrains-mono-vietnamese-wght-normal.woff2") format('woff2-variations');
+  unicode-range: U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB;
+}
+
+/* jetbrains-mono-latin-ext-wght-normal */
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url("./fonts/jetbrains-mono-latin-ext-wght-normal.woff2") format('woff2-variations');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+
+/* jetbrains-mono-latin-wght-normal */
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url("./fonts/jetbrains-mono-latin-wght-normal.woff2") format('woff2-variations');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+/* jetbrains-mono-vietnamese-wght-italic */
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url("./fonts/jetbrains-mono-vietnamese-wght-italic.woff2") format('woff2-variations');
+  unicode-range: U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB;
+}
+
+/* jetbrains-mono-latin-ext-wght-italic */
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url("./fonts/jetbrains-mono-latin-ext-wght-italic.woff2") format('woff2-variations');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+
+/* jetbrains-mono-latin-wght-italic */
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url("./fonts/jetbrains-mono-latin-wght-italic.woff2") format('woff2-variations');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+:root:root {
+  /* Brand primary, darkened for AA against white button text (4.93:1). */
+  --primary: 236.2 42.7% 56.9%; /* #6268c0 */
+  --primary-foreground: 0 0% 100%; /* #ffffff */
+  --primary-hover: 236.5 65.7% 64.5%; /* #6970e0 */
+  --ring: 236.4 79.6% 71.2%; /* #7b82f0 — unmodified brand primary; non-text contrast, no AA darkening needed */
+}
+
+.dark.dark {
+  /* NuFi navy surfaces, matching apps/chat dark mode and Paperclip's brand.css. */
+  --background: 240 33.3% 4.7%; /* #080810 */
+  --card: 230.5 42.2% 8.8%; /* #0d1020 */
+  --popover: 230.5 42.2% 8.8%; /* #0d1020 */
+  --secondary: 227.1 25% 11%; /* #151823 */
+  --muted: 227.1 25% 11%; /* #151823 */
+  --accent: 225 23.5% 13.3%; /* #1a1e2a */
+
+  /* Brand primary unmodified — 5.98:1 against navy-900 button text. */
+  --primary: 236.4 79.6% 71.2%; /* #7b82f0 */
+  --primary-foreground: 240 33.3% 4.7%; /* #080810 */
+  --primary-hover: 236.5 65.7% 64.5%; /* #6970e0 — same value as light mode, see file header */
+  --ring: 236.4 79.6% 71.2%; /* #7b82f0 */
+
+  /*
+   * --border and --input stay upstream's solid neutral greys
+   * (hsl(240 5% 26%) / hsl(240 5% 34%)). Unlike Paperclip's alpha-overlay
+   * borders, these are opaque and were tuned against Langflow's original
+   * hsl(240 6% 10%) background, not navy-900 — they still read as visible
+   * hairlines against the darker navy background (contrast only improves),
+   * just with a faint hue mismatch. Re-tuning them to navy hue would be a
+   * cosmetic pass with no accessibility requirement behind it, so it's left
+   * for a follow-up rather than guessed at here.
+   */
+}

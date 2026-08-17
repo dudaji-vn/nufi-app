@@ -1,0 +1,33 @@
+{
+  "name": "NuFi Agent",
+  "short_name": "NuFi Agent",
+  "description": "NuFi Agent is a visual editor for building, testing, and running AI workflows that connect language models, APIs, and data sources.",
+  "theme_color": "#080810",
+  "background_color": "#080810",
+  "icons": [
+    {
+      "src": "icons/32x32.png",
+      "type": "image/png",
+      "sizes": "32x32"
+    },
+    {
+      "src": "icons/128x128.png",
+      "type": "image/png",
+      "sizes": "128x128"
+    },
+    {
+      "src": "icons/128x128@2x.png",
+      "type": "image/png",
+      "sizes": "256x256"
+    },
+    {
+      "src": "icons/icon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ],
+  "categories": ["developer", "productivity", "utilities"],
+  "screenshots": [],
+  "related_applications": [],
+  "prefer_related_applications": false
+}

@@ -1,0 +1,93 @@
+import { useTranslation } from "react-i18next";
+import ForwardedIconComponent from "@/components/common/genericIconComponent";
+import { Badge } from "@/components/ui/badge";
+import {
+  CommandGroup,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { cn } from "@/utils/utils";
+import { ModelOption, SelectedModel } from "../types";
+
+export const getModelOptionTestId = (provider: string, modelName: string) =>
+  `${provider}-${modelName}-option`;
+
+interface ModelListProps {
+  groupedOptions: Record<string, ModelOption[]>;
+  selectedModel: SelectedModel | null;
+  onSelect: (modelName: string, provider: string) => void;
+}
+
+const ModelList = ({
+  groupedOptions,
+  selectedModel,
+  onSelect,
+}: ModelListProps) => {
+  const { t } = useTranslation();
+
+  if (Object.keys(groupedOptions).length === 0) {
+    return (
+      <CommandList className="max-h-[300px] overflow-y-auto">
+        <CommandItem
+          disabled
+          className="w-full px-4 py-2 text-[13px] text-muted-foreground"
+        >
+          {t("modelInput.noModelsEnabled")}
+        </CommandItem>
+      </CommandList>
+    );
+  }
+
+  return (
+    <CommandList className="max-h-[300px] overflow-y-auto">
+      {Object.entries(groupedOptions).map(([provider, models]) => (
+        <CommandGroup
+          className="p-0 [&_[cmdk-group-heading]]:mx-4 [&_[cmdk-group-heading]]:my-2 [&_[cmdk-group-heading]]:p-0 [&_[cmdk-group-heading]]:font-semibold"
+          heading={provider}
+          key={provider}
+        >
+          {models.map((data) => (
+            <CommandItem
+              key={`${provider}-${data.name}`}
+              value={`${provider}::${data.name}`}
+              onSelect={() => onSelect(data.name, provider)}
+              className="w-full items-center rounded-none"
+              data-testid={getModelOptionTestId(provider, data.name)}
+            >
+              <div className="flex w-full items-center gap-2">
+                <ForwardedIconComponent
+                  name={data.icon || "Bot"}
+                  className="h-4 w-4 shrink-0 text-primary ml-2"
+                />
+                <div className="truncate text-[13px]">{data.name}</div>
+                {data.metadata?.deprecated ? (
+                  <Badge
+                    variant="secondaryStatic"
+                    size="tag"
+                    data-testid={`${data.name}-deprecated-badge`}
+                  >
+                    Deprecated
+                  </Badge>
+                ) : null}
+                <div className="pl-2 ml-auto">
+                  <ForwardedIconComponent
+                    name="Check"
+                    className={cn(
+                      "h-4 w-4 shrink-0 text-primary",
+                      selectedModel?.name === data.name &&
+                        selectedModel?.provider === provider
+                        ? "opacity-100"
+                        : "opacity-0",
+                    )}
+                  />
+                </div>
+              </div>
+            </CommandItem>
+          ))}
+        </CommandGroup>
+      ))}
+    </CommandList>
+  );
+};
+
+export default ModelList;

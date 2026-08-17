@@ -1,0 +1,17 @@
+# Upstream's apps/nufi-agent/.gitattributes opens with `* text eol=lf` and
+# then names the binary types it knows about (png, jpg, ico, gif, mp4, svg,
+# wav, raw). Webfonts are not on that list, so every .woff2 added under this
+# fork is treated as text and line-ending-normalised on `git add`: any CRLF
+# byte pair inside the compressed stream is silently rewritten to a single
+# LF. Eight of the eighteen files in nufi/fonts/ lost 1-3 bytes that way on
+# their first commit -- enough to make the font unparseable, with no error
+# anywhere until a browser refuses to render it.
+#
+# This file is scoped to nufi/ (deeper .gitattributes wins) so the fix does
+# not mean editing an upstream-owned file. check-brand-css.sh verifies every
+# nufi/fonts/*.woff2 still has an intact WOFF2 header, so a regression here
+# fails CI rather than shipping broken glyphs.
+*.woff2 binary
+*.woff  binary
+*.ttf   binary
+*.otf   binary
