@@ -15,9 +15,12 @@ const here = path.dirname(fileURLToPath(import.meta.url));
  * pnpm workspace on purpose (the fork guard rejects additions under
  * `packages/`, and keeping NuFi code in `nufi/` is what keeps
  * `git subtree pull` a merge rather than a conflict). Bundling makes the worker
- * self-contained, so it behaves the same in the repo and in a built image.
- * The alias below is the one place that knows where upstream keeps the SDK; if
- * upstream moves it, this fails at build time rather than at plugin load.
+ * self-contained, so it behaves the same in the repo, in CI, and in a built
+ * image. It resolves through `sdk-entry.mjs`, which reaches past the package
+ * barrel to the two modules the worker actually needs — see the comment there
+ * for why the barrel does not work. That file is the one place that knows where
+ * upstream keeps the SDK; if upstream moves it, this fails at build time rather
+ * than at plugin load.
  *
  * **The UI bundle keeps three bare specifiers.** The host fetches the bundle,
  * rewrites `react`, `react/jsx-runtime`, and `@paperclipai/plugin-sdk/ui` to
@@ -26,7 +29,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
  * inlined: the rewritten module is imported from a blob URL, which has no base
  * for resolving a relative path.
  */
-const SDK_ENTRY = path.resolve(here, "../../packages/plugins/sdk/src/index.ts");
+const SDK_ENTRY = path.resolve(here, "sdk-entry.mjs");
 
 const common = { bundle: true, format: "esm", logLevel: "info" };
 

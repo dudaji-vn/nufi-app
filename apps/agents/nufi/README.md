@@ -360,11 +360,17 @@ credential-theft page.
 
 Three things about the build are deliberate and easy to undo by accident:
 
-- **The SDK is bundled into the worker.** The host `fork()`s the worker with
-  plain Node, so a bare `@paperclipai/plugin-sdk` specifier resolves against
-  `nufi/connect-plugin`, which is outside Paperclip's pnpm workspace on purpose.
-  `esbuild.config.mjs` aliases it to upstream's source; if upstream moves the
-  SDK this fails at build time rather than at plugin load.
+- **The SDK is bundled into the worker, through `sdk-entry.mjs` rather than the
+  package barrel.** The host `fork()`s the worker with plain Node, so a bare
+  `@paperclipai/plugin-sdk` specifier resolves against `nufi/connect-plugin`,
+  which is outside Paperclip's pnpm workspace on purpose. Bundling fixes that —
+  but the SDK's `index.ts` re-exports `zod`, the test harness and the dev
+  server, so going through it drags in `zod` and `@paperclipai/shared`, which
+  resolve only where the agents workspace is installed. That built on a laptop
+  and failed on a clean CI checkout. `sdk-entry.mjs` reaches past the barrel to
+  `define-plugin` and `worker-rpc-host`, whose subgraph imports nothing but Node
+  builtins: 53 kB, zero dependencies. CI asserts the built worker imports only
+  `node:` specifiers, so the coupling cannot come back unnoticed.
 - **The UI bundle keeps exactly three bare imports** (`react`,
   `react/jsx-runtime`, `@paperclipai/plugin-sdk/ui`). The host rewrites those to
   its own modules and imports the result from a blob URL — which has no base for

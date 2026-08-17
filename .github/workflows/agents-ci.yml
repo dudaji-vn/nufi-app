@@ -55,6 +55,27 @@ jobs:
       - name: Build
         working-directory: apps/agents/nufi/connect-plugin
         run: bun run build
+      # The worker is fork()ed by plain Node from a directory outside Paperclip's
+      # pnpm workspace, so anything it imports at runtime must already be
+      # inlined. Bundling through the SDK barrel drags in zod and
+      # @paperclipai/shared, which resolve only on a machine where the agents
+      # workspace happens to be installed — it built locally and failed here.
+      - name: Worker bundle imports only Node builtins
+        working-directory: apps/agents/nufi/connect-plugin
+        run: |
+          set -euo pipefail
+          external=$(grep -oE '^import .* from "[^"]+"' dist/worker.js \
+            | grep -oE '"[^"]+"$' \
+            | tr -d '"' \
+            | grep -v '^node:' \
+            || true)
+          if [ -n "$external" ]; then
+            echo "Worker bundle depends on modules that will not exist at run time:"
+            echo "$external"
+            exit 1
+          fi
+          echo "OK — worker bundle is self-contained."
+
       - name: UI bundle imports only host-provided modules
         working-directory: apps/agents/nufi/connect-plugin
         run: |
