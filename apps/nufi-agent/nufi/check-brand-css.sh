@@ -61,9 +61,9 @@
 # output -- it does not install anything, matching check-fork-diff.sh's
 # separation of "install" from "check".
 # Exits 0 when the compiled CSS contains the NuFi tokens in both scopes, the
-# compiled JS contains zero occurrences of the bare word "Langflow", and the
-# compiled JS references no third-party host this product does not name;
-# 1 otherwise.
+# compiled JS contains zero occurrences of the bare word "Langflow", and
+# nothing the build emits (JS, CSS or index.html) references a third-party
+# host this product does not name; 1 otherwise.
 
 set -euo pipefail
 
@@ -200,19 +200,37 @@ echo "OK -- the rebrand transform is wired in and the build reflects it."
 THIRD_PARTY_HOSTS=(
   "api.github.com"
   "discord.com/api"
+  "fonts.googleapis.com"
+  "fonts.gstatic.com"
 )
+
+# Unlike the two checks above, this one cannot look at the JS alone. A
+# webfont arrives through three different doors: a <link> in index.html, a
+# url() in the compiled CSS, and a fetch built in JS. Upstream used the
+# first; scanning only build/assets/*.js would have declared the Google
+# Fonts links clean while every page load still hit fonts.googleapis.com.
+# So scan everything the build emits at the top level.
+SCAN_FILES=(build/assets/*.js build/assets/*.css build/index.html)
+EXISTING_SCAN=()
+for f in "${SCAN_FILES[@]}"; do
+  [[ -e "$f" ]] && EXISTING_SCAN+=("$f")
+done
+if ((${#EXISTING_SCAN[@]} == 0)); then
+  echo "Nothing to scan for third-party hosts -- did the build output layout change?"
+  exit 1
+fi
 
 TP_FAIL=0
 for host in "${THIRD_PARTY_HOSTS[@]}"; do
   # -F: the dots are literal hostname characters, not regex wildcards.
   # `|| true` for the same pipefail reason documented above -- no match is
   # the PASS case here, and grep exits 1 on no match.
-  HITS="$({ grep -ohF "$host" "${JS_FILES[@]}" || true; } | wc -l | tr -d '[:space:]')"
+  HITS="$({ grep -ohF "$host" "${EXISTING_SCAN[@]}" || true; } | wc -l | tr -d '[:space:]')"
   if [[ "$HITS" -ne 0 ]]; then
-    echo "MISSING compiled JS calls out to ${host} (${HITS} occurrence(s))"
+    echo "MISSING build output references ${host} (${HITS} occurrence(s))"
     TP_FAIL=1
   else
-    echo "OK      compiled JS carries 0 references to ${host}"
+    echo "OK      build output carries 0 references to ${host}"
   fi
 done
 
@@ -220,16 +238,92 @@ if [[ "$TP_FAIL" -ne 0 ]]; then
   cat <<'MSG'
 
 A third-party host this product does not name is back in the shipped
-bundle. The usual cause: a `git subtree pull` restored upstream's
-getRepoStars/getDiscordCount bodies in
-src/frontend/src/controllers/API/index.ts, or re-added the host to one of
-the domain lists in src/frontend/src/controllers/API/api.tsx.
+output. The usual causes, by host:
 
-Both functions must return without making a network call, and neither
-api.github.com nor discord.com may appear in authorizedDomains or
-EXTERNAL_DOMAINS. See the comments in those two files for why.
+  api.github.com / discord.com
+    A `git subtree pull` restored upstream's getRepoStars/getDiscordCount
+    bodies in src/frontend/src/controllers/API/index.ts, or re-added the
+    host to a domain list in src/frontend/src/controllers/API/api.tsx.
+    Both functions must return without making a network call.
+
+  fonts.googleapis.com / fonts.gstatic.com
+    The Google Fonts <link> tags are back in src/frontend/index.html.
+    The fonts ship with the app instead -- see the @font-face blocks at
+    the top of nufi/brand.css and the woff2 files in nufi/fonts/.
+
+See the comments in those files for why each was removed.
 MSG
   exit 1
 fi
 
 echo "OK -- the build makes no calls to hosts this product does not name."
+
+# THE FOURTH CHECK (webfont integrity). The fonts in nufi/fonts/ are the
+# only binary files this fork owns, and binaries are exactly what a
+# line-ending rule silently destroys. Upstream's apps/nufi-agent/
+# .gitattributes opens with `* text eol=lf` and lists the binary types it
+# knows about -- png, jpg, ico, gif, mp4, svg, wav, raw -- but not woff2.
+# On their first commit, eight of the eighteen files lost 1-3 bytes to CRLF
+# normalisation. Nothing failed: `npm run build` happily emitted the
+# truncated files, the CSS still referenced them, every other check here
+# stayed green, and the damage would only surface as a browser quietly
+# refusing to render the font. nufi/.gitattributes now marks them binary;
+# this check is what makes that stick.
+#
+# A WOFF2 file starts with the signature `wOF2` and stores its own total
+# length as a big-endian uint32 at offset 8 (W3C WOFF2 spec, section 5.1).
+# Any byte dropped from the middle leaves that field disagreeing with the
+# file on disk, which is precisely the corruption above -- so comparing the
+# two catches it without needing a font parser.
+# cwd is apps/nufi-agent/src/frontend (set at the top of this script), so
+# nufi/ is two levels up. Deliberately not derived from $0: by this point
+# the script has already cd'd, and a relative $0 no longer resolves.
+FONT_DIR="../../nufi/fonts"
+FONT_FILES=("$FONT_DIR"/*.woff2)
+if [[ ! -e "${FONT_FILES[0]}" ]]; then
+  echo "MISSING no webfonts under nufi/fonts/ -- the self-hosted fonts are gone"
+  exit 1
+fi
+
+FONT_FAIL=0
+for font in "${FONT_FILES[@]}"; do
+  sig="$(head -c 4 "$font")"
+  if [[ "$sig" != "wOF2" ]]; then
+    echo "MISSING $(basename "$font") is not a WOFF2 file (signature: '${sig}')"
+    FONT_FAIL=1
+    continue
+  fi
+  # bytes 8-11, big-endian uint32
+  # GNU od supports --endian; BSD od (macOS) does not and exits nonzero,
+  # which `set -e` would turn into a silent script death right here -- so
+  # absorb its status and fall through to the byte-by-byte path below.
+  declared="$({ od -An -tu4 --endian=big -j8 -N4 "$font" 2>/dev/null || true; } | tr -d '[:space:]')"
+  if [[ -z "$declared" ]]; then
+    # BSD od (macOS) has no --endian; assemble the four bytes by hand.
+    read -r b0 b1 b2 b3 <<<"$(od -An -tu1 -j8 -N4 "$font" | tr -s ' ')"
+    declared=$(( b0 * 16777216 + b1 * 65536 + b2 * 256 + b3 ))
+  fi
+  actual="$(wc -c <"$font" | tr -d '[:space:]')"
+  if [[ "$declared" != "$actual" ]]; then
+    echo "MISSING $(basename "$font") is truncated: header declares ${declared} bytes, file is ${actual}"
+    FONT_FAIL=1
+  fi
+done
+
+if [[ "$FONT_FAIL" -ne 0 ]]; then
+  cat <<'MSG'
+
+At least one self-hosted webfont is damaged. The usual cause: the file was
+committed as text and line-ending-normalised, dropping the CRLF byte pairs
+inside its compressed stream.
+
+  git check-attr text -- apps/nufi-agent/nufi/fonts/inter-latin-wght-normal.woff2
+
+must report `text: unset`. If it does not, nufi/.gitattributes is missing
+or no longer applies, and every .woff2 under it needs re-adding from a
+clean copy -- `git add` alone will not undo the normalisation.
+MSG
+  exit 1
+fi
+
+echo "OK      all ${#FONT_FILES[@]} self-hosted webfonts have intact WOFF2 headers"

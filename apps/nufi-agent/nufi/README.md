@@ -204,20 +204,82 @@ two now-dead `api.github.com` entries from `authorizedDomains` and
 `EXTERNAL_DOMAINS`. Two core files, both added to the fork-diff allowlist.
 Re-measured after the fix: only the two Google Fonts hosts remain.
 
-**Google Fonts is still an outbound call** — `src/frontend/index.html`
-loads Chivo, Inter and JetBrains Mono from `fonts.googleapis.com`. Same
-class of leak, but fixing it means self-hosting the woff2 files
-(`@fontsource-*` packages, ~1–2 MB into the bundle, plus
-`src/frontend/package.json` and its lockfile into the allowlist), so it is
-named here as a known, unfixed item rather than folded into this change.
+**Google Fonts was the same leak, and is also fixed.**
+`src/frontend/index.html` loaded Chivo, Inter and JetBrains Mono from
+`fonts.googleapis.com`, with a preconnect to `fonts.gstatic.com` — 6
+requests per session, carrying each user's IP and Referer to a CDN this
+product never mentions. The three tags are gone and the fonts ship with
+the app: 18 variable woff2 files (latin, latin-ext, vietnamese; normal and
+italic; 616 KB on disk) under `nufi/fonts/`, re-declared by `@font-face`
+blocks at the top of `nufi/brand.css` under the family names the app
+already asks for.
+
+Nothing else changed — no component, no Tailwind config, no token, and no
+new dependency. The `@fontsource-variable` packages were used only as the
+source of the files and then uninstalled, so `src/frontend/package.json`
+and its lockfile are untouched and the allowlist did not grow: `nufi/` is
+already allowlisted wholesale. All three families are SIL OFL 1.1;
+the licences sit beside the files in `nufi/fonts/`.
+
+Measured after the change, driving the same browsing session: **zero
+non-localhost requests.** The browser fetches one 52 KB woff2 from the app
+itself.
+
+### The fonts were corrupted by the first commit
+
+Worth recording, because nothing failed. `git add` on the eighteen woff2
+files printed eight line-ending warnings, and eight of the files went into
+the commit **1–3 bytes shorter than they are on disk**. Upstream's
+`apps/nufi-agent/.gitattributes` opens with `* text eol=lf` and then names
+the binary types it knows about — png, jpg, ico, gif, mp4, svg, wav, raw.
+Webfonts are not on that list, so every CRLF byte pair inside a compressed
+font stream was rewritten to a single LF.
+
+Every downstream step stayed happy: `npm run build` emitted the truncated
+files, the compiled CSS referenced them, all four existing checks were
+green, and the only symptom would have been a browser quietly declining to
+render the font — for whoever cloned the repo next, not for the machine
+that made the commit, whose working copy was still intact.
+
+Two things close it. `nufi/.gitattributes` marks `*.woff2`/`*.woff`/`*.ttf`
+`*.otf` as binary — scoped to `nufi/` so the upstream-owned file is not
+touched, since a deeper `.gitattributes` wins. And `check-brand-css.sh`
+now verifies every font's WOFF2 header: the format stores its own total
+length as a big-endian uint32 at offset 8, so a file missing bytes from the
+middle disagrees with its own header. Falsified by deleting one byte from
+the middle of `inter-latin-wght-normal.woff2`:
+
+```
+$ ./nufi/check-brand-css.sh
+MISSING inter-latin-wght-normal.woff2 is truncated: header declares 48256 bytes, file is 48255
+   (exit 1)
+
+$ # byte restored
+$ ./nufi/check-brand-css.sh
+OK      all 18 self-hosted webfonts have intact WOFF2 headers
+   (exit 0)
+```
+
+`git check-attr text -- apps/nufi-agent/nufi/fonts/<any>.woff2` should
+report `text: unset`. Note that re-running `git add` after fixing the
+attributes is not enough on its own — the normalised blob is already in the
+index, and the files have to be re-added from a clean copy.
 
 ## Verifying the third-party-call guard
 
-`check-brand-css.sh` greps the compiled bundle for `api.github.com` and
-`discord.com/api`, so a `git subtree pull` that restores upstream's
-function bodies fails CI instead of quietly restoring the calls. Proven to
-go red before it was trusted green — restore the upstream fetch, run the
-guard, then put the fix back:
+`check-brand-css.sh` scans everything the build emits — `build/assets/*.js`,
+`build/assets/*.css` and `build/index.html` — for `api.github.com`,
+`discord.com/api`, `fonts.googleapis.com` and `fonts.gstatic.com`, so a
+`git subtree pull` that restores upstream's function bodies or link tags
+fails CI instead of quietly restoring the calls.
+
+Scanning all three outputs rather than the JS alone is not belt-and-braces:
+a webfont arrives through a `<link>` in `index.html`, the star count through
+JS, and a `url()` in CSS. A JS-only scan would have called the Google Fonts
+links clean while every page load still hit the CDN.
+
+Proven to go red before it was trusted green — restore the upstream fetch,
+run the guard, then put the fix back:
 
 ```
 $ # with `fetch("https://api.github.com/repos/" + owner + "/" + repo)` restored
@@ -229,11 +291,21 @@ OK      compiled JS carries 0 references to discord.com/api
 
 $ # with the fix restored
 $ ./nufi/check-brand-css.sh
-OK      compiled JS carries 0 references to api.github.com
-OK      compiled JS carries 0 references to discord.com/api
+OK      build output carries 0 references to api.github.com
+OK      build output carries 0 references to discord.com/api
+OK      build output carries 0 references to fonts.googleapis.com
+OK      build output carries 0 references to fonts.gstatic.com
 OK -- the build makes no calls to hosts this product does not name.
    (exit 0)
 ```
+
+The fonts half was falsified the same way, and caught something worth
+recording: with a Google Fonts `<link>` put back, the guard reported
+`fonts.googleapis.com (3 occurrence(s))` — one from the restored tag and
+**two from the explanatory HTML comment left in `index.html` naming the
+host.** HTML comments survive minification, unlike the JS and CSS comments
+elsewhere in this fork. That comment is now written without naming either
+host, and says so.
 
 ## Asset sweep: what's rendered vs. what's genuinely inert
 
