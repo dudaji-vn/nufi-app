@@ -92,6 +92,28 @@ JIT-provision defaults for new users:
 | `DEFAULT_RPM_LIMIT`       | `60`    | Requests per minute              |
 | `KEY_DEFAULT_DURATION`    | `90d`   | TTL of issued keys               |
 
+Keys issued through the connect flow inherit all five, so raising
+`DEFAULT_USER_BUDGET` raises what an agent may spend on someone's behalf.
+
+## Handing keys to NUFI Agents
+
+| Variable                 | Default | Purpose                                        |
+|--------------------------|---------|------------------------------------------------|
+| `AGENTS_ALLOWED_ORIGINS` | unset   | Origins the console will issue a gateway key to |
+
+Comma-separated, exact origins — `https://agents.nufi.me`. No wildcards, no
+suffix matching, and **unset disables the endpoint** rather than opening it.
+
+This is the security boundary of the whole connect flow, not a convenience
+setting. Any page on the internet can open `console.nufi.me/connect`; the
+visitor's chat cookie rides along and the console will correctly recognise them.
+Being asked is not suspicious — handing the key back to whoever asked is. Add
+only origins you run.
+
+The other half lives in NUFI Agents itself, under Settings → Plugins → NUFI
+Connection, where an instance admin sets the console URL. Both are needed; see
+[Installing NUFI Agents](/docs/deployment/agents-install#the-connect-plugin).
+
 ## E2E smoke test
 
 Required by `./scripts/e2e-smoke-test.sh`:

@@ -61,6 +61,12 @@ NUFI_MODEL_API_KEY=<gateway key>
 built-in adapter list wholesale, so an adapter absent from the file is
 unavailable rather than falling back to a vendor default.
 
+`NUFI_MODEL_API_KEY` is now a **fallback**, not the only way in. It is one key
+shared by every agent on the server: spend is a single number, and revoking it
+revokes it for everyone. Prefer per-member keys via
+[the connect plugin](#the-connect-plugin) and leave this unset unless the
+install is genuinely single-tenant.
+
 ## Verifying the install
 
 **Adapters resolved as intended.** On startup the server logs which it accepted:
@@ -95,6 +101,43 @@ apps/agents/nufi/egress/verify-egress.sh <agent-namespace>
 
 Until this passes, agent traffic is routed to the gateway by convention, not
 held there by policy. Do not describe the deployment as protected before it does.
+
+## The connect plugin
+
+Lets each member hand this installation their own gateway key from the session
+they already have at NUFI chat, so runs bill the person the work belongs to.
+End-user steps: [Connecting your NUFI account](/docs/end-user/agent-connect).
+
+```bash
+cd apps/agents
+pnpm --dir nufi/connect-plugin install
+pnpm --dir nufi/connect-plugin build
+pnpm paperclipai plugin install "$PWD/nufi/connect-plugin"
+pnpm paperclipai plugin list      # expect: key=nufi.connect status=ready
+```
+
+Then two settings, in two places. **Both are required** — the flow silently does
+nothing useful with only one.
+
+| Where | Setting | Value |
+|---|---|---|
+| Agents → Settings → Plugins → NUFI Connection | NUFI console URL | `https://console.nufi.me` |
+| Console environment | `AGENTS_ALLOWED_ORIGINS` | `https://agents.nufi.me` |
+
+<Callout type="warn">
+`AGENTS_ALLOWED_ORIGINS` is a security control, not configuration ceremony. Any
+page can open the console's connect window, and a signed-in visitor is
+legitimately recognised there; this list is the only thing that stops the
+console handing the minted key back to whoever asked. Matching is exact —
+no wildcards, no suffix matching — and an empty value **disables** the endpoint
+rather than opening it.
+</Callout>
+
+Then, once per company, an administrator opens **Settings → NUFI** and adds the
+`NUFI_MODEL_API_KEY` secret. That creates the slot; each member still supplies
+their own value. Bind it on an agent as an environment variable of the same name
+referencing the user secret, and every run resolves it to the key of whoever the
+work belongs to.
 
 ## Installing the NUFI adapter
 

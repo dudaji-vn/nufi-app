@@ -29,6 +29,62 @@ jobs:
       - name: Validate nufi/adapters.json
         run: node apps/agents/nufi/verify-adapters.mjs
 
+  connect-plugin:
+    name: Connect plugin
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.x
+      - name: Install dependencies
+        working-directory: apps/agents/nufi/connect-plugin
+        run: bun install --frozen-lockfile
+      # The popup handshake: an origin or nonce that does not match must be
+      # dropped, because a `message` listener hears from every frame and
+      # extension on the page.
+      - name: Test
+        working-directory: apps/agents/nufi/connect-plugin
+        run: bun test
+      - name: TypeScript
+        working-directory: apps/agents/nufi/connect-plugin
+        run: bun run typecheck
+      # The UI bundle must keep exactly the bare specifiers the host rewrites
+      # and inline everything else — it is imported from a blob URL, which has
+      # no base for resolving a relative path.
+      - name: Build
+        working-directory: apps/agents/nufi/connect-plugin
+        run: bun run build
+      - name: UI bundle imports only host-provided modules
+        working-directory: apps/agents/nufi/connect-plugin
+        run: |
+          set -euo pipefail
+          unexpected=$(grep -oE '^import .* from "[^"]+"' dist/ui/index.js \
+            | grep -oE '"[^"]+"$' \
+            | tr -d '"' \
+            | grep -vE '^(react|react/jsx-runtime|react-dom|react-dom/client|@paperclipai/plugin-sdk/ui)$' \
+            || true)
+          if [ -n "$unexpected" ]; then
+            echo "UI bundle imports specifiers the host cannot resolve:"
+            echo "$unexpected"
+            exit 1
+          fi
+          echo "OK — bundle imports only host-provided modules."
+
+  adapter:
+    name: NuFi adapter
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.x
+      # Covers credential resolution: a per-member secret bound to the agent
+      # must win over the server-wide key, or per-member attribution is a lie.
+      - name: Test
+        working-directory: apps/agents/nufi/adapter
+        run: bun test
+
   rebrand:
     name: Rebrand transform
     runs-on: ubuntu-latest

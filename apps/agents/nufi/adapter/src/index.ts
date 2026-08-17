@@ -23,6 +23,12 @@ Core fields:
   apiKeyEnv     NAME of the env var holding the model key (default
                 NUFI_MODEL_API_KEY). Never the key itself — adapter config is
                 visible in the UI.
+
+Credential: the adapter reads that name from the agent's resolved env first and
+the server's process env second. The normal setup is per member — bind
+NUFI_MODEL_API_KEY on this agent as a user secret, and each person connects
+their own NUFI account under Settings → NUFI. Runs then bill the member who
+owns the work, and revoking one person changes nothing for anyone else.
   maxTokens     default 4096. Do not set this low: the model spends its
                 reasoning budget before emitting text, so a small cap returns
                 an empty answer rather than an error, and the run is then

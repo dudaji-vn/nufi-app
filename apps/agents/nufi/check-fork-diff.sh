@@ -22,6 +22,9 @@ TAG=$(node -p "require('./$PIN').tag")
 # Paths NuFi owns, relative to apps/agents/. Anything else must match upstream.
 ALLOWLIST=(
   "nufi/"
+  # Upstream bug fix, see nufi/README.md "Upstream patches". Sent upstream;
+  # drop this entry once a release carries the fix.
+  "ui/src/plugins/slots.tsx"
   "ui/src/nufi-brand.css"
   "ui/nufi-rebrand.ts"
   "ui/nufi-rebrand.test.ts"
