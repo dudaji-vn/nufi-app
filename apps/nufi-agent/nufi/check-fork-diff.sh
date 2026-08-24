@@ -71,6 +71,17 @@ ALLOWLIST=(
   "src/frontend/src/customization/config-constants.ts"
   "src/frontend/src/controllers/API/index.ts"
   "src/frontend/src/controllers/API/api.tsx"
+  # Backend-rendered product name. The Vite rebrand plugin is frontend-only, so
+  # these strings ship to the canvas verbatim -- see nufi/check-backend-brand.sh,
+  # which is what keeps them correct after a resync.
+  "src/lfx/src/lfx/components/files_and_knowledge/ingestion.py"
+  "src/lfx/src/lfx/components/files_and_knowledge/knowledge.py"
+  "src/lfx/src/lfx/components/models_and_agents/memory.py"
+  "src/lfx/src/lfx/components/processing/store_message.py"
+  "src/lfx/src/lfx/base/agents/default_system_prompt.py"
+  "src/lfx/src/lfx/base/knowledge_bases/ingestion_sources/file_upload.py"
+  "src/lfx/src/lfx/_assets/component_index.json"
+  "src/backend/base/langflow/initial_setup/starter_projects/"
 )
 
 echo "Comparing apps/nufi-agent against ${REPO} @ ${TAG}"
