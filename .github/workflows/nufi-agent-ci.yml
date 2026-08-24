@@ -37,6 +37,20 @@ jobs:
       - name: Check ko.json has no orphan keys and covers the declared demo path
         run: ./apps/nufi-agent/nufi/check-locale-parity.sh
 
+  backend-brand:
+    name: Backend strings carry the NuFi product name
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      # No build and no dependencies: the strings this checks are literals in
+      # Python and JSON source, so a grep over the tree is the whole job. It
+      # exists as its own check rather than a step inside brand-css because it
+      # covers the half of the UI that build cannot see -- component metadata
+      # rendered from the backend, which the frontend rebrand plugin never
+      # touches.
+      - name: Check no user-facing backend string names the upstream product
+        run: ./apps/nufi-agent/nufi/check-backend-brand.sh
+
   brand-css:
     name: Compiled CSS carries the NuFi brand tokens
     runs-on: ubuntu-latest
