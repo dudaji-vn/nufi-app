@@ -39,7 +39,12 @@ ENV NODE_OPTIONS=--max-old-space-size=4096
 COPY src/frontend/package.json src/frontend/package-lock.json ./
 RUN npm ci
 
-COPY nufi /app/nufi
+# Only what the frontend build actually reads: index.css imports brand.css,
+# brand.css references ./fonts, and vite.config.mts imports rebrand.ts. Copying
+# the whole nufi/ directory also copies this Dockerfile, so every edit to it
+# invalidated the npm-install and vite layers below for no reason.
+COPY nufi/rebrand.ts nufi/brand.css /app/nufi/
+COPY nufi/fonts /app/nufi/fonts
 COPY src/frontend ./
 RUN npm run build
 
@@ -58,6 +63,27 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
 COPY --from=frontend /app/src/frontend/build ./src/backend/base/langflow/frontend
+
+# A build that succeeds is not evidence of a branded image. The rename is a
+# Vite plugin wired in through vite.config.mts; lose the plugin and the build
+# still succeeds, still deploys, and greets a customer by the upstream name.
+# Asserting here means an unbranded image cannot be produced at all -- better
+# than a CI step that checks after the tag is already public.
+#
+# The bare-word test matches nufi/check-brand-css.sh: compound identifiers like
+# LangflowTooltip and translation KEYS like builtWithLangflow are deliberately
+# left alone by the rename, so only \bLangflow\b counts.
+RUN set -eu; \
+    d=./src/backend/base/langflow/frontend; \
+    if [ ! -f "$d/index.html" ]; then \
+      echo "the frontend was never copied into the image"; exit 1; fi; \
+    if ! grep -q 'NUFI Studio' "$d/index.html"; then \
+      echo "index.html does not carry the product name -- the rebrand plugin did not run"; exit 1; fi; \
+    if grep -qi 'langflow' "$d/index.html"; then \
+      echo "index.html still names the upstream product"; exit 1; fi; \
+    if grep -rq '\bLangflow\b' "$d"/assets/*.js; then \
+      echo "compiled JS still carries the bare word Langflow"; exit 1; fi; \
+    echo "brand assertion passed"
 
 RUN uv sync --frozen --no-dev
 ENV PATH="/app/.venv/bin:$PATH"

@@ -50,17 +50,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # A built image is not evidence of a branded one. The rebrand runs as a
-      # Vite plugin, so a build that silently loses the plugin still succeeds
-      # and still deploys -- it just ships upstream's name to a customer.
-      - name: Assert the shipped image carries the NuFi brand
-        run: |
-          set -euo pipefail
-          tag="$(printf '%s' '${{ steps.meta.outputs.tags }}' | head -1)"
-          docker pull "$tag"
-          index="/app/src/backend/base/langflow/frontend/index.html"
-          nufi="$(docker run --rm "$tag" sh -c "grep -c 'NUFI Studio' $index || true")"
-          upstream="$(docker run --rm "$tag" sh -c "grep -ci 'langflow' $index || true")"
-          echo "NUFI Studio: $nufi   upstream name: $upstream"
-          test "$nufi" -ge 1
-          test "$upstream" -eq 0
+      # The brand assertion lives in the Dockerfile itself, so an unbranded
+      # image cannot be built at all -- see apps/nufi-agent/nufi/Dockerfile.
+      # Checking here instead would mean pulling a 4 GB image back down to
+      # inspect something that was already published.
