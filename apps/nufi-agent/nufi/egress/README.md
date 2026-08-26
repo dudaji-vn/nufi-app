@@ -1,10 +1,10 @@
-# Gateway egress for NuFi Agent
+# Gateway egress for NUFI Studio
 
 ## Status: NOT RUN — needs a human
 
-**Gateway containment for NuFi Agent is a claim, not a measurement, until
+**Gateway containment for NUFI Studio is a claim, not a measurement, until
 `verify-egress.sh` has run against a real cluster and printed `PASS`.** There
-is no Kubernetes cluster, no Cilium, and no NuFi Agent deployment available in
+is no Kubernetes cluster, no Cilium, and no NUFI Studio deployment available in
 the environment this was authored in. Nothing in this directory has been
 executed. See "Running the verification" below for the exact commands and
 what to do with the result.
@@ -35,7 +35,7 @@ one:
   URL is the fat fork this entire plan exists to avoid.
 
 **Consequence: the network egress boundary is not the second layer of
-defence for NuFi Agent's *model traffic*. It is the only one.** An
+defence for NUFI Studio's *model traffic*. It is the only one.** An
 unverified claim about the only layer of defence for that traffic is worse
 than no claim, which is why this directory exists and why Step 4 below is
 not optional.
@@ -112,8 +112,8 @@ cilium-network-policy.ts` (DNS resolution rule + a single `toFQDNs` rule).
 
 | File | What it does |
 |---|---|
-| `networkpolicy.yaml` | A `CiliumNetworkPolicy` scoping the NuFi Agent pod's egress to cluster DNS plus `api.codechi.me:443`, and nothing else. Namespace is left unset in the manifest — apply with `kubectl apply -n <namespace> -f networkpolicy.yaml`. The pod selector (`app.kubernetes.io/name: nufi-agent`) is a naming assumption, not read off a real Deployment manifest, because none exists in this repo yet — see the file's header comment. |
-| `verify-egress.sh` | Tries to break the containment claim from inside a running NuFi Agent pod: curls `api.codechi.me` (must succeed) and `api.openai.com` (must fail, or the chokepoint doesn't exist). Inverted-logic pass/fail, matching a falsification test rather than a healthcheck. Every probe is classified as `reached` / `blocked` / `INCONCLUSIVE` (exit 0/1/2 respectively) — a probe that never ran to completion (`curl` missing, RBAC denial, ...) is never reported as PASS, only as INCONCLUSIVE. |
+| `networkpolicy.yaml` | A `CiliumNetworkPolicy` scoping the NUFI Studio pod's egress to cluster DNS plus `api.codechi.me:443`, and nothing else. Namespace is left unset in the manifest — apply with `kubectl apply -n <namespace> -f networkpolicy.yaml`. The pod selector (`app.kubernetes.io/name: nufi-agent`) is a naming assumption, not read off a real Deployment manifest, because none exists in this repo yet — see the file's header comment. |
+| `verify-egress.sh` | Tries to break the containment claim from inside a running NUFI Studio pod: curls `api.codechi.me` (must succeed) and `api.openai.com` (must fail, or the chokepoint doesn't exist). Inverted-logic pass/fail, matching a falsification test rather than a healthcheck. Every probe is classified as `reached` / `blocked` / `INCONCLUSIVE` (exit 0/1/2 respectively) — a probe that never ran to completion (`curl` missing, RBAC denial, ...) is never reported as PASS, only as INCONCLUSIVE. |
 | `README.md` | This file. |
 
 ## Running the verification
@@ -126,9 +126,9 @@ Requires:
   `cilium status` (if the CLI is available) reports the agent healthy. A
   cluster that has Cilium installed but is still running a different
   primary CNI will accept this manifest and enforce nothing.
-- A NuFi Agent pod deployed and labeled to match `networkpolicy.yaml`'s
+- A NUFI Studio pod deployed and labeled to match `networkpolicy.yaml`'s
   `endpointSelector`.
-- **`curl` present inside the NuFi Agent pod's own image.**
+- **`curl` present inside the NUFI Studio pod's own image.**
   `verify-egress.sh` execs into the pod and runs `curl` there — if the
   image doesn't ship it, every probe reports `INCONCLUSIVE`, not `PASS` or
   `FAIL` (see that script's own header comment for why this is classified
@@ -161,7 +161,7 @@ kubectl delete -n <nufi-agent-namespace> -f apps/nufi-agent/nufi/egress/networkp
 Expected output on success:
 
 ```
-PASS: only the gateway is reachable from the NuFi Agent pod.
+PASS: only the gateway is reachable from the NUFI Studio pod.
 ```
 
 `verify-egress.sh` exits `0` for `PASS`, `1` for `FAIL`, and `2` for
@@ -177,7 +177,7 @@ active CNI rather than a plain-NetworkPolicy fallback). **Fix the cluster,
 not the script.** None of this has been run in the environment this task
 was completed in; running it, reading the result, and recording the date
 and outcome here (or in the design doc's phase tracker) is a follow-up a
-human with cluster access has to do before "NuFi Agent's model traffic is
+human with cluster access has to do before "NUFI Studio's model traffic is
 gateway-confined" is said as a fact rather than a design intention.
 
 ## What this does and does not cover
@@ -241,7 +241,7 @@ directly from that:
    absolute guarantee at the IP level.
 
 4. **This policy has one `endpointSelector` and assumes one pod type.** If
-   NuFi Agent's real deployment ever splits into more than one pod role —
+   NUFI Studio's real deployment ever splits into more than one pod role —
    e.g. a separate worker or executor pod that actually runs flows,
    distinct from a web/API pod — a pod of a role this policy's selector
    doesn't match sits entirely outside its reach, with Cilium's default-allow
@@ -273,15 +273,15 @@ directly from that:
    silently. **Checked: `DO_NOT_TRACK` is currently set nowhere in this
    branch's actual deployment path** — it appears only in upstream's own
    CI test workflows (`.github/workflows/python_test.yml`,
-   `cross-platform-test.yml`, both unrelated to how NuFi Agent itself gets
+   `cross-platform-test.yml`, both unrelated to how NUFI Studio itself gets
    deployed) and in vendored docs pages, not in `.env.example`, not in
-   `deploy/`, not anywhere a NuFi Agent operator would see it before first
-   boot. Set `DO_NOT_TRACK=true` on the NuFi Agent deployment — both to
+   `deploy/`, not anywhere a NUFI Studio operator would see it before first
+   boot. Set `DO_NOT_TRACK=true` on the NUFI Studio deployment — both to
    silence the log noise this policy would otherwise cause, and, more to
    the point, so the deployment stops sending the beacon in the first
    place rather than merely having it fail closed.
 
-6. **NuFi Agent's own frontend makes hardcoded outbound calls to
+6. **NUFI Studio's own frontend makes hardcoded outbound calls to
    langflow-ai's GitHub infrastructure, independent of scarf.sh telemetry
    above — all of them fail under this policy, and that failure is
    expected, not a bug in the policy.** Whoever applies this policy to a
@@ -322,7 +322,7 @@ directly from that:
    None of these three should be added to `networkpolicy.yaml`'s allowlist
    to "fix" the failure — they're upstream community-facing infrastructure
    this fork has already decided (via the brand/link sweep and this
-   egress policy alike) NuFi Agent should not be calling in a contained
+   egress policy alike) NUFI Studio should not be calling in a contained
    deployment. The correct fix for the examples gallery specifically is
    product work (serve examples another way), not a policy exception.
 
@@ -342,7 +342,7 @@ directly from that:
   the pod's `EGRESS ENFORCEMENT` state before ever running the probe.
 - **Namespace.** Left unset in the manifest; supplied at apply time.
 - **Scope.** DNS + `api.codechi.me:443` only, per the task brief. Whether
-  that's sufficient for NuFi Agent's *own* runtime dependencies (as opposed
+  that's sufficient for NUFI Studio's *own* runtime dependencies (as opposed
   to model traffic) depends on how it's actually deployed: **by default,
   Langflow needs neither** — `database_url` defaults to `None`, which
   `src/lfx/src/lfx/services/settings/groups/database.py:22-25` documents as
@@ -359,6 +359,6 @@ directly from that:
   deployment configured that way — otherwise the database/storage
   connection breaks the moment this policy is enforced, not just model
   calls to an unlisted vendor.
-- **Ingress is untouched.** This file governs egress only. NuFi Agent is a
+- **Ingress is untouched.** This file governs egress only. NUFI Studio is a
   UI application; something still needs to reach it inbound. That's a
   separate concern from model-traffic containment and out of scope here.

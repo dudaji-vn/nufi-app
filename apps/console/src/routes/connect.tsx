@@ -8,7 +8,7 @@ import { api, isUnauthorized } from '@/lib/orpc';
 /**
  * Consent screen for handing a gateway key to another NUFI app.
  *
- * Opened as a popup by NUFI Agents. The chat cookie arrives with this top-level
+ * Opened as a popup by NUFI Works. The chat cookie arrives with this top-level
  * navigation, so the console knows who the visitor is; this page asks whether
  * they want a key minted for the app that opened it, and delivers the answer
  * back through `postMessage`.
@@ -62,14 +62,14 @@ function ConnectPage() {
   if (done) {
     return (
       <Panel icon={<Check className="size-5 text-primary" />} title="Connected">
-        <p>Your key has been sent to NUFI Agents. You can close this window.</p>
+        <p>Your key has been sent to NUFI Works. You can close this window.</p>
       </Panel>
     );
   }
 
   if (!hasOpener) {
     return (
-      <Panel icon={<AlertTriangle className="size-5" />} title="Open this from NUFI Agents">
+      <Panel icon={<AlertTriangle className="size-5" />} title="Open this from NUFI Works">
         <p>
           This page issues a key to an app that opened it. Nothing opened this one, so there is
           nowhere to send a key. Start from Settings → NUFI in the Agents app.
@@ -153,7 +153,7 @@ function ConnectPage() {
   return (
     <Panel
       icon={<ShieldCheck className="size-5 text-primary" />}
-      title="Give NUFI Agents a gateway key"
+      title="Give NUFI Works a gateway key"
     >
       <p>
         <span className="font-mono break-all">{begin.data.origin}</span> is asking for a key that

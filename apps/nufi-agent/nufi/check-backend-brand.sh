@@ -89,4 +89,57 @@ MSG
   exit 1
 fi
 
+# ---------------------------------------------------------------------------
+# The component index carries its own SHA256, and renaming strings inside it
+# invalidates that hash.
+#
+# The failure is quiet and costs real time. lfx/interface/components.py checks
+# the hash and `return None` on a mismatch, so Langflow silently discards the
+# prebuilt index and rescans every component at boot -- while logging
+# "integrity check failed ... may be corrupted or tampered", which reads to
+# whoever finds it like a security incident rather than a stale checksum.
+#
+# This went unnoticed from the moment the first brand string was edited into
+# the file. Hence a check rather than a note.
+#
+# The hash is computed the same way components.py computes it. stdlib json
+# reproduces orjson's OPT_SORT_KEYS output byte for byte here, so this needs no
+# dependency beyond python3.
+INDEX="src/lfx/src/lfx/_assets/component_index.json"
+
+if [[ -f "$INDEX" ]]; then
+  if ! python3 - "$INDEX" <<'PYCHECK'
+import hashlib, json, sys
+
+path = sys.argv[1]
+with open(path, encoding="utf-8") as fh:
+    blob = json.load(fh)
+
+stored = blob.pop("sha256", None)
+if not stored:
+    print(f"MISSING {path} has no sha256 field")
+    sys.exit(1)
+
+calc = hashlib.sha256(
+    json.dumps(blob, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+).hexdigest()
+
+if stored != calc:
+    print("MISMATCH the component index sha256 no longer matches its contents")
+    print(f"  stored: {stored}")
+    print(f"  actual: {calc}")
+    print()
+    print("Langflow will discard the prebuilt index and rescan components at boot,")
+    print("logging an integrity warning that reads like tampering. Fix by replacing")
+    print("the stored value with the actual one -- edit that one field in place, do")
+    print("not re-serialise the file, or the diff becomes half a megabyte of noise.")
+    sys.exit(1)
+
+print("OK    component index sha256 matches its contents")
+PYCHECK
+  then
+    exit 1
+  fi
+fi
+
 echo "OK -- no user-facing backend string names the upstream product."

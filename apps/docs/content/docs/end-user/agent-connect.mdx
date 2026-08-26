@@ -1,10 +1,10 @@
 ---
 title: Connecting your NUFI account
-description: Give NUFI Agents a gateway key from the session you already have, so agents run on your budget and your usage — not a shared credential.
+description: Give NUFI Works a gateway key from the session you already have, so agents run on your budget and your usage — not a shared credential.
 ---
 
 <Callout>
-This page is about **NUFI Agents**. It only applies once an administrator has
+This page is about **NUFI Works**. It only applies once an administrator has
 finished the one-time setup described at the bottom.
 </Callout>
 
@@ -49,7 +49,7 @@ workspace at the same time, so there is never a forgotten credential left live.
 Anything still using the old key stops working immediately. Agents keep working:
 they resolve the secret at run time, not once at setup.
 
-Connecting to a second NUFI Agents installation does not disturb the first. Each
+Connecting to a second NUFI Works installation does not disturb the first. Each
 gets its own key.
 
 ## When the button is not there
@@ -77,7 +77,7 @@ so it is worth checking.
 
 Two settings, in two places, and the flow does not work until both are done:
 
-1. In NUFI Agents, **Settings → Plugins → NUFI Connection** → set **NUFI console
+1. In NUFI Works, **Settings → Plugins → NUFI Connection** → set **NUFI console
    URL** to your console address, e.g. `https://console.nufi.me`.
 2. On the console, set `AGENTS_ALLOWED_ORIGINS` to this installation's origin,
    e.g. `https://agents.nufi.me`.
@@ -88,5 +88,5 @@ be recognised there — the allow-list is what stops the console from handing th
 key back to whoever asked. Matching is exact: no wildcards, no suffix matching,
 and an empty value disables the feature rather than opening it.
 
-See [Installing NUFI Agents](/docs/deployment/agents-install) for the plugin
+See [Installing NUFI Works](/docs/deployment/agents-install) for the plugin
 install itself.

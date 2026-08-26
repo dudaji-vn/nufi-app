@@ -8,7 +8,7 @@ import { o } from '../orpc.ts';
 /**
  * `/connect` — hand a gateway key to another NUFI app the user is signed in to.
  *
- * NUFI Agents opens a popup here. Because that is a top-level navigation the
+ * The NUFI Works app opens a popup here. Because that is a top-level navigation the
  * chat cookie rides along, so the console can identify the visitor without the
  * opener holding any credential of its own — and without depending on the two
  * apps sharing a site, which they do not on-prem or on a laptop.

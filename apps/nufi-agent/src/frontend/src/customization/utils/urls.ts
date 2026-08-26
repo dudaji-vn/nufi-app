@@ -15,7 +15,7 @@ export function getHealthCheckUrl(): string {
 // flow's playground view (modals/IOModal/playground-modal.tsx, gated on
 // ENABLE_PUBLISH -- true, so this is live). The rebrand transform
 // (nufi/rebrand.ts) already rewrites the badge's own label text to
-// "Built with NuFi Agent" (it comes from locales/en.json), but the
+// "Built with NUFI Studio" (it comes from locales/en.json), but the
 // transform deliberately leaves URL literals alone so real links keep
 // working -- which meant the NuFi-labelled badge still sent a click to
 // https://langflow.org, a competitor's homepage. Pointed at the app's own

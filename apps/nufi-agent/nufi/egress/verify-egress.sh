@@ -73,7 +73,7 @@
 # -------------------------------------------------------
 # A separately-launched probe pod only proves the *namespace* is confined if
 # its labels happen to match the policy's endpointSelector -- easy to get
-# subtly wrong. Exec'ing into the actual NuFi Agent pod removes that
+# subtly wrong. Exec'ing into the actual NUFI Studio pod removes that
 # variable: whatever labels it already carries are definitionally the ones
 # the policy must be matching (or failing to match).
 #
@@ -88,8 +88,8 @@
 #
 # Usage: apps/nufi-agent/nufi/egress/verify-egress.sh <namespace> [pod-label-selector]
 #
-#   <namespace>            Namespace the NuFi Agent pod runs in. Required.
-#   [pod-label-selector]   kubectl label selector for the NuFi Agent pod.
+#   <namespace>            Namespace the NUFI Studio pod runs in. Required.
+#   [pod-label-selector]   kubectl label selector for the NUFI Studio pod.
 #                          Default: app.kubernetes.io/name=nufi-agent -- must
 #                          match networkpolicy.yaml's endpointSelector. If
 #                          that file's selector was changed to match a real
@@ -107,7 +107,7 @@ GATEWAY="api.codechi.me"
 VENDOR="api.openai.com"
 VENDOR_PATH="/v1/models"
 
-echo "Finding a running NuFi Agent pod in namespace '$NS' (selector: $POD_LABEL_SELECTOR)…"
+echo "Finding a running NUFI Studio pod in namespace '$NS' (selector: $POD_LABEL_SELECTOR)…"
 POD=$(kubectl -n "$NS" get pod -l "$POD_LABEL_SELECTOR" \
   --field-selector=status.phase=Running \
   -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
@@ -229,7 +229,7 @@ case "$vendor_outcome" in
     echo
     echo "FAIL: $VENDOR is reachable (HTTP ${PROBE_CODE:-<unknown>}). The"
     echo "      chokepoint does NOT exist for this deployment -- every claim"
-    echo "      that NuFi Agent's model traffic is confined to the gateway is"
+    echo "      that NUFI Studio's model traffic is confined to the gateway is"
     echo "      false here. A 2xx would be the least ambiguous proof of this,"
     echo "      but any status code (${PROBE_CODE:-<unknown>} included) means"
     echo "      TCP+TLS to the vendor succeeded, which is already the failure."
@@ -245,7 +245,7 @@ case "$vendor_outcome" in
     ;;
   blocked)
     echo
-    echo "PASS: only the gateway is reachable from the NuFi Agent pod."
+    echo "PASS: only the gateway is reachable from the NUFI Studio pod."
     exit 0
     ;;
 esac

@@ -58,7 +58,7 @@ fails the build if that is violated.
 | Path | What it is | Why it earned a place |
 |---|---|---|
 | `nufi/` | This directory — configuration and notes. Never in upstream | The one place a fork can hold arbitrary files without ever conflicting with `git subtree pull` |
-| `src/frontend/index.html` | The HTML shell | Carries `<title>NuFi Agent</title>` (upstream shipped `<title>Langflow</title>` here) and the `<link rel="icon">` / `<link rel="manifest">` tags — the one entry point where the product name and marks are wired in before any JS runs |
+| `src/frontend/index.html` | The HTML shell | Carries `<title>NUFI Studio</title>` (upstream shipped `<title>Langflow</title>` here) and the `<link rel="icon">` / `<link rel="manifest">` tags — the one entry point where the product name and marks are wired in before any JS runs |
 | `src/frontend/src/style/index.css` | The real CSS entry point — imported first in `index.tsx`, ahead of `App.css` and `applies.css` | Holds the Tailwind/shadcn `:root` CSS variable tokens (`--foreground`, `--background`, `--primary`, …). This is where brand colours get overridden, the same role `apps/agents/ui/src/index.css` plays for Paperclip. **Note:** the task brief named this file `src/frontend/src/index.css`; that path does not exist in `v1.11.2` — the file was moved to `src/frontend/src/style/index.css` at some point in Langflow's history. The allowlist below uses the real path so a future brand-token edit here doesn't turn CI red |
 | `src/frontend/vite.config.mts` | The Vite build config | Where a NuFi rebrand plugin will be registered, mirroring `nufiRebrand()` in `apps/agents/ui/vite.config.ts` — a build-time product-name transform rather than 62 hand-edited files (see design doc §3) |
 | `src/frontend/public/favicon.ico` | Browser-tab icon | Swapped for the NuFi mark |
@@ -97,7 +97,7 @@ rendering Langflow's live GitHub star count and a Discord member count
 (`components/core/appHeaderComponent/index.tsx`, backed by
 `stores/darkStore.ts`'s `refreshStars`/`refreshDiscordCount`, which called
 `api.github.com` and `discord.com` until those fetches were removed — see
-"The calls behind the removed links" below), each linking off "NuFi Agent" to
+"The calls behind the removed links" below), each linking off "NUFI Studio" to
 langflow-ai/langflow's own community channels. One click from the header
 and an evaluator is looking at the fork's own upstream project — the exact
 opposite of what a white-label is for.
@@ -129,7 +129,7 @@ not a sample:
 | `components/custom-langflow-counts.tsx` | Delegated to `LangflowCounts` — the header's live GitHub-star/Discord-member badge, both linking to langflow-ai/langflow's channels | Renders `null` |
 | `components/custom-get-started-progress.tsx` | Delegated to `GetStartedProgress` — a sidebar onboarding checklist shown to every signed-in user with a fresh project until dismissed, whose "Star Repo"/"Join Community" steps (`sidebar.starRepo`/`sidebar.joinCommunity`) are live click targets to the same GitHub repo and Discord server via `GITHUB_URL`/`DISCORD_URL`. Worse than the header badge in one respect: it's an active call-to-action, not a passive counter | Renders `null` — see "What was traded away" below for the one cosmetic side effect and why the checklist wasn't forked instead |
 | `components/custom-empty-page.tsx` | Delegated to `pages/MainPage/pages/empty-page.tsx`'s `EmptyPageCommunity` — the empty-project welcome screen, the *first screen a fresh install shows*. Two large cards below the welcome text: a GitHub-star card and a Discord-member card, both with descriptive copy and an external-link affordance, both wired to the same upstream channels | No longer delegates to `EmptyPageCommunity`; owns a NuFi-authored copy of the same layout (logo, welcome text, drag-and-drop wrapper, "create first flow" button) with both cards removed — see "What was traded away" below |
-| `utils/urls.ts` (`LangflowButtonRedirectTarget`) | Backs the playground/publish view's "Built with Langflow" badge (`modals/IOModal/playground-modal.tsx`, gated on `ENABLE_PUBLISH` — `true` in `customization/feature-flags.ts`, so this is live on any published flow, not dead code). `nufi/rebrand.ts` already rewrites the badge's own label to "Built with NuFi Agent" at build time (it's sourced from `locales/en.json`), but the transform deliberately never touches URL literals so real links keep working — which meant a badge that *reads* "Built with NuFi Agent" still sent a click to `https://langflow.org`, a competitor's homepage, dressed up as NuFi's own attribution link | Returns `/` (the app's own root) instead. No NuFi marketing URL exists to point at yet; self-referential was judged strictly better than off-brand |
+| `utils/urls.ts` (`LangflowButtonRedirectTarget`) | Backs the playground/publish view's "Built with Langflow" badge (`modals/IOModal/playground-modal.tsx`, gated on `ENABLE_PUBLISH` — `true` in `customization/feature-flags.ts`, so this is live on any published flow, not dead code). `nufi/rebrand.ts` already rewrites the badge's own label to "Built with NUFI Studio" at build time (it's sourced from `locales/en.json`), but the transform deliberately never touches URL literals so real links keep working — which meant a badge that *reads* "Built with NUFI Studio" still sent a click to `https://langflow.org`, a competitor's homepage, dressed up as NuFi's own attribution link | Returns `/` (the app's own root) instead. No NuFi marketing URL exists to point at yet; self-referential was judged strictly better than off-brand |
 | `components/custom-terms-links.tsx`, `custom-header.tsx`, `custom-banner.tsx`, `custom-header-menu-items-title.tsx`, `custom-feedback-dialog.tsx`, `custom-api-generator.tsx` | Already render nothing (`<></>`) in upstream `v1.11.2` itself — these are upstream's own OSS-build no-ops, not something this fork touched | None needed |
 | `components/custom-store-button.tsx`, `custom-loader.tsx` | Real content (a "Store" sidebar button; a DataStax-flavoured loading state), but both gated on `ENABLE_DATASTAX_LANGFLOW` — `false` in `customization/feature-flags.ts` — confirmed dead at the only call site (`folderSidebarComponent/.../sideBarFolderButtons/index.tsx:526`) | None needed; noted here so a future flip of that flag doesn't silently resurrect a Langflow-branded store button without this file being re-checked |
 | `config-constants.ts` (`DOCS_LINK = "https://docs.langflow.org"`), `utils/custom-get-app-latest-version.ts`, `utils/analytics.ts` | A real third-party URL and two network-shaped functions, but all three confirmed dead: `DOCS_LINK` has no import site anywhere in the tree; `customGetAppVersions`/`customGetLatestVersion` already return `null` (no GitHub release check); `track`/`trackFlowBuild`/`trackDataLoaded` already no-op (no analytics beacon) | None needed |
@@ -425,7 +425,7 @@ wired up. Overriding dead tokens is zero-risk but also zero-value, so it was
 skipped rather than padding the diff).
 
 **`public/manifest.json`.** `name`/`short_name` changed `"Langflow"` →
-`"NuFi Agent"` (matching `PRODUCT` in `nufi/rebrand.ts` — this file is a
+`"NUFI Studio"` (matching `PRODUCT` in `nufi/rebrand.ts` — this file is a
 static asset in `public/`, copied byte-for-byte by Vite, so the build-time
 rebrand transform never touches it; Task 2's report flagged this as carried
 forward, and this task closes it). Added `theme_color` and
@@ -435,13 +435,13 @@ to dark (`<body class="dark">`), so navy-900 is the correct default surface
 for a PWA install/splash-screen.
 
 `description` needed more than a mechanical rename. The first pass swapped
-the noun in Langflow's own sentence ("NuFi Agent is a low-code builder that
+the noun in Langflow's own sentence ("NUFI Studio is a low-code builder that
 makes it easier to build powerful AIs that can use any API, model, or
 database.") — legally fine under Langflow's MIT license, but adopting a
 competitor's positioning as NuFi's own product description is a business
 call, not an engineering one, and this build is customer-facing. Replaced
 with a plain factual description in NuFi's own words:
-"NuFi Agent is a visual editor for building, testing, and running AI
+"NUFI Studio is a visual editor for building, testing, and running AI
 workflows that connect language models, APIs, and data sources." — see
 `NEEDS PRODUCT SIGN-OFF` in the Task 3 report; a human should confirm or
 replace this before it ships.
@@ -611,7 +611,7 @@ map, not nested — namespace here means the dotted prefix):
 - `common.langflowLogo` / `common.langflowLogoLight` / `common.langflowLogoDark`
   — image alt text whose *entire content* is the bare product word. The
   build-time rebrand transform (`nufi/rebrand.ts`) already rewrites
-  `"Langflow"` to `"NuFi Agent"` in every locale JSON value; a Korean
+  `"Langflow"` to `"NUFI Studio"` in every locale JSON value; a Korean
   translation here would only be `"Langflow 로고"`-shaped noise around a
   word the transform already owns, with no informational content of its
   own to localize.
@@ -661,8 +661,8 @@ with. All 313 keys (`deployments.*` + `mcp.*` + `settings.mcpClient.*`) were
 translated in Fix round 1 to close this specific gap. Verified in the
 compiled bundle, not just the source JSON: `build/assets/ko-*.js` after
 `npm run build` shows zero literal `"Langflow"` and the expected
-`"NuFi Agent ..."` rewrites for every string in the new namespaces that
-named the product, e.g. `NuFi Agent 및 Watsonx Orchestrate에서 배포
+`"NUFI Studio ..."` rewrites for every string in the new namespaces that
+named the product, e.g. `NUFI Studio 및 Watsonx Orchestrate에서 배포
 {{name}}을(를) 영구적으로 삭제합니다.` (from `deployments.deleteDeploymentConfirm`)
 — and `"Watsonx Orchestrate"` / `"watsonx Orchestrate"`, a third-party
 product name, survives untouched in both castings, as it should.
@@ -931,8 +931,8 @@ conventional Korean UI pattern, not an inconsistency to flag.
   build-time rebrand transform (`nufi/rebrand.ts`) runs on every `.json`
   module in the Vite graph — including a dynamically `import()`-ed locale
   file, the same way it already does for `en.json` — and rewrites the
-  bare word `"Langflow"` to `"NuFi Agent"`. Translating it into Korean, or
-  hardcoding `"NuFi Agent"` directly in `ko.json`, would both produce text
+  bare word `"Langflow"` to `"NUFI Studio"`. Translating it into Korean, or
+  hardcoding `"NUFI Studio"` directly in `ko.json`, would both produce text
   the transform can no longer find and rewrite consistently with the rest
   of the app. **Not independently re-verified for `ko.json` specifically
   beyond confirming the transform's own logic applies to any `.json`

@@ -1,7 +1,7 @@
 {
-  "name": "NuFi Agent",
-  "short_name": "NuFi Agent",
-  "description": "NuFi Agent is a visual editor for building, testing, and running AI workflows that connect language models, APIs, and data sources.",
+  "name": "NUFI Studio",
+  "short_name": "NUFI Studio",
+  "description": "NUFI Studio is a visual editor for building, testing, and running AI workflows that connect language models, APIs, and data sources.",
   "theme_color": "#080810",
   "background_color": "#080810",
   "icons": [

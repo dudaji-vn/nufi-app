@@ -19,7 +19,7 @@ import { useFolderStore } from "@/stores/foldersStore";
  * fetched via useDarkStore -- see stores/darkStore.ts -- the same widget
  * the header drops in custom-langflow-counts.tsx). It's the first screen a
  * fresh install shows, so those two cards are the highest-visibility
- * instance of "NuFi Agent" advertising the upstream project it was forked
+ * instance of "NUFI Studio" advertising the upstream project it was forked
  * from -- worse than the header badge, since these are full click targets
  * with descriptive copy, not a passive counter.
  *

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Builds src/frontend/src/locales/ko.json -- the NuFi Agent demo-path
+"""Builds src/frontend/src/locales/ko.json -- the NUFI Studio demo-path
 Korean translation (Task 4, docs/superpowers/sdd/
 2026-08-10-nufi-agent-fork-whitelabel/task-4-brief.md).
 
@@ -20,7 +20,7 @@ flow-control(concept)=흐름 제어 component=컴포넌트 approve=승인 review
 
 "Langflow" is kept as a literal English token wherever the English source
 contains it, so the existing build-time rebrand transform (nufi/rebrand.ts)
-rewrites it to "NuFi Agent" the same way it does for en.json -- translating
+rewrites it to "NUFI Studio" the same way it does for en.json -- translating
 it ourselves would just be dead text the transform never touches.
 
 Interpolation-adjacent particles: Korean subject/object/topic particles

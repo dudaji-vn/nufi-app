@@ -52,7 +52,7 @@ import type { Plugin } from "vite";
  * from the module id, which is the one place the file's real type is known
  * for certain.
  */
-export const PRODUCT = "NuFi Agent";
+export const PRODUCT = "NUFI Studio";
 
 /**
  * import/export ... from "..."; a bare `from "..."` re-export clause counts

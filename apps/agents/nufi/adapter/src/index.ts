@@ -1,5 +1,5 @@
 export const type = "nufi_agent";
-export const label = "NUFI Agent";
+export const label = "NUFI Works";
 
 export const models = [
   { id: "gemini", label: "Gemini (via the NUFI gateway)" },

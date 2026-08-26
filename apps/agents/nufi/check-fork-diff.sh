@@ -25,6 +25,8 @@ ALLOWLIST=(
   # Upstream bug fix, see nufi/README.md "Upstream patches". Sent upstream;
   # drop this entry once a release carries the fix.
   "ui/src/plugins/slots.tsx"
+  # Single sign-on. See nufi/README.md, "Signing in with a NUFI account".
+  "server/src/auth/better-auth.ts"
   "ui/src/nufi-brand.css"
   "ui/nufi-rebrand.ts"
   "ui/nufi-rebrand.test.ts"
