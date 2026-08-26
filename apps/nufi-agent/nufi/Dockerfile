@@ -52,7 +52,18 @@ RUN npm run build
 FROM python:3.12-slim AS runtime
 ENV PYTHONUNBUFFERED=1 \
     UV_LINK_MODE=copy \
-    PORT=7860
+    PORT=7860 \
+    DO_NOT_TRACK=true \
+    LANGFLOW_DO_NOT_TRACK=true
+# Upstream telemetry is ON by default and POSTs to
+# https://langflow.gateway.scarf.sh -- a third-party analytics gateway --
+# carrying package, version, platform, python, arch, cache_type, backend_only
+# and auto_login. That is our deployment configuration going to someone else,
+# from a product we are white-labelling. Off in the image so it cannot be lost
+# with an environment variable.
+#
+# Note the value: Langflow compares DO_NOT_TRACK.lower() == "true". NUFI Works
+# compares it to "1". The same variable does not disable both.
 WORKDIR /app
 
 RUN apt-get update \
