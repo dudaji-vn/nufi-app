@@ -111,11 +111,11 @@ def main():
 
     # 2) chat translates the MeshBox contract to OpenAI and back
     code, out = _post(base + "/v1/chat",
-                      {"message": "안녕", "history": [
-                          {"role": "user", "text": "이전"},
-                          {"role": "assistant", "text": "네"}]})
+                      {"message": "hello", "history": [
+                          {"role": "user", "text": "previous"},
+                          {"role": "assistant", "text": "yes"}]})
     assert code == 200, (code, out)
-    assert out["reply"] == "reply to: 안녕", out
+    assert out["reply"] == "reply to: hello", out
     assert out["model"] == "nufi-local-qwen", out
 
     # 3) missing message -> 400

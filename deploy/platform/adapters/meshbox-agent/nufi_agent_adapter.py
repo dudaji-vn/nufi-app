@@ -85,6 +85,9 @@ class Config:
         self.default_flow = os.environ.get("NUFI_AGENT_DEFAULT_FLOW", "").strip()
         self.run_path = os.environ.get("NUFI_AGENT_RUN_PATH",
                                        "/api/v1/run").rstrip("/") or "/api/v1/run"
+        # Korean-by-design default (the appliance ships to Korean-speaking
+        # departments); reads "Run the '{routine}' routine." Override with
+        # NUFI_AGENT_INPUT_TEMPLATE, e.g. "Run the '{routine}' routine.".
         self.input_template = os.environ.get(
             "NUFI_AGENT_INPUT_TEMPLATE", "'{routine}' 루틴을 실행하세요.")
         self.host = os.environ.get("ADAPTER_HOST", "0.0.0.0")

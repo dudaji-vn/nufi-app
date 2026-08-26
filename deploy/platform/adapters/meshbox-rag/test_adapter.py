@@ -64,12 +64,12 @@ class _FakeRag(BaseHTTPRequestHandler):
             if _FakeRag.empty:
                 return self._json(200, {"documents": []})
             if _FakeRag.synth:
-                return self._json(200, {"answer": "규정 3조에 따라 15일입니다.",
+                return self._json(200, {"answer": "Per company policy article 3, it is 15 days.",
                                         "sources": ["hr.pdf#3"]})
             return self._json(200, {"documents": [
-                {"page_content": "연차 휴가는 15일이다.",
+                {"page_content": "Annual leave is 15 days.",
                  "metadata": {"source": "hr.pdf", "page": 3}},
-                {"page_content": "병가는 별도 규정을 따른다.",
+                {"page_content": "Sick leave follows a separate policy.",
                  "metadata": {"source": "hr.pdf", "page": 4}},
             ]})
         return self._json(404, {"error": "nope"})
@@ -101,8 +101,8 @@ class _FakeGen(BaseHTTPRequestHandler):
         if self.path == "/v1/chat/completions":
             ctx = body["messages"][-1]["content"]
             content = "" if _FakeGen.empty_reply else \
-                ("근거 문맥에 따르면 답은 15일입니다. "
-                 f"(문맥 길이={len(ctx)})")
+                ("Per the provided context, the answer is 15 days. "
+                 f"(context length={len(ctx)})")
             return self._json(200, {"model": body.get("model", "nufi-local-qwen"),
                                     "choices": [{"message": {"role": "assistant",
                                                              "content": content}}]})
@@ -162,7 +162,7 @@ def main():
 
     # 2) document upload translates {name,text} -> {id,chunks}
     code, out = _post(base + "/v1/documents",
-                      {"name": "hr.pdf", "text": "연차 휴가는 15일이다."})
+                      {"name": "hr.pdf", "text": "Annual leave is 15 days."})
     assert code == 200, (code, out)
     assert out["id"] == "doc-42" and out["chunks"] >= 1, out
 
@@ -171,9 +171,9 @@ def main():
     assert _post(base + "/v1/documents", {"name": "x"})[0] == 400
 
     # 4) two-hop RAG: retriever chunks -> grounded answer + sources
-    code, out = _post(base + "/v1/query", {"question": "연차 며칠?"})
+    code, out = _post(base + "/v1/query", {"question": "How many annual leave days?"})
     assert code == 200, (code, out)
-    assert "15일" in out["answer"], out
+    assert "15 days" in out["answer"], out
     assert out["sources"] == ["hr.pdf#3", "hr.pdf#4"], out
 
     # 5) missing question -> 400
@@ -181,14 +181,14 @@ def main():
 
     # 6) retriever that already synthesizes an answer -> pass-through (no gen)
     _FakeRag.synth = True
-    code, out = _post(base + "/v1/query", {"question": "연차 며칠?"})
+    code, out = _post(base + "/v1/query", {"question": "How many annual leave days?"})
     assert code == 200, (code, out)
-    assert out["answer"] == "규정 3조에 따라 15일입니다." and out["sources"] == ["hr.pdf#3"], out
+    assert out["answer"] == "Per company policy article 3, it is 15 days." and out["sources"] == ["hr.pdf#3"], out
     _FakeRag.synth = False
 
     # 7) empty completion -> honest 502 (never fabricate)
     _FakeGen.empty_reply = True
-    assert _post(base + "/v1/query", {"question": "연차 며칠?"})[0] == 502
+    assert _post(base + "/v1/query", {"question": "How many annual leave days?"})[0] == 502
     _FakeGen.empty_reply = False
 
     adapter.shutdown()

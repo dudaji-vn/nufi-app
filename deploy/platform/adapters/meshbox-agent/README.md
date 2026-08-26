@@ -48,7 +48,7 @@ unwired** → `502` (never a fabricated result).
 | `NUFI_AGENT_FLOW_MAP` | – | JSON `{routine_id: flow_id}` routing map |
 | `NUFI_AGENT_DEFAULT_FLOW` | – | flow for routines not in the map |
 | `NUFI_AGENT_RUN_PATH` | `/api/v1/run` | run path (flow appended in flow mode) |
-| `NUFI_AGENT_INPUT_TEMPLATE` | `'{routine}' 루틴을 실행하세요.` | `input_value` template |
+| `NUFI_AGENT_INPUT_TEMPLATE` | `'{routine}' 루틴을 실행하세요.` (Korean-by-design; means "Run the '{routine}' routine.") | `input_value` template |
 | `ADAPTER_HOST` / `ADAPTER_PORT` | `0.0.0.0` / `8902` | bind address |
 | `NUFI_AGENT_TIMEOUT` | `120` | run timeout (s) — agent runs are slow |
 | `NUFI_EGRESS_MODE` | `audit` | `enforce` = refuse to dial an off-mesh `NUFI_AGENT_URL` (`403`); `audit` records only |

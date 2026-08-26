@@ -62,6 +62,24 @@ Two more adapters extend the chat pattern to the remaining MeshBox sockets:
 Keep stable for the appliance: the `/v1/documents`·`/v1/query`·`/v1/run` ⇄ upstream
 translations + the `502` honest boundary, and the `:8901`/`:8902` ports.
 
+## Egress guard (nufi-app side) — CMP-511 W4
+
+Each adapter carries `nufi_egress.py`, the on-box twin of the appliance's
+`portal/egress.py` (feasibility gap **#6**). It is the symmetric guarantee: an
+adapter must never be talked into dialing an upstream (litellm-proxy, nufi-agent,
+console) that sits on the public internet. Allowed targets = loopback /
+RFC1918-private / link-local IP, a `.mesh` (or configured mesh-domain) name, a host
+inside a configured mesh CIDR, or an explicitly allow-listed host. Everything else
+is public and **DENIED** (`403`) in `enforce` mode.
+
+- Mode is `audit` by default (records the decision, never raises) so enforcement is
+  an explicit per-deployment choice; **the sellable appliance stack sets `enforce`**.
+- Config: `NUFI_EGRESS_MODE` (`audit`|`enforce`), `NUFI_MESH_DOMAIN`,
+  `NUFI_MESH_CIDRS`, `NUFI_EGRESS_ALLOW`. Kept stdlib-only, like the adapters.
+
+Keep stable for the appliance: the deny-by-default classification and the `403`
+refusal so department data cannot be shipped off the box.
+
 ## Identity federation (chat) — CMP-509
 
 nufi-app's **Console is the identity authority** for the appliance. Two console
@@ -96,3 +114,47 @@ the `federation`+`audience` client fields, and `/oidc/userinfo`'s claim set.
   nufi-agent deployed in the tier and per-routine `NUFI_AGENT_FLOW_MAP` flows built.
 - **G5 admin-panel:** not in this platform compose yet; the appliance wires
   `API_SERVER_URL` to console best-effort — confirm the real contract.
+
+## nufi-app files changed — inventory by workstream
+
+Everything the integration added on the nufi-app side is **new, additive** code
+(three self-contained adapters + one console endpoint), so it does not touch the
+nufi-app product runtime. Full inventory, newest last:
+
+| Workstream (commit) | nufi-app files | What changed |
+|---------------------|----------------|--------------|
+| **PoC chat gap #1** (`e567ff1a6`) | `adapters/meshbox-chat/`: `nufi_chat_adapter.py`, `Dockerfile`, `README.md`, `test_adapter.py` | New chat adapter: MeshBox `/v1/chat` ⇄ OpenAI `/v1/chat/completions`, `502` honest boundary. |
+| **W0 contract** (`ad667685a`) | `deploy/platform/docs/meshbox-appliance-integration.md` | This doc — nufi-app half of the contract. |
+| **W3 RAG+Agent** (`4097c6a50`) | `adapters/meshbox-rag/`: `nufi_rag_adapter.py`, `Dockerfile`, `README.md`, `test_adapter.py`; `adapters/meshbox-agent/`: `nufi_agent_adapter.py`, `Dockerfile`, `README.md`, `test_adapter.py`; doc update | Two new adapters: RAG (retrieve→ground, `:8901`) and Agent (routine→Langflow, `:8902`). |
+| **W2 federation** (`2435e047d`) | `apps/console/server/oidc.ts` (+`oidc.test.ts`); `adapters/meshbox-chat/nufi_chat_adapter.py` (+`test_federation.py`, `README.md`); doc update | Console `POST /oidc/federated-token` token-exchange grant; chat adapter verifies `X-MeshBox-Identity` → per-user litellm key. **Only nufi-app product-code touch: `oidc.ts` (additive endpoint behind a `federation:true` client flag).** |
+| **W4 egress** (`82db8233b`) | `adapters/meshbox-chat/` + `adapters/meshbox-agent/`: new `nufi_egress.py` + `test_egress.py`; small wiring in each `nufi_*_adapter.py`, `Dockerfile`, `README.md` | Deny-by-default egress guard so an adapter refuses a public upstream (`403`). |
+
+**Only one nufi-app *product* file was modified** (`apps/console/server/oidc.ts`),
+and additively — a new grant type gated behind an opt-in client flag; the existing
+authorization-code path is unchanged. Everything else lives under
+`deploy/platform/adapters/` and ships as separate images, honoring the GUARDRAILS
+principle (heavy runtime stays out of the stdlib portal).
+
+## How to build, run, and verify
+
+The appliance orchestrates these images from this checkout; you rarely run an
+adapter by hand, but here is the end-to-end path.
+
+1. **Build** — the appliance tiered compose builds each adapter from
+   `${NUFI_APP_DIR}/deploy/platform/adapters/<name>/`. Standalone:
+   `docker build -t nufi/meshbox-chat-adapter:local adapters/meshbox-chat/`.
+2. **Run (tier)** — from the appliance repo:
+   `NUFI_APP_DIR=/path/to/nufi-app docker compose -f deploy/docker-compose.base.yml up`
+   (add `-f docker-compose.standard.yml` / `full.yml` to layer up). The chat adapter
+   listens on the port MeshBox `portal/ai.py` targets via `MESHBOX_CHAT_URL`.
+3. **Configure** — chat: `NUFI_UPSTREAM_URL`, `NUFI_UPSTREAM_API_KEY`
+   (falls back to `LITELLM_MASTER_KEY`), `NUFI_MODEL`; rag: `NUFI_RAG_URL`,
+   `NUFI_UPSTREAM_URL`; agent: `NUFI_AGENT_URL`, `NUFI_AGENT_FLOW_MAP`; federation:
+   `NUFI_FEDERATION_REQUIRED`, `NUFI_LITELLM_KEYMAP`; egress: `NUFI_EGRESS_MODE`.
+4. **Verify (unit, no Docker)** — each adapter self-tests against a stub upstream:
+   `python3 adapters/meshbox-chat/test_adapter.py` (and `test_federation.py`,
+   `test_egress.py`); likewise `meshbox-rag/` and `meshbox-agent/`. Exit 0 = PASS.
+5. **Verify (e2e, appliance)** — the appliance suite drives the whole seam live:
+   `cd appliance && ./tests/run.sh` — `test_nufi_chat_e2e`, `test_nufi_rag_e2e`,
+   `test_nufi_agent_e2e`, `test_nufi_proxy_e2e`, `test_federation_e2e`,
+   `test_hardening_e2e`, `test_tier_e2e` all PASS.

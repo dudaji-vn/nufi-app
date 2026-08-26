@@ -69,6 +69,12 @@ import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+# Korean-by-design default: the appliance ships to Korean-speaking departments, so
+# the grounded RAG answer defaults to Korean. Override with NUFI_SYSTEM_PROMPT.
+# English meaning of the default: "You are an in-house document QA assistant. Answer
+# concisely in Korean, grounded ONLY in the '문맥' (context) below; if the context
+# does not support an answer, say you don't know — never fabricate." The Korean label
+# '문맥' (context) / '질문' (question) below is kept consistent with this prompt.
 DEFAULT_SYSTEM_PROMPT = (
     "당신은 사내 문서 기반 질의응답 도우미입니다. 아래 '문맥'에 있는 내용만 근거로 "
     "한국어로 간결히 답하세요. 문맥에 근거가 없으면 모른다고 답하고 지어내지 마세요."

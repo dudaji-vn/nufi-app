@@ -57,7 +57,7 @@ class _FakeAgent(BaseHTTPRequestHandler):
         _ = self.rfile.read(n)
         if _FakeAgent.mode == "clean":
             return self._json(200, {"status": "completed",
-                                    "output": "메일 5건 요약 완료"})
+                                    "output": "Summarized 5 emails"})
         if _FakeAgent.mode == "error":
             return self._json(200, {"outputs": [], "status": "error",
                                     "message": "flow build failed"})
@@ -66,7 +66,7 @@ class _FakeAgent(BaseHTTPRequestHandler):
         # default: Langflow nested success shape
         return self._json(200, {"outputs": [{"outputs": [
             {"results": {"message": {
-                "text": "회의록 요약: 액션아이템 3건 정리했습니다."}}}]}]})
+                "text": "Meeting summary: organized 3 action items."}}}]}]})
 
 
 def _serve(handler_cls, port):
@@ -127,14 +127,14 @@ def main():
     # 2) mapped routine hits the mapped flow; nested output normalized
     _FakeAgent.mode = "flow"
     code, out = _post(base + "/v1/run", {"routine_id": "r2",
-                                         "routine": "회의록 요약·액션아이템"})
+                                         "routine": "meeting summary / action items"})
     assert code == 200, (code, out)
     assert out["status"] == "completed", out
-    assert "액션아이템" in out["output"], out
+    assert "action items" in out["output"], out
     assert _FakeAgent.last_path == "/api/v1/run/flow-minutes", _FakeAgent.last_path
 
     # 3) unmapped routine falls back to default flow
-    _post(base + "/v1/run", {"routine_id": "r9", "routine": "기타"})
+    _post(base + "/v1/run", {"routine_id": "r9", "routine": "other"})
     assert _FakeAgent.last_path == "/api/v1/run/flow-abc", _FakeAgent.last_path
 
     # 4) missing routine_id -> 400
@@ -160,8 +160,8 @@ def main():
     _wait(base2 + "/healthz")
     with urllib.request.urlopen(base2 + "/healthz", timeout=5) as r:
         assert json.loads(r.read())["mode"] == "clean"
-    code, out = _post(base2 + "/v1/run", {"routine_id": "r3", "routine": "메일 요약"})
-    assert code == 200 and out["output"] == "메일 5건 요약 완료", (code, out)
+    code, out = _post(base2 + "/v1/run", {"routine_id": "r3", "routine": "email summary"})
+    assert code == 200 and out["output"] == "Summarized 5 emails", (code, out)
     assert _FakeAgent.last_path == "/v1/run", _FakeAgent.last_path
 
     adapter2.shutdown()

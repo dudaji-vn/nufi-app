@@ -171,11 +171,11 @@ def main():
     bob = _mk_token("bob@dept.local")
 
     # 1) alice's turn is attributed to alice's virtual key + user
-    code, out = _chat(base, "회의록 요약", alice)
+    code, out = _chat(base, "summarize the meeting notes", alice)
     assert code == 200, (code, out)
     # 2) bob's turn, then alice again — interleaved members must not bleed
-    assert _chat(base, "규정 확인", bob)[0] == 200
-    assert _chat(base, "다시 요약", alice)[0] == 200
+    assert _chat(base, "check the policy", bob)[0] == 200
+    assert _chat(base, "summarize again", alice)[0] == 200
 
     assert len(_AUDIT) == 3, _AUDIT
     assert _AUDIT[0] == {"key": "sk-alice", "user": "alice@dept.local",
@@ -186,13 +186,13 @@ def main():
 
     # 3) honest boundary: required identity missing -> 401, nothing forwarded
     before = len(_AUDIT)
-    code, out = _chat(base, "익명 요청")
+    code, out = _chat(base, "anonymous request")
     assert code == 401, (code, out)
     assert len(_AUDIT) == before, "an unidentified request must not reach litellm"
 
     # 4) tampered audience -> refused locally (before the console is asked)
     wrong_aud = _mk_token("mallory@dept.local", aud="some-other-app")
-    code, out = _chat(base, "권한 없는 청중", wrong_aud)
+    code, out = _chat(base, "unauthorized audience", wrong_aud)
     assert code == 401, (code, out)
     assert "audience" in out.get("error", ""), out
 

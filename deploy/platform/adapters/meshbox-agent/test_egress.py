@@ -80,7 +80,7 @@ def test_adapter_enforce_refuses_public_agent():
             break
         except Exception:
             time.sleep(0.05)
-    code, out = _post(base + "/v1/run", {"routine_id": "r1", "routine": "회의록"})
+    code, out = _post(base + "/v1/run", {"routine_id": "r1", "routine": "meeting-notes"})
     assert code == 403, (code, out)
     assert "egress denied" in out.get("error", ""), out
     httpd.shutdown()
