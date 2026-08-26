@@ -58,8 +58,29 @@ record, and one of those cannot be done from a terminal at all.
 | ✅ | Authorization-code flow for Works | 11 tests, 10 of them cases that must fail |
 | ✅ | Works consumes the console | fork guard watched failing first, then 58 → 59 files, exactly one more |
 | ✅ | The chooser at `agents.nufi.me` | live: chooser host redirects `/`, console host untouched, `/rpc` `/enter` `/oidc` still answer on both |
-| ✅ | Both image definitions and workflows | Studio image built locally; Works wrapper written |
+| ✅ | Both image definitions and workflows | Studio image built (4.36 GB) and booted; Works wrapper written |
+| ✅ | **Studio SSO proven against the real image** | see below |
 | ✅ | `verify-agents.sh` | written; runs against a deployed surface |
+
+**Studio SSO, run against the container in JWKS mode with tokens the console
+actually signed:**
+
+| Cookie presented | Result |
+|---|---|
+| identity minted by `/enter/studio` | signed in, user provisioned on first sight |
+| identity minted for **NUFI Works**, replayed at Studio | refused |
+| forged, unsigned | refused |
+| wrong issuer | refused |
+| expired | refused |
+| none | bounced to `/login` with a password field |
+
+In a real browser with a valid cookie the SPA lands on "Welcome to NUFI
+Studio" — no login screen, no password field, `/api/v1/session` 200 followed
+by projects, flows and variables all 200.
+
+The audience row is the one worth keeping. A token the console legitimately
+issued for one product does not work in the other, which is the property the
+design claims and the reason each consumer gets its own audience.
 
 **Blocked on a person:**
 
