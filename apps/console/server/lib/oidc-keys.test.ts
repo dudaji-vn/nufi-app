@@ -58,3 +58,44 @@ describe('identity tokens', () => {
     }
   });
 });
+
+/**
+ * The PEM path, which the tests above never touch because they leave
+ * OIDC_PRIVATE_KEY_PEM unset and fall through to the generated key.
+ *
+ * That gap was not hypothetical. importPKCS8 returns a NON-EXTRACTABLE
+ * CryptoKey, so deriving the public JWK by exporting the private key throws --
+ * and since production always sets a PEM, every JWKS request would have
+ * returned 500 while every test stayed green.
+ */
+describe('a configured signing key', () => {
+  it('publishes a JWKS and signs a verifiable token from a PKCS#8 PEM', async () => {
+    const { generateKeyPair: gen, exportPKCS8 } = await import('jose');
+    const { privateKey } = await gen('RS256', { extractable: true });
+    const pem = await exportPKCS8(privateKey);
+
+    // The module caches its key, so the PEM path is exercised in a subprocess
+    // with the variable set rather than by reaching into module state.
+    const script = `
+      process.env.OIDC_PRIVATE_KEY_PEM = ${JSON.stringify(pem)};
+      const { getJwks, signIdentity, ISSUER } = await import('${import.meta.dir}/oidc-keys.ts');
+      const { createLocalJWKSet, jwtVerify } = await import('jose');
+      const jwks = await getJwks();
+      const token = await signIdentity({ sub: 'pem-user', access: 'admin' }, 'nufi-studio', 300);
+      const { payload } = await jwtVerify(token, createLocalJWKSet(jwks), {
+        issuer: ISSUER, audience: 'nufi-studio',
+      });
+      console.log(JSON.stringify({ jwks, sub: payload.sub }));
+    `;
+    const proc = Bun.spawnSync(['bun', '-e', script]);
+    const out = proc.stdout.toString().trim();
+    expect(proc.exitCode, `stderr: ${proc.stderr.toString()}`).toBe(0);
+
+    const { jwks, sub } = JSON.parse(out.split('\n').pop() as string);
+    expect(sub).toBe('pem-user');
+    expect(jwks.keys.length).toBe(1);
+    for (const secret of ['d', 'p', 'q', 'dp', 'dq', 'qi']) {
+      expect(jwks.keys[0]).not.toHaveProperty(secret);
+    }
+  });
+});

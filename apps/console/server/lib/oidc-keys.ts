@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, createPublicKey } from 'node:crypto';
 import { exportJWK, generateKeyPair, importPKCS8, SignJWT } from 'jose';
 
 export type IdentityClaims = {
@@ -25,24 +25,34 @@ let cached: Promise<LoadedKey> | undefined;
  */
 async function load(): Promise<LoadedKey> {
   const pem = process.env.OIDC_PRIVATE_KEY_PEM?.trim();
-  const privateKey = pem
-    ? await importPKCS8(pem, ALG)
-    : (await generateKeyPair(ALG, { extractable: true })).privateKey;
 
-  const jwk = await exportJWK(privateKey);
+  // The public JWK is derived from the PUBLIC key, never by exporting the
+  // private one. Two reasons, and the first is not theoretical: importPKCS8
+  // returns a non-extractable CryptoKey, so exportJWK on it throws and every
+  // JWKS request 500s -- which is invisible in a test that never sets a PEM.
+  // The second is that a signing key has no business being extractable.
+  let privateKey: CryptoKey;
+  let jwk: JsonWebKey;
+
+  if (pem) {
+    privateKey = await importPKCS8(pem, ALG);
+    jwk = createPublicKey(pem).export({ format: 'jwk' }) as JsonWebKey;
+  } else {
+    // Development only: a fresh key on every boot, so tokens do not survive a
+    // restart and two replicas would never agree.
+    const pair = await generateKeyPair(ALG, { extractable: true });
+    privateKey = pair.privateKey;
+    jwk = await exportJWK(pair.publicKey);
+  }
 
   // Rebuilt field by field rather than by deleting the private ones. A
   // delete-list silently stops being complete when the key type changes;
   // an allow-list cannot leak a component nobody remembered to name.
-  const kid = createHash('sha256').update(`${jwk.n}.${jwk.e}`).digest('base64url').slice(0, 16);
-  const publicJwk = {
-    kty: jwk.kty,
-    n: jwk.n,
-    e: jwk.e,
-    alg: ALG,
-    use: 'sig',
-    kid,
-  } as JsonWebKey & {
+  const kid = createHash('sha256')
+    .update(`${jwk.n}.${jwk.e}`)
+    .digest('base64url')
+    .slice(0, 16);
+  const publicJwk = { kty: jwk.kty, n: jwk.n, e: jwk.e, alg: ALG, use: 'sig', kid } as JsonWebKey & {
     kid: string;
   };
 
