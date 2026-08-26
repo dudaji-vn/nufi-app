@@ -85,7 +85,12 @@ RUN set -eu; \
       echo "compiled JS still carries the bare word Langflow"; exit 1; fi; \
     echo "brand assertion passed"
 
-RUN uv sync --frozen --no-dev
+# --extra postgresql pulls the drivers Langflow needs to speak to Postgres;
+# pyproject declares them in an optional group, so a plain sync installs
+# neither and SQLAlchemy dies at boot with ModuleNotFoundError: psycopg2.
+# Missed originally because the image was only ever exercised against the
+# SQLite default -- not the configuration production actually runs.
+RUN uv sync --frozen --no-dev --extra postgresql
 ENV PATH="/app/.venv/bin:$PATH"
 
 EXPOSE 7860

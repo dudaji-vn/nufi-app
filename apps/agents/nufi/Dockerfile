@@ -31,3 +31,21 @@ WORKDIR /app
 # builds, deploys, and greets a customer by the wrong name.
 RUN node nufi/rebrand-server-dist.mjs server/dist \
  && node nufi/rebrand-server-dist.mjs --check server/dist
+
+# Take ownership of the data volume before upstream's entrypoint drops
+# privileges. See nufi/docker-entrypoint.sh for why upstream's own chown does
+# not fire on Railway.
+#
+# Done by REPLACING the entrypoint file rather than by setting ENTRYPOINT.
+# Declaring ENTRYPOINT in a derived image resets the CMD inherited from the
+# base, so upstream's start command silently vanishes and its entrypoint ends
+# up running `gosu node` with nothing to exec:
+#
+#     Usage: gosu user-spec command [args]
+#
+# Re-declaring CMD here would work but would drift the moment upstream changes
+# its start command. Swapping the file leaves both ENTRYPOINT and CMD exactly
+# as upstream set them.
+RUN mv /usr/local/bin/docker-entrypoint.sh /usr/local/bin/upstream-docker-entrypoint.sh
+COPY nufi/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
