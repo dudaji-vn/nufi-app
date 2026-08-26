@@ -52,14 +52,27 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Asserted before the rename, so a no-op wrapper cannot pass for a
-      # working one. This number is what the next step has to erase.
-      - name: Show how much of the upstream name is in server/dist
+      # nufi/rebrand-server-dist.mjs --check is the authoritative test: it
+      # knows the rename only touches STRING LITERALS, and that package names
+      # (@paperclipai/*), env vars (PAPERCLIP_*) and class names must survive.
+      # A plain `grep -c Paperclip` counts those legitimate survivors and fails
+      # a correct image -- which is exactly what it did on the first run.
+      #
+      # Run against the BASE image first, where it must FAIL. A wrapper that
+      # silently did nothing would otherwise be indistinguishable from a
+      # working one.
+      - name: The base image must fail the rename check
         run: |
           set -euo pipefail
-          before="$(docker run --rm nufi-works-base:ci sh -c 'grep -rl Paperclip server/dist | wc -l')"
-          echo "files naming the upstream product before the rename: $before"
-          test "$before" -gt 0
+          # `sh -c` because that is the invocation shape already proven to pass
+          # through this image's ENTRYPOINT in a previous run.
+          if docker run --rm nufi-works-base:ci \
+               sh -c 'node nufi/rebrand-server-dist.mjs --check server/dist'; then
+            echo "the base image already passes the rename check -- either the"
+            echo "upstream build changed or this wrapper has nothing to do"
+            exit 1
+          fi
+          echo "base image needs the rename, as expected"
 
       # Deliberately NOT docker/build-push-action here. setup-buildx-action
       # provisions a `docker-container` driver, which resolves `FROM` from a
@@ -77,15 +90,15 @@ jobs:
             -t nufi-works:branded \
             apps/agents
 
-      # Asserted before anything is published. Verifying after the push means an
-      # image carrying the upstream product name is briefly public and, worse,
-      # is already the tag anyone pulling `:main` would get.
+      # Asserted before anything is published. Verifying after the push means
+      # an image carrying the upstream product name is briefly public and is
+      # already what `:main` resolves to.
       - name: Assert the rename took, before publishing
         run: |
           set -euo pipefail
-          after="$(docker run --rm nufi-works:branded sh -c 'grep -rl Paperclip server/dist | wc -l')"
-          echo "files naming the upstream product after the rename: $after"
-          test "$after" -eq 0
+          docker run --rm nufi-works:branded \
+            sh -c 'node nufi/rebrand-server-dist.mjs --check server/dist'
+          echo "branded image passes the rename check"
 
       - name: Push every tag
         run: |
