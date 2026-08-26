@@ -5,6 +5,7 @@ import { enter } from './enter.ts';
 import { getJwks } from './lib/oidc-keys.ts';
 import { servePublic } from './lib/serve-public.ts';
 import { type AuthedUser, auth } from './middleware/auth.ts';
+import { oidc } from './oidc.ts';
 import { router } from './router/index.ts';
 
 const PORT = Number(process.env.PORT ?? 3000);
@@ -30,6 +31,14 @@ app.get('/.well-known/jwks.json', async (c) => {
 // an identity for whoever asked.
 app.use('/enter/*', auth());
 app.route('/enter', enter);
+
+// The authorization-code flow NUFI Works signs in through. Only /authorize
+// sits behind the session check: /token and /userinfo are called by the Works
+// server, which carries no browser cookie, so requiring one there would break
+// the exchange rather than secure it. They authenticate by client secret and
+// bearer token instead.
+app.use('/oidc/authorize', auth());
+app.route('/oidc', oidc);
 
 const rpc = new RPCHandler(router);
 

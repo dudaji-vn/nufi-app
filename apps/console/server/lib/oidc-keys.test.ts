@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { createLocalJWKSet, jwtVerify } from 'jose';
-import { ISSUER, getJwks, signIdentity } from './oidc-keys.ts';
+import { getJwks, ISSUER, signIdentity } from './oidc-keys.ts';
 
 /**
  * The console is about to become the only thing standing between a chat

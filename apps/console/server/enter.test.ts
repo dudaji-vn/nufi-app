@@ -53,7 +53,9 @@ describe('GET /enter/studio', () => {
   });
 
   it('gives an admin the admin ceiling and everyone else editor', async () => {
-    const asMember = payloadOf((await as(member).request('/studio')).headers.get('set-cookie') ?? '');
+    const asMember = payloadOf(
+      (await as(member).request('/studio')).headers.get('set-cookie') ?? '',
+    );
     expect(asMember.access).toBe('editor');
 
     const asAdmin = payloadOf(
