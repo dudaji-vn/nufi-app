@@ -34,12 +34,32 @@ boundary reports a real failure as a failure.
 | `NUFI_SYSTEM_PROMPT` | – | optional system message |
 | `ADAPTER_HOST` / `ADAPTER_PORT` | `0.0.0.0` / `8900` | bind address |
 | `NUFI_UPSTREAM_TIMEOUT` | `30` | upstream timeout (s) |
+| `NUFI_CONSOLE_URL` | `http://console:3000` | Console base URL used to verify a federated identity token |
+| `NUFI_FEDERATION_AUD` | `nufi-chat` | audience the identity token must carry (checked locally) |
+| `NUFI_FEDERATION_REQUIRED` | `0` | `1` = refuse requests without a valid identity |
+| `NUFI_LITELLM_KEYMAP` | `{}` | JSON `{subject: litellm virtual key}` for per-user attribution |
+
+## Identity federation (CMP-509)
+
+The MeshBox portal carries a member's identity as a nufi-app **Console-signed**
+token (from the Console `/oidc/federated-token` grant) in `X-MeshBox-Identity`
+(or `Authorization: Bearer`). The adapter checks the token audience locally, then
+confirms authenticity via the Console's `/oidc/userinfo` (the Console owns the
+signing key, so the adapter keeps no crypto dep). The verified subject is mapped
+to a **per-user litellm virtual key** (`NUFI_LITELLM_KEYMAP`) and stamped onto the
+OpenAI request as `user` + `metadata` + `X-MeshBox-Actor`, so litellm's audit
+trail attributes the call to the real member instead of one shared key. With
+`NUFI_FEDERATION_REQUIRED=1` an unidentified request is refused (`401`) — the
+adapter never impersonates. See appliance `docs/INTEGRATION.md` §9.
 
 ## Run / verify
 
 ```bash
-# unit test — fake upstream, no Docker, no deps (exit 0 = PASS)
+# contract translation — fake upstream, no Docker, no deps (exit 0 = PASS)
 python3 test_adapter.py
+
+# identity federation — fake Console + fake litellm, per-user audit (exit 0 = PASS)
+python3 test_federation.py
 
 # run against a live nufi-app litellm-proxy
 NUFI_UPSTREAM_URL=http://litellm-proxy:4000 \
@@ -50,10 +70,10 @@ python3 nufi_chat_adapter.py
 The **full mesh end-to-end proof** (laptop → MeshBox `ai.py` → adapter → nufi chat)
 lives in the appliance repo: `appliance/scripts/demo_nufi_chat.sh`.
 
-## Known PoC limits (follow-up issues per CMP-503)
+## Known limits (follow-up issues per CMP-503)
 
-- Auth federation (gap #3) is out of scope: the adapter uses a single litellm key,
-  not per-user identity from the portal SSO session.
-- Domain/TLS termination (gap #2) is handled at PoC level by binding to a mesh
-  IP/mDNS alias; no fixed DNS.
-- Chat only. RAG (`/v1/query`) and Agent (`/v1/run`) are not adapted here.
+- Auth federation (gap #3/#6): **DONE (CMP-509)** — per-user identity is verified
+  and mapped to a per-user litellm key (see above).
+- Domain/TLS termination (gap #2): **DONE (CMP-508)** — HTTPS over mesh via Caddy
+  (`nufichat.mesh`). At PoC level the adapter can still bind to a mesh IP/mDNS alias.
+- Chat only. RAG (`/v1/query`) and Agent (`/v1/run`) are not adapted here (G1/G2).

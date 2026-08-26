@@ -62,6 +62,30 @@ Two more adapters extend the chat pattern to the remaining MeshBox sockets:
 Keep stable for the appliance: the `/v1/documents`·`/v1/query`·`/v1/run` ⇄ upstream
 translations + the `502` honest boundary, and the `:8901`/`:8902` ports.
 
+## Identity federation (chat) — CMP-509
+
+nufi-app's **Console is the identity authority** for the appliance. Two console
+endpoints + the adapter form the federation seam (appliance gap **G6**, done):
+
+- `POST /oidc/federated-token` (in `apps/console/server/oidc.ts`) — a token-exchange
+  grant for a **trusted upstream IdP**. The MeshBox portal, registered in
+  `OIDC_CLIENTS` with `federation:true`, authenticates by client credentials and
+  asserts a subject it already signed in; the console mints an RS256 identity
+  scoped to `audience` (e.g. `nufi-chat`). Gated on the flag: a plain
+  authorization-code client can never mint by assertion.
+- `GET /oidc/userinfo` — unchanged; verifies the RS256 signature/issuer/expiry and
+  returns `{sub,email,access}`. The chat adapter calls this to verify a forwarded
+  token, so **the signing key never leaves the console** and the adapter keeps no
+  crypto dependency.
+- `adapters/meshbox-chat/nufi_chat_adapter.py` — reads `X-MeshBox-Identity`, checks
+  audience locally, verifies via `/oidc/userinfo`, then maps the subject to a
+  **per-user litellm virtual key** (`NUFI_LITELLM_KEYMAP`) and stamps
+  `user`/`metadata`/`X-MeshBox-Actor` so litellm's audit trail is per-user.
+  `NUFI_FEDERATION_REQUIRED=1` refuses unidentified requests.
+
+Keep stable for the appliance: the `/oidc/federated-token` request/response shape,
+the `federation`+`audience` client fields, and `/oidc/userinfo`'s claim set.
+
 ## Forward work owned by nufi-app (from INTEGRATION.md §7)
 
 - **G1 RAG:** ✅ delivered (CMP-510) — `meshbox-rag` adapter above. Still needs the

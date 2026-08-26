@@ -48,8 +48,26 @@ function tokenBody(code: string, over: Record<string, string> = {}) {
 beforeEach(() => {
   process.env.OIDC_CLIENTS = JSON.stringify([
     { clientId: 'nufi-works', clientSecret: 's3cret', redirectUris: [CALLBACK] },
+    {
+      clientId: 'meshbox-portal',
+      clientSecret: 'fed-s3cret',
+      redirectUris: [],
+      federation: true,
+      audience: 'nufi-chat',
+    },
   ]);
 });
+
+function fedBody(over: Record<string, string> = {}) {
+  return new URLSearchParams({
+    client_id: 'meshbox-portal',
+    client_secret: 'fed-s3cret',
+    sub: 'alice@dept.local',
+    email: 'alice@dept.local',
+    access: 'editor',
+    ...over,
+  });
+}
 
 describe('authorize', () => {
   it('redirects back with a code and the exact state', async () => {
@@ -132,6 +150,67 @@ describe('token', () => {
       body: tokenBody(await codeFor(), { redirect_uri: 'https://works.nufi.me/elsewhere' }),
     });
     expect(res.status).toBe(400);
+  });
+});
+
+describe('federated-token', () => {
+  it('mints an audience-scoped identity for a subject the federation client asserts', async () => {
+    const res = await oidc.request('/federated-token', { method: 'POST', body: fedBody() });
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { id_token: string; token_type: string; aud: string };
+    expect(json.token_type).toBe('Bearer');
+    expect(json.aud).toBe('nufi-chat');
+    const claims = JSON.parse(Buffer.from(json.id_token.split('.')[1], 'base64url').toString());
+    expect(claims.sub).toBe('alice@dept.local');
+    expect(claims.aud).toBe('nufi-chat');
+    expect(claims.access).toBe('editor');
+    expect(claims.email).toBe('alice@dept.local');
+  });
+
+  it('mints a token that verifies at /userinfo', async () => {
+    const mint = await oidc.request('/federated-token', { method: 'POST', body: fedBody() });
+    const { id_token } = (await mint.json()) as { id_token: string };
+    const res = await oidc.request('/userinfo', {
+      headers: { authorization: `Bearer ${id_token}` },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ sub: 'alice@dept.local', access: 'editor' });
+  });
+
+  it('refuses a client that is not flagged for federation, even with a good secret', async () => {
+    // nufi-works is a real client with a valid secret, but it is an
+    // authorization-code client. It must never mint an identity by assertion.
+    const res = await oidc.request('/federated-token', {
+      method: 'POST',
+      body: fedBody({ client_id: 'nufi-works', client_secret: 's3cret' }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('refuses a wrong federation secret', async () => {
+    const res = await oidc.request('/federated-token', {
+      method: 'POST',
+      body: fedBody({ client_secret: 'wrong' }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('requires a subject', async () => {
+    const res = await oidc.request('/federated-token', {
+      method: 'POST',
+      body: fedBody({ sub: '' }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('drops an unrecognised access level to the least privilege', async () => {
+    const res = await oidc.request('/federated-token', {
+      method: 'POST',
+      body: fedBody({ access: 'superuser' }),
+    });
+    const { id_token } = (await res.json()) as { id_token: string };
+    const claims = JSON.parse(Buffer.from(id_token.split('.')[1], 'base64url').toString());
+    expect(claims.access).toBe('viewer');
   });
 });
 

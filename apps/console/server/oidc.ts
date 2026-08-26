@@ -5,8 +5,24 @@ import { getJwks, ISSUER, signIdentity } from './lib/oidc-keys.ts';
 import type { AuthedUser } from './middleware/auth.ts';
 
 type Env = { Variables: { user: AuthedUser } };
-type Client = { clientId: string; clientSecret: string; redirectUris: string[] };
+type Client = {
+  clientId: string;
+  clientSecret: string;
+  redirectUris: string[];
+  // A federation client is a trusted upstream identity provider (e.g. the
+  // MeshBox portal, first-party and on-box) that has ALREADY authenticated a
+  // user through its own SSO and asks this console to mint the federated
+  // identity for that user. Only clients that carry this flag may call
+  // /federated-token; a plain authorization-code client never can. The minted
+  // token is scoped to `audience` (the resource that will consume it, e.g. the
+  // meshbox-chat adapter) so it cannot be replayed at the console itself.
+  federation?: boolean;
+  audience?: string;
+};
 type Code = { user: AuthedUser; clientId: string; redirectUri: string; expires: number };
+
+type Access = 'viewer' | 'editor' | 'admin';
+const ACCESS_LEVELS: readonly Access[] = ['viewer', 'editor', 'admin'];
 
 const CODE_TTL_MS = 60_000;
 const TOKEN_TTL_SECONDS = Number(process.env.IDENTITY_TTL_SECONDS ?? 8 * 60 * 60);
@@ -115,6 +131,58 @@ oidc.post('/token', async (c) => {
     id_token: idToken,
     token_type: 'Bearer',
     expires_in: TOKEN_TTL_SECONDS,
+  });
+});
+
+/**
+ * Federated identity grant (RFC 8693-style token exchange for a trusted IdP).
+ *
+ * The MeshBox portal authenticates a member through its own SSO, then asks here
+ * for a console-signed identity so the member's requests to the on-box AI carry
+ * a verifiable subject and stay attributable in the audit trail. There is no
+ * browser or authorization code in this path: the portal is a server, so it
+ * authenticates by client credentials and asserts the subject directly. This is
+ * deliberately privileged, which is why it is gated on the `federation` flag --
+ * a client that can name any subject can impersonate anyone, so only a
+ * first-party upstream may hold it.
+ */
+oidc.post('/federated-token', async (c) => {
+  const form = await c.req.parseBody();
+  const clientId = String(form.client_id ?? '');
+  const client = findClient(clientId);
+
+  // Authenticate the federation client AND require the flag. A normal
+  // authorization-code client, even with a correct secret, must not reach the
+  // subject-assertion path.
+  if (
+    !client ||
+    !client.federation ||
+    !secretMatches(client.clientSecret, String(form.client_secret ?? ''))
+  ) {
+    return c.json({ error: 'invalid_client' }, 401);
+  }
+
+  const sub = String(form.sub ?? '').trim();
+  if (!sub) {
+    return c.json({ error: 'invalid_request', error_description: 'sub is required' }, 400);
+  }
+  const email = form.email ? String(form.email) : undefined;
+  const asked = String(form.access ?? 'viewer') as Access;
+  // An unrecognised access value falls to the least privilege rather than
+  // failing open: a typo must not grant admin.
+  const access: Access = ACCESS_LEVELS.includes(asked) ? asked : 'viewer';
+
+  // The consumer of this token is the resource named by `audience`, never the
+  // console. A token minted here cannot be presented back to /authorize.
+  const audience = client.audience ?? clientId;
+  const token = await signIdentity({ sub, email, access }, audience, TOKEN_TTL_SECONDS);
+
+  return c.json({
+    access_token: token,
+    id_token: token,
+    token_type: 'Bearer',
+    expires_in: TOKEN_TTL_SECONDS,
+    aud: audience,
   });
 });
 
