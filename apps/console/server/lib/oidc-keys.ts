@@ -48,11 +48,15 @@ async function load(): Promise<LoadedKey> {
   // Rebuilt field by field rather than by deleting the private ones. A
   // delete-list silently stops being complete when the key type changes;
   // an allow-list cannot leak a component nobody remembered to name.
-  const kid = createHash('sha256')
-    .update(`${jwk.n}.${jwk.e}`)
-    .digest('base64url')
-    .slice(0, 16);
-  const publicJwk = { kty: jwk.kty, n: jwk.n, e: jwk.e, alg: ALG, use: 'sig', kid } as JsonWebKey & {
+  const kid = createHash('sha256').update(`${jwk.n}.${jwk.e}`).digest('base64url').slice(0, 16);
+  const publicJwk = {
+    kty: jwk.kty,
+    n: jwk.n,
+    e: jwk.e,
+    alg: ALG,
+    use: 'sig',
+    kid,
+  } as JsonWebKey & {
     kid: string;
   };
 
