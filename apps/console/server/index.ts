@@ -1,6 +1,7 @@
 import { RPCHandler } from '@orpc/server/fetch';
 import { Hono } from 'hono';
 import { logger } from 'hono/logger';
+import { enter } from './enter.ts';
 import { getJwks } from './lib/oidc-keys.ts';
 import { servePublic } from './lib/serve-public.ts';
 import { type AuthedUser, auth } from './middleware/auth.ts';
@@ -23,6 +24,12 @@ app.get('/.well-known/jwks.json', async (c) => {
   c.header('Cache-Control', 'public, max-age=300');
   return c.json(await getJwks());
 });
+
+// Handing a member into another product. Behind the same session check as
+// everything else: without a valid chat cookie this must 401 rather than mint
+// an identity for whoever asked.
+app.use('/enter/*', auth());
+app.route('/enter', enter);
 
 const rpc = new RPCHandler(router);
 
