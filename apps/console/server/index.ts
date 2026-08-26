@@ -1,6 +1,7 @@
 import { RPCHandler } from '@orpc/server/fetch';
 import { Hono } from 'hono';
 import { logger } from 'hono/logger';
+import { getJwks } from './lib/oidc-keys.ts';
 import { servePublic } from './lib/serve-public.ts';
 import { type AuthedUser, auth } from './middleware/auth.ts';
 import { router } from './router/index.ts';
@@ -13,6 +14,15 @@ const app = new Hono<Env>();
 app.use('*', logger());
 
 app.get('/_health', (c) => c.json({ ok: true }));
+
+// The public half of the identity signing key. NUFI Studio fetches this to
+// verify the token in its cookie; NUFI Works uses it for the id_token from the
+// authorization-code exchange. Cached briefly so a key rotation propagates in
+// minutes rather than on a restart.
+app.get('/.well-known/jwks.json', async (c) => {
+  c.header('Cache-Control', 'public, max-age=300');
+  return c.json(await getJwks());
+});
 
 const rpc = new RPCHandler(router);
 
