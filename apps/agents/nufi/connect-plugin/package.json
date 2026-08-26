@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Lets a member hand NUFI Agents their own gateway key, using the session they already have at NUFI chat.",
+  "description": "Lets a member hand NUFI Works their own gateway key, using the session they already have at NUFI chat.",
   "paperclipPlugin": {
     "manifest": "./dist/manifest.js",
     "worker": "./dist/worker.js",

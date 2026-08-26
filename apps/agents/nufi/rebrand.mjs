@@ -12,7 +12,7 @@
  */
 
 export const BRAND = "NUFI";
-export const PRODUCT = "NUFI Agents";
+export const PRODUCT = "NUFI Works";
 
 /**
  * Quoted strings are matched WITHOUT newlines. An apostrophe in a comment

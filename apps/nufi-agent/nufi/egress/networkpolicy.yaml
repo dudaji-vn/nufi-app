@@ -1,4 +1,4 @@
-# Egress policy for the NuFi Agent (Langflow) pod.
+# Egress policy for the NUFI Studio (Langflow) pod.
 #
 # WHY THIS EXISTS AND WHY IT IS A CiliumNetworkPolicy, NOT A NetworkPolicy
 # --------------------------------------------------------------------
@@ -12,7 +12,7 @@
 # src/bundles/openai/src/lfx_openai/components/openai/openai.py:41) it is a
 # per-node field a flow author can type anything into. Patching 71 bundles is
 # the fat fork this whole plan avoids, so this network policy is not a
-# second layer of defence — for NuFi Agent it is the *only* one.
+# second layer of defence — for NUFI Studio it is the *only* one.
 #
 # That makes the enforcement mechanism load-bearing, so it matters that it is
 # the mechanism that actually enforces. It has to be Cilium, not a plain
@@ -43,7 +43,7 @@
 #
 # WHAT THIS POLICY DOES
 # ----------------------
-# Selects the NuFi Agent pod(s) and allows exactly two egress destinations:
+# Selects the NUFI Studio pod(s) and allows exactly two egress destinations:
 #   1. Cluster DNS (kube-dns / CoreDNS in kube-system), required for the
 #      FQDN rule below to resolve at all.
 #   2. api.codechi.me on 443 — the NuFi security gateway that model traffic
@@ -53,14 +53,14 @@
 # not covered by that list, for the endpoints it selects. No separate
 # deny-all resource is needed (same reasoning as the upstream
 # cilium-network-policy.ts, which also ships a single manifest). Ingress is
-# left ungoverned by this file — NuFi Agent is a UI application the gateway
+# left ungoverned by this file — NUFI Studio is a UI application the gateway
 # and/or ingress controller must still be able to reach; this policy is
 # about where the pod's own outbound model traffic can go, not who can
 # reach the pod.
 #
 # NAMESPACE
 # ---------
-# Deliberately not set in `metadata.namespace` — there is no NuFi Agent
+# Deliberately not set in `metadata.namespace` — there is no NUFI Studio
 # Kubernetes Deployment manifest in this repo yet to pin it against. Apply
 # with the real namespace at apply time:
 #
@@ -68,13 +68,13 @@
 #
 # POD SELECTOR — AN ASSUMPTION, NOT A VERIFIED FACT
 # --------------------------------------------------
-# `endpointSelector` below assumes the NuFi Agent pod carries the label
+# `endpointSelector` below assumes the NUFI Studio pod carries the label
 # `app.kubernetes.io/name: nufi-agent` (the conventional Kubernetes
 # recommended label — https://kubernetes.io/docs/concepts/overview/
 # working-with-objects/common-labels/). This is a naming choice made here,
 # not a fact read off an existing manifest, because none exists yet. Before
 # this policy is applied to a real cluster, confirm the label matches
-# whatever the actual Deployment/StatefulSet for NuFi Agent sets on its pod
+# whatever the actual Deployment/StatefulSet for NUFI Studio sets on its pod
 # template — update `endpointSelector.matchLabels` to match if it differs,
 # and update `verify-egress.sh`'s `POD_LABEL_SELECTOR` default to match too.
 #
@@ -128,7 +128,7 @@ spec:
               - matchPattern: "*"
 
     # 2. The gateway, and only the gateway. This is the whole point of the
-    #    policy: every model call NuFi Agent makes must resolve to this host
+    #    policy: every model call NUFI Studio makes must resolve to this host
     #    or fail at the network layer, regardless of what base URL a flow
     #    author typed into a provider node.
     - toFQDNs:

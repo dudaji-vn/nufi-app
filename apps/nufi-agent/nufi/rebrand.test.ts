@@ -14,12 +14,12 @@ import { rewrite } from "./rebrand";
 describe("rewrite", () => {
   it("renames the product in user-facing copy", () => {
     expect(rewrite('const t = "Welcome to Langflow";')).toBe(
-      'const t = "Welcome to NuFi Agent";',
+      'const t = "Welcome to NUFI Studio";',
     );
   });
 
   it("rewrites the same word inside a locale JSON value (json: true)", () => {
-    expect(rewrite('{"welcome": "Langflow guide"}', true)).toBe('{"welcome": "NuFi Agent guide"}');
+    expect(rewrite('{"welcome": "Langflow guide"}', true)).toBe('{"welcome": "NUFI Studio guide"}');
   });
 
   /**
@@ -40,7 +40,7 @@ describe("rewrite", () => {
    * the value gets rewritten.
    */
   it("never rewrites a locale key even when it contains the exact product word (json: true)", () => {
-    expect(rewrite('{"Langflow": "Langflow guide"}', true)).toBe('{"Langflow": "NuFi Agent guide"}');
+    expect(rewrite('{"Langflow": "Langflow guide"}', true)).toBe('{"Langflow": "NUFI Studio guide"}');
   });
 
   /**
@@ -61,16 +61,16 @@ describe("rewrite", () => {
   describe("FIX ROUND 1 — the JSON-key exclusion must not fire outside JSON", () => {
     it("rewrites a ternary true-branch in a non-JSON (.tsx-shaped) context", () => {
       expect(rewrite('const label = isBar ? "Langflow" : other;')).toBe(
-        'const label = isBar ? "NuFi Agent" : other;',
+        'const label = isBar ? "NUFI Studio" : other;',
       );
     });
 
     it("rewrites a TS type-literal member in a non-JSON (.tsx-shaped) context", () => {
-      expect(rewrite('type T = { "Langflow": string };')).toBe('type T = { "NuFi Agent": string };');
+      expect(rewrite('type T = { "Langflow": string };')).toBe('type T = { "NUFI Studio": string };');
     });
 
     it("rewrites an object-literal key in a non-JSON (.tsx-shaped) context", () => {
-      expect(rewrite('const x = {"Langflow": 1};')).toBe('const x = {"NuFi Agent": 1};');
+      expect(rewrite('const x = {"Langflow": 1};')).toBe('const x = {"NUFI Studio": 1};');
     });
 
     it("still leaves the same shape untouched when json: true is passed explicitly", () => {
@@ -112,7 +112,7 @@ describe("rewrite", () => {
    */
   it("does not corrupt text that already contains a bare number", () => {
     const src = 'const t = "Langflow step 3 of 7";';
-    expect(rewrite(src)).toBe('const t = "NuFi Agent step 3 of 7";');
+    expect(rewrite(src)).toBe('const t = "NUFI Studio step 3 of 7";');
   });
 
   it("does not touch a compound identifier glued onto the product word", () => {

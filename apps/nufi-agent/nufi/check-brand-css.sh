@@ -40,7 +40,7 @@
 # including deleting the plugin line, passes that guard). check-brand-css.sh
 # until now only asserted the CSS override survived -- it said nothing about
 # whether the JS-side product-name rewrite (nufi/rebrand.ts, which turns the
-# bare word "Langflow" into "NuFi Agent" across every .ts/.tsx/.json module)
+# bare word "Langflow" into "NUFI Studio" across every .ts/.tsx/.json module)
 # is still wired in. Drop the plugin entry in a resync and the app would
 # ship as literal "Langflow" everywhere -- title, buttons, error strings --
 # with all three guards (fork-diff, brand-css's CSS half, locale-parity)

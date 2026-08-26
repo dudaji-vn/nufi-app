@@ -31,7 +31,7 @@ class KnowledgeIngestionComponent(KnowledgeComponent):
     """
 
     display_name = "Knowledge Ingestion"
-    description = "Create or update knowledge in NuFi Agent."
+    description = "Create or update knowledge in NUFI Studio."
     icon = "upload"
     name = "KnowledgeIngestion"
     # Hidden from the default palette — surfaces only when a saved flow

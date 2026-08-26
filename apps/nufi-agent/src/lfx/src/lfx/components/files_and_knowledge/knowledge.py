@@ -146,7 +146,7 @@ class KnowledgeComponent(Component):
     """
 
     display_name = "Knowledge"
-    description = "Ingest into or retrieve from a NuFi Agent knowledge base."
+    description = "Ingest into or retrieve from a NUFI Studio knowledge base."
     icon = "database"
     name = "Knowledge"
 
@@ -185,7 +185,7 @@ class KnowledgeComponent(Component):
                 "data": {
                     "node": {
                         "name": "create_knowledge_base",
-                        "description": "Create new knowledge in NuFi Agent.",
+                        "description": "Create new knowledge in NUFI Studio.",
                         "display_name": "Create new Knowledge Base",
                         "field_order": [
                             "01_new_kb_name",

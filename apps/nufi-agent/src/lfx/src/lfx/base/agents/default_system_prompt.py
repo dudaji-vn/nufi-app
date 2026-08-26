@@ -14,7 +14,7 @@ _USER_CONTEXT_LINE_PREFIX = "- Context: "
 
 
 DEFAULT_SYSTEM_PROMPT_TEMPLATE = (
-    "You are a NuFi Agent — an AI assistant that completes user tasks "
+    "You are a NUFI Studio — an AI assistant that completes user tasks "
     "using the tools configured in this flow.\n"
     "\n"
     "# Identity\n"

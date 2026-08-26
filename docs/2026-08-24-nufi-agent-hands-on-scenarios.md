@@ -1,6 +1,6 @@
-# NuFi Agent — hands-on scenarios
+# NUFI Studio — hands-on scenarios
 
-Three scenarios you can build yourself, in order, on a running NuFi Agent.
+Three scenarios you can build yourself, in order, on a running NUFI Studio.
 Nothing here is a slide: every step below was executed against the build on
 `develop`, and the answers quoted are the answers the flows actually returned.
 
@@ -20,7 +20,7 @@ that reaches into an internal system through MCP and quotes what it finds.
 
 ### What you need
 
-- NuFi Agent running. Locally: `apps/nufi-agent/.venv/bin/langflow run --host 127.0.0.1 --port 7860`, then open <http://127.0.0.1:7860>.
+- NUFI Studio running. Locally: `apps/nufi-agent/.venv/bin/langflow run --host 127.0.0.1 --port 7860`, then open <http://127.0.0.1:7860>.
 - A NuFi gateway API key, for the language model.
 - For Scenario 2 only: an embedding model. This guide uses a local one so that
   document text never leaves the machine.
@@ -280,7 +280,7 @@ In a flow, open the **MCP** tab in the left sidebar → **Add MCP Server** →
 }
 ```
 
-**Add Server.** NuFi Agent starts the server, asks it what it can do, and the
+**Add Server.** NUFI Studio starts the server, asks it what it can do, and the
 server appears in the MCP list. Open the node it creates and the **Tool**
 dropdown lists `get_leave_balance` and `get_department_budget` — discovered,
 not configured by hand.
