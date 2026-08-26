@@ -100,6 +100,18 @@ jobs:
             sh -c 'node nufi/rebrand-server-dist.mjs --check server/dist'
           echo "branded image passes the rename check"
 
+      # Upstream telemetry POSTs to telemetry.paperclip.ing and an AWS API
+      # Gateway by default. Asserted on the built image, not on the Dockerfile,
+      # so an ENV that gets dropped or overridden downstream still fails here.
+      - name: Assert telemetry is off in the image
+        run: |
+          set -euo pipefail
+          env_json="$(docker inspect nufi-works:branded --format '{{json .Config.Env}}')"
+          echo "$env_json" | tr ',' '\n' | grep -E 'TELEMETRY|DO_NOT_TRACK' || true
+          echo "$env_json" | grep -q 'PAPERCLIP_TELEMETRY_DISABLED=1'
+          echo "$env_json" | grep -q 'DO_NOT_TRACK=1'
+          echo "telemetry disabled in the image"
+
       - name: Push every tag
         run: |
           set -euo pipefail

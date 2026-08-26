@@ -49,3 +49,12 @@ RUN node nufi/rebrand-server-dist.mjs server/dist \
 RUN mv /usr/local/bin/docker-entrypoint.sh /usr/local/bin/upstream-docker-entrypoint.sh
 COPY nufi/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Upstream telemetry is ON by default and POSTs to two hardcoded endpoints --
+# https://telemetry.paperclip.ing/ingest and an AWS API Gateway in us-east-1.
+# Off in the image so a deployment elsewhere cannot quietly start reporting.
+#
+# Note the value: this codebase compares DO_NOT_TRACK to "1". NUFI Studio
+# compares it to "true". Setting one value for both leaves one of them sending.
+ENV PAPERCLIP_TELEMETRY_DISABLED=1 \
+    DO_NOT_TRACK=1
