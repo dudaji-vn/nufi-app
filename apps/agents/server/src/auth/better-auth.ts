@@ -1,6 +1,7 @@
 import type { Request, RequestHandler } from "express";
 import type { IncomingHttpHeaders } from "node:http";
 import { betterAuth, type Auth } from "better-auth";
+import { genericOAuth } from "better-auth/plugins";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { toNodeHandler } from "better-auth/node";
 import type { Db } from "@paperclipai/db";
@@ -144,6 +145,43 @@ export function deriveAuthTrustedOrigins(config: Config, opts?: { listenPort?: n
   return Array.from(trustedOrigins);
 }
 
+/**
+ * "Sign in with NUFI" -- the console at NUFI_OIDC_ISSUER is the identity
+ * provider, and this consumes it through better-auth's supported extension
+ * point rather than by patching how sessions are made.
+ *
+ * Returns undefined unless the issuer AND the client id are both set. A
+ * half-configured provider is worse than none: better-auth would render a
+ * sign-in button that redirects and then fails, which reads to a member as a
+ * broken product rather than an unconfigured one.
+ */
+function nufiOidcIssuer(): string | undefined {
+  const issuer = process.env.NUFI_OIDC_ISSUER?.trim();
+  const clientId = process.env.NUFI_OIDC_CLIENT_ID?.trim();
+  if (!issuer || !clientId) return undefined;
+  return issuer.replace(/\/+$/, "");
+}
+
+function nufiOidcPlugins() {
+  const issuer = nufiOidcIssuer();
+  if (!issuer) return [];
+  return [
+    genericOAuth({
+      config: [
+        {
+          providerId: "nufi",
+          clientId: process.env.NUFI_OIDC_CLIENT_ID ?? "",
+          clientSecret: process.env.NUFI_OIDC_CLIENT_SECRET ?? "",
+          authorizationUrl: `${issuer}/oidc/authorize`,
+          tokenUrl: `${issuer}/oidc/token`,
+          userInfoUrl: `${issuer}/oidc/userinfo`,
+          scopes: ["openid", "email"],
+        },
+      ],
+    }),
+  ];
+}
+
 export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins: string[]): BetterAuthInstance {
   const baseUrl = config.authBaseUrlMode === "explicit" ? config.authPublicBaseUrl : undefined;
   const publicUrl = process.env.PAPERCLIP_PUBLIC_URL?.trim() || baseUrl;
@@ -186,6 +224,7 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins:
       override: process.env.PAPERCLIP_AUTH_RATE_LIMIT_ENABLED,
     }),
     advanced: buildBetterAuthAdvancedOptions({ disableSecureCookies }),
+    plugins: nufiOidcPlugins(),
   };
 
   if (!baseUrl) {

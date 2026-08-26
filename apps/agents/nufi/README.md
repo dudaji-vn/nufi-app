@@ -406,3 +406,36 @@ second consumer learns the module arrived. Verified in a browser before and
 after: stuck on a cold load, renders on a cold load.
 
 Drop the allowlist entry once an upstream release carries the fix.
+
+### `server/src/auth/better-auth.ts` — signing in with a NUFI account
+
+Upstream configures better-auth with email and password and no plugins. NUFI
+Works is reached from `chat.nufi.me`, where the member already has a session,
+so a second password is a second account to lose rather than a security
+measure.
+
+The console at `console.nufi.me` issues that identity. It already verifies the
+chat session and mints a per-user gateway key from it; issuing a session is the
+same job with a different output. The Langflow fork consumes the same issuer
+natively through `LANGFLOW_EXTERNAL_AUTH_*` and needs no fork change at all —
+this file is the only place either product had to be touched.
+
+Why here rather than in `nufi/`: better-auth plugins are passed to
+`betterAuth()` at construction, and that call lives in this file. There is no
+extension point that reaches it from outside, and a Paperclip plugin runs too
+late — the auth instance is built during server construction.
+
+What keeps it small: `genericOAuth` is a supported better-auth extension point,
+already present in `node_modules`, so this turns a feature on rather than
+changing how sessions are made. The diff is one import, one helper and one
+config line.
+
+`nufiOidcPlugins()` returns an empty array unless both `NUFI_OIDC_ISSUER` and
+`NUFI_OIDC_CLIENT_ID` are set. A half-configured provider is worse than none:
+better-auth would render a sign-in button that redirects and then fails, which
+reads to a member as a broken product rather than an unconfigured one. An
+instance with neither variable set behaves exactly as upstream does.
+
+This one is a candidate to send upstream — "let an operator point better-auth
+at an OIDC provider by environment variable" is not NuFi-specific — but it is
+not a bug fix, so it will not go away on its own.
