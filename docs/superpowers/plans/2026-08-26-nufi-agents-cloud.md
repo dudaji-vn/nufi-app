@@ -42,6 +42,42 @@ Router (console); `jose` for JWKS; Langflow (Python/FastAPI) and Paperclip
   `check-locale-parity.sh`, `apps/agents/nufi/check-fork-diff.sh`,
   `apps/agents/nufi/verify-adapters.mjs`.
 
+## Where this stands — 2026-08-26
+
+Everything that can be built and proven without Railway is done and on
+`feat/nufi-agents-cloud`. What remains needs either a Railway service or a DNS
+record, and one of those cannot be done from a terminal at all.
+
+**Done, with the evidence:**
+
+| | Task | Evidence |
+|---|---|---|
+| ✅ | Rename to Studio and Works | 137 changed lines across 46 files; both fork guards green at 93/93 and 59/59 |
+| ✅ | Console signs identity, publishes JWKS | 4 tests; a live server returns a JWKS with none of the six RSA private components |
+| ✅ | Studio handoff (`/enter/studio`) | 4 tests; live: no session → 401, session → 302 with `aud=nufi-studio`, `HttpOnly`, `Secure`, `SameSite=Lax` |
+| ✅ | Authorization-code flow for Works | 11 tests, 10 of them cases that must fail |
+| ✅ | Works consumes the console | fork guard watched failing first, then 58 → 59 files, exactly one more |
+| ✅ | The chooser at `agents.nufi.me` | live: chooser host redirects `/`, console host untouched, `/rpc` `/enter` `/oidc` still answer on both |
+| ✅ | Both image definitions and workflows | Studio image built locally; Works wrapper written |
+| ✅ | `verify-agents.sh` | written; runs against a deployed surface |
+
+**Blocked on a person:**
+
+1. **Merge to `main`.** The image workflows trigger on `main`; `workflow_dispatch`
+   only offers workflows that already exist on the default branch. No image
+   reaches GHCR until this happens.
+2. **DNS.** Railway issues a CNAME per custom domain and the record is created
+   at the registrar. Three are needed: `studio`, `works`, `agents`.
+3. **Secrets.** `OIDC_PRIVATE_KEY_PEM`, `BETTER_AUTH_SECRET`,
+   `LANGFLOW_SECRET_KEY`, the shared `NUFI_OIDC_CLIENT_SECRET`, and the
+   Postgres credentials. Generation commands are in `deploy/railway/agents.md`.
+4. **The sandbox provider decision.** Nothing above depends on it; agents
+   running for real does.
+
+The Railway services are deliberately not created yet. Two services pointing
+at images that do not exist would bill for a broken deploy, which is worse
+than not having them.
+
 ---
 
 ### Task 1: NUFI Studio container image
