@@ -261,6 +261,30 @@ services:
     # procedure in README.md assumes it means.
     command:
       ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "1"]
+    # This block is the audit retention policy, and saying so is the point.
+    #
+    # `guardrails/audit.py` writes each guardrail event to stdout, which the
+    # design (§8) records as the only route measured to reach a durable store.
+    # That makes the container log the audit trail, and until now nothing here
+    # set its lifetime: the default json-file driver rotates at no size at all,
+    # so the log grew until the VM's disk filled -- at which point Postgres,
+    # Mongo and the gateway itself go down together. An unbounded audit trail
+    # is not a long one, it is one that takes the platform with it.
+    #
+    # 20 x 100 MB caps that at 2 GB. Be honest about what it buys: retention is
+    # now bounded in BYTES, not time, so how long a `grd_` id stays resolvable
+    # depends on traffic -- months on this gateway's current volume, days if it
+    # gets busy. A time-bounded guarantee needs a log shipper with its own
+    # retention (Loki or equivalent); this is the floor under that, not a
+    # substitute for it. Raise max-file rather than max-size if you need more
+    # history: `docker compose logs` reads every rotated file, but a single
+    # oversized one is slower to grep, and grepping by event_id is the one
+    # operation a blocked user's support request actually needs.
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "20"
     healthcheck:
       test:
         - "CMD-SHELL"

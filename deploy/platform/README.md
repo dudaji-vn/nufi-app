@@ -273,6 +273,13 @@ LLM security controls run inside the LiteLLM proxy. Design:
   risk, action, `enforced`, scores, offsets, model and policy digest, and never
   the matched text. Request metadata does **not** carry them — see design §8;
   log retention therefore defines how long a block stays resolvable.
+- **Audit retention** — set by the `logging:` block on `litellm-proxy`:
+  20 files × 100 MB, so 2 GB of proxy log. That bound is in **bytes, not
+  time** — how far back a `grd_` id resolves depends on traffic, and nothing
+  reports when the oldest event rolls off. It replaces an unbounded default
+  that would have filled the VM's disk and taken Postgres, Mongo and the
+  gateway down with it. A time-bounded guarantee needs a log shipper with its
+  own retention; that is not deployed.
 - **Wiring** — `npm run check:wired` reconciles `policy.yaml` against
   `config.yaml`. A control declared in one and missing from the other cannot
   report its own absence, because the module never loads.

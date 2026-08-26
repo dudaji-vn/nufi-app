@@ -1,0 +1,9 @@
+{
+  "repository": "https://github.com/paperclipai/paperclip.git",
+  "tag": "v2026.722.0",
+  "commit": "e55d702916c4d3ddbcac49b697f879808b160f59",
+  "license": "MIT",
+  "vendoredAt": "2026-08-03",
+  "method": "git subtree add --prefix=apps/agents <tag> --squash",
+  "resync": "git fetch --depth 1 paperclip refs/tags/<newtag>:refs/tags/paperclip-<newtag> && git subtree pull --prefix=apps/agents paperclip-<newtag> --squash"
+}

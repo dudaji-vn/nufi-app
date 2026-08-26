@@ -1,5 +1,5 @@
 import type { QueryClient } from '@tanstack/react-query';
-import { createRootRouteWithContext, Link, Outlet } from '@tanstack/react-router';
+import { createRootRouteWithContext, Link, Outlet, useRouterState } from '@tanstack/react-router';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Toaster } from '@/components/ui/sonner';
 
@@ -8,6 +8,20 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 });
 
 function RootLayout() {
+  // The chooser is served at agents.nufi.me, a different door from the
+  // console. Wrapping it in the console's header and nav would tell a visitor
+  // they had landed somewhere they did not ask for.
+  const bare = useRouterState({ select: (s) => s.location.pathname === '/choose' });
+
+  if (bare) {
+    return (
+      <div className="min-h-dvh bg-background text-foreground">
+        <Outlet />
+        <Toaster richColors position="bottom-right" />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-dvh bg-background text-foreground">
       <header className="border-b">

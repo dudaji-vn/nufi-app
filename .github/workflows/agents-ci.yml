@@ -1,0 +1,128 @@
+name: agents-ci
+
+on:
+  pull_request:
+    paths: ['apps/agents/**', '.github/workflows/agents-ci.yml']
+
+concurrency:
+  group: agents-ci-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  fork-guard:
+    name: Fork diff stays in the allowlist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # The guard diffs against the vendored upstream tag, so it needs
+          # real history rather than the default single-commit checkout.
+          fetch-depth: 0
+      - name: Compare apps/agents against its vendored upstream tag
+        run: ./apps/agents/nufi/check-fork-diff.sh
+
+  gateway-config:
+    name: Every enabled adapter egresses only to the gateway
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Validate nufi/adapters.json
+        run: node apps/agents/nufi/verify-adapters.mjs
+
+  connect-plugin:
+    name: Connect plugin
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.x
+      - name: Install dependencies
+        working-directory: apps/agents/nufi/connect-plugin
+        run: bun install --frozen-lockfile
+      # The popup handshake: an origin or nonce that does not match must be
+      # dropped, because a `message` listener hears from every frame and
+      # extension on the page.
+      - name: Test
+        working-directory: apps/agents/nufi/connect-plugin
+        run: bun test
+      - name: TypeScript
+        working-directory: apps/agents/nufi/connect-plugin
+        run: bun run typecheck
+      # The UI bundle must keep exactly the bare specifiers the host rewrites
+      # and inline everything else — it is imported from a blob URL, which has
+      # no base for resolving a relative path.
+      - name: Build
+        working-directory: apps/agents/nufi/connect-plugin
+        run: bun run build
+      # The worker is fork()ed by plain Node from a directory outside Paperclip's
+      # pnpm workspace, so anything it imports at runtime must already be
+      # inlined. Bundling through the SDK barrel drags in zod and
+      # @paperclipai/shared, which resolve only on a machine where the agents
+      # workspace happens to be installed — it built locally and failed here.
+      - name: Worker bundle imports only Node builtins
+        working-directory: apps/agents/nufi/connect-plugin
+        run: |
+          set -euo pipefail
+          external=$(grep -oE '^import .* from "[^"]+"' dist/worker.js \
+            | grep -oE '"[^"]+"$' \
+            | tr -d '"' \
+            | grep -v '^node:' \
+            || true)
+          if [ -n "$external" ]; then
+            echo "Worker bundle depends on modules that will not exist at run time:"
+            echo "$external"
+            exit 1
+          fi
+          echo "OK — worker bundle is self-contained."
+
+      - name: UI bundle imports only host-provided modules
+        working-directory: apps/agents/nufi/connect-plugin
+        run: |
+          set -euo pipefail
+          unexpected=$(grep -oE '^import .* from "[^"]+"' dist/ui/index.js \
+            | grep -oE '"[^"]+"$' \
+            | tr -d '"' \
+            | grep -vE '^(react|react/jsx-runtime|react-dom|react-dom/client|@paperclipai/plugin-sdk/ui)$' \
+            || true)
+          if [ -n "$unexpected" ]; then
+            echo "UI bundle imports specifiers the host cannot resolve:"
+            echo "$unexpected"
+            exit 1
+          fi
+          echo "OK — bundle imports only host-provided modules."
+
+  adapter:
+    name: NuFi adapter
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.x
+      # Covers credential resolution: a per-member secret bound to the agent
+      # must win over the server-wide key, or per-member attribution is a lie.
+      - name: Test
+        working-directory: apps/agents/nufi/adapter
+        run: bun test
+
+  rebrand:
+    name: Rebrand transform
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          # The repo root has no package.json on purpose (see README), so the
+          # action cannot infer a version from it and fails with
+          # "No pnpm version is specified".
+          package_json_file: apps/agents/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install UI dependencies
+        working-directory: apps/agents
+        run: pnpm install --frozen-lockfile --filter @paperclipai/ui
+      - name: Test
+        working-directory: apps/agents/ui
+        run: pnpm exec vitest run nufi-rebrand.test.ts

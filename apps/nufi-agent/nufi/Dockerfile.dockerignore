@@ -1,0 +1,30 @@
+# BuildKit prefers <dockerfile>.dockerignore over the context root's
+# .dockerignore and does NOT merge them, so this file has to repeat upstream's
+# rules. Upstream's .dockerignore is not in the fork allowlist, which is why
+# this lives here rather than as an edit to that file.
+
+# --- upstream's rules, repeated ---
+src/frontend/node_modules
+src/frontend/build
+src/frontend/coverage
+src/frontend/test-results
+src/frontend/playwright-report
+src/frontend/.dspy_cache
+**/.DS_Store
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.venv
+**/.env
+
+# --- not needed to build or run the image ---
+docs
+scripts
+docker
+docker_example
+deploy
+regressions
+**/.git
+**/node_modules
+nufi/demo
+nufi/fonts/*.txt

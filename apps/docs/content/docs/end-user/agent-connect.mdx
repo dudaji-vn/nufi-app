@@ -1,0 +1,92 @@
+---
+title: Connecting your NUFI account
+description: Give NUFI Works a gateway key from the session you already have, so agents run on your budget and your usage — not a shared credential.
+---
+
+<Callout>
+This page is about **NUFI Works**. It only applies once an administrator has
+finished the one-time setup described at the bottom.
+</Callout>
+
+Agents reach NUFI models through the gateway, and the gateway needs a key.
+Connecting yours takes about ten seconds and does not involve copying anything.
+
+## Why it is per person
+
+The alternative is one key shared by everyone on the server. That works right up
+until someone asks a question you cannot answer from the data:
+
+- **Who spent this?** With a shared key, spend is a single number. With your own
+  key, every model call an agent makes on your behalf lands on your ledger.
+- **Can we cut off one person?** A shared key can only be revoked for everyone.
+- **Can I just try it?** A shared key is a deploy-time setting, so trying an
+  agent means filing a ticket. Your own key is a button.
+
+## Connecting
+
+1. Open **Settings → NUFI**.
+2. Click **Connect NUFI account**. A NUFI console window opens.
+3. If you are not signed in, sign in at NUFI chat and return to that window.
+4. Read what is being issued — the budget, the rate limit, and when it expires —
+   and click **Approve**.
+
+The window closes on its own and the page says **Connected**. The key itself is
+never shown, and never needs to be: it goes straight from the console into
+encrypted storage.
+
+<Callout type="warn">
+Approve this **only** in a window you opened yourself from Settings → NUFI. The
+console will refuse an app it has not been told about, but the habit is the
+point: a page asking for a credential is a page worth reading before you agree.
+</Callout>
+
+## Reconnecting
+
+Click **Reconnect** to swap your key — after a laptop is lost, or if you simply
+want a fresh one. It issues a new key and revokes the previous one for this
+workspace at the same time, so there is never a forgotten credential left live.
+
+Anything still using the old key stops working immediately. Agents keep working:
+they resolve the secret at run time, not once at setup.
+
+Connecting to a second NUFI Works installation does not disturb the first. Each
+gets its own key.
+
+## When the button is not there
+
+| What you see | What it means |
+|---|---|
+| **Not pointed at a console yet** | An administrator has not finished setup. Nothing you can fix from here. |
+| **One-time setup** with an *Add* button | The company has no `NUFI_MODEL_API_KEY` slot yet. If you are an administrator, click it once; otherwise ask one to. |
+| **This site cannot request a key** | The console does not recognise this installation's address. An administrator adds it to the console's allow-list. |
+| The window closes with nothing set | You closed it, or cancelled. Nothing was issued — try again. |
+
+## Using it on an agent
+
+Connecting stores your key. Pointing an agent at it is a separate, one-time
+step, usually done by whoever set the agent up: on the agent, add an environment
+variable named `NUFI_MODEL_API_KEY` bound to the **user secret** of the same
+name.
+
+Each run then resolves that binding to the key of whoever the work belongs to.
+An agent without the binding falls back to the server-wide key, if the operator
+configured one — which is exactly the shared-credential situation this replaces,
+so it is worth checking.
+
+## For administrators
+
+Two settings, in two places, and the flow does not work until both are done:
+
+1. In NUFI Works, **Settings → Plugins → NUFI Connection** → set **NUFI console
+   URL** to your console address, e.g. `https://console.nufi.me`.
+2. On the console, set `AGENTS_ALLOWED_ORIGINS` to this installation's origin,
+   e.g. `https://agents.nufi.me`.
+
+That second one is a security control, not configuration ceremony. Any page on
+the internet can open the console's connect window, and a signed-in visitor will
+be recognised there — the allow-list is what stops the console from handing the
+key back to whoever asked. Matching is exact: no wildcards, no suffix matching,
+and an empty value disables the feature rather than opening it.
+
+See [Installing NUFI Works](/docs/deployment/agents-install) for the plugin
+install itself.

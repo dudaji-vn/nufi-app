@@ -16,6 +16,8 @@
     "---Integrations & observability---",
     "litellm",
     "langfuse",
-    "grafana"
+    "grafana",
+    "---NUFI Works---",
+    "agents-org-and-budgets"
   ]
 }

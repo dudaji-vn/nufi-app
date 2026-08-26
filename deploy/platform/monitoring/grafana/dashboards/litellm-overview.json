@@ -696,14 +696,14 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Real per-control decisions from nufi_guardrail_decisions_total. Replaces a 4xx-rate heuristic that predated the guardrail metrics and reads zero forever in shadow mode, where a correct control records a decision and deliberately does NOT change the response.",
+      "description": "Per-control decisions from nufi_guardrail_decisions_total, as a COUNT over a rolling 5m window rather than a rate. A single blocked request reads 1 here; as a rate it read 0.0033 req/s, which is indistinguishable from zero at a glance and unusable when demonstrating a block. Gaps are expected -- the window returns nothing when no decision was recorded in it.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "palette-classic"
           },
           "custom": {
-            "axisLabel": "blocks/s",
+            "axisLabel": "decisions / 5m",
             "axisPlacement": "auto",
             "drawStyle": "line",
             "fillOpacity": 25,
@@ -716,14 +716,14 @@
               "mode": "none"
             }
           },
-          "unit": "reqps"
+          "unit": "short"
         }
       },
       "gridPos": {
-        "h": 6,
+        "h": 7,
         "w": 24,
         "x": 0,
-        "y": 26
+        "y": 31
       },
       "id": 11,
       "options": {
@@ -745,7 +745,7 @@
       "pluginVersion": "11.4.0",
       "targets": [
         {
-          "expr": "sum by (control, action) (rate(nufi_guardrail_decisions_total[5m]))",
+          "expr": "sum by (control, action) (increase(nufi_guardrail_decisions_total[5m]))",
           "legendFormat": "{{control}} {{action}}",
           "refId": "A",
           "datasource": {
@@ -754,19 +754,70 @@
           }
         }
       ],
-      "title": "Guardrail decisions by control",
+      "title": "Guardrail decisions by control (count per 5m)",
       "type": "timeseries"
+    },
+    {
+      "id": 15,
+      "type": "stat",
+      "title": "Decisions in this window",
+      "description": "Total decisions over the dashboard's selected time range, so the number follows the time picker instead of a fixed window. This is the panel to point at when demonstrating a block: it reads 3, not 0.0103 req/s.",
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 8,
+        "h": 5
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (control, action) (increase(nufi_guardrail_decisions_total[$__range]))",
+          "legendFormat": "{{control}} {{action}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": []
+      }
     },
     {
       "id": 12,
       "type": "stat",
       "title": "Controls enforcing",
-      "description": "nufi_guardrail_enabled is 1 only when a control is enabled AND enforcing. All five ship logging_only, so 0 is the expected value. NO DATA here means the guardrail module did not load at all -- a different failure from 0, and the one this project exists to catch.",
+      "description": "nufi_guardrail_enabled is 1 only when a control is enabled AND enforcing. policy.yaml currently enforces four -- G1 (pre_call), G2b, G3 and G4 (post_call) -- while G2a stays logging_only by design, so 4 is the expected value and anything below it means a control stopped enforcing. Re-tune the green threshold if policy.yaml's modes change. NO DATA is a different failure from a low number: it means the guardrail module did not load at all, which is the failure this project exists to catch.",
       "gridPos": {
-        "x": 0,
-        "y": 32,
-        "w": 24,
-        "h": 6
+        "x": 8,
+        "y": 26,
+        "w": 8,
+        "h": 5
       },
       "datasource": {
         "type": "prometheus",
@@ -789,12 +840,12 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "red",
                 "value": null
               },
               {
-                "color": "orange",
-                "value": 1
+                "color": "green",
+                "value": 4
               }
             ]
           }
@@ -806,12 +857,12 @@
       "id": 13,
       "type": "timeseries",
       "title": "Guardrail degraded (failing open)",
-      "description": "1 while a control fails open because its detector is unreachable. In shadow mode this means requests pass UNSCANNED and nothing else reports it.",
+      "description": "1 while a control fails open because its detector is unreachable. Those requests reached the model without being scanned, and no other panel reports it -- a degraded control still answers normally.",
       "gridPos": {
-        "x": 24,
-        "y": 32,
-        "w": 24,
-        "h": 6
+        "x": 16,
+        "y": 26,
+        "w": 8,
+        "h": 5
       },
       "datasource": {
         "type": "prometheus",
@@ -827,18 +878,34 @@
             "uid": "prometheus"
           }
         }
-      ]
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 1,
+          "decimals": 0,
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 20,
+            "showPoints": "never",
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      }
     },
     {
       "id": 14,
       "type": "timeseries",
       "title": "Guardrail latency p95 by control",
-      "description": "Times the detector call only -- extract_spans, canonicalize, decide and the audit write sit outside the timer (design 13.2). Treat as a floor, not the control's full cost.",
+      "description": "Times the detector call only -- extract_spans, canonicalize, decide and the audit write sit outside the timer (design 13.2). Treat as a floor, not the control's full cost. A p95 computed from a handful of demo requests is just the slowest of them; read this only once the window holds real traffic.",
       "gridPos": {
+        "h": 7,
+        "w": 24,
         "x": 0,
-        "y": 38,
-        "w": 48,
-        "h": 7
+        "y": 38
       },
       "datasource": {
         "type": "prometheus",

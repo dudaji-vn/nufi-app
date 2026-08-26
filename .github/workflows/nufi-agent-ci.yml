@@ -1,0 +1,97 @@
+name: nufi-agent-ci
+
+on:
+  pull_request:
+    paths: ['apps/nufi-agent/**', '.github/workflows/nufi-agent-ci.yml']
+  # A pull_request-only trigger never runs these guards on a direct push to
+  # the default branch (a protected-branch bypass, an admin merge without a
+  # PR, or a merge commit pushed straight from a local clone) -- the exact
+  # class of change check-fork-diff.sh/check-brand-css.sh exist to catch
+  # would ship un-checked. Same path filter as above.
+  push:
+    branches: [main]
+    paths: ['apps/nufi-agent/**', '.github/workflows/nufi-agent-ci.yml']
+
+concurrency:
+  group: nufi-agent-ci-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  fork-guard:
+    name: Fork diff stays in the allowlist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # The guard diffs against the vendored upstream tag, so it needs
+          # real history rather than the default single-commit checkout.
+          fetch-depth: 0
+      - name: Compare apps/nufi-agent against its vendored upstream tag
+        run: ./apps/nufi-agent/nufi/check-fork-diff.sh
+
+  locale-parity:
+    name: ko.json stays a clean, declared subset of en.json
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check ko.json has no orphan keys and covers the declared demo path
+        run: ./apps/nufi-agent/nufi/check-locale-parity.sh
+
+  backend-brand:
+    name: Backend strings carry the NuFi product name
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      # No build and no dependencies: the strings this checks are literals in
+      # Python and JSON source, so a grep over the tree is the whole job. It
+      # exists as its own check rather than a step inside brand-css because it
+      # covers the half of the UI that build cannot see -- component metadata
+      # rendered from the backend, which the frontend rebrand plugin never
+      # touches.
+      - name: Check no user-facing backend string names the upstream product
+        run: ./apps/nufi-agent/nufi/check-backend-brand.sh
+
+  brand-css:
+    name: Compiled CSS carries the NuFi brand tokens
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/nufi-agent/src/frontend/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: apps/nufi-agent/src/frontend
+        run: npm ci
+      - name: Build and verify nufi/brand.css survived the build
+        run: ./apps/nufi-agent/nufi/check-brand-css.sh
+
+  rebrand:
+    name: Rebrand transform
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+        with:
+          # Pinned to the version this job was verified against locally
+          # (1.3.1). Unlike pnpm/action-setup (see agents-ci.yml's own
+          # `rebrand` job and its package_json_file comment), setup-bun does
+          # not need to be told where to look: bun-version and
+          # bun-version-file both default to unset in its action.yml, and
+          # omitting both just installs latest -- there's no root
+          # package.json lookup here to fail the way pnpm's does. Pinned
+          # anyway for reproducibility, not to avoid that failure mode.
+          bun-version: 1.3.x
+      - name: Test nufi/rebrand.ts against nufi/rebrand.test.ts
+        # No install step first, on purpose: nufi/rebrand.test.ts has no
+        # package.json of its own (see its own header comment -- it's
+        # standalone, like apps/agents/nufi/adapter) and only imports
+        # bun:test (built in) and ./rebrand, whose only external import is
+        # `import type { Plugin } from "vite"` -- a type-only import Bun
+        # elides at parse time and never resolves at runtime. Installing
+        # the real src/frontend node_modules first (mirroring agents-ci.yml's
+        # pnpm install) would contradict that standalone design for no
+        # benefit this test actually needs.
+        working-directory: apps/nufi-agent/nufi
+        run: bun test rebrand.test.ts

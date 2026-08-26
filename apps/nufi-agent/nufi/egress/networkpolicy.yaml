@@ -1,0 +1,139 @@
+# Egress policy for the NUFI Studio (Langflow) pod.
+#
+# WHY THIS EXISTS AND WHY IT IS A CiliumNetworkPolicy, NOT A NetworkPolicy
+# --------------------------------------------------------------------
+# docs/2026-08-10-nufi-agent-langflow-fork.md §4 measured that Langflow has no
+# application-level chokepoint for model traffic: the SSRF allowlist
+# (ssrf_allowed_hosts / is_host_allowed() in
+# src/lfx/src/lfx/utils/ssrf_protection.py) only covers bundles that make raw
+# httpx calls (lmstudio, chroma, clickhouse, homeassistant). The 71 provider
+# bundles call LangChain SDKs with their own HTTP clients, and where a base
+# URL is settable at all (e.g. `openai_api_base` in
+# src/bundles/openai/src/lfx_openai/components/openai/openai.py:41) it is a
+# per-node field a flow author can type anything into. Patching 71 bundles is
+# the fat fork this whole plan avoids, so this network policy is not a
+# second layer of defence — for NUFI Studio it is the *only* one.
+#
+# That makes the enforcement mechanism load-bearing, so it matters that it is
+# the mechanism that actually enforces. It has to be Cilium, not a plain
+# Kubernetes NetworkPolicy:
+#
+#   packages/plugins/sandbox-providers/kubernetes/src/network-policy.ts:8-16
+#   (apps/agents, the sibling fork's own sandbox egress code) states:
+#
+#     "Standard NetworkPolicy cannot express FQDNs natively — only Cilium
+#      can. When [an FQDN allow-]list is non-empty AND no explicit
+#      egressAllowCidrs was provided, the standard NetworkPolicy falls back
+#      to 'public IPv4 except RFC1918/link-local/loopback/multicast' so the
+#      configured FQDNs at least become reachable. This is broader than the
+#      operator probably wants — switch to `egressMode: "cilium"` for exact
+#      FQDN allow-listing in production."
+#
+# Verified against that file directly (2026-08-10): the citation checks out
+# — same three sentences, same line range. A plain NetworkPolicy naming
+# `api.codechi.me` in a `to.ipBlock`/DNS-adjacent rule cannot actually match
+# on a hostname; the only way to get FQDN-scoped egress out of stock
+# Kubernetes NetworkPolicy is the "allow everything public" fallback quoted
+# above, which is the entire internet — worse than no policy, because it
+# looks like containment. So this file is a `cilium.io/v2`
+# CiliumNetworkPolicy, modeled directly on the known-good shape in
+# packages/plugins/sandbox-providers/kubernetes/src/cilium-network-policy.ts
+# (same repo, same fork family, already reviewed): a DNS-resolution rule
+# plus a `toFQDNs` rule for the gateway host, nothing else.
+#
+# WHAT THIS POLICY DOES
+# ----------------------
+# Selects the NUFI Studio pod(s) and allows exactly two egress destinations:
+#   1. Cluster DNS (kube-dns / CoreDNS in kube-system), required for the
+#      FQDN rule below to resolve at all.
+#   2. api.codechi.me on 443 — the NuFi security gateway that model traffic
+#      is meant to flow through instead of a vendor endpoint.
+# Everything else is implicitly denied: a CiliumNetworkPolicy that matches
+# an endpointSelector and declares an `egress` list denies egress traffic
+# not covered by that list, for the endpoints it selects. No separate
+# deny-all resource is needed (same reasoning as the upstream
+# cilium-network-policy.ts, which also ships a single manifest). Ingress is
+# left ungoverned by this file — NUFI Studio is a UI application the gateway
+# and/or ingress controller must still be able to reach; this policy is
+# about where the pod's own outbound model traffic can go, not who can
+# reach the pod.
+#
+# NAMESPACE
+# ---------
+# Deliberately not set in `metadata.namespace` — there is no NUFI Studio
+# Kubernetes Deployment manifest in this repo yet to pin it against. Apply
+# with the real namespace at apply time:
+#
+#   kubectl apply -n <nufi-agent-namespace> -f networkpolicy.yaml
+#
+# POD SELECTOR — AN ASSUMPTION, NOT A VERIFIED FACT
+# --------------------------------------------------
+# `endpointSelector` below assumes the NUFI Studio pod carries the label
+# `app.kubernetes.io/name: nufi-agent` (the conventional Kubernetes
+# recommended label — https://kubernetes.io/docs/concepts/overview/
+# working-with-objects/common-labels/). This is a naming choice made here,
+# not a fact read off an existing manifest, because none exists yet. Before
+# this policy is applied to a real cluster, confirm the label matches
+# whatever the actual Deployment/StatefulSet for NUFI Studio sets on its pod
+# template — update `endpointSelector.matchLabels` to match if it differs,
+# and update `verify-egress.sh`'s `POD_LABEL_SELECTOR` default to match too.
+#
+# WHAT HAPPENS IF THE SELECTOR IS WRONG: `kubectl apply` accepts this
+# manifest and reports success even if `endpointSelector` matches zero
+# pods. Cilium does not reject or warn about an unselected policy — it just
+# never applies to anything, silently. A pod that is never selected by any
+# CiliumNetworkPolicy keeps Cilium's default-allow egress, i.e. it can reach
+# the entire internet, which is the exact failure this whole task exists to
+# prevent, and `kubectl apply`'s clean exit gives no signal that it
+# happened. Two ways to catch it:
+#   1. `verify-egress.sh` catches it as a byproduct: an unselected pod has
+#      open egress, so the vendor probe in that script correctly reports
+#      FAIL ("api.openai.com is reachable") rather than PASS. This is the
+#      only check in this repo that would notice.
+#   2. Check enforcement directly, before ever running the vendor probe:
+#        kubectl -n <namespace> get ciliumendpoints -o wide
+#      Look for the target pod's row and confirm its EGRESS ENFORCEMENT
+#      column reads `true`/enabled. If it reads `false`/disabled, or the
+#      pod does not appear in the list at all, `endpointSelector` above is
+#      not matching this pod's real labels — fix the label before trusting
+#      anything else about this policy.
+#
+# THIS IS UNVERIFIED. See egress/README.md — until verify-egress.sh has run
+# against a real cluster, this file encodes an intention, not a measurement.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: nufi-agent-egress-gateway-only
+  labels:
+    nufi.io/managed-by: nufi-agent-egress-policy
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: nufi-agent
+  egress:
+    # 1. DNS resolution — required before the toFQDNs rule below can match
+    #    anything. Mirrors cilium-network-policy.ts's kube-dns rule exactly.
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+
+    # 2. The gateway, and only the gateway. This is the whole point of the
+    #    policy: every model call NUFI Studio makes must resolve to this host
+    #    or fail at the network layer, regardless of what base URL a flow
+    #    author typed into a provider node.
+    - toFQDNs:
+        - matchName: api.codechi.me
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP

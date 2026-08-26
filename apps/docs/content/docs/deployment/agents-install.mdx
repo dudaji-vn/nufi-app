@@ -1,0 +1,173 @@
+---
+title: Installing NUFI Works
+description: Requirements for NUFI Works, how to point it at the gateway, and how to check the install actually took.
+---
+
+NUFI Works is a Node server and a React UI on PostgreSQL. It is deployed
+separately from the chat app and shares only the gateway.
+
+## Requirements
+
+| | |
+|---|---|
+| Node | 22 |
+| pnpm | 9.15.4 (pinned in `apps/agents/package.json`) |
+| PostgreSQL | 16 |
+| Kubernetes + Cilium | Required to *enforce* agent egress — see [Agent egress](/docs/deployment/agents-egress) |
+
+The gateway is a hard dependency: every model call goes through it.
+
+## Install
+
+```bash
+cd apps/agents
+pnpm install --frozen-lockfile --node-linker=isolated
+pnpm build
+node nufi/rebrand-server-dist.mjs server/dist
+pnpm db:migrate
+pnpm dev:server
+```
+
+Two of those lines are easy to skip and both fail quietly.
+
+<Callout type="warn">
+**`--node-linker=isolated` is not optional.** The UI build aliases a dependency
+to a hardcoded path that only exists under pnpm's default isolated layout. A
+machine configured for hoisted linking — including via a global file such as
+`~/Library/Preferences/pnpm/rc` — puts the package elsewhere and the build dies
+on an unrelated-looking `ENOENT`. Check with `pnpm config get node-linker`.
+</Callout>
+
+<Callout type="warn">
+**The rebrand step must run after every server build.** The UI gets the product
+name from a build plugin; the server builds with plain `tsc` and gets it from
+this script. Skip it and the two halves disagree — the client looks for one
+string while the server writes another, and comparisons between them stop
+matching with no error at all. Assert it with
+`node nufi/rebrand-server-dist.mjs --check server/dist`, which exits non-zero if
+the step was missed.
+</Callout>
+
+## Configuration
+
+```bash
+DATABASE_URL=postgres://…
+PORT=3100
+PAPERCLIP_ADAPTERS_FILE=/path/to/apps/agents/nufi/adapters.json
+NUFI_MODEL_API_KEY=<gateway key>
+```
+
+`PAPERCLIP_ADAPTERS_FILE` is what pins agents to the gateway. It replaces the
+built-in adapter list wholesale, so an adapter absent from the file is
+unavailable rather than falling back to a vendor default.
+
+`NUFI_MODEL_API_KEY` is now a **fallback**, not the only way in. It is one key
+shared by every agent on the server: spend is a single number, and revoking it
+revokes it for everyone. Prefer per-member keys via
+[the connect plugin](#the-connect-plugin) and leave this unset unless the
+install is genuinely single-tenant.
+
+## Verifying the install
+
+**Adapters resolved as intended.** On startup the server logs which it accepted:
+
+```
+reconciled adapter availability from PAPERCLIP_ADAPTERS
+  {"enabled":["claude_local","codex_local","opencode_local","pi_local","nufi_agent"],
+   "disabled":["cursor","cursor_cloud","gemini_local","grok_local",…]}
+```
+
+If a type you expected is in `disabled`, it is missing from `adapters.json`. If
+the server refuses to start with *"declares adapter type(s) with no installed
+adapter"*, the name in the file does not match what the adapter declares.
+
+**The registry is internally consistent:**
+
+```bash
+node apps/agents/nufi/verify-adapters.mjs
+```
+
+```
+5 adapters — 5 enabled, 0 disabled
+OK — every enabled adapter routes and egresses only to api.codechi.me.
+```
+
+**Egress is actually confined** — the check that matters, and the one that is
+not satisfied by configuration alone:
+
+```bash
+apps/agents/nufi/egress/verify-egress.sh <agent-namespace>
+```
+
+Until this passes, agent traffic is routed to the gateway by convention, not
+held there by policy. Do not describe the deployment as protected before it does.
+
+## The connect plugin
+
+Lets each member hand this installation their own gateway key from the session
+they already have at NUFI chat, so runs bill the person the work belongs to.
+End-user steps: [Connecting your NUFI account](/docs/end-user/agent-connect).
+
+```bash
+cd apps/agents
+pnpm --dir nufi/connect-plugin install
+pnpm --dir nufi/connect-plugin build
+pnpm paperclipai plugin install "$PWD/nufi/connect-plugin"
+pnpm paperclipai plugin list      # expect: key=nufi.connect status=ready
+```
+
+Then two settings, in two places. **Both are required** — the flow silently does
+nothing useful with only one.
+
+| Where | Setting | Value |
+|---|---|---|
+| Agents → Settings → Plugins → NUFI Connection | NUFI console URL | `https://console.nufi.me` |
+| Console environment | `AGENTS_ALLOWED_ORIGINS` | `https://agents.nufi.me` |
+
+<Callout type="warn">
+`AGENTS_ALLOWED_ORIGINS` is a security control, not configuration ceremony. Any
+page can open the console's connect window, and a signed-in visitor is
+legitimately recognised there; this list is the only thing that stops the
+console handing the minted key back to whoever asked. Matching is exact —
+no wildcards, no suffix matching — and an empty value **disables** the endpoint
+rather than opening it.
+</Callout>
+
+Then, once per company, an administrator opens **Settings → NUFI** and adds the
+`NUFI_MODEL_API_KEY` secret. That creates the slot; each member still supplies
+their own value. Bind it on an agent as an environment variable of the same name
+referencing the user secret, and every run resolves it to the key of whoever the
+work belongs to.
+
+## Installing the NUFI adapter
+
+`nufi_agent` is an external adapter, so it needs registering once:
+
+```json
+[{
+  "packageName": "@nufi/paperclip-adapter",
+  "localPath": "<repo>/apps/agents/nufi/adapter",
+  "type": "nufi_agent",
+  "installedAt": "2026-08-04T08:00:00.000Z"
+}]
+```
+
+Write that to `~/.paperclip/adapter-plugins.json`, build the adapter
+(`pnpm --dir nufi/adapter build`), and restart. Success looks like:
+
+```
+Loaded external adapters from plugin store {"count":1,"adapters":["nufi_agent"]}
+```
+
+## Upgrading
+
+`apps/agents` tracks upstream release tags, not the development branch:
+
+```bash
+git fetch --depth 1 paperclip refs/tags/<tag>:refs/tags/paperclip-<tag>
+git subtree pull --prefix=apps/agents paperclip-<tag> --squash
+```
+
+Then re-run the build, the rebrand step, and the migrations. The CI fork guard
+will reject the merge if the upgrade introduced local edits outside the
+NUFI-owned file list, which is what keeps this upgrade path working at all.
