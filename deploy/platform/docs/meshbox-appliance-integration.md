@@ -46,12 +46,29 @@ Guardrail detectors (presidio, scanner) exist **only at full tier**; minimal/sta
 run litellm without them. If `litellm/config.yaml` ever hard-requires a detector at
 load time, gate it so the proxy still boots detector-less (appliance gap **G4**).
 
+## The adapters are the seam (RAG, Agent) — CMP-510
+
+Two more adapters extend the chat pattern to the remaining MeshBox sockets:
+
+- `adapters/meshbox-rag/` bridges MeshBox `/v1/documents` + `/v1/query` to nufi-app's
+  RAG retriever (**rag_api**, `RAG_API_URL`) and grounds the answer via litellm
+  (`/v1/chat/completions`). Two-hop RAG (retrieve → generate); `502` on empty. Built
+  into `nufi/meshbox-rag-adapter:local`, `:8901`.
+- `adapters/meshbox-agent/` bridges MeshBox `/v1/run` to nufi-agent's Langflow run API
+  (`/api/v1/run/{flow}`, `x-api-key`), mapping a routine → flow and normalizing the
+  nested output to `{status,output}`; `502` on empty/errored/unwired. Built into
+  `nufi/meshbox-agent-adapter:local`, `:8902`.
+
+Keep stable for the appliance: the `/v1/documents`·`/v1/query`·`/v1/run` ⇄ upstream
+translations + the `502` honest boundary, and the `:8901`/`:8902` ports.
+
 ## Forward work owned by nufi-app (from INTEGRATION.md §7)
 
-- **G1 RAG:** MeshBox expects `/v1/documents` + `/v1/query`; nufi-app has no RAG
-  service yet. Needs a RAG backend + a `meshbox-rag` adapter + a pgvector store
-  (minimal tier already provisions `pgvector/pgvector:pg16`).
-- **G2 Agent:** MeshBox expects `/v1/run`; wire `apps/nufi-agent` behind a
-  `meshbox-agent` adapter mapping routine templates → runs.
+- **G1 RAG:** ✅ delivered (CMP-510) — `meshbox-rag` adapter above. Still needs the
+  real RAG backend deployed in the tier: rag_api + a pgvector store (minimal tier
+  already provisions `pgvector/pgvector:pg16`) and a JSON `/documents` ingest (rag_api
+  native `/embed` is multipart — a small ingest shim closes that).
+- **G2 Agent:** ✅ delivered (CMP-510) — `meshbox-agent` adapter above. Still needs
+  nufi-agent deployed in the tier and per-routine `NUFI_AGENT_FLOW_MAP` flows built.
 - **G5 admin-panel:** not in this platform compose yet; the appliance wires
   `API_SERVER_URL` to console best-effort — confirm the real contract.
