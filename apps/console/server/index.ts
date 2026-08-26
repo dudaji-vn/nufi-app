@@ -40,6 +40,21 @@ app.route('/enter', enter);
 app.use('/oidc/authorize', auth());
 app.route('/oidc', oidc);
 
+// agents.nufi.me and console.nufi.me are the same service. The hostname is
+// what decides which front page a visitor gets, so the root path is redirected
+// on the chooser host and left alone everywhere else. Scoped to '/' on
+// purpose: every other path, including /rpc, /enter and /oidc, has to keep
+// working on both hostnames.
+const CHOOSER_HOST = process.env.CHOOSER_HOST ?? 'agents.nufi.me';
+
+app.use('*', async (c, next) => {
+  const host = c.req.header('host')?.split(':')[0];
+  if (host === CHOOSER_HOST && new URL(c.req.url).pathname === '/') {
+    return c.redirect('/choose', 302);
+  }
+  return next();
+});
+
 const rpc = new RPCHandler(router);
 
 app.use('/rpc/*', auth(), async (c, next) => {
