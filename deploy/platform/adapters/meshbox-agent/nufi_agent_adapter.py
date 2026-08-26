@@ -66,6 +66,8 @@ import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import nufi_egress
+
 
 def _env(*names, default=""):
     for n in names:
@@ -99,6 +101,8 @@ class Config:
                 sys.stderr.write(
                     "[agent-adapter] WARN: NUFI_AGENT_FLOW_MAP is not valid JSON;"
                     " ignoring\n")
+        # --- egress guard (CMP-511 W4): refuse to dial an off-mesh agent ---
+        self.egress = nufi_egress.from_env()
 
     def flow_for(self, routine_id):
         """Resolve the flow id for a routine, or "" if this routine is unwired."""
@@ -202,6 +206,11 @@ def _run_status(resp):
 
 def run(cfg, routine_id, routine):
     """Trigger one routine on nufi-agent and return {status, output} for MeshBox."""
+    # Egress guard: an agent run can carry department context in its input, so
+    # confirm the nufi-agent upstream is on the mesh before dialing. Enforce mode
+    # raises EgressError(403) for an off-mesh target; audit records only.
+    if getattr(cfg, "egress", None) is not None:
+        cfg.egress.check(cfg.agent_url)
     flow = cfg.flow_for(routine_id)
     input_value = cfg.input_template.format(routine=routine or routine_id,
                                             routine_id=routine_id)
@@ -286,6 +295,9 @@ class Handler(BaseHTTPRequestHandler):
         routine = (body.get("routine") or "").strip()
         try:
             return self._json(200, run(self.cfg, routine_id, routine))
+        except nufi_egress.EgressError as exc:
+            # Enforcing egress refused an off-mesh agent upstream (403).
+            return self._json(exc.code, {"error": str(exc)})
         except UpstreamError as exc:
             return self._json(502, {"error": str(exc)})
 

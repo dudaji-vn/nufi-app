@@ -51,6 +51,15 @@ unwired** → `502` (never a fabricated result).
 | `NUFI_AGENT_INPUT_TEMPLATE` | `'{routine}' 루틴을 실행하세요.` | `input_value` template |
 | `ADAPTER_HOST` / `ADAPTER_PORT` | `0.0.0.0` / `8902` | bind address |
 | `NUFI_AGENT_TIMEOUT` | `120` | run timeout (s) — agent runs are slow |
+| `NUFI_EGRESS_MODE` | `audit` | `enforce` = refuse to dial an off-mesh `NUFI_AGENT_URL` (`403`); `audit` records only |
+| `NUFI_EGRESS_ALLOW` | – | comma/space list of extra allow-listed agent hosts |
+| `NUFI_MESH_CIDR` | – | mesh CIDR(s) counted as on-mesh (e.g. `192.168.99.0/24`) |
+| `NUFI_MESH_DOMAIN` | `mesh` | mesh DNS suffix counted as on-mesh |
+
+**Egress guard (CMP-511 W4, gap #6).** Before a routine run dials nufi-agent, the
+adapter confirms `NUFI_AGENT_URL` is on the mesh (loopback / private / `.mesh` /
+mesh CIDR / allow-list). A public target is denied `403` in `enforce` mode (never
+dialed), recorded only in `audit` (default). See `nufi_egress.py`, `test_egress.py`.
 
 MeshBox routine ids (`r1`…`r6`) come from `appliance/portal/catalog.py :ROUTINES`.
 Map each to a nufi-agent flow, e.g.:

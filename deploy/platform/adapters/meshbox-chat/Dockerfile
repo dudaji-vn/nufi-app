@@ -1,6 +1,7 @@
 # MeshBox⇄nufi-app chat adapter — stdlib only, so the image stays tiny.
 FROM python:3.12-alpine
 WORKDIR /app
+COPY nufi_egress.py /app/nufi_egress.py
 COPY nufi_chat_adapter.py /app/nufi_chat_adapter.py
 EXPOSE 8900
 # Healthcheck hits the adapter's own /healthz, which in turn probes the upstream.

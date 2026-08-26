@@ -1,6 +1,7 @@
 # MeshBox⇄nufi-app agent adapter — stdlib only, so the image stays tiny.
 FROM python:3.12-alpine
 WORKDIR /app
+COPY nufi_egress.py /app/nufi_egress.py
 COPY nufi_agent_adapter.py /app/nufi_agent_adapter.py
 EXPOSE 8902
 # Healthcheck hits the adapter's own /healthz, which probes nufi-agent.

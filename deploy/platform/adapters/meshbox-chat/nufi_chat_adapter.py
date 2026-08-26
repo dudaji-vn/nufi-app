@@ -79,6 +79,8 @@ import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import nufi_egress
+
 
 def _env(*names, default=""):
     for n in names:
@@ -112,6 +114,8 @@ class Config:
             # A malformed map disables per-user keys rather than crashing the
             # adapter; every subject then falls back to the default key.
             self.keymap = {}
+        # --- egress guard (CMP-511 W4): refuse to dial an off-mesh upstream ---
+        self.egress = nufi_egress.from_env()
 
 
 class UpstreamError(Exception):
@@ -281,6 +285,11 @@ def chat(cfg, message, history, identity=None):
     the member's litellm virtual key and stamps ``user``/``metadata``/header so
     litellm's audit trail records who actually asked.
     """
+    # Egress guard: before any member data leaves for the upstream, confirm the
+    # target is on the mesh. In enforce mode an off-mesh upstream raises
+    # EgressError(403); in audit mode this is a no-op (decision recorded only).
+    if cfg.egress is not None:
+        cfg.egress.check(cfg.upstream)
     model = resolve_model(cfg)
     payload = {
         "model": model,
@@ -367,6 +376,10 @@ class Handler(BaseHTTPRequestHandler):
 
         try:
             return self._json(200, chat(self.cfg, message, history, identity))
+        except nufi_egress.EgressError as exc:
+            # Enforcing egress refused an off-mesh upstream: member data must not
+            # leave the mesh. Answer 403 (never forwarded, never fabricated).
+            return self._json(exc.code, {"error": str(exc)})
         except UpstreamError as exc:
             # MeshBox portal/ai.py maps any non-2xx here to AiError(.., 502).
             return self._json(502, {"error": str(exc)})

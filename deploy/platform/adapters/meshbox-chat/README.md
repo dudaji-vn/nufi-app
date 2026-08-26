@@ -38,6 +38,19 @@ boundary reports a real failure as a failure.
 | `NUFI_FEDERATION_AUD` | `nufi-chat` | audience the identity token must carry (checked locally) |
 | `NUFI_FEDERATION_REQUIRED` | `0` | `1` = refuse requests without a valid identity |
 | `NUFI_LITELLM_KEYMAP` | `{}` | JSON `{subject: litellm virtual key}` for per-user attribution |
+| `NUFI_EGRESS_MODE` | `audit` | `enforce` = refuse to dial an off-mesh upstream (`403`); `audit` records only |
+| `NUFI_EGRESS_ALLOW` | – | comma/space list of extra allow-listed upstream hosts |
+| `NUFI_MESH_CIDR` | – | mesh CIDR(s) counted as on-mesh (e.g. `192.168.99.0/24`) |
+| `NUFI_MESH_DOMAIN` | `mesh` | mesh DNS suffix counted as on-mesh |
+
+## Egress guard (CMP-511 W4, gap #6)
+
+The on-box twin of MeshBox's `portal/egress.py`. Before any member data leaves for
+the upstream, the adapter confirms `NUFI_UPSTREAM_URL` is **on the mesh** —
+loopback / private-IP / `.mesh` name / configured mesh CIDR / explicit allow-list.
+A public target is denied with `403` in `enforce` mode (never dialed) and merely
+recorded in `audit` (the default, backward-compatible). The sellable appliance
+stack sets `enforce`. See `nufi_egress.py`, `test_egress.py`.
 
 ## Identity federation (CMP-509)
 
