@@ -1,17 +1,28 @@
 ---
 title: Developer setup
-description: One landing page that maps each repo to its dev workflow.
+description: One landing page that maps each app in the monorepo to its dev workflow.
 ---
 
-Five repos in the NUFI org. Pick the one you need.
+Everything lives in one repository,
+[`dudaji-vn/nufi-app`](https://github.com/dudaji-vn/nufi-app). Pick the
+app you need.
 
-| Repo                                                                                  | Purpose                                          | Dev guide                                          |
-|---------------------------------------------------------------------------------------|--------------------------------------------------|----------------------------------------------------|
-| [`npuops-platform`](https://github.com/dudaji-vn/npuops-platform)                     | Compose stack — everything wired together        | [Local stack](/docs/developer/local-stack)         |
-| [`nufi-chat`](https://github.com/dudaji-vn/nufi-chat)                                 | Standalone chat deployment                       | [nufi-chat](/docs/developer/nufi-chat)             |
-| [`LibreChat`](https://github.com/dudaji-vn/LibreChat) (fork)                          | Source of the chat image                         | [LibreChat fork](/docs/developer/librechat-fork)   |
-| [`nufichat-admin-panel`](https://github.com/dudaji-vn/nufichat-admin-panel)           | Admin panel SPA                                  | [Admin panel dev](/docs/developer/admin-panel-dev) |
-| [`nufi-console`](https://github.com/dudaji-vn/nufi-console)                           | Self-service developer console                   | [Console dev](/docs/developer/console-dev)         |
+| Path | Purpose | Dev guide |
+|---|---|---|
+| `deploy/platform` | Compose stack — everything wired together | [Local stack](/docs/developer/local-stack) |
+| `apps/chat` | The chat application (a LibreChat fork) | [LibreChat fork](/docs/developer/librechat-fork) |
+| `apps/admin-panel` | Admin panel SPA | [Admin panel dev](/docs/developer/admin-panel-dev) |
+| `apps/console` | Self-service developer console, and the identity issuer | [Console dev](/docs/developer/console-dev) |
+| `apps/nufi-agent` | NUFI Studio (a Langflow fork) | [The agent forks](/docs/developer/agent-forks) |
+| `apps/agents` | NUFI Works (a Paperclip fork) | [The agent forks](/docs/developer/agent-forks) |
+| `apps/docs` | This documentation site | — |
+
+<Callout>
+Earlier documentation described these as separate repositories
+(`npuops-platform`, `nufi-chat`, `LibreChat`, `nufichat-admin-panel`,
+`nufi-console`). They were merged into the monorepo and archived — if you
+have a clone of one, it is no longer where work happens.
+</Callout>
 
 ## How they relate
 
