@@ -1,0 +1,129 @@
+---
+title: Installing NUFI Studio
+description: What NUFI Studio needs to run, the two settings that decide whether it survives a redeploy, and how to check the install actually took.
+---
+
+NUFI Studio is a Python/FastAPI backend serving a React UI. It is
+deployed separately from the chat app and shares only the gateway.
+
+## Requirements
+
+| | |
+|---|---|
+| Python | 3.10–3.14 (3.12 in the published image) |
+| PostgreSQL | 16 |
+| Memory | 2 GB minimum. The build needs more than the runtime |
+| Port | `7860` by default, or whatever `PORT` is set to |
+
+## Install
+
+The published image is the supported path:
+
+```bash
+docker run -d \
+  -p 7860:7860 \
+  -e LANGFLOW_DATABASE_URL=postgresql://user:pass@host:5432/nufi_studio \
+  -e LANGFLOW_SECRET_KEY="$(openssl rand -hex 32)" \
+  ghcr.io/dudaji-vn/nufi-studio:latest
+```
+
+To build it yourself, use `apps/nufi-agent/nufi/Dockerfile` rather than
+the upstream one — it is the file that applies the NUFI branding and
+turns off upstream telemetry.
+
+<Callout type="warn">
+**Install the `postgresql` extra.** The database drivers are an optional
+dependency group upstream, so a build that runs a plain `uv sync` starts
+cleanly, connects to nothing, and dies on `ModuleNotFoundError:
+psycopg2` the moment it touches the database. The Dockerfile pins
+`uv sync --frozen --no-dev --extra postgresql` for this reason. If you
+assemble your own image, carry that flag over.
+</Callout>
+
+## Configuration
+
+```bash
+PORT=7860
+LANGFLOW_DATABASE_URL=postgresql://…/nufi_studio
+LANGFLOW_AUTO_LOGIN=false
+LANGFLOW_SECRET_KEY=            # openssl rand -hex 32
+LANGFLOW_SUPERUSER=             # an admin address
+LANGFLOW_SUPERUSER_PASSWORD=    # generated; store in your vault
+```
+
+Two of these decide whether the install survives its first redeploy.
+
+**`LANGFLOW_DATABASE_URL`.** The default is SQLite in a file inside the
+container. It works, right up to the first redeploy, at which point
+every flow anyone built is gone. Point it at Postgres before anyone
+uses the instance, not after.
+
+**`LANGFLOW_SECRET_KEY`.** This encrypts stored credentials — the API
+keys users put into global variables. Left unset, Studio generates one
+and writes it to a file in its config directory, so it survives a
+restart *only if that directory does*. On a platform with ephemeral
+containers it does not: the next deploy generates a different key, the
+stored secrets can no longer be decrypted, and the flows using them
+fail with errors that never mention a key. Set it explicitly and keep
+it — it is not something you can recover later.
+
+**`LANGFLOW_AUTO_LOGIN=false`** turns on multi-user mode. Leave it at
+the default and the instance has no accounts at all — every visitor is
+the same implicit user with access to every flow.
+
+### Signing in with a NUFI account
+
+Studio can accept the identity NUFI already issued, so members do not
+get a second password. That is a separate piece of setup on both sides —
+see [Single sign-on for the agent apps](/docs/deployment/agents-sso).
+
+Until you configure it, `LANGFLOW_SUPERUSER` and its password are the
+only way in.
+
+## Storage
+
+Uploaded files and knowledge bases are written to disk. On a platform
+with ephemeral containers, mount a volume — otherwise the database keeps
+the references and the files behind them disappear on redeploy, which
+surfaces later as flows that used to work.
+
+## Telemetry
+
+The published image sets `DO_NOT_TRACK=true` and
+`LANGFLOW_DO_NOT_TRACK=true`, baked in rather than left to the
+deployment. Upstream defaults to reporting package, version, platform,
+Python version, architecture and component-run events to a third-party
+analytics gateway. If you build your own image from upstream's
+Dockerfile, that reporting is on.
+
+## Verifying the install
+
+```bash
+curl -fsS https://studio.example.com/health_check
+```
+
+Then check the two things a health check cannot:
+
+1. **The branding took.** Load the page and confirm the product name is
+   NUFI Studio. The name comes from a build-time replacement; a build
+   that skipped it serves the upstream name to your users.
+2. **The database is Postgres.** Create a flow, redeploy, and confirm
+   it is still there. This is the only test that actually distinguishes
+   a working `LANGFLOW_DATABASE_URL` from a typo'd one, because a bad
+   URL silently falls back to SQLite.
+
+## Sizing
+
+Studio executes flow components in its own process. A flow that embeds
+a large document set will use real CPU and memory for as long as it
+runs, and it competes with the UI while doing so. Start at 2 GB and 1
+vCPU for a small team; watch memory during the first large ingest
+rather than guessing.
+
+<Callout type="warn">
+Flows run **inside Studio**, not in a sandbox. A component that runs
+code or reaches the network does so with the server's access. Anyone
+who can build a flow can therefore reach anything the Studio host can
+reach — treat access to a shared Studio as you would shell access to
+the box it runs on.
+</Callout>

@@ -1,0 +1,82 @@
+---
+title: Studio and Works
+description: NUFI has two agent apps. What each one is for, how to open them from the app, and why neither asks you to sign in again.
+---
+
+Beyond the assistants you build inside a conversation, NUFI has two
+separate apps for working with agents. They solve different problems,
+and the names are the fastest way to tell them apart: one is a place to
+**build** something, the other is a place to **run** work.
+
+| | **NUFI Studio** | **NUFI Works** |
+|---|---|---|
+| What it is | A canvas | An operations app |
+| You use it to | Wire a model, a knowledge base and a tool into a flow, then run it | Give a team of agents a goal, approve what matters, watch the spend |
+| You get out | A pipeline you can publish as an API endpoint | Completed tasks, with a record of who approved what |
+| Think of it as | A workbench | A team |
+
+Neither replaces the assistants in the chat app. Those stay where they
+are — see [Agents and skills](/docs/end-user/agents).
+
+## Opening them
+
+Both live behind one door.
+
+<Steps>
+<Step>Go to `agents.nufi.me`. Sign in to the NUFI app first if you have
+not already — the door needs a session to know who you are.</Step>
+<Step>Pick **NUFI Studio** or **NUFI Works**.</Step>
+<Step>You land inside the app, already signed in.</Step>
+</Steps>
+
+There is no **Agents** button inside the chat app yet — bookmark the
+address for now.
+
+## Why there is no second password
+
+There is no separate account for Studio or for Works. Your NUFI account
+is the account, and the sign-in you already did is the one that counts.
+
+When you pick a product, NUFI vouches for you to it: it confirms who you
+are, says what you are allowed to do, and hands that over for a limited
+time. The product creates your user the first time it sees you and
+recognises you from then on.
+
+Two consequences worth knowing:
+
+- **Signing out of NUFI does not instantly sign you out of Studio or
+  Works.** What was handed over stays valid until it expires — up to
+  eight hours by default. On a shared machine, close the tabs.
+- **Everyone with a NUFI account can open both.** There is no separate
+  invite list. If your organisation needs one, that is a setting an
+  administrator has to ask for; it does not exist yet.
+
+<Callout type="warn">
+Only ever reach these apps from the NUFI app or by typing the address
+yourself. A link from elsewhere that lands you on a page asking to
+"continue with NUFI" is worth a second look before you click it.
+</Callout>
+
+## Which one do I want?
+
+Ask what you have in your hand.
+
+- **A question and some documents** — you want neither of these. Use
+  the chat app; see [Chat with a document](/docs/end-user/guides/chat-with-a-document).
+- **A repeatable process** — extract fields from an invoice, answer
+  from a document set, summarise every incoming ticket — that is a flow.
+  Use **Studio**.
+- **A body of work with several moving parts and a deadline** — that is
+  a team with a goal. Use **Works**, and start with
+  [Assigning work to agents](/docs/end-user/agent-tasks).
+
+## Costs
+
+Everything either app does with a model runs through NUFI and lands on
+your usage, the same as a conversation does. You can see it in the
+console under [API keys](/docs/end-user/api-keys).
+
+In Works there is one extra step before that is true for you
+specifically — see
+[Connecting your NUFI account](/docs/end-user/agent-connect). Until you
+do it, agents run on whatever key the server was configured with.

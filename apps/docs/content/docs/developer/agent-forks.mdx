@@ -1,0 +1,144 @@
+---
+title: The agent forks
+description: NUFI Studio and NUFI Works are vendored forks. How the vendoring works, what the guards enforce, and the two mistakes that make a fork unrebasable.
+---
+
+Both agent products are forks of MIT-licensed upstreams, vendored into
+this monorepo rather than kept in separate repositories:
+
+| App | Upstream | Pinned at | Ships as |
+|---|---|---|---|
+| `apps/nufi-agent` | [Langflow](https://github.com/langflow-ai/langflow) | `v1.11.2` | NUFI Studio |
+| `apps/agents` | [Paperclip](https://github.com/paperclipai/paperclip) | `v2026.722.0` | NUFI Works |
+
+Each carries a `nufi/upstream.json` recording the repository, tag,
+commit and the exact command used to vendor it. That file is the source
+of truth for what "upstream" means, and the guards read it.
+
+## Why vendored, and what it costs
+
+A fork is only rebasable while its diff stays small and confined to
+leaf files. Let it spread — a colour hardcoded in a component here, a
+condition added to a service there — and the next upstream pull is a
+merge conflict in a hundred files. That is how a fork stops tracking
+upstream and freezes on the version it was forked at.
+
+So the discipline is: **NUFI code lives in `nufi/`**, and everything
+outside it must match upstream byte for byte. It is checked on every
+pull request rather than left to review.
+
+```bash
+apps/nufi-agent/nufi/check-fork-diff.sh
+apps/agents/nufi/check-fork-diff.sh
+```
+
+Each diffs its app against the vendored tag and fails on any changed
+path not on an allowlist. `apps/nufi-agent` allows only `nufi/`.
+`apps/agents` allows `nufi/` plus a short, individually justified list —
+the single-sign-on file, the brand CSS and the favicons — where each
+entry carries a comment saying why it could not live in `nufi/`.
+
+Adding to that list is a decision, not a formality. Prefer, in order:
+put the code in `nufi/`; find an extension point upstream already
+offers; and only then widen the allowlist.
+
+<Callout type="warn">
+**Never squash-merge a branch that touched a vendored app.** The apps
+were added with `git subtree --squash`, and subtree pulls work by
+finding that ancestry. Squash-merging discards it permanently, and no
+later commit restores it — the next upstream resync becomes a manual
+diff-and-patch job forever. Use a merge commit.
+</Callout>
+
+## Resyncing with upstream
+
+The command is in `upstream.json` under `resync`. Running it is the
+easy part; the steps around it are what get missed. `apps/nufi-agent`'s
+pin spells them out, and they generalise:
+
+1. **Update `upstream.json`'s own `tag` and `commit`.** The guard reads
+   `tag` from that file to know what to diff against. A stale tag means
+   the guard compares against the wrong release and passes while
+   telling you nothing.
+2. **Run the brand guards for real**, not just the unit tests. See
+   below.
+3. **Check locale parity.** A release that adds English keys leaves
+   Korean gaps silently.
+
+## Rebranding
+
+Neither upstream is called NUFI, and the product name reaches users
+through several paths that fail independently. This is the part with
+the most ways to go quietly wrong.
+
+**NUFI Studio** replaces strings at build time through a Vite plugin
+(`nufi/rebrand.ts`) and ships its own `nufi/brand.css`. The backend has
+its own strings, checked separately.
+
+**NUFI Works** does the UI the same way, but its server builds with
+plain `tsc` and is rewritten afterwards by a script:
+
+```bash
+node nufi/rebrand-server-dist.mjs server/dist
+node nufi/rebrand-server-dist.mjs --check server/dist   # assert it ran
+```
+
+<Callout type="warn">
+**Run the `--check` after every server build.** If the rewrite is
+skipped, the client looks for one product name while the server writes
+another. Nothing errors — comparisons between them simply stop matching,
+and the failure surfaces somewhere unrelated. Use the script's own
+`--check`; counting occurrences of the upstream name by hand gives false
+failures, because legitimate ones survive in package paths and imports.
+</Callout>
+
+## What CI enforces
+
+| Guard | Fails when |
+|---|---|
+| `check-fork-diff.sh` | A change lands outside the allowlist |
+| `check-backend-brand.sh` | A user-facing backend string names the upstream product |
+| `check-brand-css.sh` | The rebrand plugin stopped being wired into the build |
+| `check-locale-parity.sh` | Korean has orphan keys or misses the declared path |
+| `rebrand.test.ts` | The string-rewrite transform regresses |
+
+`check-brand-css.sh` is the one worth understanding. The unit test
+proves the rewrite function still works on sample strings; it says
+nothing about whether the build still calls it. That script does a real
+build and asserts the upstream name does not survive into the compiled
+assets — which is the only check that actually proves the plugin is
+still connected.
+
+## Running them locally
+
+```bash
+# NUFI Studio
+cd apps/nufi-agent
+make init && make run_cli          # http://localhost:7860
+
+# NUFI Works
+cd apps/agents
+pnpm install --frozen-lockfile --node-linker=isolated
+pnpm build && node nufi/rebrand-server-dist.mjs server/dist
+pnpm db:migrate && pnpm dev:server
+```
+
+`--node-linker=isolated` is not optional for Works — see
+[Installing NUFI Works](/docs/deployment/agents-install) for why, and
+for the rest of the runtime configuration.
+
+<Callout>
+The guard scripts need bash 4 or newer. macOS ships bash 3.2, so
+install a newer one (`brew install bash`) and keep it ahead of
+`/bin/bash` on `PATH`.
+</Callout>
+
+## Deploying
+
+Images are built by `.github/workflows/nufi-agent-image.yml` and
+`agents-image.yml`, published to
+`ghcr.io/dudaji-vn/nufi-studio` and `ghcr.io/dudaji-vn/nufi-works`. For
+what to set at runtime, see
+[Installing NUFI Studio](/docs/deployment/studio-install),
+[Installing NUFI Works](/docs/deployment/agents-install) and
+[Single sign-on for the agent apps](/docs/deployment/agents-sso).

@@ -60,13 +60,24 @@ endpoints:
       titleConvo: true
       # Use whatever model the user is chatting with to title the conversation,
       # so this works regardless of which models are registered.
-      # Points at a LiteLLM alias that policy.yaml exempts from G1. LibreChat wraps
-      # the whole conversation in ~3000 characters of instructions to generate a
-      # title, which scores 0.987 against G1's 0.90 threshold on benign chats --
-      # enforcing G1 with titles on the guarded model would break every
-      # conversation. The user text inside that prompt was already scanned by the
-      # request that produced it, so nothing is lost. See litellm/guardrails/policy.yaml.
-      titleModel: "gemini-2.5-flash-title"
+      #
+      # This pointed at `gemini-2.5-flash-title`, a G1-exempt alias, because the
+      # title prompt -- LibreChat wraps the whole conversation in ~3000
+      # characters of instructions -- scored 0.987 against G1's 0.90 threshold
+      # on benign chats, and enforcing G1 would have broken every title.
+      #
+      # That measurement predates `require_corroboration: [user]`. Measured on
+      # the production gateway 2026-08-03 with G1 enforcing and titles on the
+      # guarded model: titles generated normally, and
+      # nufi_guardrail_decisions_total showed 5 block decisions carrying
+      # enforced="false" against 11 G1 invocations -- the classifier crossing
+      # its threshold, the regex detector not corroborating, so nothing blocked.
+      # Corroboration solves this; the exemption is not needed and only adds a
+      # model that skips G1 entirely.
+      #
+      # Remove `require_corroboration: [user]` from policy.yaml and titles break
+      # here immediately.
+      titleModel: "current_model"
       modelDisplayLabel: "NPUOps"
       forcePrompt: false
       summarize: false

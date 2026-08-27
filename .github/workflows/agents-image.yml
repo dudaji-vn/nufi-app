@@ -52,31 +52,71 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Asserted before the rename, so a no-op wrapper cannot pass for a
-      # working one. This number is what the next step has to erase.
-      - name: Show how much of the upstream name is in server/dist
+      # nufi/rebrand-server-dist.mjs --check is the authoritative test: it
+      # knows the rename only touches STRING LITERALS, and that package names
+      # (@paperclipai/*), env vars (PAPERCLIP_*) and class names must survive.
+      # A plain `grep -c Paperclip` counts those legitimate survivors and fails
+      # a correct image -- which is exactly what it did on the first run.
+      #
+      # Run against the BASE image first, where it must FAIL. A wrapper that
+      # silently did nothing would otherwise be indistinguishable from a
+      # working one.
+      - name: The base image must fail the rename check
         run: |
           set -euo pipefail
-          before="$(docker run --rm nufi-works-base:ci sh -c 'grep -rl Paperclip server/dist | wc -l')"
-          echo "files naming the upstream product before the rename: $before"
-          test "$before" -gt 0
+          # `sh -c` because that is the invocation shape already proven to pass
+          # through this image's ENTRYPOINT in a previous run.
+          if docker run --rm nufi-works-base:ci \
+               sh -c 'node nufi/rebrand-server-dist.mjs --check server/dist'; then
+            echo "the base image already passes the rename check -- either the"
+            echo "upstream build changed or this wrapper has nothing to do"
+            exit 1
+          fi
+          echo "base image needs the rename, as expected"
 
-      - name: Apply the NuFi rename and push
-        uses: docker/build-push-action@v6
-        with:
-          context: apps/agents
-          file: apps/agents/nufi/Dockerfile
-          platforms: linux/amd64
-          push: true
-          build-args: BASE=nufi-works-base:ci
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-
-      - name: Assert the shipped image carries the NuFi brand
+      # Deliberately NOT docker/build-push-action here. setup-buildx-action
+      # provisions a `docker-container` driver, which resolves `FROM` from a
+      # registry and cannot see an image the previous step loaded into the
+      # daemon -- so `FROM nufi-works-base:ci` fails with "pull access denied".
+      # The classic builder reads the daemon, which is exactly what this needs.
+      # (A local `docker buildx build` hides this: Docker Desktop's default
+      # builder uses the `docker` driver, not `docker-container`.)
+      - name: Apply the NuFi rename
         run: |
           set -euo pipefail
-          tag="$(printf '%s' '${{ steps.meta.outputs.tags }}' | head -1)"
-          docker pull "$tag"
-          after="$(docker run --rm "$tag" sh -c 'grep -rl Paperclip server/dist | wc -l')"
-          echo "files naming the upstream product after the rename: $after"
-          test "$after" -eq 0
+          docker build \
+            --build-arg BASE=nufi-works-base:ci \
+            -f apps/agents/nufi/Dockerfile \
+            -t nufi-works:branded \
+            apps/agents
+
+      # Asserted before anything is published. Verifying after the push means
+      # an image carrying the upstream product name is briefly public and is
+      # already what `:main` resolves to.
+      - name: Assert the rename took, before publishing
+        run: |
+          set -euo pipefail
+          docker run --rm nufi-works:branded \
+            sh -c 'node nufi/rebrand-server-dist.mjs --check server/dist'
+          echo "branded image passes the rename check"
+
+      # Upstream telemetry POSTs to telemetry.paperclip.ing and an AWS API
+      # Gateway by default. Asserted on the built image, not on the Dockerfile,
+      # so an ENV that gets dropped or overridden downstream still fails here.
+      - name: Assert telemetry is off in the image
+        run: |
+          set -euo pipefail
+          env_json="$(docker inspect nufi-works:branded --format '{{json .Config.Env}}')"
+          echo "$env_json" | tr ',' '\n' | grep -E 'TELEMETRY|DO_NOT_TRACK' || true
+          echo "$env_json" | grep -q 'PAPERCLIP_TELEMETRY_DISABLED=1'
+          echo "$env_json" | grep -q 'DO_NOT_TRACK=1'
+          echo "telemetry disabled in the image"
+
+      - name: Push every tag
+        run: |
+          set -euo pipefail
+          printf '%s\n' '${{ steps.meta.outputs.tags }}' | while read -r tag; do
+            [ -n "$tag" ] || continue
+            docker tag nufi-works:branded "$tag"
+            docker push "$tag"
+          done

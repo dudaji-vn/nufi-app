@@ -1,12 +1,12 @@
 ---
 title: RAG Integration
-description: How Retrieval-Augmented Generation fits into NUFI Chat today, and the path to the Qdrant + NuFi Flow vision.
+description: How Retrieval-Augmented Generation fits into NUFI Chat today, and the path to the Qdrant + NUFI Studio vision.
 ---
 
 This is a design/research note, not a how-to. It maps what RAG (Retrieval-Augmented
 Generation) **already exists** inside NUFI Chat, what it would take to turn on, and
 how that near-term capability lines up with the longer-term NUFI platform vision
-(Qdrant vector store + NuFi Flow no-code pipelines). Read it before committing to a
+(Qdrant vector store + NUFI Studio no-code pipelines). Read it before committing to a
 RAG architecture so we pick the path that doesn't have to be unwound later.
 
 ## TL;DR
@@ -17,8 +17,8 @@ RAG architecture so we pick the path that doesn't have to be unwound later.
 - For a demo we can enable in-product document Q&A **today** with no application
   code changes. The only NPU-specific wiring is pointing the embeddings call at an
   NPU-served, OpenAI-compatible embeddings model.
-- The platform vision (Qdrant + NuFi Flow + Langfuse) is a **different layer**, not
-  a replacement. NuFi Flow authors pipelines and exposes them as an
+- The platform vision (Qdrant + NUFI Studio + Langfuse) is a **different layer**, not
+  a replacement. NUFI Studio authors pipelines and exposes them as an
   OpenAI-compatible endpoint that Chat consumes through the Gateway like any other
   model. The two can coexist; we recommend starting with native RAG and adding the
   Flow path as pipelines mature.
@@ -27,12 +27,12 @@ RAG architecture so we pick the path that doesn't have to be unwound later.
 
 The platform matrix lists RAG in two places, and they are **not the same feature**:
 
-| | Native Chat RAG (L3 file Q&A) | NuFi Flow RAG (L2 pipeline authoring) |
+| | Native Chat RAG (L3 file Q&A) | NUFI Studio RAG (L2 pipeline authoring) |
 |---|---|---|
 | Who uses it | End users — drop a file into a chat | Engineers / DS — build a pipeline visually |
 | Vector store | pgvector (ships with LibreChat) | Qdrant |
-| Trigger | File upload in the chat composer | A designed Langflow graph |
-| Surface | Built into NUFI Chat | NuFi Flow (Langflow fork) → REST endpoint |
+| Trigger | File upload in the chat composer | A flow you designed in Studio |
+| Surface | Built into NUFI Chat | NUFI Studio → REST endpoint |
 | Status | Present, just disabled | Roadmap (Phase 3) |
 
 Confusing the two leads to wasted work (e.g. trying to make Chat talk to Qdrant
@@ -112,16 +112,16 @@ It is *not* the Qdrant store named in the platform vision, so a later move to Pa
 means re-embedding into Qdrant — but the **user-facing behaviour is identical**, so
 Path A is a safe demo and pilot vehicle.
 
-## Path B — NuFi Flow + Qdrant (strategic, no-code pipelines)
+## Path B — NUFI Studio + Qdrant (strategic, no-code pipelines)
 
-The platform vision puts RAG **authoring** in NuFi Flow (a Langflow fork) with
+The platform vision puts RAG **authoring** in NUFI Studio with
 **Qdrant** as the vector store and **Langfuse** for prompt tracing. The key insight
-that keeps this clean: a Flow pipeline is exported as an **OpenAI-compatible REST
+that keeps this clean: a Studio flow is exported as an **OpenAI-compatible REST
 endpoint**, so NUFI Chat consumes it through the Gateway as if it were just another
 model — no bespoke Chat ↔ Qdrant integration required.
 
 ```
-  Engineer builds in NuFi Flow ──▶ pipeline (PDF → chunk → embed → Qdrant → LLM)
+  Engineer builds in NUFI Studio ──▶ pipeline (PDF → chunk → embed → Qdrant → LLM)
                                           │  exported as /v1/chat/completions
                                           ▼
         NUFI Chat ──▶ NUFI Gateway ──▶ "flow-rag-pipeline" model ──▶ Qdrant + NPU LLM
@@ -136,7 +136,7 @@ What this buys us that Path A does not:
 - **Qdrant** as a first-class, horizontally-scalable store shared across apps.
 - **Langfuse** tracing of each retrieval + generation step.
 
-What it costs: standing up Qdrant, NuFi Flow, and Langfuse, plus defining the
+What it costs: standing up Qdrant, NUFI Studio, and Langfuse, plus defining the
 pipeline→endpoint contract. This is Phase 3 work, not a same-day demo.
 
 ## How the two paths relate
@@ -148,7 +148,7 @@ They are **complementary layers**, not competitors:
   back into Chat as a selectable model.
 
 A reasonable rollout: ship Path A now for in-product document Q&A and the demo; stand
-up Path B as NuFi Flow matures; once a Qdrant-backed Flow pipeline is the canonical
+up Path B as NUFI Studio matures; once a Qdrant-backed Studio flow is the canonical
 path, decide per-tenant whether native upload RAG stays on.
 
 ## Audit & compliance tie-in
@@ -165,7 +165,7 @@ entry shape to extend.
 
 1. **Now / demo:** enable **Path A** (native pgvector RAG) with NPU-served
    embeddings via the Gateway. Zero app-code, ships today.
-2. **Next:** prototype a single **Path B** pipeline in NuFi Flow against Qdrant,
+2. **Next:** prototype a single **Path B** pipeline in NUFI Studio against Qdrant,
    exposed as one Gateway model, to validate the export→consume contract.
 3. **Then:** wire RAG source documents into the audit log for the compliance story.
 4. **Decide later:** per-tenant, whether native upload RAG and Flow pipelines both
@@ -177,4 +177,4 @@ entry shape to extend.
 - `api/server/services/Files/VectorDB/crud.js`, `api/server/services/Files/process.js`
   — the native RAG client + routing.
 - LibreChat RAG API docs: [librechat.ai/docs/configuration/rag_api](https://www.librechat.ai/docs/configuration/rag_api)
-- NUFI platform matrix — Phase 3 (NuFi Studio): Qdrant, NuFi Flow, Langfuse.
+- NUFI platform matrix — Phase 3: Qdrant, NUFI Studio, Langfuse.

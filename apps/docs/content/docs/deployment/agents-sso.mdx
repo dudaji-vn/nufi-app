@@ -1,0 +1,186 @@
+---
+title: Single sign-on for the agent apps
+description: How the console issues identity to NUFI Studio and NUFI Works, what to set on each of the three sides, and the two constraints that will bite you later if you skip them.
+---
+
+Without this, NUFI Studio and NUFI Works each have their own accounts
+and their own passwords, and a member who already signed in to NUFI
+meets two more login screens. With it, they click through and are
+already in.
+
+The console does the vouching. It already verifies a NUFI session and
+issues gateway keys from it; issuing an identity is the same job with a
+different output, which is why it lives there rather than in a fourth
+service. One place decides who may enter which product.
+
+## The shape
+
+```
+chat.nufi.me ──"Agents"──▶ agents.nufi.me      (a route on the console)
+                                 │
+                                 ├──▶ studio.nufi.me    reads a signed cookie
+                                 └──▶ works.nufi.me     runs an OAuth flow
+                                                │
+console.nufi.me ── identity issuer ─────────────┘
+```
+
+The two products consume identity differently because they already had
+different mechanisms, and using each one's native path meant almost no
+forked code:
+
+- **Studio** validates a signed token it finds in a cookie, checking it
+  against the console's published keys, and creates the local user the
+  first time it sees them.
+- **Works** runs an ordinary authorization-code flow against the
+  console and ends with its own session cookie.
+
+`agents.nufi.me` is a second hostname on the console service, not a
+service of its own. The page it serves is static, and idle memory is
+most of a hosting bill.
+
+## Console
+
+```bash
+OIDC_ISSUER=https://console.nufi.me
+OIDC_PRIVATE_KEY_PEM=           # openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048
+OIDC_CLIENTS=[{"clientId":"nufi-works","clientSecret":"…","redirectUris":["https://works.nufi.me/api/auth/oauth2/callback/nufi"]}]
+CHOOSER_HOST=agents.nufi.me
+STUDIO_URL=https://studio.nufi.me
+VITE_WORKS_URL=https://works.nufi.me
+IDENTITY_TTL_SECONDS=28800      # 8 hours
+IDENTITY_COOKIE_DOMAIN=.nufi.me
+```
+
+This adds four routes: `/.well-known/jwks.json` publishes the public
+key, `/oidc/authorize`, `/oidc/token` and `/oidc/userinfo` serve the
+OAuth flow, and `/enter/studio` mints the Studio cookie and redirects.
+
+Also append the Works origin to the existing connect allow-list:
+
+```bash
+AGENTS_ALLOWED_ORIGINS=…,https://works.nufi.me
+```
+
+<Callout type="warn">
+**`OIDC_PRIVATE_KEY_PEM` is not optional in production.** Left unset,
+the console generates a key at boot. Every token it signed stops
+verifying the moment it restarts, and two replicas never agree on the
+key at all — so sessions break on deploy, intermittently, in a way that
+looks like anything but a missing variable.
+
+Set it with the whole PEM, newlines included. Some CLI tools truncate a
+multi-line value at the first newline and report success; read the
+value back after setting it.
+</Callout>
+
+<Callout type="warn">
+**Run the console as a single instance.** Authorization codes are held
+in memory, so a code issued by one replica is not found by another and
+the sign-in fails for whoever the load balancer sent elsewhere. Scaling
+out means moving them to a shared store first.
+</Callout>
+
+## NUFI Studio
+
+```bash
+LANGFLOW_AUTO_LOGIN=false
+LANGFLOW_EXTERNAL_AUTH_ENABLED=true
+LANGFLOW_EXTERNAL_AUTH_TOKEN_COOKIE=nufi_id
+LANGFLOW_EXTERNAL_AUTH_JWKS_URL=https://console.nufi.me/.well-known/jwks.json
+LANGFLOW_EXTERNAL_AUTH_ISSUER=https://console.nufi.me
+LANGFLOW_EXTERNAL_AUTH_AUDIENCE=nufi-studio
+LANGFLOW_EXTERNAL_AUTH_SUBJECT_CLAIM=sub
+LANGFLOW_EXTERNAL_AUTH_EMAIL_CLAIM=email
+LANGFLOW_EXTERNAL_AUTH_ACCESS_CEILING_ENABLED=true
+LANGFLOW_EXTERNAL_AUTH_ACCESS_CLAIM=access
+LANGFLOW_EXTERNAL_AUTH_DEFAULT_ACCESS_LEVEL=editor
+```
+
+The superuser account still works, which is what you use if the console
+is ever unreachable.
+
+<Callout type="warn">
+**Leave `LANGFLOW_EXTERNAL_AUTH_TRUSTED_JWT_DECODE` unset.** It accepts
+the token without checking the signature, which is only safe when a
+proxy in front has already checked it. There is no such proxy here.
+Turning it on means anyone who can reach Studio can hand it a token
+they wrote themselves.
+</Callout>
+
+## NUFI Works
+
+```bash
+NUFI_OIDC_ISSUER=https://console.nufi.me
+NUFI_OIDC_CLIENT_ID=nufi-works
+NUFI_OIDC_CLIENT_SECRET=        # the same value as in OIDC_CLIENTS
+PAPERCLIP_AUTH_DISABLE_SIGN_UP=true
+```
+
+The client is off unless both the issuer and the client ID are set, so
+a half-configured instance keeps its own login rather than presenting a
+broken button.
+
+`PAPERCLIP_AUTH_DISABLE_SIGN_UP=true` closes local registration, making
+the console the only way in. Set it **last**, and only after you have
+signed in through the console once — with sign-up closed and no working
+client, nobody can get in, including you.
+
+## Order
+
+Identity goes on last, on both products, for the same reason each
+time: pointing an app at an issuer that is not answering yet locks
+everyone out of it.
+
+1. Both products running with their own accounts. Confirm each serves
+   and carries the right product name.
+2. Console: the `OIDC_*` block, `CHOOSER_HOST`, `STUDIO_URL`, the extra
+   origin.
+3. Studio's identity block. Test a sign-in.
+4. Works' identity block. Test a sign-in, **then** close sign-up.
+
+## Access levels
+
+A NUFI administrator arrives as an admin. Everyone else arrives as an
+editor. That mapping is fixed in the console.
+
+Studio treats it as a ceiling rather than an assignment, so a local
+account cannot be promoted past what the console vouched for.
+
+## What this does not do
+
+**It does not decide who may use which product.** Every NUFI account
+can open both. There is no invite list and no per-product entitlement.
+If you need one, it belongs in the console, because that is where the
+decision is made — and it does not exist yet.
+
+**It does not sign people out.** Signing out of NUFI does not revoke a
+session already issued to Studio or Works; those expire on their own
+schedule, eight hours by default. Shorten `IDENTITY_TTL_SECONDS` if
+that window is too long for your risk tolerance, and tell people to
+close the tabs on shared machines.
+
+**The Studio cookie is scoped to the parent domain.** A response from
+the console cannot set a cookie that only Studio receives, so it is
+scoped to `.nufi.me` and every NUFI subdomain gets a copy. It is
+audience-scoped and short-lived — another subdomain can do nothing with
+it except send it to Studio, which is where it was going. This holds
+only while every `*.nufi.me` host is operated by you. If one ever is
+not, this needs an authenticating proxy per host instead.
+
+## Verifying
+
+Beyond signing in, check the things a successful login does not prove:
+
+```bash
+# The published keys must carry no private component.
+curl -fsS https://console.nufi.me/.well-known/jwks.json | grep -q '"d"' \
+  && echo "PRIVATE KEY LEAKED" || echo "ok: public only"
+
+# The identity routes must refuse an anonymous caller.
+curl -s -o /dev/null -w '%{http_code}\n' https://console.nufi.me/enter/studio
+# expect 401
+```
+
+Then confirm a tampered token is rejected: change one character in the
+`nufi_id` cookie and load Studio. It must not let you in. A guard that
+has never been observed failing is not yet known to work.

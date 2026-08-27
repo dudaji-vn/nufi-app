@@ -13,6 +13,8 @@
     "cloudflare-tunnel",
     "infra-sizing",
     "agents-install",
+    "studio-install",
+    "agents-sso",
     "agents-egress",
     "---Operate---",
     "monitoring-alerts",

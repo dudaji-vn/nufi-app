@@ -14,8 +14,12 @@ behind the scenes.
 |-------------------|----------------------|----------------------------------------|
 | **Chat**          | `chat.nufi.me`       | Day-to-day AI conversations            |
 | **Console**       | `console.nufi.me`    | Self-serve API keys + your own usage   |
+| **Agents**        | `agents.nufi.me`     | The door to the two agent apps         |
+| **NUFI Studio**   | `studio.nufi.me`     | Build flows on a canvas, publish them as endpoints |
+| **NUFI Works**    | `works.nufi.me`      | Give agents goals, approve their work, watch spend |
 
-That is the entire end-user-facing world. Sign in once, get to both.
+Sign in once and reach all of them — the agent apps accept the session
+you already have. See [Studio and Works](/docs/end-user/agent-apps).
 
 ## What admins see
 
@@ -48,6 +52,9 @@ run it.
 | **Trace store**      | Records every conversation for audit and debugging |
 | **Metrics & alerts** | Watches platform health, pages on-call             |
 | **State stores**     | Databases for conversations, users, settings        |
+| **NUFI Studio**      | Runs flows built on the canvas                      |
+| **NUFI Works**       | Runs agent teams and tracks their work              |
+| **Identity issuer**  | The console, vouching for a member to the agent apps |
 
 For the exact image names, ports, and ops detail, see
 [DevOps → Docker compose](/docs/deployment/docker-compose) or

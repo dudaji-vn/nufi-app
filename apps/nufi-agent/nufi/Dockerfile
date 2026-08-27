@@ -39,7 +39,12 @@ ENV NODE_OPTIONS=--max-old-space-size=4096
 COPY src/frontend/package.json src/frontend/package-lock.json ./
 RUN npm ci
 
-COPY nufi /app/nufi
+# Only what the frontend build actually reads: index.css imports brand.css,
+# brand.css references ./fonts, and vite.config.mts imports rebrand.ts. Copying
+# the whole nufi/ directory also copies this Dockerfile, so every edit to it
+# invalidated the npm-install and vite layers below for no reason.
+COPY nufi/rebrand.ts nufi/brand.css /app/nufi/
+COPY nufi/fonts /app/nufi/fonts
 COPY src/frontend ./
 RUN npm run build
 
@@ -47,7 +52,18 @@ RUN npm run build
 FROM python:3.12-slim AS runtime
 ENV PYTHONUNBUFFERED=1 \
     UV_LINK_MODE=copy \
-    PORT=7860
+    PORT=7860 \
+    DO_NOT_TRACK=true \
+    LANGFLOW_DO_NOT_TRACK=true
+# Upstream telemetry is ON by default and POSTs to
+# https://langflow.gateway.scarf.sh -- a third-party analytics gateway --
+# carrying package, version, platform, python, arch, cache_type, backend_only
+# and auto_login. That is our deployment configuration going to someone else,
+# from a product we are white-labelling. Off in the image so it cannot be lost
+# with an environment variable.
+#
+# Note the value: Langflow compares DO_NOT_TRACK.lower() == "true". NUFI Works
+# compares it to "1". The same variable does not disable both.
 WORKDIR /app
 
 RUN apt-get update \
@@ -59,7 +75,33 @@ COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
 COPY --from=frontend /app/src/frontend/build ./src/backend/base/langflow/frontend
 
-RUN uv sync --frozen --no-dev
+# A build that succeeds is not evidence of a branded image. The rename is a
+# Vite plugin wired in through vite.config.mts; lose the plugin and the build
+# still succeeds, still deploys, and greets a customer by the upstream name.
+# Asserting here means an unbranded image cannot be produced at all -- better
+# than a CI step that checks after the tag is already public.
+#
+# The bare-word test matches nufi/check-brand-css.sh: compound identifiers like
+# LangflowTooltip and translation KEYS like builtWithLangflow are deliberately
+# left alone by the rename, so only \bLangflow\b counts.
+RUN set -eu; \
+    d=./src/backend/base/langflow/frontend; \
+    if [ ! -f "$d/index.html" ]; then \
+      echo "the frontend was never copied into the image"; exit 1; fi; \
+    if ! grep -q 'NUFI Studio' "$d/index.html"; then \
+      echo "index.html does not carry the product name -- the rebrand plugin did not run"; exit 1; fi; \
+    if grep -qi 'langflow' "$d/index.html"; then \
+      echo "index.html still names the upstream product"; exit 1; fi; \
+    if grep -rq '\bLangflow\b' "$d"/assets/*.js; then \
+      echo "compiled JS still carries the bare word Langflow"; exit 1; fi; \
+    echo "brand assertion passed"
+
+# --extra postgresql pulls the drivers Langflow needs to speak to Postgres;
+# pyproject declares them in an optional group, so a plain sync installs
+# neither and SQLAlchemy dies at boot with ModuleNotFoundError: psycopg2.
+# Missed originally because the image was only ever exercised against the
+# SQLite default -- not the configuration production actually runs.
+RUN uv sync --frozen --no-dev --extra postgresql
 ENV PATH="/app/.venv/bin:$PATH"
 
 EXPOSE 7860

@@ -63,21 +63,30 @@ controls:
     require_corroboration:
       - user
       - assistant
-    # LibreChat makes a second, asynchronous request per message to generate
-    # the conversation title. It wraps the whole conversation in instructions:
+    # Empty on purpose, and it took a live measurement to get here.
+    #
+    # LibreChat makes a second, asynchronous request per message to generate the
+    # conversation title, wrapping the whole conversation in instructions:
     # measured at 2898 and 3007 characters, scoring 0.987 and 0.988 against the
-    # 0.90 user threshold below -- on entirely benign chats. Enforcing G1
-    # without this would break titles on every conversation.
+    # 0.90 user threshold below -- on entirely benign chats. That reading led to
+    # a `gemini-2.5-flash-title` alias listed here, with librechat.yaml pointing
+    # titleModel at it.
     #
-    # Exempting it costs no safety: the user's text inside that prompt was
-    # already scanned by the request that produced it. What is skipped is the
-    # app-authored wrapper, not user input.
+    # The reading predates `require_corroboration: [user]` below. Measured on
+    # the production gateway 2026-08-03, G1 enforcing, titles back on the
+    # guarded model: titles generated normally, and 5 of 11 G1 invocations
+    # recorded action="block" with enforced="false" -- the classifier crossing
+    # its threshold and the regex detector declining to corroborate. The
+    # exemption was solving a problem corroboration already solves.
     #
-    # Scoped to one explicit model name, not a pattern, and counted on
-    # nufi_guardrail_exemptions_total so the hole is visible in use. Point
-    # librechat.yaml's titleModel at this alias; anything else keeps full G1.
-    exempt_models:
-      - gemini-2.5-flash-title
+    # So it is gone, and that is the safer end state: an exempt model skips G1
+    # completely, and `fetch: true` in librechat.yaml means any model the
+    # caller's team can reach shows up in the dropdown for a user to select.
+    #
+    # If a future control genuinely needs one, scope it to an explicit model
+    # name rather than a pattern, and read nufi_guardrail_exemptions_total
+    # against conversation volume to keep the hole visible in use.
+    exempt_models: []
     thresholds:
       # A jailbreak string inside a retrieved document is near-certain attack;
       # the same string typed by a user may be a question about the topic.

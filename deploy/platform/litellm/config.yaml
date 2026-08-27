@@ -37,7 +37,24 @@
 #       backend_type: gpu                      # gpu | npu | cloud
 #       hardware_id: gpu-node-01               # used by cost / usage reports
 #       supports_vision: false                 # set true for multimodal models
-model_list: []
+model_list:
+  # Registered here rather than only in the LiteLLM DB so a redeploy or a host
+  # migration reproduces the gateway's model set. `store_model_in_db: true`
+  # below still applies to anything added from the admin UI.
+  - model_name: gemini
+    litellm_params:
+      model: gemini/gemini-2.5-flash
+      api_key: os.environ/GEMINI_API_KEY
+    model_info:
+      backend_type: cloud
+      hardware_id: gemini-cloud
+      supports_vision: false
+  # A `gemini-2.5-flash-title` alias used to live here so policy.yaml could
+  # exempt title generation from G1. Removed 2026-08-03: measured on the
+  # production gateway with G1 enforcing and titles on the guarded model, titles
+  # generated normally because `require_corroboration: [user]` stops the
+  # classifier acting alone. Registering it again would put a model that skips
+  # G1 entirely into the dropdown the moment its team is granted access.
 router_settings:
   # Simple round-robin across replicas of the same model_name. Switch to
   # `weighted-pick` later so the Canary slider can split GPU/NPU traffic.
