@@ -1,6 +1,6 @@
 import { useState, memo, useRef } from 'react';
 import * as Menu from '@ariakit/react/menu';
-import { FileText, LayoutDashboard, LogOut, SlidersHorizontal } from 'lucide-react';
+import { Bot, FileText, LayoutDashboard, LogOut, SlidersHorizontal } from 'lucide-react';
 import { LinkIcon, GearIcon, DropdownMenuSeparator, Avatar } from '@librechat/client';
 import { MyFilesModal } from '~/components/Chat/Input/Files/MyFilesModal';
 import { useGetStartupConfig, useGetUserBalance } from '~/data-provider';
@@ -99,6 +99,25 @@ function AccountSettings({ collapsed = false }: { collapsed?: boolean }) {
           >
             <LayoutDashboard className="icon-md" aria-hidden="true" />
             Console
+          </Menu.MenuItem>
+        )}
+        {/*
+          Opens the chooser, not a product. There are two agent apps and their
+          names do not say which one a person wants, so the choice is made on a
+          page that can afford a sentence about each -- a dropdown cannot.
+        */}
+        {startupConfig?.interface?.customAgents?.externalUrl && (
+          <Menu.MenuItem
+            onClick={() =>
+              window.open(
+                startupConfig.interface!.customAgents!.externalUrl,
+                startupConfig.interface!.customAgents!.openNewTab === false ? '_self' : '_blank',
+              )
+            }
+            className="select-item text-sm"
+          >
+            <Bot className="icon-md" aria-hidden="true" />
+            Agents
           </Menu.MenuItem>
         )}
         <Menu.MenuItem onClick={() => setShowSettings(true)} className="select-item text-sm">
