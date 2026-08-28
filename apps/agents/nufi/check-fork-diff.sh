@@ -35,6 +35,7 @@ ALLOWLIST=(
   # it shipped the first time.
   "ui/src/api/auth.ts"
   "ui/src/pages/Auth.tsx"
+  "ui/src/pages/Auth.test.tsx"
   "ui/src/nufi-brand.css"
   "ui/nufi-rebrand.ts"
   "ui/nufi-rebrand.test.ts"
