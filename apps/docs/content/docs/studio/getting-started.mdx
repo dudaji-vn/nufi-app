@@ -69,15 +69,14 @@ AI   ✓ Finished in 9.4s
      configured tools.
 ```
 
-<Callout type="warn">
-**The model dropdown lists models that no longer work.** The gateway
-still advertises several retired Gemini 2.0 models, and they sort to the
-top, so the obvious choice is a broken one. Picking one produces
-**"An error occurred"** in the Playground and nothing else.
+<Callout>
+**Pick the model deliberately.** Every model the gateway offers answers
+today, but the list tracks the vendor's deprecations rather than ours,
+and a flow pinned to a model that later disappears fails at run time
+with **"An error occurred"** and no cause named.
 
-Choose `Nufi-lab/models/gemini-2.5-flash` or the plain `gemini` alias.
-The full list of what works is in
-[Connect a model](/docs/studio/connect-a-model).
+`Nufi-lab/models/gemini-2.5-flash` or the plain `gemini` alias are safe
+defaults. See [Connect a model](/docs/studio/connect-a-model).
 </Callout>
 
 ## Where to go next

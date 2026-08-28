@@ -48,29 +48,20 @@ the provider list with a model count beside it.
 
 ## Which models actually work
 
-The gateway advertises 30 models. **Seven of them are retired upstream
-and return an error when called**, and several sort to the top of the
-dropdown, so the default choice is often a broken one.
+Every model the gateway advertises answers. That was not true until
+2026-08-28: seven retired Gemini models were still listed, four of them
+sorted to the top of this dropdown, and picking one produced
+**"An error occurred"** with no cause named. They have been removed.
 
-<Callout type="warn">
-These are advertised but **do not work**:
-
-```
-Nufi-lab/models/gemini-2.0-flash
-Nufi-lab/models/gemini-2.0-flash-001
-Nufi-lab/models/gemini-2.0-flash-lite
-Nufi-lab/models/gemini-2.0-flash-lite-001
-Nufi-lab/models/gemini-3-pro-preview
-Nufi-lab/models/gemini-robotics-er-1.5-preview
-Nufi-lab/models/gemini-omni-flash-preview
-```
-
-Google retired them; the gateway's list has not caught up. Calling one
-returns *"This model is no longer available"*, which Studio surfaces to
-you only as **"An error occurred"**.
+<Callout>
+**It can drift again.** The list goes stale on the model vendor's
+schedule, not ours, and nothing currently alerts when a name stops
+answering. If a flow that used to work starts failing on every run, the
+model is the first thing to check — the reproduction is in
+`deploy/platform/RETIRED-MODELS.md`.
 </Callout>
 
-Safe choices, verified against the live gateway:
+Reasonable choices:
 
 | Model | Good for |
 |---|---|

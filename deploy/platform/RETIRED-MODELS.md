@@ -1,16 +1,26 @@
-# Retired models still advertised by the gateway
+# Gateway model hygiene
 
 Measured against `api.codechi.me` on 2026-08-28 by calling every model the
 gateway lists in `/v1/models` with a one-token completion.
 
-**24 of 31 work. Seven do not**, and they are still offered to every client —
-NUFI chat, NUFI Studio, and any agent adapter. A caller that picks one gets an
-opaque failure: Studio, for instance, shows only *"An error occurred"*.
+**Seven of the thirty advertised models were retired upstream and returned an
+error.** They were offered to every client — NUFI chat, NUFI Studio, every
+agent adapter — and a caller that picked one got an opaque failure. Studio
+showed only *"An error occurred"*. Four of them sorted to the **top** of
+Studio's model dropdown, so the default pick was a broken one.
 
-Worse, four of the dead names sort to the **top** of Studio's model dropdown,
-so the default choice is a broken one.
+## Resolved 2026-08-28
 
-## Remove these from the LiteLLM config
+All seven were removed through LiteLLM's admin API. **No VM access was
+needed**: 29 of the 30 models are registered in LiteLLM's database
+(`model_info.db_model: true`) rather than baked into `litellm/config.yaml`,
+which defines only the `gemini` alias.
+
+Each was re-tested immediately before removal rather than trusted from the
+earlier sweep, then `/model/delete` by id. Afterwards: **23 models advertised,
+all 23 answering 200.** Chat and Studio both verified working.
+
+### The names that were removed
 
 ```
 Nufi-lab/models/gemini-2.0-flash
@@ -27,7 +37,7 @@ Upstream's message on the 2.0-flash family:
 > This model models/gemini-2.0-flash is no longer available. Please update your
 > code to use models/gemini-3.6-flash for the latest features and improvements.
 
-## Verified working
+## Verified working after the removal
 
 ```
 gemini                                        Nufi-lab/models/gemini-3-flash-preview
@@ -59,5 +69,7 @@ curl -s -H "Authorization: Bearer $KEY" https://api.codechi.me/v1/models \
     done
 ```
 
-Worth re-running after any Google deprecation notice. A model list is not
-static, and nothing currently alerts on a name going dead.
+Worth re-running after any vendor deprecation notice. **Nothing currently
+alerts when a model stops answering** — this was found by using Studio, not by
+monitoring, and it will drift again. A periodic run of the loop above is the
+cheapest guard until something watches it properly.

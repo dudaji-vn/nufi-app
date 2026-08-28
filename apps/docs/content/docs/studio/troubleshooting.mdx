@@ -8,19 +8,18 @@ description: What Studio's common failures actually mean, starting with the one 
 The most common failure, and the least informative. In practice it is
 almost always one of three things, in this order of likelihood.
 
-**1. The model no longer exists.** The gateway advertises several
-retired models, and they sort to the top of the dropdown, so the default
-choice is frequently a broken one. The underlying message is *"This model
-is no longer available"* — Studio does not surface it.
+**1. No model provider is configured.** A fresh instance has none, and
+this is the most common cause on a new deployment. The canvas says so on
+a new flow — *"Add a model provider"* — but an existing flow just fails.
+Check **Settings → Model Providers**: a configured provider sits at the
+top of the list with a model count beside it.
+
+**2. The model no longer exists.** Model vendors retire names, and a
+flow pinned to a retired one fails at run time. The underlying message
+is *"This model is no longer available"* — Studio does not surface it.
 
 Switch the **Agent** component to `Nufi-lab/models/gemini-2.5-flash` or
-`gemini` and run again. The full list is in
-[Connect a model](/docs/studio/connect-a-model).
-
-**2. No model provider is configured.** A fresh instance has none. The
-canvas says so on a new flow — *"Add a model provider"* — but an existing
-flow just fails. Check **Settings → Model Providers**: a configured
-provider sits at the top of the list with a model count beside it.
+`gemini` and run again.
 
 **3. A component input is empty.** Expand the error row with the chevron;
 when it is a component problem the message usually names the input.
