@@ -30,6 +30,12 @@ interface:
   customConsole:
     externalUrl: ${CONSOLE_URL}
     openNewTab: true
+  # Adds an "Agents" entry pointing at the chooser, which is where a member
+  # picks between NUFI Studio and NUFI Works. An empty ${AGENTS_URL} hides the
+  # entry rather than showing a dead link.
+  customAgents:
+    externalUrl: ${AGENTS_URL}
+    openNewTab: true
 # Endpoints — single custom endpoint that routes everything through LiteLLM.
 endpoints:
   custom:
