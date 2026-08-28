@@ -26,7 +26,10 @@ let chatReply: { status: number; body: unknown } = { status: 200, body: null };
 
 function stubChat(user: AuthedUser | null) {
   chatReply = user
-    ? { status: 200, body: { user: { id: user.id, email: user.email, role: user.role } } }
+    ? {
+        status: 200,
+        body: { user: { id: user.id, email: user.email, name: 'Test Member', role: user.role } },
+      }
     : { status: 401, body: {} };
 }
 

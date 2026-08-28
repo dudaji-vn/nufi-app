@@ -97,7 +97,7 @@ oidc.get('/authorize', async (c) => {
 
   const code = randomBytes(32).toString('base64url');
   codes.set(code, {
-    user: { id: identity.id, email: identity.email, role: identity.role },
+    user: { id: identity.id, email: identity.email, name: identity.name, role: identity.role },
     clientId: client.clientId,
     redirectUri,
     expires: Date.now() + CODE_TTL_MS,
@@ -135,7 +135,12 @@ oidc.post('/token', async (c) => {
   }
 
   const idToken = await signIdentity(
-    { sub: entry.user.id, email: entry.user.email, access: accessFor(entry.user) },
+    {
+      sub: entry.user.id,
+      email: entry.user.email,
+      name: entry.user.name,
+      access: accessFor(entry.user),
+    },
     clientId,
     TOKEN_TTL_SECONDS,
   );
@@ -208,7 +213,12 @@ oidc.get('/userinfo', async (c) => {
     const { payload } = await jwtVerify(token, createLocalJWKSet(await getJwks()), {
       issuer: ISSUER,
     });
-    return c.json({ sub: payload.sub, email: payload.email, access: payload.access });
+    return c.json({
+      sub: payload.sub,
+      email: payload.email,
+      name: payload.name,
+      access: payload.access,
+    });
   } catch {
     return c.json({ error: 'invalid_token' }, 401);
   }

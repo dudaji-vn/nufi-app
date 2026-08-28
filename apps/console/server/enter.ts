@@ -43,6 +43,7 @@ enter.get('/studio', async (c) => {
     {
       sub: identity.id,
       email: identity.email,
+      name: identity.name,
       access: identity.role === 'ADMIN' ? 'admin' : 'editor',
     },
     'nufi-studio',

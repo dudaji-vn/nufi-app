@@ -6,6 +6,7 @@ import type { JWTPayload } from 'hono/utils/jwt/types';
 export type AuthedUser = {
   id: string;
   email?: string;
+  name?: string;
   role: 'USER' | 'ADMIN';
 };
 

@@ -27,6 +27,13 @@ const BROWSER_UA =
 export type ChatIdentity = {
   id: string;
   email: string;
+  /**
+   * Required, not decorative: better-auth refuses a sign-in whose profile has
+   * no name (`name_is_missing`), the same way it refuses one with no email.
+   * Chat records a display name, but it is not guaranteed to be set, so this
+   * falls back rather than letting an empty one through.
+   */
+  name: string;
   role: 'ADMIN' | 'USER';
   /**
    * The refresh endpoint rotates the session token, so the browser must be
@@ -56,6 +63,9 @@ export async function resolveChatIdentity(refreshToken: string): Promise<ChatIde
   const body = (await res.json().catch(() => null)) as { user?: Record<string, unknown> } | null;
   const user = body?.user;
   const email = typeof user?.email === 'string' ? user.email : undefined;
+  const named = [user?.name, user?.username].find(
+    (v): v is string => typeof v === 'string' && v.trim().length > 0,
+  );
   const id =
     typeof user?.id === 'string' ? user.id : typeof user?._id === 'string' ? user._id : undefined;
 
@@ -66,6 +76,9 @@ export async function resolveChatIdentity(refreshToken: string): Promise<ChatIde
   return {
     id,
     email,
+    // The local part is a poor display name but a real one; an empty string
+    // would fail at the far end after a redirect that looks successful.
+    name: named ?? email.split('@')[0],
     role: user?.role === 'ADMIN' ? 'ADMIN' : 'USER',
     setCookies: res.headers.getSetCookie?.() ?? [],
   };
