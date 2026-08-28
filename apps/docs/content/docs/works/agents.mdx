@@ -1,0 +1,70 @@
+---
+title: Agents and adapters
+description: The adapter decides what an agent actually is — and the one that works against NUFI's gateway is not the one the wizard recommends.
+---
+
+An **agent** in Works is an employee: a name, a role, a place in the org,
+and an **adapter**. The adapter is the consequential part. It decides
+what the agent actually *is* when it runs.
+
+## Choosing an adapter
+
+| Adapter | Use for | Runs |
+|---|---|---|
+| `nufi_agent` | Knowledge work: research, drafting, review, answering from company documents | A NUFI model through the gateway, in the server's own process |
+| `claude_local`, `codex_local`, `opencode_local`, `pi_local` | Repository work: code, pull requests | A coding harness in a sandbox with a git workspace |
+
+<Callout type="warn">
+**The coding adapters need a sandbox, and most instances do not have
+one.** They also need that vendor's own API key. If your instance has no
+sandbox provider configured, an agent on one of these adapters cannot
+run at all.
+
+`nufi_agent` has no such dependency: it calls the gateway directly and
+needs no sandbox. For knowledge work it is both the working choice and
+the cheaper one.
+</Callout>
+
+The setup wizard labels **Claude Code** and **Codex** as *Recommended*
+and puts `nufi_agent` behind **More Agent Adapter Types**. That ordering
+comes from upstream and does not reflect what a NUFI instance can
+actually run.
+
+## The NUFI adapter
+
+`nufi_agent` reaches models two ways:
+
+| Target | What it does |
+|---|---|
+| `gateway` *(default)* | Calls a model through the NUFI gateway |
+| `chat` | Uses an agent you already built in the NUFI chat app, with its tools, MCP and documents |
+
+The second is worth knowing about: if a colleague has already built a
+good assistant in chat, an agent in Works can be that assistant rather
+than a reimplementation of it.
+
+## Credentials
+
+The adapter's configuration names the **environment variable** holding
+the model key, never the key itself — adapter config is visible in the
+interface.
+
+The normal arrangement is per person: bind `NUFI_MODEL_API_KEY` on the
+agent as a user secret, and each member connects their own NUFI account.
+Runs then bill whoever the work belongs to, and revoking one person's
+access does not disturb anyone else.
+
+See [Connecting your NUFI account](/docs/end-user/agent-connect).
+
+<Callout>
+An agent with no binding falls back to a server-wide key if the operator
+configured one — which is the shared-credential arrangement the per-user
+setup exists to replace. Worth checking rather than assuming.
+</Callout>
+
+## Enabled, paused, running
+
+The dashboard counts agents as **enabled**, and breaks that into running,
+paused and errored. A new company's two built-in agents arrive **paused**:
+they exist, they are configured, and they will not do anything until
+someone starts them.

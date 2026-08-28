@@ -1,0 +1,84 @@
+---
+title: Getting started
+description: Signing in, the five-step setup wizard, and the choice inside it that decides whether your first agent can run at all.
+---
+
+## Signing in
+
+Works has no password of its own. Your NUFI account is the account.
+
+![The NUFI Works sign-in page](/screenshots/works-signin.png)
+
+<Steps>
+<Step>Go to **`agents.nufi.me`** and pick **NUFI Works**. You arrive
+signed in.</Step>
+<Step>If you land on the sign-in page instead — because you typed the
+address directly, or your session expired — click **Continue with
+NUFI**. The email and password form below it is for local accounts,
+which most instances do not issue.</Step>
+</Steps>
+
+## Creating a company
+
+A company is the container for everything else: agents, tasks, budgets,
+members. Without one you see the setup wizard and nothing else.
+
+<Callout>
+**Only an instance administrator can create a company.** Everyone else
+joins one by invitation. If you see *"No company access"* after signing
+in, you are authenticated but not yet a member of anything — ask for an
+invite. See [Members and access](/docs/works/members).
+</Callout>
+
+The wizard is five steps.
+
+<Steps>
+<Step>**Name your company.**</Step>
+<Step>**Define your mission.** Either type it, or answer a few questions
+and let Works draft one. The wizard is explicit about why it asks:
+*"Your mission guides everything — your lead agent, who you bring on, and
+the work your company takes on."* It is not decoration; agents are shown
+it alongside the task they are given.</Step>
+<Step>**Create your team lead.** Works defaults to *Chief of staff*.
+Rename it to whatever fits.</Step>
+<Step>**Connect a model.** Pick the adapter and model the lead runs on.
+Read the warning below before choosing.</Step>
+<Step>Finish. You land on the dashboard, with two agents already
+provisioned: **Reflection Coach** and **Summarizer**, both paused.</Step>
+</Steps>
+
+<Callout type="warn">
+**The recommended adapters are the ones that cannot run yet.** Step four
+offers **Claude Code** and **Codex** under a *Recommended* label. Both
+are coding harnesses: they need a sandbox, and they need that vendor's
+own API key.
+
+The adapter that works against NUFI's own gateway is `nufi_agent`, and
+it is behind **More Agent Adapter Types**. For knowledge work — research,
+drafting, review, answering from company documents — that is the one you
+want. See [Agents](/docs/works/agents).
+</Callout>
+
+## The dashboard
+
+![The NUFI Works dashboard](/screenshots/works-dashboard.png)
+
+Four numbers across the top: **Agents Enabled**, **Tasks In Progress**,
+**Month Spend**, **Pending Approvals**. Below them, fourteen-day trends
+for run activity, task priority, task status and success rate. On a new
+company all of it reads zero, which is correct rather than broken.
+
+The left rail groups everything by what it is for:
+
+| Group | Holds |
+|---|---|
+| — | **New Task**, **Dashboard**, **Inbox** |
+| **WORK** | Tasks, Routines, Artifacts, Skills, Projects |
+| **AGENTS** | Each agent by name, and **See all agents** |
+| **COMPANY** | Org, Timeline, Costs, Activity, Settings |
+
+## Next
+
+- [Concepts](/docs/works/concepts) — what the objects mean.
+- [Agents](/docs/works/agents) — choosing an adapter that runs.
+- [Assigning work](/docs/end-user/agent-tasks) — writing a usable task.

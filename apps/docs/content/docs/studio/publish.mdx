@@ -1,0 +1,67 @@
+---
+title: Publishing a flow
+description: Turning a flow into an endpoint your own code can call, and the key it needs.
+---
+
+A flow that only runs in the Playground is a prototype. Publishing turns
+it into something your code can call, with the flow doing the work behind
+it.
+
+## The key
+
+Calls are authenticated with a **NUFI Studio API key** — a different
+thing from the gateway key that lets Studio reach models. This one lets
+your code reach Studio.
+
+![Studio API keys](/screenshots/studio-api-keys.png)
+
+<Steps>
+<Step>Open **Settings → NUFI Studio API Keys**.</Step>
+<Step>Click **Add New**.</Step>
+<Step>Give it a description you will recognise, and an expiry if the
+caller is short-lived. **No expiration** is the default.</Step>
+<Step>Click **Generate API Key** and copy it. The list afterwards shows
+only a masked prefix.</Step>
+</Steps>
+
+The table tracks **Last Used** and **Total Uses** per key, which is how
+you tell a key that is still in service from one you can revoke.
+
+<Callout type="warn">
+A key issued to you does not expire when your NUFI session does, and it
+does not carry your access level. Someone holding it keeps whatever it
+can do until the key is deleted. Give each caller its own key so you can
+revoke one without breaking the rest.
+</Callout>
+
+## Sharing a flow
+
+**Share** on the flow canvas is where publication happens. Studio gives
+you the endpoint and the shape of the request; the key above is what
+authenticates it.
+
+## Before you publish
+
+<Callout type="warn">
+**A published flow runs with the access it was built with.** If it
+touches a knowledge base, anyone who can call the endpoint can ask it
+anything those documents can answer — including questions the caller
+should not be asking. Decide who can reach the endpoint before you hand
+the URL out.
+</Callout>
+
+Two more worth checking:
+
+- **Pin the model.** A flow using a model that later disappears fails at
+  call time, not at publish time. See
+  [Connect a model](/docs/studio/connect-a-model).
+- **Move secrets into variables.** An exported or shared flow carries its
+  component fields with it — see
+  [Variables and credentials](/docs/studio/variables).
+
+## MCP
+
+A flow can also be exposed over the Model Context Protocol rather than as
+a plain endpoint, which is what the **MCP Server** tab beside **Flows**
+on the project screen configures. That is the route to take when the
+caller is an AI client rather than your own code.

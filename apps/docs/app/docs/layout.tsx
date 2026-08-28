@@ -7,6 +7,8 @@ import {
   MessageSquare,
   Rocket,
   SlidersHorizontal,
+  Users,
+  Workflow,
 } from 'lucide-react';
 import { baseOptions } from '@/app/layout.config';
 import { source } from '@/lib/source';
@@ -25,6 +27,18 @@ const personaTabs = [
     description: 'For everyday users',
     url: '/docs/end-user',
     icon: <MessageSquare />,
+  },
+  {
+    title: 'NUFI Studio',
+    description: 'Build & publish flows',
+    url: '/docs/studio',
+    icon: <Workflow />,
+  },
+  {
+    title: 'NUFI Works',
+    description: 'Run a team of agents',
+    url: '/docs/works',
+    icon: <Users />,
   },
   {
     title: 'Administer',

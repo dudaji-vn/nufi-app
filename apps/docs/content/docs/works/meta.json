@@ -1,0 +1,23 @@
+{
+  "title": "NUFI Works",
+  "description": "Put a team of agents to work",
+  "root": true,
+  "icon": "Users",
+  "pages": [
+    "index",
+    "---Start here---",
+    "getting-started",
+    "concepts",
+    "---Run work---",
+    "agents",
+    "../end-user/agent-tasks",
+    "../end-user/agent-approvals",
+    "routines",
+    "---Company---",
+    "members",
+    "costs",
+    "../end-user/agent-connect",
+    "---Help---",
+    "troubleshooting"
+  ]
+}

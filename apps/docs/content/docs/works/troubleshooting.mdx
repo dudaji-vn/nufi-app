@@ -1,0 +1,60 @@
+---
+title: Troubleshooting
+description: The screens in Works that look like faults but are states, and the ones that really are faults.
+---
+
+## "No company access"
+
+You signed in successfully and belong to no company. This is a state, not
+an error.
+
+Someone with instance admin needs to either invite you to a company or
+grant you instance admin. See [Members and access](/docs/works/members).
+
+## "This NUFI is waiting on its first admin"
+
+The instance has no administrator yet. Nobody can do anything until one
+claims it.
+
+On an instance exposed publicly, browser-based claiming is deliberately
+disabled so a passing visitor cannot promote themselves. Claiming it
+needs an operator — see
+[Installing NUFI Works](/docs/deployment/agents-install).
+
+## An invite link shows a password form
+
+You opened it before signing in. Sign in through `agents.nufi.me` first,
+then open the link — it will be accepted automatically.
+
+If local sign-up is closed on the instance, that form cannot work for
+you at all: there is no local account to create.
+
+## My agent will not run
+
+Check the adapter first. The coding adapters — Claude Code, Codex,
+OpenCode, Pi — need a sandbox provider, and most instances have none. An
+agent on one of those cannot run regardless of how it is configured.
+
+`nufi_agent` needs no sandbox. See [Agents](/docs/works/agents).
+
+## Deleting a company fails
+
+A company with both goals and projects can hit a database constraint
+during deletion — projects reference goals, and the cascade removes them
+in the wrong order on some versions. If deletion returns an error and the
+company reappears, it was never deleted; the transaction rolled back.
+
+Removing the projects first, then the company, works around it. A fixed
+version deletes cleanly.
+
+## The interface says a key was created but nothing appears
+
+Studio and Works both refresh their lists after a failed request, which
+can look like a create that silently did nothing. If a creation seems to
+succeed but leaves no row, the request was refused — the reason is in the
+response rather than on screen.
+
+## The first page load is slow
+
+The service sleeps when idle. The first request wakes it; the rest are
+fast. Open it once before a demo.
