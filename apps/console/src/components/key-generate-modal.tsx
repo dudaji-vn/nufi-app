@@ -80,7 +80,7 @@ export function KeyGenerateModal() {
           <DialogHeader>
             <DialogTitle>Generate API key</DialogTitle>
             <DialogDescription>
-              Use this key to call the LiteLLM proxy directly. The full value is shown once after
+              Use this key to call the NUFI gateway directly. The full value is shown once after
               creation.
             </DialogDescription>
           </DialogHeader>

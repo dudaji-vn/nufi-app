@@ -38,6 +38,10 @@ TAG=$(node -p "require('./$PIN').tag")
 # upstream.
 ALLOWLIST=(
   "nufi/"
+  # One line moved: Korean sits directly after English in the language
+  # picker, at the Korean team's request. A leaf constants file, so a resync
+  # conflict here is a two-line merge rather than a rebase problem.
+  "src/frontend/src/constants/languages.ts"
   "src/frontend/index.html"
   "src/frontend/src/style/index.css"
   "src/frontend/vite.config.mts"
