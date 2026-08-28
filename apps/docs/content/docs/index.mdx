@@ -1,44 +1,49 @@
 ---
 title: Welcome
-description: Pick the lane that matches what you are trying to do.
+description: Start from what you are trying to do, not from a list of sections.
 ---
 
-NUFI is an AI app for teams — a secure workspace
-like Claude, ChatGPT, or Gemini, scoped to your organisation. This
-manual is filtered by **what you are trying to do** so you only see
-the pages that matter to you.
+NUFI is an AI app for teams — a secure workspace like Claude, ChatGPT or
+Gemini, scoped to your organisation.
 
-Pick a lane below. You can switch any time from the sidebar tabs.
+Once you are inside a section, the sidebar carries a switcher for moving
+between them. This page answers the question that comes before that:
+**where do I start?**
+
+## Start from what you want to do
+
+| I want to… | Go to |
+|---|---|
+| Understand what NUFI is | [Overview](/docs/overview) |
+| Use the app for the first time | [Sign in](/docs/end-user/sign-in) |
+| Ask questions about my documents | [Chat with a document](/docs/end-user/guides/chat-with-a-document) |
+| Build a pipeline I can call from code | [NUFI Studio](/docs/studio/getting-started) |
+| Put a team of agents to work | [NUFI Works](/docs/works/getting-started) |
+| Give my team access and set budgets | [Administer](/docs/admin) |
+| Stand up a production instance | [Deploy & operate](/docs/deployment) |
+| Run the stack on my laptop | [Develop](/docs/developer) |
+| Call NUFI from my own code | [API keys](/docs/end-user/api-keys) |
+| Look up a port or a variable | [Reference](/docs/reference) |
+
+## The two agent products
+
+They are separate apps, both reached from `agents.nufi.me` with the NUFI
+account you already have.
 
 <Cards>
-  <Card title="🧭 Overview" href="/docs/overview">
-    What NUFI is and how it works. Read this first if you are new.
+  <Card icon={<Workflow />} title="NUFI Studio" href="/docs/studio">
+    A canvas. Wire a model, your documents and a tool into a flow, run it,
+    and publish it as an endpoint.
   </Card>
-  <Card title="💬 Using the app" href="/docs/end-user">
-    Sign in, pick a model, work with agents, files, and teams — or jump to
-    a step-by-step [Guide](/docs/end-user/guides).
-  </Card>
-  <Card title="🛠️ Administer" href="/docs/admin">
-    Manage NUFI for your organisation: features, users, roles, groups,
-    scoped overrides, and usage.
-  </Card>
-  <Card title="🚀 Deploy & operate" href="/docs/deployment">
-    Stand up a production instance, then monitor, back up, and
-    troubleshoot it.
-  </Card>
-  <Card title="🧑‍💻 Develop" href="/docs/developer">
-    Run the stack locally, work in the codebases, add models, and ship.
-  </Card>
-  <Card title="📖 Reference" href="/docs/reference">
-    Flat lookup tables — every port, environment variable, glossary.
+  <Card icon={<GroupIcon />} title="NUFI Works" href="/docs/works">
+    An operations app. Give a team of agents a goal, approve what matters,
+    and watch the spend.
   </Card>
 </Cards>
 
-## Not sure where to start?
+## If you are new
 
-- **First time on NUFI** → [Overview](/docs/overview).
-- **Want to use the app now** → [Sign in](/docs/end-user/sign-in).
-- **Standing up an instance** → [Deploy & operate](/docs/deployment).
-- **Running it locally** → [Develop](/docs/developer).
-- **Calling NUFI from your code** →
-  [API keys](/docs/end-user/api-keys).
+Read [Overview](/docs/overview) first — it is short, and it explains the
+pieces the rest of the manual assumes you know. Then
+[Sign in](/docs/end-user/sign-in) and use the app for ten minutes. Most
+of the rest will make sense after that.
