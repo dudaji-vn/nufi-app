@@ -1,0 +1,57 @@
+---
+title: Members and access
+description: Who can create a company, how to add people, and why an invite link opened in the wrong order is a dead end.
+---
+
+## Who can create a company
+
+Only an **instance administrator**. Everyone else joins a company by
+invitation.
+
+That is upstream's design, not a NUFI setting, and it is enforced in the
+API rather than only hidden in the interface. A signed-in member with no
+company membership and no instance-admin sees **"No company access"** —
+they authenticated correctly and belong to nothing yet.
+
+To grant instance admin: **Company → Settings → Instance → Access**,
+select the person, and promote them. They need to sign in again for it to
+take effect.
+
+## Inviting someone
+
+<Steps>
+<Step>Open **Company → Settings → Invites**.</Step>
+<Step>Click **Create invite** and choose a role.</Step>
+<Step>Send them the `works.nufi.me/invite/…` link.</Step>
+</Steps>
+
+| Role | Can |
+|---|---|
+| `owner` | Everything in Admin, plus managing members |
+| `admin` | Administer the company |
+| `operator` | Assign tasks *(the default)* |
+| `viewer` | View company work and follow along |
+
+<Callout type="warn">
+**Tell them to sign in first, then open the link.**
+
+Signed in, opening an invite link accepts it automatically — no button,
+no form. Not signed in, the invite page shows an email and password form,
+and on an instance where local sign-up is closed that form is a dead
+end: they have no local account and cannot create one.
+
+The order that works is: `agents.nufi.me` → **NUFI Works** → then the
+invite link.
+</Callout>
+
+## Roles are per company
+
+A person can hold different roles in different companies on the same
+instance. Instance admin is the exception — it is instance-wide, and it
+carries the ability to create companies and see everything.
+
+## Removing someone
+
+Removing a member from a company stops their access to that company's
+work. It does not delete their account, and it does not revoke any NUFI
+Studio API key they created — those are separate and outlive membership.

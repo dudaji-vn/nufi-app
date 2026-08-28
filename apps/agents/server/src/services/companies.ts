@@ -469,8 +469,12 @@ export function companyService(db: Db) {
         await tx.delete(issues).where(eq(issues.companyId, id));
         await tx.delete(companyLogos).where(eq(companyLogos.companyId, id));
         await tx.delete(assets).where(eq(assets.companyId, id));
-        await tx.delete(goals).where(eq(goals.companyId, id));
+        // projects before goals: projects.goal_id references goals.id, so the
+        // other order aborts the whole transaction on
+        // `projects_goal_id_goals_id_fk` and the company is never deleted.
+        // Upstream has them the other way round; candidate to send back.
         await tx.delete(projects).where(eq(projects.companyId, id));
+        await tx.delete(goals).where(eq(goals.companyId, id));
         await tx.delete(agents).where(eq(agents.companyId, id));
         const rows = await tx
           .delete(companies)

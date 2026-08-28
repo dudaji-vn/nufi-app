@@ -38,7 +38,7 @@ export function KeysEmptyState({ onGenerate }: { onGenerate: () => void }) {
           n={2}
           icon={<Activity className="size-4" />}
           title="Use it"
-          body="Send it as Authorization: Bearer to the LiteLLM proxy. Same shape as the OpenAI API."
+          body="Send it as Authorization: Bearer to the NUFI gateway. Same shape as the OpenAI API."
         />
         <Step
           n={3}

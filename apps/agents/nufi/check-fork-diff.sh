@@ -25,6 +25,21 @@ ALLOWLIST=(
   # Upstream bug fix, see nufi/README.md "Upstream patches". Sent upstream;
   # drop this entry once a release carries the fix.
   "ui/src/plugins/slots.tsx"
+  # A regex literal that named the product. The rebrand rewrites string
+  # literals only, so this pattern kept looking for the upstream name while
+  # the server text it matches was rebranded -- the fallback could never fire.
+  # Now matches the phrase instead of the brand. Candidate to send upstream.
+  "ui/src/lib/successful-run-handoff.ts"
+  # Upstream bug: the company-delete cascade removes `goals` before `projects`,
+  # but projects.goal_id references goals.id, so deleting any company that has
+  # both aborts on a foreign-key violation and silently leaves it in place.
+  # Two lines swapped. Candidate to send upstream.
+  "server/src/services/companies.ts"
+  # Builds nufi/adapter, which nothing else does: it is an external adapter, so
+  # its dist is gitignored and no upstream build step touches it. Without these
+  # lines the image ships a server that cannot offer `nufi_agent` -- the only
+  # adapter that reaches the NuFi gateway -- and says nothing about it.
+  "Dockerfile"
   # Single sign-on. See nufi/README.md, "Signing in with a NUFI account".
   "server/src/auth/better-auth.ts"
   # The button that reaches the plugin above. Enabling generic-oauth on the

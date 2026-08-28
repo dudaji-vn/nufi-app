@@ -910,6 +910,12 @@ export const interfaceSchema = z
         openNewTab: z.boolean().optional(),
       })
       .optional(),
+    customAgents: z
+      .object({
+        externalUrl: z.string().optional(),
+        openNewTab: z.boolean().optional(),
+      })
+      .optional(),
     customWelcome: z.string().optional(),
     mcpServers: mcpServersSchema.optional(),
     modelSelect: z.boolean().optional(),

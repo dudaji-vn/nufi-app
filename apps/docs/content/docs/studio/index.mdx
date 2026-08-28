@@ -1,0 +1,66 @@
+---
+title: NUFI Studio
+description: A canvas for turning a repeatable problem into a pipeline you can run, share, and call from your own code.
+---
+
+A conversation solves a problem once. When you find yourself solving the
+same *shape* of problem every week — the same extraction from a different
+invoice, the same answer from a growing set of documents — what you want
+is not a better prompt. It is a pipeline you can run again, hand to a
+colleague, and call from code.
+
+That is Studio.
+
+![The NUFI Studio home screen](/screenshots/studio-home.png)
+
+## Studio or Works?
+
+NUFI has two agent products and they solve different problems.
+
+| | **NUFI Studio** | **NUFI Works** |
+|---|---|---|
+| You build | A pipeline | A team |
+| The unit of work | A flow you run | A task you assign |
+| You get | An endpoint | Completed work, with approvals |
+| Reach it at | `studio.nufi.me` | `works.nufi.me` |
+
+Both open from `agents.nufi.me`, and neither asks you to sign in again —
+see [Studio and Works](/docs/end-user/agent-apps).
+
+## What is in here
+
+<Cards>
+  <Card title="Getting started" href="/docs/studio/getting-started">
+    Open Studio, connect a model, and get a flow answering.
+  </Card>
+  <Card title="Connect a model" href="/docs/studio/connect-a-model">
+    The one step nothing works without, and the model names that fail.
+  </Card>
+  <Card title="Flows" href="/docs/studio/flows">
+    The canvas, templates, the Playground, and how a run is read.
+  </Card>
+  <Card title="Components" href="/docs/studio/components">
+    The eight groups in the palette and what belongs in each.
+  </Card>
+  <Card title="Knowledge" href="/docs/studio/knowledge">
+    Answering from your own documents.
+  </Card>
+  <Card title="Variables" href="/docs/studio/variables">
+    Storing a credential without pasting it into a component.
+  </Card>
+  <Card title="Publish" href="/docs/studio/publish">
+    Turning a flow into an endpoint your code can call.
+  </Card>
+  <Card title="Troubleshooting" href="/docs/studio/troubleshooting">
+    What the common failures actually mean.
+  </Card>
+</Cards>
+
+## What Studio does not do
+
+- **It does not sandbox what a flow runs.** A flow executes inside
+  Studio's own process. A component that runs code or reaches the
+  network does so with Studio's access. Treat a flow you did not write
+  the way you would treat a script you did not write.
+- **It is not where agent work is tracked.** Goals, assignments and
+  approvals live in [NUFI Works](/docs/works).

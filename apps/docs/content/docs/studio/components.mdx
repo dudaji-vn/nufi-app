@@ -1,0 +1,58 @@
+---
+title: Components
+description: The eight groups in the palette, what belongs in each, and how to find one when you do not know its name.
+---
+
+The **Components** rail is the palette. It is grouped by what a component
+does rather than by which vendor supplies it, so the same group holds
+several providers' versions of the same idea.
+
+| Group | Holds |
+|---|---|
+| **Input & Output** | Chat input, chat output, text input — where data enters and leaves |
+| **Data Sources** | APIs, databases, files, the web |
+| **Models & Agents** | Language models, and agents that use tools |
+| **LLM Operations** | Prompts, structured output, parsing a reply |
+| **Files & Knowledge** | Loading, splitting, embedding, retrieving |
+| **Processing** | Transforming data between steps |
+| **Flow Control** | Branching, looping, conditions |
+| **Utilities** | The small pieces — dates, maths, formatting |
+
+Two entries sit below the groups:
+
+- **Discover more components** — the wider library, beyond what is
+  installed.
+- **New Custom Component** — write your own in Python when nothing fits.
+
+## Finding one
+
+The search box above the rail matches on name and description, which is
+usually faster than remembering which group something lives in. If you
+know what the step should *do* but not what it is called, search the
+verb: `split`, `embed`, `parse`, `branch`.
+
+## Connections
+
+Components connect output to input, and the types have to agree. If a
+connection will not attach, the two sides are not compatible — the fix is
+usually a **Processing** component between them, not a different model.
+
+## Tools
+
+An agent can be given **tools**: components attached to its `Toolset`
+input rather than wired in sequence. The Simple Agent template ships with
+two — **Web Search** (`PERFORM_SEARCH`) and **URL** (`FETCH_CONTENT`) —
+and neither needs a key of its own.
+
+The agent decides when to call a tool. You are not wiring a path through
+them; you are handing over a set of capabilities and letting the model
+choose.
+
+## MCP and Bundles
+
+**MCP** exposes servers implementing the Model Context Protocol as
+components, so an external service becomes something a flow can use.
+Studio arrives with a couple registered already.
+
+**Bundles** groups components by provider, for when you do know the
+vendor you want.

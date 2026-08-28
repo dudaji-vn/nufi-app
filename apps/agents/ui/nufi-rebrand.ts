@@ -45,7 +45,13 @@ export function nufiRebrand(): Plugin {
     name: "nufi-rebrand",
 
     transform(code, id) {
-      if (!/\.[jt]sx?$/.test(id)) return null;
+      // .json is included deliberately. The app-definition files under
+      // packages/shared are data, not code, and they carry user-facing
+      // guidance text -- "add Paperclip's redirect URI", "share the sheet
+      // with the Paperclip robot email". Excluding them shipped the upstream
+      // name into the connect screens of three integrations while every
+      // brand guard stayed green, because every guard looked at code.
+      if (!/\.(json|[jt]sx?)$/.test(id.split("?")[0])) return null;
       if (id.includes("/node_modules/")) return null;
       if (!code.includes("Paperclip")) return null;
 

@@ -48,6 +48,7 @@ export async function loadDefaultInterface({
     termsOfService:
       resolveExternalUrl(interfaceConfig?.termsOfService) ?? defaults.termsOfService,
     customConsole: resolveExternalUrl(interfaceConfig?.customConsole),
+    customAgents: resolveExternalUrl(interfaceConfig?.customAgents),
     mcpServers: interfaceConfig?.mcpServers ?? defaults.mcpServers,
     customWelcome: interfaceConfig?.customWelcome ?? defaults.customWelcome,
     autoSubmitFromUrl: interfaceConfig?.autoSubmitFromUrl ?? defaults.autoSubmitFromUrl,

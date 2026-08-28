@@ -1,0 +1,61 @@
+---
+title: Knowledge
+description: Making a flow answer from your own documents, and the order to build it in so you can tell where it went wrong.
+---
+
+A model on its own answers from what it learned. To answer from *your*
+material, a flow needs a retrieval step: something that finds the
+relevant passages first and hands them to the model with the question.
+
+Two places hold material in Studio, both at the bottom of the left rail
+on the home screen:
+
+- **Knowledge** — document sets a flow can search.
+- **My Files** — files you have uploaded, whether or not a flow uses them.
+
+## The shape of a retrieval flow
+
+The **Vector Store RAG** template is this pipeline already assembled. If
+you build it yourself, build it in this order — and run it after each
+step:
+
+1. **Load** the documents.
+2. **Split** them into chunks. Too large blurs the answer; too small
+   loses the context that made the passage meaningful.
+3. **Embed and store**, so passages can be searched by meaning rather
+   than by keyword.
+4. **Retrieve** the closest chunks for the question.
+5. **Prompt** the model with the question and those chunks.
+
+<Callout>
+**Run it after step 4, before adding the model.** Look at what retrieval
+actually returned. If the wrong passages come back, no prompt will
+rescue the answer — and a retrieval problem is far easier to see on its
+own than through a model's paraphrase of it.
+</Callout>
+
+## Chunking, in practice
+
+The first thing to change when answers are vague is chunk size, not the
+prompt. A chunk should be big enough to carry a complete thought and
+small enough that most of it is relevant to any question it matches.
+
+For prose, paragraphs are a reasonable unit. For reference material with
+headings, splitting on headings usually beats splitting on length.
+
+## Cost and time
+
+Embedding runs once per chunk, so the first ingest of a large document
+set is slow and everything after it is fast. That first run is also where
+the cost sits. Ingest a representative sample before committing a whole
+corpus — it is much cheaper to discover a chunking mistake on ten
+documents than on ten thousand.
+
+## What this is not
+
+This is Studio's retrieval, built by you, for flows you publish. The chat
+app has its own document handling that needs no assembly — drop a file
+into a conversation, or attach files to an agent. If what you want is
+"ask questions about this PDF", use
+[Chat with a document](/docs/end-user/guides/chat-with-a-document) and
+skip the pipeline entirely.
