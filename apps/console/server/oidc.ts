@@ -1,6 +1,8 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { Hono } from 'hono';
+import { getCookie } from 'hono/cookie';
 import { createLocalJWKSet, jwtVerify } from 'jose';
+import { resolveChatIdentity } from './lib/chat-identity.ts';
 import { getJwks, ISSUER, signIdentity } from './lib/oidc-keys.ts';
 import type { AuthedUser } from './middleware/auth.ts';
 
@@ -68,7 +70,7 @@ function accessFor(user: AuthedUser): 'admin' | 'editor' {
 
 export const oidc = new Hono<Env>();
 
-oidc.get('/authorize', (c) => {
+oidc.get('/authorize', async (c) => {
   const client = findClient(c.req.query('client_id'));
   const redirectUri = c.req.query('redirect_uri');
   const state = c.req.query('state') ?? '';
@@ -81,9 +83,21 @@ oidc.get('/authorize', (c) => {
     return c.json({ error: 'invalid_request' }, 400);
   }
 
+  // Same reason as /enter/studio: the session cookie carries an id and nothing
+  // else, and an authorization code that resolves to an identity with no email
+  // is rejected at the far end (`email_is_missing`) after a round trip that
+  // looks, from the member's side, like the sign-in simply failed.
+  const refreshToken = getCookie(c, 'refreshToken');
+  const identity = refreshToken ? await resolveChatIdentity(refreshToken) : null;
+  if (!identity) {
+    return c.json({ error: 'unauthorized', detail: 'could not resolve NUFI identity' }, 401);
+  }
+
+  for (const cookie of identity.setCookies) c.header('set-cookie', cookie, { append: true });
+
   const code = randomBytes(32).toString('base64url');
   codes.set(code, {
-    user: c.get('user'),
+    user: { id: identity.id, email: identity.email, role: identity.role },
     clientId: client.clientId,
     redirectUri,
     expires: Date.now() + CODE_TTL_MS,

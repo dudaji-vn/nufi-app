@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { Hono } from 'hono';
 import type { AuthedUser } from './middleware/auth.ts';
 import { oidc } from './oidc.ts';
@@ -15,7 +15,40 @@ import { oidc } from './oidc.ts';
 const CALLBACK = 'https://works.nufi.me/api/auth/oauth2/callback/nufi';
 const member: AuthedUser = { id: 'u-9', email: 'm@nufi.me', role: 'USER' };
 
+/**
+ * The chat app's identity lookup, stubbed at the network boundary rather than
+ * by replacing the module, so the resolver's own parsing is exercised too --
+ * including the case that started all this, where the response carries no
+ * email and the handoff has to be refused.
+ */
+const realFetch = globalThis.fetch;
+let chatReply: { status: number; body: unknown } = { status: 200, body: null };
+
+function stubChat(user: AuthedUser | null) {
+  chatReply = user
+    ? { status: 200, body: { user: { id: user.id, email: user.email, role: user.role } } }
+    : { status: 401, body: {} };
+}
+
+beforeEach(() => {
+  stubChat(member);
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    if (String(input).includes('/api/auth/refresh')) {
+      return new Response(JSON.stringify(chatReply.body), {
+        status: chatReply.status,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    throw new Error(`unexpected fetch: ${String(input)}`);
+  }) as typeof fetch;
+});
+
+afterEach(() => {
+  globalThis.fetch = realFetch;
+});
+
 function as(user: AuthedUser) {
+  stubChat(user);
   const app = new Hono<{ Variables: { user: AuthedUser } }>();
   app.use('*', async (c, next) => {
     c.set('user', user);
@@ -28,6 +61,7 @@ function as(user: AuthedUser) {
 async function codeFor(user: AuthedUser = member): Promise<string> {
   const res = await as(user).request(
     `/authorize?client_id=nufi-works&redirect_uri=${encodeURIComponent(CALLBACK)}&state=s`,
+    { headers: { cookie: 'refreshToken=rt-test' } },
   );
   const code = new URL(res.headers.get('location') ?? '').searchParams.get('code');
   if (!code) throw new Error('no code issued');
@@ -73,6 +107,7 @@ describe('authorize', () => {
   it('redirects back with a code and the exact state', async () => {
     const res = await as(member).request(
       `/authorize?client_id=nufi-works&redirect_uri=${encodeURIComponent(CALLBACK)}&state=abc`,
+      { headers: { cookie: 'refreshToken=rt-test' } },
     );
     expect(res.status).toBe(302);
     const url = new URL(res.headers.get('location') ?? '');
@@ -103,6 +138,48 @@ describe('authorize', () => {
       `/authorize?client_id=nobody&redirect_uri=${encodeURIComponent(CALLBACK)}&state=x`,
     );
     expect(res.status).toBe(400);
+  });
+
+  // The session cookie carries `{ id, sessionId }` and nothing else, so an
+  // identity built from it alone has no email -- which NUFI Works rejects at
+  // the end of the round trip, after the member has watched a redirect that
+  // looks like it worked. No email, no code.
+  it('refuses to issue a code when the identity has no email', async () => {
+    const app = as(member);
+    chatReply = { status: 200, body: { user: { id: 'u-9', role: 'USER' } } };
+    const res = await app.request(
+      `/authorize?client_id=nufi-works&redirect_uri=${encodeURIComponent(CALLBACK)}&state=x`,
+      { headers: { cookie: 'refreshToken=rt-test' } },
+    );
+    expect(res.status).toBe(401);
+    expect(res.headers.get('location')).toBeNull();
+  });
+
+  it('refuses to issue a code without a session cookie', async () => {
+    const res = await as(member).request(
+      `/authorize?client_id=nufi-works&redirect_uri=${encodeURIComponent(CALLBACK)}&state=x`,
+    );
+    expect(res.status).toBe(401);
+  });
+
+  // The lookup rotates the chat session token. Losing the replacement signs the
+  // member out of chat as a side effect of entering another product.
+  it('passes the rotated session cookie back to the browser', async () => {
+    const app = as(member);
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ user: { id: 'u-9', email: 'm@nufi.me', role: 'USER' } }), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+          'set-cookie': 'refreshToken=rotated; Path=/',
+        },
+      })) as unknown as typeof fetch;
+    const res = await app.request(
+      `/authorize?client_id=nufi-works&redirect_uri=${encodeURIComponent(CALLBACK)}&state=x`,
+      { headers: { cookie: 'refreshToken=rt-test' } },
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.get('set-cookie') ?? '').toContain('rotated');
   });
 });
 
