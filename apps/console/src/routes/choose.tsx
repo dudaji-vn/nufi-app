@@ -23,7 +23,11 @@ const PRODUCTS = [
   {
     name: 'NUFI Works',
     blurb: 'Put agents to work. Give a team a goal, approve what matters, and watch the spend.',
-    href: import.meta.env.VITE_WORKS_URL ?? 'https://works.nufi.me',
+    // `?sso=1` makes Works start the console handoff on arrival. Without it a
+    // visitor who has already chosen a product here meets a login page and has
+    // to choose again -- Studio needs no such step because it reads the
+    // identity cookie server-side, and the two should feel the same.
+    href: `${import.meta.env.VITE_WORKS_URL ?? 'https://works.nufi.me'}/auth?sso=1`,
     external: true,
   },
 ];

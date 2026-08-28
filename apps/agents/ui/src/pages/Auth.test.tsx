@@ -99,11 +99,11 @@ describe("AuthPage", () => {
     vi.clearAllMocks();
   });
 
-  async function mount() {
+  async function mount(entry = "/auth") {
     const { root, queryClient } = renderAuthPage(container);
     await act(async () => {
       root.render(
-        <MemoryRouter initialEntries={["/auth"]}>
+        <MemoryRouter initialEntries={[entry]}>
           <QueryClientProvider client={queryClient}>
             <Routes>
               <Route path="/auth" element={<AuthPage />} />
@@ -296,6 +296,35 @@ describe("AuthPage", () => {
     );
 
     Object.defineProperty(window, "location", { configurable: true, value: original });
+    root.unmount();
+    queryClient.clear();
+  });
+
+  // Arriving from the chooser should feel like Studio: one click, then you are
+  // in. `?sso=1` is what makes that true.
+  it("starts the handoff on its own when sent from the chooser", async () => {
+    const assign = vi.fn();
+    const original = window.location;
+    Object.defineProperty(window, "location", { configurable: true, value: { ...original, assign } });
+
+    const { root, queryClient } = await mount("/auth?sso=1");
+    await flushReact();
+
+    expect(signInOAuthMock).toHaveBeenCalledWith(expect.objectContaining({ providerId: "nufi" }));
+    expect(assign).toHaveBeenCalledWith("https://console.nufi.me/oidc/authorize?client_id=nufi-works");
+
+    Object.defineProperty(window, "location", { configurable: true, value: original });
+    root.unmount();
+    queryClient.clear();
+  });
+
+  // The gate matters more than the feature. An unconditional auto-redirect
+  // means a misconfigured console makes this page unreachable, and with it any
+  // way back in -- so a plain visit must never start the flow.
+  it("does not start the handoff without the flag", async () => {
+    const { root, queryClient } = await mount("/auth");
+    await flushReact();
+    expect(signInOAuthMock).not.toHaveBeenCalled();
     root.unmount();
     queryClient.clear();
   });

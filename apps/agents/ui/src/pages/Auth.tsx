@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "@/lib/router";
 import { authApi } from "../api/auth";
@@ -22,6 +22,8 @@ export function AuthPage() {
   const [error, setError] = useState<string | null>(null);
   const [oauthPending, setOauthPending] = useState(false);
   const errorId = "auth-error";
+
+  const autoStarted = useRef(false);
 
   /**
    * Hand off to the NUFI console.
@@ -65,6 +67,32 @@ export function AuthPage() {
       navigate(nextPath, { replace: true });
     }
   }, [session, navigate, nextPath]);
+
+  /**
+   * Arriving from the chooser at agents.nufi.me means the visitor has already
+   * chosen NUFI Works and already has a NUFI session; making them press a
+   * second button is a step that exists only because this product signs in
+   * over OAuth while Studio reads a cookie. So `?sso=1` starts the flow on
+   * arrival and the two products feel the same.
+   *
+   * It is gated on that parameter rather than simply "no session yet" because
+   * an unconditional redirect is a lockout waiting to happen: if the console
+   * is misconfigured or unreachable, every visit to this page bounces, the
+   * local sign-in form becomes unreachable, and nobody -- including whoever
+   * would fix it -- can get in. The callback returns to `nextPath`, which
+   * never carries `sso`, so a failed round trip lands here with an error
+   * instead of looping.
+   */
+  useEffect(() => {
+    if (autoStarted.current) return;
+    if (searchParams.get("sso") !== "1") return;
+    if (isSessionLoading || session) return;
+    autoStarted.current = true;
+    void startOAuth();
+    // startOAuth is stable for this purpose: the effect runs at most once,
+    // guarded by the ref above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, isSessionLoading, session]);
 
   const mutation = useMutation({
     mutationFn: async () => {
