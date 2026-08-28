@@ -48,7 +48,8 @@ Listens on `$PORT`, default 7860.
 PORT=7860
 LANGFLOW_DATABASE_URL=postgresql://…/nufi_studio
 LANGFLOW_AUTO_LOGIN=false
-LANGFLOW_SECRET_KEY=            # openssl rand -hex 32
+LANGFLOW_SECRET_KEY=            # python3 -c 'import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode())'
+#                                 NOT `openssl rand -hex 32` -- see below
 LANGFLOW_SUPERUSER=             # an admin address
 LANGFLOW_SUPERUSER_PASSWORD=    # generated; store in the team vault
 
@@ -65,6 +66,15 @@ LANGFLOW_EXTERNAL_AUTH_ACCESS_CEILING_ENABLED=true
 LANGFLOW_EXTERNAL_AUTH_ACCESS_CLAIM=access
 LANGFLOW_EXTERNAL_AUTH_DEFAULT_ACCESS_LEVEL=editor
 ```
+
+`LANGFLOW_SECRET_KEY` must be a **Fernet key**: 32 random bytes, url-safe
+base64, 44 characters ending in `=`. A hex string from `openssl rand -hex 32`
+is 64 characters, which is long enough to skip Langflow's short-key hashing
+path and short enough to look correct -- it is then handed straight to Fernet,
+decodes to 48 bytes, and every encrypt fails with `Fernet key must be 32
+url-safe base64-encoded bytes`. Nothing fails at boot; it fails the first time
+someone creates an API key or a Credential global variable, which can be weeks
+later. A key *shorter* than 32 characters works, because that path SHA-256s it.
 
 `LANGFLOW_EXTERNAL_AUTH_TRUSTED_JWT_DECODE` stays unset. It skips signature
 verification and is only safe behind a proxy that has already validated the
@@ -85,6 +95,10 @@ PAPERCLIP_DEPLOYMENT_MODE=authenticated
 PAPERCLIP_DEPLOYMENT_EXPOSURE=public
 PAPERCLIP_PUBLIC_URL=https://works.nufi.me
 PAPERCLIP_HOME=/paperclip
+# Enables the NuFi adapter and pins every adapter's egress to the gateway.
+# Without it the instance offers only upstream's built-ins and nothing reaches
+# the NuFi gateway at all.
+PAPERCLIP_ADAPTERS_FILE=/app/nufi/adapters.json
 
 # Identity. Set these last: PAPERCLIP_AUTH_DISABLE_SIGN_UP with no working
 # OAuth client leaves no way into the instance at all.
