@@ -32,6 +32,7 @@ if (!EMAIL || !PASSWORD) {
 const URLS = {
   chat: 'https://chat.nufi.me',
   admin: 'https://nufichat-admin-panel-production.up.railway.app',
+  chatmenu: 'https://chat.nufi.me',
   console: 'https://console.nufi.me',
   // The agent products. Both are entered through the chooser rather than a
   // login form: they have no password of their own, so `login()` does not
@@ -57,7 +58,7 @@ const URLS = {
 
 // Surfaces captured when no argument is given. `security` is excluded on
 // purpose — see URLS above.
-const DEFAULT_SURFACES = ['chat', 'admin', 'console', 'agents', 'studio', 'works'];
+const DEFAULT_SURFACES = ['chat', 'chatmenu', 'admin', 'console', 'agents', 'studio', 'works'];
 
 // Which surfaces to run — defaults to the three hosted ones, or whatever is
 // passed on the CLI.
@@ -571,6 +572,68 @@ const captures = {
       .catch(() => {});
     await page.waitForTimeout(4000);
     await shot(page, 'console-home');
+    await page.close();
+  },
+
+  /** The account menu, which is how a member reaches the chooser. */
+  async chatmenu(context) {
+    const page = await context.newPage();
+    await ensureChatSession(page);
+    await page.goto(`${URLS.chat}/`, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(6000);
+    await page.keyboard.press('Escape');
+
+    // Pick the account button by POSITION -- lowest control in the left rail.
+    // A generic selector opened the attachment menu instead, and the check
+    // still passed because it searched every open menu on the page for the
+    // word "Agents" rather than asking which menu was open. The screenshot
+    // that shipped showed "Upload to Provider".
+    const buttons = await page.$$('button');
+    let target = null;
+    let lowest = -1;
+    for (const el of buttons) {
+      const box = await el.boundingBox();
+      if (!box) continue;
+      if (box.x < 120 && box.y > lowest) {
+        lowest = box.y;
+        target = el;
+      }
+    }
+    if (!target) throw new Error('no account button found in the left rail');
+    await target.click();
+    await page.waitForTimeout(2000);
+
+    const menu = page.locator('[role="menu"]:visible').first();
+    const txt = await menu.innerText().catch(() => '');
+    if (!/Log out/.test(txt) || !/Agents/.test(txt)) {
+      throw new Error(`that is not the account menu: ${txt.slice(0, 120)}`);
+    }
+
+    // NOT redactPeople(): it is built for member lists, where replacing every
+    // name node is the point. Applied here it overwrites "My Files", "Console",
+    // "Agents" and the rest with a placeholder name and the screenshot becomes
+    // seven identical rows. Only the address needs replacing.
+    await page.evaluate(() => {
+      const re = /[\w.+-]+@[\w.-]+\.\w{2,}/;
+      document.querySelectorAll('[role="menu"] *').forEach((el) => {
+        if (el.children.length === 0 && re.test(el.textContent || '')) {
+          el.textContent = (el.textContent || '').replace(re, 'you@example.com');
+        }
+      });
+    });
+    await page.waitForTimeout(400);
+
+    const box = await menu.boundingBox();
+    await page.screenshot({
+      path: join(OUT_DIR, 'chat-agents-menu.png'),
+      clip: {
+        x: Math.max(0, box.x - 24),
+        y: Math.max(0, box.y - 24),
+        width: box.width + 48,
+        height: box.height + 48,
+      },
+    });
+    console.log('  ✓ chat-agents-menu.png');
     await page.close();
   },
 
