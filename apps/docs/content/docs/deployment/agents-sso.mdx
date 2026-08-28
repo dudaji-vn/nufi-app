@@ -49,7 +49,20 @@ STUDIO_URL=https://studio.nufi.me
 VITE_WORKS_URL=https://works.nufi.me
 IDENTITY_TTL_SECONDS=28800      # 8 hours
 IDENTITY_COOKIE_DOMAIN=.nufi.me
+CHAT_BASE_URL=https://chat.nufi.me
 ```
+
+<Callout type="warn">
+**`CHAT_BASE_URL` has to be reachable from the console.** The chat session
+cookie carries an id and a session id — no email and no role — so the
+console asks the chat app who the member actually is before it issues
+anything. Without that lookup every identity it mints has no email, and
+the failure is not obvious: NUFI Works refuses the sign-in with
+`email_is_missing` at the end of a round trip that looks like it worked,
+NUFI Studio accepts it and provisions an account called
+`external-<hash>` for a real person, and everyone arrives as an editor
+because the role is missing too.
+</Callout>
 
 This adds four routes: `/.well-known/jwks.json` publishes the public
 key, `/oidc/authorize`, `/oidc/token` and `/oidc/userinfo` serve the
