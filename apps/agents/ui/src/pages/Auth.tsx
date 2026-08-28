@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "@/lib/router";
 import { authApi } from "../api/auth";
@@ -20,7 +20,37 @@ export function AuthPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [oauthPending, setOauthPending] = useState(false);
   const errorId = "auth-error";
+
+  const autoStarted = useRef(false);
+
+  /**
+   * Hand off to the NUFI console.
+   *
+   * The button is rendered without probing first: the only way to ask whether
+   * the provider exists is to start the flow, and doing that on mount would set
+   * a state cookie on every visit to this page. So an instance with no OIDC
+   * configured shows the button and says so plainly when it is pressed, which
+   * is a better trade than a request nobody asked for.
+   */
+  const startOAuth = async () => {
+    if (oauthPending) return;
+    setOauthPending(true);
+    setError(null);
+    try {
+      const url = await authApi.signInOAuth({ providerId: "nufi", callbackURL: nextPath });
+      if (!url) {
+        setError("This instance is not connected to a NUFI console. Sign in with your email and password.");
+        return;
+      }
+      window.location.assign(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not reach the NUFI console.");
+    } finally {
+      setOauthPending(false);
+    }
+  };
 
   const nextPath = useMemo(
     () => searchParams.get("next") || getRememberedInvitePath() || "/",
@@ -37,6 +67,32 @@ export function AuthPage() {
       navigate(nextPath, { replace: true });
     }
   }, [session, navigate, nextPath]);
+
+  /**
+   * Arriving from the chooser at agents.nufi.me means the visitor has already
+   * chosen NUFI Works and already has a NUFI session; making them press a
+   * second button is a step that exists only because this product signs in
+   * over OAuth while Studio reads a cookie. So `?sso=1` starts the flow on
+   * arrival and the two products feel the same.
+   *
+   * It is gated on that parameter rather than simply "no session yet" because
+   * an unconditional redirect is a lockout waiting to happen: if the console
+   * is misconfigured or unreachable, every visit to this page bounces, the
+   * local sign-in form becomes unreachable, and nobody -- including whoever
+   * would fix it -- can get in. The callback returns to `nextPath`, which
+   * never carries `sso`, so a failed round trip lands here with an error
+   * instead of looping.
+   */
+  useEffect(() => {
+    if (autoStarted.current) return;
+    if (searchParams.get("sso") !== "1") return;
+    if (isSessionLoading || session) return;
+    autoStarted.current = true;
+    void startOAuth();
+    // startOAuth is stable for this purpose: the effect runs at most once,
+    // guarded by the ref above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, isSessionLoading, session]);
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -97,8 +153,24 @@ export function AuthPage() {
               : "Create an account for this instance. Email confirmation is not required in v1."}
           </p>
 
+          <Button
+            type="button"
+            variant="outline"
+            className="mt-6 w-full"
+            onClick={startOAuth}
+            disabled={oauthPending}
+          >
+            {oauthPending ? "Redirecting…" : "Continue with NUFI"}
+          </Button>
+
+          <div className="mt-4 flex items-center gap-3">
+            <span className="h-px flex-1 bg-border" />
+            <span className="text-[11px] uppercase tracking-wide text-muted-foreground">or</span>
+            <span className="h-px flex-1 bg-border" />
+          </div>
+
           <form
-            className="mt-6 space-y-4"
+            className="mt-4 space-y-4"
             method="post"
             action={mode === "sign_up" ? "/api/auth/sign-up/email" : "/api/auth/sign-in/email"}
             onSubmit={(event) => {

@@ -11,12 +11,14 @@ import { AuthPage } from "./Auth";
 const getSessionMock = vi.hoisted(() => vi.fn());
 const signInEmailMock = vi.hoisted(() => vi.fn());
 const signUpEmailMock = vi.hoisted(() => vi.fn());
+const signInOAuthMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../api/auth", () => ({
   authApi: {
     getSession: () => getSessionMock(),
     signInEmail: (input: unknown) => signInEmailMock(input),
     signUpEmail: (input: unknown) => signUpEmailMock(input),
+    signInOAuth: (input: unknown) => signInOAuthMock(input),
   },
 }));
 
@@ -88,6 +90,7 @@ describe("AuthPage", () => {
     getSessionMock.mockResolvedValue(null);
     signInEmailMock.mockResolvedValue(undefined);
     signUpEmailMock.mockResolvedValue(undefined);
+    signInOAuthMock.mockResolvedValue("https://console.nufi.me/oidc/authorize?client_id=nufi-works");
   });
 
   afterEach(() => {
@@ -96,11 +99,11 @@ describe("AuthPage", () => {
     vi.clearAllMocks();
   });
 
-  async function mount() {
+  async function mount(entry = "/auth") {
     const { root, queryClient } = renderAuthPage(container);
     await act(async () => {
       root.render(
-        <MemoryRouter initialEntries={["/auth"]}>
+        <MemoryRouter initialEntries={[entry]}>
           <QueryClientProvider client={queryClient}>
             <Routes>
               <Route path="/auth" element={<AuthPage />} />
@@ -252,5 +255,77 @@ describe("AuthPage", () => {
     await act(async () => {
       root.unmount();
     });
+  });
+
+  // This page shipped once with generic-oauth enabled on the server and no way
+  // to reach it from the browser. Everything was green: the endpoint returned
+  // the right authorize URL to curl. A person could not sign in. These two
+  // assertions are what that costs.
+  it("offers the NUFI handoff", async () => {
+    const { root, queryClient } = await mount();
+    const button = [...container.querySelectorAll("button")].find((b) =>
+      /continue with nufi/i.test(b.textContent ?? ""),
+    );
+    expect(button).toBeTruthy();
+    root.unmount();
+    queryClient.clear();
+  });
+
+  it("follows the URL the console hands back", async () => {
+    const assign = vi.fn();
+    const original = window.location;
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { ...original, assign },
+    });
+
+    const { root, queryClient } = await mount();
+    const button = [...container.querySelectorAll("button")].find((b) =>
+      /continue with nufi/i.test(b.textContent ?? ""),
+    ) as HTMLButtonElement;
+    await act(() => {
+      button.click();
+    });
+    await flushReact();
+
+    expect(signInOAuthMock).toHaveBeenCalledWith(
+      expect.objectContaining({ providerId: "nufi" }),
+    );
+    expect(assign).toHaveBeenCalledWith(
+      "https://console.nufi.me/oidc/authorize?client_id=nufi-works",
+    );
+
+    Object.defineProperty(window, "location", { configurable: true, value: original });
+    root.unmount();
+    queryClient.clear();
+  });
+
+  // Arriving from the chooser should feel like Studio: one click, then you are
+  // in. `?sso=1` is what makes that true.
+  it("starts the handoff on its own when sent from the chooser", async () => {
+    const assign = vi.fn();
+    const original = window.location;
+    Object.defineProperty(window, "location", { configurable: true, value: { ...original, assign } });
+
+    const { root, queryClient } = await mount("/auth?sso=1");
+    await flushReact();
+
+    expect(signInOAuthMock).toHaveBeenCalledWith(expect.objectContaining({ providerId: "nufi" }));
+    expect(assign).toHaveBeenCalledWith("https://console.nufi.me/oidc/authorize?client_id=nufi-works");
+
+    Object.defineProperty(window, "location", { configurable: true, value: original });
+    root.unmount();
+    queryClient.clear();
+  });
+
+  // The gate matters more than the feature. An unconditional auto-redirect
+  // means a misconfigured console makes this page unreachable, and with it any
+  // way back in -- so a plain visit must never start the flow.
+  it("does not start the handoff without the flag", async () => {
+    const { root, queryClient } = await mount("/auth");
+    await flushReact();
+    expect(signInOAuthMock).not.toHaveBeenCalled();
+    root.unmount();
+    queryClient.clear();
   });
 });

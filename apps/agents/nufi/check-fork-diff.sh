@@ -27,6 +27,15 @@ ALLOWLIST=(
   "ui/src/plugins/slots.tsx"
   # Single sign-on. See nufi/README.md, "Signing in with a NUFI account".
   "server/src/auth/better-auth.ts"
+  # The button that reaches the plugin above. Enabling generic-oauth on the
+  # server is invisible without it: better-auth's sign-in is a POST that also
+  # sets the state cookie, so it cannot be a link, and upstream's login page
+  # offers email and password only. Shipped without these two, SSO is
+  # configured, verifiable by curl, and unreachable by a person -- which is how
+  # it shipped the first time.
+  "ui/src/api/auth.ts"
+  "ui/src/pages/Auth.tsx"
+  "ui/src/pages/Auth.test.tsx"
   "ui/src/nufi-brand.css"
   "ui/nufi-rebrand.ts"
   "ui/nufi-rebrand.test.ts"
