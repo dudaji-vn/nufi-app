@@ -25,7 +25,10 @@ let chatReply: { status: number; body: unknown; setCookie?: string } = { status:
 
 function stubChat(user: AuthedUser | null) {
   chatReply = user
-    ? { status: 200, body: { user: { id: user.id, email: user.email, role: user.role } } }
+    ? {
+        status: 200,
+        body: { user: { id: user.id, email: user.email, name: 'Test Member', role: user.role } },
+      }
     : { status: 401, body: {} };
 }
 
@@ -148,5 +151,30 @@ describe('GET /enter/studio', () => {
     const cookies = res.headers.getSetCookie().join(' | ');
     expect(cookies).toContain('rotated');
     expect(cookies).toContain('nufi_id=');
+  });
+
+  // better-auth refuses a profile with no name the same way it refuses one
+  // with no email, and the failure looks identical from the outside: a
+  // redirect that appears to work, then an error page.
+  it('refuses when the identity has no usable name', async () => {
+    const app = as(member);
+    chatReply = { status: 200, body: { user: { id: 'u-1', email: '', role: 'USER' } } };
+    const res = await app.request('/studio', WITH_SESSION);
+    expect(res.status).toBe(401);
+  });
+
+  it('falls back to the email local part when chat has no display name', async () => {
+    const app = as(member);
+    chatReply = {
+      status: 200,
+      body: { user: { id: 'u-1', email: 'nobody@nufi.me', role: 'USER' } },
+    };
+    const res = await app.request('/studio', WITH_SESSION);
+    expect(payloadOf(res.headers.get('set-cookie') ?? '').name).toBe('nobody');
+  });
+
+  it('carries the display name chat holds', async () => {
+    const res = await as(member).request('/studio', WITH_SESSION);
+    expect(payloadOf(res.headers.get('set-cookie') ?? '').name).toBe('Test Member');
   });
 });

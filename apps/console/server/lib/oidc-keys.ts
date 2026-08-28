@@ -4,6 +4,8 @@ import { exportJWK, generateKeyPair, importPKCS8, SignJWT } from 'jose';
 export type IdentityClaims = {
   sub: string;
   email?: string;
+  /** Consumers reject a profile without one -- see chat-identity.ts. */
+  name?: string;
   access: 'viewer' | 'editor' | 'admin';
 };
 
@@ -85,7 +87,7 @@ export async function signIdentity(
 ): Promise<string> {
   const { privateKey, kid } = await getSigningKey();
   const now = Math.floor(Date.now() / 1000);
-  return new SignJWT({ email: claims.email, access: claims.access })
+  return new SignJWT({ email: claims.email, name: claims.name, access: claims.access })
     .setProtectedHeader({ alg: ALG, kid })
     .setSubject(claims.sub)
     .setIssuer(ISSUER)
