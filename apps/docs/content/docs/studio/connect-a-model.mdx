@@ -1,0 +1,90 @@
+---
+title: Connect a model
+description: Studio ships with no model connected. This is how you connect it, and which model names silently fail.
+---
+
+Studio is deployed without a model provider. Everything else works —
+you can sign in, build a flow, wire components — right up to the moment
+you run it. Then the run fails with **"An error occurred"** and no
+further explanation.
+
+This page is that one step.
+
+## Generate a key
+
+Your NUFI console issues the key, and it bills to you.
+
+<Steps>
+<Step>Open **[console.nufi.me/keys](https://console.nufi.me/keys)**.</Step>
+<Step>Click **Generate Key**. Give it an alias you will recognise later —
+`studio` is fine.</Step>
+<Step>Leave the defaults unless you have a reason: **$10** budget over
+**30d**, **10,000** tokens/min, **60** requests/min, expiring in **90d**.</Step>
+<Step>Copy the key. **The full value is shown once** — after you close
+the dialog the console only ever shows the last four characters.</Step>
+</Steps>
+
+## Point Studio at the gateway
+
+<Steps>
+<Step>In Studio, open **Settings → Model Providers**.</Step>
+<Step>Choose **OpenAI Compatible**. NUFI's gateway speaks the OpenAI
+protocol, so this is the right entry — not the **OpenAI** one above it.</Step>
+<Step>
+
+Fill in:
+
+| Field | Value |
+|---|---|
+| **Base URL** | `https://api.codechi.me/v1` |
+| **API Key** | the key you just copied |
+
+</Step>
+<Step>Click **Save**.</Step>
+</Steps>
+
+You will know it took because **OpenAI Compatible** jumps to the top of
+the provider list with a model count beside it.
+
+## Which models actually work
+
+The gateway advertises 30 models. **Seven of them are retired upstream
+and return an error when called**, and several sort to the top of the
+dropdown, so the default choice is often a broken one.
+
+<Callout type="warn">
+These are advertised but **do not work**:
+
+```
+Nufi-lab/models/gemini-2.0-flash
+Nufi-lab/models/gemini-2.0-flash-001
+Nufi-lab/models/gemini-2.0-flash-lite
+Nufi-lab/models/gemini-2.0-flash-lite-001
+Nufi-lab/models/gemini-3-pro-preview
+Nufi-lab/models/gemini-robotics-er-1.5-preview
+Nufi-lab/models/gemini-omni-flash-preview
+```
+
+Google retired them; the gateway's list has not caught up. Calling one
+returns *"This model is no longer available"*, which Studio surfaces to
+you only as **"An error occurred"**.
+</Callout>
+
+Safe choices, verified against the live gateway:
+
+| Model | Good for |
+|---|---|
+| `gemini` | The general alias. A sensible default |
+| `Nufi-lab/models/gemini-2.5-flash` | Fast, cheap, fine for most flows |
+| `Nufi-lab/models/gemini-2.5-pro` | Harder reasoning |
+| `Nufi-lab/models/gemini-3.5-flash` | Newer, fast |
+| `Nufi-lab/models/gemini-2.5-flash-image` | Flows that produce images |
+
+## Checking it worked
+
+The fastest confirmation is a run, not a setting. Open any flow, click
+**Playground**, and send one message. An answer with a duration beside
+it means the whole path — Studio, key, gateway, model — is good.
+
+If instead you get **"An error occurred"**, the model is the first thing
+to change. See [Troubleshooting](/docs/studio/troubleshooting).

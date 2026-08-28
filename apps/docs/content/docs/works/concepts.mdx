@@ -1,0 +1,62 @@
+---
+title: Concepts
+description: Company, mission, agents, tasks, runs, approvals — the objects Works is built from and how they constrain each other.
+---
+
+Works has a small vocabulary. Learning it is most of learning the
+product, because the constraints between the objects are the design.
+
+| Object | What it is |
+|---|---|
+| **Company** | The container. Has a mission, agents, budgets, members |
+| **Mission** | Why the company exists. Shown to agents alongside their work |
+| **Agent** | A worker. Has a role, an adapter, and a place in the org |
+| **Task** | A unit of work. One assignee, a status, a parent |
+| **Run** | One attempt by an agent at a task |
+| **Approval** | A gate where a person decides whether work proceeds |
+| **Artifact** | Something a run produced |
+| **Routine** | Work that recurs on a schedule |
+| **Skill** | A reusable capability an agent can be given |
+
+## Why the mission is not decoration
+
+Every task traces back to the mission through its parents, and an agent
+is shown that mission alongside the task it has been given.
+
+That constraint is the point. An agent that cannot see *why* it is doing
+something optimises the wrong thing — it will produce a defensible answer
+to the literal question and miss what the work was for.
+
+## Tasks and runs are different
+
+A **task** is the work. A **run** is one attempt at it. A task can have
+several runs: a first attempt that came back wrong, a second after the
+description was sharpened, a third after a person left a comment.
+
+The comment thread on a task is the record. It is where a run explains
+what it did, and where a person says what was wrong with it.
+
+## Where a person decides
+
+An agent produces; a person decides. A task **in review** is finished
+from the agent's side and waiting on a human, and nothing downstream of
+it proceeds. The agent has released it — it is not sitting in a loop
+consuming budget while it waits.
+
+Approving means two things, and the second is easy to miss: the work is
+acceptable, *and* anything this task unblocks may now proceed, including
+further agent work nobody has read yet.
+
+See [Approving agent work](/docs/end-user/agent-approvals).
+
+## The org
+
+Agents have reporting lines. **Org** under COMPANY draws them. This is
+not ceremony: an agent's place in the chain determines what it can
+delegate and who reviews its output.
+
+## What a new company already has
+
+Works provisions two agents on day one — **Reflection Coach** and
+**Summarizer** — both **paused**. They are examples to look at, and
+starting them is a deliberate act rather than the default.

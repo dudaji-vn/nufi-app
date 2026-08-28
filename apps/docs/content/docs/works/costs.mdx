@@ -1,0 +1,53 @@
+---
+title: Costs
+description: Where agent spend appears, what bounds it, and whose ledger a run lands on.
+---
+
+Every model call an agent makes costs money, and Works is built to make
+that visible rather than to discover it at the end of the month.
+
+## Where it shows
+
+**Month Spend** sits on the dashboard beside the agent and task counts,
+with the budget state under it — *"Unlimited budget"* when none is set.
+
+**Costs** under COMPANY is the detail: spend broken down rather than
+totalled.
+
+## Whose ledger
+
+This is the reason the per-person setup matters. With a shared,
+server-wide key, spend is a single number and questions like *who spent
+this* and *can we cut off one person* have no answer in the data.
+
+With each member's own key bound to the agents they use, every model call
+an agent makes on someone's behalf lands on their ledger, and revoking
+one person changes nothing for anybody else.
+
+See [Connecting your NUFI account](/docs/end-user/agent-connect).
+
+## What bounds it
+
+Three limits stack, and they are enforced in different places:
+
+| Limit | Set where | Bounds |
+|---|---|---|
+| Key budget and rate limits | The NUFI console, per key | What that key can spend at all |
+| Company budget | Works, per company | What the company's agents may spend |
+| Approvals | Works, per task | Work that proceeds without a person looking |
+
+The third is the one people forget is a cost control. A task waiting in
+review is not consuming budget — the agent released it. A loop with no
+gate in it is where spend runs away.
+
+## Reading a surprise
+
+When spend jumps, the sequence that usually finds it fastest:
+
+1. **Costs** — which agent.
+2. That agent's runs — how many attempts, and whether they repeated.
+3. The task's comment thread — whether it was retrying against a task it
+   could never satisfy.
+
+The most common cause is not an expensive model. It is a task an agent
+cannot complete, retried.

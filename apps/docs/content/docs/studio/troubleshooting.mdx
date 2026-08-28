@@ -1,0 +1,59 @@
+---
+title: Troubleshooting
+description: What Studio's common failures actually mean, starting with the one that produces no useful message at all.
+---
+
+## "An error occurred" in the Playground
+
+The most common failure, and the least informative. In practice it is
+almost always one of three things, in this order of likelihood.
+
+**1. The model no longer exists.** The gateway advertises several
+retired models, and they sort to the top of the dropdown, so the default
+choice is frequently a broken one. The underlying message is *"This model
+is no longer available"* — Studio does not surface it.
+
+Switch the **Agent** component to `Nufi-lab/models/gemini-2.5-flash` or
+`gemini` and run again. The full list is in
+[Connect a model](/docs/studio/connect-a-model).
+
+**2. No model provider is configured.** A fresh instance has none. The
+canvas says so on a new flow — *"Add a model provider"* — but an existing
+flow just fails. Check **Settings → Model Providers**: a configured
+provider sits at the top of the list with a model count beside it.
+
+**3. A component input is empty.** Expand the error row with the chevron;
+when it is a component problem the message usually names the input.
+
+## The flow runs but ignores my documents
+
+Retrieval returned nothing useful. Run the retrieval step on its own and
+look at what came back before blaming the prompt — see
+[Knowledge](/docs/studio/knowledge).
+
+## I cannot create an API key
+
+If you signed in through NUFI and key creation is refused, the instance
+is configured to deny API keys to members who arrive that way — the
+reasoning being that a key outlives the session and does not carry the
+access level. An administrator can change it. A local Studio account is
+unaffected.
+
+## Saving a Credential variable fails
+
+If the message mentions a **Fernet key**, the instance's encryption key
+is not valid and no credential can be stored. This is a deployment
+problem — see
+[Installing NUFI Studio](/docs/deployment/studio-install).
+
+## My flow disappeared after a redeploy
+
+Studio's default database is a file inside the container, which does not
+survive one. A correctly deployed instance points at PostgreSQL. If
+flows vanish on deploy, that is what to check — and it needs an
+administrator.
+
+## The first page load is slow
+
+The service sleeps when idle and takes a few seconds to wake. Subsequent
+loads are fast. Worth opening it once before a demo.

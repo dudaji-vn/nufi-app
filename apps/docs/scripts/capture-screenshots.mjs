@@ -33,6 +33,12 @@ const URLS = {
   chat: 'https://chat.nufi.me',
   admin: 'https://nufichat-admin-panel-production.up.railway.app',
   console: 'https://console.nufi.me',
+  // The agent products. Both are entered through the chooser rather than a
+  // login form: they have no password of their own, so `login()` does not
+  // apply and `enterViaChooser()` below walks the real path a member takes.
+  agents: 'https://agents.nufi.me',
+  studio: 'https://studio.nufi.me',
+  works: 'https://works.nufi.me',
   // The security shots come from the LOCAL stack, not from production, and that
   // is not a convenience — the gateway guardrails are not deployed to
   // chat.nufi.me yet, so pointing this at production would produce screenshots
@@ -51,7 +57,7 @@ const URLS = {
 
 // Surfaces captured when no argument is given. `security` is excluded on
 // purpose — see URLS above.
-const DEFAULT_SURFACES = ['chat', 'admin', 'console'];
+const DEFAULT_SURFACES = ['chat', 'admin', 'console', 'agents', 'studio', 'works'];
 
 // Which surfaces to run — defaults to the three hosted ones, or whatever is
 // passed on the CLI.
@@ -87,6 +93,68 @@ async function login(page, baseUrl) {
   await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
   await page.waitForTimeout(2500);
   return true;
+}
+
+/**
+ * Sign in to chat, then walk the chooser the way a member does.
+ *
+ * Studio and Works have no login form of their own -- identity arrives from
+ * the console -- so photographing them means reproducing the handoff rather
+ * than filling a password field. Doing it through the chooser rather than
+ * jumping straight to the product URL is deliberate: it is the path being
+ * documented, and if it breaks the capture fails loudly instead of quietly
+ * producing a screenshot of a login screen.
+ */
+/**
+ * Ensure the shared context carries a chat session, signing in only if it does
+ * not already. main() reuses one browser context across surfaces, so by the
+ * time the second agent surface runs the cookie is usually already there and
+ * /login redirects away without ever rendering a form. Waiting for the form
+ * unconditionally fails on exactly the healthy path.
+ *
+ * The postcondition is the cookie, so that is what gets asserted.
+ */
+async function ensureChatSession(page) {
+  const hasSession = async () =>
+    (await page.context().cookies()).some((c) => c.name === 'refreshToken');
+
+  if (await hasSession()) return;
+
+  await page.goto(`${URLS.chat}/login`, { waitUntil: 'domcontentloaded' });
+  // waitFor, not isVisible: the chat app is an SPA and the form is absent at
+  // domcontentloaded, so login()'s isVisible check loses the race, returns
+  // false, and skips signing in WITHOUT saying so -- after which the handoff
+  // 401s and the capture photographs `{"error":"unauthorized"}` under a green
+  // tick. Same trap the `security` capture documents.
+  await page
+    .locator('input[type="email"], input[name="email"], #email')
+    .first()
+    .waitFor({ state: 'visible', timeout: 30000 });
+  await login(page, URLS.chat);
+
+  if (!(await hasSession())) {
+    throw new Error('chat sign-in did not take — no refreshToken cookie, so the handoff cannot work');
+  }
+}
+
+async function enterViaChooser(page, product) {
+  await ensureChatSession(page);
+
+  await page.goto(`${URLS.agents}/`, { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(2000);
+  const card = page.locator('a', { hasText: product }).first();
+  await card.waitFor({ state: 'visible', timeout: 20000 });
+  await card.click();
+  await page.waitForTimeout(11000);
+
+  // Refuse to photograph a failure. Without this the run stays green while
+  // producing screenshots of an error page, which is worse than no screenshot
+  // because it looks finished.
+  const body = await page.evaluate(() => document.body.innerText.slice(0, 400));
+  if (/"error"\s*:|unauthorized/i.test(body)) {
+    throw new Error(`${product}: landed on an error page, not the product — ${body.slice(0, 120)}`);
+  }
+  return page.url();
 }
 
 async function shot(page, name) {
@@ -505,6 +573,66 @@ const captures = {
     await shot(page, 'console-home');
     await page.close();
   },
+
+  /** The door: one page, two products, no second sign-in. */
+  async agents(context) {
+    const page = await context.newPage();
+    await ensureChatSession(page);
+    await page.goto(`${URLS.agents}/`, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(2500);
+    const seen = await page.evaluate(() => document.body.innerText);
+    if (!/NUFI Studio/.test(seen) || !/NUFI Works/.test(seen)) {
+      throw new Error('chooser did not render both products');
+    }
+    await shot(page, 'agents-chooser');
+    await page.close();
+  },
+
+  /** NUFI Studio: the canvas, a flow, and where a published flow is reached. */
+  async studio(context) {
+    const page = await context.newPage();
+    await enterViaChooser(page, 'NUFI Studio');
+    await page.waitForTimeout(3000);
+    await shot(page, 'studio-home');
+
+    // The empty-project state, which is what a new project looks like before
+    // the first flow. NOTE: the `+` next to Projects CREATES one, so this is
+    // deliberately not clicked here -- a capture run should not leave objects
+    // behind on the instance it photographs.
+    await page.goto(`${URLS.studio}/flows`, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(2500);
+
+    // Settings -> API keys: the credential a published flow is called with.
+    await page.goto(`${URLS.studio}/settings/api-keys`, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(3500);
+    await shot(page, 'studio-api-keys');
+
+    // Global variables, where a Credential is stored instead of pasted.
+    await page.goto(`${URLS.studio}/settings/global-variables`, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(3000);
+    await shot(page, 'studio-variables');
+    await page.close();
+  },
+
+  /** NUFI Works: the operations app a member lands in from the chooser. */
+  async works(context) {
+    const page = await context.newPage();
+    await enterViaChooser(page, 'NUFI Works');
+    await page.waitForTimeout(3000);
+    await redactPeople(page);
+    // An instance with no company lands on the onboarding wizard, which is a
+    // real screen worth documenting but is NOT the operations UI. Name the file
+    // after what is actually on it rather than captioning a setup step as a
+    // product tour.
+    const onboarding = /Name your company|Finish setting up/i.test(
+      await page.evaluate(() => document.body.innerText),
+    );
+    await shot(page, onboarding ? 'works-onboarding' : 'works-home');
+    if (onboarding) {
+      console.error('  ! no company on this instance — captured onboarding, not the dashboard');
+    }
+    await page.close();
+  },
 };
 
 async function main() {
@@ -529,7 +657,7 @@ async function main() {
 }
 
 // Exported for focused testing; only auto-runs when invoked directly.
-export { login, shot, redactPeople, captureTeams, captureKnowledgeAgent, VIEWPORT, URLS };
+export { login, shot, redactPeople, enterViaChooser, captureTeams, captureKnowledgeAgent, VIEWPORT, URLS };
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   main().catch((err) => {

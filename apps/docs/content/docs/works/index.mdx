@@ -1,0 +1,62 @@
+---
+title: NUFI Works
+description: An operations app for agents — a company with a mission, agents that hold roles, tasks that trace back to it, and approvals where a person decides.
+---
+
+Works is not a chat window with a longer memory. It is an operations
+app: a **company** with a mission, **agents** that hold roles in it,
+**tasks** that trace back to that mission, and **approvals** where a
+person decides whether work ships.
+
+![The NUFI Works dashboard](/screenshots/works-dashboard.png)
+
+## Works or Studio?
+
+| | **NUFI Works** | **NUFI Studio** |
+|---|---|---|
+| You build | A team | A pipeline |
+| The unit of work | A task you assign | A flow you run |
+| You get | Completed work, with a record of who approved it | An endpoint |
+| Reach it at | `works.nufi.me` | `studio.nufi.me` |
+
+Both open from `agents.nufi.me` with your NUFI account — see
+[Studio and Works](/docs/end-user/agent-apps).
+
+## What is in here
+
+<Cards>
+  <Card title="Getting started" href="/docs/works/getting-started">
+    Sign in, create a company, and get past the setup wizard.
+  </Card>
+  <Card title="Concepts" href="/docs/works/concepts">
+    Company, mission, agents, tasks, runs — and how they hang together.
+  </Card>
+  <Card title="Agents" href="/docs/works/agents">
+    Adapters, which one to choose, and the one the wizard hides.
+  </Card>
+  <Card title="Assigning work" href="/docs/end-user/agent-tasks">
+    Writing a task an agent can actually act on.
+  </Card>
+  <Card title="Approvals" href="/docs/end-user/agent-approvals">
+    What a review gate holds and what approving commits you to.
+  </Card>
+  <Card title="Members and access" href="/docs/works/members">
+    Invites, roles, and who is allowed to create a company.
+  </Card>
+  <Card title="Costs" href="/docs/works/costs">
+    Where spend shows up and how it is bounded.
+  </Card>
+  <Card title="Troubleshooting" href="/docs/works/troubleshooting">
+    The screens that look like errors but are not.
+  </Card>
+</Cards>
+
+## What Works cannot do yet
+
+**Agents that edit repositories need a sandbox, and there isn't one.**
+The coding adapters — Claude Code, Codex and the rest — run a harness in
+an isolated environment. Until one is configured they cannot run.
+
+Knowledge work is unaffected: the `nufi_agent` adapter runs in the
+server's own process and needs no sandbox. See
+[Agents](/docs/works/agents).

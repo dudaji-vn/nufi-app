@@ -1,0 +1,46 @@
+---
+title: Variables and credentials
+description: Where a secret belongs in Studio, and why a component field is not it.
+---
+
+Do not paste a credential into a component field. Component
+configuration is visible in the flow, travels with an export, and is
+readable by anyone who can open it.
+
+Studio has **Global Variables** for exactly this.
+
+![Global variables in Studio settings](/screenshots/studio-variables.png)
+
+## Storing one
+
+<Steps>
+<Step>Open **Settings → Global Variables**.</Step>
+<Step>Add a variable. Give it a name a component can reference.</Step>
+<Step>Set the type to **Credential**, not **Generic**.</Step>
+<Step>Reference it by name from the component that needs it.</Step>
+</Steps>
+
+The two types differ in one way that matters: a **Credential** is
+encrypted at rest and cannot be read back through the interface. A
+**Generic** variable is a convenience for values you would not mind
+someone seeing.
+
+<Callout type="warn">
+**A Credential cannot be recovered, only replaced.** Nothing in Studio
+will show you the value again. If you lose the original, generate a new
+credential at its source and update the variable.
+</Callout>
+
+## Variables that already exist
+
+A new account has `FLOW_ID` and `COMPONENT_ID` with empty values. Those
+are created by Studio for its own use — leave them alone.
+
+## If saving a credential fails
+
+A **Credential** variable is encrypted with the instance's secret key. If
+saving one returns an error mentioning a *Fernet key*, the instance's
+`LANGFLOW_SECRET_KEY` is not a valid encryption key and no credential can
+be stored until an administrator fixes it. That is a deployment problem,
+not something you can work around — see
+[Installing NUFI Studio](/docs/deployment/studio-install).
