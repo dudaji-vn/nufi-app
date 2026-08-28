@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
-import { setCookie } from 'hono/cookie';
+import { getCookie, setCookie } from 'hono/cookie';
+import { resolveChatIdentity } from './lib/chat-identity.ts';
 import { signIdentity } from './lib/oidc-keys.ts';
 import type { AuthedUser } from './middleware/auth.ts';
 
@@ -25,12 +26,25 @@ const TTL_SECONDS = Number(process.env.IDENTITY_TTL_SECONDS ?? 8 * 60 * 60);
 export const enter = new Hono<Env>();
 
 enter.get('/studio', async (c) => {
-  const user = c.get('user');
+  // The session cookie names the member but does not describe them, so the
+  // record is fetched rather than inferred. Without this the token carries no
+  // email and Studio provisions an `external-<hash>` account for a real person.
+  const refreshToken = getCookie(c, 'refreshToken');
+  const identity = refreshToken ? await resolveChatIdentity(refreshToken) : null;
+  if (!identity) {
+    return c.json({ error: 'unauthorized', detail: 'could not resolve NUFI identity' }, 401);
+  }
+
+  // The lookup rotated the session token; hand the replacement to the browser
+  // or the member is signed out of chat by having visited this route.
+  for (const cookie of identity.setCookies) c.header('set-cookie', cookie, { append: true });
+
   const token = await signIdentity(
     {
-      sub: user.id,
-      email: user.email,
-      access: user.role === 'ADMIN' ? 'admin' : 'editor',
+      sub: identity.id,
+      email: identity.email,
+      name: identity.name,
+      access: identity.role === 'ADMIN' ? 'admin' : 'editor',
     },
     'nufi-studio',
     TTL_SECONDS,
