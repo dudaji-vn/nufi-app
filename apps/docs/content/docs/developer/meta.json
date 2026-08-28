@@ -6,9 +6,9 @@
   "pages": [
     "index",
     "---Get started---",
-    "../getting-started/prerequisites",
-    "../getting-started/quick-start",
-    "../getting-started/verify-install",
+    "prerequisites",
+    "quick-start",
+    "verify-install",
     "---Run locally---",
     "local-stack",
     "---Codebases---",
