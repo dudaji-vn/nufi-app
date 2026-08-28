@@ -12,9 +12,15 @@
     "./server": "./dist/server/index.js",
     "./ui-parser": "./dist/ui-parser.js"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.21",
+    "typescript": "^5.7.3"
   }
 }

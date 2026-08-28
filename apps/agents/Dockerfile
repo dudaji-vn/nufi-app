@@ -61,7 +61,13 @@ RUN test -f server/dist/index.js || (echo "ERROR: server build output missing" &
 # builds it -- nufi/adapter/dist is gitignored, so an image without this line
 # ships a server that cannot offer `nufi_agent` at all, which is the only
 # adapter that routes model calls through the NuFi gateway.
-RUN pnpm --dir nufi/adapter install --frozen-lockfile 2>/dev/null || pnpm --dir nufi/adapter install
+# --ignore-workspace: this package is deliberately outside pnpm-workspace.yaml
+# (nufi/ is NuFi-owned; adding it to the workspace file would be an upstream
+# edit), so it installs its own typescript and @types/node. Before it declared
+# them it compiled only where a hoisted linker happened to expose the server's
+# copies -- true on a dev box, false here, where tsc failed with
+# "Cannot find name 'process'".
+RUN pnpm --dir nufi/adapter install --frozen-lockfile --ignore-workspace
 RUN pnpm --dir nufi/adapter build
 RUN test -f nufi/adapter/dist/index.js || (echo "ERROR: nufi adapter build output missing" && exit 1)
 
