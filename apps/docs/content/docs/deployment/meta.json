@@ -19,8 +19,8 @@
     "---Operate---",
     "monitoring-alerts",
     "backup-restore",
-    "../operations/troubleshooting",
-    "../operations/upgrade-librechat",
-    "../operations/faq"
+    "troubleshooting",
+    "upgrade-librechat",
+    "faq"
   ]
 }

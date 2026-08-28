@@ -10,13 +10,13 @@
     "concepts",
     "---Run work---",
     "agents",
-    "../end-user/agent-tasks",
-    "../end-user/agent-approvals",
+    "tasks",
+    "approvals",
     "routines",
     "---Company---",
     "members",
     "costs",
-    "../end-user/agent-connect",
+    "connect-account",
     "---Help---",
     "troubleshooting"
   ]
