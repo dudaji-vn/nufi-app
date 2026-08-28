@@ -55,6 +55,15 @@ RUN pnpm --filter @paperclipai/ui build
 RUN pnpm --filter @paperclipai/plugin-sdk build
 RUN pnpm --filter @paperclipai/server build
 RUN test -f server/dist/index.js || (echo "ERROR: server build output missing" && exit 1)
+# The NuFi adapter is an EXTERNAL adapter: it lives in nufi/ rather than
+# packages/adapters/ so it needs no upstream source change, and the fork guard
+# rejects additions there anyway. The cost of that choice is that nothing else
+# builds it -- nufi/adapter/dist is gitignored, so an image without this line
+# ships a server that cannot offer `nufi_agent` at all, which is the only
+# adapter that routes model calls through the NuFi gateway.
+RUN pnpm --dir nufi/adapter install --frozen-lockfile 2>/dev/null || pnpm --dir nufi/adapter install
+RUN pnpm --dir nufi/adapter build
+RUN test -f nufi/adapter/dist/index.js || (echo "ERROR: nufi adapter build output missing" && exit 1)
 
 FROM base AS production
 ARG USER_UID=1000

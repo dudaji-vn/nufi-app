@@ -23,7 +23,7 @@ The published image is the supported path:
 docker run -d \
   -p 7860:7860 \
   -e LANGFLOW_DATABASE_URL=postgresql://user:pass@host:5432/nufi_studio \
-  -e LANGFLOW_SECRET_KEY="$(openssl rand -hex 32)" \
+  -e LANGFLOW_SECRET_KEY="$(python3 -c 'import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode())')" \
   ghcr.io/dudaji-vn/nufi-studio:latest
 ```
 
@@ -46,7 +46,7 @@ assemble your own image, carry that flag over.
 PORT=7860
 LANGFLOW_DATABASE_URL=postgresql://…/nufi_studio
 LANGFLOW_AUTO_LOGIN=false
-LANGFLOW_SECRET_KEY=            # openssl rand -hex 32
+LANGFLOW_SECRET_KEY=            # python3 -c 'import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode())'
 LANGFLOW_SUPERUSER=             # an admin address
 LANGFLOW_SUPERUSER_PASSWORD=    # generated; store in your vault
 ```
@@ -66,6 +66,23 @@ containers it does not: the next deploy generates a different key, the
 stored secrets can no longer be decrypted, and the flows using them
 fail with errors that never mention a key. Set it explicitly and keep
 it — it is not something you can recover later.
+
+<Callout type="warn">
+**It must be a Fernet key, not any random string.** 32 random bytes,
+url-safe base64, 44 characters ending in `=`. The obvious command,
+`openssl rand -hex 32`, produces 64 characters — long enough to skip
+Studio's short-key hashing path and short enough to look right. It is
+then handed straight to Fernet, decodes to 48 bytes, and every encrypt
+fails with `Fernet key must be 32 url-safe base64-encoded bytes`.
+
+Nothing fails at boot. It fails the first time somebody creates an API
+key or a Credential variable, which can be weeks later and looks like a
+broken button rather than a bad setting. Generate it with:
+
+```bash
+python3 -c 'import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode())'
+```
+</Callout>
 
 **`LANGFLOW_AUTO_LOGIN=false`** turns on multi-user mode. Leave it at
 the default and the instance has no accounts at all — every visitor is
