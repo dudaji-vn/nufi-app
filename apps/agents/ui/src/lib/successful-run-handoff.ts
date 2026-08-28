@@ -68,7 +68,15 @@ export function isSuccessfulRunHandoffComment(text: string) {
 export function isSuccessfulRunHandoffEscalationComment(text: string) {
   const trimmed = text.trim();
   return trimmed === SUCCESSFUL_RUN_HANDOFF_EXHAUSTED_NOTICE_BODY
-    || /^Paperclip exhausted the bounded successful-run handoff correction\b/i.test(trimmed);
+    // Deliberately does not name the product. The rebrand transform rewrites
+    // string literals, not regex literals, so a pattern anchored on the
+    // upstream name survives the build unchanged while the server-side text it
+    // is meant to match does not -- and the two can never agree. The server
+    // emits "NUFI exhausted the bounded corrective handoff"; this pattern was
+    // still looking for "Paperclip exhausted the bounded successful-run
+    // handoff correction", so this fallback had never matched anything.
+    // Matching the phrase rather than the brand is immune to both.
+    || /exhausted the bounded (?:successful-run handoff correction|corrective handoff)\b/i.test(trimmed);
 }
 
 export function successfulRunHandoffActivityTone(action: string) {

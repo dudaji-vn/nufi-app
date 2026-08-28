@@ -34,4 +34,24 @@ describe("successful run handoff UI helpers", () => {
     expect(successfulRunHandoffActivityTone(SUCCESSFUL_RUN_HANDOFF_ESCALATED_ACTION).className).toContain("red");
     expect(successfulRunHandoffActivityTone(SUCCESSFUL_RUN_HANDOFF_RESOLVED_ACTION).className).toContain("border");
   });
+
+  // The server, after the rebrand, emits "NUFI exhausted the bounded
+  // corrective handoff ...". The old pattern was anchored on the upstream
+  // product name AND on different wording, so it matched neither. This is the
+  // string that actually arrives.
+  it("matches the escalation wording the server really emits", () => {
+    expect(
+      isSuccessfulRunHandoffEscalationComment(
+        "NUFI exhausted the bounded corrective handoff for this issue, but it still has no clear next-step disposition.",
+      ),
+    ).toBe(true);
+  });
+
+  it("does not depend on the product name", () => {
+    expect(
+      isSuccessfulRunHandoffEscalationComment(
+        "Anything exhausted the bounded corrective handoff for this issue.",
+      ),
+    ).toBe(true);
+  });
 });
