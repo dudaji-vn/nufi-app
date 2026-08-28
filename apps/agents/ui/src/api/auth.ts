@@ -165,6 +165,43 @@ export const authApi = {
     await authPost("/sign-up/email", input);
   },
 
+  /**
+   * Start the OAuth handoff to the NUFI console.
+   *
+   * better-auth's generic-oauth sign-in is a POST that returns the authorize
+   * URL rather than redirecting, and it sets the `state` cookie on this origin
+   * while doing so. That is why this cannot be a plain link: a browser sent
+   * straight to the authorize URL arrives at the callback with no state and is
+   * refused. Post first, then follow the URL it hands back.
+   *
+   * Returns null when the instance has no OIDC provider registered -- the
+   * server omits the plugin entirely unless NUFI_OIDC_ISSUER and
+   * NUFI_OIDC_CLIENT_ID are both set, so the route is absent rather than
+   * failing, and the caller hides the button.
+   */
+  signInOAuth: async (input: { providerId: string; callbackURL: string }): Promise<string | null> => {
+    let res: Response;
+    try {
+      res = await fetch("/api/auth/sign-in/oauth2", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+    } catch (networkError) {
+      logAuthNetworkFailure("POST", "/sign-in/oauth2", networkError);
+      throw networkError;
+    }
+    if (res.status === 404) return null;
+    const payload = await res.json().catch(() => null);
+    if (!res.ok) {
+      logAuthHttpError("POST", "/sign-in/oauth2", res.status, res.statusText, payload);
+      throw extractAuthError(payload as AuthErrorBody, res.status);
+    }
+    const url = (payload as { url?: unknown } | null)?.url;
+    return typeof url === "string" ? url : null;
+  },
+
   getProfile: async (): Promise<CurrentUserProfile> => {
     const res = await fetch("/api/auth/profile", {
       credentials: "include",

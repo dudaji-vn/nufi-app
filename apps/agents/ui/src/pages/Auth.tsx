@@ -20,7 +20,35 @@ export function AuthPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [oauthPending, setOauthPending] = useState(false);
   const errorId = "auth-error";
+
+  /**
+   * Hand off to the NUFI console.
+   *
+   * The button is rendered without probing first: the only way to ask whether
+   * the provider exists is to start the flow, and doing that on mount would set
+   * a state cookie on every visit to this page. So an instance with no OIDC
+   * configured shows the button and says so plainly when it is pressed, which
+   * is a better trade than a request nobody asked for.
+   */
+  const startOAuth = async () => {
+    if (oauthPending) return;
+    setOauthPending(true);
+    setError(null);
+    try {
+      const url = await authApi.signInOAuth({ providerId: "nufi", callbackURL: nextPath });
+      if (!url) {
+        setError("This instance is not connected to a NUFI console. Sign in with your email and password.");
+        return;
+      }
+      window.location.assign(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not reach the NUFI console.");
+    } finally {
+      setOauthPending(false);
+    }
+  };
 
   const nextPath = useMemo(
     () => searchParams.get("next") || getRememberedInvitePath() || "/",
@@ -97,8 +125,24 @@ export function AuthPage() {
               : "Create an account for this instance. Email confirmation is not required in v1."}
           </p>
 
+          <Button
+            type="button"
+            variant="outline"
+            className="mt-6 w-full"
+            onClick={startOAuth}
+            disabled={oauthPending}
+          >
+            {oauthPending ? "Redirecting…" : "Continue with NUFI"}
+          </Button>
+
+          <div className="mt-4 flex items-center gap-3">
+            <span className="h-px flex-1 bg-border" />
+            <span className="text-[11px] uppercase tracking-wide text-muted-foreground">or</span>
+            <span className="h-px flex-1 bg-border" />
+          </div>
+
           <form
-            className="mt-6 space-y-4"
+            className="mt-4 space-y-4"
             method="post"
             action={mode === "sign_up" ? "/api/auth/sign-up/email" : "/api/auth/sign-in/email"}
             onSubmit={(event) => {
