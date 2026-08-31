@@ -27,7 +27,7 @@
           "ok": true,
           "drift": false,
           "why": "states '60'",
-          "seconds": 7.9
+          "seconds": 8.1
         },
         {
           "ask": "NDA의 비밀유지 의무는 계약 종료 후 몇 년간 존속하나요?",
@@ -47,7 +47,7 @@
           "ok": true,
           "drift": false,
           "why": "states '3'",
-          "seconds": 1.3
+          "seconds": 1.2
         },
         {
           "ask": "고위험 조항으로 분류되는 것들은 무엇인가요?",
@@ -67,7 +67,7 @@
           "ok": true,
           "drift": false,
           "why": "states '손해배상'",
-          "seconds": 7.1
+          "seconds": 6.9
         },
         {
           "ask": "직원 퇴직금은 어떻게 계산하나요?",
@@ -87,7 +87,7 @@
           "ok": true,
           "drift": false,
           "why": "declined, as it should",
-          "seconds": 1.0
+          "seconds": 0.9
         }
       ],
       "notes": []
@@ -134,7 +134,7 @@
           "ok": true,
           "drift": false,
           "why": "states '2'",
-          "seconds": 4.5
+          "seconds": 3.8
         },
         {
           "ask": "병가를 3일 넘게 쓰려면 무엇이 필요한가요?",
@@ -154,7 +154,7 @@
           "ok": true,
           "drift": false,
           "why": "states '진단서'",
-          "seconds": 0.5
+          "seconds": 0.4
         },
         {
           "ask": "해외 출장 항공권은 어느 등급으로 예약하나요?",
@@ -174,7 +174,7 @@
           "ok": true,
           "drift": false,
           "why": "declined, as it should",
-          "seconds": 0.5
+          "seconds": 0.4
         }
       ],
       "notes": []
@@ -201,7 +201,7 @@
           "ok": true,
           "drift": false,
           "why": "states '50'",
-          "seconds": 4.8
+          "seconds": 4.0
         },
         {
           "ask": "도서구입비는 연간 얼마까지 지원되나요?",
@@ -241,7 +241,7 @@
           "ok": true,
           "drift": false,
           "why": "states '취소'",
-          "seconds": 4.4
+          "seconds": 4.5
         },
         {
           "ask": "퇴사할 때 노트북은 어디에 반납하나요?",
@@ -261,7 +261,7 @@
           "ok": true,
           "drift": false,
           "why": "declined, as it should",
-          "seconds": 6.1
+          "seconds": 6.3
         }
       ],
       "notes": []
@@ -288,7 +288,7 @@
           "ok": true,
           "drift": false,
           "why": "states '파일럿'",
-          "seconds": 5.8
+          "seconds": 5.7
         },
         {
           "ask": "분기 예산에서 연구개발 비중은 몇 퍼센트인가요?",
@@ -308,7 +308,7 @@
           "ok": true,
           "drift": false,
           "why": "states '60'",
-          "seconds": 0.3
+          "seconds": 0.4
         },
         {
           "ask": "가장 큰 리스크와 그 대응책은 무엇인가요?",
@@ -348,7 +348,7 @@
           "ok": true,
           "drift": false,
           "why": "declined, as it should",
-          "seconds": 4.5
+          "seconds": 4.3
         }
       ],
       "notes": []
@@ -435,7 +435,7 @@
           "ok": true,
           "drift": true,
           "why": "declined, as it should; drifted out of Korean",
-          "seconds": 6.5
+          "seconds": 6.1
         }
       ],
       "notes": []
@@ -462,7 +462,7 @@
           "ok": true,
           "drift": false,
           "why": "states '10'",
-          "seconds": 6.4
+          "seconds": 6.2
         },
         {
           "ask": "파일럿 기간은 기본 몇 주인가요?",
@@ -482,7 +482,7 @@
           "ok": true,
           "drift": false,
           "why": "states '8'",
-          "seconds": 6.3
+          "seconds": 5.9
         },
         {
           "ask": "견적의 유효기간은 며칠인가요?",
@@ -522,7 +522,7 @@
           "ok": true,
           "drift": false,
           "why": "declined, as it should",
-          "seconds": 0.4
+          "seconds": 0.5
         }
       ],
       "notes": []
@@ -549,7 +549,7 @@
           "ok": true,
           "drift": false,
           "why": "states '30'",
-          "seconds": 6.7
+          "seconds": 6.2
         },
         {
           "ask": "공유 드라이브가 보이지 않는다는 문의에는 무엇을 먼저 안내하나요?",
@@ -589,7 +589,7 @@
           "ok": true,
           "drift": false,
           "why": "states '상향'",
-          "seconds": 6.7
+          "seconds": 6.1
         },
         {
           "ask": "고객사 환불 규정은 어떻게 되나요?",
@@ -609,7 +609,7 @@
           "ok": true,
           "drift": false,
           "why": "declined, as it should",
-          "seconds": 4.6
+          "seconds": 4.5
         }
       ],
       "notes": []
@@ -636,7 +636,7 @@
           "ok": true,
           "drift": false,
           "why": "states '금요일'",
-          "seconds": 4.5
+          "seconds": 4.2
         },
         {
           "ask": "장애 사후분석은 며칠 이내에 작성하나요?",
@@ -676,7 +676,7 @@
           "ok": true,
           "drift": false,
           "why": "states '고정'",
-          "seconds": 4.9
+          "seconds": 5.2
         },
         {
           "ask": "신입 개발자 온보딩 교육은 몇 주인가요?",
@@ -696,7 +696,7 @@
           "ok": true,
           "drift": false,
           "why": "declined, as it should",
-          "seconds": 0.5
+          "seconds": 0.7
         }
       ],
       "notes": []
@@ -705,10 +705,10 @@
   "routines": [
     {
       "routine_id": "r1",
-      "http": 200,
-      "status": "completed",
-      "output": "네, 바로 '부서 문서 QA봇' 루틴을 실행하겠습니다! 이 봇은 효과적인 문서 검토와 질문에 답변하는 데 초점을 맞추고 있습니다. 먼저, 어떤 종류의 부서 문서를 처리할지 알려주세요? 예를 들어, 재무보고, 프로젝트 계획, 인사 관련 사항 등 다양한 분야가 있을 수 있습니다.\n\n또한, 이 QA봇을 사용하면서 어떤 목표를 설정하셨나요? 예를 들어, 효율성을 높이는 것, 오류 감소, 또는 비즈니스 의사 결정 지원 등을 원하신다면 알려주세요. 이렇게 하면 더욱 정확하고 맞춤화된 조언을 드릴 수 있습니다.\n\n또한, 현재 사용 중인 문서의 규모와 형식에 대한 정보도 제공해 주시면 좋겠습니다. 이를 통해 봇이 어떻게 작동할지 더 구체적으로 계획할 수 있을 것입니다!",
-      "seconds": 5.2
+      "http": 502,
+      "status": "error",
+      "output": "",
+      "seconds": 10.0
     },
     {
       "routine_id": "r2",

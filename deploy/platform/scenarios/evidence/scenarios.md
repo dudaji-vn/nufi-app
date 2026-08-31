@@ -2,13 +2,13 @@
 
 box `http://127.0.0.1:8080` · chat `available` · rag `available` · agent `available`
 
-시작 시점 색인 문서 39건: `취업규칙_휴가.txt`, `사무운영_복리후생.txt`, `2026_3분기_사업계획.txt`, `계약검토_표준조항.txt`, `취업규칙_휴가.txt`, `사무운영_복리후생.txt`, `2026_3분기_사업계획.txt`, `계약검토_표준조항.txt`, `취업규칙_휴가.txt`, `사무운영_복리후생.txt`, `2026_3분기_사업계획.txt`, `계약검토_표준조항.txt`, `취업규칙_휴가.txt`, `사무운영_복리후생.txt`, `2026_3분기_사업계획.txt`, `계약검토_표준조항.txt`, `취업규칙_휴가.txt`, `사무운영_복리후생.txt`, `2026_3분기_사업계획.txt`, `계약검토_표준조항.txt`, `취업규칙_휴가.txt`, `사무운영_복리후생.txt`, `2026_3분기_사업계획.txt`, `계약검토_표준조항.txt`, `취업규칙_휴가.txt`, `사무운영_복리후생.txt`, `2026_3분기_사업계획.txt`, `회계처리_기준.txt`, `영업_가격정책.txt`, `고객지원_대응기준.txt`, `개발_운영기준.txt`, `계약검토_표준조항.txt`, `취업규칙_휴가.txt`, `사무운영_복리후생.txt`, `2026_3분기_사업계획.txt`, `회계처리_기준.txt`, `영업_가격정책.txt`, `고객지원_대응기준.txt`, `개발_운영기준.txt`
+시작 시점 색인 문서 0건: 없음
 
 ## 법무팀
 > 계약 검토는 문서에 이미 답이 있는 일이다. 사람이 못 하는 것은 기억이지 판단이 아니다.
 공유 드라이브 `legal` (id `legal`)
 - 드라이브 업로드 `계약검토_표준조항.txt` → HTTP 201
-- RAG 색인 `계약검토_표준조항.txt` → HTTP 201 `{"id": "mb-84cec9b046f6dfff", "name": "계약검토_표준조항.txt", "chunks": 1, "uploaded_at": 1788143863}`
+- RAG 색인 `계약검토_표준조항.txt` → HTTP 201 `{"id": "mb-84cec9b046f6dfff", "name": "계약검토_표준조항.txt", "chunks": 1, "uploaded_at": 1788149204}`
 
 | 질문 | 답변 | 근거 | 판정 |
 |---|---|---|---|
@@ -21,7 +21,7 @@ box `http://127.0.0.1:8080` · chat `available` · rag `available` · agent `ava
 > 인사 문의는 같은 질문이 반복된다. 규정은 이미 쓰여 있고, 사람이 매번 찾아 읽어줄 뿐이다.
 공유 드라이브 `hr` (id `hr`)
 - 드라이브 업로드 `취업규칙_휴가.txt` → HTTP 201
-- RAG 색인 `취업규칙_휴가.txt` → HTTP 201 `{"id": "mb-5e54e0525ba09da3", "name": "취업규칙_휴가.txt", "chunks": 1, "uploaded_at": 1788143880}`
+- RAG 색인 `취업규칙_휴가.txt` → HTTP 201 `{"id": "mb-5e54e0525ba09da3", "name": "취업규칙_휴가.txt", "chunks": 1, "uploaded_at": 1788149221}`
 
 | 질문 | 답변 | 근거 | 판정 |
 |---|---|---|---|
@@ -34,7 +34,7 @@ box `http://127.0.0.1:8080` · chat `available` · rag `available` · agent `ava
 > 총무 문의는 부서 전체에서 들어온다. 한 사람이 병목이 되는 대표적인 자리다.
 공유 드라이브 `ga` (id `ga`)
 - 드라이브 업로드 `사무운영_복리후생.txt` → HTTP 201
-- RAG 색인 `사무운영_복리후생.txt` → HTTP 201 `{"id": "mb-da61f28ea0a010a0", "name": "사무운영_복리후생.txt", "chunks": 1, "uploaded_at": 1788143887}`
+- RAG 색인 `사무운영_복리후생.txt` → HTTP 201 `{"id": "mb-da61f28ea0a010a0", "name": "사무운영_복리후생.txt", "chunks": 1, "uploaded_at": 1788149226}`
 
 | 질문 | 답변 | 근거 | 판정 |
 |---|---|---|---|
@@ -47,7 +47,7 @@ box `http://127.0.0.1:8080` · chat `available` · rag `available` · agent `ava
 > 기획 문서는 쓴 사람만 안다. 분기가 지나면 쓴 사람도 잊는다.
 공유 드라이브 `strategy` (id `strategy`)
 - 드라이브 업로드 `2026_3분기_사업계획.txt` → HTTP 201
-- RAG 색인 `2026_3분기_사업계획.txt` → HTTP 201 `{"id": "mb-b60c724e12df724f", "name": "2026_3분기_사업계획.txt", "chunks": 1, "uploaded_at": 1788143903}`
+- RAG 색인 `2026_3분기_사업계획.txt` → HTTP 201 `{"id": "mb-b60c724e12df724f", "name": "2026_3분기_사업계획.txt", "chunks": 1, "uploaded_at": 1788149242}`
 
 | 질문 | 답변 | 근거 | 판정 |
 |---|---|---|---|
@@ -60,7 +60,7 @@ box `http://127.0.0.1:8080` · chat `available` · rag `available` · agent `ava
 > 회계 처리 기준은 규정에 있다. 매번 선배에게 물어보는 것이 병목이다.
 공유 드라이브 `finance` (id `finance`)
 - 드라이브 업로드 `회계처리_기준.txt` → HTTP 201
-- RAG 색인 `회계처리_기준.txt` → HTTP 201 `{"id": "mb-20c6ca7acd5461ab", "name": "회계처리_기준.txt", "chunks": 1, "uploaded_at": 1788143915}`
+- RAG 색인 `회계처리_기준.txt` → HTTP 201 `{"id": "mb-20c6ca7acd5461ab", "name": "회계처리_기준.txt", "chunks": 1, "uploaded_at": 1788149254}`
 
 | 질문 | 답변 | 근거 | 판정 |
 |---|---|---|---|
@@ -73,7 +73,7 @@ box `http://127.0.0.1:8080` · chat `available` · rag `available` · agent `ava
 > 제안서는 매번 처음부터 쓰지 않는다. 지난 계정 이력이 어디 있는지 모를 뿐이다.
 공유 드라이브 `sales` (id `sales`)
 - 드라이브 업로드 `영업_가격정책.txt` → HTTP 201
-- RAG 색인 `영업_가격정책.txt` → HTTP 201 `{"id": "mb-5954ec15aea4e684", "name": "영업_가격정책.txt", "chunks": 1, "uploaded_at": 1788143929}`
+- RAG 색인 `영업_가격정책.txt` → HTTP 201 `{"id": "mb-5954ec15aea4e684", "name": "영업_가격정책.txt", "chunks": 1, "uploaded_at": 1788149268}`
 
 | 질문 | 답변 | 근거 | 판정 |
 |---|---|---|---|
@@ -86,7 +86,7 @@ box `http://127.0.0.1:8080` · chat `available` · rag `available` · agent `ava
 > 같은 문의가 계속 온다. 답은 매번 같고, 사람만 바뀐다.
 공유 드라이브 `support` (id `support`)
 - 드라이브 업로드 `고객지원_대응기준.txt` → HTTP 201
-- RAG 색인 `고객지원_대응기준.txt` → HTTP 201 `{"id": "mb-46ce2d5ced54c658", "name": "고객지원_대응기준.txt", "chunks": 1, "uploaded_at": 1788143944}`
+- RAG 색인 `고객지원_대응기준.txt` → HTTP 201 `{"id": "mb-46ce2d5ced54c658", "name": "고객지원_대응기준.txt", "chunks": 1, "uploaded_at": 1788149282}`
 
 | 질문 | 답변 | 근거 | 판정 |
 |---|---|---|---|
@@ -99,7 +99,7 @@ box `http://127.0.0.1:8080` · chat `available` · rag `available` · agent `ava
 > 장애 대응 기준은 위키 어딘가에 있다. 정작 필요한 새벽 3시에는 못 찾는다.
 공유 드라이브 `engineering` (id `engineering`)
 - 드라이브 업로드 `개발_운영기준.txt` → HTTP 201
-- RAG 색인 `개발_운영기준.txt` → HTTP 201 `{"id": "mb-f506f3f8786879cb", "name": "개발_운영기준.txt", "chunks": 1, "uploaded_at": 1788143963}`
+- RAG 색인 `개발_운영기준.txt` → HTTP 201 `{"id": "mb-f506f3f8786879cb", "name": "개발_운영기준.txt", "chunks": 1, "uploaded_at": 1788149300}`
 
 | 질문 | 답변 | 근거 | 판정 |
 |---|---|---|---|
@@ -110,14 +110,10 @@ box `http://127.0.0.1:8080` · chat `available` · rag `available` · agent `ava
 
 ## 에이전트 루틴
 
-- `r1` → HTTP 200, status `completed`, 5s
+- `r1` → HTTP 502, status `error`, 10s
 
 ```
-네, 바로 '부서 문서 QA봇' 루틴을 실행하겠습니다! 이 봇은 효과적인 문서 검토와 질문에 답변하는 데 초점을 맞추고 있습니다. 먼저, 어떤 종류의 부서 문서를 처리할지 알려주세요? 예를 들어, 재무보고, 프로젝트 계획, 인사 관련 사항 등 다양한 분야가 있을 수 있습니다.
-
-또한, 이 QA봇을 사용하면서 어떤 목표를 설정하셨나요? 예를 들어, 효율성을 높이는 것, 오류 감소, 또는 비즈니스 의사 결정 지원 등을 원하신다면 알려주세요. 이렇게 하면 더욱 정확하고 맞춤화된 조언을 드릴 수 있습니다.
-
-또한, 현재 사용 중인 문서의 규모와 형식에 대한 정보도 제공해 주시면 좋겠습니다. 이를 통해 봇이 어떻게 작동할지 더 구체적으로 계획할 수 있을 것입니다!
+AI 백엔드에 연결하지 못했습니다: timed out
 ```
 
 - `r2` → HTTP 502, status `error`, 10s
