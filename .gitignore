@@ -2,6 +2,10 @@
 .env
 node_modules/
 
-# Demo recording intermediates; the published clip is committed, frames are not.
+# Demo recording intermediates. The mp4 is the deliverable and is committed;
+# the webm Playwright emits is a 4x larger intermediate, and frames are debris
+# from checking a cut frame by frame.
 deploy/platform/scenarios/demo/recording/
 deploy/platform/scenarios/demo/frames/
+deploy/platform/scenarios/demo/f[0-9k]*/
+deploy/platform/scenarios/demo/*.webm

@@ -1,187 +1,230 @@
 // Records a walkthrough of the box doing department work, on-box.
 //
-// The captions are the point. A screen recording of a console shows that
-// something happened; it does not show why it matters. Each step here states
-// the claim it is demonstrating, so the clip explains itself without a
-// presenter -- including the two steps that show a refusal, which are the ones
-// a buyer should care about most.
+// Two things this file refuses to do. It will not narrate a success the screen
+// did not show -- every answer step reads the panel back and aborts on an error,
+// a stale repeat, or an answer that drifted out of Korean. And the closing 403
+// is a real POST made during the recording, rendered from the adapter's own
+// reply, not a page written to look like one.
 //
-//   node record.mjs [--base http://127.0.0.1:8080] [--out demo.webm]
+//   node record.mjs --lang en --out demo-en.webm
+//   node record.mjs --lang ko --out demo-ko.webm
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
+import { SCRIPT } from './script.mjs';
+import { styles, diagram, THEME } from './stage.mjs';
 
-const arg = (name, fallback) => {
-  const i = process.argv.indexOf(`--${name}`);
-  return i > -1 ? process.argv[i + 1] : fallback;
+const arg = (n, d) => {
+  const i = process.argv.indexOf(`--${n}`);
+  return i > -1 ? process.argv[i + 1] : d;
 };
 const BASE = arg('base', 'http://127.0.0.1:8080');
-const OUT = arg('out', 'demo.webm');
-const DIR = 'recording';
+const LANG = arg('lang', 'en');
+const DENY = arg('deny', 'http://127.0.0.1:8903');
+const OUT = arg('out', `demo-${LANG}.webm`);
+const T = SCRIPT[LANG];
+if (!T) throw new Error(`no script for --lang ${LANG}`);
 
-const CAPTION_CSS = `
-  #mbcap{position:fixed;left:0;right:0;bottom:0;z-index:2147483647;
-    font:500 20px/1.5 "IBM Plex Sans",-apple-system,system-ui,sans-serif;
-    background:rgba(12,26,36,.94);color:#eef4f8;padding:18px 28px;
-    border-top:3px solid #4FB8CC;transition:opacity .25s}
-  #mbcap b{color:#8AD4E3;font-weight:600}
-  #mbcap small{display:block;margin-top:4px;font-size:15px;color:#9db4c2;font-weight:400}`;
+const beat = (p, ms) => p.waitForTimeout(ms);
 
-async function caption(page, title, detail = '') {
-  await page.evaluate(([t, d, css]) => {
-    let el = document.getElementById('mbcap');
-    if (!el) {
-      const s = document.createElement('style');
-      s.textContent = css;
-      document.head.appendChild(s);
-      el = document.createElement('div');
-      el.id = 'mbcap';
-      document.body.appendChild(el);
-    }
-    el.innerHTML = `<b>${t}</b>${d ? `<small>${d}</small>` : ''}`;
-  }, [title, detail, CAPTION_CSS]);
+async function install(page) {
+  await page.evaluate(([css]) => {
+    if (document.getElementById('mbstyle')) return;
+    const s = document.createElement('style');
+    s.id = 'mbstyle'; s.textContent = css; document.head.appendChild(s);
+    const stage = document.createElement('div'); stage.id = 'stage';
+    const cap = document.createElement('div'); cap.id = 'cap';
+    document.body.append(stage, cap);
+  }, [styles(T.font)]);
 }
 
-const beat = (page, ms) => page.waitForTimeout(ms);
+/** A full-screen card. `hold` includes the fade, so it is the real screen time. */
+async function card(page, { eyebrow, head, sub = [], svg = '' }, hold = 6000) {
+  await install(page);
+  await page.evaluate(([e, h, s, g]) => {
+    const el = document.getElementById('stage');
+    el.innerHTML = (e ? `<div class="eyebrow">${e}</div>` : '')
+      + `<h1>${h}</h1><div class="rule"></div>`
+      + s.map((line) => `<p>${line}</p>`).join('') + g;
+    el.classList.add('on');
+    document.getElementById('cap').classList.remove('on');
+  }, [eyebrow || '', head, sub, svg]);
+  await beat(page, hold);
+}
 
-// The first cut of this clip captioned "Answered from the document" over a
-// panel reading "AI 백엔드에 연결하지 못했습니다: timed out". A recording that
-// narrates a success the screen did not show is worse than no recording, so
-// every answer step now reads the panel back and the run aborts if what landed
-// there is not an answer.
-async function answerIn(page, selector, { timeout = 60000, not = '' } = {}) {
-  const started = Date.now();
-  while (Date.now() - started < timeout) {
-    const text = (await page.textContent(selector).catch(() => '') || '').trim();
-    // `not` guards against reading the previous answer back: the panel keeps
-    // the last result, so without this the second question happily "passes"
-    // by re-reading the first one's output.
-    const fresh = text && text !== not && !/^(\.\.\.|loading)/i.test(text);
-    if (fresh) {
+async function revealDiagram(page) {
+  for (const g of ['g1', 'g2', 'g3']) {
+    await page.evaluate((cls) => {
+      const el = document.querySelector(`svg .${cls}`);
+      if (el) { el.style.transition = 'opacity .7s ease'; el.style.opacity = '1'; }
+    }, g);
+    await beat(page, 1500);
+  }
+}
+
+async function clearCard(page) {
+  await page.evaluate(() => document.getElementById('stage')?.classList.remove('on'));
+  await beat(page, 650);
+}
+
+/** Floating caption: an accented lead line, then the explanation. */
+async function say(page, lines, hold = 5200) {
+  await install(page);
+  await page.evaluate(([l1, l2]) => {
+    const el = document.getElementById('cap');
+    el.innerHTML = `<div class="l1"><b>${l1}</b></div>`
+      + (l2 ? `<div class="l2">${l2}</div>` : '');
+    el.classList.add('on');
+  }, [lines[0], lines[1] || '']);
+  await beat(page, hold);
+}
+
+/** Reads the answer panel back; throws rather than let the caption lie. */
+async function answerIn(page, sel, { timeout = 90000, not = '' } = {}) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < timeout) {
+    const text = (await page.textContent(sel).catch(() => '') || '').trim();
+    if (text && text !== not && !/^(\.\.\.|loading)/i.test(text)) {
       if (/못했습니다|timed out|error|502|503/i.test(text)) {
         throw new Error(`step failed on screen: ${text.slice(0, 160)}`);
       }
-      // The on-box model sometimes finishes a Korean sentence in Chinese. That
-      // is a real defect, recorded in ../README.md -- but a demo frame showing
-      // garbled text teaches a viewer nothing, so the run stops rather than
-      // quietly filming it.
-      if (/[\u4e00-\u9fff]/.test(text)) {
+      if (/[一-鿿]/.test(text)) {
         throw new Error(`answer drifted out of Korean: ${text.slice(0, 160)}`);
       }
       return text;
     }
-    await page.waitForTimeout(400);
+    await beat(page, 400);
   }
-  throw new Error(`nothing appeared in ${selector} within ${timeout}ms`);
+  throw new Error(`nothing appeared in ${sel} within ${timeout}ms`);
 }
 
-// The portal caps an AI call at 10s and the first call after an idle box loads
-// the model, which alone exceeds that. Warm it before recording so the clip
-// shows the steady state rather than a cold-start artefact -- and say so here
-// rather than leaving a mystery sleep.
-async function warm(page, base) {
-  await page.request.post(`${base}/api/v1/rag/query`,
-    { data: { question: 'warm-up' }, failOnStatusCode: false, timeout: 120000 })
+// The portal caps an AI call at 10s and a cold model load alone exceeds that,
+// so the clip would otherwise open on a timeout that says nothing about the box.
+async function warm(page) {
+  await page.request.post(`${BASE}/api/v1/rag/query`,
+    { data: { question: 'warm-up' }, failOnStatusCode: false, timeout: 180000 })
     .catch(() => {});
 }
 
 async function main() {
-  mkdirSync(DIR, { recursive: true });
+  mkdirSync('recording', { recursive: true });
   const browser = await chromium.launch();
   const ctx = await browser.newContext({
-    viewport: { width: 1280, height: 800 },
-    recordVideo: { dir: DIR, size: { width: 1280, height: 800 } },
+    viewport: { width: 1600, height: 1000 },
+    deviceScaleFactor: 1,
+    recordVideo: { dir: 'recording', size: { width: 1600, height: 1000 } },
   });
   const page = await ctx.newPage();
 
-  // --- sign in ------------------------------------------------------------
-  await page.goto(`${BASE}/?lang=en`, { waitUntil: 'domcontentloaded' });
-  await caption(page, 'A department buys one box.',
-    'It sits on the team LAN. Nothing here talks to a cloud.');
-  await beat(page, 3200);
-  await page.fill('input[name=username]', 'admin');
-  await page.fill('input[name=password]', 'meshbox');
-  await beat(page, 700);
-  await Promise.all([page.waitForNavigation({ waitUntil: 'domcontentloaded' }),
-                     page.click('button[type=submit]')]);
-  await warm(page, BASE);
+  await page.goto(`${BASE}/?lang=${LANG}`, { waitUntil: 'domcontentloaded' });
 
-  // --- the honest status board -------------------------------------------
-  await page.goto(`${BASE}/console?lang=en`, { waitUntil: 'domcontentloaded' });
-  await caption(page, 'Three modules, and the console will not flatter them.',
-    'A module reads available only when its endpoint actually answers a probe. Unwired reads not_connected, never a fake green.');
+  // 1 — title
+  await card(page, T.title, 7000);
+
+  // 2 — how the two products meet.
+  //
+  // Everything slow happens here, behind a card that is meant to be read
+  // anyway: signing in, warming the model (a cold load alone exceeds the
+  // portal's 10s cap), and probing the three adapters. Doing it after the card
+  // came down left the recording sitting on a motionless page for the better
+  // part of a minute.
+  await card(page, { ...T.arch, svg: diagram(THEME) }, 1400);
+  const groundwork = (async () => {
+    await page.fill('input[name=username]', 'admin');
+    await page.fill('input[name=password]', 'meshbox');
+    await Promise.all([page.waitForNavigation({ waitUntil: 'domcontentloaded' }),
+                       page.click('button[type=submit]')]);
+    const health = {};
+    for (const [name, port] of [['chat', 8900], ['rag', 8901], ['agent', 8902]]) {
+      const r = await page.request.get(`http://127.0.0.1:${port}/healthz`,
+        { failOnStatusCode: false, timeout: 60000 }).catch(() => null);
+      health[name] = r ? await r.text() : '(unreachable)';
+    }
+    await warm(page);
+    return health;
+  })();
+  await revealDiagram(page);
   await beat(page, 5000);
+  const health = await groundwork;
 
-  // --- the shared drive ---------------------------------------------------
-  await page.goto(`${BASE}/console/drives?lang=en`, { waitUntil: 'domcontentloaded' });
-  await caption(page, 'The shared drive is where the work already lives.',
-    'Eight departments, each with its own share. The same folder a laptop mounts as a network drive.');
-  await beat(page, 5000);
+  // 3 — the seam answering for itself: three real /healthz replies
+  await card(page, { head: T.seam.head, sub: [T.seam.body] }, 1200);
+  await page.evaluate(([h, t]) => {
+    const el = document.getElementById('stage');
+    const pre = document.createElement('div');
+    pre.style.cssText = `margin-top:26px;text-align:left;font:500 16px/2 "IBM Plex Mono",monospace;
+      background:${t.panel};border:1px solid ${t.line};border-radius:12px;padding:24px 30px;
+      color:${t.ink};max-width:1080px;overflow:hidden`;
+    pre.innerHTML = Object.entries(h).map(([k, v]) =>
+      `<div><span style="color:${t.accent2}">GET :${k === 'chat' ? 8900 : k === 'rag' ? 8901 : 8902}/healthz</span>  ${
+        String(v).replace(/</g, '&lt;').slice(0, 150)}</div>`).join('');
+    el.appendChild(pre);
+  }, [health, THEME]);
+  await say(page, T.seam.cap, 7000);
+  await clearCard(page);
 
-  // --- ask, and get a source ---------------------------------------------
-  await page.goto(`${BASE}/console/ai?lang=en`, { waitUntil: 'domcontentloaded' });
-  await caption(page, 'Ask the box about your own documents.',
-    '&ldquo;What is the single-transaction limit on the corporate card?&rdquo; — the answer has to come from the uploaded policy, with the document named.');
-  await beat(page, 3600);
-  // Asked in Korean, as a Korean department would. English into a Korean
-  // grounding prompt is what made the model answer in mixed Korean/Chinese.
+  // 4 — the console's honest status
+  await page.goto(`${BASE}/console?lang=${LANG}`, { waitUntil: 'domcontentloaded' });
+  await install(page);
+  await say(page, T.status.cap, 6200);
+
+  // 5 — the drive
+  await page.goto(`${BASE}/console/drives?lang=${LANG}`, { waitUntil: 'domcontentloaded' });
+  await install(page);
+  await say(page, T.drive.cap, 6200);
+
+  // 6 — a real question, verified before it is captioned
+  await page.goto(`${BASE}/console/ai?lang=${LANG}`, { waitUntil: 'domcontentloaded' });
+  await install(page);
+  await say(page, T.ask.cap, 4200);
   await page.fill('#rag-q', '법인카드 1회 사용 한도는 얼마인가요?');
   await beat(page, 900);
-  await page.click('button:has-text("Ask")');
+  await page.click('button[onclick="askRag()"]');
   const answered = await answerIn(page, '#rag-q-out');
-  console.log('answer:', answered.slice(0, 120).replace(/\s+/g, ' '));
+  console.log('answer  :', answered.slice(0, 110).replace(/\s+/g, ' '));
   await page.locator('#rag-q-out').scrollIntoViewIfNeeded();
-  await caption(page, 'Answered from the department&rsquo;s own policy.',
-    'The inference ran on this machine. The document never left the box to be answered.');
-  await beat(page, 6000);
+  await say(page, T.ask.done, 7000);
 
-  // --- the refusal that matters -------------------------------------------
+  // 7 — the refusal
+  await say(page, T.refuse.cap, 4200);
   await page.fill('#rag-q', '퇴사할 때 노트북은 어디에 반납하나요?');
-  await caption(page, 'Now ask something the documents do not cover.',
-    '&ldquo;Where do I return my laptop when I leave?&rdquo; — nothing on this box says. This is the question that separates a useful box from a dangerous one.');
-  await beat(page, 3400);
-  await page.click('button:has-text("Ask")');
+  await beat(page, 900);
+  await page.click('button[onclick="askRag()"]');
   const declined = await answerIn(page, '#rag-q-out', { not: answered });
-  console.log('refusal:', declined.slice(0, 120).replace(/\s+/g, ' '));
+  console.log('refusal :', declined.slice(0, 110).replace(/\s+/g, ' '));
   await page.locator('#rag-q-out').scrollIntoViewIfNeeded();
-  await caption(page, 'It declines instead of inventing.',
-    'A confident wrong answer to a Legal or HR question is worse than no answer. The box says it does not know.');
-  await beat(page, 6000);
+  await say(page, T.refuse.done, 7000);
 
-  // --- the wall, enforced not promised ------------------------------------
-  // A real POST to an adapter configured in enforce mode with a public
-  // upstream. The 403 rendered below is the adapter's own response, fetched
-  // during the recording -- not a page written to look like one.
-  await caption(page, 'And the wall is enforced, not promised.',
-    'Same adapter, pointed at a public destination, carrying department text.');
-  await beat(page, 4000);
-  const denied = await page.request.post('http://127.0.0.1:8903/v1/chat', {
-    data: { message: 'Summarise our contract renewal terms.', history: [] },
-    failOnStatusCode: false,
+  // 8 — the wall, made to refuse on camera
+  await card(page, T.wall, 5000);
+  const denied = await page.request.post(`${DENY}/v1/chat`, {
+    data: { message: '계약 갱신 조건을 요약해줘.', history: [] },
+    failOnStatusCode: false, timeout: 60000,
   });
   const body = await denied.text();
-  await page.evaluate(([status, text]) => {
-    const el = document.createElement('pre');
-    el.style.cssText = 'position:fixed;inset:12% 8% auto 8%;z-index:2147483646;'
-      + 'background:#14212B;color:#E4EBF1;border-left:4px solid #E88379;'
-      + 'padding:28px;font:500 19px/1.7 "IBM Plex Mono",monospace;'
-      + 'white-space:pre-wrap;border-radius:3px';
-    el.textContent = `POST /v1/chat\n\nHTTP ${status}\n${text}`;
-    document.body.appendChild(el);
-  }, [denied.status(), body]);
-  await beat(page, 2500);
-  await caption(page, 'The box refuses to forward it at all.',
-    'Not a policy statement in a brochure. The software will not carry the data off the mesh.');
-  await beat(page, 7000);
+  if (denied.status() !== 403) {
+    throw new Error(`egress step expected 403, got ${denied.status()}: ${body.slice(0, 120)}`);
+  }
+  await page.evaluate(([status, text, t]) => {
+    const pre = document.createElement('pre');
+    pre.style.cssText = `margin-top:30px;text-align:left;background:${t.panel};
+      border:1px solid ${t.warn};border-left:4px solid ${t.warn};border-radius:12px;
+      padding:26px 32px;font:500 19px/1.75 "IBM Plex Mono",monospace;color:${t.ink};
+      white-space:pre-wrap;max-width:1060px`;
+    pre.textContent = `POST /v1/chat\n\nHTTP ${status}\n${text}`;
+    document.getElementById('stage').appendChild(pre);
+  }, [denied.status(), body, THEME]);
+  await beat(page, 2200);
+  await say(page, T.wall.cap, 8000);
 
-  // Playwright finalises the file during context close, so grab the handle
-  // first and let saveAs wait for the flush. Renaming whatever appears in the
-  // directory races that flush and yields a truncated webm -- one that plays
-  // for a few seconds and reports no duration at all.
+  // 9 — close
+  await page.evaluate(() => document.getElementById('cap')?.classList.remove('on'));
+  await card(page, T.close, 7500);
+
   const video = page.video();
-  await ctx.close();          // flushes the file
-  await video.saveAs(OUT);    // must run before the browser goes away
+  await ctx.close();
+  await video.saveAs(OUT);
   await browser.close();
   console.log(`wrote ${OUT}`);
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main().catch((e) => { console.error(String(e.message || e)); process.exit(1); });
