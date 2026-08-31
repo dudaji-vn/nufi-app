@@ -19,6 +19,23 @@ export const WEEK = {
   drive: ['Eight departments, eight shares.',
           'The folder a laptop mounts is the folder these agents read from.'],
 
+  // The link the earlier cut never drew: a routine clicked in the box's own
+  // console is served by a flow built in Studio. The answer's shape proves it.
+  link: {
+    eyebrow: 'THE PART THAT JOINS THEM',
+    head: 'The box and Studio are one path, not two products.',
+    sub: ['A member never opens Studio. They open the box&rsquo;s console and press <b>Run</b> on a routine.',
+          'That routine reaches a flow you built &mdash; through an adapter that maps one to the other.'],
+  },
+  linkChain: ['Member &rarr; box console &rarr; adapter &rarr; Studio flow &rarr; on-box model.',
+              'The adapter is 300 lines and lives in nufi-app. It is the whole of the integration between the two products.'],
+  linkRun: ['The console confirms it ran &mdash; and stops there.',
+            'It reports the routine and the status, and never shows what came back. A member pressing Run learns only that something happened.'],
+  linkOutput: ['Here is what it actually produced, read from the API.',
+               'Three parts: 위험 여부, 근거 조항, 조치 &mdash; the Legal flow&rsquo;s own shape. Nobody opened Studio to get this. The routine a department clicks <em>is</em> the flow you watched being built.'],
+  linkHonest: ['And here is what is not finished.',
+               'The box sends the routine&rsquo;s <em>name</em> and nothing else, so a flow needing material asks for it. Handing a routine its meeting or its folder is the next piece of work, and it belongs to the box, not the model.'],
+
   setupCard: {
     eyebrow: 'SETUP',
     head: 'Three things, and only one of them is configuration.',

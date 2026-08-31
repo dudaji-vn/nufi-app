@@ -42,6 +42,36 @@ export function styles(font) {
   `;
 }
 
+/** The path a department member's click actually takes. */
+export function chain(t = THEME) {
+  const box = (x, y, w, h, fill, stroke) =>
+    `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10" fill="${fill}" stroke="${stroke}" stroke-width="1.5"/>`;
+  const label = (x, y, s, size, fill, weight = 500) =>
+    `<text x="${x}" y="${y}" font-size="${size}" fill="${fill}" font-weight="${weight}" text-anchor="middle">${s}</text>`;
+  const arrow = (x) => `<path d="M${x} 150 H ${x + 54}" stroke="${t.accent}" stroke-width="2" marker-end="url(#ar2)"/>`;
+  return `
+<svg class="diagram" width="1240" height="250" viewBox="0 0 1240 250" xmlns="http://www.w3.org/2000/svg">
+  <defs><marker id="ar2" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+    <path d="M0,0 L9,4.5 L0,9 z" fill="${t.accent}"/></marker></defs>
+  ${box(4, 104, 186, 92, t.panel, t.line)}
+  ${label(97, 138, 'Member', 16, t.ink, 600)}${label(97, 164, 'a browser, no Studio', 12, t.dim)}
+  ${arrow(194)}
+  ${box(256, 104, 210, 92, '#171433', t.accent)}
+  ${label(361, 132, 'Box console', 16, t.ink, 600)}${label(361, 156, 'AI Workspace', 12, t.accent2)}
+  ${label(361, 178, 'press Run', 12, t.dim)}
+  ${arrow(470)}
+  ${box(532, 104, 210, 92, t.panel, t.line)}
+  ${label(637, 132, 'Agent adapter', 16, t.ink, 600)}${label(637, 156, 'nufi-app · :8902', 12, t.accent2)}
+  ${label(637, 178, 'routine \u2192 flow', 12, t.dim)}
+  ${arrow(746)}
+  ${box(808, 104, 210, 92, '#171433', t.accent)}
+  ${label(913, 132, 'Studio flow', 16, t.ink, 600)}${label(913, 156, 'the one you built', 12, t.accent2)}
+  ${arrow(1022)}
+  ${box(1084, 104, 152, 92, t.panel, t.line)}
+  ${label(1160, 138, 'On-box model', 14, t.ink, 600)}${label(1160, 164, 'never leaves', 12, t.ok)}
+</svg>`;
+}
+
 // One SVG, drawn once, revealed in three beats so the eye follows the path a
 // question actually takes rather than meeting the whole graph at once.
 export function diagram(t = THEME) {
