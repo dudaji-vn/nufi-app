@@ -1,3 +1,7 @@
 .DS_Store
 .env
 node_modules/
+
+# Demo recording intermediates; the published clip is committed, frames are not.
+deploy/platform/scenarios/demo/recording/
+deploy/platform/scenarios/demo/frames/
