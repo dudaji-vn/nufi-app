@@ -30,6 +30,10 @@ ALLOWLIST=(
   # the server text it matches was rebranded -- the fallback could never fire.
   # Now matches the phrase instead of the brand. Candidate to send upstream.
   "ui/src/lib/successful-run-handoff.ts"
+  # Its test moved with it. The fix above changed what the regex matches, so the
+  # test that pins the match had to change in the same commit -- allowlisting the
+  # source without its test left main red on the very guard that caught it.
+  "ui/src/lib/successful-run-handoff.test.ts"
   # Upstream bug: the company-delete cascade removes `goals` before `projects`,
   # but projects.goal_id references goals.id, so deleting any company that has
   # both aborts on a foreign-key violation and silently leaves it in place.

@@ -59,6 +59,7 @@ Run
 ---
   python3 nufi_agent_adapter.py            # serves on 0.0.0.0:8902
 """
+import contextlib
 import json
 import os
 import sys
@@ -136,10 +137,8 @@ def _request(base, path, payload=None, method="GET", api_key="", timeout=120.0):
             return json.loads(raw) if raw else {}
     except urllib.error.HTTPError as exc:
         body = ""
-        try:
+        with contextlib.suppress(Exception):
             body = exc.read().decode("utf-8")[:300]
-        except Exception:
-            pass
         raise UpstreamError(f"upstream HTTP {exc.code}: {body}") from exc
     except (urllib.error.URLError, TimeoutError) as exc:
         raise UpstreamError(
@@ -185,7 +184,7 @@ def extract_output(resp):
                     return found
         # last resort: any nested dict/list value
         for val in resp.values():
-            if isinstance(val, (dict, list)):
+            if isinstance(val, dict | list):
                 found = extract_output(val)
                 if found:
                     return found

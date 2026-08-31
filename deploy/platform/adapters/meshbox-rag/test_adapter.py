@@ -183,7 +183,8 @@ def main():
     _FakeRag.synth = True
     code, out = _post(base + "/v1/query", {"question": "How many annual leave days?"})
     assert code == 200, (code, out)
-    assert out["answer"] == "Per company policy article 3, it is 15 days." and out["sources"] == ["hr.pdf#3"], out
+    assert out["answer"] == "Per company policy article 3, it is 15 days.", out
+    assert out["sources"] == ["hr.pdf#3"], out
     _FakeRag.synth = False
 
     # 7) empty completion -> honest 502 (never fabricate)
