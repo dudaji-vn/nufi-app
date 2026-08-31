@@ -55,7 +55,7 @@ export const WEEK = {
   },
 
   legal: {
-    head: 'Scenario 1 — Legal · auto-review of risky clauses',
+    head: 'Legal &middot; risky clause review',
     anatomy1: ['Four components, and you can read the whole thing.',
                'A question comes in on the left. The department&rsquo;s review guide sits underneath it. The model is in the middle. The answer leaves on the right.'],
     anatomy2: ['The guide is the only thing this agent may judge against.',
@@ -66,7 +66,7 @@ export const WEEK = {
           '제6조 lists unlimited liability as report-on-sight; 제3조 requires approval when there is no cap. It also says what to do about them.'],
   },
   hr: {
-    head: 'Scenario 2 — HR · leave entitlement, computed by a tool',
+    head: 'HR &middot; leave entitlement',
     anatomy1: ['Six components this time. The two extra ones are the whole point.',
                'A calculator sits below the model, and both feed the agent in the middle — one as its brain, one as its tool.'],
     anatomy2: ['The agent decides; the tool computes.',
@@ -79,21 +79,21 @@ export const WEEK = {
              'Anything that must be computed — entitlements, prorations, deadlines, totals — belongs in a tool. That is a rule worth taking to every department.'],
   },
   strategy: {
-    head: 'Scenario 4 — Corporate Strategy · meeting notes to decisions',
+    head: 'Corporate Strategy &middot; meeting notes to decisions',
     ask: ['Meeting notes, pasted in raw.',
           'Three things were discussed. Two got an owner and a date. The third did not.'],
     run: ['Two rows filled, one marked 미지정.',
           'The notes never assigned the budget review, so it says so. A summariser that fills that cell to look complete is worse than no summariser.'],
   },
   support: {
-    head: 'Scenario 7 — Customer Support · ticket triage',
+    head: 'Customer Support &middot; ticket triage',
     ask: ['Three tickets, arriving the way they really do.',
           'A whole box down, a drive not showing, and someone asking for bigger text.'],
     run: ['Three grades, each citing the rule it came from.',
           'P1 at 30 minutes, P2 at four hours, P4 at three working days. A disagreement is now about the standard, not about the model.'],
   },
   finance: {
-    head: 'Scenario 5 — Finance · duplicate-payment check',
+    head: 'Finance &middot; duplicate payment check',
     ask: ['Five payments, and one rule.',
           'Same supplier, same amount, twice inside thirty days.'],
     run: ['One suspect named, and only one.',
@@ -103,8 +103,8 @@ export const WEEK = {
   coverage: {
     eyebrow: 'THE OTHER FIVE',
     head: 'Every team in the introduction, and the routines they share.',
-    sub: ['<b>총무</b> notice drafting &nbsp;·&nbsp; <b>영업</b> RFP into a requirement checklist &nbsp;·&nbsp; <b>개발</b> incident log into a postmortem',
-          '<b>Any team</b> morning inbox triage &nbsp;·&nbsp; <b>Any team</b> batch document classification',
+    sub: ['<b>General Affairs</b> notice drafting &nbsp;·&nbsp; <b>Sales</b> RFP to a requirement checklist &nbsp;·&nbsp; <b>Engineering</b> incident to root cause',
+          '<b>Any team</b> morning inbox summary &nbsp;·&nbsp; <b>Any team</b> document classification',
           'All ten run clean, and run_flows.py prints what each returned so the claim can be checked.'],
   },
   refuses: {
