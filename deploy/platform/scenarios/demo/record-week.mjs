@@ -140,11 +140,13 @@ async function closeUp(page, matchText) {
   const node = page.locator('.react-flow__node', { hasText: matchText }).first();
   const box = await node.boundingBox();
   if (!box) return false;
+  // Smaller steps, closer together: this zoom is meant to be watched, so it
+  // should read as a move toward the node rather than a series of jumps.
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.keyboard.down('Control');
-  for (let i = 0; i < 7; i++) { await page.mouse.wheel(0, -45); await beat(page, 180); }
+  for (let i = 0; i < 14; i++) { await page.mouse.wheel(0, -22); await beat(page, 90); }
   await page.keyboard.up('Control');
-  await beat(page, 900);
+  await beat(page, 1100);
   return true;
 }
 
@@ -158,14 +160,32 @@ async function login(page) {
   await beat(page, 2500);
 }
 
-async function openFlow(page, flow) {
+/** Opens a flow and frames it *behind a card*.
+ *
+ * Framing means zooming to the floor and stepping back in while measuring,
+ * which on camera is the canvas lurching in and out for several seconds. The
+ * viewer has no reason to watch a measurement; they should see the graph
+ * already composed. So the title card stays up until it is.
+ */
+async function openFlow(page, flow, title) {
   await page.goto(`${STUDIO}/flow/${flow.id}`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('.react-flow__node', { timeout: 60000 });
-  await beat(page, 1800);
+  await beat(page, 900);
   await install(page);
+  if (title) {
+    // Navigation dropped the overlay, so put the card back before the lurching.
+    await page.evaluate(([h]) => {
+      const el = document.getElementById('stage');
+      el.innerHTML = `<h1>${h}</h1><div class="rule"></div>`;
+      el.classList.add('on');
+      document.getElementById('cap').classList.remove('on');
+    }, [title]);
+    await beat(page, 700);
+  }
   await frame(page);
   const nodes = await page.locator('.react-flow__node').count();
   console.log(`  canvas ${flow.name}: ${nodes} nodes`);
+  if (title) await clearCard(page);
 }
 
 /** Runs one scenario in the Playground and returns what it actually answered. */
@@ -243,7 +263,7 @@ async function main() {
   await hush(page);
 
   // the one field that matters, read at a size a person can read
-  await openFlow(page, FLOWS.hr);
+  await openFlow(page, FLOWS.hr, 'Setup');
   await closeUp(page, 'Ollama');
   await install(page);
   await say(page, WEEK.wiring, 9500);
@@ -251,9 +271,8 @@ async function main() {
   await card(page, WEEK.reproduce, 8500);
 
   // --- scenario 1, slowly -------------------------------------------------
-  await card(page, { head: WEEK.legal.head }, 4000);
-  await clearCard(page);
-  await openFlow(page, FLOWS.legal);
+  await card(page, { head: WEEK.legal.head }, 4200);
+  await openFlow(page, FLOWS.legal, WEEK.legal.head);
   await say(page, WEEK.legal.anatomy1, 8500);
   await say(page, WEEK.legal.anatomy2, 8500);
   await say(page, WEEK.legal.ask, 7000);
@@ -263,9 +282,8 @@ async function main() {
   await closePlayground(page);
 
   // --- scenario 2, the tool ----------------------------------------------
-  await card(page, { head: WEEK.hr.head }, 4000);
-  await clearCard(page);
-  await openFlow(page, FLOWS.hr);
+  await card(page, { head: WEEK.hr.head }, 4200);
+  await openFlow(page, FLOWS.hr, WEEK.hr.head);
   await say(page, WEEK.hr.anatomy1, 8500);
   await say(page, WEEK.hr.anatomy2, 8500);
   await say(page, WEEK.hr.why, 9000);
@@ -278,9 +296,8 @@ async function main() {
   // --- three more ---------------------------------------------------------
   for (const [key, copy] of [['strategy', WEEK.strategy], ['support', WEEK.support],
                              ['finance', WEEK.finance]]) {
-    await card(page, { head: copy.head }, 4000);
-    await clearCard(page);
-    await openFlow(page, FLOWS[key]);
+    await card(page, { head: copy.head }, 4200);
+    await openFlow(page, FLOWS[key], copy.head);
     await say(page, copy.ask, 7000);
     const ans = await playground(page, FLOWS[key].ask);
     console.log(`  ${key}: ${ans.replace(/\s+/g, ' ').slice(0, 100)}`);

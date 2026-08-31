@@ -1,61 +1,61 @@
 {
   "legal": {
-    "id": "a07052d0-5f32-478a-88d2-5e6603eb265f",
-    "name": "Scenario 1 — Legal · auto-review of risky clauses",
+    "id": "90df716a-1659-4fe4-a6d1-7882cc0c5111",
+    "name": "Legal · risky clause review",
     "ask": "다음 조항을 검토해줘: '본 계약의 손해배상 책임에는 상한을 두지 아니한다.' 그리고 '경업금지 기간은 5년으로 한다.'",
     "kind": "prompt"
   },
   "hr": {
-    "id": "19b5c0f8-eaa5-4018-a9d8-96852ce33f9d",
-    "name": "Scenario 2 — HR · leave entitlement, computed by a tool",
+    "id": "bdaeeb44-d596-4503-a63b-64d760bf5a16",
+    "name": "HR · leave entitlement",
     "ask": "3년 근속한 직원의 연차휴가는 며칠인가요?",
     "kind": "tool"
   },
   "ga": {
-    "id": "1634f2a7-0814-4ff3-b2b0-551560019023",
-    "name": "Scenario 3 — General Affairs · internal notice draft",
+    "id": "5c87ff09-025a-41f1-a834-af59e5630d90",
+    "name": "General Affairs · internal notice",
     "ask": "9월 정기 보안교육 안내 공지문을 써줘. 대상은 전 직원, 문의는 총무팀.",
     "kind": "prompt"
   },
   "strategy": {
-    "id": "1a4ceb9a-bf71-4105-89c1-176f409a1126",
-    "name": "Scenario 4 — Corporate Strategy · meeting to decisions and owners",
+    "id": "cb27da62-07f2-4686-88d6-41ad1e4a7228",
+    "name": "Corporate Strategy · meeting notes to decisions",
     "ask": "회의 메모: 8월 30일 전략기획 회의. 김대리가 9월 5일까지 파일럿 후보 3곳 선정. 이과장이 9월 10일까지 제안서 초안. 예산 재검토는 논의만 하고 담당자를 정하지 못함.",
     "kind": "prompt"
   },
   "finance": {
-    "id": "53e58ccc-d082-4c32-ace5-594cd3d8752b",
-    "name": "Scenario 5 — Finance · duplicate-payment check",
+    "id": "414eafac-0ef3-4f70-8d94-46e29f86949f",
+    "name": "Finance · duplicate payment check",
     "ask": "지급 목록: 8/03 대한물산 120만원 / 8/19 대한물산 120만원 / 8/07 서울테크 80만원 / 9/28 서울테크 80만원 / 8/12 한빛디자인 45만원",
     "kind": "prompt"
   },
   "sales": {
-    "id": "a4e864e1-2fab-4c3b-b59b-843adfbd9f33",
-    "name": "Scenario 6 — Sales · RFP into a requirement checklist",
+    "id": "eef93773-a80e-4e30-acc7-207e4fe43434",
+    "name": "Sales · RFP to requirement checklist",
     "ask": "RFP 발췌: 사내망에서만 동작해야 하며 외부 인터넷 연결이 없어야 한다. 관리자는 사용자별 접근 이력을 조회할 수 있어야 한다. 문서 업로드 후 5초 이내에 검색 결과가 나와야 한다.",
     "kind": "prompt"
   },
   "support": {
-    "id": "418a8c92-d8ea-41db-97e5-f50859d13119",
-    "name": "Scenario 7 — Customer Support · ticket triage",
+    "id": "5b45003e-19fc-43d9-a10e-6d75dee59460",
+    "name": "Customer Support · ticket triage",
     "ask": "티켓 1: 전 직원이 박스에 접속하지 못함. 티켓 2: 공유 드라이브만 안 보임. 티켓 3: 화면 글씨를 키워달라는 요청.",
     "kind": "prompt"
   },
   "engineering": {
-    "id": "b1d24ef5-9275-4e54-8c27-42707f260a65",
-    "name": "Scenario 8 — Engineering · incident note to root cause",
+    "id": "5b5878c8-c28b-4d49-95b0-a435aaa31f93",
+    "name": "Engineering · incident to root cause",
     "ask": "장애 로그: 02:14 배포 후 API 오류율 40%로 상승. 02:19 롤백 시작. 02:27 정상화. 배포 항목은 설정 변경 1건이며 스테이징에서는 재현되지 않았음.",
     "kind": "prompt"
   },
   "inbox": {
-    "id": "5c935b3b-2489-4441-abd2-c522436b24ea",
-    "name": "Scenario 9 — Any team · morning inbox summary",
+    "id": "b6f7b1b0-ec54-484e-a399-1ae8d9efec04",
+    "name": "Morning inbox summary",
     "ask": "메일 1: 대한물산 박부장 - 계약 갱신 견적을 9월 3일까지 회신 요청. 메일 2: 사내 공지 - 9월 정기 보안교육 일정 안내. 메일 3: 서울테크 - 지난달 정산서 사본 재발송 요청, 기한 언급 없음.",
     "kind": "prompt"
   },
   "bulk": {
-    "id": "f372f906-ee65-4ada-a933-0d510301f1f4",
-    "name": "Scenario 10 — Any team · classify a batch of documents",
+    "id": "d43dee59-95b0-4ccf-84a4-3830f5fd9829",
+    "name": "Document classification",
     "ask": "파일: 2026_임대차계약서.pdf, 신입사원_교육자료.pptx, 8월_법인카드_정산.xlsx, 고객사_장애보고_0830.md, RFP_공공기관.docx",
     "kind": "prompt"
   }

@@ -125,7 +125,7 @@ class FlowBuilder:
 SCENARIOS = [
     {
         "id": "legal",
-        "name": "Scenario 1 — Legal · auto-review of risky clauses",
+        "name": "Legal · risky clause review",
         "desc": "Reads a draft clause against the department's review guide and "
                 "says which ones must be escalated, quoting the article.",
         "kind": "prompt",
@@ -146,7 +146,7 @@ SCENARIOS = [
     },
     {
         "id": "hr",
-        "name": "Scenario 2 — HR · leave entitlement, computed by a tool",
+        "name": "HR · leave entitlement",
         "desc": "The agent reads the years of service from the question, calls a "
                 "calculator, and answers with the number the tool returned.",
         "kind": "tool",
@@ -160,7 +160,7 @@ SCENARIOS = [
     },
     {
         "id": "ga",
-        "name": "Scenario 3 — General Affairs · internal notice draft",
+        "name": "General Affairs · internal notice",
         "desc": "Turns a one-line instruction into a notice a team can send, in the "
                 "house format.",
         "kind": "prompt",
@@ -173,7 +173,7 @@ SCENARIOS = [
     },
     {
         "id": "strategy",
-        "name": "Scenario 4 — Corporate Strategy · meeting to decisions and owners",
+        "name": "Corporate Strategy · meeting notes to decisions",
         "desc": "Turns raw meeting notes into decisions with an owner and a deadline "
                 "against each one.",
         "kind": "prompt",
@@ -188,7 +188,7 @@ SCENARIOS = [
     },
     {
         "id": "finance",
-        "name": "Scenario 5 — Finance · duplicate-payment check",
+        "name": "Finance · duplicate payment check",
         "desc": "Reads a payment list against the company rule and names only the "
                 "lines that meet it.",
         "kind": "prompt",
@@ -203,7 +203,7 @@ SCENARIOS = [
     },
     {
         "id": "sales",
-        "name": "Scenario 6 — Sales · RFP into a requirement checklist",
+        "name": "Sales · RFP to requirement checklist",
         "desc": "Breaks a customer RFP paragraph into a checklist grouped the way "
                 "the sales playbook asks for.",
         "kind": "prompt",
@@ -219,7 +219,7 @@ SCENARIOS = [
     },
     {
         "id": "support",
-        "name": "Scenario 7 — Customer Support · ticket triage",
+        "name": "Customer Support · ticket triage",
         "desc": "Assigns a priority and a first-response target from the support "
                 "standard, and says which rule it used.",
         "kind": "prompt",
@@ -234,7 +234,7 @@ SCENARIOS = [
     },
     {
         "id": "engineering",
-        "name": "Scenario 8 — Engineering · incident note to root cause",
+        "name": "Engineering · incident to root cause",
         "desc": "Turns an incident log into a postmortem stub that blames the system "
                 "and not a person, as the team standard requires.",
         "kind": "prompt",
@@ -249,7 +249,7 @@ SCENARIOS = [
     },
     {
         "id": "inbox",
-        "name": "Scenario 9 — Any team · morning inbox summary",
+        "name": "Morning inbox summary",
         "desc": "The daily routine from the product introduction: last night's "
                 "mail, reduced to what needs an answer today.",
         "kind": "prompt",
@@ -265,7 +265,7 @@ SCENARIOS = [
     },
     {
         "id": "bulk",
-        "name": "Scenario 10 — Any team · classify a batch of documents",
+        "name": "Document classification",
         "desc": "Tags a pile of files by owning department and retention, which is "
                 "the bulk-processing use case the introduction sells.",
         "kind": "prompt",
@@ -355,7 +355,8 @@ def main():
     # anyone, so clear ours out before making this round.
     ours = {sp["name"] for sp in SCENARIOS}
     stale = [(n, i) for n, i in existing.items()
-             if n in ours or n.startswith("Scenario ") or n.startswith("부서 업무 루틴")]
+             if n in ours or n.startswith("Scenario ") or n.startswith("부서 업무 루틴")
+             or " · " in n]
     for _name, fid in stale:
         api(a.base, f"/api/v1/flows/{fid}", key=a.key, method="DELETE")
     if stale:
