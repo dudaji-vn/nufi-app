@@ -98,6 +98,16 @@ class Config:
         self.api_key = _env("NUFI_UPSTREAM_API_KEY", "LITELLM_MASTER_KEY")
         self.model = os.environ.get("NUFI_MODEL", "").strip()
         self.system_prompt = os.environ.get("NUFI_SYSTEM_PROMPT", "").strip()
+        # Decoding is pinned, for a reason found by filming this thing. Left at
+        # the backend default (~0.8), a Korean question came back in mixed
+        # Korean/Chinese two times in three -- even with a system prompt
+        # ordering Korean only. At temperature 0 with a fixed seed the same
+        # question came back clean and byte-identical four times out of four.
+        # The RAG adapter already pins both; chat pinned neither, which is why
+        # only chat drifted. Set NUFI_SEED empty to let the backend choose.
+        self.temperature = float(os.environ.get("NUFI_TEMPERATURE", "0") or 0)
+        seed = os.environ.get("NUFI_SEED", "0")
+        self.seed = int(seed) if seed.strip() else None
         self.host = os.environ.get("ADAPTER_HOST", "0.0.0.0")
         self.port = int(os.environ.get("ADAPTER_PORT", "8900"))
         self.timeout = float(os.environ.get("NUFI_UPSTREAM_TIMEOUT", "30"))
@@ -294,7 +304,10 @@ def chat(cfg, message, history, identity=None):
         "model": model,
         "messages": build_messages(cfg, message, history),
         "stream": False,
+        "temperature": cfg.temperature,
     }
+    if cfg.seed is not None:
+        payload["seed"] = cfg.seed
     api_key = key_for(cfg, identity)
     extra_headers = None
     if identity:

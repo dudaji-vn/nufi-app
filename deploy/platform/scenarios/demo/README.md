@@ -1,4 +1,4 @@
-# 데모 영상 — 박스가 스스로 찍는 96초
+# 데모 영상 — 박스가 스스로 찍는 3분
 
 `record.mjs` records a live box doing department work and writes an English and
 a Korean cut of the same storyboard. 1600×1000, about 96 seconds each, no
@@ -20,26 +20,31 @@ Three files, three jobs, deliberately separate:
 
 Wording can be argued about without touching the machinery that verifies it.
 
+The cut follows the frame the board set out: a department buys a PC and uses a
+**shared drive**, a **chat tool**, and an **AI agent** — plus the connector that
+has to be as easy as Tailscale. An earlier cut showed only RAG and the refusals;
+it was a good film about trust and the wrong film for the question asked.
+
 ## The storyboard
 
 1. **Title** — one box, the department's work stays inside it.
-2. **How it is wired** — a diagram built in three beats: laptop → mesh →
-   **MeshBox** (portal, drives, console; *runs no model*) → **three adapters**
-   (`nufi-app`; chat 8900, rag 8901, agent 8902) → **on-box model**. This is the
-   whole integration, and the shot most people ask for first.
-3. **The seam answering for itself** — the three adapters' real `/healthz`
-   replies, fetched during the recording, showing what each is actually talking
-   to and the `k` / `documents` ratio retrieval depends on.
-4. **The console will not flatter the box** — `available` only because a probe
-   was answered.
-5. **The drive** — eight department shares; the folder a laptop mounts is the
-   folder the AI answers from.
-6. **A real question**, answered from the uploaded policy.
-7. **A question the documents do not cover** — declined, not invented.
-8. **The wall** — the same adapter aimed at a public host, answering `403`.
-9. **Close.**
+2. **How it is wired** — laptop → mesh → **MeshBox** (*runs no model*) → **three
+   adapters** (`nufi-app`) → **on-box model**. The whole integration, said first.
+3. **The seam answering for itself** — the adapters' real `/healthz` replies.
+4. **The console will not flatter the box** — `available` only after a probe.
+5. **Connect** — a laptop registered in the console, and the one-click
+   `meshbox-connect.command` it hands back. The part that has to be as easy as
+   Tailscale, and the part the board is building.
+6. **The drive** — eight shares, and a contract guide uploaded to 법무 while
+   the camera is running.
+7. **Chat** — an internal notice drafted on the box.
+8. **RAG** — a 총무 question answered from the uploaded policy, with sources.
+9. **The refusal** — a question the documents do not cover, declined.
+10. **Agent** — a routine run, and an honest word about what it receives today.
+11. **The wall** — the same adapter aimed at a public host, `403`.
+12. **Breadth, and close** — eight departments, thirty-two checks, all passing.
 
-Shots 7 and 8 are the ones worth watching. Anything can answer; the value is in
+Shots 9 and 11 are the ones worth watching. Anything can answer; the value is in
 what it refuses.
 
 ## The recorder checks its own claims
