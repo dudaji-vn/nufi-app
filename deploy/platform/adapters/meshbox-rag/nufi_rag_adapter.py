@@ -469,9 +469,17 @@ class Handler(BaseHTTPRequestHandler):
                     model = resolve_model(self.cfg)
                 except UpstreamError:
                     model = "unknown"
+                # k and the store size travel together on purpose. Retrieval
+                # is not scoped per department, so every question competes with
+                # every document on the box; when the store outgrows k, the
+                # box starts answering "모르겠습니다" about facts it holds. That
+                # is invisible from the outside unless both numbers are shown.
+                held = known_file_ids(self.cfg)
                 return self._json(200, {"status": "ok",
                                         "rag_upstream": self.cfg.rag_url,
-                                        "model": model})
+                                        "model": model,
+                                        "k": self.cfg.k,
+                                        "documents": len(held) if held else 0})
             except UpstreamError as exc:
                 return self._json(502, {"status": "error", "detail": str(exc)})
         return self._json(404, {"error": "not found"})

@@ -21,7 +21,7 @@ Per department, the daily triad the product introduction names:
 공유 드라이브  →  근거와 함께 답하는 RAG  →  에이전트 루틴
 ```
 
-Four departments, sixteen questions: 법무 · 인사 · 총무 · 전략기획.
+Eight departments, thirty-two questions: 법무 · 인사 · 총무 · 전략기획 · 재무 · 영업 · 고객지원 · 개발.
 
 Each question is one of two kinds, and they check opposite things:
 
@@ -50,6 +50,12 @@ Preconditions: the box's three AI modules must read `available`
 (`GET /api/v1/ai/status`) — the runner records their state in the evidence
 header, so a run against a half-wired box says so rather than looking clean.
 
+**And `NUFI_RAG_K` must be at least 16.** This is not tuning; it is the finding
+below. At the shipped default of `4`, eight departments score **24/32** — and
+every failure is the same shape: the department's own document is missing from
+the sources, so the box says *모르겠습니다* about a fact it is holding. Raise it
+to 16 and the same run scores **32/32** with nothing else changed.
+
 ## Why the evidence reproduces
 
 A published use story has to carry evidence a reader can reproduce, so the
@@ -57,12 +63,12 @@ generation path is pinned twice. `temperature: 0` fixes the *fact*; a fixed
 `seed` fixes the *wording*. Without the seed the same question came back as
 `10일입니다` on one run and `10일간 부여됩니다` on the next, and once picked the
 wrong adjacent number outright — enough to make a published block fail to
-reproduce. With both pinned, two consecutive full runs differ in **0 of 16**
+reproduce. With both pinned, two consecutive full runs differ in **0 of 32**
 answers.
 
 ## What these runs show about the box, honestly
 
-**It is reliable at extraction and at declining.** All sixteen checks pass:
+**It is reliable at extraction and at declining.** All thirty-two checks pass:
 every stated fact comes back correct with its source, and every question outside
 the documents is refused rather than invented.
 
@@ -71,19 +77,32 @@ first year"* to three years of service, it answers 20 where the policy gives 16 
 and at temperature 0 it answers 20 every time. Retrieval grounds *finding*; it
 does not ground *reasoning*. The honest claim is extraction with citation.
 
-**Three gaps belong to the appliance's contract, not to this repo:**
+**Retrieval does not scale, and this is the one that bites first.** Because
+`/v1/query` carries only `{question}`, every question competes against every
+document on the box. With four departments loaded that showed up as noise — a
+법무 answer citing 인사 documents. With eight, it stops being cosmetic: the
+department's own document falls out of the top `k` entirely and the box answers
+*모르겠습니다* about a fact it holds. Eight departments is still a toy; a real
+department has hundreds of documents, and no fixed `k` survives that.
 
-1. **Sources cite every document on the box.** `/v1/query` carries only
-   `{question}`, so retrieval cannot be scoped to a department — a 법무 answer
-   lists 인사 documents among its sources. rag_api supports `entity_id`; the
-   MeshBox contract has no field to carry it.
-2. **A routine has no input channel.** The portal's run call sends
+Raising `k` buys room, it does not fix the shape. The fix is scoping: rag_api
+already supports `entity_id`, and the MeshBox contract has no field to carry it.
+Until then, `/healthz` reports `k` alongside the store size so the ratio that
+decides whether the box can answer is at least visible:
+
+```
+{"status":"ok", ..., "k":16, "documents":8}
+```
+
+**Two more gaps belong to the appliance's contract, not to this repo:**
+
+1. **A routine has no input channel.** The portal's run call sends
    `{routine_id, routine}` — the routine's *name*. The model receives
    `'회의록 요약·액션아이템' 루틴을 실행하세요.` and nothing else, so it replies
    asking which meeting. The two recipes the deck sells as daily work —
    meeting summary and weekly report — cannot yet act on department data. The
    agent section of the evidence records exactly that, unedited.
-3. **`DEFAULT_TIMEOUT = 10.0` in `portal/ai.py` is hardcoded.** Warm, an on-box
+2. **`DEFAULT_TIMEOUT = 10.0` in `portal/ai.py` is hardcoded.** Warm, an on-box
    routine finishes in 5–8s. Cold, the first run after the box has been idle
    exceeds it and the member is told *AI 백엔드에 연결하지 못했습니다* — a
    connection error, for a model that is working.
