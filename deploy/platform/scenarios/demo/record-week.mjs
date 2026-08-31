@@ -13,7 +13,7 @@
 import { chromium } from 'playwright';
 import { readFileSync, mkdirSync } from 'node:fs';
 import { WEEK } from './week.mjs';
-import { styles, THEME } from './stage.mjs';
+import { styles, THEME, chain } from './stage.mjs';
 
 const arg = (n, d) => {
   const i = process.argv.indexOf(`--${n}`);
@@ -38,16 +38,16 @@ async function install(page) {
   }, [styles(FONT)]);
 }
 
-async function card(page, { eyebrow, head, sub = [] }, hold = 7000) {
+async function card(page, { eyebrow, head, sub = [], svg = '' }, hold = 7000) {
   await install(page);
-  await page.evaluate(([e, h, s]) => {
+  await page.evaluate(([e, h, s, g]) => {
     const el = document.getElementById('stage');
     el.innerHTML = (e ? `<div class="eyebrow">${e}</div>` : '')
       + `<h1>${h}</h1><div class="rule"></div>`
-      + s.map((l) => `<p>${l}</p>`).join('');
+      + s.map((l) => `<p>${l}</p>`).join('') + g;
     el.classList.add('on');
     document.getElementById('cap').classList.remove('on');
-  }, [eyebrow || '', head, sub]);
+  }, [eyebrow || '', head, sub, svg]);
   await beat(page, hold);
 }
 
@@ -287,6 +287,61 @@ async function main() {
     await say(page, copy.run, 9000);
     await closePlayground(page);
   }
+
+  // --- the link: the same flow, reached from the box ----------------------
+  //
+  // Everything above happened inside Studio, which leaves a fair question:
+  // what has any of it to do with the box a department bought? This is the
+  // answer, and it is run rather than asserted.
+  await card(page, { ...WEEK.link, svg: chain(THEME) }, 4000);
+  await beat(page, 5500);
+  await say(page, WEEK.linkChain, 9000);
+  await clearCard(page);
+
+  await page.goto(`${BOX}/console/ai?lang=en`, { waitUntil: 'domcontentloaded' });
+  await install(page);
+  const before = await page.locator('#agent-out').innerText().catch(() => '');
+  await page.click('button[onclick="runRoutine(\'r1\')"]');
+  const routineOut = await (async () => {
+    const started = Date.now();
+    let seen = before;
+    while (Date.now() - started < 300000) {
+      const t = ((await page.locator('#agent-out').innerText().catch(() => '')) || '').trim();
+      if (t && t !== before) { seen = t; break; }
+      await beat(page, 1200);
+    }
+    return seen;
+  })();
+  if (!routineOut || routineOut === before) throw new Error('routine produced no result');
+  console.log(`  routine r1 from the box: ${routineOut.replace(/\s+/g, ' ').slice(0, 110)}`);
+  await page.locator('#agent-out').scrollIntoViewIfNeeded();
+  await say(page, WEEK.linkRun, 9000);
+
+  // The console reports the routine and the status and nothing else, so the
+  // result it produced has to be read from the API to be shown at all. That
+  // gap is worth naming rather than working around silently.
+  const runs = await page.request.get(`${BOX}/api/v1/usage`,
+    { failOnStatusCode: false, timeout: 60000 }).catch(() => null);
+  const again = await page.request.post(`${BOX}/api/v1/agent/routines/r1/run`,
+    { data: {}, failOnStatusCode: false, timeout: 300000 });
+  const runBody = (await again.json()).run || {};
+  if (!runBody.output) throw new Error('routine returned no output to show');
+  console.log(`  routine output: ${String(runBody.output).replace(/\s+/g, ' ').slice(0, 120)}`);
+  await card(page, { head: 'What the routine returned' }, 800);
+  await page.evaluate(([text, t]) => {
+    const pre = document.createElement('pre');
+    pre.style.cssText = `margin-top:22px;text-align:left;background:${t.panel};
+      border:1px solid ${t.line};border-left:4px solid ${t.accent};border-radius:12px;
+      padding:24px 30px;font:500 19px/1.8 "IBM Plex Mono",monospace;color:${t.ink};
+      white-space:pre-wrap;max-width:1080px`;
+    pre.textContent = text;
+    document.getElementById('stage').appendChild(pre);
+  }, [String(runBody.output).trim().slice(0, 400), THEME]);
+  await beat(page, 2000);
+  await say(page, WEEK.linkOutput, 10500);
+  await clearCard(page);
+  await say(page, WEEK.linkHonest, 10000);
+  await hush(page);
 
   // --- the rest, and the close -------------------------------------------
   await card(page, WEEK.coverage, 10000);
