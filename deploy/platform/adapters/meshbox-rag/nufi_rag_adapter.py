@@ -63,10 +63,13 @@ Run
   python3 nufi_rag_adapter.py            # serves on 0.0.0.0:8901
 """
 import contextlib
+import hashlib
 import json
 import os
+import re
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -105,6 +108,10 @@ class Config:
         self.host = os.environ.get("ADAPTER_HOST", "0.0.0.0")
         self.port = int(os.environ.get("ADAPTER_PORT", "8901"))
         self.timeout = float(os.environ.get("NUFI_UPSTREAM_TIMEOUT", "30"))
+        # Grounded QA defaults to deterministic. A catalog use story has to
+        # carry evidence a reader can reproduce, and an answer that changes
+        # between two identical runs cannot be evidence of anything.
+        self.temperature = float(os.environ.get("NUFI_TEMPERATURE", "0") or 0)
 
 
 class UpstreamError(Exception):
@@ -141,6 +148,102 @@ def _request(base, path, payload=None, method="GET", key="", timeout=30.0):
         raise UpstreamError(f"upstream returned non-JSON: {exc}") from exc
 
 
+def _multipart(base, path, fields, filename, content, key="", timeout=30.0):
+    """POST multipart/form-data with stdlib only; parse JSON or raise UpstreamError.
+
+    rag_api's ingest socket is a file upload, not a JSON body, so the JSON
+    helper above cannot reach it at all.
+    """
+    # Quotes and newlines in a filename would break out of the header.
+    safe = filename.replace("\r", " ").replace("\n", " ").replace('"', "'")
+    boundary = "----nufi" + os.urandom(16).hex()
+    parts = []
+    for k, v in fields.items():
+        parts.append(
+            f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"'
+            f"\r\n\r\n{v}\r\n".encode())
+    parts.append(
+        f'--{boundary}\r\nContent-Disposition: form-data; name="file"; '
+        f'filename="{safe}"\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n'
+        .encode() + content.encode("utf-8") + b"\r\n")
+    parts.append(f"--{boundary}--\r\n".encode())
+
+    req = urllib.request.Request(base + path, data=b"".join(parts), method="POST")
+    req.add_header("Content-Type", "multipart/form-data; boundary=" + boundary)
+    req.add_header("Accept", "application/json")
+    if key:
+        req.add_header("Authorization", "Bearer " + key)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8")
+            return json.loads(raw) if raw else {}
+    except urllib.error.HTTPError as exc:
+        detail = ""
+        with contextlib.suppress(Exception):
+            detail = exc.read().decode("utf-8")[:300]
+        raise UpstreamError(f"upstream HTTP {exc.code}: {detail}") from exc
+    except (urllib.error.URLError, TimeoutError) as exc:
+        raise UpstreamError(
+            f"upstream unreachable: {getattr(exc, 'reason', exc)}") from exc
+    except json.JSONDecodeError as exc:
+        raise UpstreamError(f"upstream returned non-JSON: {exc}") from exc
+
+
+def _socket_absent(exc):
+    """True when the upstream says that socket is not there (404/405).
+
+    Used only to choose between the two supported retriever shapes. Every other
+    failure stays a failure and surfaces as a 502.
+    """
+    text = str(exc)
+    return "HTTP 404" in text or "HTTP 405" in text
+
+
+def document_id_for(name):
+    """Stable retriever id for a document name.
+
+    rag_api makes the caller supply the id, so deriving it from the name means
+    re-uploading an edited document lands on the same id. The old revision is
+    dropped first, so the pair behaves like saving over a file on the drive.
+    """
+    return "mb-" + hashlib.sha256(name.encode("utf-8")).hexdigest()[:16]
+
+
+def _forget(cfg, file_id):
+    """Drop any existing revision of this document; absence is success."""
+    with contextlib.suppress(UpstreamError):
+        _request(cfg.rag_url, "/documents", [file_id], method="DELETE",
+                 key=cfg.rag_key, timeout=cfg.timeout)
+
+
+def _count_chunks(cfg, file_id):
+    """Honest chunk count: ask the store what it actually holds."""
+    try:
+        stored = _request(cfg.rag_url,
+                          "/documents?ids=" + urllib.parse.quote(file_id),
+                          method="GET", key=cfg.rag_key, timeout=cfg.timeout)
+    except UpstreamError:
+        return 0
+    return len(stored) if isinstance(stored, list) else 0
+
+
+def known_file_ids(cfg):
+    """Every document the retriever holds, or None if it has no such socket.
+
+    rag_api scopes retrieval to explicit file ids -- a query without one is a
+    422 -- so a department-wide question has to name them all. Reading the
+    store's own list keeps the adapter stateless.
+    """
+    try:
+        ids = _request(cfg.rag_url, "/ids", method="GET",
+                       key=cfg.rag_key, timeout=cfg.timeout)
+    except UpstreamError as exc:
+        if _socket_absent(exc):
+            return None
+        raise
+    return [str(i) for i in ids] if isinstance(ids, list) else None
+
+
 def resolve_model(cfg):
     """Return the generation model: configured one, else first advertised."""
     if cfg.model:
@@ -156,20 +259,50 @@ def resolve_model(cfg):
     return model
 
 
-def upload_document(cfg, name, text):
-    """Hand a document to the RAG retriever; return {id, chunks} for MeshBox."""
+def _upload_legacy(cfg, name, text, cause=None):
+    """Ingest through a plain answer-service backend's JSON socket."""
     resp = _request(cfg.rag_url, "/documents",
                     {"name": name, "text": text}, method="POST",
                     key=cfg.rag_key, timeout=cfg.timeout) or {}
     doc_id = resp.get("id") or resp.get("file_id") or resp.get("document_id")
     if not doc_id:
-        raise UpstreamError("RAG upstream did not return a document id")
+        raise UpstreamError("RAG upstream did not return a document id") from cause
     chunks = resp.get("chunks", resp.get("chunk_count", 0))
     try:
         chunks = int(chunks or 0)
     except (TypeError, ValueError):
         chunks = 0
     return {"id": str(doc_id), "chunks": chunks}
+
+
+def upload_document(cfg, name, text):
+    """Hand a document to the RAG retriever; return {id, chunks} for MeshBox.
+
+    Two upstream shapes are supported. **rag_api** -- the retriever nufi-app
+    actually runs -- ingests through ``POST /embed``, a multipart upload with a
+    caller-supplied file id. It has no ``POST /documents`` and answers 405 to
+    one, so that JSON socket is the fallback for a plain answer-service
+    backend, not the primary path.
+    """
+    file_id = document_id_for(name)
+    # /embed appends: re-ingesting under the same id leaves the old chunks in
+    # place and the retriever then grounds answers in a superseded revision.
+    # Dropping first is what makes a re-upload behave like saving over a file.
+    _forget(cfg, file_id)
+    try:
+        resp = _multipart(cfg.rag_url, "/embed", {"file_id": file_id},
+                          name, text, key=cfg.rag_key,
+                          timeout=cfg.timeout) or {}
+    except UpstreamError as exc:
+        if not _socket_absent(exc):
+            raise
+        return _upload_legacy(cfg, name, text, cause=exc)
+
+    if resp.get("status") is False:
+        raise UpstreamError(
+            "RAG upstream refused the document: " + str(resp.get("message", "")))
+    doc_id = str(resp.get("file_id") or file_id)
+    return {"id": doc_id, "chunks": _count_chunks(cfg, doc_id)}
 
 
 def _chunk_text(c):
@@ -182,6 +315,22 @@ def _chunk_text(c):
     return ""
 
 
+# rag_api stores an upload as "<name>_<32 hex>.<ext>" under its own uploads
+# directory, so the raw metadata source is a server path with a random suffix.
+_INGEST_SUFFIX = re.compile(r"_[0-9a-f]{32}(?=\.[^.]+$|$)")
+
+
+def humanise_source(src):
+    """Turn a retriever's storage path back into the document a person named.
+
+    The claim the product sells is "answers with sources"; a source reading
+    /app/uploads/public/policy_9ad82dba....txt does not honour it. Only the
+    exact ingest-suffix shape is stripped, so a real name keeps its underscores.
+    """
+    label = str(src).replace("\\", "/").rsplit("/", 1)[-1]
+    return _INGEST_SUFFIX.sub("", label) or str(src)
+
+
 def _chunk_source(c, idx):
     """Pull a human source label out of one retrieved chunk."""
     if isinstance(c, dict):
@@ -190,9 +339,9 @@ def _chunk_source(c, idx):
                or c.get("source") or c.get("name") or c.get("id"))
         page = meta.get("page") or meta.get("loc")
         if src and page not in (None, ""):
-            return f"{src}#{page}"
+            return f"{humanise_source(src)}#{page}"
         if src:
-            return str(src)
+            return humanise_source(src)
     return f"chunk-{idx + 1}"
 
 
@@ -223,9 +372,20 @@ def query(cfg, question):
     (a plain G1 backend), we pass it straight through — no second hop, no
     duplicate work. Empty either way -> honest 502.
     """
-    resp = _request(cfg.rag_url, "/query",
-                    {"query": question, "question": question, "k": cfg.k},
-                    method="POST", key=cfg.rag_key, timeout=cfg.timeout) or {}
+    # rag_api refuses an unscoped query (422: file_id required), so name every
+    # document it holds. A backend without an /ids socket is the plain
+    # answer-service shape, which takes the unscoped query instead.
+    file_ids = known_file_ids(cfg)
+    if file_ids is None:
+        resp = _request(cfg.rag_url, "/query",
+                        {"query": question, "question": question, "k": cfg.k},
+                        method="POST", key=cfg.rag_key,
+                        timeout=cfg.timeout) or {}
+    else:
+        resp = _request(cfg.rag_url, "/query_multiple",
+                        {"query": question, "file_ids": file_ids, "k": cfg.k},
+                        method="POST", key=cfg.rag_key,
+                        timeout=cfg.timeout) or {}
 
     # Path A: retriever already produced a grounded answer -> pass through.
     if isinstance(resp, dict) and (resp.get("answer") or "").strip():
@@ -251,7 +411,8 @@ def query(cfg, question):
          "content": f"문맥:\n{context}\n\n질문: {question}"},
     ]
     gen = _request(cfg.upstream, "/v1/chat/completions",
-                   {"model": model, "messages": messages, "stream": False},
+                   {"model": model, "messages": messages, "stream": False,
+                    "temperature": cfg.temperature},
                    method="POST", key=cfg.api_key, timeout=cfg.timeout)
     choices = gen.get("choices") or []
     answer = ""
