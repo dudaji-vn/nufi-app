@@ -197,6 +197,59 @@ One suspect, and only one. 서울테크 also repeats at the same amount — but
 fifty-two days apart, so it is left alone. The rule was applied, not
 approximated.
 
+## How the box reaches these flows
+
+Everything above happens inside Studio, which leaves a fair question: what
+has any of it to do with the box a department bought?
+
+A member never opens Studio. They open the **box's own console**, go to
+**AI Workspace**, and press **Run** on a routine. That routine reaches a
+flow you built:
+
+```
+Member ─▶ Box console ─▶ Agent adapter ─▶ Studio flow ─▶ On-box model
+          AI Workspace   nufi-app :8902   the one you built
+```
+
+The adapter maps a routine to a flow. It lives in
+`deploy/platform/adapters/meshbox-agent/` and is configured with one
+variable:
+
+```bash
+NUFI_AGENT_URL=http://studio:7860
+NUFI_AGENT_API_KEY=sk-…
+NUFI_AGENT_FLOW_MAP='{"r1":"<legal-flow-id>","r2":"<strategy-flow-id>"}'
+```
+
+A routine with no entry in that map is **honestly unwired** — the adapter
+answers `502` rather than inventing a result.
+
+### Proving it, rather than asserting it
+
+Press **Run** on 부서 문서 QA봇 in the box console, then read the run back:
+
+```
+1. 위험 여부: 없음
+2. 근거 조항 번호: 가이드에 없음
+3. 해야 할 조치: 가이드에 없음
+```
+
+Three parts — 위험 여부, 근거 조항, 조치 — which is the Legal flow's own
+output shape, and nothing else on the box produces it. The shape of the
+answer is the proof of which flow ran.
+
+<Callout type="warn">
+**Two gaps, named rather than hidden.**
+
+The console reports the routine and its status and **never shows what came
+back** — a member pressing Run learns only that something happened. The
+result has to be read from `POST /api/v1/agent/routines/{id}/run`.
+
+And the box sends the routine's *name* and nothing else, so a flow that
+needs material asks for it. Handing a routine its meeting or its folder is
+the next piece of work, and it belongs to the box rather than the model.
+</Callout>
+
 ## What these flows deliberately do not do
 
 **They do not mask personal data.** PII masking is a real feature of the
