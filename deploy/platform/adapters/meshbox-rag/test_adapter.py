@@ -265,7 +265,11 @@ def main():
     assert "GET /ids" in _FakeRag.seen, _FakeRag.seen
 
     # ---- 4) generation is deterministic by default -----------------------
+    # Both halves matter: temperature pins the fact, the seed pins the wording.
+    # Without the seed the same question came back phrased two different ways,
+    # which is enough to make a published evidence block fail to reproduce.
     assert _FakeGen.last_body.get("temperature") == 0, _FakeGen.last_body
+    assert _FakeGen.last_body.get("seed") == 0, _FakeGen.last_body
 
     # ---- 5) no chunks -> honest 502, never an invented answer ------------
     _FakeRag.empty = True

@@ -112,6 +112,13 @@ class Config:
         # carry evidence a reader can reproduce, and an answer that changes
         # between two identical runs cannot be evidence of anything.
         self.temperature = float(os.environ.get("NUFI_TEMPERATURE", "0") or 0)
+        # Temperature 0 pins the *fact* but not the wording: the same question
+        # came back as "10일입니다" and "10일간 부여됩니다" across runs, and once
+        # picked the wrong adjacent number outright. A fixed seed makes the
+        # answer byte-identical, which is what an evidence block has to promise.
+        # Set NUFI_SEED to empty to let the backend choose.
+        seed = os.environ.get("NUFI_SEED", "0")
+        self.seed = int(seed) if seed.strip() else None
 
 
 class UpstreamError(Exception):
@@ -410,9 +417,11 @@ def query(cfg, question):
         {"role": "user",
          "content": f"문맥:\n{context}\n\n질문: {question}"},
     ]
-    gen = _request(cfg.upstream, "/v1/chat/completions",
-                   {"model": model, "messages": messages, "stream": False,
-                    "temperature": cfg.temperature},
+    payload = {"model": model, "messages": messages, "stream": False,
+               "temperature": cfg.temperature}
+    if cfg.seed is not None:
+        payload["seed"] = cfg.seed
+    gen = _request(cfg.upstream, "/v1/chat/completions", payload,
                    method="POST", key=cfg.api_key, timeout=cfg.timeout)
     choices = gen.get("choices") or []
     answer = ""
