@@ -74,15 +74,25 @@ class FlowBuilder:
                 return copy.deepcopy(items[key])
         raise SystemExit(f"component not in this build: {type_name} (as {key!r})")
 
-    def add(self, node_id, type_name, display, values=None, selected_output=None):
+    def add(self, node_id, type_name, display, values=None, selected_output=None,
+            at=None):
+        """Add one node; `at` places it, otherwise they flow left to right.
+
+        Layout matters more than it looks. Left to the default spacing, the six
+        nodes of the tool flow spanned 4,000px, so fitting them on screen shrank
+        the labels to smears -- unreadable in a recording, and unreadable to
+        anyone opening the flow for the first time.
+        """
         tmpl = self._template(type_name)
         for field, value in (values or {}).items():
             tmpl["template"].setdefault(field, {"type": "str"})["value"] = value
-        self._x += 380
+        if at is None:
+            self._x += 340
+            at = (self._x, 300)
         self.nodes.append({
             "id": node_id, "type": "genericNode",
-            "position": {"x": self._x, "y": 320},
-            "positionAbsolute": {"x": self._x, "y": 320},
+            "position": {"x": at[0], "y": at[1]},
+            "positionAbsolute": {"x": at[0], "y": at[1]},
             "height": 320, "measured": {"width": 320, "height": 320},
             "dragging": False, "selected": False,
             "data": {"id": node_id, "type": type_name, "display_name": display,
@@ -273,9 +283,19 @@ SCENARIOS = [
 
 def build(catalog, spec, model, ollama):
     b = FlowBuilder(catalog)
-    chat_in = b.add("ChatInput-in", "ChatInput", "Question")
+    tool = spec["kind"] == "tool"
+    # Two layouts, both sized to be read at a glance. The straight flow reads
+    # left to right; the tool flow puts what feeds the agent on the left, so the
+    # two inputs that matter -- the model and the tool -- are visibly separate.
+    place = ({"in": (40, 120), "prompt": (40, 470), "llm": (430, 120),
+              "calc": (430, 550), "agent": (830, 300), "out": (1210, 300)}
+             if tool else
+             {"in": (40, 300), "prompt": (40, 640), "llm": (470, 300),
+              "out": (900, 300)})
+
+    chat_in = b.add("ChatInput-in", "ChatInput", "Question", at=place["in"])
     prompt = b.add("Prompt-sys", "Prompt", "Department instructions",
-                   {"template": spec["system"]})
+                   {"template": spec["system"]}, at=place["prompt"])
     # top_k 1 is the seed this component does not expose. Temperature alone was
     # not enough: the notice-drafting flow came back with a Korean sentence
     # finished in Chinese ("정보资产安全及保密性을"). Greedy decoding removes the
@@ -283,10 +303,10 @@ def build(catalog, spec, model, ollama):
     llm = b.add("ChatOllama-llm", OLLAMA, "On-box model",
                 {"base_url": ollama, "model_name": model,
                  "temperature": 0, "top_k": 1},
-                selected_output="text_output")
-    chat_out = b.add("ChatOutput-out", "ChatOutput", "Answer")
+                selected_output="text_output", at=place["llm"])
+    chat_out = b.add("ChatOutput-out", "ChatOutput", "Answer", at=place["out"])
 
-    if spec["kind"] == "tool":
+    if tool:
         # The point of this one: the model picks the tool and reads the argument
         # out of the question, but the arithmetic happens in the tool. Asked to
         # compute it itself, the same model answers 20 where the rule gives 16.
@@ -295,8 +315,9 @@ def build(catalog, spec, model, ollama):
         # agent is CalculatorTool, through its api_build_tool output. Wiring the
         # other one fails the run with "has no matched type".
         calc = b.add("Calculator-tool", "CalculatorTool", "Calculator (tool)",
-                     selected_output="api_build_tool")
-        agent = b.add("ToolCallingAgent-agent", "ToolCallingAgent", "Tool-calling agent")
+                     selected_output="api_build_tool", at=place["calc"])
+        agent = b.add("ToolCallingAgent-agent", "ToolCallingAgent",
+                      "Tool-calling agent", at=place["agent"])
         b.link(llm, "model_output", ["LanguageModel"], agent, "model", ["LanguageModel"], "model")
         b.link(calc, "api_build_tool", ["Tool"], agent, "tools", ["Tool"], "other")
         b.link(chat_in, "message", ["Message"], agent, "input_value", ["Message"])
@@ -329,10 +350,19 @@ def main():
         listed = listed.get("items", [])
     existing = {f["name"]: f["id"] for f in listed if f.get("name")}
 
+    # Rebuilding creates new ids, so every earlier attempt is left behind. A
+    # Studio holding thirty-seven near-identical drafts is not something to show
+    # anyone, so clear ours out before making this round.
+    ours = {sp["name"] for sp in SCENARIOS}
+    stale = [(n, i) for n, i in existing.items()
+             if n in ours or n.startswith("Scenario ") or n.startswith("부서 업무 루틴")]
+    for _name, fid in stale:
+        api(a.base, f"/api/v1/flows/{fid}", key=a.key, method="DELETE")
+    if stale:
+        print(f"  cleared {len(stale)} earlier flow(s)")
+
     built = {}
     for spec in SCENARIOS:
-        if spec["name"] in existing:
-            api(a.base, f"/api/v1/flows/{existing[spec['name']]}", key=a.key, method="DELETE")
         flow = build(catalog, spec, a.model, a.ollama)
         made = api(a.base, "/api/v1/flows/", flow, key=a.key)
         built[spec["id"]] = {"id": made["id"], "name": spec["name"],
