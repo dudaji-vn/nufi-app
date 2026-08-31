@@ -1,0 +1,149 @@
+---
+title: Department scenarios
+description: Ten flows a department can open on day one — one per team, plus the routines any team shares — with the question each was asked and the answer it gave.
+---
+
+A department buys one box. On it sit a shared drive, a chat tool and an
+agent runtime. The drive already holds the work; the question is what to
+point the agent at first.
+
+These ten flows are that answer. Each one is small enough to read in a
+minute and open enough to edit. Every question and answer below is a real
+run against a box with an on-box model — nothing here is an illustration.
+
+<Callout>
+Build them into your own Studio with
+`deploy/platform/scenarios/studio/build_flows.py`, then run them all with
+`run_flows.py`. The second script prints exactly what the flows returned,
+which is where the answers on this page come from.
+</Callout>
+
+## The ten
+
+| # | Team | What the flow does |
+|---|---|---|
+| 1 | Legal | Reviews a draft clause against the review guide and names the article that forbids it |
+| 2 | HR | Answers a leave question by **calling a calculator**, not by doing the sum itself |
+| 3 | General Affairs | Turns one line of instruction into a notice in the house format |
+| 4 | Corporate Strategy | Turns meeting notes into decisions with an owner and a date |
+| 5 | Finance | Picks the duplicate-payment suspects out of a payment list |
+| 6 | Sales | Breaks an RFP paragraph into a requirement checklist |
+| 7 | Customer Support | Grades tickets by priority and states the rule it used |
+| 8 | Engineering | Turns an incident log into a postmortem stub |
+| 9 | Any team | Reduces last night's mail to what needs answering today |
+| 10 | Any team | Tags a batch of files by owning team and retention |
+
+Four are shown in full below. The rest follow the same shape.
+
+## 1 — Legal: auto-review of risky clauses
+
+Four components: the question, the department's review guide, the on-box
+model, the answer. The guide is the **only** thing the flow may judge
+against, which is what stops it inventing a rule that sounds plausible.
+
+**Asked**
+
+> 다음 조항을 검토해줘: '본 계약의 손해배상 책임에는 상한을 두지 아니한다.'
+> 그리고 '경업금지 기간은 5년으로 한다.'
+
+**Answered**
+
+```
+(1) 위험 여부: 위험합니다.
+(2) 근거 조항 번호: 제6조, 제3조
+(3) 해야 할 조치: 무제한 손해배상 조항 삭제 및 경업금지 기간 3년 이내로 수정.
+```
+
+Both clauses caught, each against the article that forbids it.
+
+## 2 — HR: leave entitlement, computed by a tool
+
+This one is worth reading even if your team is not HR, because of what it
+avoids.
+
+The company rule is *15 days after one full year, plus one day for every
+two years of continuous service beyond the first, capped at 25*. Asked to
+apply that to three years of service, the model on its own answers **20**
+— confidently, and at temperature zero it answers 20 every time. The
+correct figure is 16.
+
+So the flow does not let it. A calculator is handed to the agent as a
+tool, and the system prompt forbids doing the arithmetic directly:
+
+```
+ChatInput ─┐
+Prompt ────┼─▶ ToolCallingAgent ─▶ ChatOutput
+On-box model (LanguageModel) ─┘        ▲
+                        CalculatorTool ┘
+```
+
+**Asked** — 3년 근속한 직원의 연차휴가는 며칠인가요?
+
+**Answered**
+
+```
+3년 근속한 직원의 연차휴가는 16일입니다.
+```
+
+The Playground shows the `CALCULATOR` calls that produced it.
+
+<Callout type="warn">
+The general lesson: retrieval grounds **finding**, not **reasoning**. A
+model reading the right policy will still derive the wrong number from
+it. Anything that must be *computed* — entitlements, prorations,
+deadlines, totals — belongs in a tool, where the answer is arithmetic
+rather than a guess.
+</Callout>
+
+## 4 — Corporate Strategy: meeting notes to decisions
+
+**Asked** — 회의 메모: 8월 30일 전략기획 회의. 김대리가 9월 5일까지 파일럿
+후보 3곳 선정. 이과장이 9월 10일까지 제안서 초안. 예산 재검토는 논의만 하고
+담당자를 정하지 못함.
+
+**Answered**
+
+| 결정사항 | 담당자 | 기한 |
+|---|---|---|
+| 파일럿 후보 3곳 선정 | 김대리 | 9월 5일까지 |
+| 제안서 초안 작성 | 이과장 | 9월 10일까지 |
+| 예산 재검토 논의 | 미지정 | 미지정 |
+
+The third row is the point. The notes never assigned it, so the flow
+writes `미지정` instead of picking someone. A summariser that fills that
+cell to look complete is worse than no summariser.
+
+## 7 — Customer Support: ticket triage
+
+**Asked** — 티켓 1: 전 직원이 박스에 접속하지 못함. 티켓 2: 공유 드라이브만
+안 보임. 티켓 3: 화면 글씨를 키워달라는 요청.
+
+**Answered**
+
+```
+티켓 1 / P1 / 30분 이내 / 서비스 전체 중단에 해당.
+티켓 2 / P2 / 4시간 이내 / 주요 기능 장애에 해당.
+티켓 3 / P4 / 3영업일 이내 / 문의·개선 요청에 해당.
+```
+
+Each grade cites the rule it came from, so a disagreement is about the
+standard rather than about the model.
+
+## What these flows deliberately do not do
+
+**They do not mask personal data.** The product introduction sells PII
+masking, and it is a real feature — but it belongs to the guardrail layer,
+not to a prompt. A prompt asked to mask a Korean document left an email
+address untouched and dropped the account number entirely. Deterministic
+detectors handle this; a model asked nicely does not.
+
+**They do not answer outside their material.** Each system prompt names
+what the flow may use and tells it to say so when the answer is not
+there. That is why the Strategy flow writes `미지정` and the Sales flow
+writes `조건부` rather than guessing.
+
+**They are pinned, not sampled.** Temperature is zero and `top_k` is one.
+Left sampling, the same Korean question came back finished in Chinese —
+the notice-drafting flow produced `정보资产安全及保密性을`. Greedy
+decoding removes the reach for those tokens, and makes a run repeatable
+enough to put in a document like this one.
