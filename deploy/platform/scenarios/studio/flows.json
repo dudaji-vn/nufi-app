@@ -1,60 +1,60 @@
 {
   "legal": {
-    "id": "91031e42-249d-4df2-bf16-03cf1317d322",
+    "id": "a07052d0-5f32-478a-88d2-5e6603eb265f",
     "name": "Scenario 1 — Legal · auto-review of risky clauses",
     "ask": "다음 조항을 검토해줘: '본 계약의 손해배상 책임에는 상한을 두지 아니한다.' 그리고 '경업금지 기간은 5년으로 한다.'",
     "kind": "prompt"
   },
   "hr": {
-    "id": "63412449-621f-40b5-9165-d760d67487cb",
+    "id": "19b5c0f8-eaa5-4018-a9d8-96852ce33f9d",
     "name": "Scenario 2 — HR · leave entitlement, computed by a tool",
     "ask": "3년 근속한 직원의 연차휴가는 며칠인가요?",
     "kind": "tool"
   },
   "ga": {
-    "id": "dede8bbe-221d-47fe-b0c1-6e1e3b33e924",
+    "id": "1634f2a7-0814-4ff3-b2b0-551560019023",
     "name": "Scenario 3 — General Affairs · internal notice draft",
     "ask": "9월 정기 보안교육 안내 공지문을 써줘. 대상은 전 직원, 문의는 총무팀.",
     "kind": "prompt"
   },
   "strategy": {
-    "id": "12b6f9e7-01f4-489a-9f6f-21336064a43b",
+    "id": "1a4ceb9a-bf71-4105-89c1-176f409a1126",
     "name": "Scenario 4 — Corporate Strategy · meeting to decisions and owners",
     "ask": "회의 메모: 8월 30일 전략기획 회의. 김대리가 9월 5일까지 파일럿 후보 3곳 선정. 이과장이 9월 10일까지 제안서 초안. 예산 재검토는 논의만 하고 담당자를 정하지 못함.",
     "kind": "prompt"
   },
   "finance": {
-    "id": "d80ca0e8-3ccc-4054-817d-0f7d43f2e285",
+    "id": "53e58ccc-d082-4c32-ace5-594cd3d8752b",
     "name": "Scenario 5 — Finance · duplicate-payment check",
     "ask": "지급 목록: 8/03 대한물산 120만원 / 8/19 대한물산 120만원 / 8/07 서울테크 80만원 / 9/28 서울테크 80만원 / 8/12 한빛디자인 45만원",
     "kind": "prompt"
   },
   "sales": {
-    "id": "b6387481-e5c4-4601-8af0-fed7c7ec0fa3",
+    "id": "a4e864e1-2fab-4c3b-b59b-843adfbd9f33",
     "name": "Scenario 6 — Sales · RFP into a requirement checklist",
     "ask": "RFP 발췌: 사내망에서만 동작해야 하며 외부 인터넷 연결이 없어야 한다. 관리자는 사용자별 접근 이력을 조회할 수 있어야 한다. 문서 업로드 후 5초 이내에 검색 결과가 나와야 한다.",
     "kind": "prompt"
   },
   "support": {
-    "id": "cf5bbb6e-3e3a-4550-bd48-22be5e62353e",
+    "id": "418a8c92-d8ea-41db-97e5-f50859d13119",
     "name": "Scenario 7 — Customer Support · ticket triage",
     "ask": "티켓 1: 전 직원이 박스에 접속하지 못함. 티켓 2: 공유 드라이브만 안 보임. 티켓 3: 화면 글씨를 키워달라는 요청.",
     "kind": "prompt"
   },
   "engineering": {
-    "id": "1303a5d8-56c7-4e8a-b6c2-d6c134cc08d3",
+    "id": "b1d24ef5-9275-4e54-8c27-42707f260a65",
     "name": "Scenario 8 — Engineering · incident note to root cause",
     "ask": "장애 로그: 02:14 배포 후 API 오류율 40%로 상승. 02:19 롤백 시작. 02:27 정상화. 배포 항목은 설정 변경 1건이며 스테이징에서는 재현되지 않았음.",
     "kind": "prompt"
   },
   "inbox": {
-    "id": "e2a4bb17-cf5a-4085-a0f3-2996ae02b4f0",
+    "id": "5c935b3b-2489-4441-abd2-c522436b24ea",
     "name": "Scenario 9 — Any team · morning inbox summary",
     "ask": "메일 1: 대한물산 박부장 - 계약 갱신 견적을 9월 3일까지 회신 요청. 메일 2: 사내 공지 - 9월 정기 보안교육 일정 안내. 메일 3: 서울테크 - 지난달 정산서 사본 재발송 요청, 기한 언급 없음.",
     "kind": "prompt"
   },
   "bulk": {
-    "id": "bcdfee2b-7c9e-4e44-ad24-babe54f5611b",
+    "id": "f372f906-ee65-4ada-a933-0d510301f1f4",
     "name": "Scenario 10 — Any team · classify a batch of documents",
     "ask": "파일: 2026_임대차계약서.pdf, 신입사원_교육자료.pptx, 8월_법인카드_정산.xlsx, 고객사_장애보고_0830.md, RFP_공공기관.docx",
     "kind": "prompt"
