@@ -62,6 +62,7 @@ Run
 ---
   python3 nufi_rag_adapter.py            # serves on 0.0.0.0:8901
 """
+import contextlib
 import json
 import os
 import sys
@@ -130,10 +131,8 @@ def _request(base, path, payload=None, method="GET", key="", timeout=30.0):
             return json.loads(raw) if raw else {}
     except urllib.error.HTTPError as exc:
         body = ""
-        try:
+        with contextlib.suppress(Exception):
             body = exc.read().decode("utf-8")[:300]
-        except Exception:
-            pass
         raise UpstreamError(f"upstream HTTP {exc.code}: {body}") from exc
     except (urllib.error.URLError, TimeoutError) as exc:
         raise UpstreamError(
@@ -203,7 +202,7 @@ def _extract_chunks(resp):
         # rag_api returns [[Document, score], ...] or [Document, ...]
         out = []
         for item in resp:
-            if isinstance(item, (list, tuple)) and item:
+            if isinstance(item, list | tuple) and item:
                 out.append(item[0])
             else:
                 out.append(item)
