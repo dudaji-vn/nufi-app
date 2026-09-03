@@ -74,13 +74,22 @@ is genuinely good: Google documents "GKE Sandbox is ready to use in Autopilot
 clusters running GKE version 1.27.4-gke.800 and later", and Agent Sandbox —
 the same `agents.x-k8s.io` CRDs our default backend uses — is available on
 Autopilot behind `--enable-agent-sandbox` at no extra charge. The egress half
-fails twice over. Autopilot mandates GKE Dataplane V2, whose own documentation
-states "Layer 7 policies are not supported" and which exposes
-`CiliumClusterwideNetworkPolicy` rather than the namespaced `CiliumNetworkPolicy`
-the plugin writes; and replacing the CNI is not possible, because a Cilium agent
-is a privileged host-networked DaemonSet and Autopilot's security page states
-"Containers can't run in Privileged mode unless the container is deployed by a
-Google Cloud partner" and "no hostNetwork, because GKE manages your nodes."
+fails twice over, and Autopilot mandates GKE Dataplane V2.
+
+The CRD kind is not the problem — Dataplane V2 does accept the namespaced
+`CiliumNetworkPolicy` the plugin writes; its concepts page discusses node
+limits for "Clusters using the CiliumNetworkPolicy CRD" and only recommends the
+clusterwide kind past 1,000 nodes. The problem is what the policy contains.
+GKE's own Cilium network policy documentation states "Layer 7 policies are not
+supported", and `toFQDNs` is nothing without the L7 DNS proxy — the resource
+would be accepted and enforce nothing, which is the worst of the three outcomes.
+
+Nor can we bring our own Cilium to sit underneath it. The Dataplane V2 concepts
+page settles that in one sentence: "Because these programs are essential for
+network connectivity, GKE doesn't support installing custom eBPF programs on
+nodes that use GKE Dataplane V2." Autopilot's separate refusal to run privileged
+or `hostNetwork` containers points the same way, but the eBPF sentence is the
+one that closes the door.
 
 **Railway is disqualified on the first row.** It exposes no Kubernetes API.
 There is no object on which to set `runtimeClassName` and no CNI to choose.
@@ -103,15 +112,17 @@ run. That is about 14 hours of sandbox time a month. The plugin's own ceiling
 
 | Option | Idle, at zero runs | Plus ~14 h/month of runs | Who operates it |
 |---|---|---|---|
-| k3s on a Hetzner CCX23 (4 dedicated vCPU, 16 GB) | €85.99/month, verified base price | €0 — the box is already paid for | Us, entirely |
+| k3s on a Hetzner CCX23 (4 dedicated vCPU, 16 GB) | €85.99 verified for Germany/Finland; **Singapore, the location recommended below, runs ≈26% higher** — $0.2013/hour against $0.1595/hour — so budget **≈ €108/month** | €0, but only inside the included traffic, and Singapore's is much smaller than Europe's: "varies from 0.5 TB to 5 TB of outbound traffic per month" by plan, overage at $8.49/TB | Us, entirely |
 | GKE Standard, asia-northeast3 | $0.10/cluster/hour ≈ $73, less a reported $74.40 monthly free-tier credit, plus one always-on system node pool — estimated $50–70/month | A few dollars of node time on a gVisor pool that can scale to zero | Google for the control plane and node images; us for Cilium, gVisor and agent-sandbox |
 | E2B Hobby | $0 | ≈ $2.38 at verified rates ($0.1008/hour for 2 vCPU, $0.0162/GiB/hour) | E2B — and us, writing a new sandbox provider |
 
-Only the Hetzner and E2B numbers are verified prices. The GKE line is an
-estimate: the $0.10 cluster-hour fee and the $74.40 credit are consistently
+The E2B numbers and the Hetzner German price are verified. The Hetzner
+Singapore figure is derived, not quoted: Hetzner publishes the monthly cap per
+location but the ratio above comes from hourly rates, so €108 is the German cap
+scaled by 26% rather than a price Hetzner printed. The GKE line is an estimate
+throughout: the $0.10 cluster-hour fee and the $74.40 credit are consistently
 reported but the primary pricing page did not render on fetch, and I did not
-verify Seoul-region node prices at all. Hetzner's Singapore location carries a
-surcharge over the Germany/Finland price above whose size I also did not verify.
+verify Seoul-region node prices at all.
 
 Note that the E2B row is the cheapest by an order of magnitude and is still not
 the recommendation, for reasons that are not about money.
@@ -126,11 +137,17 @@ agent-sandbox controller applied on top.**
 The argument is a subtraction. The `egressMode: "cilium"` requirement means we
 install and operate upstream Cilium ourselves on every candidate that is not
 disqualified: GKE's own dataplane cannot serve the policy we write, EKS has no
-opinion, k3s ships with the CNI disabled by a flag. So the CNI is ours in every
-world. That leaves the control plane and node lifecycle as the only thing a
+opinion, and k3s ships flannel that one flag turns off. So the CNI is ours in
+every world. That leaves the control plane and node lifecycle as the only thing a
 managed provider sells us here — and the control plane was never the hard part
 of this problem. We are paying a cluster-hour fee, a cloud account and an IAM
 model for the easy half.
+
+At the corrected Singapore price this is no longer the cheap option — €108 is
+within noise of the GKE Standard estimate, and E2B is an order of magnitude
+below both. That does not move the decision, because the decision was never
+made on price: it was made on the observation that the CNI is ours in every
+surviving world. If the price were the argument, E2B would already have won.
 
 Dedicated vCPUs rather than shared ones, because gVisor's systrap platform adds
 syscall overhead and a noisy neighbour would make agent run times
@@ -191,11 +208,28 @@ into the tenant policy, and `adapter-defaults.ts:16-46` hard-codes
 `api.anthropic.com`, `api.openai.com`, `generativelanguage.googleapis.com` and
 `openrouter.ai` per adapter type. Left alone, the CiliumNetworkPolicy will
 permit an agent to call a model vendor directly, off-gateway, on a cluster
-chosen specifically to prevent that. The lever is
-`PAPERCLIP_ADAPTERS` / `PAPERCLIP_ADAPTERS_FILE`
+chosen specifically to prevent that.
+
+The lever is `PAPERCLIP_ADAPTERS` / `PAPERCLIP_ADAPTERS_FILE`
 (`adapter-registry-bootstrap.ts:30-31`), which rides onto the same environment
-config: declare the NUFI adapter with `allowFqdns` set to the gateway host and
-nothing else.
+config — but it has to be used in the plural, and under the existing keys.
+Two details decide that. `types.ts:42-47` refines `adapterType` against
+`KNOWN_ADAPTER_TYPES`, which `adapter-defaults.ts:51` derives from the six
+built-in registry keys (`claude_local`, `codex_local`, `gemini_local`,
+`cursor_local`, `opencode_local`, `pi_local`), so inventing a `nufi_*` adapter
+name fails config validation. And the type is resolved per run, not per
+environment: `plugin.ts:215` calls `resolveRunAdapterType`
+(`adapter-defaults.ts:96-106`), which prefers the run's own adapter "so one
+environment can serve mixed harnesses" — pinning a single entry leaves the
+other five reachable.
+
+So: redeclare each adapter type we intend to allow, under its existing key,
+each with `allowFqdns` holding the gateway and nothing else. The behaviour that
+makes this safe is at `adapter-defaults.ts:81-87` — once a registry is
+configured it is authoritative, and a run whose adapter type is absent from it
+throws `Adapter "X" is not in the configured adapter registry`. Any harness left
+out of the registry therefore fails the run rather than opening egress, which is
+the direction a mistake here should fall.
 
 **An FQDN allow-list is only as narrow as the address the name resolves to.**
 Cilium admits the addresses it observed in the DNS response. `api.codechi.me` is
@@ -223,7 +257,7 @@ gateway."
 | `PAPERCLIP_K8S_EGRESS_ALLOW_CIDRS` | the gateway origin, once it has a dedicated address | See the anycast note above. |
 | `PAPERCLIP_K8S_RPC_TIMEOUT_MS` | a few minutes | `environments.ts:64-71` exists for exactly the cold-start case. |
 | `PAPERCLIP_ADAPTERS` | the NUFI adapter, `allowFqdns` gateway-only | Closes the vendor-FQDN union. |
-| `PAPERCLIP_K8S_IN_CLUSTER` | `false` | Works is on Railway. |
+| `PAPERCLIP_K8S_IN_CLUSTER` | `false` | Works is on Railway. **Not sufficient on its own — see the gap below before deploying this table.** |
 
 **One gap to close before any of that works.** `types.ts:71-74` refines the
 provider config to require `inCluster` *or* `kubeconfig`, and
@@ -275,16 +309,22 @@ Stated plainly so nobody spends against a number I did not check.
   with a 1-hour session cap, Pro $150/month); GKE Sandbox's Autopilot version
   floor and its `cos_containerd`-only restriction; Agent Sandbox on GKE
   requiring 1.35.2-gke.1269000+ and being offered at no extra charge; Dataplane
-  V2's "Layer 7 policies are not supported"; Autopilot's privileged-container
-  and hostNetwork restrictions; gVisor's systrap platform not requiring
-  hardware virtualisation.
+  V2's "Layer 7 policies are not supported" and "GKE doesn't support installing
+  custom eBPF programs on nodes that use GKE Dataplane V2"; Autopilot's
+  privileged-container and hostNetwork restrictions; Hetzner Singapore's
+  included traffic ("varies from 0.5 TB to 5 TB of outbound traffic per month",
+  overage $8.49/TB); gVisor's systrap platform not requiring hardware
+  virtualisation.
 - **Estimated, not verified:** every GKE cost figure. The $0.10 cluster-hour fee
   and $74.40 free-tier credit come from secondary sources because Google's
   pricing page truncated on fetch; Seoul-region node prices were not checked at
-  all. The Hetzner Singapore surcharge over the German price was not checked.
-  The 14-hours-a-month load model is an assumption, not a measurement.
-- **Reasoned, not quoted:** two claims are inference from how the pieces work
-  rather than a sentence in a vendor document. Cilium's GKE prerequisites (the
+  all. The ≈ €108 Singapore figure is derived rather than quoted — the +26%
+  comes from a third-party index of Hetzner's hourly rates ($0.2013 against
+  $0.1595), applied to the German monthly cap, so confirm it in the Hetzner
+  console before it goes in a budget. The 14-hours-a-month load model is an
+  assumption, not a measurement.
+- **Reasoned, not quoted:** two claims are inference rather than a sentence in
+  a vendor document. Cilium's GKE prerequisites (the
   `node.cilium.io/agent-not-ready` taint, the node-init DaemonSet that
   reconfigures kubelet and mounts the eBPF filesystem) are from Cilium's own
   install page, but "the cluster must not be running Dataplane V2" is from a
