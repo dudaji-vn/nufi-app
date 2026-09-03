@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import { getCookie, setCookie } from 'hono/cookie';
 import { resolveChatIdentity } from './lib/chat-identity.ts';
 import { isEntitled } from './lib/entitlements.ts';
@@ -10,6 +10,31 @@ type Env = { Variables: { user: AuthedUser } };
 const STUDIO_URL = (process.env.STUDIO_URL ?? 'https://studio.nufi.me').replace(/\/+$/, '');
 const COOKIE_DOMAIN = process.env.IDENTITY_COOKIE_DOMAIN ?? '.nufi.me';
 const TTL_SECONDS = Number(process.env.IDENTITY_TTL_SECONDS ?? 8 * 60 * 60);
+const CHAT_URL = (process.env.CHAT_BASE_URL ?? 'https://chat.nufi.me').replace(/\/+$/, '');
+
+/**
+ * Where inside Studio to land. Only a site-relative path is honoured: a
+ * protocol-relative "//host" and an absolute URL both start a redirect off
+ * this site, so they are dropped rather than repaired -- a half-fixed
+ * redirect target is how open redirects get shipped.
+ */
+function safeNext(next: string | undefined): string {
+  if (!next || !next.startsWith('/')) return '/';
+  if (next.startsWith('//') || next.startsWith('/\\')) return '/';
+  return next;
+}
+
+/**
+ * A member whose chat session is gone gets sent to sign in; a script gets a
+ * status code. The split is on Accept, because `verify-agents.sh` asserts the
+ * 401 and a browser must never be shown raw JSON as an answer to a click.
+ */
+function noSession(c: Context<Env>) {
+  if ((c.req.header('accept') ?? '').includes('text/html')) {
+    return c.redirect(`${CHAT_URL}/login`, 302);
+  }
+  return c.json({ error: 'unauthorized', detail: 'could not resolve NUFI identity' }, 401);
+}
 
 /**
  * NUFI Studio is not an OAuth client. It validates a JWT it finds in a cookie
@@ -33,7 +58,7 @@ enter.get('/studio', async (c) => {
   const refreshToken = getCookie(c, 'refreshToken');
   const identity = refreshToken ? await resolveChatIdentity(refreshToken) : null;
   if (!identity) {
-    return c.json({ error: 'unauthorized', detail: 'could not resolve NUFI identity' }, 401);
+    return noSession(c);
   }
 
   // The lookup rotated the session token; hand the replacement to the browser
@@ -67,7 +92,7 @@ enter.get('/studio', async (c) => {
     maxAge: TTL_SECONDS,
   });
 
-  return c.redirect(`${STUDIO_URL}/`, 302);
+  return c.redirect(`${STUDIO_URL}${safeNext(c.req.query('next'))}`, 302);
 });
 
 /**

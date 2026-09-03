@@ -217,3 +217,41 @@ describe('entitlement', () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe('returning to where the member was', () => {
+  it('sends the member back to the path they came from', async () => {
+    const res = await as(member).request('/studio?next=%2Fflow%2Fabc', WITH_SESSION);
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('https://studio.nufi.me/flow/abc');
+  });
+
+  it('ignores a next that leaves the site', async () => {
+    // "//evil.com" is a protocol-relative URL: it starts with '/' and is
+    // still off-site. Rejected outright rather than sanitised.
+    const res = await as(member).request('/studio?next=%2F%2Fevil.com', WITH_SESSION);
+    expect(res.headers.get('location')).toBe('https://studio.nufi.me/');
+  });
+
+  it('ignores an absolute next', async () => {
+    const res = await as(member).request('/studio?next=https%3A%2F%2Fevil.com', WITH_SESSION);
+    expect(res.headers.get('location')).toBe('https://studio.nufi.me/');
+  });
+
+  it('bounces a browser navigation to chat instead of answering JSON', async () => {
+    const app = as(member);
+    stubChat(null); // after as(), which re-stubs a valid member
+    const res = await app.request('/studio', {
+      headers: { accept: 'text/html,application/xhtml+xml' },
+    });
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('https://chat.nufi.me/login');
+  });
+
+  it('still answers 401 to a scripted caller', async () => {
+    // verify-agents.sh asserts exactly this. curl sends Accept: */*.
+    const app = as(member);
+    stubChat(null); // after as(), which re-stubs a valid member
+    const res = await app.request('/studio', { headers: { accept: '*/*' } });
+    expect(res.status).toBe(401);
+  });
+});
