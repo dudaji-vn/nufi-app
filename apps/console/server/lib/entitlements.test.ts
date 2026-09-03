@@ -14,11 +14,14 @@ describe('isEntitled', () => {
     expect(isEntitled(member, 'works')).toBe(true);
   });
 
-  it('lets nobody in when the variable is malformed', () => {
+  it('lets nobody but an admin in when the variable is malformed', () => {
     process.env.AGENT_ENTITLEMENTS = '{not json';
     expect(isEntitled(member, 'studio')).toBe(false);
-    // Not even an admin: a config nobody can read is a config nobody trusts.
-    expect(isEntitled(admin, 'studio')).toBe(false);
+    // Admitting an admin here does not mean trusting the unparseable
+    // variable: role comes from the chat identity, verified independently of
+    // this list. A typo in one Railway variable must not lock ops out of the
+    // whole agent surface, including whoever has to diagnose it.
+    expect(isEntitled(admin, 'studio')).toBe(true);
   });
 
   it('matches a listed address exactly, case-insensitively', () => {

@@ -48,16 +48,22 @@ function Choose() {
     };
   }, []);
 
-  const [allowed, setAllowed] = useState<Entitlements>({ studio: true, works: true });
+  // `null` means the lookup has not resolved yet -- distinct from a known
+  // result, because a member must not be able to click into a door while this
+  // fetch is in flight. `/enter/products` rotates the chat refresh token the
+  // same way `/enter/studio` and `/authorize` do; chat has no reuse grace
+  // window, so a click that races the in-flight request would carry the token
+  // this fetch just consumed and land on a 401.
+  const [allowed, setAllowed] = useState<Entitlements | null>(null);
 
   useEffect(() => {
     // Same origin: the chooser is this console served on another hostname.
-    // A failed lookup leaves both cards enabled -- the server refuses anyway,
-    // and a network blip should not tell a member they have lost access.
+    // A failed lookup falls open -- the server refuses anyway, and a network
+    // blip must not tell a member they have lost access.
     fetch('/enter/products', { credentials: 'same-origin' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data: Entitlements | null) => data && setAllowed(data))
-      .catch(() => {});
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('lookup failed'))))
+      .then((data: Entitlements) => setAllowed(data))
+      .catch(() => setAllowed({ studio: true, works: true }));
   }, []);
 
   return (
@@ -69,8 +75,23 @@ function Choose() {
       </p>
 
       <div className="mt-10 grid gap-4 sm:grid-cols-2">
-        {PRODUCTS.map((p) =>
-          allowed[p.key] ? (
+        {PRODUCTS.map((p) => {
+          // Not resolved yet: same shape as the disabled card below, so the
+          // page does not jump once the lookup settles, but not clickable --
+          // clicking here would race the in-flight token rotation.
+          if (allowed === null) {
+            return (
+              <div key={p.name} className="rounded-xl border p-6 opacity-60">
+                <h2 className="font-medium text-lg">{p.name}</h2>
+                <p className="mt-2 text-muted-foreground text-sm leading-relaxed">{p.blurb}</p>
+                <span className="mt-4 inline-block text-sm text-muted-foreground">
+                  Checking access…
+                </span>
+              </div>
+            );
+          }
+
+          return allowed[p.key] ? (
             <a
               key={p.name}
               href={p.href}
@@ -91,8 +112,8 @@ function Choose() {
                 Ask an admin for access
               </span>
             </div>
-          ),
-        )}
+          );
+        })}
       </div>
     </section>
   );

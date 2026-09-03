@@ -8,8 +8,10 @@
  *
  * The two defaults are deliberately asymmetric. An UNSET variable admits
  * everyone, because shipping this code to a live deployment must not lock out
- * the members already using it. A MALFORMED variable admits nobody, matching
- * `OIDC_CLIENTS`: a rule nobody can parse is not a rule to guess at.
+ * the members already using it. A MALFORMED variable admits nobody but an
+ * admin, matching `OIDC_CLIENTS`: a rule nobody can parse is not a rule to
+ * guess at -- except that a typo in one Railway variable must not lock ops
+ * out of the whole agent surface, including whoever has to diagnose it.
  */
 
 export type Product = 'studio' | 'works';
@@ -21,9 +23,17 @@ function rules(): Rules | null {
   if (raw === undefined || raw.trim() === '') return {};
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      console.warn(
+        '[entitlements] AGENT_ENTITLEMENTS is not a JSON object; refusing every product to non-admins',
+      );
+      return null;
+    }
     return parsed as Rules;
   } catch {
+    console.warn(
+      '[entitlements] AGENT_ENTITLEMENTS is not parseable JSON; refusing every product to non-admins',
+    );
     return null;
   }
 }
@@ -32,12 +42,15 @@ export function isEntitled(
   member: { email: string; role: 'ADMIN' | 'USER' },
   product: Product,
 ): boolean {
+  // Checked before the variable is even parsed. `role` comes from the chat
+  // identity, verified independently of this list, so admitting an admin here
+  // does not mean trusting the unparseable variable -- it means a typo in one
+  // Railway variable does not close the whole agent surface to the person who
+  // has to fix it.
+  if (member.role === 'ADMIN') return true;
+
   const parsed = rules();
   if (parsed === null) return false;
-
-  // An admin keeps a way in against any well-formed list -- otherwise a typo in
-  // the list is unrecoverable without a redeploy.
-  if (member.role === 'ADMIN') return true;
 
   const list = parsed[product];
   if (list === undefined) return true;
