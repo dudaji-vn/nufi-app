@@ -1,4 +1,6 @@
-import { buildPrompt, resolveDisposition } from "./disposition.js";
+import { runLoop, type LoopModel } from "./loop.js";
+import { systemPrompt, wakeMessage } from "./prompt.js";
+import { buildTools, type HttpFn, type NufiToolBox } from "./tools.js";
 
 /**
  * Structural types matching `@paperclipai/adapter-utils`. Declared locally
@@ -30,46 +32,29 @@ export interface ExecutionResult {
 }
 
 export interface ExecuteDeps {
-  fetchIssue(issueId: string): Promise<{
-    title: string;
-    description: string;
-    goal: string | null;
-    status: string;
-    /** The human who owns this issue, if one is set. Decides whether a reviewer must be named. */
-    assigneeUserId: string | null;
-  }>;
-  complete(prompt: string): Promise<string>;
-  comment(issueId: string, body: string): Promise<void>;
-  setStatus(
-    issueId: string,
-    status: string,
-    /** Handing the issue to a person. Both fields go together — see runWith. */
-    handoff?: { assigneeUserId: string; assigneeAgentId: null },
-  ): Promise<void>;
-  /** Most recent comment body, or null. Used to suppress repeated identical failures. */
-  lastComment(issueId: string): Promise<string | null>;
+  http: HttpFn;
+  model: LoopModel;
+}
+
+/** Statuses that mean somebody or something owns the next action. */
+const TERMINAL = new Set(["done", "in_review", "blocked", "cancelled"]);
+
+function readString(source: Record<string, unknown>, key: string): string | null {
+  const value = source[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 /**
- * Who should look at the answer.
+ * Who the work belongs to, and therefore who reviews it.
  *
- * Paperclip rejects an agent-authored move to `in_review` that names no review
- * path — HTTP 422 `invalid_issue_disposition`, on the grounds that the issue
- * would sit in review with nobody owning the next action. It is right. Observed
- * in production: the answer comment landed, the status update was refused, and
- * this adapter's own error path then buried a perfectly good run under
- * "The agent run failed: status 422" and pushed the issue to blocked.
- *
- * The honest reviewer is the person the run belongs to — the member who asked.
- * The control plane resolves that before dispatch and puts it in two places;
- * read the context first and fall back to the run token's claim.
- *
- * The token is ours, minted by the server we are about to call. This reads one
- * claim out of it, and verifies nothing — the server does that.
+ * The control plane resolves this before dispatch and puts it in two places.
+ * Read the run context first, then fall back to the claim on the run token — the
+ * token is ours, minted by the server we are about to call, and this reads one
+ * field out of it while verifying nothing. The server does the verifying.
  */
-export function resolveReviewer(ctx: ExecutionContext): string | null {
-  const fromContext = ctx.context.responsibleUserId;
-  if (typeof fromContext === "string" && fromContext.trim()) return fromContext.trim();
+export function resolveResponsibleUser(ctx: ExecutionContext): string | null {
+  const fromContext = readString(ctx.context, "responsibleUserId");
+  if (fromContext) return fromContext;
 
   const parts = (ctx.authToken ?? "").split(".");
   if (parts.length !== 3) return null;
@@ -83,64 +68,59 @@ export function resolveReviewer(ctx: ExecutionContext): string | null {
 }
 
 /**
- * Comment only if this is not a repeat of the last one.
+ * One heartbeat.
  *
- * The disposition contract says a failed run must leave a trace. It does not
- * say it must leave twenty. Observed while preparing a demo: a rate-limited
- * gateway produced ~20 identical `gateway 429` comments on a single task,
- * because Paperclip retries and every retry failed the same way. The signal —
- * "this task is stuck on the rate limit" — was in the first comment; the other
- * nineteen buried it.
- *
- * The status is still set every time. Only the comment is suppressed.
+ * The contract has not changed since this adapter was a one-shot answerer: the
+ * task is left in a state someone can act on, never untouched. What changed is
+ * who does the leaving. The agent has tools now and is expected to use them;
+ * `settle` steps in only when it did not.
  */
-async function commentOnce(deps: ExecuteDeps, issueId: string, body: string): Promise<void> {
-  const previous = await deps.lastComment(issueId);
-  if (previous !== null && previous.trim() === body.trim()) return;
-  await deps.comment(issueId, body);
-}
-
-/**
- * One run. The contract this adapter holds itself to is that the issue is left
- * in a state someone can act on — `in_review` or `blocked`, never untouched.
- * See disposition.ts for why.
- */
-export async function runWith(
-  deps: ExecuteDeps,
-  ctx: ExecutionContext,
-): Promise<ExecutionResult> {
-  const issueId = String(ctx.context.taskId ?? "");
+export async function runWith(deps: ExecuteDeps, ctx: ExecutionContext): Promise<ExecutionResult> {
+  const issueId = readString(ctx.context, "taskId") ?? readString(ctx.context, "issueId");
   if (!issueId) {
     /**
-     * An idle heartbeat is not a failure. Paperclip wakes an agent on a timer
-     * as well as on assignment, and the control-plane contract is explicit:
-     * nothing assigned means exit the heartbeat. Returning non-zero here marks
-     * every quiet tick as a failed run, which buries the real failures —
-     * observed directly: a run with nothing to do produced
-     * `paperclip-run-unassigned-…` and `Status: failed` while the agent was
-     * working correctly on another issue.
+     * An idle heartbeat is not a failure. Paperclip wakes an agent on a timer as
+     * well as on assignment, and the contract is explicit: nothing assigned
+     * means exit the heartbeat. Returning non-zero here marks every quiet tick
+     * as a failed run and buries the real failures.
      */
     await ctx.onLog("stdout", "No task assigned; nothing to do this heartbeat.\n");
     return { exitCode: 0, signal: null, timedOut: false, summary: "Idle — no task assigned" };
   }
 
-  try {
-    const issue = await deps.fetchIssue(issueId);
+  const tools = buildTools(
+    {
+      apiUrl: "",
+      runId: ctx.runId,
+      agentId: ctx.agent.id,
+      companyId: ctx.agent.companyId,
+      issueId,
+      responsibleUserId: resolveResponsibleUser(ctx),
+    },
+    deps.http,
+  );
 
+  try {
     /**
-     * Work that is already answered is not work.
-     *
-     * Paperclip re-dispatches an agent that still has an assignment, and an
-     * adapter that answers every time it is asked will answer the same task
-     * forever. Measured: one task collected four full answers in twenty
-     * seconds, and a human could not close it — every attempt to mark it done
-     * was undone by the next run within ten seconds.
-     *
-     * That is a budget leak, not just a demo annoyance: the loop has no natural
-     * end and every lap costs a model call.
+     * Work that is already answered is not work. Paperclip re-dispatches an
+     * agent that still holds an assignment, and an agent that answers every time
+     * it is asked will answer the same task forever. Measured before this guard
+     * existed: one task collected four full answers in twenty seconds, and a
+     * human could not close it — every attempt was undone within ten seconds.
      */
-    if (issue.status === "in_review" || issue.status === "done") {
-      await ctx.onLog("stdout", `Already answered and awaiting a person; nothing to add.\n`);
+    const current = await deps.http({
+      method: "GET",
+      path: `/api/issues/${issueId}/heartbeat-context`,
+      headers: { "X-Paperclip-Run-Id": ctx.runId },
+    });
+    if (current.status >= 400) {
+      throw new Error(
+        `heartbeat-context ${current.status}: ${JSON.stringify(current.body ?? {}).slice(0, 300)}`,
+      );
+    }
+    const status = (current.body as { issue?: { status?: string } } | null)?.issue?.status ?? "todo";
+    if (status === "in_review" || status === "done") {
+      await ctx.onLog("stdout", "Already answered and awaiting a person; nothing to add.\n");
       return {
         exitCode: 0,
         signal: null,
@@ -149,75 +129,90 @@ export async function runWith(
       };
     }
 
-    const prompt = buildPrompt(issue);
+    const outcome = await runLoop({
+      model: deps.model,
+      tools,
+      system: systemPrompt(),
+      wake: wakeMessage({
+        issueId,
+        companyId: ctx.agent.companyId,
+        agentId: ctx.agent.id,
+        wakeReason: readString(ctx.context, "wakeReason"),
+        wakeCommentId: readString(ctx.context, "wakeCommentId"),
+        approvalId: readString(ctx.context, "approvalId"),
+      }),
+    });
 
-    await ctx.onLog("stdout", `> ${issue.title}\n`);
-    const answer = await deps.complete(prompt);
-
-    const disposition = resolveDisposition(answer);
-    await commentOnce(deps, issueId, disposition.comment);
-
-    /**
-     * Only `in_review` needs a reviewer, and only when the issue does not
-     * already have one — reassigning an issue someone else owns would quietly
-     * take the work off them.
-     */
-    const reviewer =
-      disposition.status === "in_review" && !issue.assigneeUserId ? resolveReviewer(ctx) : null;
-
-    /**
-     * Naming a reviewer is a HANDOVER, not an addition: `Issue can only have
-     * one assignee`, so the agent has to step off as the person steps on. That
-     * is also the truthful shape — the agent is done, and the next action is a
-     * person's.
-     */
-    await deps.setStatus(
-      issueId,
-      disposition.status,
-      reviewer ? { assigneeUserId: reviewer, assigneeAgentId: null } : undefined,
+    await ctx.onLog(
+      "stdout",
+      `${outcome.iterations} turn(s); tools used: ${outcome.toolsUsed.join(", ") || "none"}\n`,
     );
 
-    await ctx.onLog("stdout", `\n[disposition: ${disposition.status}]\n`);
+    const settled = await settle(tools, outcome.text, outcome.stopReason);
+    await ctx.onLog("stdout", `[disposition: ${settled}]\n`);
 
     return {
       exitCode: 0,
       signal: null,
       timedOut: false,
-      summary: disposition.status === "in_review" ? "Answered, awaiting review" : "Blocked",
+      summary:
+        settled === "blocked" ? "Blocked" : settled === "done" ? "Done" : "Answered, awaiting review",
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
 
     /**
-     * A task that cannot be worked on is not a failed run.
-     *
-     * `buildPrompt` throws when a task carries no description — that is the
-     * adapter doing its job, not breaking. Reporting it as exitCode 1 made
-     * Paperclip raise "Research Agent run failed" toasts for a decision the
-     * agent got right, which reads to anyone watching as the app crashing.
-     *
-     * A genuine failure — the gateway refusing, the network gone — still
-     * reports non-zero, because that one should page someone.
-     */
-    const unworkable = /no description/.test(message);
-
-    /**
-     * A failure still owes the issue a disposition. Leaving it untouched is the
-     * exact behaviour that made Paperclip escalate and then stop dispatching
-     * during the spike, so the comment and the status go out even on the error
-     * path — and if THAT fails too, the run reports non-zero rather than
-     * pretending.
+     * A failed run still owes the task a disposition. Leaving it untouched is
+     * what made Paperclip escalate and then stop dispatching during the spike,
+     * so the comment and the status go out on the error path too — and if that
+     * fails as well, the run reports non-zero rather than pretending.
      */
     try {
-      await commentOnce(deps, issueId, `The agent run failed: ${message}`);
-      await deps.setStatus(issueId, "blocked");
+      await tools.run({
+        id: "settle_error",
+        name: "update_issue",
+        arguments: {
+          status: "blocked",
+          comment: `The agent run failed and could not continue.\n\n\`\`\`\n${message}\n\`\`\``,
+        },
+      });
     } catch {
       // Reported through exitCode below; nothing further to try.
     }
 
-    await ctx.onLog(unworkable ? "stdout" : "stderr", `${message}\n`);
-    return unworkable
-      ? { exitCode: 0, signal: null, timedOut: false, summary: "Blocked — task is not workable as written" }
-      : { exitCode: 1, signal: null, timedOut: false, errorMessage: message };
+    await ctx.onLog("stderr", `${message}\n`);
+    return { exitCode: 1, signal: null, timedOut: false, errorMessage: message };
   }
+}
+
+/**
+ * Guarantee a disposition.
+ *
+ * The agent is expected to set its own final state — that is what the tools and
+ * the contract are for. This is the backstop for the run that talked itself out
+ * without acting, and for the one that spent its whole turn budget mid-thought.
+ * Three consecutive dispositionless runs make Paperclip escalate to a recovery
+ * owner and stop dispatching the agent at all.
+ *
+ * It reads `tools.state`, never the model's closing text: a model that will
+ * narrate creating a task will just as happily narrate closing one.
+ */
+export async function settle(tools: NufiToolBox, text: string, stopReason: string): Promise<string> {
+  if (tools.state.finalStatus && TERMINAL.has(tools.state.finalStatus)) {
+    return tools.state.finalStatus;
+  }
+
+  const ranOutOfTurns = stopReason === "iteration_cap";
+  const status = ranOutOfTurns ? "blocked" : "in_review";
+  const comment = ranOutOfTurns
+    ? "The agent used its whole turn budget without reaching a conclusion, so this task is " +
+      "blocked rather than left looking active. A person should decide whether it is " +
+      "answerable as written.\n\n" +
+      (text.trim() ? `Its last words:\n\n${text.trim()}` : "It produced no closing summary.")
+    : text.trim() ||
+      "The agent finished without leaving a written result. A person should decide whether " +
+        "this task is answerable as written.";
+
+  await tools.run({ id: "settle", name: "update_issue", arguments: { status, comment } });
+  return status;
 }

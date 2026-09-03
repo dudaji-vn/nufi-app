@@ -1,0 +1,227 @@
+#!/usr/bin/env node
+/**
+ * Run the real heartbeat loop against a real NUFI Works instance, then check the
+ * database rather than the agent's account of itself.
+ *
+ * This exists because of one measured failure. A vendor harness driving a
+ * mid-tier model reported "First, I'll create a task", "saved it to
+ * cloudflow_agreement_brief.md" and "I will mark the task as completed" — and
+ * the company still held exactly the two issues a human had made. Every
+ * assertion below is on the API's answer, never on what the agent said it did.
+ *
+ * Usage:
+ *   PAPERCLIP_API_URL=https://works.nufi.me \
+ *   PAPERCLIP_API_KEY=<board or run token> \
+ *   NUFI_MODEL_API_KEY=<gateway key> \
+ *   NUFI_COMPANY_ID=<uuid> NUFI_AGENT_ID=<uuid> NUFI_RESPONSIBLE_USER_ID=<id> \
+ *   node scripts/live-check.mjs
+ *
+ * It creates one task, works it, and leaves it in place so a human can read what
+ * happened. Point it at a scratch company.
+ */
+
+import { randomUUID } from "node:crypto";
+
+import { buildModel } from "../dist/server/client.js";
+import { runLoop } from "../dist/server/loop.js";
+import { systemPrompt, wakeMessage } from "../dist/server/prompt.js";
+import { buildTools } from "../dist/server/tools.js";
+
+const need = (name) => {
+  const value = process.env[name];
+  if (!value) {
+    console.error(`missing ${name}`);
+    process.exit(2);
+  }
+  return value;
+};
+
+const API = need("PAPERCLIP_API_URL").replace(/\/$/, "");
+const TOKEN = need("PAPERCLIP_API_KEY");
+const MODEL_KEY = need("NUFI_MODEL_API_KEY");
+const COMPANY = need("NUFI_COMPANY_ID");
+const AGENT = need("NUFI_AGENT_ID");
+const RESPONSIBLE = process.env.NUFI_RESPONSIBLE_USER_ID ?? null;
+const GATEWAY = process.env.NUFI_GATEWAY_URL ?? "https://api.codechi.me/v1";
+const MODEL = process.env.NUFI_MODEL ?? "gemini";
+
+const http = async ({ method, path, headers, body }) => {
+  /**
+   * Strip the run id. The tools stamp one on every mutation because a real run
+   * has one, but this harness authenticates as a person and has no heartbeat
+   * run behind it. Sending a made-up id violates
+   * `activity_log_run_id_heartbeat_runs_id_fk`, and the route then answers 500
+   * *after* the write has landed — observed on LEG-3, where the comment was
+   * stored and the caller was told it had failed.
+   */
+  const { "X-Paperclip-Run-Id": _runId, ...safe } = headers ?? {};
+  const res = await fetch(`${API}${path}`, {
+    method,
+    headers: { ...safe, authorization: `Bearer ${TOKEN}` },
+    ...(body === undefined || method === "GET" ? {} : { body: JSON.stringify(body) }),
+  });
+  const text = await res.text();
+  let parsed = text;
+  try {
+    parsed = text ? JSON.parse(text) : null;
+  } catch {
+    /* keep the raw body */
+  }
+  return { status: res.status, body: parsed };
+};
+
+/**
+ * The production model path, not a copy of it — so this harness exercises the
+ * real request shape and the real retry on a guardrail that could not run.
+ */
+const model = buildModel({
+  runId: "live-check",
+  agent: { id: AGENT, companyId: COMPANY },
+  config: { gatewayUrl: GATEWAY, model: MODEL },
+  context: {},
+  onLog: async () => {},
+});
+
+const TASK = {
+  title: "Draft the CloudFlow renegotiation position",
+  description: [
+    "Legal reviewed the CloudFlow termination clause and found three problems:",
+    "",
+    "1. We must give 90 days' notice to terminate; CloudFlow only needs 30.",
+    "2. Clause 12.2 keeps us liable for all fees for the remainder of the term even",
+    "   after we terminate for convenience, which largely negates the right.",
+    "3. Data is retained only 14 days after termination, against a 30-60 day norm.",
+    "",
+    "Write the position we take into renegotiation: what we ask for on each point,",
+    "what we will concede, and what we do if CloudFlow refuses. Keep it under 250",
+    "words. If follow-up work is needed, propose it rather than doing it here.",
+  ].join("\n"),
+};
+
+const results = [];
+const check = (name, pass, detail) => {
+  results.push({ name, pass, detail });
+  console.log(`${pass ? "  ok  " : " FAIL "} ${name}${detail ? ` — ${detail}` : ""}`);
+};
+
+async function main() {
+  console.log(`\ncreating a task in company ${COMPANY}\n`);
+  /**
+   * The title carries a nonce because Paperclip deduplicates identical creates
+   * and returns the existing issue with HTTP 200. Without it a second run reads
+   * the first run's leftovers and every assertion passes on stale state — a
+   * check that cannot fail is not a check.
+   */
+  const nonce = randomUUID().slice(0, 8);
+  const created = await http({
+    method: "POST",
+    path: `/api/companies/${COMPANY}/issues`,
+    headers: { "content-type": "application/json" },
+    body: {
+      ...TASK,
+      title: `${TASK.title} (${nonce})`,
+      status: "todo",
+      priority: "high",
+      // Deliberately unassigned. The same agent is live on this instance and is
+      // woken by `issue_assigned`, so assigning here makes the deployed adapter
+      // race this harness for the task — which it wins, and then every
+      // assertion below passes on a run that did nothing but read a conflict.
+    },
+  });
+  if (created.body?.deduplicated) {
+    console.error("refusing to assert on a deduplicated issue; change the task text");
+    process.exit(1);
+  }
+  if (created.status >= 300) {
+    console.error("could not create the task:", created.status, created.body);
+    process.exit(1);
+  }
+  const issue = created.body;
+  console.log(`task ${issue.identifier} (${issue.id})\n`);
+
+  const tools = buildTools(
+    {
+      apiUrl: "",
+      // Present so the tools behave exactly as they will in production; the
+      // transport above drops the header, since this harness has no real run.
+      runId: randomUUID(),
+      agentId: AGENT,
+      companyId: COMPANY,
+      issueId: issue.id,
+      responsibleUserId: RESPONSIBLE,
+    },
+    http,
+  );
+
+  const started = Date.now();
+  const outcome = await runLoop({
+    model,
+    tools,
+    system: systemPrompt(),
+    wake: wakeMessage({ issueId: issue.id, companyId: COMPANY, agentId: AGENT }),
+  });
+  const seconds = ((Date.now() - started) / 1000).toFixed(1);
+
+  console.log(`\n${outcome.iterations} turn(s) in ${seconds}s`);
+  console.log(`stop reason: ${outcome.stopReason}`);
+  console.log(`tools used:  ${outcome.toolsUsed.join(", ") || "none"}`);
+  console.log(`closing text: ${JSON.stringify(outcome.text.slice(0, 160))}\n`);
+
+  // --- everything below asks the API, never the agent -----------------------
+  const after = (await http({ method: "GET", path: `/api/issues/${issue.id}`, headers: {} })).body;
+  const comments = (
+    await http({ method: "GET", path: `/api/issues/${issue.id}/comments?order=asc&limit=50`, headers: {} })
+  ).body;
+  const list = Array.isArray(comments) ? comments : (comments?.comments ?? []);
+  const children = (
+    await http({ method: "GET", path: `/api/companies/${COMPANY}/issues?descendantOf=${issue.id}`, headers: {} })
+  ).body;
+  const kids = Array.isArray(children) ? children : (children?.issues ?? []);
+  const interactions = (
+    await http({ method: "GET", path: `/api/issues/${issue.id}/interactions`, headers: {} })
+  ).body;
+  const cards = Array.isArray(interactions) ? interactions : (interactions?.interactions ?? []);
+
+  console.log("what the database says\n");
+  check("the agent called at least one tool", outcome.toolsUsed.length > 0, outcome.toolsUsed.join(", "));
+  check(
+    "it got past claiming the task",
+    !/checked out by another agent/i.test(outcome.text),
+    outcome.toolsUsed.includes("checkout_issue") ? "checkout succeeded" : "no checkout attempted",
+  );
+  check("it actually worked the task, not just claimed it", outcome.toolsUsed.length > 1, outcome.toolsUsed.join(", "));
+  check("the task reached a final state", ["done", "in_review", "blocked"].includes(after.status), after.status);
+  check("durable progress was left on the task", list.length > 0, `${list.length} comment(s)`);
+  check(
+    "no agent still holds a task that went to review",
+    after.status !== "in_review" || after.assigneeAgentId === null,
+    `assigneeAgentId=${after.assigneeAgentId}`,
+  );
+  check(
+    "a task in review has a person on it",
+    after.status !== "in_review" || Boolean(after.assigneeUserId),
+    `assigneeUserId=${after.assigneeUserId}`,
+  );
+
+  // Narration check: if the agent said it created or proposed something, it must exist.
+  const claimed = /\b(created|proposed|suggested)\b/i.test(outcome.text);
+  if (claimed) {
+    check(
+      "anything it claimed to create actually exists",
+      kids.length > 0 || cards.length > 0,
+      `${kids.length} child issue(s), ${cards.length} interaction(s)`,
+    );
+  } else {
+    console.log(`  --   it claimed no creations (${kids.length} child issue(s), ${cards.length} interaction(s))`);
+  }
+
+  const failed = results.filter((r) => !r.pass);
+  console.log(`\n${results.length - failed.length}/${results.length} checks passed`);
+  console.log(`read it at: ${API}/${issue.identifier.split("-")[0]}/issues/${issue.identifier}\n`);
+  process.exit(failed.length ? 1 : 0);
+}
+
+main().catch((err) => {
+  console.error("\nlive-check threw:", err);
+  process.exit(1);
+});

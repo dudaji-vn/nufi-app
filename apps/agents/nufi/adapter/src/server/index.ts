@@ -1,9 +1,9 @@
 import { agentConfigurationDoc, models, type } from "../index.js";
-import { buildDeps } from "./client.js";
+import { buildHttp, buildModel } from "./client.js";
 import { runWith, type ExecutionContext, type ExecutionResult } from "./execute.js";
 
 async function execute(ctx: ExecutionContext): Promise<ExecutionResult> {
-  return runWith(buildDeps(ctx), ctx);
+  return runWith({ http: buildHttp(ctx), model: buildModel(ctx) }, ctx);
 }
 
 /**
