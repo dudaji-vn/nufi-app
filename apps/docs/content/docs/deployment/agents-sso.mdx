@@ -50,6 +50,7 @@ VITE_WORKS_URL=https://works.nufi.me
 IDENTITY_TTL_SECONDS=28800      # 8 hours
 IDENTITY_COOKIE_DOMAIN=.nufi.me
 CHAT_BASE_URL=https://chat.nufi.me
+CHAT_PUBLIC_URL=https://chat.nufi.me   # optional; defaults to CHAT_BASE_URL
 ```
 
 <Callout type="warn">
@@ -62,6 +63,17 @@ the failure is not obvious: NUFI Works refuses the sign-in with
 NUFI Studio accepts it and provisions an account called
 `external-<hash>` for a real person, and everyone arrives as an editor
 because the role is missing too.
+
+**`CHAT_PUBLIC_URL` has to be resolvable by the member's browser** — a
+separate requirement from the one above. An expired Studio session now
+bounces the member's own browser to `${CHAT_PUBLIC_URL}/login` so they can
+sign back in without hunting down `agents.nufi.me` from memory. On a deploy
+that reaches chat over private networking (say,
+`CHAT_BASE_URL=http://chat.railway.internal:3080`), that address satisfies
+the requirement above but is not something a browser can resolve.
+`CHAT_PUBLIC_URL` defaults to `CHAT_BASE_URL`, so a deployment with a single
+public chat host has nothing new to set — only a private-networking one
+needs to set it separately.
 </Callout>
 
 This adds four routes: `/.well-known/jwks.json` publishes the public

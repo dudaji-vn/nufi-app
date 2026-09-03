@@ -10,7 +10,19 @@ type Env = { Variables: { user: AuthedUser } };
 const STUDIO_URL = (process.env.STUDIO_URL ?? 'https://studio.nufi.me').replace(/\/+$/, '');
 const COOKIE_DOMAIN = process.env.IDENTITY_COOKIE_DOMAIN ?? '.nufi.me';
 const TTL_SECONDS = Number(process.env.IDENTITY_TTL_SECONDS ?? 8 * 60 * 60);
-const CHAT_URL = (process.env.CHAT_BASE_URL ?? 'https://chat.nufi.me').replace(/\/+$/, '');
+// CHAT_BASE_URL (used by chat-identity.ts's fetch()) only needs to be
+// reachable from the console -- on a deploy with private networking that can
+// be an internal-only host like chat.railway.internal. A redirect sends the
+// member's own browser to chat instead, which needs a host the browser can
+// resolve, so it is not always the same address. CHAT_PUBLIC_URL is that
+// address; it defaults to CHAT_BASE_URL so a deployment with one public chat
+// host needs to set nothing new.
+const CHAT_URL = (
+  process.env.CHAT_PUBLIC_URL ??
+  process.env.CHAT_BASE_URL ??
+  'https://chat.nufi.me'
+).replace(/\/+$/, '');
+const CHOOSER_HOST = process.env.CHOOSER_HOST ?? 'agents.nufi.me';
 
 /**
  * Where inside Studio to land. Only a site-relative path is honoured: a
@@ -25,15 +37,32 @@ function safeNext(next: string | undefined): string {
 }
 
 /**
- * A member whose chat session is gone gets sent to sign in; a script gets a
- * status code. The split is on Accept, because `verify-agents.sh` asserts the
- * 401 and a browser must never be shown raw JSON as an answer to a click.
+ * A browser navigation gets sent somewhere it can act on; a script gets a
+ * status code. The split is on Accept, because `verify-agents.sh` asserts a
+ * status code and a browser must never be shown raw JSON as an answer to a
+ * click. Shared by both ways `/studio` can refuse a member: no session at
+ * all, and a session that isn't entitled to Studio.
  */
-function noSession(c: Context<Env>) {
+function refuse(
+  c: Context<Env>,
+  redirectTo: string,
+  body: Record<string, string>,
+  status: 401 | 403,
+) {
   if ((c.req.header('accept') ?? '').includes('text/html')) {
-    return c.redirect(`${CHAT_URL}/login`, 302);
+    return c.redirect(redirectTo, 302);
   }
-  return c.json({ error: 'unauthorized', detail: 'could not resolve NUFI identity' }, 401);
+  return c.json(body, status);
+}
+
+/** A member whose chat session is gone gets sent to sign back in. */
+function noSession(c: Context<Env>) {
+  return refuse(
+    c,
+    `${CHAT_URL}/login`,
+    { error: 'unauthorized', detail: 'could not resolve NUFI identity' },
+    401,
+  );
 }
 
 /**
@@ -68,8 +97,18 @@ enter.get('/studio', async (c) => {
   // Checked after the rotated session is handed back and before anything is
   // minted: a member who may not enter must still leave with a working chat
   // session, and must never receive an identity token.
+  //
+  // A browser gets here whenever redirectToNufiEntry() bounces an expired
+  // Studio session back through this route -- not just from a deliberate
+  // click on the chooser -- so a member whose entitlement was revoked
+  // mid-session must land on the chooser's own explanation, not raw JSON.
   if (!isEntitled(identity, 'studio')) {
-    return c.json({ error: 'forbidden', detail: 'not entitled to NUFI Studio' }, 403);
+    return refuse(
+      c,
+      `https://${CHOOSER_HOST}/choose`,
+      { error: 'forbidden', detail: 'not entitled to NUFI Studio' },
+      403,
+    );
   }
 
   const token = await signIdentity(

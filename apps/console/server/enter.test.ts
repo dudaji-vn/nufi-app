@@ -203,6 +203,28 @@ describe('entitlement', () => {
     expect(res.headers.get('set-cookie') ?? '').toContain('refreshToken=rotated');
   });
 
+  // redirectToNufiEntry() now reaches this branch by itself whenever a
+  // Studio session expires, not only via a deliberate click on the chooser --
+  // so a member whose entitlement was pulled mid-session must land on the
+  // chooser's own explanation instead of a raw JSON error page.
+  it('bounces a browser navigation to the chooser when not entitled', async () => {
+    process.env.AGENT_ENTITLEMENTS = JSON.stringify({ studio: [] });
+    const res = await as(member).request('/studio', {
+      headers: { cookie: 'refreshToken=rt-test', accept: 'text/html,application/xhtml+xml' },
+    });
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('https://agents.nufi.me/choose');
+  });
+
+  it('still answers 403 with JSON to a scripted caller when not entitled', async () => {
+    process.env.AGENT_ENTITLEMENTS = JSON.stringify({ studio: [] });
+    const res = await as(member).request('/studio', {
+      headers: { cookie: 'refreshToken=rt-test', accept: '*/*' },
+    });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: 'forbidden', detail: 'not entitled to NUFI Studio' });
+  });
+
   it('reports per-product entitlement to the chooser', async () => {
     process.env.AGENT_ENTITLEMENTS = JSON.stringify({ studio: ['a@b.c'], works: [] });
     const res = await as(member).request('/products', WITH_SESSION);
