@@ -21,6 +21,10 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - name: Install dependencies
         run: bun install --frozen-lockfile
+      # Named before the build so a missing image reads as "this file, from
+      # this page" rather than as a render stack trace.
+      - name: Check screenshots
+        run: bun run check:screenshots
       # The docs build is the test. It fails on a missing screenshot, on an MDX
       # syntax error, and on a code-fence language Shiki does not bundle — the
       # last of which produced a stack trace naming the file but not the cause,

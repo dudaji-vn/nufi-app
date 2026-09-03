@@ -7,6 +7,7 @@
     "dev": "next dev",
     "start": "next start",
     "screenshots": "playwright install chromium && node scripts/capture-screenshots.mjs",
+    "check:screenshots": "node scripts/check-screenshots.mjs",
     "postinstall": "fumadocs-mdx"
   },
   "dependencies": {
