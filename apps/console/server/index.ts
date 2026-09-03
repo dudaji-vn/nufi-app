@@ -29,7 +29,15 @@ app.get('/.well-known/jwks.json', async (c) => {
 // Handing a member into another product. Behind the same session check as
 // everything else: without a valid chat cookie this must 401 rather than mint
 // an identity for whoever asked.
-app.use('/enter/*', auth());
+//
+// `bounceHtml` because these two mounts are the ones a member NAVIGATES to --
+// from the chooser, or from Studio bouncing an expired session back through
+// the console. A member whose chat session ended sends no cookie at all, so
+// the journey stops here, in the middleware, not in the route behind it;
+// without this it stopped on a page reading {"error":"unauthorized"}. A
+// scripted caller sends `Accept: */*` and still gets the status code, which is
+// what deploy/railway/verify-agents.sh asserts against production.
+app.use('/enter/*', auth({ bounceHtml: true }));
 app.route('/enter', enter);
 
 // The authorization-code flow NUFI Works signs in through. Only /authorize
@@ -37,7 +45,7 @@ app.route('/enter', enter);
 // server, which carries no browser cookie, so requiring one there would break
 // the exchange rather than secure it. They authenticate by client secret and
 // bearer token instead.
-app.use('/oidc/authorize', auth());
+app.use('/oidc/authorize', auth({ bounceHtml: true }));
 app.route('/oidc', oidc);
 
 // agents.nufi.me and console.nufi.me are the same service. The hostname is

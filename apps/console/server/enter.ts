@@ -1,8 +1,9 @@
-import { type Context, Hono } from 'hono';
+import { Hono } from 'hono';
 import { getCookie, setCookie } from 'hono/cookie';
 import { resolveChatIdentity } from './lib/chat-identity.ts';
-import { isEntitled } from './lib/entitlements.ts';
+import { isEntitled, PRODUCT_NAMES } from './lib/entitlements.ts';
 import { signIdentity } from './lib/oidc-keys.ts';
+import { CHOOSER_URL, noSession, refuse } from './lib/refuse.ts';
 import type { AuthedUser } from './middleware/auth.ts';
 
 type Env = { Variables: { user: AuthedUser } };
@@ -10,59 +11,24 @@ type Env = { Variables: { user: AuthedUser } };
 const STUDIO_URL = (process.env.STUDIO_URL ?? 'https://studio.nufi.me').replace(/\/+$/, '');
 const COOKIE_DOMAIN = process.env.IDENTITY_COOKIE_DOMAIN ?? '.nufi.me';
 const TTL_SECONDS = Number(process.env.IDENTITY_TTL_SECONDS ?? 8 * 60 * 60);
-// CHAT_BASE_URL (used by chat-identity.ts's fetch()) only needs to be
-// reachable from the console -- on a deploy with private networking that can
-// be an internal-only host like chat.railway.internal. A redirect sends the
-// member's own browser to chat instead, which needs a host the browser can
-// resolve, so it is not always the same address. CHAT_PUBLIC_URL is that
-// address; it defaults to CHAT_BASE_URL so a deployment with one public chat
-// host needs to set nothing new.
-const CHAT_URL = (
-  process.env.CHAT_PUBLIC_URL ??
-  process.env.CHAT_BASE_URL ??
-  'https://chat.nufi.me'
-).replace(/\/+$/, '');
-const CHOOSER_HOST = process.env.CHOOSER_HOST ?? 'agents.nufi.me';
 
 /**
  * Where inside Studio to land. Only a site-relative path is honoured: a
  * protocol-relative "//host" and an absolute URL both start a redirect off
  * this site, so they are dropped rather than repaired -- a half-fixed
  * redirect target is how open redirects get shipped.
+ *
+ * A control character is dropped for a duller reason: it cannot go in a
+ * Location header, so `?next=%2Fa%0d%0aX%3A%20y` would throw where it is set
+ * and answer 500 on a public endpoint. No header is injected either way -- the
+ * runtime rejects the value rather than splitting on it -- but a trivially
+ * reachable 500 is still noise nobody needs to diagnose.
  */
 function safeNext(next: string | undefined): string {
   if (!next || !next.startsWith('/')) return '/';
   if (next.startsWith('//') || next.startsWith('/\\')) return '/';
+  if (/\p{Cc}/u.test(next)) return '/';
   return next;
-}
-
-/**
- * A browser navigation gets sent somewhere it can act on; a script gets a
- * status code. The split is on Accept, because `verify-agents.sh` asserts a
- * status code and a browser must never be shown raw JSON as an answer to a
- * click. Shared by both ways `/studio` can refuse a member: no session at
- * all, and a session that isn't entitled to Studio.
- */
-function refuse(
-  c: Context<Env>,
-  redirectTo: string,
-  body: Record<string, string>,
-  status: 401 | 403,
-) {
-  if ((c.req.header('accept') ?? '').includes('text/html')) {
-    return c.redirect(redirectTo, 302);
-  }
-  return c.json(body, status);
-}
-
-/** A member whose chat session is gone gets sent to sign back in. */
-function noSession(c: Context<Env>) {
-  return refuse(
-    c,
-    `${CHAT_URL}/login`,
-    { error: 'unauthorized', detail: 'could not resolve NUFI identity' },
-    401,
-  );
 }
 
 /**
@@ -105,8 +71,8 @@ enter.get('/studio', async (c) => {
   if (!isEntitled(identity, 'studio')) {
     return refuse(
       c,
-      `https://${CHOOSER_HOST}/choose`,
-      { error: 'forbidden', detail: 'not entitled to NUFI Studio' },
+      CHOOSER_URL,
+      { error: 'forbidden', detail: `not entitled to ${PRODUCT_NAMES.studio}` },
       403,
     );
   }
@@ -140,10 +106,14 @@ enter.get('/studio', async (c) => {
  * discovering the refusal by clicking into it.
  */
 enter.get('/products', async (c) => {
+  // Per-member authorization data. A shared cache holding one member's answer
+  // and serving it to the next is the whole reason this header is here.
+  c.header('Cache-Control', 'no-store');
+
   const refreshToken = getCookie(c, 'refreshToken');
   const identity = refreshToken ? await resolveChatIdentity(refreshToken) : null;
   if (!identity) {
-    return c.json({ error: 'unauthorized', detail: 'could not resolve NUFI identity' }, 401);
+    return noSession(c);
   }
   for (const cookie of identity.setCookies) c.header('set-cookie', cookie, { append: true });
 

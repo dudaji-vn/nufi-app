@@ -14,6 +14,23 @@ describe('isEntitled', () => {
     expect(isEntitled(member, 'works')).toBe(true);
   });
 
+  // How ops "clears" a Railway variable: the name stays, the value goes. It
+  // reads as an empty rule set, and an empty rule set that failed CLOSED would
+  // lock every member out of both products with nothing in the logs. It fails
+  // open, like an unset variable -- asserted here because the two branches are
+  // one `||` apart and only one of them was covered.
+  it('lets everyone in when the variable is present but empty', () => {
+    process.env.AGENT_ENTITLEMENTS = '';
+    expect(isEntitled(member, 'studio')).toBe(true);
+    expect(isEntitled(member, 'works')).toBe(true);
+  });
+
+  it('lets everyone in when the variable holds only whitespace', () => {
+    process.env.AGENT_ENTITLEMENTS = '   \n ';
+    expect(isEntitled(member, 'studio')).toBe(true);
+    expect(isEntitled(member, 'works')).toBe(true);
+  });
+
   it('lets nobody but an admin in when the variable is malformed', () => {
     process.env.AGENT_ENTITLEMENTS = '{not json';
     expect(isEntitled(member, 'studio')).toBe(false);

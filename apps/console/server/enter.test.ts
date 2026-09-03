@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { Hono } from 'hono';
+import { sign } from 'hono/jwt';
 import { enter } from './enter.ts';
-import type { AuthedUser } from './middleware/auth.ts';
+import { type AuthedUser, auth } from './middleware/auth.ts';
+
+// auth() answers 500 without these, so they are set before the middleware is
+// ever built rather than inside a hook.
+process.env.JWT_SECRET ??= 'test-access-secret';
+process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret';
 
 /**
  * This route turns a chat session into a signed-in session in another product.
@@ -275,5 +281,106 @@ describe('returning to where the member was', () => {
     stubChat(null); // after as(), which re-stubs a valid member
     const res = await app.request('/studio', { headers: { accept: '*/*' } });
     expect(res.status).toBe(401);
+  });
+});
+
+/**
+ * The stack as `index.ts` actually mounts it.
+ *
+ * Every test above substitutes a stub middleware for auth(), which is exactly
+ * how the defect this describes hid: a member whose chat session ended sends
+ * NO cookie (chat's refresh cookie carries `expires`), so they never reach
+ * enter.ts's own refusal at all -- they stop at auth(), which answered raw
+ * JSON. The session-continuity bounce existed and was unreachable for the one
+ * journey it was built for.
+ */
+function realStack(options?: { bounceHtml?: boolean }) {
+  const app = new Hono<{ Variables: { user: AuthedUser } }>();
+  app.use('/enter/*', auth(options));
+  app.route('/enter', enter);
+  return app;
+}
+
+const HTML = { accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' };
+
+async function refreshCookie(overrides: Record<string, unknown> = {}) {
+  const token = await sign(
+    { id: 'u-1', exp: Math.floor(Date.now() / 1000) + 3600, ...overrides },
+    process.env.JWT_REFRESH_SECRET as string,
+  );
+  return `refreshToken=${token}`;
+}
+
+describe('the real middleware stack', () => {
+  it('bounces a browser with no session to chat, from the middleware', async () => {
+    const res = await realStack({ bounceHtml: true }).request('/enter/studio?next=%2Fflow%2Fabc', {
+      headers: HTML,
+    });
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('https://chat.nufi.me/login');
+  });
+
+  it('still answers 401 to an anonymous script with no session', async () => {
+    // deploy/railway/verify-agents.sh asserts exactly this against production,
+    // and curl sends Accept: */*. If this ever becomes a 302 the door still
+    // holds, but the standing check that proves it stops proving anything.
+    const res = await realStack({ bounceHtml: true }).request('/enter/studio', {
+      headers: { accept: '*/*' },
+    });
+    expect(res.status).toBe(401);
+    expect(res.headers.get('location')).toBeNull();
+  });
+
+  it('bounces a browser whose session token has expired', async () => {
+    const expired = await refreshCookie({ exp: Math.floor(Date.now() / 1000) - 60 });
+    const res = await realStack({ bounceHtml: true }).request('/enter/studio', {
+      headers: { ...HTML, cookie: expired },
+    });
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('https://chat.nufi.me/login');
+  });
+
+  it('bounces a browser whose cookie is valid here but rejected by chat', async () => {
+    // The only branch the stubbed suite could reach: past auth(), refused by
+    // the identity lookup. It must land in the same place as the others.
+    stubChat(null);
+    const res = await realStack({ bounceHtml: true }).request('/enter/studio', {
+      headers: { ...HTML, cookie: await refreshCookie() },
+    });
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('https://chat.nufi.me/login');
+  });
+
+  it('lets a browser with a live session through to Studio', async () => {
+    const res = await realStack({ bounceHtml: true }).request('/enter/studio', {
+      headers: { ...HTML, cookie: await refreshCookie() },
+    });
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('https://studio.nufi.me/');
+  });
+
+  it('never redirects on a mount that did not ask for it', async () => {
+    // /rpc/* is called by the SPA with fetch(). A redirect there turns a 401
+    // the client knows how to handle into a cross-origin fetch failure, so the
+    // bounce is opt-in per mount rather than a property of auth() itself.
+    const res = await realStack().request('/enter/studio', { headers: HTML });
+    expect(res.status).toBe(401);
+    expect(res.headers.get('location')).toBeNull();
+  });
+
+  it('marks the products answer uncacheable', async () => {
+    const res = await realStack({ bounceHtml: true }).request('/enter/products', {
+      headers: { cookie: await refreshCookie(), accept: '*/*' },
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toBe('no-store');
+  });
+});
+
+describe('a next that cannot go in a header', () => {
+  it('drops a control character rather than answering 500', async () => {
+    const res = await as(member).request('/studio?next=%2Fa%0d%0aX%3A%20y', WITH_SESSION);
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('https://studio.nufi.me/');
   });
 });

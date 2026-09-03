@@ -2,6 +2,7 @@ import type { Context, MiddlewareHandler } from 'hono';
 import { getCookie } from 'hono/cookie';
 import { verify } from 'hono/jwt';
 import type { JWTPayload } from 'hono/utils/jwt/types';
+import { noSession } from '../lib/refuse.ts';
 
 export type AuthedUser = {
   id: string;
@@ -11,6 +12,17 @@ export type AuthedUser = {
 };
 
 type Env = { Variables: { user: AuthedUser } };
+
+export type AuthOptions = {
+  /**
+   * Send a browser navigation (Accept: text/html) to chat's login page rather
+   * than answering JSON. Set it on the doors a member navigates to by hand --
+   * `/enter/*` and `/oidc/authorize` -- and nowhere else. A scripted caller
+   * still gets the status code either way, which is what `verify-agents.sh`
+   * asserts against production.
+   */
+  bounceHtml?: boolean;
+};
 
 /**
  * Verify a LibreChat-issued JWT and attach the user to Hono context.
@@ -24,9 +36,16 @@ type Env = { Variables: { user: AuthedUser } };
  *      Long-term: proxy through LibreChat's /api/auth/refresh to honour
  *      session revocation.)
  *
- * On any failure, returns 401 with a structured body.
+ * On any failure, returns 401 with a structured body -- unless the mount asked
+ * for `bounceHtml`, in which case a browser navigation is sent to chat's login
+ * page instead. That is opt-in per mount rather than global: a member whose
+ * chat session ended sends NO cookie at all (chat's refresh cookie carries
+ * `expires`), so this middleware, not the route behind it, is where the
+ * expired-session journey actually stops -- but `/rpc/*` is called by the SPA
+ * with `fetch`, and a redirect on that surface would turn a 401 the client
+ * knows how to handle into a cross-origin fetch failure.
  */
-export function auth(): MiddlewareHandler<Env> {
+export function auth({ bounceHtml = false }: AuthOptions = {}): MiddlewareHandler<Env> {
   return async (c, next) => {
     const accessSecret = process.env.JWT_SECRET;
     const refreshSecret = process.env.JWT_REFRESH_SECRET;
@@ -50,12 +69,12 @@ export function auth(): MiddlewareHandler<Env> {
     }
 
     if (!payload || !source) {
-      return c.json({ error: 'unauthorized' }, 401);
+      return deny(c, bounceHtml, 'no valid NUFI session');
     }
 
     const id = pickString(payload, ['id', 'userId', '_id', 'sub']);
     if (!id) {
-      return c.json({ error: 'unauthorized', detail: 'token missing user id' }, 401);
+      return deny(c, bounceHtml, 'token missing user id');
     }
 
     const role = pickString(payload, ['role']);
@@ -69,6 +88,11 @@ export function auth(): MiddlewareHandler<Env> {
 
     await next();
   };
+}
+
+function deny(c: Context, bounceHtml: boolean, detail: string) {
+  if (!bounceHtml) return c.json({ error: 'unauthorized', detail }, 401);
+  return noSession(c, detail);
 }
 
 function readBearer(c: Context): string | undefined {

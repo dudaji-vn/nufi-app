@@ -16,6 +16,19 @@
 
 export type Product = 'studio' | 'works';
 
+/**
+ * What a member is told the product is called. The internal key ('works') is
+ * not a name anyone outside this codebase has seen, so every refusal a member
+ * can read maps through here rather than interpolating the key.
+ */
+export const PRODUCT_NAMES: Readonly<Record<Product, string>> = {
+  studio: 'NUFI Studio',
+  works: 'NUFI Works',
+};
+
+/** The products a member-facing OIDC client may be the front door to. */
+export const PRODUCTS: readonly Product[] = ['studio', 'works'];
+
 type Rules = Partial<Record<Product, string[]>>;
 
 function rules(): Rules | null {
