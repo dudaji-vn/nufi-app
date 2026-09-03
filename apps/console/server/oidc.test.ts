@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import { Hono } from 'hono';
-import type { AuthedUser } from './middleware/auth.ts';
+import { type AuthedUser, auth } from './middleware/auth.ts';
 import { oidc, warnAboutUngatedClients } from './oidc.ts';
+
+// auth() answers 500 without these.
+process.env.JWT_SECRET ??= 'test-access-secret';
+process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret';
 
 /**
  * The authorization-code half of the identity issuer, used by NUFI Works.
@@ -457,5 +461,38 @@ describe('warning about an inert gate', () => {
     const calls = warn.mock.calls.length;
     warn.mockRestore();
     expect(calls).toBe(0);
+  });
+});
+
+/**
+ * The stack as `index.ts` mounts it. Every test above stubs auth() out, so
+ * without this nothing covers what an anonymous caller actually meets at this
+ * endpoint -- which is the second of the two assertions
+ * deploy/railway/verify-agents.sh makes against production.
+ */
+describe('the real middleware stack', () => {
+  function realStack() {
+    const app = new Hono<{ Variables: { user: AuthedUser } }>();
+    app.use('/oidc/authorize', auth({ bounceHtml: true }));
+    app.route('/oidc', oidc);
+    return app;
+  }
+
+  const AUTHORIZE = `/oidc/authorize?client_id=nufi-works&redirect_uri=${encodeURIComponent(
+    CALLBACK,
+  )}&state=x`;
+
+  it('answers 401 to an anonymous script', async () => {
+    const res = await realStack().request(AUTHORIZE, { headers: { accept: '*/*' } });
+    expect(res.status).toBe(401);
+    expect(res.headers.get('location')).toBeNull();
+  });
+
+  it('bounces an anonymous browser to chat', async () => {
+    const res = await realStack().request(AUTHORIZE, {
+      headers: { accept: 'text/html,application/xhtml+xml' },
+    });
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('https://chat.nufi.me/login');
   });
 });

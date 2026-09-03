@@ -135,14 +135,13 @@ oidc.get('/authorize', async (c) => {
   // browser lands on the chooser, which explains itself, and only a scripted
   // caller reads the JSON. The member-visible name comes from PRODUCT_NAMES --
   // `works` is an internal key, and one door must not call the product
-  // something the other door doesn't.
+  // something the other door doesn't. The fallback is for a product key that
+  // is neither of the two -- unreachable through the type system, reachable
+  // through a hand-edited Railway variable, and "not entitled to undefined" is
+  // not a sentence to show anyone.
   if (client.product && !isEntitled(identity, client.product)) {
-    return refuse(
-      c,
-      CHOOSER_URL,
-      { error: 'forbidden', detail: `not entitled to ${PRODUCT_NAMES[client.product]}` },
-      403,
-    );
+    const name = PRODUCT_NAMES[client.product] ?? 'this product';
+    return refuse(c, CHOOSER_URL, { error: 'forbidden', detail: `not entitled to ${name}` }, 403);
   }
 
   const code = randomBytes(32).toString('base64url');
