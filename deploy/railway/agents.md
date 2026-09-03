@@ -121,11 +121,17 @@ STUDIO_URL=https://studio.nufi.me
 The `nufi-works` entry in `OIDC_CLIENTS` needs `"product": "works"` for the
 entitlement gate to apply to it -- a client with no `product` is trusted
 without a check, which is what a federation client needs but a member-facing
-one must not have.
+one must not have. The console warns at boot, naming the client, if it finds
+one in that state.
 
-| Variable | What it does |
-|---|---|
-| `AGENT_ENTITLEMENTS` | Who may enter each agent product, as JSON: `{"studio":["@dudaji.vn"],"works":["a@b.c"]}`. An entry is a full address or an `@domain` suffix; `*` is everyone. **Unset ⇒ both products open to every member. Malformed ⇒ both closed.** A product with no list stays open. An `ADMIN` is always entitled. |
+`AGENT_ENTITLEMENTS` decides who may enter each product and is optional; unset,
+both stay open to every member. **The full table of console variables --
+`AGENT_ENTITLEMENTS`, `CHAT_PUBLIC_URL`, `CHAT_BASE_URL`, `CHOOSER_HOST`,
+`STUDIO_URL`, `VITE_WORKS_URL` -- lives in
+`apps/docs/content/docs/deployment/agents-sso.mdx`**, published at
+docs.app.nufi.me under *Deployment → Single sign-on for the agent apps*. It
+is not repeated here: two copies of a variable table drift, and the published
+one is what an operator reads.
 
 and append to the existing variable:
 
@@ -168,6 +174,31 @@ the registrar, which is the one step none of the above can do for you.
 | `studio.nufi.me` | _(fill in from Railway once the domain is added)_ |
 | `works.nufi.me` | _(fill in from Railway once the domain is added)_ |
 | `agents.nufi.me` | _(fill in from Railway once the domain is added)_ |
+
+## At release
+
+The five things that have to happen when the entitlements branch merges, in
+this order. Each one is inert until someone does it by hand.
+
+1. **Set `AGENT_ENTITLEMENTS` on `nufi-console`, or deliberately leave it
+   unset.** Unset means both products stay open to every member -- that is the
+   designed default, not an oversight, so "we chose not to set it" is a valid
+   outcome. Write down which one you chose.
+2. **Add `"product": "works"` to the deployed `OIDC_CLIENTS`.** Without it the
+   NUFI Works gate is inert: every member who reaches `/oidc/authorize` is
+   admitted regardless of the list. The console warns about this at boot --
+   read the first log lines after the redeploy in step 3.
+3. **Redeploy the console, then run `deploy/railway/verify-agents.sh` against
+   it.** The script has so far only ever been run against the pre-merge
+   surface, so this is the first run that proves anything about the new one.
+4. **Dispatch the `verify-agents` workflow once from the Actions UI, on the
+   default branch.** A scheduled workflow only starts running on its schedule
+   once its file is on the default branch, and a manual dispatch is the only
+   way to know the run itself works before waiting a day to find out.
+5. **Refresh the docs screenshots.** Someone with `NUFI_EMAIL` and
+   `NUFI_PASSWORD` runs `bun run screenshots` in `apps/docs`; the refresh was
+   deferred on the branch for want of credentials, so the published shots still
+   predate the chooser.
 
 ## Verifying
 

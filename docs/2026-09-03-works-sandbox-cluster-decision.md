@@ -175,9 +175,10 @@ probably the runtime too, while paying a $0.10 cluster-hour fee and an
 always-on system node pool for a control plane we did not need.
 
 **Runner-up 2: E2B.** Lost on code, not price — it is roughly $2.38 a month at
-our load against €85.99. Choosing it means not using the shipped Kubernetes
-provider: `KUBERNETES_PROVIDER_KEY` in `environments.ts:42`, the
-`executionMode: "kubernetes"` path that `execution-policy-bootstrap.ts` forces,
+our load against the ≈€108 the recommended Singapore box costs. Choosing it
+means not using the shipped Kubernetes provider: `KUBERNETES_PROVIDER_KEY` in
+`environments.ts:42`, the `executionMode: "kubernetes"` path that
+`execution-policy-bootstrap.ts` forces,
 `ensureKubernetesEnvironment`, and the entire plugin under
 `sandbox-providers/kubernetes/` become a second-best path beside a provider we
 have not written. It also puts untrusted execution and a gateway key inside a
