@@ -31,8 +31,8 @@ You have been woken for a specific task. Work it:
 1. Call checkout_issue FIRST, before anything else. Claiming the task is how it
    enters in_progress, and it is how two agents avoid doing the same work twice.
    Never set in_progress by hand.
-2. Call get_issue to read the task, its goal, and its ancestors. Call
-   get_comments if the thread matters — especially if you were woken by a comment.
+2. The task is already below. Call get_issue only to re-read it, and
+   get_comments when the thread matters — especially if a comment woke you.
 3. Do the work.
 4. Call update_issue to leave the task in a state someone can act on, with a
    comment saying what happened.
@@ -88,13 +88,38 @@ When you have set the task's final state, reply with a one-line summary and stop
 calling tools. That reply ends the heartbeat.`;
 }
 
+/** The task, as the control plane already gave it to us. */
+export interface WakeIssue {
+  title: string;
+  description: string;
+  status?: string | null;
+  priority?: string | null;
+  goal?: string | null;
+  project?: string | null;
+}
+
 export interface WakeContext {
   issueId: string;
+  companyId: string;
+  agentId: string;
   wakeReason?: string | null;
   wakeCommentId?: string | null;
   approvalId?: string | null;
-  companyId: string;
-  agentId: string;
+  /**
+   * The task itself, prefetched. Paperclip does the same — its own
+   * `PAPERCLIP_WAKE_PAYLOAD_JSON` carries "the compact issue summary … Use it
+   * first" — so delivering it here is the faithful shape, not a shortcut.
+   *
+   * It is also the difference between a run that completes and one the gateway
+   * refuses. G1 classifies a `tool` message as `untrusted`, where one detector
+   * blocks the whole request; a `user` message needs two detectors to agree.
+   * Measured on LEG-8: an ordinary HR leave policy delivered as a tool result
+   * scored 0.99999 on the injection classifier — which the regex detector did
+   * not corroborate and would not have — and killed the run. The same words in
+   * the wake survive. The one-shot adapter never hit this because it always put
+   * the task in a user turn; the loop moved it, and moving it back is the fix.
+   */
+  issue?: WakeIssue | null;
 }
 
 export function wakeMessage(ctx: WakeContext): string {
@@ -107,12 +132,41 @@ export function wakeMessage(ctx: WakeContext): string {
   if (ctx.wakeReason) lines.push(`Wake reason: ${ctx.wakeReason}`);
   if (ctx.wakeCommentId) {
     lines.push(
-      `A new comment triggered this wake (${ctx.wakeCommentId}). Read it first, and say how it changes what you do next.`,
+      `A new comment triggered this wake (${ctx.wakeCommentId}). Read it first with`,
+      `get_comments, and say how it changes what you do next.`,
     );
   }
   if (ctx.approvalId) {
     lines.push(`An approval was resolved (${ctx.approvalId}). Review it before anything else.`);
   }
-  lines.push("", "Start by reading the task.");
+
+  if (!ctx.issue) {
+    lines.push("", "The task could not be prefetched. Call get_issue to read it.");
+    return lines.join("\n");
+  }
+
+  const facts = [
+    ctx.issue.status ? `status ${ctx.issue.status}` : null,
+    ctx.issue.priority ? `priority ${ctx.issue.priority}` : null,
+    ctx.issue.goal ? `goal "${ctx.issue.goal}"` : null,
+    ctx.issue.project ? `project "${ctx.issue.project}"` : null,
+  ].filter(Boolean);
+
+  lines.push("", "## The task", "", `Title: ${ctx.issue.title}`, ...(facts.length ? [facts.join(" · ")] : []), "");
+
+  if (ctx.issue.description.trim()) {
+    lines.push(ctx.issue.description.trim());
+  } else {
+    /**
+     * Measured during the spike: given a title alone a model does not fail, it
+     * invents a confident and plausible answer. Naming the absence is what makes
+     * blocking the obvious move rather than guessing.
+     */
+    lines.push(
+      "This task has **no description** — a title and nothing else. Do not guess what",
+      "it means. Block it and ask for what is missing.",
+    );
+  }
+
   return lines.join("\n");
 }

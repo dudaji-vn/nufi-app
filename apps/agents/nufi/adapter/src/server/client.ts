@@ -146,8 +146,16 @@ export function shouldRetryGateway(status: number, body: string): boolean {
   return body.includes("GUARDRAIL_UNAVAILABLE");
 }
 
-const GATEWAY_RETRIES = 2;
-const GATEWAY_RETRY_DELAY_MS = 1500;
+/**
+ * Backoff, not a fixed pause.
+ *
+ * The guardrail's unavailable windows are short but longer than one breath.
+ * Measured: three attempts 1.5s apart all landed inside a single window and the
+ * run died, while eight consecutive requests before and after it passed. These
+ * delays cover about seventeen seconds — nothing against a heartbeat that
+ * already spends twenty-five on the model.
+ */
+const GATEWAY_RETRY_DELAYS_MS = [2000, 5000, 10000];
 
 export function buildModel(ctx: ExecutionContext): LoopModel {
   const cfg = ctx.config as NufiConfig;
@@ -191,7 +199,7 @@ export function buildModel(ctx: ExecutionContext): LoopModel {
 
       let res: Response | null = null;
       let failure = "";
-      for (let attempt = 0; attempt <= GATEWAY_RETRIES; attempt += 1) {
+      for (let attempt = 0; attempt <= GATEWAY_RETRY_DELAYS_MS.length; attempt += 1) {
         res = await fetch(endpoint, {
           method: "POST",
           headers: { "content-type": "application/json", authorization: `Bearer ${modelKey}` },
@@ -199,10 +207,10 @@ export function buildModel(ctx: ExecutionContext): LoopModel {
         });
         if (res.ok) break;
         failure = (await res.text()).slice(0, 300);
-        if (!shouldRetryGateway(res.status, failure) || attempt === GATEWAY_RETRIES) {
+        if (!shouldRetryGateway(res.status, failure) || attempt === GATEWAY_RETRY_DELAYS_MS.length) {
           throw new Error(`gateway ${res.status}: ${failure}`);
         }
-        await new Promise((resolve) => setTimeout(resolve, GATEWAY_RETRY_DELAY_MS));
+        await new Promise((resolve) => setTimeout(resolve, GATEWAY_RETRY_DELAYS_MS[attempt]));
       }
 
       const data = (await res!.json()) as {

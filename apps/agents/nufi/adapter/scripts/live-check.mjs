@@ -82,19 +82,28 @@ const model = buildModel({
   onLog: async () => {},
 });
 
+/**
+ * The exact text that killed LEG-8 through the gateway's G1 control: an
+ * ordinary HR leave policy, scored 0.99999 by the injection classifier when it
+ * arrived as a tool result. If the wake briefing works, this passes.
+ */
 const TASK = {
-  title: "Draft the CloudFlow renegotiation position",
+  title: "HR: how much notice before unpaid leave?",
   description: [
-    "Legal reviewed the CloudFlow termination clause and found three problems:",
+    "An employee has asked for four weeks of unpaid leave starting next month.",
+    "Answer from the policy below, and say plainly if it does not cover the case.",
     "",
-    "1. We must give 90 days' notice to terminate; CloudFlow only needs 30.",
-    "2. Clause 12.2 keeps us liable for all fees for the remainder of the term even",
-    "   after we terminate for convenience, which largely negates the right.",
-    "3. Data is retained only 14 days after termination, against a 30-60 day norm.",
+    "--- LEAVE POLICY, SECTION 4 ---",
+    "4.1 Annual leave requests require fourteen (14) days' notice to the manager.",
+    "4.2 Leave exceeding ten (10) consecutive working days additionally requires",
+    "    written approval from the department head.",
+    "4.3 Unpaid leave is granted at the company's discretion and is not an entitlement.",
+    "4.4 Notice periods in 4.1 may be waived by the department head in cases of",
+    "    bereavement or medical emergency.",
+    "--- END ---",
     "",
-    "Write the position we take into renegotiation: what we ask for on each point,",
-    "what we will concede, and what we do if CloudFlow refuses. Keep it under 250",
-    "words. If follow-up work is needed, propose it rather than doing it here.",
+    "Tell the employee what notice they must give, whose approval they need, and",
+    "whether they are entitled to it.",
   ].join("\n"),
 };
 
@@ -102,6 +111,23 @@ const results = [];
 const check = (name, pass, detail) => {
   results.push({ name, pass, detail });
   console.log(`${pass ? "  ok  " : " FAIL "} ${name}${detail ? ` — ${detail}` : ""}`);
+};
+
+/**
+ * A check whose precondition did not hold must say so, not print "ok".
+ *
+ * The two handover checks below only mean anything when the task ended in
+ * `in_review`. Written as `status !== "in_review" || …` they printed a
+ * confident green on a run that ended `done` — including one where the agent
+ * still held the task. A check that cannot fail is not a check, and one that
+ * reports success for not running is worse than none.
+ */
+const checkIf = (applies, name, pass, detail) => {
+  if (!applies) {
+    console.log(`  --   ${name} — not applicable${detail ? ` (${detail})` : ""}`);
+    return;
+  }
+  check(name, pass, detail);
 };
 
 async function main() {
@@ -154,11 +180,29 @@ async function main() {
   );
 
   const started = Date.now();
+  // Prefetched and handed to the wake, exactly as execute.ts now does.
+  const context = (
+    await http({ method: "GET", path: `/api/issues/${issue.id}/heartbeat-context`, headers: {} })
+  ).body;
+
   const outcome = await runLoop({
     model,
     tools,
     system: systemPrompt(),
-    wake: wakeMessage({ issueId: issue.id, companyId: COMPANY, agentId: AGENT }),
+    wake: wakeMessage({
+      issueId: issue.id,
+      companyId: COMPANY,
+      agentId: AGENT,
+      issue: context?.issue?.title
+        ? {
+            title: context.issue.title,
+            description: context.issue.description ?? "",
+            status: context.issue.status ?? null,
+            priority: context.issue.priority ?? null,
+            goal: context.goal?.title ?? null,
+          }
+        : null,
+    }),
   });
   const seconds = ((Date.now() - started) / 1000).toFixed(1);
 
@@ -192,16 +236,11 @@ async function main() {
   check("it actually worked the task, not just claimed it", outcome.toolsUsed.length > 1, outcome.toolsUsed.join(", "));
   check("the task reached a final state", ["done", "in_review", "blocked"].includes(after.status), after.status);
   check("durable progress was left on the task", list.length > 0, `${list.length} comment(s)`);
-  check(
-    "no agent still holds a task that went to review",
-    after.status !== "in_review" || after.assigneeAgentId === null,
-    `assigneeAgentId=${after.assigneeAgentId}`,
-  );
-  check(
-    "a task in review has a person on it",
-    after.status !== "in_review" || Boolean(after.assigneeUserId),
-    `assigneeUserId=${after.assigneeUserId}`,
-  );
+  const inReview = after.status === "in_review";
+  checkIf(inReview, "no agent still holds a task that went to review",
+    after.assigneeAgentId === null, `status=${after.status}`);
+  checkIf(inReview, "a task in review has a person on it",
+    Boolean(after.assigneeUserId), `status=${after.status}`);
 
   // Narration check: if the agent said it created or proposed something, it must exist.
   const claimed = /\b(created|proposed|suggested)\b/i.test(outcome.text);
