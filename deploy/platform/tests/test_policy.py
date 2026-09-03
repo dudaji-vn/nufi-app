@@ -1,5 +1,6 @@
 import pytest
 from guardrails.policy import Policy, _parse_control, decide
+from guardrails.spans import Span
 from guardrails.types import Action, Finding, SpanSource
 
 # Written out rather than derived from `SpanSource`, deliberately. Deriving it
@@ -624,3 +625,80 @@ def test_every_control_prices_the_assistant_source(policy):
         assert control.thresholds[SpanSource.ASSISTANT] == (
             control.thresholds[SpanSource.UNTRUSTED]
         ), control_id
+
+
+# --- skip_sources ------------------------------------------------------------
+#
+# Measured on the live gateway, 2026-09-03: the injection scanner runs one
+# uvicorn worker over a CPU transformer with an 8s budget, and it collapses
+# under any concurrency at all — 1 concurrent request succeeded, 3 gave 3/3
+# GUARDRAIL_UNAVAILABLE, 6 gave 6/6. Every agent in a company past the first
+# was unusable.
+#
+# 93% of what it was asked to score was the agent's own system prompt: 3197 of
+# 3432 characters, on a span whose G1 threshold is 1.01 and whose source is
+# absent from enforce_sources. Structurally unable to act, scored on every turn.
+#
+# `skip_sources` lets an operator stop paying for that. It is deliberately
+# separate from `enforce_sources`: a span that cannot enforce is still RECORDED
+# today, and that observability is a choice the policy makes, not an accident to
+# optimise away silently. Default empty — nothing changes until someone says so.
+
+
+def _control(**overrides):
+    body = {
+        "risk": "LLM01",
+        "enabled": True,
+        "mandatory": True,
+        "mode": "pre_call",
+        "fail": "closed",
+        "action": "block",
+        "thresholds": {"user": 0.9, "assistant": 0.5, "untrusted": 0.5, "system": 1.01},
+        **overrides,
+    }
+    return _parse_control("G1", body)
+
+
+def test_skip_sources_defaults_to_scanning_everything():
+    """The optimisation must be opt-in. A policy that says nothing keeps its
+    current behaviour, including the findings it records but cannot act on."""
+    assert _control().skip_sources == frozenset()
+
+
+def test_skip_sources_parses_named_sources():
+    control = _control(skip_sources=["system"])
+    assert control.skip_sources == frozenset({SpanSource.SYSTEM})
+
+
+def test_skip_sources_rejects_a_name_it_does_not_know():
+    """A typo here would silently stop scanning nothing, or worse, and the
+    operator would read the config as if it had taken effect."""
+    with pytest.raises(ValueError, match="unknown skip_sources"):
+        _control(skip_sources=["sytsem"])
+
+
+def test_skip_sources_rejects_a_source_the_control_enforces_on():
+    """Refusing to scan a span this control may block on would turn the control
+    off for that source while leaving it looking armed — the exact failure mode
+    `check-guardrails-wired.sh` exists to catch elsewhere."""
+    with pytest.raises(ValueError, match="cannot skip.*enforce"):
+        _control(enforce_sources=["user", "untrusted"], skip_sources=["user"])
+
+
+def test_scannable_keeps_every_span_by_default():
+    spans = [
+        Span(text="sys", source=SpanSource.SYSTEM, message_index=0),
+        Span(text="hi", source=SpanSource.USER, message_index=1),
+    ]
+    assert _control().scannable(spans) == spans
+
+
+def test_scannable_drops_only_the_named_sources():
+    control = _control(skip_sources=["system"])
+    spans = [
+        Span(text="sys", source=SpanSource.SYSTEM, message_index=0),
+        Span(text="hi", source=SpanSource.USER, message_index=1),
+        Span(text="tool", source=SpanSource.UNTRUSTED, message_index=2),
+    ]
+    kept = control.scannable(spans)
+    assert [s.source for s in kept] == [SpanSource.USER, SpanSource.UNTRUSTED]

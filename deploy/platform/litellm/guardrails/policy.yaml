@@ -48,6 +48,25 @@ controls:
       - untrusted
       - user
       - assistant
+    # Do not spend scanner budget on `system`. G1 cannot act on it from either
+    # direction -- it is absent from `enforce_sources` above, and its threshold
+    # below is 1.01, above the maximum score a detector can return -- so every
+    # system span was scored to produce a verdict that was then discarded.
+    #
+    # The cost was the product. Measured 2026-09-03 on this gateway: the
+    # injection scanner runs one uvicorn worker over a CPU transformer with an
+    # 8s budget and collapses under any concurrency -- 1 concurrent request
+    # succeeded, 3 gave 3/3 GUARDRAIL_UNAVAILABLE, 6 gave 6/6. Every agent in a
+    # NUFI Works company past the first was unusable. And 93% of the text handed
+    # to it was the agent's own system prompt: 3197 characters of 3432.
+    #
+    # What this gives up is the audit record for system spans, which
+    # `ControlConfig.enforceable` deliberately keeps for spans it cannot act on.
+    # For an agent whose system prompt is the same bytes on every single request,
+    # that record is noise. Remove this line if a deployment's system prompts are
+    # attacker-influenced.
+    skip_sources:
+      - system
     # For a user or assistant span, one detector crossing its threshold is not
     # enough: the verdict must be reached by two distinct detectors. This is the
     # only reason enforcing on either is safe, and removing it silently re-arms
