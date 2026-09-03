@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { requireRunToken, resolveModelKey } from "./client";
+import { requireRunToken, resolveModelKey, shouldRetryGateway } from "./client";
 
 describe("resolveModelKey", () => {
   /**
@@ -70,5 +70,31 @@ describe("requireRunToken", () => {
 
   it("passes a real token through untouched", () => {
     expect(requireRunToken("eyJhbGciOi.J9.sig")).toBe("eyJhbGciOi.J9.sig");
+  });
+});
+
+describe("shouldRetryGateway", () => {
+  /**
+   * "A security check could not run, so this request was refused rather than
+   * sent unchecked. This is usually temporary — please retry." Taking the
+   * gateway at its word, and only there.
+   */
+  it("retries a guardrail that could not run", () => {
+    expect(shouldRetryGateway(503, '{"param":"GUARDRAIL_UNAVAILABLE"}')).toBe(true);
+  });
+
+  /**
+   * A refusal that names a policy is a decision, not a hiccup. Retrying it
+   * would be arguing with the security stack until it gives in.
+   */
+  it("never retries a policy decision", () => {
+    expect(shouldRetryGateway(400, '{"param":"LLM01_INJECTION"}')).toBe(false);
+    expect(shouldRetryGateway(403, '{"param":"nufi_guardrail_blocked"}')).toBe(false);
+  });
+
+  it("leaves ordinary failures alone", () => {
+    expect(shouldRetryGateway(401, "bad key")).toBe(false);
+    expect(shouldRetryGateway(429, "rate limited")).toBe(false);
+    expect(shouldRetryGateway(503, "upstream gone")).toBe(false);
   });
 });

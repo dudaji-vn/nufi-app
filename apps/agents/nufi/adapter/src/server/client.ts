@@ -1,4 +1,6 @@
-import type { ExecuteDeps, ExecutionContext } from "./execute.js";
+import type { ExecutionContext } from "./execute.js";
+import type { LoopModel, ToolCall } from "./loop.js";
+import type { HttpFn } from "./tools.js";
 
 /**
  * The live wiring: Paperclip's control plane on one side, the NuFi model
@@ -91,123 +93,146 @@ export function requireRunToken(token: string): string {
   return token;
 }
 
-export function buildDeps(ctx: ExecutionContext): ExecuteDeps {
-  const cfg = ctx.config as NufiConfig;
-
+/**
+ * The live wiring: Paperclip's control plane on one side, the NuFi model
+ * endpoint on the other. Both halves are built per run because the credentials
+ * are per run — `ctx.authToken` is a short-lived run JWT, and the model key
+ * comes from an env var named in adapter config.
+ */
+export function buildHttp(ctx: ExecutionContext): HttpFn {
   const apiUrl = str(process.env.PAPERCLIP_API_URL, "http://localhost:3100");
   const runToken = ctx.authToken ?? process.env.PAPERCLIP_API_KEY ?? "";
 
-  const target = str(cfg.target, "gateway");
+  return async ({ method, path, headers, body }) => {
+    const res = await fetch(`${apiUrl}${path}`, {
+      method,
+      headers: { ...headers, authorization: `Bearer ${requireRunToken(runToken)}` },
+      ...(body === undefined || method === "GET" ? {} : { body: JSON.stringify(body) }),
+    });
+    const text = await res.text();
+    let parsed: unknown = text;
+    try {
+      parsed = text ? JSON.parse(text) : null;
+    } catch {
+      /* a non-JSON body is still worth handing back verbatim */
+    }
+    return { status: res.status, body: parsed };
+  };
+}
+
+/**
+ * One model turn, in the OpenAI tool-calling shape.
+ *
+ * Verified against the live NUFI gateway before this was written: a
+ * `/v1/chat/completions` request carrying `tools` comes back with
+ * `finish_reason: "tool_calls"` and well-formed arguments, so nothing here is
+ * speculative about what the gateway supports.
+ */
+/**
+ * Whether a gateway refusal is worth trying again.
+ *
+ * The NUFI gateway fails closed when a guardrail cannot run: it answers 503
+ * `GUARDRAIL_UNAVAILABLE` and says, in the body, "This is usually temporary —
+ * please retry." Observed twice while this loop was being built, both times
+ * mid-run after several turns had already succeeded, and never reproducible on
+ * demand — 12/12 short requests and 8/8 full-size ones passed straight after.
+ *
+ * Retrying is right here and nowhere near it. A refusal that names a policy —
+ * `LLM01_INJECTION` and its kin — is a decision, and hammering it would be
+ * arguing with the security stack. Only "the check could not run" is retried.
+ */
+export function shouldRetryGateway(status: number, body: string): boolean {
+  if (status !== 503) return false;
+  return body.includes("GUARDRAIL_UNAVAILABLE");
+}
+
+const GATEWAY_RETRIES = 2;
+const GATEWAY_RETRY_DELAY_MS = 1500;
+
+export function buildModel(ctx: ExecutionContext): LoopModel {
+  const cfg = ctx.config as NufiConfig;
   const keyEnv = str(cfg.apiKeyEnv, "NUFI_MODEL_API_KEY");
   const modelKey = resolveModelKey(cfg, keyEnv, process.env);
+  const endpoint = `${str(cfg.gatewayUrl, "https://api.codechi.me/v1")}/chat/completions`;
+  const model = str(cfg.model, "gemini");
 
   /**
-   * Generous by default. Gemini spends its reasoning budget before emitting
-   * text — measured, a 20-token cap returned empty content with 15 tokens gone
-   * to reasoning, and no error. A small cap looks like a refusal rather than a
-   * truncation, and `resolveDisposition` would then block the issue for the
-   * wrong reason.
+   * Generous on purpose. Gemini spends its reasoning budget before emitting
+   * text — measured on the gateway, `gemini-2.5-pro` burned 148 output tokens
+   * to answer "OK", and a 64-token cap returned empty content with no error at
+   * all. A small cap here reads as a refusal rather than a truncation.
    */
   const maxTokens = typeof cfg.maxTokens === "number" ? cfg.maxTokens : 4096;
 
-  const modelEndpoint =
-    target === "chat"
-      ? `${str(cfg.chatUrl, "http://localhost:3080")}/api/agents/chat/completions`
-      : `${str(cfg.gatewayUrl, "https://api.codechi.me/v1")}/chat/completions`;
-
-  const modelName = target === "chat" ? str(cfg.chatAgentId, "") : str(cfg.model, "gemini");
-
-  /** Every mutating call carries the run id, or the audit trail loses the link. */
-  const pcHeaders = () => ({
-    "content-type": "application/json",
-    authorization: `Bearer ${requireRunToken(runToken)}`,
-    "X-Paperclip-Run-Id": ctx.runId,
-  });
-
   return {
-    async fetchIssue(issueId) {
-      const res = await fetch(`${apiUrl}/api/issues/${issueId}/heartbeat-context`, {
-        headers: pcHeaders(),
-      });
-      if (!res.ok) throw new Error(`heartbeat-context ${res.status}`);
-
-      const data = (await res.json()) as {
-        issue?: { title?: string; description?: string; status?: string; assigneeUserId?: string | null };
-        goal?: { title?: string } | null;
-      };
-      // `description`, not `body` — see disposition.ts and the spike findings.
-      const assignee = data.issue?.assigneeUserId;
-      return {
-        title: data.issue?.title ?? "",
-        description: data.issue?.description ?? "",
-        goal: data.goal?.title ?? null,
-        status: data.issue?.status ?? "todo",
-        assigneeUserId: typeof assignee === "string" && assignee.trim() ? assignee.trim() : null,
-      };
-    },
-
-    async complete(prompt) {
-      if (!modelKey)
+    async turn(messages, tools) {
+      if (!modelKey) {
         throw new Error(
           `${keyEnv} is not set — no credential to call the model with. ` +
             `Connect your NUFI account under Settings → NUFI, or set ${keyEnv} on the server.`,
         );
-      if (target === "chat" && !modelName) throw new Error("chatAgentId is required when target is chat");
+      }
 
-      const res = await fetch(modelEndpoint, {
-        method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${modelKey}` },
-        body: JSON.stringify({
-          model: modelName,
-          messages: [{ role: "user", content: prompt }],
+      const payload = JSON.stringify({
+          model,
+          messages,
           max_tokens: maxTokens,
           stream: false,
-        }),
+          ...(tools.length
+            ? {
+                tools: tools.map((t) => ({
+                  type: "function",
+                  function: { name: t.name, description: t.description, parameters: t.parameters },
+                })),
+                tool_choice: "auto",
+              }
+            : {}),
       });
-      if (!res.ok) throw new Error(`${target} ${res.status}: ${(await res.text()).slice(0, 300)}`);
 
-      const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-      return data.choices?.[0]?.message?.content ?? "";
-    },
+      let res: Response | null = null;
+      let failure = "";
+      for (let attempt = 0; attempt <= GATEWAY_RETRIES; attempt += 1) {
+        res = await fetch(endpoint, {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: `Bearer ${modelKey}` },
+          body: payload,
+        });
+        if (res.ok) break;
+        failure = (await res.text()).slice(0, 300);
+        if (!shouldRetryGateway(res.status, failure) || attempt === GATEWAY_RETRIES) {
+          throw new Error(`gateway ${res.status}: ${failure}`);
+        }
+        await new Promise((resolve) => setTimeout(resolve, GATEWAY_RETRY_DELAY_MS));
+      }
 
-    async comment(issueId, body) {
-      const res = await fetch(`${apiUrl}/api/issues/${issueId}/comments`, {
-        method: "POST",
-        headers: pcHeaders(),
-        body: JSON.stringify({ body }),
-      });
-      if (!res.ok) throw new Error(`comment ${res.status}`);
-    },
+      const data = (await res!.json()) as {
+        choices?: {
+          message?: {
+            content?: string | null;
+            tool_calls?: { id?: string; function?: { name?: string; arguments?: string } }[];
+          };
+        }[];
+      };
+      const message = data.choices?.[0]?.message ?? {};
+      const toolCalls: ToolCall[] = (message.tool_calls ?? []).map((call, index) => ({
+        id: call.id ?? `call_${index}`,
+        name: call.function?.name ?? "",
+        // The gateway hands arguments back as a JSON string. A model that emits
+        // malformed JSON must reach the tool as an empty object rather than
+        // crashing the run — the tool will refuse it and say why.
+        arguments: parseArguments(call.function?.arguments),
+      }));
 
-    async lastComment(issueId) {
-      const res = await fetch(`${apiUrl}/api/issues/${issueId}/comments`, { headers: pcHeaders() });
-      if (!res.ok) return null;
-      const raw = (await res.json()) as unknown;
-      const list = (Array.isArray(raw) ? raw : ((raw as { comments?: unknown[] }).comments ?? [])) as {
-        body?: string;
-        createdAt?: string;
-      }[];
-      if (list.length === 0) return null;
-      // The API returns newest first; fall back to sorting if that ever changes.
-      const newest = list[0]?.createdAt
-        ? [...list].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))[0]
-        : list[0];
-      return newest?.body ?? null;
-    },
-
-    async setStatus(issueId, status, handoff) {
-      const res = await fetch(`${apiUrl}/api/issues/${issueId}`, {
-        method: "PATCH",
-        headers: pcHeaders(),
-        body: JSON.stringify({ status, ...(handoff ?? {}) }),
-      });
-      /**
-       * The body matters here. A bare `status 422` sent the last diagnosis to
-       * the wrong place entirely: the server explains exactly which review path
-       * is missing, and throwing that away turned an actionable refusal into a
-       * number. Keep enough of it to act on.
-       */
-      if (!res.ok) throw new Error(`status ${res.status}: ${(await res.text()).slice(0, 300)}`);
+      return { text: message.content ?? "", toolCalls };
     },
   };
+}
+
+function parseArguments(raw: string | undefined): unknown {
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
 }
