@@ -195,11 +195,11 @@ export function buildDeps(ctx: ExecutionContext): ExecuteDeps {
       return newest?.body ?? null;
     },
 
-    async setStatus(issueId, status, patch) {
+    async setStatus(issueId, status, handoff) {
       const res = await fetch(`${apiUrl}/api/issues/${issueId}`, {
         method: "PATCH",
         headers: pcHeaders(),
-        body: JSON.stringify({ status, ...(patch?.assigneeUserId ? { assigneeUserId: patch.assigneeUserId } : {}) }),
+        body: JSON.stringify({ status, ...(handoff ?? {}) }),
       });
       /**
        * The body matters here. A bare `status 422` sent the last diagnosis to
