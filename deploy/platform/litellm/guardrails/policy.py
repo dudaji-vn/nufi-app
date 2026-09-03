@@ -8,11 +8,14 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass, replace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
 
 from guardrails.types import Action, Decision, Finding, SpanSource
+
+if TYPE_CHECKING:  # one-way: `spans` imports from here, never the reverse.
+    from guardrails.spans import Span
 
 _MODES = frozenset({"pre_call", "post_call", "during_call", "logging_only"})
 _FAIL = frozenset({"open", "closed"})
@@ -139,7 +142,34 @@ class ControlConfig:
     # regex detector fires on none of three realistic refusals, so the
     # requirement costs nothing there -- see `guardrails.spans`.
     require_corroboration: frozenset[SpanSource]
+    # Sources this control does not pay to scan at all.
+    #
+    # Distinct from `enforce_sources`, and deliberately so. A span this control
+    # cannot act on is still SCORED and RECORDED today -- `enforceable` says as
+    # much -- and that observability is a choice this policy makes, not an
+    # oversight to optimise away behind everyone's back. This is the switch that
+    # gives it up, on purpose, per control.
+    #
+    # It exists because the cost turned out to be the product. Measured on the
+    # live gateway, 2026-09-03: the injection scanner runs one uvicorn worker
+    # over a CPU transformer with an 8s budget, and it collapses under any
+    # concurrency -- 1 concurrent request succeeded, 3 gave 3/3
+    # GUARDRAIL_UNAVAILABLE, 6 gave 6/6. A company with two working agents was
+    # unusable. And 93% of what the scanner was handed was the agent's own
+    # system prompt: 3197 characters of the 3432, on a span whose G1 threshold
+    # is 1.01 -- above the maximum possible score -- and whose source is absent
+    # from `enforce_sources`. Unable to act, scored on every turn.
+    #
+    # Empty by default. Nothing changes until a policy says otherwise, and a
+    # policy may never skip a source it also enforces on.
+    skip_sources: frozenset[SpanSource]
     options: dict[str, Any]
+
+    def scannable(self, spans: list[Span]) -> list[Span]:
+        """The spans worth spending scanner budget on for this control."""
+        if not self.skip_sources:
+            return spans
+        return [span for span in spans if span.source not in self.skip_sources]
 
     def enforceable(self, findings: tuple[Finding, ...] | list[Finding]) -> bool:
         """May a verdict built from these findings actually block?
@@ -331,6 +361,28 @@ def _parse_control(control_id: str, body: dict[str, Any]) -> ControlConfig:
         )
     enforce_sources = frozenset(valid_sources[str(name)] for name in sources_raw)
 
+    skip_raw = body.get("skip_sources") or []
+    if not isinstance(skip_raw, list):
+        raise ValueError(
+            f"{control_id}: skip_sources must be a list of span sources, "
+            f"got {type(skip_raw).__name__}"
+        )
+    unknown_skip = sorted(set(map(str, skip_raw)) - set(valid_sources))
+    if unknown_skip:
+        raise ValueError(
+            f"{control_id}: unknown skip_sources {unknown_skip}, "
+            f"expected one of {sorted(valid_sources)}"
+        )
+    skip_sources = frozenset(valid_sources[str(name)] for name in skip_raw)
+    # Skipping a source this control enforces on would switch the control off
+    # for that source while leaving it looking armed in every report -- the same
+    # class of silent disarm that check-guardrails-wired.sh exists to catch.
+    overlap = sorted(source.value for source in skip_sources & enforce_sources)
+    if overlap:
+        raise ValueError(
+            f"{control_id}: cannot skip {overlap}, the control enforces on them"
+        )
+
     corroborate_raw = body.get("require_corroboration") or []
     if not isinstance(corroborate_raw, list):
         raise ValueError(
@@ -374,6 +426,7 @@ def _parse_control(control_id: str, body: dict[str, Any]) -> ControlConfig:
         exempt_models=exempt_models,
         enforce_sources=enforce_sources,
         require_corroboration=require_corroboration,
+        skip_sources=skip_sources,
         options=dict(body.get("options") or {}),
     )
 
