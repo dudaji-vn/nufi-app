@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { getCookie } from 'hono/cookie';
 import { createLocalJWKSet, jwtVerify } from 'jose';
 import { resolveChatIdentity } from './lib/chat-identity.ts';
+import { isEntitled, type Product } from './lib/entitlements.ts';
 import { getJwks, ISSUER, signIdentity } from './lib/oidc-keys.ts';
 import type { AuthedUser } from './middleware/auth.ts';
 
@@ -20,6 +21,12 @@ type Client = {
   // meshbox-chat adapter) so it cannot be replayed at the console itself.
   federation?: boolean;
   audience?: string;
+  /**
+   * The product this client is the front door to. Present ⇒ the member must be
+   * entitled to it before a code is issued. Absent ⇒ no entitlement check,
+   * which is what a federation client (a server, not a member) needs.
+   */
+  product?: Product;
 };
 type Code = { user: AuthedUser; clientId: string; redirectUri: string; expires: number };
 
@@ -94,6 +101,10 @@ oidc.get('/authorize', async (c) => {
   }
 
   for (const cookie of identity.setCookies) c.header('set-cookie', cookie, { append: true });
+
+  if (client.product && !isEntitled(identity, client.product)) {
+    return c.json({ error: 'forbidden', detail: `not entitled to ${client.product}` }, 403);
+  }
 
   const code = randomBytes(32).toString('base64url');
   codes.set(code, {

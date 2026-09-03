@@ -113,10 +113,19 @@ PAPERCLIP_AUTH_DISABLE_SIGN_UP=true
 ```
 OIDC_ISSUER=https://console.nufi.me
 OIDC_PRIVATE_KEY_PEM=           # openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048
-OIDC_CLIENTS=[{"clientId":"nufi-works","clientSecret":"…","redirectUris":["https://works.nufi.me/api/auth/oauth2/callback/nufi"]}]
+OIDC_CLIENTS=[{"clientId":"nufi-works","clientSecret":"…","redirectUris":["https://works.nufi.me/api/auth/oauth2/callback/nufi"],"product":"works"}]
 CHOOSER_HOST=agents.nufi.me
 STUDIO_URL=https://studio.nufi.me
 ```
+
+The `nufi-works` entry in `OIDC_CLIENTS` needs `"product": "works"` for the
+entitlement gate to apply to it -- a client with no `product` is trusted
+without a check, which is what a federation client needs but a member-facing
+one must not have.
+
+| Variable | What it does |
+|---|---|
+| `AGENT_ENTITLEMENTS` | Who may enter each agent product, as JSON: `{"studio":["@dudaji.vn"],"works":["a@b.c"]}`. An entry is a full address or an `@domain` suffix; `*` is everyone. **Unset ⇒ both products open to every member. Malformed ⇒ both closed.** A product with no list stays open. An `ADMIN` is always entitled. |
 
 and append to the existing variable:
 

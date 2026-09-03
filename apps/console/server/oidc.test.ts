@@ -48,6 +48,9 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = realFetch;
+  // The two /authorize entitlement tests set this directly; without cleanup it
+  // would leak into every other test in this file.
+  delete process.env.AGENT_ENTITLEMENTS;
 });
 
 function as(user: AuthedUser) {
@@ -183,6 +186,46 @@ describe('authorize', () => {
     );
     expect(res.status).toBe(302);
     expect(res.headers.get('set-cookie') ?? '').toContain('rotated');
+  });
+
+  it('refuses to issue a code to a member not entitled to the product', async () => {
+    process.env.OIDC_CLIENTS = JSON.stringify([
+      {
+        clientId: 'nufi-works',
+        clientSecret: 's3cret',
+        redirectUris: [CALLBACK],
+        product: 'works',
+      },
+    ]);
+    process.env.AGENT_ENTITLEMENTS = JSON.stringify({ works: ['someone@else.com'] });
+
+    const res = await as(member).request(
+      `/authorize?client_id=nufi-works&redirect_uri=${encodeURIComponent(CALLBACK)}&state=x`,
+      { headers: { cookie: 'refreshToken=rt-test' } },
+    );
+
+    expect(res.status).toBe(403);
+    // The refusal must not travel as a redirect: a code must never reach the
+    // client, not even one that would be rejected later.
+    expect(res.headers.get('location')).toBeNull();
+  });
+
+  it('issues a code when the client declares no product', async () => {
+    process.env.OIDC_CLIENTS = JSON.stringify([
+      {
+        clientId: 'nufi-works',
+        clientSecret: 's3cret',
+        redirectUris: [CALLBACK],
+      },
+    ]);
+    process.env.AGENT_ENTITLEMENTS = JSON.stringify({ works: [] });
+
+    const res = await as(member).request(
+      `/authorize?client_id=nufi-works&redirect_uri=${encodeURIComponent(CALLBACK)}&state=x`,
+      { headers: { cookie: 'refreshToken=rt-test' } },
+    );
+
+    expect(res.status).toBe(302);
   });
 });
 

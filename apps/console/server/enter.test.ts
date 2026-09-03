@@ -178,3 +178,42 @@ describe('GET /enter/studio', () => {
     expect(payloadOf(res.headers.get('set-cookie') ?? '').name).toBe('Test Member');
   });
 });
+
+describe('entitlement', () => {
+  afterEach(() => {
+    delete process.env.AGENT_ENTITLEMENTS;
+  });
+
+  it('refuses a member who is not on the Studio list', async () => {
+    process.env.AGENT_ENTITLEMENTS = JSON.stringify({ studio: ['someone@else.com'] });
+    const res = await as(member).request('/studio', WITH_SESSION);
+    expect(res.status).toBe(403);
+    // The door closes without minting anything.
+    expect(res.headers.get('set-cookie') ?? '').not.toContain('nufi_id=');
+  });
+
+  it('still hands back the rotated chat session when it refuses', async () => {
+    // Refusing entry must not sign the member out of chat as a side effect.
+    process.env.AGENT_ENTITLEMENTS = JSON.stringify({ studio: [] });
+    const app = as(member);
+    // after as(), which re-stubs and would otherwise clear this
+    chatReply.setCookie = 'refreshToken=rotated; Path=/';
+    const res = await app.request('/studio', WITH_SESSION);
+    expect(res.status).toBe(403);
+    expect(res.headers.get('set-cookie') ?? '').toContain('refreshToken=rotated');
+  });
+
+  it('reports per-product entitlement to the chooser', async () => {
+    process.env.AGENT_ENTITLEMENTS = JSON.stringify({ studio: ['a@b.c'], works: [] });
+    const res = await as(member).request('/products', WITH_SESSION);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ studio: true, works: false });
+  });
+
+  it('refuses to report entitlement without a session', async () => {
+    const app = as(member);
+    stubChat(null); // after as(), which re-stubs a valid member
+    const res = await app.request('/products');
+    expect(res.status).toBe(401);
+  });
+});

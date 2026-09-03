@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { getCookie, setCookie } from 'hono/cookie';
 import { resolveChatIdentity } from './lib/chat-identity.ts';
+import { isEntitled } from './lib/entitlements.ts';
 import { signIdentity } from './lib/oidc-keys.ts';
 import type { AuthedUser } from './middleware/auth.ts';
 
@@ -39,6 +40,13 @@ enter.get('/studio', async (c) => {
   // or the member is signed out of chat by having visited this route.
   for (const cookie of identity.setCookies) c.header('set-cookie', cookie, { append: true });
 
+  // Checked after the rotated session is handed back and before anything is
+  // minted: a member who may not enter must still leave with a working chat
+  // session, and must never receive an identity token.
+  if (!isEntitled(identity, 'studio')) {
+    return c.json({ error: 'forbidden', detail: 'not entitled to NUFI Studio' }, 403);
+  }
+
   const token = await signIdentity(
     {
       sub: identity.id,
@@ -60,4 +68,23 @@ enter.get('/studio', async (c) => {
   });
 
   return c.redirect(`${STUDIO_URL}/`, 302);
+});
+
+/**
+ * What this member may open. The chooser at agents.nufi.me asks before it
+ * renders, so a member sees a disabled card with a reason rather than
+ * discovering the refusal by clicking into it.
+ */
+enter.get('/products', async (c) => {
+  const refreshToken = getCookie(c, 'refreshToken');
+  const identity = refreshToken ? await resolveChatIdentity(refreshToken) : null;
+  if (!identity) {
+    return c.json({ error: 'unauthorized', detail: 'could not resolve NUFI identity' }, 401);
+  }
+  for (const cookie of identity.setCookies) c.header('set-cookie', cookie, { append: true });
+
+  return c.json({
+    studio: isEntitled(identity, 'studio'),
+    works: isEntitled(identity, 'works'),
+  });
 });
