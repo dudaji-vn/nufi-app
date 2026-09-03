@@ -24,6 +24,21 @@ const CHAT_BASE_URL = (process.env.CHAT_BASE_URL ?? 'https://chat.nufi.me').repl
 const BROWSER_UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
+/**
+ * A hung chat must become a refusal, not a held-open request.
+ *
+ * Every door into both products awaits this call, so with no bound a chat that
+ * accepts a connection and never answers turns each of them into a page that
+ * spins forever -- and the chooser, which cannot click through until this
+ * resolves, into a permanent "Checking access…". Five seconds because the work
+ * behind it is one indexed lookup that normally answers in tens of
+ * milliseconds: anything near this bound is already a broken chat, and the
+ * timeout matches the chooser's own so neither side waits on the other. On
+ * expiry `fetch` rejects, the catch below returns null, and the caller refuses
+ * -- the safe direction.
+ */
+const LOOKUP_TIMEOUT_MS = 5_000;
+
 export type ChatIdentity = {
   id: string;
   email: string;
@@ -53,6 +68,7 @@ export async function resolveChatIdentity(refreshToken: string): Promise<ChatIde
         'user-agent': BROWSER_UA,
         accept: 'application/json',
       },
+      signal: AbortSignal.timeout(LOOKUP_TIMEOUT_MS),
     });
   } catch {
     return null;

@@ -60,7 +60,16 @@ function Choose() {
     // Same origin: the chooser is this console served on another hostname.
     // A failed lookup falls open -- the server refuses anyway, and a network
     // blip must not tell a member they have lost access.
-    fetch('/enter/products', { credentials: 'same-origin' })
+    //
+    // The timeout is what makes that fail-open reachable. Both cards stay
+    // unclickable until this resolves, so a chat that hangs rather than fails
+    // leaves the page reading "Checking access…" for as long as the member is
+    // willing to look at it, with a manual reload the only way out. An abort
+    // rejects the promise, which is the path the catch below already handles.
+    fetch('/enter/products', {
+      credentials: 'same-origin',
+      signal: AbortSignal.timeout(5000),
+    })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error('lookup failed'))))
       .then((data: Entitlements) => setAllowed(data))
       .catch(() => setAllowed({ studio: true, works: true }));
