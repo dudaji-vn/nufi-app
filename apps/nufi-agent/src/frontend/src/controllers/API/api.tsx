@@ -132,7 +132,11 @@ function ApiInterceptor() {
             // so an expired one is renewable without a password -- send the
             // browser back through the door it came in by. The cooldown inside
             // guards against a console that keeps handing back a token Studio
-            // rejects.
+            // rejects -- but the cooldown only narrows that loop, it does not
+            // end it. What ends it is upstream's checkErrorCount() above:
+            // after four authentication errors it logs out and returns false,
+            // so this catch is never reached again. Named here because it is a
+            // dependency on upstream code, which a resync can move or rename.
             if (redirectToNufiEntry()) {
               return Promise.reject(error);
             }

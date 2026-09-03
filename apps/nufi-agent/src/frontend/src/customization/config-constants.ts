@@ -20,8 +20,13 @@ export const DOCS_LINK = "https://docs.app.nufi.me";
 // no NUFI member has. This is the door back. Baked at build time because the
 // console's hostname is stable; override with VITE_NUFI_ENTER_URL for a
 // deployment that is not nufi.me.
+//
+// `||`, not `??`: a build that declares VITE_NUFI_ENTER_URL and leaves it
+// empty -- the ordinary shape of an unset variable in a Docker build arg or a
+// .env line with nothing after the `=` -- passes `??` as a real value, and
+// Studio would then navigate to itself to renew a session it cannot renew.
 export const NUFI_ENTER_URL =
-  import.meta.env.VITE_NUFI_ENTER_URL ?? "https://console.nufi.me/enter/studio";
+  import.meta.env.VITE_NUFI_ENTER_URL || "https://console.nufi.me/enter/studio";
 
 export default {
   DOCS_LINK,
