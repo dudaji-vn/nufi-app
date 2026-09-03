@@ -19,7 +19,7 @@ function deps(overrides: Record<string, unknown> = {}) {
     calls,
     fetchIssue: async () => {
       calls.push("fetch");
-      return { title: "Draft the approvals page", description: "Cover review gates.", goal: null, status: "todo" };
+      return { title: "Draft the approvals page", description: "Cover review gates.", goal: null, status: "todo", assigneeUserId: null };
     },
     complete: async () => {
       calls.push("complete");
@@ -28,8 +28,8 @@ function deps(overrides: Record<string, unknown> = {}) {
     comment: async (_id: string, body: string) => {
       calls.push(`comment:${body.slice(0, 24)}`);
     },
-    setStatus: async (_id: string, s: string) => {
-      calls.push(`status:${s}`);
+    setStatus: async (_id: string, s: string, patch?: { assigneeUserId?: string }) => {
+      calls.push(patch?.assigneeUserId ? `status:${s}+assignee:${patch.assigneeUserId}` : `status:${s}`);
     },
     lastComment: async () => null,
     ...overrides,
@@ -195,5 +195,53 @@ describe("runWith", () => {
 
     expect(result.exitCode).toBe(1);
     expect(result.errorMessage).toBe("gateway 503");
+  });
+});
+
+describe("naming a reviewer", () => {
+  /**
+   * Paperclip refuses an agent-authored move to in_review that leaves nobody
+   * owning the next action — 422 `invalid_issue_disposition`. Observed in
+   * production: the answer comment landed, the status update was rejected, and
+   * the adapter's own error path then overwrote a good run with "failed" and
+   * pushed the issue to blocked.
+   *
+   * So when the issue has no human assignee, hand it to the person the run
+   * belongs to. That IS the review path — the member who asked gets the answer.
+   */
+  it("assigns the responsible user when the issue has none", async () => {
+    const d = deps();
+    await runWith(d, ctx({ context: { taskId: "issue_1", responsibleUserId: "user_9" } }));
+
+    expect(d.calls).toContain("status:in_review+assignee:user_9");
+  });
+
+  /**
+   * An issue that already has a human assignee satisfies the guard on its own.
+   * Reassigning it would silently take the work off whoever it was given to.
+   */
+  it("leaves an existing assignee alone", async () => {
+    const d = deps({
+      fetchIssue: async () => ({
+        title: "Draft the approvals page",
+        description: "Cover review gates.",
+        goal: null,
+        status: "todo",
+        assigneeUserId: "user_owner",
+      }),
+    });
+    await runWith(d, ctx({ context: { taskId: "issue_1", responsibleUserId: "user_9" } }));
+
+    expect(d.calls).toContain("status:in_review");
+    expect(d.calls.join()).not.toContain("assignee:");
+  });
+
+  /** Blocked needs no reviewer — the guard only covers in_review. */
+  it("does not name a reviewer when blocking", async () => {
+    const d = deps({ complete: async () => "I cannot answer this without the contract." });
+    await runWith(d, ctx({ context: { taskId: "issue_1", responsibleUserId: "user_9" } }));
+
+    expect(d.calls).toContain("status:blocked");
+    expect(d.calls.join()).not.toContain("assignee:");
   });
 });

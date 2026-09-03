@@ -132,15 +132,17 @@ export function buildDeps(ctx: ExecutionContext): ExecuteDeps {
       if (!res.ok) throw new Error(`heartbeat-context ${res.status}`);
 
       const data = (await res.json()) as {
-        issue?: { title?: string; description?: string; status?: string };
+        issue?: { title?: string; description?: string; status?: string; assigneeUserId?: string | null };
         goal?: { title?: string } | null;
       };
       // `description`, not `body` — see disposition.ts and the spike findings.
+      const assignee = data.issue?.assigneeUserId;
       return {
         title: data.issue?.title ?? "",
         description: data.issue?.description ?? "",
         goal: data.goal?.title ?? null,
         status: data.issue?.status ?? "todo",
+        assigneeUserId: typeof assignee === "string" && assignee.trim() ? assignee.trim() : null,
       };
     },
 
@@ -193,13 +195,19 @@ export function buildDeps(ctx: ExecutionContext): ExecuteDeps {
       return newest?.body ?? null;
     },
 
-    async setStatus(issueId, status) {
+    async setStatus(issueId, status, patch) {
       const res = await fetch(`${apiUrl}/api/issues/${issueId}`, {
         method: "PATCH",
         headers: pcHeaders(),
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status, ...(patch?.assigneeUserId ? { assigneeUserId: patch.assigneeUserId } : {}) }),
       });
-      if (!res.ok) throw new Error(`status ${res.status}`);
+      /**
+       * The body matters here. A bare `status 422` sent the last diagnosis to
+       * the wrong place entirely: the server explains exactly which review path
+       * is missing, and throwing that away turned an actionable refusal into a
+       * number. Keep enough of it to act on.
+       */
+      if (!res.ok) throw new Error(`status ${res.status}: ${(await res.text()).slice(0, 300)}`);
     },
   };
 }
