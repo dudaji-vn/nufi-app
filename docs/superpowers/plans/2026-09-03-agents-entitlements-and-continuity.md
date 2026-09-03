@@ -816,8 +816,8 @@ jobs:
 
 - [ ] **Step 3: Check the workflow parses**
 
-Run: `bash -n deploy/railway/verify-agents.sh && python3 -c "import yaml,sys; yaml.safe_load(open('.github/workflows/verify-agents.yml')); print('yaml ok')"`
-Expected: `yaml ok`.
+Run: `bash -n deploy/railway/verify-agents.sh && yq '.on' .github/workflows/verify-agents.yml`
+Expected: the script parses silently, and yq prints the `schedule`/`workflow_dispatch` block — which is also the proof the YAML parses. Do not pipe yq into `grep -q`: under `set -o pipefail` a match exits 141.
 
 - [ ] **Step 4: Commit**
 
