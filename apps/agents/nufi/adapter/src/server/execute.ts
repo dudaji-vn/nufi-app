@@ -30,12 +30,51 @@ export interface ExecutionResult {
 }
 
 export interface ExecuteDeps {
-  fetchIssue(issueId: string): Promise<{ title: string; description: string; goal: string | null; status: string }>;
+  fetchIssue(issueId: string): Promise<{
+    title: string;
+    description: string;
+    goal: string | null;
+    status: string;
+    /** The human who owns this issue, if one is set. Decides whether a reviewer must be named. */
+    assigneeUserId: string | null;
+  }>;
   complete(prompt: string): Promise<string>;
   comment(issueId: string, body: string): Promise<void>;
-  setStatus(issueId: string, status: string): Promise<void>;
+  setStatus(issueId: string, status: string, patch?: { assigneeUserId?: string }): Promise<void>;
   /** Most recent comment body, or null. Used to suppress repeated identical failures. */
   lastComment(issueId: string): Promise<string | null>;
+}
+
+/**
+ * Who should look at the answer.
+ *
+ * Paperclip rejects an agent-authored move to `in_review` that names no review
+ * path — HTTP 422 `invalid_issue_disposition`, on the grounds that the issue
+ * would sit in review with nobody owning the next action. It is right. Observed
+ * in production: the answer comment landed, the status update was refused, and
+ * this adapter's own error path then buried a perfectly good run under
+ * "The agent run failed: status 422" and pushed the issue to blocked.
+ *
+ * The honest reviewer is the person the run belongs to — the member who asked.
+ * The control plane resolves that before dispatch and puts it in two places;
+ * read the context first and fall back to the run token's claim.
+ *
+ * The token is ours, minted by the server we are about to call. This reads one
+ * claim out of it, and verifies nothing — the server does that.
+ */
+export function resolveReviewer(ctx: ExecutionContext): string | null {
+  const fromContext = ctx.context.responsibleUserId;
+  if (typeof fromContext === "string" && fromContext.trim()) return fromContext.trim();
+
+  const parts = (ctx.authToken ?? "").split(".");
+  if (parts.length !== 3) return null;
+  try {
+    const claims = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as Record<string, unknown>;
+    const sub = claims.responsible_user_id;
+    return typeof sub === "string" && sub.trim() ? sub.trim() : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -112,7 +151,15 @@ export async function runWith(
 
     const disposition = resolveDisposition(answer);
     await commentOnce(deps, issueId, disposition.comment);
-    await deps.setStatus(issueId, disposition.status);
+
+    /**
+     * Only `in_review` needs a reviewer, and only when the issue does not
+     * already have one — reassigning an issue someone else owns would quietly
+     * take the work off them.
+     */
+    const reviewer =
+      disposition.status === "in_review" && !issue.assigneeUserId ? resolveReviewer(ctx) : null;
+    await deps.setStatus(issueId, disposition.status, reviewer ? { assigneeUserId: reviewer } : undefined);
 
     await ctx.onLog("stdout", `\n[disposition: ${disposition.status}]\n`);
 
