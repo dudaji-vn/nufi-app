@@ -168,3 +168,43 @@ describe("resolveResponsibleUser", () => {
     expect(resolveResponsibleUser(ctx({ context: { taskId: "i" }, authToken: "a.!!!.c" }))).toBeNull();
   });
 });
+
+describe("the task briefing", () => {
+  /**
+   * The heartbeat context is fetched once and used twice — the already-answered
+   * guard, and the wake. Letting the agent fetch it instead puts the task text
+   * in an `untrusted` span, which G1 refuses on a single detector; LEG-8 died
+   * that way, on an ordinary HR leave policy.
+   */
+  it("hands the agent the task instead of making it fetch one", async () => {
+    const calls: HttpCall[] = [];
+    const fn = async (call: HttpCall) => {
+      calls.push(call);
+      if (call.path.endsWith("/heartbeat-context")) {
+        return {
+          status: 200,
+          body: {
+            issue: { status: "todo", title: "Review clause 12.2", description: "It voids termination." },
+            goal: { title: "Cut vendor risk" },
+          },
+        };
+      }
+      return { status: 200, body: {} };
+    };
+
+    let seen = "";
+    const spy = {
+      async turn(messages: { role: string; content: string }[]) {
+        seen = messages.map((m) => m.content).join("\n");
+        return say("ok");
+      },
+    };
+    await runWith({ http: fn, model: spy }, ctx());
+
+    expect(seen).toContain("Review clause 12.2");
+    expect(seen).toContain("It voids termination.");
+    expect(seen).toContain("Cut vendor risk");
+    // Fetched once for both purposes, not once per purpose.
+    expect(calls.filter((c) => c.path.endsWith("/heartbeat-context"))).toHaveLength(1);
+  });
+});
