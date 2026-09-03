@@ -21,6 +21,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import fs from "node:fs";
 
 import { buildModel } from "../dist/server/client.js";
 import { runLoop } from "../dist/server/loop.js";
@@ -179,6 +180,34 @@ async function main() {
     http,
   );
 
+  /**
+   * Capture what was actually sent when the gateway refuses.
+   *
+   * Diagnosing a guardrail block otherwise means asking someone to grep the
+   * VM's logs for the `grd_` reference — three round trips so far, each one
+   * slower than the fix it led to. The messages are here; write them down.
+   */
+  const capture = { turns: [] };
+  const watched = {
+    async turn(messages, tools) {
+      capture.turns.push(
+        messages.map((m) => ({ role: m.role, bytes: (m.content || "").length, head: (m.content || "").slice(0, 120) })),
+      );
+      try {
+        return await model.turn(messages, tools);
+      } catch (err) {
+        const path = "/tmp/live-check-blocked.json";
+        fs.writeFileSync(path, JSON.stringify({ error: String(err), messages }, null, 2));
+        console.error(`\nblocked on turn ${capture.turns.length}; spans:`);
+        for (const m of capture.turns.at(-1)) {
+          console.error(`   ${m.role.padEnd(10)} ${String(m.bytes).padStart(6)} bytes  ${JSON.stringify(m.head.slice(0, 70))}`);
+        }
+        console.error(`full payload written to ${path}`);
+        throw err;
+      }
+    },
+  };
+
   const started = Date.now();
   // Prefetched and handed to the wake, exactly as execute.ts now does.
   const context = (
@@ -186,7 +215,7 @@ async function main() {
   ).body;
 
   const outcome = await runLoop({
-    model,
+    model: watched,
     tools,
     system: systemPrompt(),
     wake: wakeMessage({

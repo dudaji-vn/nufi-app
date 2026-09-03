@@ -274,3 +274,71 @@ describe("what the run recorded", () => {
     expect(tools.state).toEqual({ finalStatus: null, commented: false });
   });
 });
+
+describe("what a mutation hands back", () => {
+  /**
+   * A tool result returns as `role: "tool"`, which the gateway's G1 control
+   * classifies as `untrusted` — the one span class that blocks on a single
+   * detector. The server echoes the whole issue back from a checkout or a
+   * status update, so the task description made a round trip and came back
+   * through the strictest channel there is. Measured on HAN-4:
+   *
+   *     injection  source=untrusted  0–2202  score=0.99997   -> blocked
+   *
+   * The agent does not need the echo. It was handed the task in the wake. So a
+   * mutation confirms what changed and nothing else.
+   */
+  it("confirms the change without echoing the task back", async () => {
+    const { fn } = http({
+      "PATCH /api/issues/issue_1": {
+        status: 200,
+        body: {
+          id: "issue_1",
+          identifier: "HAN-4",
+          status: "blocked",
+          title: "printer",
+          description: "A long description that must not travel back through an untrusted span.",
+        },
+      },
+    });
+    const tools = buildTools(ctx(), fn);
+
+    const out = await tools.run(call("update_issue", { status: "blocked", comment: "No description." }));
+
+    expect(out.ok).toBe(true);
+    const text = JSON.stringify(out.result);
+    expect(text).toContain("blocked");
+    expect(text).toContain("HAN-4");
+    expect(text).not.toContain("untrusted span");
+  });
+
+  it("keeps a checkout's answer to what the agent asked", async () => {
+    const { fn } = http({
+      "POST /api/issues/issue_1/checkout": {
+        status: 200,
+        body: { id: "issue_1", identifier: "HAN-1", status: "in_progress", description: "Meridian NDA clause 7." },
+      },
+    });
+    const tools = buildTools(ctx(), fn);
+
+    const out = await tools.run(call("checkout_issue", {}));
+
+    expect(JSON.stringify(out.result)).not.toContain("Meridian");
+    expect(JSON.stringify(out.result)).toContain("in_progress");
+  });
+
+  /** Reads are different: their content is the answer, so it comes back whole. */
+  it("leaves a read alone", async () => {
+    const { fn } = http({
+      "GET /api/issues/issue_1/heartbeat-context": {
+        status: 200,
+        body: { issue: { title: "T", description: "The clause the agent asked to re-read." } },
+      },
+    });
+    const tools = buildTools(ctx(), fn);
+
+    const out = await tools.run(call("get_issue", {}));
+
+    expect(JSON.stringify(out.result)).toContain("re-read");
+  });
+});

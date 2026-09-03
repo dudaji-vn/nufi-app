@@ -49,6 +49,20 @@ model_list:
       backend_type: cloud
       hardware_id: gemini-cloud
       supports_vision: false
+  # The model NUFI Works agents call, and the only name G1 exempts.
+  #
+  # It exists to be nameable. `exempt_models` matches a model name, so agent
+  # traffic needs one of its own — pointing agents at `gemini` would have
+  # exempted every chat user from prompt-injection defence in order to unblock
+  # one loop. Same backend, different label, and the label is the whole point.
+  - model_name: nufi-agent
+    litellm_params:
+      model: gemini/gemini-2.5-flash
+      api_key: os.environ/GEMINI_API_KEY
+    model_info:
+      backend_type: cloud
+      hardware_id: gemini-cloud
+      supports_vision: false
   # --- Harness aliases ------------------------------------------------------
   # Paperclip's coding harnesses (NUFI Works: claude_local, codex_local,
   # opencode_local) each carry a HARDCODED list of their vendor's model ids and

@@ -157,12 +157,36 @@ export function shouldRetryGateway(status: number, body: string): boolean {
  */
 const GATEWAY_RETRY_DELAYS_MS = [2000, 5000, 10000];
 
+export const DEFAULT_AGENT_MODEL = "nufi-agent";
+
+export function resolveModelName(cfg: { model?: unknown }): string {
+  return str(cfg.model, DEFAULT_AGENT_MODEL);
+}
+
 export function buildModel(ctx: ExecutionContext): LoopModel {
   const cfg = ctx.config as NufiConfig;
   const keyEnv = str(cfg.apiKeyEnv, "NUFI_MODEL_API_KEY");
   const modelKey = resolveModelKey(cfg, keyEnv, process.env);
   const endpoint = `${str(cfg.gatewayUrl, "https://api.codechi.me/v1")}/chat/completions`;
-  const model = str(cfg.model, "gemini");
+  /**
+   * `nufi-agent`, not `gemini`, and the name carries the whole reason.
+   *
+   * The gateway's G1 control cannot coexist with a tool-calling agent as it is
+   * configured: a tool result arrives as `role: "tool"`, which is classified
+   * `untrusted` — threshold 0.50, no corroboration required, so one detector
+   * refuses the request. The classifier scores benign text near 1.0. Measured
+   * 2026-09-03 on the smallest tool result that can exist:
+   *
+   *     {"ok":true}  as role=tool  ->  400 LLM01_INJECTION
+   *     {"ok":true}  as role=user  ->  200
+   *
+   * `nufi-agent` is the one model name G1 exempts. It resolves to the same
+   * backend as `gemini`; the label exists so the exemption can be scoped to
+   * agent traffic instead of every chat user. Point this at `gemini` and every
+   * run dies on its second turn; point chat at `nufi-agent` and chat loses its
+   * prompt-injection defence.
+   */
+  const model = resolveModelName(cfg);
 
   /**
    * Generous on purpose. Gemini spends its reasoning budget before emitting
