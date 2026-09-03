@@ -9,3 +9,6 @@ deploy/platform/scenarios/demo/recording/
 deploy/platform/scenarios/demo/frames/
 deploy/platform/scenarios/demo/f[0-9k]*/
 deploy/platform/scenarios/demo/*.webm
+
+# Subagent-driven-development scratch (ledger, briefs, review packages)
+.superpowers/
