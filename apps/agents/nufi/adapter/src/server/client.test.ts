@@ -1,6 +1,13 @@
 import { describe, expect, it } from "bun:test";
 
-import { requireRunToken, resolveModelKey, shouldRetryGateway } from "./client";
+import {
+  DEFAULT_AGENT_MODEL,
+  buildModel,
+  requireRunToken,
+  resolveModelKey,
+  resolveModelName,
+  shouldRetryGateway,
+} from "./client";
 
 describe("resolveModelKey", () => {
   /**
@@ -96,5 +103,41 @@ describe("shouldRetryGateway", () => {
     expect(shouldRetryGateway(401, "bad key")).toBe(false);
     expect(shouldRetryGateway(429, "rate limited")).toBe(false);
     expect(shouldRetryGateway(503, "upstream gone")).toBe(false);
+  });
+});
+
+describe("the model an agent calls", () => {
+  /**
+   * The default is a security boundary, not a preference.
+   *
+   * `nufi-agent` is the single model name G1 exempts, and the exemption exists
+   * because a tool-calling agent cannot pass that control at all: a tool result
+   * is classified `untrusted`, which blocks on one detector at threshold 0.50,
+   * and the classifier scores benign text near 1.0. Measured on the smallest
+   * possible tool result — `{"ok":true}` — blocked as role=tool, fine as
+   * role=user.
+   *
+   * Defaulting to `gemini` would kill every run on its second turn. Exempting
+   * `gemini` instead would strip prompt-injection defence from every chat user
+   * to save one loop. The label is what keeps the hole the size of the problem.
+   */
+  it("defaults to the alias the exemption is scoped to", () => {
+    const model = buildModel({
+      runId: "r",
+      agent: { id: "a", companyId: "c" },
+      config: {},
+      context: {},
+      onLog: async () => {},
+    });
+    expect(model).toBeDefined();
+    // The default lives in client.ts; assert on the contract the policy relies on.
+    expect(DEFAULT_AGENT_MODEL).toBe("nufi-agent");
+  });
+
+  it("still lets an operator name a different model", () => {
+    expect(resolveModelName({ model: "Nufi-lab/models/gemini-2.5-pro" })).toBe(
+      "Nufi-lab/models/gemini-2.5-pro",
+    );
+    expect(resolveModelName({})).toBe(DEFAULT_AGENT_MODEL);
   });
 });

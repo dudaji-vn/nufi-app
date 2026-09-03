@@ -105,7 +105,35 @@ controls:
     # If a future control genuinely needs one, scope it to an explicit model
     # name rather than a pattern, and read nufi_guardrail_exemptions_total
     # against conversation volume to keep the hole visible in use.
-    exempt_models: []
+    # `nufi-agent` is the alias NUFI Works agents call, and only them. G1 cannot
+    # coexist with a tool-calling agent as this control is configured, and the
+    # reason is arithmetic rather than content.
+    #
+    # A tool result reaches the gateway as `role: "tool"`, which `spans.py` maps
+    # to `untrusted` — threshold 0.50 below, and absent from
+    # `require_corroboration`, so one detector refuses the request. The
+    # classifier scores benign text near 1.0; this file says so three times over.
+    # Measured 2026-09-03, the smallest tool result that exists:
+    #
+    #     {"ok":true}  as role=tool  -> 400 LLM01_INJECTION
+    #     {"ok":true}  as role=user  -> 200
+    #
+    # Eleven characters. Nothing can be shrunk, rephrased or sanitised past
+    # that: every agent turn after the first carries a tool result, so every
+    # agent run dies on its second turn. Not only ours — anything tool-calling.
+    #
+    # What this costs: agent runs get no G1 at all, and an agent reads
+    # company-authored issue text and holds tools that mutate the tracker.
+    # Indirect injection through a malicious task description is a real path and
+    # this exemption does not close it.
+    #
+    # It is scoped to one model name rather than a pattern, and
+    # nufi_guardrail_exemptions_total counts every use, so the hole stays
+    # visible. The fix that would let it close is a `tool` span source with its
+    # own corroboration requirement, which is a change to this policy's
+    # measured trade-offs and belongs in its own review.
+    exempt_models:
+      - nufi-agent
     thresholds:
       # A jailbreak string inside a retrieved document is near-certain attack;
       # the same string typed by a user may be a question about the topic.

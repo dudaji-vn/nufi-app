@@ -76,6 +76,30 @@ const OBJECT = (properties: Record<string, unknown>, required: string[] = []) =>
 
 const S = { type: "string" } as const;
 
+/**
+ * What a mutation hands back to the model.
+ *
+ * A tool result returns as `role: "tool"`, which the gateway's G1 control
+ * classifies as `untrusted` — the one span class that blocks on a single
+ * detector rather than requiring two to agree. The server echoes the whole
+ * issue back from a checkout or a status update, so the task description made a
+ * round trip and came back through the strictest channel there is. Measured on
+ * HAN-4: `injection source=untrusted 0–2202 score=0.99997`, and the run died.
+ *
+ * The agent does not need the echo — it was handed the task in the wake. So a
+ * mutation confirms what changed and nothing more. Reads are untouched: their
+ * content is the answer the agent asked for.
+ */
+function confirm(body: unknown): unknown {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return { ok: true };
+  const row = body as Record<string, unknown>;
+  const kept: Record<string, unknown> = { ok: true };
+  for (const key of ["id", "identifier", "status", "assigneeUserId", "assigneeAgentId"]) {
+    if (row[key] !== undefined) kept[key] = row[key];
+  }
+  return kept;
+}
+
 export function buildTools(ctx: ToolContext, http: HttpFn): NufiToolBox {
   const state: ToolState = { finalStatus: null, commented: false };
   const headers = {
@@ -87,8 +111,12 @@ export function buildTools(ctx: ToolContext, http: HttpFn): NufiToolBox {
     http({ method, path, headers, body });
 
   /** A non-2xx is information, not an exception — the contract expects the agent to read it. */
-  const result = (res: { status: number; body?: unknown }, onError?: (status: number) => string | undefined) => {
-    if (res.status >= 200 && res.status < 300) return { ok: true, result: res.body ?? null };
+  const result = (
+    res: { status: number; body?: unknown },
+    onError?: (status: number) => string | undefined,
+    shape: (body: unknown) => unknown = (body) => body ?? null,
+  ) => {
+    if (res.status >= 200 && res.status < 300) return { ok: true, result: shape(res.body) };
     const custom = onError?.(res.status);
     const detail = typeof res.body === "string" ? res.body : JSON.stringify(res.body ?? {});
     return { ok: false, result: custom ? `${custom} (HTTP ${res.status}: ${detail})` : `HTTP ${res.status}: ${detail}` };
@@ -105,7 +133,7 @@ export function buildTools(ctx: ToolContext, http: HttpFn): NufiToolBox {
       ...(str(a.idempotencyKey) ? { idempotencyKey: str(a.idempotencyKey) } : {}),
       payload: a.payload ?? { version: 1 },
     });
-    return result(res);
+    return result(res, undefined, confirm);
   };
 
   const handlers: Record<string, { schema: ToolSchema; run: (a: Args) => Promise<{ ok: boolean; result: unknown }> }> = {
@@ -150,6 +178,7 @@ export function buildTools(ctx: ToolContext, http: HttpFn): NufiToolBox {
             status === 409
               ? "This task is checked out by another agent. Do not retry; work on something else or report that it is taken."
               : undefined,
+          confirm,
         ),
     },
 
@@ -161,7 +190,7 @@ export function buildTools(ctx: ToolContext, http: HttpFn): NufiToolBox {
         parameters: OBJECT({ body: S }, ["body"]),
       },
       run: async (a) => {
-        const out = result(await send("POST", `/api/issues/${ctx.issueId}/comments`, { body: str(a.body) ?? "" }));
+        const out = result(await send("POST", `/api/issues/${ctx.issueId}/comments`, { body: str(a.body) ?? "" }), undefined, confirm);
         if (out.ok) state.commented = true;
         return out;
       },
@@ -204,7 +233,7 @@ export function buildTools(ctx: ToolContext, http: HttpFn): NufiToolBox {
           body.assigneeAgentId = null;
         }
 
-        const out = result(await send("PATCH", `/api/issues/${ctx.issueId}`, body));
+        const out = result(await send("PATCH", `/api/issues/${ctx.issueId}`, body), undefined, confirm);
         if (out.ok) {
           if (status) state.finalStatus = status;
           if (body.comment) state.commented = true;
@@ -239,6 +268,8 @@ export function buildTools(ctx: ToolContext, http: HttpFn): NufiToolBox {
             parentId: ctx.issueId,
             ...(str(a.assigneeAgentId) ? { assigneeAgentId: str(a.assigneeAgentId) } : {}),
           }),
+          undefined,
+          confirm,
         ),
     },
 
