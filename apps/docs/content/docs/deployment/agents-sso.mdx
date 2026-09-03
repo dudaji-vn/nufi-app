@@ -187,11 +187,12 @@ account cannot be promoted past what the console vouched for.
 
 ## Who may enter
 
-`AGENT_ENTITLEMENTS` decides, and the console enforces it at all three
-doors a member can arrive through: `GET /enter/studio`, `GET
-/oidc/authorize`, and `GET /enter/products`, which the chooser asks
-before it renders so a member sees a card they cannot click with a
-reason on it, rather than discovering the refusal by clicking into it.
+`AGENT_ENTITLEMENTS` decides. The console enforces it at both doors a
+member can walk through — `GET /enter/studio` and `GET /oidc/authorize`
+— and reports it, without enforcing anything, at `GET /enter/products`,
+which the chooser asks before it renders so a member sees a card they
+cannot click with a reason on it rather than discovering the refusal by
+clicking into it.
 
 Unset, both products are open to every member — the same behaviour as
 before there was a gate, so turning this on is a decision you make

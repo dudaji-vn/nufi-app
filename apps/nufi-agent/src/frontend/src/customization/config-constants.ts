@@ -25,8 +25,14 @@ export const DOCS_LINK = "https://docs.app.nufi.me";
 // empty -- the ordinary shape of an unset variable in a Docker build arg or a
 // .env line with nothing after the `=` -- passes `??` as a real value, and
 // Studio would then navigate to itself to renew a session it cannot renew.
+//
+// `import.meta.env?.` because this module is not only client code:
+// vite.config.mts imports it for PORT and PROXY_TARGET, and Vite bundles that
+// config for Node, where `import.meta.env` does not exist. Reading a property
+// straight off it threw during config load and took the whole `vite build`
+// down with it -- which is check-brand-css.sh, and so the brand-css CI job.
 export const NUFI_ENTER_URL =
-  import.meta.env.VITE_NUFI_ENTER_URL || "https://console.nufi.me/enter/studio";
+  import.meta.env?.VITE_NUFI_ENTER_URL || "https://console.nufi.me/enter/studio";
 
 export default {
   DOCS_LINK,
