@@ -28,8 +28,16 @@ function deps(overrides: Record<string, unknown> = {}) {
     comment: async (_id: string, body: string) => {
       calls.push(`comment:${body.slice(0, 24)}`);
     },
-    setStatus: async (_id: string, s: string, patch?: { assigneeUserId?: string }) => {
-      calls.push(patch?.assigneeUserId ? `status:${s}+assignee:${patch.assigneeUserId}` : `status:${s}`);
+    setStatus: async (
+      _id: string,
+      s: string,
+      handoff?: { assigneeUserId: string; assigneeAgentId: null },
+    ) => {
+      calls.push(
+        handoff
+          ? `status:${s}+assignee:${handoff.assigneeUserId}+agent:${String(handoff.assigneeAgentId)}`
+          : `status:${s}`,
+      );
     },
     lastComment: async () => null,
     ...overrides,
@@ -213,7 +221,7 @@ describe("naming a reviewer", () => {
     const d = deps();
     await runWith(d, ctx({ context: { taskId: "issue_1", responsibleUserId: "user_9" } }));
 
-    expect(d.calls).toContain("status:in_review+assignee:user_9");
+    expect(d.calls).toContain("status:in_review+assignee:user_9+agent:null");
   });
 
   /**
@@ -243,5 +251,31 @@ describe("naming a reviewer", () => {
 
     expect(d.calls).toContain("status:blocked");
     expect(d.calls.join()).not.toContain("assignee:");
+  });
+});
+
+describe("handing the issue over", () => {
+  /**
+   * `Issue can only have one assignee` — Paperclip rejects a patch that would
+   * leave both an agent and a human on the issue, so naming a reviewer is not
+   * an addition, it is a handover. Reading the schema alone suggested otherwise:
+   * `assigneeAgentId` and `assigneeUserId` are separate columns with separate
+   * indexes, and both can hold a value in isolation. The rule that forbids
+   * holding both lives in the service, not the schema.
+   */
+  it("clears the agent when it names a reviewer", async () => {
+    const d = deps();
+    await runWith(d, ctx({ context: { taskId: "issue_1", responsibleUserId: "user_9" } }));
+
+    expect(d.calls).toContain("status:in_review+assignee:user_9+agent:null");
+  });
+
+  /** With no reviewer to hand to, keep the agent rather than orphaning the issue. */
+  it("keeps the agent when there is no one to hand to", async () => {
+    const d = deps();
+    await runWith(d, ctx({ context: { taskId: "issue_1" } }));
+
+    expect(d.calls).toContain("status:in_review");
+    expect(d.calls.join()).not.toContain("agent:null");
   });
 });

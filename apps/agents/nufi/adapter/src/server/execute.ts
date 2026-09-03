@@ -40,7 +40,12 @@ export interface ExecuteDeps {
   }>;
   complete(prompt: string): Promise<string>;
   comment(issueId: string, body: string): Promise<void>;
-  setStatus(issueId: string, status: string, patch?: { assigneeUserId?: string }): Promise<void>;
+  setStatus(
+    issueId: string,
+    status: string,
+    /** Handing the issue to a person. Both fields go together — see runWith. */
+    handoff?: { assigneeUserId: string; assigneeAgentId: null },
+  ): Promise<void>;
   /** Most recent comment body, or null. Used to suppress repeated identical failures. */
   lastComment(issueId: string): Promise<string | null>;
 }
@@ -159,7 +164,18 @@ export async function runWith(
      */
     const reviewer =
       disposition.status === "in_review" && !issue.assigneeUserId ? resolveReviewer(ctx) : null;
-    await deps.setStatus(issueId, disposition.status, reviewer ? { assigneeUserId: reviewer } : undefined);
+
+    /**
+     * Naming a reviewer is a HANDOVER, not an addition: `Issue can only have
+     * one assignee`, so the agent has to step off as the person steps on. That
+     * is also the truthful shape — the agent is done, and the next action is a
+     * person's.
+     */
+    await deps.setStatus(
+      issueId,
+      disposition.status,
+      reviewer ? { assigneeUserId: reviewer, assigneeAgentId: null } : undefined,
+    );
 
     await ctx.onLog("stdout", `\n[disposition: ${disposition.status}]\n`);
 
