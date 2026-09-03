@@ -14,6 +14,15 @@ export const HEALTH_CHECK_URL = "/health_check";
 // nufi/README.md "Third-party brand/link sweep".
 export const DOCS_LINK = "https://docs.app.nufi.me";
 
+// NuFi: Studio does not own a login of its own -- the console mints the
+// identity cookie Studio reads, and it lasts eight hours. When it expires the
+// upstream frontend falls through to a local login form with a password field
+// no NUFI member has. This is the door back. Baked at build time because the
+// console's hostname is stable; override with VITE_NUFI_ENTER_URL for a
+// deployment that is not nufi.me.
+export const NUFI_ENTER_URL =
+  import.meta.env.VITE_NUFI_ENTER_URL ?? "https://console.nufi.me/enter/studio";
+
 export default {
   DOCS_LINK,
   BASENAME,

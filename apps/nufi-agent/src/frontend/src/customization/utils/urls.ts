@@ -1,6 +1,7 @@
 import {
   BASE_URL_API,
   HEALTH_CHECK_URL,
+  NUFI_ENTER_URL,
 } from "@/customization/config-constants";
 
 export function getBaseUrl(): string {
@@ -48,3 +49,48 @@ export const LangflowButtonRedirectTarget = () => {
 // would -- Docs is legitimate, unlike GitHub/Discord/X, so it stays,
 // just repointed off upstream's project.
 export const NUFI_DOCS_URL = "https://docs.app.nufi.me";
+
+const REENTRY_STAMP_KEY = "nufi_reentry_at";
+const REENTRY_COOLDOWN_MS = 30_000;
+
+/** The console door, carrying where to land once the identity is renewed. */
+export function getNufiEnterUrl(pathname: string, search: string): string {
+  return `${NUFI_ENTER_URL}?next=${encodeURIComponent(`${pathname}${search}`)}`;
+}
+
+/**
+ * Pure so it can be tested without a browser. Guards the one failure mode a
+ * redirect-on-auth-failure has: if the console hands back a token Studio still
+ * rejects, the two would bounce the member between them without end.
+ */
+export function shouldReenter(now: number, stamp: string | null): boolean {
+  if (!stamp) return true;
+  const at = Number(stamp);
+  if (!Number.isFinite(at)) return true;
+  return now - at > REENTRY_COOLDOWN_MS;
+}
+
+/**
+ * Send the browser back through the console. Returns false when the cooldown
+ * says not to, so the caller can fall through to the normal failure path.
+ */
+export function redirectToNufiEntry(): boolean {
+  let stamp: string | null = null;
+  try {
+    stamp = window.sessionStorage.getItem(REENTRY_STAMP_KEY);
+  } catch {
+    // Storage can throw outright in a locked-down browser. A missing stamp
+    // means "allowed", which is the same as the first visit.
+  }
+  if (!shouldReenter(Date.now(), stamp)) return false;
+  try {
+    window.sessionStorage.setItem(REENTRY_STAMP_KEY, String(Date.now()));
+  } catch {
+    // Without a stamp the cooldown cannot hold, but a member who cannot store
+    // one still deserves the redirect they came for.
+  }
+  window.location.assign(
+    getNufiEnterUrl(window.location.pathname, window.location.search),
+  );
+  return true;
+}
