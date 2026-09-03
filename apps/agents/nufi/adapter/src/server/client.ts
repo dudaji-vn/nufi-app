@@ -68,6 +68,29 @@ export function resolveModelKey(
   return processEnv[keyEnv]?.trim() ?? "";
 }
 
+/**
+ * Refuse to call the control plane without a run token.
+ *
+ * Paperclip does not answer an unauthenticated call with 401. An actor with no
+ * token has access to no company, and the issue routes deliberately return the
+ * same 404 for "does not exist" and "exists in another tenant" so ids cannot be
+ * enumerated. A tokenless adapter therefore reports `heartbeat-context 404` —
+ * which reads as "someone deleted the issue" and sends the reader looking in
+ * entirely the wrong place. Observed exactly that way in production.
+ *
+ * Fail here instead, while the cause is still legible.
+ */
+export function requireRunToken(token: string): string {
+  if (!token.trim()) {
+    throw new Error(
+      "No Paperclip run token. The control plane mints one only for adapters that " +
+        "declare supportsLocalAgentJwt, and PAPERCLIP_API_KEY is not set as a fallback. " +
+        "Without it every control-plane call returns 404 rather than an auth error.",
+    );
+  }
+  return token;
+}
+
 export function buildDeps(ctx: ExecutionContext): ExecuteDeps {
   const cfg = ctx.config as NufiConfig;
 
@@ -95,16 +118,16 @@ export function buildDeps(ctx: ExecutionContext): ExecuteDeps {
   const modelName = target === "chat" ? str(cfg.chatAgentId, "") : str(cfg.model, "gemini");
 
   /** Every mutating call carries the run id, or the audit trail loses the link. */
-  const pcHeaders = {
+  const pcHeaders = () => ({
     "content-type": "application/json",
-    authorization: `Bearer ${runToken}`,
+    authorization: `Bearer ${requireRunToken(runToken)}`,
     "X-Paperclip-Run-Id": ctx.runId,
-  };
+  });
 
   return {
     async fetchIssue(issueId) {
       const res = await fetch(`${apiUrl}/api/issues/${issueId}/heartbeat-context`, {
-        headers: pcHeaders,
+        headers: pcHeaders(),
       });
       if (!res.ok) throw new Error(`heartbeat-context ${res.status}`);
 
@@ -148,14 +171,14 @@ export function buildDeps(ctx: ExecutionContext): ExecuteDeps {
     async comment(issueId, body) {
       const res = await fetch(`${apiUrl}/api/issues/${issueId}/comments`, {
         method: "POST",
-        headers: pcHeaders,
+        headers: pcHeaders(),
         body: JSON.stringify({ body }),
       });
       if (!res.ok) throw new Error(`comment ${res.status}`);
     },
 
     async lastComment(issueId) {
-      const res = await fetch(`${apiUrl}/api/issues/${issueId}/comments`, { headers: pcHeaders });
+      const res = await fetch(`${apiUrl}/api/issues/${issueId}/comments`, { headers: pcHeaders() });
       if (!res.ok) return null;
       const raw = (await res.json()) as unknown;
       const list = (Array.isArray(raw) ? raw : ((raw as { comments?: unknown[] }).comments ?? [])) as {
@@ -173,7 +196,7 @@ export function buildDeps(ctx: ExecutionContext): ExecuteDeps {
     async setStatus(issueId, status) {
       const res = await fetch(`${apiUrl}/api/issues/${issueId}`, {
         method: "PATCH",
-        headers: pcHeaders,
+        headers: pcHeaders(),
         body: JSON.stringify({ status }),
       });
       if (!res.ok) throw new Error(`status ${res.status}`);
