@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { resolveModelKey } from "./client";
+import { requireRunToken, resolveModelKey } from "./client";
 
 describe("resolveModelKey", () => {
   /**
@@ -54,5 +54,21 @@ describe("resolveModelKey", () => {
 
   it("trims surrounding whitespace from a bound value", () => {
     expect(resolveModelKey({ env: { K: " sk-mine\n" } }, "K", {})).toBe("sk-mine");
+  });
+});
+
+describe("requireRunToken", () => {
+  /**
+   * The whole point of the guard: an empty token is not "anonymous access", it
+   * is a 404 on every issue in the company, which reads as data loss rather
+   * than a credential problem.
+   */
+  it("refuses an absent token and names the cause", () => {
+    expect(() => requireRunToken("")).toThrow(/supportsLocalAgentJwt/);
+    expect(() => requireRunToken("   ")).toThrow(/No Paperclip run token/);
+  });
+
+  it("passes a real token through untouched", () => {
+    expect(requireRunToken("eyJhbGciOi.J9.sig")).toBe("eyJhbGciOi.J9.sig");
   });
 });
