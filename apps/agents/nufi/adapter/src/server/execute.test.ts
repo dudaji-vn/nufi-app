@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { resolveResponsibleUser, runWith, type ExecutionContext } from "./execute";
+import { resolveResponsibleUser, runWith, settle, type ExecutionContext } from "./execute";
 import type { ModelTurn } from "./loop";
 import type { HttpCall } from "./tools";
 
@@ -206,5 +206,56 @@ describe("the task briefing", () => {
     expect(seen).toContain("Cut vendor risk");
     // Fetched once for both purposes, not once per purpose.
     expect(calls.filter((c) => c.path.endsWith("/heartbeat-context"))).toHaveLength(1);
+  });
+});
+
+describe("settling honestly when the model just stops", () => {
+  const toolbox = (state: Partial<import("./tools.js").ToolState>) => {
+    const seen: any[] = [];
+    return {
+      seen,
+      box: {
+        state: { finalStatus: null, commented: false, blockers: [], ...state },
+        run: async (c: any) => { seen.push(c); return { ok: true, result: {} }; },
+      } as any,
+    };
+  };
+
+  /**
+   * `in_review` claims a reviewer. When the agent blocked itself behind work it
+   * just created, there is no reviewer — there is a dependency, and saying
+   * "review" means nothing wakes this task when that dependency lands.
+   */
+  it("blocks on the children it created rather than claiming a review", async () => {
+    const { box, seen } = toolbox({ blockers: ["child_a", "child_b"] });
+
+    const out = await settle(box, "I created a subtask to gather the data.", "completed");
+
+    expect(out).toBe("blocked");
+    expect(seen[0].arguments.status).toBe("blocked");
+    expect(seen[0].arguments.blockedByIssueIds).toEqual(["child_a", "child_b"]);
+  });
+
+  /**
+   * A task with nothing written on it is not awaiting review; nobody can review
+   * an empty result. Saying so puts it in front of a person instead of parking
+   * it in a queue that looks healthy.
+   */
+  it("does not send an empty result to review", async () => {
+    const { box, seen } = toolbox({});
+
+    const out = await settle(box, "   ", "completed");
+
+    expect(out).toBe("blocked");
+    expect(String(seen[0].arguments.comment)).toMatch(/without leaving a written result/);
+  });
+
+  it("still sends a real written answer to review", async () => {
+    const { box, seen } = toolbox({});
+
+    const out = await settle(box, "Here are the four suppliers at risk, and why.", "completed");
+
+    expect(out).toBe("in_review");
+    expect(seen[0].arguments.status).toBe("in_review");
   });
 });

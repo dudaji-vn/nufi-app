@@ -53,6 +53,14 @@ export interface ToolState {
   finalStatus: string | null;
   /** True once anything durable was written, so a settle knows not to duplicate. */
   commented: boolean;
+  /**
+   * Children created this run that the agent said block it.
+   *
+   * A settle reads this instead of the model's closing words: an agent that
+   * delegates its blocker and then stops is waiting on a dependency, not on a
+   * reviewer, and only the recorded blocker will ever wake it again.
+   */
+  blockers: string[];
 }
 
 export type NufiToolBox = ToolBox & {
@@ -155,7 +163,7 @@ function confirm(body: unknown): unknown {
 }
 
 export function buildTools(ctx: ToolContext, http: HttpFn): NufiToolBox {
-  const state: ToolState = { finalStatus: null, commented: false };
+  const state: ToolState = { finalStatus: null, commented: false, blockers: [] };
   const headers = {
     "content-type": "application/json",
     "X-Paperclip-Run-Id": ctx.runId,
@@ -318,7 +326,7 @@ export function buildTools(ctx: ToolContext, http: HttpFn): NufiToolBox {
       },
       run: async (a) => {
         if (!str(a.description)) return unworkable(str(a.title) ?? "(untitled)");
-        return result(
+        const created = result(
           await send("POST", `/api/companies/${ctx.companyId}/issues`, {
             title: str(a.title) ?? "",
             description: str(a.description) ?? null,
@@ -344,6 +352,20 @@ export function buildTools(ctx: ToolContext, http: HttpFn): NufiToolBox {
           undefined,
           confirm,
         );
+        /**
+         * `blocksThisTask` was accepted and dropped, so an agent could delegate
+         * its blocker, say so in the thread, and leave a board that disagreed.
+         * Recording it as a first-class blocker is what makes the parent wake
+         * when the child lands — a comment saying "blocked on X" wakes nothing.
+         */
+        if (a.blocksThisTask === true && created.ok) {
+          const childId = str((created.result as Record<string, unknown> | undefined)?.id);
+          if (childId) {
+            state.blockers.push(childId);
+            await send("PATCH", `/api/issues/${ctx.issueId}`, { blockedByIssueIds: [...state.blockers] });
+          }
+        }
+        return created;
       },
     },
 

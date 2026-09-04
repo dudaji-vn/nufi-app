@@ -271,7 +271,7 @@ describe("what the run recorded", () => {
 
   it("starts with nothing recorded", () => {
     const tools = buildTools(ctx(), http().fn);
-    expect(tools.state).toEqual({ finalStatus: null, commented: false });
+    expect(tools.state).toEqual({ finalStatus: null, commented: false, blockers: [] });
   });
 });
 
@@ -528,5 +528,49 @@ describe("a task it creates must be workable", () => {
     expect(out.ok).toBe(false);
     expect(String(out.result)).toMatch(/Set up AngelList/);
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe("a child that blocks its parent actually blocks it", () => {
+  /**
+   * `blocksThisTask` was in the schema and nowhere else — accepted, then
+   * silently dropped. So an agent could do everything right and still leave a
+   * board that contradicts it.
+   *
+   * Measured on DAE-27: the agent created DAE-28 to gather the data it was
+   * missing, wrote "This child issue is blocking the current task. I will now
+   * set this task to blocked", and the board recorded `in_review`. The words
+   * and the status disagreed, and only the status is machine-readable — so
+   * nothing would ever wake it when DAE-28 finished.
+   */
+  it("records the new child as a blocker on the parent", async () => {
+    const { fn, calls } = http({
+      "POST /api/companies/co_1/issues": { status: 200, body: { id: "issue_new", identifier: "DAE-28" } },
+    });
+    const tools = buildTools(ctx(), fn);
+
+    await tools.run(call("create_child_issue", {
+      title: "Collect supplier performance data",
+      description: "Pull the last 6 months of delivery and defect records per supplier.",
+      blocksThisTask: true,
+    }));
+
+    const patch = calls.find((c) => c.method === "PATCH");
+    expect(patch, "the parent should have been patched with the blocker").toBeDefined();
+    expect(patch?.body).toMatchObject({ blockedByIssueIds: ["issue_new"] });
+    expect(tools.state.blockers).toEqual(["issue_new"]);
+  });
+
+  it("leaves the parent alone when the child does not block it", async () => {
+    const { fn, calls } = http();
+    const tools = buildTools(ctx(), fn);
+
+    await tools.run(call("create_child_issue", {
+      title: "Nice to have",
+      description: "Something that can happen later, in parallel.",
+    }));
+
+    expect(calls.filter((c) => c.method === "PATCH")).toHaveLength(0);
+    expect(tools.state.blockers).toEqual([]);
   });
 });

@@ -229,16 +229,40 @@ export async function settle(tools: NufiToolBox, text: string, stopReason: strin
   }
 
   const ranOutOfTurns = stopReason === "iteration_cap";
-  const status = ranOutOfTurns ? "blocked" : "in_review";
+  const written = text.trim();
+  /**
+   * `in_review` is a claim that somebody will review this, and Paperclip treats
+   * it as a healthy waiting path. Two endings do not earn it.
+   *
+   * A run that delegated its own blocker is waiting on a dependency, not a
+   * person — and only a recorded blocker will wake it when that dependency
+   * lands. Measured on DAE-27: the agent created the child, wrote "I will now
+   * set this task to blocked", and the board said `in_review`.
+   *
+   * A run that wrote nothing has nothing to review. Parking it in a reviewer's
+   * queue makes an empty result look like progress; `blocked` puts it in front
+   * of a person, which is what the message has always said it needs.
+   */
+  const blockedOnChildren = tools.state.blockers.length > 0;
+  const status = ranOutOfTurns || blockedOnChildren || !written ? "blocked" : "in_review";
+
   const comment = ranOutOfTurns
     ? "The agent used its whole turn budget without reaching a conclusion, so this task is " +
       "blocked rather than left looking active. A person should decide whether it is " +
       "answerable as written.\n\n" +
-      (text.trim() ? `Its last words:\n\n${text.trim()}` : "It produced no closing summary.")
-    : text.trim() ||
+      (written ? `Its last words:\n\n${written}` : "It produced no closing summary.")
+    : written ||
       "The agent finished without leaving a written result. A person should decide whether " +
         "this task is answerable as written.";
 
-  await tools.run({ id: "settle", name: "update_issue", arguments: { status, comment } });
+  await tools.run({
+    id: "settle",
+    name: "update_issue",
+    arguments: {
+      status,
+      comment,
+      ...(blockedOnChildren ? { blockedByIssueIds: [...tools.state.blockers] } : {}),
+    },
+  });
   return status;
 }
