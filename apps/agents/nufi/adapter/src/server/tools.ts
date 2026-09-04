@@ -186,9 +186,12 @@ function confirm(body: unknown): unknown {
  * board: "Không thể thu thập thông tin dạng văn bản tự do bằng công cụ
  * ask_user_questions."
  *
- * It was half right. Every question carries options. But a question with an
- * EMPTY options array is the free-text case — the person types into `otherText`
- * — which the server accepts and the card renders.
+ * It was half right. Every question carries options — at least one, enforced by
+ * the server: `too_small, minimum: 1, path: payload.questions.0.options`. Free
+ * text is not the absence of options; the card always renders an "Other" button
+ * (OTHER_ANSWER_ID) beside them, and what the person types comes back as
+ * `otherText`. So the answer to "I need free text" is: offer your best guesses
+ * and let them say something else.
  */
 const QUESTIONS_PAYLOAD = OBJECT(
   {
@@ -208,10 +211,11 @@ const QUESTIONS_PAYLOAD = OBJECT(
           required: { type: "boolean" },
           options: {
             type: "array",
+            minItems: 1,
             description:
-              "The choices. Use empty options for a free-text question — the person types their own answer " +
-              "and it comes back as otherText. Offer options whenever you can name the likely answers; " +
-              "they are faster to answer and easier to act on.",
+              "The choices — at least one, always. Name the answers you think are likely; the card also " +
+              "shows an \"Other\" button beside them, so a person can type something you did not list and " +
+              "it comes back as otherText. There is no free-text-only question: give options anyway.",
             items: OBJECT({ id: S, label: S, description: S }, ["id", "label"]),
           },
         },
@@ -527,10 +531,35 @@ export function buildTools(ctx: ToolContext, http: HttpFn): NufiToolBox {
         name: "ask_user_questions",
         description:
           "Ask a person a short set of structured questions when information is genuinely missing and no agent could supply it. Never invent an answer you could have asked for. " +
-          "Free text is supported: give a question empty options and the person types the answer.",
+          "Every question needs at least one option; the card also offers \"Other\" so a person can type " +
+          "something you did not list.",
         parameters: OBJECT({ title: S, summary: S, payload: QUESTIONS_PAYLOAD }, ["payload"]),
       },
-      run: async (a) => interaction("ask_user_questions", a),
+      run: async (a) => {
+        /**
+         * The server answers an empty options array with a bare 400, and the
+         * measured response to that was to stop asking and block with a
+         * comment. A tool error the model can act on gets a retry in the same
+         * heartbeat; a 400 it cannot read does not.
+         */
+        const payload = args(a.payload);
+        const questions = Array.isArray(payload.questions) ? payload.questions : [];
+        for (const q of questions) {
+          const row = args(q);
+          const options = Array.isArray(row.options) ? row.options : [];
+          if (options.length === 0) {
+            return {
+              ok: false,
+              result:
+                `Question "${str(row.prompt) ?? str(row.id) ?? "(unnamed)"}" has no options, and the server ` +
+                `requires at least one. There is no free-text-only question here: name the answers you think ` +
+                `are likely, and the card's "Other" button lets the person type anything else. Send it again ` +
+                `with options.`,
+            };
+          }
+        }
+        return interaction("ask_user_questions", a);
+      },
     },
 
     request_confirmation: {

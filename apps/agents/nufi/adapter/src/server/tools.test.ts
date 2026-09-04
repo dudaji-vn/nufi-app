@@ -660,11 +660,12 @@ describe("the shape of a question", () => {
     expect(question.required).toEqual(expect.arrayContaining(["id", "prompt", "selectionMode", "options"]));
   });
 
-  it("says how to ask for something that is not a multiple choice", () => {
+  it("says how a person answers something nobody listed", () => {
     const tools = buildTools(ctx(), http().fn);
-    const schema = tools.schemas.find((s) => s.name === "ask_user_questions");
+    const schema = JSON.stringify(tools.schemas.find((s) => s.name === "ask_user_questions"));
 
-    expect(JSON.stringify(schema)).toMatch(/empty options/i);
+    expect(schema).toMatch(/Other/);
+    expect(schema).toMatch(/otherText/);
   });
 
   it("describes what a confirmation actually needs", () => {
@@ -674,5 +675,61 @@ describe("the shape of a question", () => {
 
     expect(payload.properties.prompt).toBeDefined();
     expect(payload.required).toEqual(expect.arrayContaining(["version", "prompt"]));
+  });
+});
+
+describe("what the free-text case actually is", () => {
+  /**
+   * The previous fix wrote something false into the schema: "use empty options
+   * for a free-text question". The server rejects that outright —
+   *
+   *   400 {"code":"too_small","minimum":1,"path":["payload","questions",0,"options"]}
+   *
+   * — so the model followed the instruction and got a 400, then gave up on
+   * asking and blocked with a comment, which is the exact behaviour that fix
+   * existed to prevent. Measured on LEG-15 after it shipped.
+   *
+   * The real shape, verified against the live server: at least one option, and
+   * the card always renders an "Other" button (OTHER_ANSWER_ID in
+   * IssueThreadInteractionCard) so a person can type an answer nobody listed.
+   * Free text is never the absence of options; it rides alongside them.
+   */
+  it("tells the model options are never empty", () => {
+    const tools = buildTools(ctx(), http().fn);
+    const schema = JSON.stringify(tools.schemas.find((s) => s.name === "ask_user_questions"));
+
+    expect(schema).not.toMatch(/empty options/i);
+    expect(schema).toMatch(/Other/);
+  });
+
+  it("refuses an empty options array before the server does", async () => {
+    const { fn, calls } = http();
+    const tools = buildTools(ctx(), fn);
+
+    const out = await tools.run(call("ask_user_questions", {
+      payload: { version: 1, questions: [{ id: "q1", prompt: "How long?", selectionMode: "single", options: [] }] },
+    }));
+
+    expect(out.ok).toBe(false);
+    expect(String(out.result)).toMatch(/at least one/i);
+    expect(String(out.result)).toMatch(/Other/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("sends a question that names its options", async () => {
+    const { fn, calls } = http();
+    const tools = buildTools(ctx(), fn);
+
+    const out = await tools.run(call("ask_user_questions", {
+      payload: {
+        version: 1,
+        questions: [
+          { id: "term", prompt: "How long?", selectionMode: "single", options: [{ id: "3y", label: "3 years" }] },
+        ],
+      },
+    }));
+
+    expect(out.ok).toBe(true);
+    expect(calls).toHaveLength(1);
   });
 });
