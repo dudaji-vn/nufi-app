@@ -54,6 +54,13 @@ export interface ToolState {
   /** True once anything durable was written, so a settle knows not to duplicate. */
   commented: boolean;
   /**
+   * True once this run put a question, confirmation, or proposal in front of a
+   * person. That is a real waiting path — Paperclip names `in_review` for
+   * exactly these — so a settle must not read the silence that follows as a
+   * run that produced nothing.
+   */
+  asked: boolean;
+  /**
    * Every child created this run, in order.
    *
    * An agent that splits its task and then blocks is blocked on the pieces —
@@ -171,7 +178,7 @@ function confirm(body: unknown): unknown {
 }
 
 export function buildTools(ctx: ToolContext, http: HttpFn): NufiToolBox {
-  const state: ToolState = { finalStatus: null, commented: false, blockers: [], children: [] };
+  const state: ToolState = { finalStatus: null, commented: false, blockers: [], children: [], asked: false };
   const headers = {
     "content-type": "application/json",
     "X-Paperclip-Run-Id": ctx.runId,
@@ -203,6 +210,7 @@ export function buildTools(ctx: ToolContext, http: HttpFn): NufiToolBox {
       ...(str(a.idempotencyKey) ? { idempotencyKey: str(a.idempotencyKey) } : {}),
       payload: a.payload ?? { version: 1 },
     });
+    if (res.status < 400) state.asked = true;
     return result(res, undefined, confirm);
   };
 

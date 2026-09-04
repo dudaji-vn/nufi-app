@@ -320,7 +320,15 @@ export async function settle(tools: NufiToolBox, text: string, stopReason: strin
    */
   const waitingOn = tools.state.blockers.length > 0 ? tools.state.blockers : tools.state.children;
   const blockedOnChildren = waitingOn.length > 0;
-  const status = ranOutOfTurns || blockedOnChildren || !written ? "blocked" : "in_review";
+  /**
+   * A pending question is a waiting path, not an empty run. Paperclip: "prefer
+   * `in_review` for review, approval, request_confirmation, ask_user_questions,
+   * and suggest_tasks waits." Without this, a heartbeat whose whole purpose was
+   * to put a decision in front of a person reads as stuck while the card sits
+   * there waiting.
+   */
+  const status =
+    ranOutOfTurns || blockedOnChildren || (!written && !tools.state.asked) ? "blocked" : "in_review";
 
   const comment = ranOutOfTurns
     ? "The agent used its whole turn budget without reaching a conclusion, so this task is " +
@@ -328,8 +336,10 @@ export async function settle(tools: NufiToolBox, text: string, stopReason: strin
       "answerable as written.\n\n" +
       (written ? `Its last words:\n\n${written}` : "It produced no closing summary.")
     : written ||
-      "The agent finished without leaving a written result. A person should decide whether " +
-        "this task is answerable as written.";
+      (tools.state.asked
+        ? "Waiting on the question this run put in front of a person."
+        : "The agent finished without leaving a written result. A person should decide whether " +
+          "this task is answerable as written.");
 
   await tools.run({
     id: "settle",
