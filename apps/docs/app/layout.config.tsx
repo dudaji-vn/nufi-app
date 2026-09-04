@@ -20,7 +20,7 @@ export const baseOptions: BaseLayoutProps = {
       </span>
     ),
   },
-  // Section navigation lives in the sidebar tab switcher, so the top nav
-  // only carries a link out to the live app (avoids duplicating the tabs).
+  // Section navigation lives in the sidebar tree, so the top nav only
+  // carries a link out to the live app (avoids duplicating the sections).
   links: [{ text: 'Open App', url: 'https://chat.nufi.me', external: true }],
 };

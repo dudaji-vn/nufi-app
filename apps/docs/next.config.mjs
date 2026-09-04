@@ -34,6 +34,11 @@ const config = {
       { source: '/docs/getting-started/quick-start', destination: '/docs/developer/quick-start', permanent: true },
       { source: '/docs/getting-started/verify-install', destination: '/docs/developer/verify-install', permanent: true },
       { source: '/docs/getting-started', destination: '/docs/developer', permanent: true },
+
+      // A design note on RAG paths sat at the end of Overview. Once Prev/Next
+      // runs across sections it was the last thing a new reader met before
+      // "Using the app"; it belongs with the other engineering notes.
+      { source: '/docs/overview/rag-integration', destination: '/docs/developer/rag-integration', permanent: true },
     ];
   },
 };

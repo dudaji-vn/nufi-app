@@ -1,10 +1,7 @@
 {
   "title": "Develop",
-  "description": "Run the stack locally and ship to it",
-  "root": true,
   "icon": "Code",
   "pages": [
-    "index",
     "---Get started---",
     "prerequisites",
     "quick-start",
@@ -19,6 +16,8 @@
     "console-dev",
     "---Extend & ship---",
     "adding-models",
-    "release-flow"
+    "release-flow",
+    "---Design notes---",
+    "rag-integration"
   ]
 }
