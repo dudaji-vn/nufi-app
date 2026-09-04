@@ -75,6 +75,19 @@ export function resolveResponsibleUser(ctx: ExecutionContext): string | null {
  * who does the leaving. The agent has tools now and is expected to use them;
  * `settle` steps in only when it did not.
  */
+/**
+ * Wakes that mean something changed since the task was answered — a person
+ * commented or resolved an interaction, an approval landed, a blocker or child
+ * finished. These are the wakes the already-answered guard must not swallow.
+ */
+const REACTIVE_WAKES = new Set([
+  "issue_commented",
+  "issue_comment_mentioned",
+  "issue_blockers_resolved",
+  "issue_children_completed",
+  "approval_resolved",
+]);
+
 export async function runWith(deps: ExecuteDeps, ctx: ExecutionContext): Promise<ExecutionResult> {
   const issueId = readString(ctx.context, "taskId") ?? readString(ctx.context, "issueId");
   if (!issueId) {
@@ -135,7 +148,24 @@ export async function runWith(deps: ExecuteDeps, ctx: ExecutionContext): Promise
     } | null;
     const status = heartbeat?.issue?.status ?? "todo";
     tools.context.goalId = heartbeat?.goal?.id ?? heartbeat?.issue?.goalId ?? null;
-    if (status === "in_review" || status === "done") {
+    /**
+     * ...unless a person just acted. `in_review` is exactly where a task sits
+     * while it waits for someone, so an unconditional guard there drops the
+     * answer it was waiting for: the server wakes the assignee with
+     * `reason: "issue_commented"` on every interaction response, and the agent
+     * replied "already answered" and exited. Paperclip's contract is explicit —
+     * "issue_commented with a comment id → read the comment, then address the
+     * feedback (applies to in_review too)".
+     *
+     * The guard keeps what it was built for: a plain re-dispatch of a task
+     * nobody has touched since it was answered.
+     */
+    const wakeReason = readString(ctx.context, "wakeReason");
+    const someoneActed =
+      Boolean(readString(ctx.context, "wakeCommentId")) ||
+      Boolean(readString(ctx.context, "approvalId")) ||
+      REACTIVE_WAKES.has(wakeReason ?? "");
+    if ((status === "in_review" || status === "done") && !someoneActed) {
       await ctx.onLog("stdout", "Already answered and awaiting a person; nothing to add.\n");
       return {
         exitCode: 0,
