@@ -382,7 +382,24 @@ export function buildTools(ctx: ToolContext, http: HttpFn): NufiToolBox {
          * with no owner at all is worse than one still held by its agent.
          */
         const namedAssignee = str(a.assigneeUserId);
-        const reviewer = status === "in_review" ? namedAssignee ?? ctx.responsibleUserId : namedAssignee;
+        /**
+         * ...unless the agent is the one waiting. A pending interaction is
+         * itself a valid review path — routes/issues.ts returns early on
+         * `interactions.some(i => i.status === "pending")` — so handing the task
+         * over here buys nothing and costs the continuation: an issue holds one
+         * assignee, and `continuationPolicy: wake_assignee` then has nobody to
+         * wake. Measured on LEG-15, where a confirmation was accepted at
+         * 06:14:20 and no heartbeat ran: the agent had asked, stepped off its
+         * own task, and could not be called back to hear the answer.
+         *
+         * A person named explicitly still wins — that is a deliberate handover.
+         */
+        const waitingOnItsOwnQuestion = status === "in_review" && state.asked && !namedAssignee;
+        const reviewer = waitingOnItsOwnQuestion
+          ? undefined
+          : status === "in_review"
+            ? namedAssignee ?? ctx.responsibleUserId
+            : namedAssignee;
         if (reviewer) {
           body.assigneeUserId = reviewer;
           body.assigneeAgentId = null;

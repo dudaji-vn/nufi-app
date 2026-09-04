@@ -733,3 +733,65 @@ describe("what the free-text case actually is", () => {
     expect(calls).toHaveLength(1);
   });
 });
+
+describe("who owns a task that is waiting on an answer", () => {
+  /**
+   * The handover exists because an agent-authored `in_review` needs a review
+   * path, and the server refuses one without it. But a PENDING INTERACTION is
+   * itself a valid review path — routes/issues.ts returns early on
+   * `interactions.some(i => i.status === "pending")` — and handing the task to a
+   * person in that case costs the continuation.
+   *
+   * An issue holds one assignee. Hand it to the person and the agent is no
+   * longer the assignee, so `continuationPolicy: wake_assignee` has nobody to
+   * wake. Measured on LEG-15: the confirmation was accepted at 06:14:20 and no
+   * heartbeat ran. The agent had asked, stepped off the task, and could not be
+   * called back to hear the answer.
+   *
+   * So: if this run put a question in front of a person, the question is the
+   * review path and the agent stays on the task. Everything else hands over as
+   * before.
+   */
+  it("stays on the task when it is the one waiting for an answer", async () => {
+    const { fn, calls } = http();
+    const tools = buildTools(ctx(), fn);
+
+    await tools.run(call("ask_user_questions", {
+      payload: {
+        version: 1,
+        questions: [{ id: "q", prompt: "How long?", selectionMode: "single", options: [{ id: "a", label: "3y" }] }],
+      },
+    }));
+    await tools.run(call("update_issue", { status: "in_review", comment: "Asked." }));
+
+    const patch = calls.filter((c) => c.method === "PATCH").pop();
+    expect(patch?.body).not.toHaveProperty("assigneeUserId");
+    expect(patch?.body).not.toHaveProperty("assigneeAgentId");
+  });
+
+  it("still hands over when there is no question to wait on", async () => {
+    const { fn, calls } = http();
+    const tools = buildTools(ctx(), fn);
+
+    await tools.run(call("update_issue", { status: "in_review", comment: "Here is the answer." }));
+
+    const patch = calls.filter((c) => c.method === "PATCH").pop();
+    expect(patch?.body).toMatchObject({ assigneeUserId: "user_9", assigneeAgentId: null });
+  });
+
+  it("still honours a person named explicitly", async () => {
+    const { fn, calls } = http();
+    const tools = buildTools(ctx(), fn);
+
+    await tools.run(call("ask_user_questions", {
+      payload: {
+        version: 1,
+        questions: [{ id: "q", prompt: "?", selectionMode: "single", options: [{ id: "a", label: "a" }] }],
+      },
+    }));
+    await tools.run(call("update_issue", { status: "in_review", assigneeUserId: "user_9", comment: "Over to you." }));
+
+    const patch = calls.filter((c) => c.method === "PATCH").pop();
+    expect(patch?.body).toMatchObject({ assigneeUserId: "user_9", assigneeAgentId: null });
+  });
+});
