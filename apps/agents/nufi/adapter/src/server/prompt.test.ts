@@ -183,3 +183,37 @@ describe("the rest of the board", () => {
     expect(text).not.toMatch(/other tasks/i);
   });
 });
+
+describe("which company this is", () => {
+  /**
+   * The agent asked a person to describe the company it works for.
+   *
+   * Measured on HAN-3, after it had correctly read the neighbouring task's
+   * plan: `tools used: checkout_issue, list_issues, get_issue, read_plan,
+   * ask_user_questions`, and the one thing it still asked for was "information
+   * about Hanwoo Foods" — the mission written on the company record when the
+   * company was created. `heartbeat-context` returns `company: null`, so it had
+   * no way to know.
+   *
+   * A new hire is told what the company does on day one. This is that, and it
+   * is the last thing in the wake that the agent was asking people for.
+   */
+  it("names the company and what it is for", () => {
+    const text = wakeMessage({
+      issueId: "issue_1",
+      companyId: "co_1",
+      agentId: "agent_1",
+      company: { name: "Hanwoo Foods", mission: "Cung cấp thực phẩm chế biến sẵn cho chuỗi cửa hàng tiện lợi." },
+      issue: null,
+    });
+
+    expect(text).toContain("Hanwoo Foods");
+    expect(text).toContain("thực phẩm chế biến sẵn");
+  });
+
+  it("says nothing when the company could not be read", () => {
+    const text = wakeMessage({ issueId: "issue_1", companyId: "co_1", agentId: "agent_1", issue: null });
+
+    expect(text).not.toMatch(/## The company/);
+  });
+});

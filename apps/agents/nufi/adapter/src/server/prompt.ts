@@ -151,6 +151,21 @@ export interface WakeContext {
    * sees the board; this is that.
    */
   neighbours?: WakeNeighbour[];
+  /**
+   * The company this agent works for, and what it is for.
+   *
+   * `heartbeat-context` returns `company: null`, so an agent had no way to know
+   * either. Measured on HAN-3: having correctly read the neighbouring task's
+   * plan, the one thing it still asked a person for was "information about
+   * Hanwoo Foods" — the mission written on the company record at creation. A
+   * new hire is told what the company does on day one.
+   */
+  company?: WakeCompany | null;
+}
+
+export interface WakeCompany {
+  name: string;
+  mission?: string | null;
 }
 
 export interface WakeNeighbour {
@@ -200,6 +215,10 @@ export function wakeMessage(ctx: WakeContext): string {
   }
   if (ctx.approvalId) {
     lines.push(`An approval was resolved (${ctx.approvalId}). Review it before anything else.`);
+  }
+  if (ctx.company?.name) {
+    lines.push("", "## The company", "", ctx.company.name);
+    if (ctx.company.mission?.trim()) lines.push("", ctx.company.mission.trim());
   }
   const neighbours = (ctx.neighbours ?? []).filter((row) => row.identifier !== ctx.issueId);
   if (neighbours.length) {
