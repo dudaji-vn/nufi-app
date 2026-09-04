@@ -18,6 +18,7 @@ import {
   costEvents,
   financeEvents,
   issueReadStates,
+  issueThreadInteractions,
   approvalComments,
   approvals,
   activityLog,
@@ -474,6 +475,21 @@ export function companyService(db: Db) {
         await tx.delete(routineTriggers).where(eq(routineTriggers.companyId, id));
         await tx.delete(routineRevisions).where(eq(routineRevisions.companyId, id));
         await tx.delete(routines).where(eq(routines.companyId, id));
+        /**
+         * Before `issues`, and before `issueComments` — an interaction points at
+         * both. This is the second ordering bug found in this function, and both
+         * were found the same way: by deleting a company that had been used.
+         *
+         * Every question, confirmation and task proposal an agent puts in front
+         * of a person lands here, so any company where the agent did its job has
+         * rows. Measured on the live instance, three companies at once:
+         *
+         *   update or delete on table "issues" violates foreign key constraint
+         *   "issue_thread_interactions_issue_id_issues_id_fk"
+         *
+         * What the operator saw was "Internal server error".
+         */
+        await tx.delete(issueThreadInteractions).where(eq(issueThreadInteractions.companyId, id));
         await tx.delete(issueReadStates).where(eq(issueReadStates.companyId, id));
         await tx.delete(documents).where(eq(documents.companyId, id));
         await tx.delete(issues).where(eq(issues.companyId, id));
