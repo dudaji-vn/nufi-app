@@ -63,6 +63,20 @@ ALLOWLIST=(
   # one line of behaviour, both distribution-specific by nature.
   "ui/src/components/OnboardingWizard.tsx"
   "ui/src/adapters/adapter-display-registry.ts"
+  # Which company the app opens on. `GET /companies` returns every company to an
+  # instance admin, while `hasCompanyAccess` -- guarding every other company
+  # route -- requires membership and deliberately gives instance admins no
+  # blanket access. Auto-selecting from the unfiltered list lands the operator
+  # on a company where the dashboard, agents, issues, projects and routines all
+  # 403, with no way out: the company cannot even be deleted, because delete
+  # checks the same access. Observed on the live instance.
+  #
+  # The fix reads `cli-auth/me`, which the UI already fetches for
+  # CloudAccessGate, so it costs no request. Candidate to send upstream, since
+  # nothing here is NuFi-specific -- it is a mismatch between two upstream
+  # endpoints.
+  "ui/src/context/CompanyContext.tsx"
+  "ui/src/context/CompanyContext.test.tsx"
   # Single sign-on. See nufi/README.md, "Signing in with a NUFI account".
   "server/src/auth/better-auth.ts"
   # The button that reaches the plugin above. Enabling generic-oauth on the

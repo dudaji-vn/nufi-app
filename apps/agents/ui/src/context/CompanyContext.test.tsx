@@ -80,6 +80,66 @@ describe("resolveBootstrapCompanySelection", () => {
     })).toBe("company-1");
   });
 
+  /**
+   * `GET /companies` returns every company to an instance admin, but
+   * `hasCompanyAccess` — which guards every other company route — requires
+   * membership, and says in as many words that instance admins get no blanket
+   * access. So the list can hold companies whose every request will 403.
+   *
+   * Observed on the live instance: the app auto-selected a company the operator
+   * was not a member of and sat on a wall of loading skeletons, with the
+   * dashboard, agents, issues, projects and routines all refused. There was no
+   * visible way out — the company could not even be left by deleting it,
+   * because that route checks the same access.
+   */
+  it("skips a company the user cannot actually use", () => {
+    expect(resolveBootstrapCompanySelection({
+      companies: [{ id: "not-a-member" }, activeCompany],
+      sidebarCompanies: [{ id: "not-a-member" }, activeCompany],
+      selectedCompanyId: null,
+      storedCompanyId: null,
+      accessibleCompanyIds: ["company-1"],
+    })).toBe("company-1");
+  });
+
+  it("does not resurrect a stored company the user cannot use", () => {
+    expect(resolveBootstrapCompanySelection({
+      companies: [{ id: "not-a-member" }, activeCompany],
+      sidebarCompanies: [{ id: "not-a-member" }, activeCompany],
+      selectedCompanyId: null,
+      storedCompanyId: "not-a-member",
+      accessibleCompanyIds: ["company-1"],
+    })).toBe("company-1");
+  });
+
+  /**
+   * Access is unknown until `cli-auth/me` answers. Treating "not loaded yet"
+   * as "no access" would blank the app on every cold start.
+   */
+  it("behaves as before when access is not known yet", () => {
+    expect(resolveBootstrapCompanySelection({
+      companies: [{ id: "not-a-member" }, activeCompany],
+      sidebarCompanies: [{ id: "not-a-member" }, activeCompany],
+      selectedCompanyId: null,
+      storedCompanyId: null,
+    })).toBe("not-a-member");
+  });
+
+  /**
+   * A user who is a member of nothing gets the old behaviour rather than a
+   * blank screen. Every request will refuse either way; picking one at least
+   * leaves the company switcher reachable.
+   */
+  it("falls back to the first company when none are accessible", () => {
+    expect(resolveBootstrapCompanySelection({
+      companies: [{ id: "not-a-member" }],
+      sidebarCompanies: [{ id: "not-a-member" }],
+      selectedCompanyId: null,
+      storedCompanyId: null,
+      accessibleCompanyIds: [],
+    })).toBe("not-a-member");
+  });
+
   it("keeps a valid selected company ahead of stored bootstrap state", () => {
     expect(resolveBootstrapCompanySelection({
       companies: [activeCompany],
