@@ -4,6 +4,7 @@ import {
   wakeMessage,
   type WakeInteraction,
   type WakeNeighbour,
+  type WakeCompany,
 } from "./prompt.js";
 import { buildTools, type HttpFn, type NufiToolBox } from "./tools.js";
 
@@ -232,6 +233,29 @@ export async function runWith(deps: ExecuteDeps, ctx: ExecutionContext): Promise
      * Best-effort, like the interaction above: a failed read costs the list,
      * never the run.
      */
+    /**
+     * Which company this is, and what it is for. `heartbeat-context` returns
+     * `company: null`, so without this the agent asks a person to describe its
+     * own employer — measured on HAN-3.
+     */
+    let company: WakeCompany | null = null;
+    try {
+      const res = await deps.http({
+        method: "GET",
+        path: `/api/companies/${ctx.agent.companyId}`,
+        headers: { "X-Paperclip-Run-Id": ctx.runId },
+      });
+      const row = (res.body ?? {}) as { name?: unknown; mission?: unknown };
+      if (typeof row.name === "string" && row.name.trim()) {
+        company = {
+          name: row.name,
+          mission: typeof row.mission === "string" ? row.mission : null,
+        };
+      }
+    } catch {
+      await ctx.onLog("stdout", "Could not read the company this heartbeat.\n");
+    }
+
     let neighbours: WakeNeighbour[] = [];
     try {
       const res = await deps.http({
@@ -268,6 +292,7 @@ export async function runWith(deps: ExecuteDeps, ctx: ExecutionContext): Promise
         approvalId: readString(ctx.context, "approvalId"),
         interaction,
         neighbours,
+        company,
         issue: heartbeat?.issue?.title
           ? {
               title: heartbeat.issue.title,
