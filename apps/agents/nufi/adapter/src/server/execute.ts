@@ -368,6 +368,8 @@ export async function settle(tools: NufiToolBox, text: string, stopReason: strin
   }
 
   const ranOutOfTurns = stopReason === "iteration_cap";
+  /** The model produced nothing twice running. Say that, rather than "finished". */
+  const wentSilent = stopReason === "silent";
   const written = text.trim();
   /**
    * `in_review` is a claim that somebody will review this, and Paperclip treats
@@ -398,14 +400,20 @@ export async function settle(tools: NufiToolBox, text: string, stopReason: strin
    * there waiting.
    */
   const status =
-    ranOutOfTurns || blockedOnChildren || (!written && !tools.state.asked) ? "blocked" : "in_review";
+    ranOutOfTurns || wentSilent || blockedOnChildren || (!written && !tools.state.asked)
+      ? "blocked"
+      : "in_review";
 
   const comment = ranOutOfTurns
     ? "The agent used its whole turn budget without reaching a conclusion, so this task is " +
       "blocked rather than left looking active. A person should decide whether it is " +
       "answerable as written.\n\n" +
       (written ? `Its last words:\n\n${written}` : "It produced no closing summary.")
-    : written ||
+    : wentSilent
+      ? "The agent produced no output at all — no text and no tool call, twice running — so this " +
+        "task is unchanged. It is not blocked on anything; it simply did not run. Waking it again " +
+        "is the first thing to try."
+      : written ||
       (tools.state.asked
         ? "Waiting on the question this run put in front of a person."
         : "The agent finished without leaving a written result. A person should decide whether " +

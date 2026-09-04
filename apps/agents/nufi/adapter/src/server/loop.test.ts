@@ -138,3 +138,47 @@ describe("runLoop", () => {
     expect(out.toolsUsed).toEqual(["comment_on_issue"]);
   });
 });
+
+describe("an empty turn is not an answer", () => {
+  /**
+   * The loop treated "no tool calls" as "the agent has answered", and took the
+   * empty string with it. So a model turn that produced nothing at all ended
+   * the heartbeat, and the task was blocked with "the agent finished without
+   * leaving a written result" — a run that never did anything, reported as a
+   * run that finished.
+   *
+   * Measured twice: HAN-5 (`5 turn(s); tools used: checkout_issue, read_plan,
+   * list_issues`) and BOM-1 (`2 turn(s); tools used: checkout_issue`). It is
+   * not the token budget — a full-size prompt at max_tokens 4096 came back with
+   * 352 completion tokens, 111 of them reasoning. Whatever the cause, silence
+   * is not a disposition.
+   */
+  it("nudges the model when it produces nothing", async () => {
+    const model = scriptedModel([
+      { text: "", toolCalls: [] },
+      { text: "Here is the answer.", toolCalls: [] },
+    ]);
+
+    const out = await runLoop({ model, tools: toolBox(), system: "s", wake: "w" });
+
+    expect(out.text).toBe("Here is the answer.");
+    expect(JSON.stringify(model.seen.at(-1))).toMatch(/produced no output/i);
+  });
+
+  it("gives up honestly when it stays silent", async () => {
+    const model = scriptedModel([{ text: "", toolCalls: [] }]);
+
+    const out = await runLoop({ model, tools: toolBox(), system: "s", wake: "w" });
+
+    expect(out.stopReason).toBe("silent");
+    expect(out.text).toBe("");
+  });
+
+  it("still ends on a real written answer", async () => {
+    const model = scriptedModel([{ text: "Done.", toolCalls: [] }]);
+
+    const out = await runLoop({ model, tools: toolBox(), system: "s", wake: "w" });
+
+    expect(out.stopReason).toBe("answered");
+  });
+});
