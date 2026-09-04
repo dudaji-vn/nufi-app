@@ -39,11 +39,30 @@ ALLOWLIST=(
   # both aborts on a foreign-key violation and silently leaves it in place.
   # Two lines swapped. Candidate to send upstream.
   "server/src/services/companies.ts"
+  # Its test, for the same reason the successful-run-handoff test is listed
+  # above: allowlisting a fix without its test leaves main red on the very
+  # guard that would have caught the next one. This is the second time that
+  # exact mistake shipped.
+  "server/src/__tests__/companies-service.test.ts"
   # Builds nufi/adapter, which nothing else does: it is an external adapter, so
   # its dist is gitignored and no upstream build step touches it. Without these
   # lines the image ships a server that cannot offer `nufi_agent` -- the only
   # adapter that reaches the NuFi gateway -- and says nothing about it.
   "Dockerfile"
+  # Which adapter a new company gets by default, and which one wears the
+  # "Recommended" badge. Upstream picks Claude Code and Codex because upstream
+  # ships pointed at Anthropic and OpenAI; this distribution ships pointed at
+  # the NUFI gateway, which serves Gemini. Accepting upstream's default here
+  # produces a team lead whose first run dies on
+  # `Invalid model name passed in model=claude-opus-4-8`, and the vendor
+  # harnesses narrate tool use they never performed when driven by a model
+  # their prompts were not written for -- both measured on the live gateway.
+  #
+  # There is no server-side seam for either: `recommended` is a constant in the
+  # display registry, and the default is component state. Two leaf edits, both
+  # one line of behaviour, both distribution-specific by nature.
+  "ui/src/components/OnboardingWizard.tsx"
+  "ui/src/adapters/adapter-display-registry.ts"
   # Single sign-on. See nufi/README.md, "Signing in with a NUFI account".
   "server/src/auth/better-auth.ts"
   # The button that reaches the plugin above. Enabling generic-oauth on the
