@@ -11,6 +11,7 @@ import {
   companySkillVersions,
   companySkills,
   companyMemberships,
+  costEvents,
   createDb,
   heartbeatRunEvents,
   heartbeatRuns,
@@ -863,5 +864,62 @@ describeEmbeddedPostgres("companyService", () => {
     expect(archiveActivity[0]).toMatchObject({
       details: { agentsPaused: 1, runsCancelled: 1 },
     });
+  });
+
+  /**
+   * The delete cascade must run in an order Postgres accepts, and the only way
+   * to know is to make it delete something real.
+   *
+   * This is the second ordering bug in the same function. The first —
+   * `projects` after `goals` — shipped a fix with no test, so nothing stopped
+   * the next one: `heartbeat_runs` deleted before `cost_events`, which
+   * references them. Both abort the whole transaction and leave the company
+   * sitting there, having reported nothing but a 500.
+   *
+   * It hid because it needs a company whose agents actually ran and spent
+   * money. Measured on the live instance: four test companies with no runs
+   * deleted cleanly, and the one with real runs returned 500 every time.
+   */
+  it("deletes a company whose agents ran and recorded costs", async () => {
+    const companyId = randomUUID();
+    const agentId = randomUUID();
+    const runId = randomUUID();
+
+    await db.insert(companies).values({ id: companyId, name: "Spent Money", issuePrefix: "SPD" });
+    await db.insert(agents).values({
+      id: agentId,
+      companyId,
+      name: "Worker",
+      role: "engineer",
+      status: "idle",
+      adapterType: "codex_local",
+      adapterConfig: {},
+      runtimeConfig: {},
+      permissions: {},
+    });
+    await db.insert(heartbeatRuns).values({
+      id: runId,
+      companyId,
+      agentId,
+      invocationSource: "timer",
+      status: "succeeded",
+    });
+    await db.insert(costEvents).values({
+      companyId,
+      agentId,
+      heartbeatRunId: runId,
+      provider: "nufi",
+      model: "nufi-agent",
+      costCents: 7,
+      occurredAt: new Date("2026-09-04T00:00:00Z"),
+    });
+
+    const removed = await companyService(db).remove(companyId);
+
+    expect(removed?.id).toBe(companyId);
+    const left = await db.select({ id: companies.id }).from(companies).where(eq(companies.id, companyId));
+    expect(left).toHaveLength(0);
+    const orphans = await db.select({ id: costEvents.id }).from(costEvents).where(eq(costEvents.companyId, companyId));
+    expect(orphans).toHaveLength(0);
   });
 });
