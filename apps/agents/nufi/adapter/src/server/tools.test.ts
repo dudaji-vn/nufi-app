@@ -629,3 +629,50 @@ describe("blocked on what, exactly", () => {
     expect(patch?.body).not.toHaveProperty("blockedByIssueIds");
   });
 });
+
+describe("the shape of a question", () => {
+  /**
+   * `payload: { type: "object" }` told the model nothing, so it had to guess a
+   * shape the server validates strictly — and when it guessed wrong it gave up
+   * on asking at all.
+   *
+   * Measured on the live board, on a task that said in as many words "ask the
+   * person what you need to know":
+   *
+   *   "Bị chặn: Không thể thu thập thông tin dạng văn bản tự do bằng công cụ
+   *    ask_user_questions. Vui lòng cung cấp ... trực tiếp trong phần bình luận."
+   *
+   * The agent was half right — every question does need options — and half
+   * wrong: an empty `options` array plus `otherText` is exactly how the card
+   * takes free text, which the server accepts and the UI renders. It could not
+   * know that from a schema that described nothing.
+   */
+  it("describes the questions a person will actually see", () => {
+    const tools = buildTools(ctx(), http().fn);
+    const schema = tools.schemas.find((s) => s.name === "ask_user_questions");
+    const payload = (schema?.parameters as any).properties.payload;
+
+    expect(payload.properties.questions).toBeDefined();
+    const question = payload.properties.questions.items;
+    expect(Object.keys(question.properties)).toEqual(
+      expect.arrayContaining(["id", "prompt", "selectionMode", "options"]),
+    );
+    expect(question.required).toEqual(expect.arrayContaining(["id", "prompt", "selectionMode", "options"]));
+  });
+
+  it("says how to ask for something that is not a multiple choice", () => {
+    const tools = buildTools(ctx(), http().fn);
+    const schema = tools.schemas.find((s) => s.name === "ask_user_questions");
+
+    expect(JSON.stringify(schema)).toMatch(/empty options/i);
+  });
+
+  it("describes what a confirmation actually needs", () => {
+    const tools = buildTools(ctx(), http().fn);
+    const schema = tools.schemas.find((s) => s.name === "request_confirmation");
+    const payload = (schema?.parameters as any).properties.payload;
+
+    expect(payload.properties.prompt).toBeDefined();
+    expect(payload.required).toEqual(expect.arrayContaining(["version", "prompt"]));
+  });
+});
