@@ -54,6 +54,14 @@ export interface ToolState {
   /** True once anything durable was written, so a settle knows not to duplicate. */
   commented: boolean;
   /**
+   * Every child created this run, in order.
+   *
+   * An agent that splits its task and then blocks is blocked on the pieces —
+   * that is what the split was for. Recording them is what makes the parent
+   * wake when they land; a comment saying so wakes nothing.
+   */
+  children: string[];
+  /**
    * Children created this run that the agent said block it.
    *
    * A settle reads this instead of the model's closing words: an agent that
@@ -163,7 +171,7 @@ function confirm(body: unknown): unknown {
 }
 
 export function buildTools(ctx: ToolContext, http: HttpFn): NufiToolBox {
-  const state: ToolState = { finalStatus: null, commented: false, blockers: [] };
+  const state: ToolState = { finalStatus: null, commented: false, blockers: [], children: [] };
   const headers = {
     "content-type": "application/json",
     "X-Paperclip-Run-Id": ctx.runId,
@@ -281,6 +289,21 @@ export function buildTools(ctx: ToolContext, http: HttpFn): NufiToolBox {
         if (str(a.comment)) body.comment = str(a.comment);
         if (str(a.priority)) body.priority = str(a.priority);
         if (Array.isArray(a.blockedByIssueIds)) body.blockedByIssueIds = a.blockedByIssueIds;
+        /**
+         * Blocked on what? An agent that split its task and then blocked is
+         * blocked on the pieces — but it writes that in prose, and prose wakes
+         * nothing. Only a recorded blocker fires `issue_blockers_resolved`.
+         *
+         * Measured on DAE-32 and DAE-33: both blocked, both with an empty
+         * blocker set, both saying "Nhiệm vụ này sẽ bị chặn cho đến khi các
+         * nhiệm vụ con hoàn thành". They would have waited forever.
+         *
+         * Only fills the gap: a blocker set the agent named itself is left
+         * exactly as given, including an explicit empty one.
+         */
+        else if (status === "blocked" && state.children.length > 0) {
+          body.blockedByIssueIds = [...state.children];
+        }
 
         /**
          * The handover. `in_review` needs someone owning the next action, and an
@@ -358,8 +381,9 @@ export function buildTools(ctx: ToolContext, http: HttpFn): NufiToolBox {
          * Recording it as a first-class blocker is what makes the parent wake
          * when the child lands — a comment saying "blocked on X" wakes nothing.
          */
+        const childId = created.ok ? str((created.result as Record<string, unknown> | undefined)?.id) : undefined;
+        if (childId) state.children.push(childId);
         if (a.blocksThisTask === true && created.ok) {
-          const childId = str((created.result as Record<string, unknown> | undefined)?.id);
           if (childId) {
             state.blockers.push(childId);
             await send("PATCH", `/api/issues/${ctx.issueId}`, { blockedByIssueIds: [...state.blockers] });

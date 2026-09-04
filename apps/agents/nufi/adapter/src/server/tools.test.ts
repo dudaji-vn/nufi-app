@@ -271,7 +271,7 @@ describe("what the run recorded", () => {
 
   it("starts with nothing recorded", () => {
     const tools = buildTools(ctx(), http().fn);
-    expect(tools.state).toEqual({ finalStatus: null, commented: false, blockers: [] });
+    expect(tools.state).toEqual({ finalStatus: null, commented: false, blockers: [], children: [] });
   });
 });
 
@@ -572,5 +572,60 @@ describe("a child that blocks its parent actually blocks it", () => {
 
     expect(calls.filter((c) => c.method === "PATCH")).toHaveLength(0);
     expect(tools.state.blockers).toEqual([]);
+  });
+});
+
+describe("blocked on what, exactly", () => {
+  /**
+   * An agent that creates subtasks and then blocks is blocked on those
+   * subtasks. Saying so in the comment wakes nothing — only a recorded blocker
+   * fires `issue_blockers_resolved`.
+   *
+   * Measured on the first run after #67, where `blocksThisTask` existed but the
+   * model did not reach for it:
+   *
+   *   DAE-32  blocked  blockedBy=-  "Đã tạo các nhiệm vụ con… Nhiệm vụ này sẽ bị chặn"
+   *   DAE-33  blocked  blockedBy=-  "Đã tạo subtask DAE-36… Nhiệm vụ này sẽ bị chặn"
+   *
+   * Both would have waited forever. The children created in the same run are
+   * the only thing the block can mean, so they are what gets recorded.
+   */
+  it("blocks on the children this run created when the agent names none", async () => {
+    const { fn, calls } = http({
+      "POST /api/companies/co_1/issues": { status: 200, body: { id: "child_1" } },
+    });
+    const tools = buildTools(ctx(), fn);
+
+    await tools.run(call("create_child_issue", { title: "Research suppliers", description: "Find three." }));
+    await tools.run(call("update_issue", { status: "blocked", comment: "Blocked until the subtask lands." }));
+
+    const patch = calls.filter((c) => c.method === "PATCH").pop();
+    expect(patch?.body).toMatchObject({ status: "blocked", blockedByIssueIds: ["child_1"] });
+  });
+
+  it("does not overwrite blockers the agent named itself", async () => {
+    const { fn, calls } = http({
+      "POST /api/companies/co_1/issues": { status: 200, body: { id: "child_1" } },
+    });
+    const tools = buildTools(ctx(), fn);
+
+    await tools.run(call("create_child_issue", { title: "Side work", description: "Runs in parallel." }));
+    await tools.run(call("update_issue", { status: "blocked", blockedByIssueIds: ["other_issue"], comment: "x" }));
+
+    const patch = calls.filter((c) => c.method === "PATCH").pop();
+    expect(patch?.body).toMatchObject({ blockedByIssueIds: ["other_issue"] });
+  });
+
+  it("leaves a done update alone", async () => {
+    const { fn, calls } = http({
+      "POST /api/companies/co_1/issues": { status: 200, body: { id: "child_1" } },
+    });
+    const tools = buildTools(ctx(), fn);
+
+    await tools.run(call("create_child_issue", { title: "Follow-up", description: "Later." }));
+    await tools.run(call("update_issue", { status: "done", comment: "Finished." }));
+
+    const patch = calls.filter((c) => c.method === "PATCH").pop();
+    expect(patch?.body).not.toHaveProperty("blockedByIssueIds");
   });
 });

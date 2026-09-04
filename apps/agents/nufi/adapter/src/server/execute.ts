@@ -243,7 +243,14 @@ export async function settle(tools: NufiToolBox, text: string, stopReason: strin
    * queue makes an empty result look like progress; `blocked` puts it in front
    * of a person, which is what the message has always said it needs.
    */
-  const blockedOnChildren = tools.state.blockers.length > 0;
+  /**
+   * The blockers the agent named, or — when it named none but split the work
+   * anyway — the children it just created. Measured on DAE-30: "Task claimed.
+   * Created subtask DAE-33 to research alternative steel suppliers", settled to
+   * `in_review` with nobody reviewing and nothing recorded to wake it.
+   */
+  const waitingOn = tools.state.blockers.length > 0 ? tools.state.blockers : tools.state.children;
+  const blockedOnChildren = waitingOn.length > 0;
   const status = ranOutOfTurns || blockedOnChildren || !written ? "blocked" : "in_review";
 
   const comment = ranOutOfTurns
@@ -261,7 +268,7 @@ export async function settle(tools: NufiToolBox, text: string, stopReason: strin
     arguments: {
       status,
       comment,
-      ...(blockedOnChildren ? { blockedByIssueIds: [...tools.state.blockers] } : {}),
+      ...(blockedOnChildren ? { blockedByIssueIds: [...waitingOn] } : {}),
     },
   });
   return status;
