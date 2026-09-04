@@ -99,6 +99,28 @@ const S = { type: "string" } as const;
  * mutation confirms what changed and nothing more. Reads are untouched: their
  * content is the answer the agent asked for.
  */
+/**
+ * Give every proposed task an owner before it can become a real one.
+ *
+ * Accepting a `suggest_tasks` card turns each draft into an issue, and a draft
+ * naming nobody produces exactly the inert task that `create_child_issue` was
+ * fixed for: `todo`, no assignee, never picked up. Fixing one path and leaving
+ * its twin is how a bug survives being fixed — measured right after that fix
+ * shipped, when accepting three proposals produced three orphans.
+ *
+ * A draft already handed to a person is left alone; that is a person's job, not
+ * something to take back.
+ */
+export function withOwners(tasks: unknown, agentId: string): unknown[] {
+  if (!Array.isArray(tasks)) return [];
+  return tasks.map((task) => {
+    if (!task || typeof task !== "object" || Array.isArray(task)) return task;
+    const draft = task as Record<string, unknown>;
+    if (str(draft.assigneeAgentId) || str(draft.assigneeUserId)) return draft;
+    return { ...draft, assigneeAgentId: agentId };
+  });
+}
+
 function confirm(body: unknown): unknown {
   if (!body || typeof body !== "object" || Array.isArray(body)) return { ok: true };
   const row = body as Record<string, unknown>;
@@ -346,7 +368,7 @@ export function buildTools(ctx: ToolContext, http: HttpFn): NufiToolBox {
       run: async (a) =>
         interaction("suggest_tasks", {
           ...a,
-          payload: { version: 1, tasks: Array.isArray(a.tasks) ? a.tasks : [] },
+          payload: { version: 1, tasks: withOwners(a.tasks, ctx.agentId) },
         }),
     },
 
