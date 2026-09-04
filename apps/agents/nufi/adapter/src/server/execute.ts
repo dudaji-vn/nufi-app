@@ -1,5 +1,5 @@
 import { runLoop, type LoopModel } from "./loop.js";
-import { systemPrompt, wakeMessage } from "./prompt.js";
+import { systemPrompt, wakeMessage, type WakeInteraction } from "./prompt.js";
 import { buildTools, type HttpFn, type NufiToolBox } from "./tools.js";
 
 /**
@@ -175,6 +175,44 @@ export async function runWith(deps: ExecuteDeps, ctx: ExecutionContext): Promise
       };
     }
 
+    /**
+     * What the person decided, when this wake came from one of our own
+     * interactions. The payload names it (`interactionId`) and carries neither
+     * the question nor the answer — and the answer is not a comment, so an
+     * agent told to read the thread finds nothing and asks again.
+     *
+     * Best-effort: a failure here costs the briefing, never the run.
+     */
+    const interactionId = readString(ctx.context, "interactionId");
+    let interaction: WakeInteraction | null = null;
+    if (interactionId) {
+      try {
+        const res = await deps.http({
+          method: "GET",
+          path: `/api/issues/${issueId}/interactions`,
+          headers: { "X-Paperclip-Run-Id": ctx.runId },
+        });
+        const rows = Array.isArray(res.body)
+          ? res.body
+          : Array.isArray((res.body as { interactions?: unknown })?.interactions)
+            ? ((res.body as { interactions: unknown[] }).interactions)
+            : [];
+        const row = rows.find(
+          (candidate) => (candidate as { id?: string } | null)?.id === interactionId,
+        ) as { kind?: string; status?: string; title?: string | null; result?: unknown } | undefined;
+        if (row?.kind && row.status) {
+          interaction = {
+            kind: row.kind,
+            status: row.status,
+            title: row.title ?? null,
+            result: row.result ?? null,
+          };
+        }
+      } catch {
+        await ctx.onLog("stdout", "Could not read the interaction that triggered this wake.\n");
+      }
+    }
+
     const outcome = await runLoop({
       model: deps.model,
       tools,
@@ -186,6 +224,7 @@ export async function runWith(deps: ExecuteDeps, ctx: ExecutionContext): Promise
         wakeReason: readString(ctx.context, "wakeReason"),
         wakeCommentId: readString(ctx.context, "wakeCommentId"),
         approvalId: readString(ctx.context, "approvalId"),
+        interaction,
         issue: heartbeat?.issue?.title
           ? {
               title: heartbeat.issue.title,
