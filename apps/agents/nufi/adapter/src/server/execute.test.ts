@@ -215,7 +215,7 @@ describe("settling honestly when the model just stops", () => {
     return {
       seen,
       box: {
-        state: { finalStatus: null, commented: false, blockers: [], ...state },
+        state: { finalStatus: null, commented: false, blockers: [], children: [], ...state },
         run: async (c: any) => { seen.push(c); return { ok: true, result: {} }; },
       } as any,
     };
@@ -257,5 +257,38 @@ describe("settling honestly when the model just stops", () => {
 
     expect(out).toBe("in_review");
     expect(seen[0].arguments.status).toBe("in_review");
+  });
+});
+
+describe("a run that delegated and stopped is waiting on the delegate", () => {
+  const toolbox = (state: Partial<import("./tools.js").ToolState>) => {
+    const seen: any[] = [];
+    return {
+      seen,
+      box: {
+        state: { finalStatus: null, commented: false, blockers: [], children: [], ...state },
+        run: async (c: any) => { seen.push(c); return { ok: true, result: {} }; },
+      } as any,
+    };
+  };
+
+  /**
+   * Measured on DAE-30: "Task claimed. Created subtask DAE-33 to research
+   * alternative steel suppliers" — and the board said `in_review`, with nobody
+   * reviewing and no blocker. The child it just created is the thing it is
+   * waiting for, whether or not it thought to say so.
+   */
+  it("blocks on children it created rather than claiming a review", async () => {
+    const { box, seen } = toolbox({ children: ["child_1"] });
+
+    const out = await settle(box, "Created a subtask to research suppliers.", "completed");
+
+    expect(out).toBe("blocked");
+    expect(seen[0].arguments.blockedByIssueIds).toEqual(["child_1"]);
+  });
+
+  it("still reviews a written answer that delegated nothing", async () => {
+    const { box } = toolbox({});
+    expect(await settle(box, "Here is the answer.", "completed")).toBe("in_review");
   });
 });
