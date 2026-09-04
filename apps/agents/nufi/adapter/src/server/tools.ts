@@ -121,6 +121,29 @@ export function withOwners(tasks: unknown, agentId: string): unknown[] {
   });
 }
 
+/**
+ * Refuse to create work nobody can do.
+ *
+ * A task with a title and no description reaches its assignee as a guess. The
+ * agent that later picks it up does the right thing and blocks it — which is
+ * how the agent ended up blocking on its own output: measured on a real run,
+ * 7 of 16 blocked tasks were blocked for a description the same agent had
+ * failed to write when it created them. The other 9 were genuine waits on a
+ * person, which is the disposition we want to keep visible.
+ *
+ * Creation is the only point where the loop can be cut, because it is the only
+ * point where the meaning is still known. Delegating is saying what you want.
+ */
+function unworkable(what: string): { ok: boolean; result: unknown } {
+  return {
+    ok: false,
+    result:
+      `Refused: "${what}" has no description. A title alone is not a task — whoever picks it up, ` +
+      `including you on a later heartbeat, has to guess and will block it. Say what the work is, ` +
+      `what done looks like, and anything you already know that they would otherwise have to ask for.`,
+  };
+}
+
 function confirm(body: unknown): unknown {
   if (!body || typeof body !== "object" || Array.isArray(body)) return { ok: true };
   const row = body as Record<string, unknown>;
@@ -279,7 +302,9 @@ export function buildTools(ctx: ToolContext, http: HttpFn): NufiToolBox {
         description:
           "Delegate work that does not fit this heartbeat by creating a subtask. Prefer this over waiting or polling. " +
           "Name assigneeAgentId to hand it to another agent — call list_agents to see who there is. " +
-          "Leave it out and the subtask comes back to you: an unassigned task is never picked up by anyone.",
+          "Leave it out and the subtask comes back to you: an unassigned task is never picked up by anyone. " +
+          "The description is required: say what the work is, what done looks like, and what you already know. " +
+          "Whoever picks it up cannot see this heartbeat, and a title alone just gets blocked back to you.",
         parameters: OBJECT(
           {
             title: S,
@@ -288,11 +313,12 @@ export function buildTools(ctx: ToolContext, http: HttpFn): NufiToolBox {
             assigneeAgentId: S,
             blocksThisTask: { type: "boolean" },
           },
-          ["title"],
+          ["title", "description"],
         ),
       },
-      run: async (a) =>
-        result(
+      run: async (a) => {
+        if (!str(a.description)) return unworkable(str(a.title) ?? "(untitled)");
+        return result(
           await send("POST", `/api/companies/${ctx.companyId}/issues`, {
             title: str(a.title) ?? "",
             description: str(a.description) ?? null,
@@ -317,7 +343,8 @@ export function buildTools(ctx: ToolContext, http: HttpFn): NufiToolBox {
           }),
           undefined,
           confirm,
-        ),
+        );
+      },
     },
 
     list_agents: {
@@ -352,24 +379,35 @@ export function buildTools(ctx: ToolContext, http: HttpFn): NufiToolBox {
       schema: {
         name: "suggest_tasks",
         description:
-          "Propose concrete follow-up tasks for a person to accept. Accepted ones become real subtasks and wake you to work them. Each task needs a unique clientKey and a title.",
+          "Propose concrete follow-up tasks for a person to accept. Accepted ones become real subtasks and wake you to work them. " +
+          "Each task needs a unique clientKey, a title, and a description saying what the work is — a title-only task is blocked the moment anyone picks it up.",
         parameters: OBJECT(
           {
             title: S,
             summary: S,
             tasks: {
               type: "array",
-              items: OBJECT({ clientKey: S, title: S, description: S }, ["clientKey", "title"]),
+              items: OBJECT({ clientKey: S, title: S, description: S }, [
+                "clientKey",
+                "title",
+                "description",
+              ]),
             },
           },
           ["tasks"],
         ),
       },
-      run: async (a) =>
-        interaction("suggest_tasks", {
+      run: async (a) => {
+        const drafts = Array.isArray(a.tasks) ? a.tasks : [];
+        for (const draft of drafts) {
+          const row = args(draft);
+          if (!str(row.description)) return unworkable(str(row.title) ?? "(untitled)");
+        }
+        return interaction("suggest_tasks", {
           ...a,
           payload: { version: 1, tasks: withOwners(a.tasks, ctx.agentId) },
-        }),
+        });
+      },
     },
 
     ask_user_questions: {
