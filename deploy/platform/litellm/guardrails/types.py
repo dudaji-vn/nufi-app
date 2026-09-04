@@ -33,10 +33,25 @@ class SpanSource(StrEnum):
                   reasoning that gave `USER` a corroboration requirement
                   applies -- measured, it costs nothing on refusals.
       UNTRUSTED   content that arrived from somewhere else mid-conversation: a
-                  tool result, a function result, a message whose role this
-                  code does not recognise. This is where indirect injection
-                  actually lands, and where the classifier's recall earns its
-                  keep on one detector alone.
+                  a message whose role this code does not recognise --
+                  content of unknown provenance. It stays the strict default,
+                  and the fallback for any role not in the table.
+
+    `TOOL` was split out of `UNTRUSTED` on 2026-09-04, and like the `ASSISTANT`
+    split before it, it is the fix for a live defect rather than a taxonomy
+    tidy-up. While a tool result was `untrusted` it blocked on one detector, and
+    the classifier scores benign text near 1.0:
+
+        {"ok":true}  as role=tool  -> 400 LLM01_INJECTION
+        {"ok":true}  as role=user  -> 200
+
+    Eleven characters, and every agent turn after the first carries a tool
+    result. The only way to run an agent at all was to exempt its model from G1
+    completely, which is a hole rather than a control. A source of its own is
+    what lets the policy say something specific: in this deployment a tool
+    result is the product's own API returning company-authored text -- the same
+    words that reach the model as `user` in the wake briefing -- so it carries
+    the same corroboration requirement, and G1 applies to agents again.
 
     Adding a member is deliberately expensive: `policy._parse_control` requires
     EVERY control in policy.yaml to declare a threshold for every member, so a
@@ -45,6 +60,7 @@ class SpanSource(StrEnum):
 
     USER = "user"
     ASSISTANT = "assistant"
+    TOOL = "tool"
     UNTRUSTED = "untrusted"
     SYSTEM = "system"
 
