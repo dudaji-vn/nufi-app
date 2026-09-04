@@ -271,7 +271,7 @@ describe("what the run recorded", () => {
 
   it("starts with nothing recorded", () => {
     const tools = buildTools(ctx(), http().fn);
-    expect(tools.state).toEqual({ finalStatus: null, commented: false, blockers: [], children: [] });
+    expect(tools.state).toEqual({ finalStatus: null, commented: false, blockers: [], children: [], asked: false });
   });
 });
 

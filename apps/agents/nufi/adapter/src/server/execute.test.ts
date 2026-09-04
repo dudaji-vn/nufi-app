@@ -409,3 +409,44 @@ describe("waking on a person's answer", () => {
     expect(seen.some((p) => p.endsWith("/interactions"))).toBe(false);
   });
 });
+
+describe("a question waiting on a person is a review path", () => {
+  const toolbox = (state: Partial<import("./tools.js").ToolState>) => {
+    const seen: any[] = [];
+    return {
+      seen,
+      box: {
+        state: { finalStatus: null, commented: false, blockers: [], children: [], asked: false, ...state },
+        run: async (c: any) => { seen.push(c); return { ok: true, result: {} }; },
+      } as any,
+    };
+  };
+
+  /**
+   * Paperclip is explicit: "If your heartbeat creates a pending board/user
+   * interaction ... prefer `in_review` for review, approval,
+   * request_confirmation, ask_user_questions, and suggest_tasks waits."
+   *
+   * The empty-result rule from the previous fix would otherwise block a
+   * heartbeat whose whole point was to put a question in front of a person —
+   * the card sits pending while the task reads as stuck.
+   */
+  it("reviews when it left a question pending, even with nothing written", async () => {
+    const { box, seen } = toolbox({ asked: true });
+
+    const out = await settle(box, "   ", "completed");
+
+    expect(out).toBe("in_review");
+    expect(seen[0].arguments.status).toBe("in_review");
+  });
+
+  it("still blocks an empty run that asked nobody anything", async () => {
+    const { box } = toolbox({});
+    expect(await settle(box, "  ", "completed")).toBe("blocked");
+  });
+
+  it("a delegated blocker still outranks a pending question", async () => {
+    const { box } = toolbox({ asked: true, children: ["child_1"] });
+    expect(await settle(box, "", "completed")).toBe("blocked");
+  });
+});
