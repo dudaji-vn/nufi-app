@@ -76,6 +76,22 @@ ALLOWLIST=(
   # nothing here is NuFi-specific -- it is a mismatch between two upstream
   # endpoints.
   "ui/src/context/CompanyContext.tsx"
+
+  # The four built-in agents (briefs, learning, reflection-coach, summarizer)
+  # may only run on a vendor harness upstream: claude_local, codex_local,
+  # gemini_local, opencode_local, process. NUFI Works serves none of those --
+  # the container has no vendor CLI and no vendor key, and the egress check in
+  # this same CI proves every enabled adapter must reach the NUFI gateway. So a
+  # built-in was unusable by construction: enabling one produced an agent that
+  # could never run, and correcting its adapter was refused with
+  # `built_in_agent_adapter_not_allowed`. Observed on the live instance, where
+  # Reflection Coach and Summarizer sat paused on claude_local.
+  #
+  # `nufi_agent` is added to each allowlist and made the default, and the
+  # summarizer's pinned `claude-haiku-4-5` becomes `nufi-agent` -- the one model
+  # that adapter serves. The test file carries the matching expectations.
+  "server/src/services/built-in-agents.ts"
+  "server/src/__tests__/built-in-agents.test.ts"
   "ui/src/context/CompanyContext.test.tsx"
   # Single sign-on. See nufi/README.md, "Signing in with a NUFI account".
   "server/src/auth/better-auth.ts"

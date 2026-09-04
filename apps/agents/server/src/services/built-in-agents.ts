@@ -308,7 +308,17 @@ const DEFINITIONS = validateBuiltInAgentDefinitions([
     defaultInstructions:
       "You are Paperclip's built-in Briefs agent. Produce concise, sourced operational briefs that help the board understand current company work, risks, and next actions.",
     defaultRole: "general",
-    allowedAdapterTypes: ["codex_local", "claude_local", "gemini_local", "opencode_local", "process"],
+  /**
+   * NuFi: `nufi_agent` first, and the default.
+   *
+   * Upstream lists only vendor harnesses here. NUFI Works serves none of them —
+   * the container has no vendor CLI and no vendor key, and every model call goes
+   * through the NUFI gateway. Without this, enabling a built-in produced an
+   * agent that could never run, and fixing its adapter was refused with
+   * `built_in_agent_adapter_not_allowed`.
+   */
+    allowedAdapterTypes: ["nufi_agent", "codex_local", "claude_local", "gemini_local", "opencode_local", "process"],
+    defaultAdapterType: "nufi_agent",
     defaultBudgetMonthlyCents: 0,
   },
   {
@@ -319,7 +329,17 @@ const DEFINITIONS = validateBuiltInAgentDefinitions([
     defaultInstructions:
       "You are Paperclip's built-in Learning agent. Extract durable lessons from completed work, preserve useful patterns, and keep learning artifacts grounded in source context.",
     defaultRole: "general",
-    allowedAdapterTypes: ["codex_local", "claude_local", "gemini_local", "opencode_local", "process"],
+  /**
+   * NuFi: `nufi_agent` first, and the default.
+   *
+   * Upstream lists only vendor harnesses here. NUFI Works serves none of them —
+   * the container has no vendor CLI and no vendor key, and every model call goes
+   * through the NUFI gateway. Without this, enabling a built-in produced an
+   * agent that could never run, and fixing its adapter was refused with
+   * `built_in_agent_adapter_not_allowed`.
+   */
+    allowedAdapterTypes: ["nufi_agent", "codex_local", "claude_local", "gemini_local", "opencode_local", "process"],
+    defaultAdapterType: "nufi_agent",
     defaultBudgetMonthlyCents: 0,
   },
   {
@@ -343,7 +363,17 @@ const DEFINITIONS = validateBuiltInAgentDefinitions([
     },
     defaultStatus: "paused",
     defaultManager: "single_root_agent",
-    allowedAdapterTypes: ["claude_local", "codex_local", "gemini_local", "opencode_local", "process"],
+  /**
+   * NuFi: `nufi_agent` first, and the default.
+   *
+   * Upstream lists only vendor harnesses here. NUFI Works serves none of them —
+   * the container has no vendor CLI and no vendor key, and every model call goes
+   * through the NUFI gateway. Without this, enabling a built-in produced an
+   * agent that could never run, and fixing its adapter was refused with
+   * `built_in_agent_adapter_not_allowed`.
+   */
+    allowedAdapterTypes: ["nufi_agent", "claude_local", "codex_local", "gemini_local", "opencode_local", "process"],
+    defaultAdapterType: "nufi_agent",
     defaultBudgetMonthlyCents: 0,
     bundle: {
       stockVersion: "2026-07-08",
@@ -411,10 +441,21 @@ const DEFINITIONS = validateBuiltInAgentDefinitions([
     },
     defaultStatus: "paused",
     defaultManager: "single_root_agent",
-    allowedAdapterTypes: ["claude_local", "codex_local", "gemini_local", "opencode_local", "process"],
-    defaultAdapterType: "claude_local",
+  /**
+   * NuFi: `nufi_agent` first, and the default.
+   *
+   * Upstream lists only vendor harnesses here. NUFI Works serves none of them —
+   * the container has no vendor CLI and no vendor key, and every model call goes
+   * through the NUFI gateway. Without this, enabling a built-in produced an
+   * agent that could never run, and fixing its adapter was refused with
+   * `built_in_agent_adapter_not_allowed`.
+   */
+    allowedAdapterTypes: ["nufi_agent", "claude_local", "codex_local", "gemini_local", "opencode_local", "process"],
+    defaultAdapterType: "nufi_agent",
     defaultAdapterConfig: {
-      model: "claude-haiku-4-5",
+      // NuFi: the adapter above serves one model, through the NUFI gateway.
+      // Upstream's `claude-haiku-4-5` is refused by its own validation here.
+      model: "nufi-agent",
     },
     defaultBudgetMonthlyCents: 0,
     bundle: {

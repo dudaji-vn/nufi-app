@@ -159,9 +159,10 @@ describeEmbeddedPostgres("built-in agents", () => {
     const definitions = listBuiltInAgentDefinitions();
     expect(definitions.map((definition) => definition.key).sort()).toEqual(["briefs", "learning", "reflection-coach", "summarizer"]);
     const summarizer = definitions.find((definition) => definition.key === "summarizer");
+    // NuFi: this fork runs built-ins on the NUFI gateway, not a vendor harness.
     expect(summarizer).toMatchObject({
-      defaultAdapterType: "claude_local",
-      defaultAdapterConfig: { model: "claude-haiku-4-5" },
+      defaultAdapterType: "nufi_agent",
+      defaultAdapterConfig: { model: "nufi-agent" },
     });
     expect(summarizer?.defaultRuntimeConfig).toBeUndefined();
     expect(() => validateBuiltInAgentDefinitions([
@@ -372,7 +373,7 @@ describeEmbeddedPostgres("built-in agents", () => {
       details: {
         code: "built_in_agent_adapter_not_allowed",
         key: "briefs",
-        allowedAdapterTypes: ["codex_local", "claude_local", "gemini_local", "opencode_local", "process"],
+        allowedAdapterTypes: ["nufi_agent", "codex_local", "claude_local", "gemini_local", "opencode_local", "process"],
       },
     });
   });
@@ -552,7 +553,8 @@ describeEmbeddedPostgres("built-in agents", () => {
         role: "general",
         title: "Reflection Coach",
         icon: "eye",
-        adapterType: "codex_local",
+        // NuFi: built-ins run on the adapter this deployment serves.
+        adapterType: "nufi_agent",
         permissions: {
           canCreateAgents: false,
           canCreateSkills: false,
@@ -924,7 +926,8 @@ describeEmbeddedPostgres("built-in agents", () => {
       title: "Reflection Coach",
       icon: "eye",
       reportsTo: root.id,
-      adapterType: "codex_local",
+      // NuFi: built-ins run on the adapter this deployment serves.
+      adapterType: "nufi_agent",
       budgetMonthlyCents: 0,
     });
     expect(state.status).toBe("paused");
@@ -979,7 +982,7 @@ describeEmbeddedPostgres("built-in agents", () => {
     expect(grantKeys).not.toContain("skills:create");
   });
 
-  it("materializes the Summarizer bundle paused on Claude Haiku with a disabled routine", async () => {
+  it("materializes the Summarizer bundle paused on the NUFI adapter with a disabled routine", async () => {
     const companyId = await seedCompany();
     const root = await agentService(db).create(companyId, {
       name: "CEO",
@@ -1000,8 +1003,8 @@ describeEmbeddedPostgres("built-in agents", () => {
       icon: "sparkles",
       role: "general",
       reportsTo: root.id,
-      adapterType: "claude_local",
-      adapterConfig: { model: "claude-haiku-4-5" },
+      adapterType: "nufi_agent",
+      adapterConfig: { model: "nufi-agent" },
       budgetMonthlyCents: 0,
     });
     expect(state.status).toBe("paused");
@@ -1435,5 +1438,34 @@ describeEmbeddedPostgres("built-in agents", () => {
     expect((await instructionsSvc.readFile(reset.agent!, "AGENTS.md")).content).toContain("You are Reflection Coach");
     const [resetRoutine] = await db.select().from(routines).where(eq(routines.companyId, companyId));
     expect(resetRoutine?.title).toBe("Review recent agent trajectories for coaching proposals");
+  });
+});
+
+describe("built-in agents on NUFI Works", () => {
+  /**
+   * Upstream's built-in agents may only run on a vendor harness — claude_local,
+   * codex_local, gemini_local, opencode_local, process. NUFI Works serves none
+   * of those: the harness runs in a container with no vendor CLI and no vendor
+   * key, and every model call goes through the NUFI gateway via `nufi_agent`.
+   *
+   * So on this fork the four built-ins were unusable by construction. Enabling
+   * one produced an agent that could never run, and correcting its adapter was
+   * refused with `built_in_agent_adapter_not_allowed`. Measured on the Daehan
+   * board: Reflection Coach and Summarizer sat paused on `claude_local`.
+   */
+  it("lets every built-in run on the adapter this deployment actually serves", () => {
+    for (const definition of listBuiltInAgentDefinitions()) {
+      expect(
+        definition.allowedAdapterTypes,
+        `${definition.key} must allow nufi_agent`,
+      ).toContain("nufi_agent");
+    }
+  });
+
+  it("reaches for the NUFI adapter first, since it is the one that works here", () => {
+    for (const definition of listBuiltInAgentDefinitions()) {
+      const fallback = definition.defaultAdapterType ?? definition.allowedAdapterTypes?.[0];
+      expect(fallback, `${definition.key} should default to nufi_agent`).toBe("nufi_agent");
+    }
   });
 });
