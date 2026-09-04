@@ -37,7 +37,7 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     Steps,
     Step,
     // Card icons. Exposed to MDX so a card can carry the same lucide glyph the
-    // sidebar tab uses, instead of an emoji in its title -- emoji rendered at a
+    // sidebar section uses, instead of an emoji in its title -- emoji rendered at a
     // different size on every platform and matched nothing else in the product.
     BookMarked,
     Bot,

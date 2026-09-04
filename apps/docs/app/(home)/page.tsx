@@ -11,8 +11,8 @@ import {
   Workflow,
 } from 'lucide-react';
 
-// The same icons the sidebar tabs use, so a section looks the same here as it
-// does once you are inside it. These replaced emoji, which rendered at a
+// The same icons the sidebar sections use, so a section looks the same here
+// as it does once you are inside it. These replaced emoji, which rendered at a
 // different size on every platform and matched nothing else in the product.
 type Card = {
   title: string;
