@@ -844,3 +844,58 @@ describe("looking before asking", () => {
     expect(ask).toMatch(/list_issues|read_plan/);
   });
 });
+
+describe("an empty plan is a signpost, not a dead end", () => {
+  /**
+   * The worst outcome this agent has produced, and it produced it by asking
+   * nobody anything.
+   *
+   * Measured on HAN-6, a task that said "based on the offer document from the
+   * previous task": `tools used: checkout_issue, read_plan, update_issue`. It
+   * called read_plan with no id, which reads its OWN plan — a task that had
+   * none — got back `HTTP 404: Document not found`, treated that as "there is
+   * nothing to find", and wrote the letter from invention. Delivery hours came
+   * out as "6am to 8pm" where the real profile says 5-7am and 1-3pm; the
+   * product groups were generic where the profile names Hanwoo BBQ, kimchi and
+   * banchan.
+   *
+   * Fabricating is worse than asking, and the prompt already forbids it. What
+   * it did not have was a reason to keep looking: a 404 reads like an answer.
+   */
+  it("points at the other tasks when this one has no plan", async () => {
+    const { fn } = http({
+      "GET /api/issues/issue_1/documents/plan": { status: 404, body: { error: "Document not found" } },
+    });
+    const tools = buildTools(ctx(), fn);
+
+    const out = await tools.run(call("read_plan", {}));
+
+    expect(out.ok).toBe(false);
+    expect(String(out.result)).toMatch(/list_issues/);
+    expect(String(out.result)).toMatch(/another task/i);
+  });
+
+  it("says the same when a named task has no plan", async () => {
+    const { fn } = http({
+      "GET /api/issues/issue_other/documents/plan": { status: 404, body: {} },
+    });
+    const tools = buildTools(ctx(), fn);
+
+    const out = await tools.run(call("read_plan", { issueId: "issue_other" }));
+
+    expect(out.ok).toBe(false);
+    expect(String(out.result)).toMatch(/list_issues/);
+  });
+
+  it("returns the document when there is one", async () => {
+    const { fn } = http({
+      "GET /api/issues/issue_1/documents/plan": { status: 200, body: { body: "# Plan\n\nDo the thing." } },
+    });
+    const tools = buildTools(ctx(), fn);
+
+    const out = await tools.run(call("read_plan", {}));
+
+    expect(out.ok).toBe(true);
+    expect(JSON.stringify(out.result)).toContain("Do the thing");
+  });
+});
