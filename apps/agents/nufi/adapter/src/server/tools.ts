@@ -480,6 +480,68 @@ export function buildTools(ctx: ToolContext, http: HttpFn): NufiToolBox {
       },
     },
 
+    /**
+     * The answer is usually already on the board.
+     *
+     * Rule one is "never ask a person to do what an agent could do", and the
+     * agent broke it because it had no way not to: it could read its own task
+     * and nothing else. Measured on HAN-2, whose description said "based on the
+     * offer document from the previous task" — `tools used: checkout_issue,
+     * get_issue, ask_user_questions`. Three facts already written down, one API
+     * call away, asked of a person instead.
+     *
+     * `paperclip_api` could always have fetched both of these. Nobody reached
+     * for it. A capability that is only reachable through a generic escape
+     * hatch is one the model does not know it has.
+     */
+    list_issues: {
+      schema: {
+        name: "list_issues",
+        description:
+          "List the other tasks in this company — identifier, title, status, who holds them. Use it to find " +
+          "work related to yours before you ask anyone anything: the task that came before, the one that " +
+          "produced the document you were told to build on, the sibling that already answered the question.",
+        parameters: OBJECT({
+          query: { ...S, description: "Optional words to match against the title." },
+          status: { ...S, description: "Optional status filter, e.g. done." },
+        }),
+      },
+      run: async (a) => {
+        const res = await send("GET", `/api/companies/${ctx.companyId}/issues`);
+        if (res.status >= 400) return result(res);
+        const rows = Array.isArray(res.body)
+          ? res.body
+          : ((res.body as { issues?: unknown[] } | null)?.issues ?? []);
+        const wanted = str(a.query)?.toLowerCase();
+        const status = str(a.status);
+        const summary = (Array.isArray(rows) ? rows : [])
+          .map((row) => args(row))
+          .filter((row) => !status || row.status === status)
+          .filter((row) => !wanted || String(row.title ?? "").toLowerCase().includes(wanted))
+          .map((row) => ({
+            id: row.id,
+            identifier: row.identifier,
+            title: row.title,
+            status: row.status,
+            assigneeAgentId: row.assigneeAgentId ?? null,
+            assigneeUserId: row.assigneeUserId ?? null,
+          }));
+        return { ok: true, result: summary };
+      },
+    },
+
+    read_plan: {
+      schema: {
+        name: "read_plan",
+        description:
+          "Read the plan document of a task — yours by default, or another one by id, which is where an " +
+          "earlier task's findings usually live. Call list_issues first to find the id.",
+        parameters: OBJECT({ issueId: S }),
+      },
+      run: async (a) =>
+        result(await send("GET", `/api/issues/${str(a.issueId) ?? ctx.issueId}/documents/plan`)),
+    },
+
     list_agents: {
       schema: {
         name: "list_agents",
@@ -547,7 +609,10 @@ export function buildTools(ctx: ToolContext, http: HttpFn): NufiToolBox {
       schema: {
         name: "ask_user_questions",
         description:
-          "Ask a person a short set of structured questions when information is genuinely missing and no agent could supply it. Never invent an answer you could have asked for. " +
+          "Ask a person a short set of structured questions when information is genuinely missing and NOT already " +
+          "on the board. Check first: list_issues finds the related task, read_plan reads what it wrote down. " +
+          "Asking for something a tool would have told you is the one rule this agent must not break. " +
+          "Never invent an answer you could have asked for. " +
           "Every question needs at least one option; the card also offers \"Other\" so a person can type " +
           "something you did not list.",
         parameters: OBJECT({ title: S, summary: S, payload: QUESTIONS_PAYLOAD }, ["payload"]),

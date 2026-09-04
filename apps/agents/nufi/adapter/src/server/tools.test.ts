@@ -795,3 +795,52 @@ describe("who owns a task that is waiting on an answer", () => {
     expect(patch?.body).toMatchObject({ assigneeUserId: "user_9", assigneeAgentId: null });
   });
 });
+
+describe("looking before asking", () => {
+  /**
+   * Rule number one in the system prompt is "NEVER ASK A PERSON TO DO WHAT AN
+   * AGENT COULD DO", and the agent broke it because it had no way not to.
+   *
+   * Measured on HAN-2, a task whose description said "based on the offer
+   * document from the previous task": `tools used: checkout_issue, get_issue,
+   * ask_user_questions`. It read its own task, could not see the neighbouring
+   * one, and asked a person for three facts already written down one API call
+   * away. The only route was `paperclip_api`, a generic escape hatch it never
+   * reached for — a capability nobody can find is a capability nobody has.
+   */
+  it("can list the company's other work", async () => {
+    const { fn, calls } = http();
+    const tools = buildTools(ctx(), fn);
+
+    const out = await tools.run(call("list_issues", { query: "chào hàng" }));
+
+    expect(out.ok).toBe(true);
+    expect(calls[0].method).toBe("GET");
+    expect(calls[0].path).toContain("/api/companies/co_1/issues");
+  });
+
+  it("can read the plan another task left behind", async () => {
+    const { fn, calls } = http();
+    const tools = buildTools(ctx(), fn);
+
+    await tools.run(call("read_plan", { issueId: "issue_other" }));
+
+    expect(calls[0].path).toBe("/api/issues/issue_other/documents/plan");
+  });
+
+  it("reads its own plan when no task is named", async () => {
+    const { fn, calls } = http();
+    const tools = buildTools(ctx(), fn);
+
+    await tools.run(call("read_plan", {}));
+
+    expect(calls[0].path).toBe("/api/issues/issue_1/documents/plan");
+  });
+
+  it("tells the agent to look before it asks", () => {
+    const tools = buildTools(ctx(), http().fn);
+    const ask = JSON.stringify(tools.schemas.find((s) => s.name === "ask_user_questions"));
+
+    expect(ask).toMatch(/list_issues|read_plan/);
+  });
+});
