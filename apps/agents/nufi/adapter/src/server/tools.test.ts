@@ -166,7 +166,7 @@ describe("delegation and interactions", () => {
     const { fn, calls } = http();
     const tools = buildTools(ctx(), fn);
 
-    await tools.run(call("create_child_issue", { title: "Draft the negotiation letter" }));
+    await tools.run(call("create_child_issue", { description: "What the work is and what done looks like.", title: "Draft the negotiation letter" }));
 
     expect(calls[0].path).toBe("/api/companies/co_1/issues");
     expect(calls[0].body).toMatchObject({ title: "Draft the negotiation letter", parentId: "issue_1" });
@@ -195,7 +195,7 @@ describe("delegation and interactions", () => {
     const tools = buildTools(ctx(), fn);
 
     await tools.run(call("suggest_tasks", {
-      tasks: [{ clientKey: "t1", title: "Review the other vendor contracts" }],
+      tasks: [{ clientKey: "t1", title: "Review the other vendor contracts", description: "Why this task exists." }],
     }));
 
     expect(calls[0].body).toMatchObject({ kind: "suggest_tasks", continuationPolicy: "wake_assignee" });
@@ -357,7 +357,7 @@ describe("delegation that actually gets picked up", () => {
     const { fn, calls } = http();
     const tools = buildTools(ctx(), fn);
 
-    await tools.run(call("create_child_issue", { title: "Draft the job description" }));
+    await tools.run(call("create_child_issue", { title: "Draft the job description", description: "Write the JD for the founding engineer role." }));
 
     expect(calls[0].body).toMatchObject({
       title: "Draft the job description",
@@ -370,7 +370,7 @@ describe("delegation that actually gets picked up", () => {
     const { fn, calls } = http();
     const tools = buildTools(ctx(), fn);
 
-    await tools.run(call("create_child_issue", { title: "Review it", assigneeAgentId: "agent_legal" }));
+    await tools.run(call("create_child_issue", { description: "What the work is and what done looks like.", title: "Review it", assigneeAgentId: "agent_legal" }));
 
     expect(calls[0].body).toMatchObject({ assigneeAgentId: "agent_legal" });
   });
@@ -380,7 +380,7 @@ describe("delegation that actually gets picked up", () => {
     const { fn, calls } = http();
     const tools = buildTools(ctx({ goalId: "goal_7" }), fn);
 
-    await tools.run(call("create_child_issue", { title: "Anything" }));
+    await tools.run(call("create_child_issue", { description: "What the work is and what done looks like.", title: "Anything" }));
 
     expect(calls[0].body).toMatchObject({ goalId: "goal_7" });
   });
@@ -389,7 +389,7 @@ describe("delegation that actually gets picked up", () => {
     const { fn, calls } = http();
     const tools = buildTools(ctx(), fn);
 
-    await tools.run(call("create_child_issue", { title: "Anything" }));
+    await tools.run(call("create_child_issue", { description: "What the work is and what done looks like.", title: "Anything" }));
 
     expect(calls[0].body).not.toHaveProperty("goalId");
   });
@@ -429,8 +429,8 @@ describe("suggested tasks land on someone too", () => {
 
     await tools.run(call("suggest_tasks", {
       tasks: [
-        { clientKey: "t1", title: "Post the job on LinkedIn" },
-        { clientKey: "t2", title: "Post the job on AngelList" },
+        { clientKey: "t1", title: "Post the job on LinkedIn", description: "Why this task exists." },
+        { clientKey: "t2", title: "Post the job on AngelList", description: "Why this task exists." },
       ],
     }));
 
@@ -444,7 +444,7 @@ describe("suggested tasks land on someone too", () => {
     const tools = buildTools(ctx(), fn);
 
     await tools.run(call("suggest_tasks", {
-      tasks: [{ clientKey: "t1", title: "Legal review", assigneeAgentId: "agent_legal" }],
+      tasks: [{ clientKey: "t1", title: "Legal review", assigneeAgentId: "agent_legal", description: "Why this task exists." }],
     }));
 
     const tasks = (calls[0].body as { payload: { tasks: Array<Record<string, unknown>> } }).payload.tasks;
@@ -457,11 +457,76 @@ describe("suggested tasks land on someone too", () => {
     const tools = buildTools(ctx(), fn);
 
     await tools.run(call("suggest_tasks", {
-      tasks: [{ clientKey: "t1", title: "Sign the offer", assigneeUserId: "user_boss" }],
+      tasks: [{ clientKey: "t1", title: "Sign the offer", assigneeUserId: "user_boss", description: "Why this task exists." }],
     }));
 
     const tasks = (calls[0].body as { payload: { tasks: Array<Record<string, unknown>> } }).payload.tasks;
     expect(tasks[0].assigneeAgentId).toBeUndefined();
     expect(tasks[0].assigneeUserId).toBe("user_boss");
+  });
+});
+
+describe("a task it creates must be workable", () => {
+  /**
+   * The agent was blocking on its own work.
+   *
+   * `create_child_issue` took a title and left the description optional, so the
+   * agent produced title-only subtasks — then picked one up a heartbeat later
+   * and blocked it, correctly, because a task with no description cannot be
+   * worked without guessing. Measured on a real run: 7 of 16 blocked tasks were
+   * blocked on descriptions the same agent had failed to write.
+   *
+   * Refusing at creation is the only place that loop can be cut. The agent
+   * knows what it meant when it delegates; it does not a heartbeat later.
+   */
+  it("refuses to create a subtask with no description", async () => {
+    const { fn, calls } = http();
+    const tools = buildTools(ctx(), fn);
+
+    const out = await tools.run(call("create_child_issue", { title: "Provision access" }));
+
+    expect(out.ok).toBe(false);
+    expect(String(out.result)).toMatch(/description/i);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("refuses a description that is only whitespace", async () => {
+    const { fn, calls } = http();
+    const tools = buildTools(ctx(), fn);
+
+    const out = await tools.run(call("create_child_issue", { title: "X", description: "   " }));
+
+    expect(out.ok).toBe(false);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("creates it when the description says what the work is", async () => {
+    const { fn, calls } = http();
+    const tools = buildTools(ctx(), fn);
+
+    const out = await tools.run(call("create_child_issue", {
+      title: "Provision repository access",
+      description: "Grant the new engineer read/write on the two backend repos, and say which ones.",
+    }));
+
+    expect(out.ok).toBe(true);
+    expect(calls[0].body).toMatchObject({ title: "Provision repository access" });
+  });
+
+  /** Same rule where the other half of the work is born. */
+  it("refuses a suggested task with no description", async () => {
+    const { fn, calls } = http();
+    const tools = buildTools(ctx(), fn);
+
+    const out = await tools.run(call("suggest_tasks", {
+      tasks: [
+        { clientKey: "t1", title: "Set up LinkedIn", description: "Post the role and say where." },
+        { clientKey: "t2", title: "Set up AngelList" },
+      ],
+    }));
+
+    expect(out.ok).toBe(false);
+    expect(String(out.result)).toMatch(/Set up AngelList/);
+    expect(calls).toHaveLength(0);
   });
 });
