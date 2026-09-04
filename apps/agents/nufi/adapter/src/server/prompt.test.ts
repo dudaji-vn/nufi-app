@@ -161,8 +161,8 @@ describe("the rest of the board", () => {
       agentId: "agent_1",
       issue: { title: "Draft the letter", description: "Build on the previous task.", status: "todo", priority: null, goal: null, project: null },
       neighbours: [
-        { identifier: "HAN-1", title: "Open sales in Hai Phong", status: "in_review" },
-        { identifier: "HAN-2", title: "Draft the letter", status: "in_progress" },
+        { id: "issue_0", identifier: "HAN-1", title: "Open sales in Hai Phong", status: "in_review" },
+        { id: "issue_9", identifier: "HAN-2", title: "Draft the letter", status: "in_progress" },
       ],
     });
 
@@ -215,5 +215,33 @@ describe("which company this is", () => {
     const text = wakeMessage({ issueId: "issue_1", companyId: "co_1", agentId: "agent_1", issue: null });
 
     expect(text).not.toMatch(/## The company/);
+  });
+});
+
+
+describe("a neighbour you can actually open", () => {
+  /**
+   * The list named the neighbours and left out the one thing needed to read
+   * them.
+   *
+   * Measured on HAN-4: `tools used: checkout_issue, read_plan,
+   * ask_user_questions`. It reached for read_plan — the right tool — but the
+   * wake gave it "HAN-1" and read_plan takes an id, so it called read_plan with
+   * no argument, got its own empty plan back, and asked "which task contains
+   * this information?".
+   *
+   * A pointer you cannot follow is not a pointer.
+   */
+  it("gives each neighbour the id read_plan needs", () => {
+    const text = wakeMessage({
+      issueId: "issue_1",
+      companyId: "co_1",
+      agentId: "agent_1",
+      issue: null,
+      neighbours: [{ id: "issue_0", identifier: "HAN-1", title: "Open sales", status: "done" }],
+    });
+
+    expect(text).toContain("issue_0");
+    expect(text).toContain("HAN-1");
   });
 });
