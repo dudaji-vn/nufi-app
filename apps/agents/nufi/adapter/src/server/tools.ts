@@ -28,6 +28,8 @@ export interface ToolContext {
   issueId: string;
   /** The person this run belongs to. The reviewer, when work goes back for review. */
   responsibleUserId: string | null;
+  /** The goal this task hangs off, so subtasks stay on the same plan. */
+  goalId?: string | null;
 }
 
 export interface HttpCall {
@@ -53,7 +55,14 @@ export interface ToolState {
   commented: boolean;
 }
 
-export type NufiToolBox = ToolBox & { state: ToolState };
+export type NufiToolBox = ToolBox & {
+  state: ToolState;
+  /**
+   * The context these tools run against, exposed so `execute` can fill in what
+   * it only learns after the first read — the goal a subtask should inherit.
+   */
+  context: ToolContext;
+};
 
 type Args = Record<string, unknown>;
 
@@ -246,7 +255,9 @@ export function buildTools(ctx: ToolContext, http: HttpFn): NufiToolBox {
       schema: {
         name: "create_child_issue",
         description:
-          "Delegate work that does not fit this heartbeat by creating a subtask. Prefer this over waiting or polling. The subtask hangs off the current task automatically.",
+          "Delegate work that does not fit this heartbeat by creating a subtask. Prefer this over waiting or polling. " +
+          "Name assigneeAgentId to hand it to another agent — call list_agents to see who there is. " +
+          "Leave it out and the subtask comes back to you: an unassigned task is never picked up by anyone.",
         parameters: OBJECT(
           {
             title: S,
@@ -266,11 +277,35 @@ export function buildTools(ctx: ToolContext, http: HttpFn): NufiToolBox {
             status: "todo",
             priority: str(a.priority) ?? "medium",
             parentId: ctx.issueId,
-            ...(str(a.assigneeAgentId) ? { assigneeAgentId: str(a.assigneeAgentId) } : {}),
+            /**
+             * Never unassigned. "Never look for unassigned work. No assignments
+             * = exit" is Paperclip's contract, so a subtask with nobody on it
+             * is inert — it sits at `todo` and no agent will ever claim it.
+             * Measured on a real onboarding run: a team lead split its task into
+             * six correct subtasks, all unassigned, and the board looked like
+             * progress while nothing could move.
+             *
+             * An unnamed assignee means "I will do it", which is also the
+             * honest reading of an agent breaking its own work into steps.
+             */
+            assigneeAgentId: str(a.assigneeAgentId) ?? ctx.agentId,
+            // "Always set parentId and goalId" — a subtask off the goal is off
+            // the plan, and drops out of every goal-scoped view.
+            ...(ctx.goalId ? { goalId: ctx.goalId } : {}),
           }),
           undefined,
           confirm,
         ),
+    },
+
+    list_agents: {
+      schema: {
+        name: "list_agents",
+        description:
+          "List the agents in this company, with their names and what they do. Use it before delegating, so a subtask goes to the desk that owns the work rather than back to you.",
+        parameters: OBJECT({}),
+      },
+      run: async () => result(await send("GET", `/api/companies/${ctx.companyId}/agents`)),
     },
 
     put_plan: {
@@ -359,6 +394,7 @@ export function buildTools(ctx: ToolContext, http: HttpFn): NufiToolBox {
 
   return {
     state,
+    context: ctx,
     schemas: Object.values(handlers).map((h) => h.schema),
     async run(call: ToolCall) {
       const handler = handlers[call.name];

@@ -96,6 +96,9 @@ export async function runWith(deps: ExecuteDeps, ctx: ExecutionContext): Promise
       companyId: ctx.agent.companyId,
       issueId,
       responsibleUserId: resolveResponsibleUser(ctx),
+      // Filled in once the heartbeat context is read, so subtasks inherit the
+      // goal rather than falling off the plan.
+      goalId: null,
     },
     deps.http,
   );
@@ -126,11 +129,12 @@ export async function runWith(deps: ExecuteDeps, ctx: ExecutionContext): Promise
      * instead of the `untrusted` span where one is enough to refuse the request.
      */
     const heartbeat = current.body as {
-      issue?: { status?: string; title?: string; description?: string; priority?: string };
-      goal?: { title?: string } | null;
+      issue?: { status?: string; title?: string; description?: string; priority?: string; goalId?: string | null };
+      goal?: { id?: string; title?: string } | null;
       project?: { name?: string } | null;
     } | null;
     const status = heartbeat?.issue?.status ?? "todo";
+    tools.context.goalId = heartbeat?.goal?.id ?? heartbeat?.issue?.goalId ?? null;
     if (status === "in_review" || status === "done") {
       await ctx.onLog("stdout", "Already answered and awaiting a person; nothing to add.\n");
       return {

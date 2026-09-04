@@ -342,3 +342,72 @@ describe("what a mutation hands back", () => {
     expect(JSON.stringify(out.result)).toContain("re-read");
   });
 });
+
+describe("delegation that actually gets picked up", () => {
+  /**
+   * "Never look for unassigned work. No assignments = exit." — Paperclip's own
+   * contract. A subtask with no assignee is inert: no agent will ever claim it,
+   * and it sits at `todo` forever.
+   *
+   * Measured on a real onboarding run: the team lead broke "hire your first
+   * engineer" into six subtasks, every one of them correct and every one of
+   * them unassigned. The board looked like progress and nothing could move.
+   */
+  it("gives a subtask to the agent that made it when none is named", async () => {
+    const { fn, calls } = http();
+    const tools = buildTools(ctx(), fn);
+
+    await tools.run(call("create_child_issue", { title: "Draft the job description" }));
+
+    expect(calls[0].body).toMatchObject({
+      title: "Draft the job description",
+      parentId: "issue_1",
+      assigneeAgentId: "agent_1",
+    });
+  });
+
+  it("honours another agent when one is named", async () => {
+    const { fn, calls } = http();
+    const tools = buildTools(ctx(), fn);
+
+    await tools.run(call("create_child_issue", { title: "Review it", assigneeAgentId: "agent_legal" }));
+
+    expect(calls[0].body).toMatchObject({ assigneeAgentId: "agent_legal" });
+  });
+
+  /** "Always set parentId and goalId" — a subtask off the goal is off the plan. */
+  it("carries the parent's goal onto the subtask", async () => {
+    const { fn, calls } = http();
+    const tools = buildTools(ctx({ goalId: "goal_7" }), fn);
+
+    await tools.run(call("create_child_issue", { title: "Anything" }));
+
+    expect(calls[0].body).toMatchObject({ goalId: "goal_7" });
+  });
+
+  it("omits the goal when the parent has none", async () => {
+    const { fn, calls } = http();
+    const tools = buildTools(ctx(), fn);
+
+    await tools.run(call("create_child_issue", { title: "Anything" }));
+
+    expect(calls[0].body).not.toHaveProperty("goalId");
+  });
+});
+
+describe("list_agents", () => {
+  /**
+   * Delegating to the right desk requires knowing which desks exist. Without
+   * this the only honest choice is self-assignment, which turns every company
+   * into one agent doing everything.
+   */
+  it("lists the company's agents", async () => {
+    const { fn, calls } = http();
+    const tools = buildTools(ctx(), fn);
+
+    const out = await tools.run(call("list_agents", {}));
+
+    expect(out.ok).toBe(true);
+    expect(calls[0].path).toBe("/api/companies/co_1/agents");
+  });
+});
