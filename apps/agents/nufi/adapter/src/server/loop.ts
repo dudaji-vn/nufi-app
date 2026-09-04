@@ -51,7 +51,7 @@ export interface ToolBox {
   run(call: ToolCall): Promise<{ ok: boolean; result: unknown }>;
 }
 
-export type StopReason = "answered" | "iteration_cap";
+export type StopReason = "answered" | "iteration_cap" | "silent";
 
 export interface LoopOutcome {
   text: string;
@@ -98,6 +98,8 @@ export async function runLoop(input: {
   ];
   const toolsUsed: string[] = [];
   let iterations = 0;
+  /** Consecutive turns that produced nothing at all. */
+  let silent = 0;
   let text = "";
 
   while (iterations < maxIterations) {
@@ -106,9 +108,39 @@ export async function runLoop(input: {
     text = turn.text || text;
 
     if (turn.toolCalls.length === 0) {
+      /**
+       * Silence is not a disposition.
+       *
+       * This branch read "no tool calls" as "the agent has answered", and took
+       * the empty string with it — so a turn that produced nothing ended the
+       * heartbeat, and the task was blocked with "the agent finished without
+       * leaving a written result". A run that never did anything, reported as a
+       * run that finished. Measured twice: HAN-5 after three tool calls, BOM-1
+       * after one. Not the token budget — a full-size prompt at max_tokens 4096
+       * came back with 352 completion tokens, 111 of them reasoning.
+       *
+       * So an empty turn is answered with a nudge rather than an exit, and two
+       * in a row end the run under their own name, which a settle can report
+       * honestly instead of calling it a finished piece of work.
+       */
+      if (!turn.text.trim()) {
+        silent += 1;
+        if (silent >= 2) {
+          return { text, stopReason: "silent", iterations, toolsUsed, messages };
+        }
+        messages.push({
+          role: "user",
+          content:
+            "You produced no output at all — no text and no tool call. That leaves the task " +
+            "exactly as you found it. Either call a tool to make progress, or write the result " +
+            "now, or set the task to blocked and say what you are waiting for.",
+        });
+        continue;
+      }
       messages.push({ role: "assistant", content: turn.text });
       return { text, stopReason: "answered", iterations, toolsUsed, messages };
     }
+    silent = 0;
 
     messages.push({
       role: "assistant",
