@@ -538,8 +538,32 @@ export function buildTools(ctx: ToolContext, http: HttpFn): NufiToolBox {
           "earlier task's findings usually live. Call list_issues first to find the id.",
         parameters: OBJECT({ issueId: S }),
       },
-      run: async (a) =>
-        result(await send("GET", `/api/issues/${str(a.issueId) ?? ctx.issueId}/documents/plan`)),
+      run: async (a) => {
+        const target = str(a.issueId) ?? ctx.issueId;
+        const res = await send("GET", `/api/issues/${target}/documents/plan`);
+        /**
+         * A 404 here reads like an answer, and the measured consequence was the
+         * worst output this agent has produced. On HAN-6 it called read_plan
+         * with no id — its own task, which had no plan — got
+         * `HTTP 404: Document not found`, took that for "there is nothing to
+         * find", and wrote the deliverable from invention: delivery hours of
+         * "6am to 8pm" against a real profile of 5-7am and 1-3pm.
+         *
+         * The document existed. It belonged to the neighbouring task, whose id
+         * was in the wake. So an empty read says where to look next.
+         */
+        if (res.status === 404) {
+          return {
+            ok: false,
+            result:
+              `No plan document on ${target === ctx.issueId ? "this task" : `task ${target}`}. ` +
+              `If you were told to build on earlier work, that document belongs to ANOTHER task — ` +
+              `take its id from the board in your wake, or call list_issues, and read_plan that id. ` +
+              `Do not write the deliverable from memory: inventing the facts is worse than asking for them.`,
+          };
+        }
+        return result(res);
+      },
     },
 
     list_agents: {
