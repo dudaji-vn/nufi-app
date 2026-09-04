@@ -1,10 +1,7 @@
 {
   "title": "Administer",
-  "description": "Configure NUFI, manage users, observe spend",
-  "root": true,
   "icon": "SlidersHorizontal",
   "pages": [
-    "index",
     "---Configure---",
     "admin-panel",
     "configuration",

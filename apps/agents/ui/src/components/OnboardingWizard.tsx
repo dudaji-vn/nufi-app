@@ -166,7 +166,13 @@ export function OnboardingWizard() {
 
   // Step 2
   const [agentName, setAgentName] = useState((saved?.agentName as string) ?? "Chief of staff");
-  const [adapterType, setAdapterType] = useState<AdapterType>((saved?.adapterType as AdapterType) ?? "claude_local");
+  // `nufi_agent`, not `claude_local`. Upstream defaults to Claude Code because
+  // upstream ships pointed at Anthropic; this distribution ships pointed at the
+  // NUFI gateway. A customer who accepts the default gets a team lead whose
+  // first run dies on `Invalid model name passed in model=claude-opus-4-8` —
+  // which is exactly what happened the first time anyone clicked through this
+  // wizard, and the reason it was found by the operator rather than by us.
+  const [adapterType, setAdapterType] = useState<AdapterType>((saved?.adapterType as AdapterType) ?? "nufi_agent");
   const [cwd, setCwd] = useState((saved?.cwd as string) ?? "");
   const [model, setModel] = useState((saved?.model as string) ?? "");
   const [command, setCommand] = useState((saved?.command as string) ?? "");
@@ -378,7 +384,10 @@ export function OnboardingWizard() {
     setQ3("");
     setQ4("");
     setAgentName("Chief of staff");
-    setAdapterType("claude_local");
+    // Same default as the initial state above, for the same reason. Resetting
+    // to `claude_local` here would hand the broken default back to anyone who
+    // starts over — the one person most likely to have hit it already.
+    setAdapterType("nufi_agent");
     setModel("");
     setCommand("");
     setArgs("");

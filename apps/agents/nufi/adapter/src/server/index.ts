@@ -1,9 +1,9 @@
 import { agentConfigurationDoc, models, type } from "../index.js";
-import { buildDeps } from "./client.js";
+import { buildHttp, buildModel } from "./client.js";
 import { runWith, type ExecutionContext, type ExecutionResult } from "./execute.js";
 
 async function execute(ctx: ExecutionContext): Promise<ExecutionResult> {
-  return runWith(buildDeps(ctx), ctx);
+  return runWith({ http: buildHttp(ctx), model: buildModel(ctx) }, ctx);
 }
 
 /**
@@ -59,5 +59,27 @@ async function testEnvironment() {
 }
 
 export function createServerAdapter() {
-  return { type, execute, testEnvironment, models, agentConfigurationDoc };
+  return {
+    type,
+    execute,
+    testEnvironment,
+    models,
+    agentConfigurationDoc,
+    /**
+     * Ask the control plane to mint a run JWT and hand it to us as
+     * `ctx.authToken`. Every call this adapter makes back to Paperclip — read
+     * the issue, comment, set the status — is authorized by it.
+     *
+     * Omitting this does not produce an auth error, which is why it survived
+     * review: an actor with no token has access to no company, and the issue
+     * routes answer "not accessible" and "does not exist" with the same 404 so
+     * that ids cannot be probed across tenants. The run then reports
+     * `heartbeat-context 404` about an issue sitting right there in the UI.
+     *
+     * It is also invisible locally: `local_trusted` mode treats every caller as
+     * a trusted board, so the tokenless adapter works on a laptop and fails on
+     * every authenticated deployment.
+     */
+    supportsLocalAgentJwt: true,
+  };
 }

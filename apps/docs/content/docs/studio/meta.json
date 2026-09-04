@@ -1,10 +1,7 @@
 {
   "title": "NUFI Studio",
-  "description": "Build flows on a canvas and publish them",
-  "root": true,
   "icon": "Workflow",
   "pages": [
-    "index",
     "---Start here---",
     "getting-started",
     "connect-a-model",
@@ -12,6 +9,7 @@
     "flows",
     "components",
     "knowledge",
+    "department-scenarios",
     "variables",
     "---Ship---",
     "publish",

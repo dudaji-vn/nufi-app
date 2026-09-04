@@ -27,6 +27,7 @@ def _free_port():
 
 
 class _FakeUpstream(BaseHTTPRequestHandler):
+    last_body = {}
     """Minimal OpenAI-compatible stand-in for nufi-app litellm-proxy."""
     empty_reply = False  # flipped by a test to exercise the 502 path
 
@@ -50,6 +51,7 @@ class _FakeUpstream(BaseHTTPRequestHandler):
         n = int(self.headers.get("Content-Length", 0) or 0)
         body = json.loads(self.rfile.read(n) or "{}")
         if self.path == "/v1/chat/completions":
+            _FakeUpstream.last_body = body
             last = body["messages"][-1]["content"]
             content = "" if _FakeUpstream.empty_reply else f"reply to: {last}"
             return self._json(200, {
@@ -85,6 +87,18 @@ def _post(url, obj):
             return r.status, json.loads(r.read())
     except urllib.error.HTTPError as e:
         return e.code, json.loads(e.read())
+
+
+
+def assert_decoding_pinned(seen):
+    """Chat must send temperature 0 and a seed.
+
+    Not a style preference: unpinned, a Korean question came back in mixed
+    Korean/Chinese two runs in three. Pinned, it came back clean and identical
+    four times in four. See the note in nufi_chat_adapter.Config.
+    """
+    assert seen.get("temperature") == 0, seen
+    assert seen.get("seed") == 0, seen
 
 
 def main():
@@ -123,6 +137,8 @@ def main():
     assert code == 400, (code, out)
 
     # 4) empty completion -> honest 502 (never fabricate)
+    assert_decoding_pinned(_FakeUpstream.last_body)
+
     _FakeUpstream.empty_reply = True
     code, out = _post(base + "/v1/chat", {"message": "x"})
     assert code == 502, (code, out)

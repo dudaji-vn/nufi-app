@@ -1,0 +1,721 @@
+{
+  "modules": {
+    "chat": "available",
+    "rag": "available",
+    "agent": "available"
+  },
+  "departments": [
+    {
+      "id": "legal",
+      "department": "법무팀",
+      "checks": [
+        {
+          "ask": "자동연장 조항이 있는 계약은 만료 며칠 전까지 통보해야 하나요?",
+          "kind": "extract",
+          "http": 200,
+          "answer": "60일 전까지 통보해야 합니다.",
+          "sources": [
+            "계약검토_표준조항.txt",
+            "고객지원_대응기준.txt",
+            "취업규칙_휴가.txt",
+            "사무운영_복리후생.txt",
+            "2026_3분기_사업계획.txt",
+            "회계처리_기준.txt",
+            "영업_가격정책.txt",
+            "개발_운영기준.txt"
+          ],
+          "ok": true,
+          "drift": false,
+          "why": "states '60'",
+          "seconds": 8.1
+        },
+        {
+          "ask": "NDA의 비밀유지 의무는 계약 종료 후 몇 년간 존속하나요?",
+          "kind": "extract",
+          "http": 200,
+          "answer": "NDA의 비밀유지 의무는 계약 종료일로부터 3년간 존속하며, 영업비밀에 해당하는 정보는 기간 제한 없이 존속한다.",
+          "sources": [
+            "계약검토_표준조항.txt",
+            "고객지원_대응기준.txt",
+            "취업규칙_휴가.txt",
+            "사무운영_복리후생.txt",
+            "2026_3분기_사업계획.txt",
+            "회계처리_기준.txt",
+            "영업_가격정책.txt",
+            "개발_운영기준.txt"
+          ],
+          "ok": true,
+          "drift": false,
+          "why": "states '3'",
+          "seconds": 1.2
+        },
+        {
+          "ask": "고위험 조항으로 분류되는 것들은 무엇인가요?",
+          "kind": "extract",
+          "http": 200,
+          "answer": "고위험 조항으로 분류되는 것들은 다음과 같습니다:\n- 무제한 손해배상\n- 일방적 계약해지\n- 지식재산권 전부 양도\n- 경업금지 3년 초과",
+          "sources": [
+            "계약검토_표준조항.txt",
+            "고객지원_대응기준.txt",
+            "사무운영_복리후생.txt",
+            "취업규칙_휴가.txt",
+            "회계처리_기준.txt",
+            "2026_3분기_사업계획.txt",
+            "영업_가격정책.txt",
+            "개발_운영기준.txt"
+          ],
+          "ok": true,
+          "drift": false,
+          "why": "states '손해배상'",
+          "seconds": 6.9
+        },
+        {
+          "ask": "직원 퇴직금은 어떻게 계산하나요?",
+          "kind": "refuse",
+          "http": 200,
+          "answer": "문맥에 관련된 정보가 없습니다. 퇴직금 계산 방법에 대한 정보는 제공된 문서에서 찾을 수 없습니다.",
+          "sources": [
+            "계약검토_표준조항.txt",
+            "고객지원_대응기준.txt",
+            "사무운영_복리후생.txt",
+            "취업규칙_휴가.txt",
+            "회계처리_기준.txt",
+            "2026_3분기_사업계획.txt",
+            "영업_가격정책.txt",
+            "개발_운영기준.txt"
+          ],
+          "ok": true,
+          "drift": false,
+          "why": "declined, as it should",
+          "seconds": 0.9
+        }
+      ],
+      "notes": []
+    },
+    {
+      "id": "hr",
+      "department": "인사팀",
+      "checks": [
+        {
+          "ask": "배우자 출산 시 휴가는 며칠인가요?",
+          "kind": "extract",
+          "http": 200,
+          "answer": "배우자 출산 시 휴가는 10일입니다.",
+          "sources": [
+            "계약검토_표준조항.txt",
+            "고객지원_대응기준.txt",
+            "사무운영_복리후생.txt",
+            "취업규칙_휴가.txt",
+            "회계처리_기준.txt",
+            "2026_3분기_사업계획.txt",
+            "영업_가격정책.txt",
+            "개발_운영기준.txt"
+          ],
+          "ok": true,
+          "drift": false,
+          "why": "states '10'",
+          "seconds": 0.6
+        },
+        {
+          "ask": "재택근무는 주 며칠까지 신청할 수 있나요?",
+          "kind": "extract",
+          "http": 200,
+          "answer": "주 2일까지 재택근무를 신청할 수 있습니다.",
+          "sources": [
+            "계약검토_표준조항.txt",
+            "고객지원_대응기준.txt",
+            "사무운영_복리후생.txt",
+            "취업규칙_휴가.txt",
+            "2026_3분기_사업계획.txt",
+            "회계처리_기준.txt",
+            "영업_가격정책.txt",
+            "개발_운영기준.txt"
+          ],
+          "ok": true,
+          "drift": false,
+          "why": "states '2'",
+          "seconds": 3.8
+        },
+        {
+          "ask": "병가를 3일 넘게 쓰려면 무엇이 필요한가요?",
+          "kind": "extract",
+          "http": 200,
+          "answer": "의사 진단서를 제출해야 합니다.",
+          "sources": [
+            "계약검토_표준조항.txt",
+            "고객지원_대응기준.txt",
+            "사무운영_복리후생.txt",
+            "취업규칙_휴가.txt",
+            "2026_3분기_사업계획.txt",
+            "회계처리_기준.txt",
+            "영업_가격정책.txt",
+            "개발_운영기준.txt"
+          ],
+          "ok": true,
+          "drift": false,
+          "why": "states '진단서'",
+          "seconds": 0.4
+        },
+        {
+          "ask": "해외 출장 항공권은 어느 등급으로 예약하나요?",
+          "kind": "refuse",
+          "http": 200,
+          "answer": "모르겠습니다. 문맥에서 관련 정보가 없습니다.",
+          "sources": [
+            "계약검토_표준조항.txt",
+            "고객지원_대응기준.txt",
+            "사무운영_복리후생.txt",
+            "취업규칙_휴가.txt",
+            "2026_3분기_사업계획.txt",
+            "회계처리_기준.txt",
+            "영업_가격정책.txt",
+            "개발_운영기준.txt"
+          ],
+          "ok": true,
+          "drift": false,
+          "why": "declined, as it should",
+          "seconds": 0.4
+        }
+      ],
+      "notes": []
+    },
+    {
+      "id": "ga",
+      "department": "총무팀",
+      "checks": [
+        {
+          "ask": "법인카드 1회 사용 한도는 얼마인가요?",
+          "kind": "extract",
+          "http": 200,
+          "answer": "법인카드 1회 사용 한도는 50만원입니다.",
+          "sources": [
+            "계약검토_표준조항.txt",
+            "고객지원_대응기준.txt",
+            "사무운영_복리후생.txt",
+            "취업규칙_휴가.txt",
+            "회계처리_기준.txt",
+            "2026_3분기_사업계획.txt",
+            "영업_가격정책.txt",
+            "개발_운영기준.txt"
+          ],
+          "ok": true,
+          "drift": false,
+          "why": "states '50'",
+          "seconds": 4.0
+        },
+        {
+          "ask": "도서구입비는 연간 얼마까지 지원되나요?",
+          "kind": "extract",
+          "http": 200,
+          "answer": "도서구입비는 연 30만원 한도로 실비 정산된다.",
+          "sources": [
+            "계약검토_표준조항.txt",
+            "고객지원_대응기준.txt",
+            "사무운영_복리후생.txt",
+            "취업규칙_휴가.txt",
+            "회계처리_기준.txt",
+            "2026_3분기_사업계획.txt",
+            "영업_가격정책.txt",
+            "개발_운영기준.txt"
+          ],
+          "ok": true,
+          "drift": false,
+          "why": "states '30'",
+          "seconds": 0.8
+        },
+        {
+          "ask": "회의실을 예약하고 사용하지 않으면 어떻게 되나요?",
+          "kind": "extract",
+          "http": 200,
+          "answer": "회의실을 예약 후 15분간 미사용 시 자동 취소됩니다.",
+          "sources": [
+            "계약검토_표준조항.txt",
+            "고객지원_대응기준.txt",
+            "사무운영_복리후생.txt",
+            "취업규칙_휴가.txt",
+            "2026_3분기_사업계획.txt",
+            "회계처리_기준.txt",
+            "영업_가격정책.txt",
+            "개발_운영기준.txt"
+          ],
+          "ok": true,
+          "drift": false,
+          "why": "states '취소'",
+          "seconds": 4.5
+        },
+        {
+          "ask": "퇴사할 때 노트북은 어디에 반납하나요?",
+          "kind": "refuse",
+          "http": 200,
+          "answer": "문맥에서 직접적으로 노트북 반납처에 대한 정보는 찾을 수 없습니다. 노트북과 관련된 관리 사항은 [사무운영_복리후생.txt]에서 법인카드 사용 규칙 부분에 언급되어 있지만, 노트북 반납처에 대한 명시적인 내용은 없습니다. 따라서 이 질문에 대해 정확한 답변을 드릴 수 없습니다.",
+          "sources": [
+            "계약검토_표준조항.txt",
+            "고객지원_대응기준.txt",
+            "사무운영_복리후생.txt",
+            "취업규칙_휴가.txt",
+            "회계처리_기준.txt",
+            "2026_3분기_사업계획.txt",
+            "영업_가격정책.txt",
+            "개발_운영기준.txt"
+          ],
+          "ok": true,
+          "drift": false,
+          "why": "declined, as it should",
+          "seconds": 6.3
+        }
+      ],
+      "notes": []
+    },
+    {
+      "id": "strategy",
+      "department": "전략기획팀",
+      "checks": [
+        {
+          "ask": "3분기 핵심 목표 세 가지는 무엇인가요?",
+          "kind": "extract",
+          "http": 200,
+          "answer": "3분기 핵심 목표 세 가지는 다음과 같습니다:\n1. 온프렘 어플라이언스 파일럿 5개 부서 확보\n2. 국산 NPU 호환 검증 완료 및 인증서 취득\n3. 유료 전환 고객 1곳 계약 체결",
+          "sources": [
+            "계약검토_표준조항.txt",
+            "고객지원_대응기준.txt",
+            "사무운영_복리후생.txt",
+            "취업규칙_휴가.txt",
+            "2026_3분기_사업계획.txt",
+            "회계처리_기준.txt",
+            "영업_가격정책.txt",
+            "개발_운영기준.txt"
+          ],
+          "ok": true,
+          "drift": false,
+          "why": "states '파일럿'",
+          "seconds": 5.7
+        },
+        {
+          "ask": "분기 예산에서 연구개발 비중은 몇 퍼센트인가요?",
+          "kind": "extract",
+          "http": 200,
+          "answer": "60%",
+          "sources": [
+            "계약검토_표준조항.txt",
+            "고객지원_대응기준.txt",
+            "사무운영_복리후생.txt",
+            "취업규칙_휴가.txt",
+            "2026_3분기_사업계획.txt",
+            "회계처리_기준.txt",
+            "영업_가격정책.txt",
+            "개발_운영기준.txt"
+          ],
+          "ok": true,
+          "drift": false,
+          "why": "states '60'",
+          "seconds": 0.4
+        },
+        {
+          "ask": "가장 큰 리스크와 그 대응책은 무엇인가요?",
+          "kind": "extract",
+          "http": 200,
+          "answer": "최대 리스크는 파일럿 부서의 IT 승인 지연이며, 대응책은 IT 승인이 필요 없는 부서 단위 설치 경로를 우선 제안하는 것이다.",
+          "sources": [
+            "계약검토_표준조항.txt",
+            "고객지원_대응기준.txt",
+            "사무운영_복리후생.txt",
+            "취업규칙_휴가.txt",
+            "2026_3분기_사업계획.txt",
+            "회계처리_기준.txt",
+            "영업_가격정책.txt",
+            "개발_운영기준.txt"
+          ],
+          "ok": true,
+          "drift": false,
+          "why": "states '승인'",
+          "seconds": 1.3
+        },
+        {
+          "ask": "4분기 채용 계획은 몇 명인가요?",
+          "kind": "refuse",
+          "http": 200,
+          "answer": "문맥에서 4분기 채용 계획에 대한 정보는 찾을 수 없습니다.",
+          "sources": [
+            "계약검토_표준조항.txt",
+            "고객지원_대응기준.txt",
+            "사무운영_복리후생.txt",
+            "취업규칙_휴가.txt",
+            "회계처리_기준.txt",
+            "2026_3분기_사업계획.txt",
+            "영업_가격정책.txt",
+            "개발_운영기준.txt"
+          ],
+          "ok": true,
+          "drift": false,
+          "why": "declined, as it should",
+          "seconds": 4.3
+        }
+      ],
+      "notes": []
+    },
+    {
+      "id": "finance",
+      "department": "재무팀",
+      "checks": [
+        {
+          "ask": "고정자산으로 계상하는 취득가 기준은 얼마인가요?",
+          "kind": "extract",
+          "http": 200,
+          "answer": "고정자산으로 계상하는 취득가 기준은 100만원 이상입니다.",
+          "sources": [
+            "계약검토_표준조항.txt",
+            "고객지원_대응기준.txt",
+            "사무운영_복리후생.txt",
+            "취업규칙_휴가.txt",
+            "회계처리_기준.txt",
+            "2026_3분기_사업계획.txt",
+            "영업_가격정책.txt",
+            "개발_운영기준.txt"
+          ],
+          "ok": true,
+          "drift": false,
+          "why": "states '100'",
+          "seconds": 0.8
+        },
+        {
+          "ask": "노트북의 내용연수는 몇 년인가요?",
+          "kind": "extract",
+          "http": 200,
+          "answer": "노트북의 내용연수는 4년입니다.",
+          "sources": [
+            "계약검토_표준조항.txt",
+            "고객지원_대응기준.txt",
+            "사무운영_복리후생.txt",
+            "취업규칙_휴가.txt",
+            "회계처리_기준.txt",
+            "2026_3분기_사업계획.txt",
+            "영업_가격정책.txt",
+            "개발_운영기준.txt"
+          ],
+          "ok": true,
+          "drift": false,
+          "why": "states '4'",
+          "seconds": 0.5
+        },
+        {
+          "ask": "중복 지급 의심 건은 어떤 기준으로 분류하나요?",
+          "kind": "extract",
+          "http": 200,
+          "answer": "동일 거래처에 같은 금액이 30일 이내 2회 이상 청구되면 중복 지급 의심 건으로 분류하여 담당자 확인을 요청한다.",
+          "sources": [
+            "계약검토_표준조항.txt",
+            "고객지원_대응기준.txt",
+            "취업규칙_휴가.txt",
+            "사무운영_복리후생.txt",
+            "2026_3분기_사업계획.txt",
+            "회계처리_기준.txt",
+            "영업_가격정책.txt",
+            "개발_운영기준.txt"
+          ],
+          "ok": true,
+          "drift": false,
+          "why": "states '30'",
+          "seconds": 6.7
+        },
+        {
+          "ask": "임직원 스톡옵션 행사가는 어떻게 정하나요?",
+          "kind": "refuse",
+          "http": 200,
+          "answer": "문맥에서 임직员工股票期权行权价格的相关信息没有提及，因此无法回答该问题。",
+          "sources": [
+            "계약검토_표준조항.txt",
+            "고객지원_대응기준.txt",
+            "사무운영_복리후생.txt",
+            "취업규칙_휴가.txt",
+            "회계처리_기준.txt",
+            "2026_3분기_사업계획.txt",
+            "영업_가격정책.txt",
+            "개발_운영기준.txt"
+          ],
+          "ok": true,
+          "drift": true,
+          "why": "declined, as it should; drifted out of Korean",
+          "seconds": 6.1
+        }
+      ],
+      "notes": []
+    },
+    {
+      "id": "sales",
+      "department": "영업팀",
+      "checks": [
+        {
+          "ask": "팀장이 전결로 승인할 수 있는 할인율은 몇 퍼센트까지인가요?",
+          "kind": "extract",
+          "http": 200,
+          "answer": "팀장이 전결로 승인할 수 있는 최대 할인율은 10%입니다.",
+          "sources": [
+            "계약검토_표준조항.txt",
+            "고객지원_대응기준.txt",
+            "취업규칙_휴가.txt",
+            "사무운영_복리후생.txt",
+            "2026_3분기_사업계획.txt",
+            "회계처리_기준.txt",
+            "영업_가격정책.txt",
+            "개발_운영기준.txt"
+          ],
+          "ok": true,
+          "drift": false,
+          "why": "states '10'",
+          "seconds": 6.2
+        },
+        {
+          "ask": "파일럿 기간은 기본 몇 주인가요?",
+          "kind": "extract",
+          "http": 200,
+          "answer": "파일럿 기간은 기본 8주입니다.",
+          "sources": [
+            "계약검토_표준조항.txt",
+            "고객지원_대응기준.txt",
+            "사무운영_복리후생.txt",
+            "취업규칙_휴가.txt",
+            "회계처리_기준.txt",
+            "2026_3분기_사업계획.txt",
+            "영업_가격정책.txt",
+            "개발_운영기준.txt"
+          ],
+          "ok": true,
+          "drift": false,
+          "why": "states '8'",
+          "seconds": 5.9
+        },
+        {
+          "ask": "견적의 유효기간은 며칠인가요?",
+          "kind": "extract",
+          "http": 200,
+          "answer": "견적의 유효기간은 발행일로부터 30일이다.",
+          "sources": [
+            "계약검토_표준조항.txt",
+            "고객지원_대응기준.txt",
+            "사무운영_복리후생.txt",
+            "취업규칙_휴가.txt",
+            "회계처리_기준.txt",
+            "2026_3분기_사업계획.txt",
+            "영업_가격정책.txt",
+            "개발_운영기준.txt"
+          ],
+          "ok": true,
+          "drift": false,
+          "why": "states '30'",
+          "seconds": 0.7
+        },
+        {
+          "ask": "영업사원 인센티브 지급률은 얼마인가요?",
+          "kind": "refuse",
+          "http": 200,
+          "answer": "모르겠습니다. 문맥에서 관련 정보가 없습니다.",
+          "sources": [
+            "계약검토_표준조항.txt",
+            "고객지원_대응기준.txt",
+            "사무운영_복리후생.txt",
+            "취업규칙_휴가.txt",
+            "회계처리_기준.txt",
+            "2026_3분기_사업계획.txt",
+            "영업_가격정책.txt",
+            "개발_운영기준.txt"
+          ],
+          "ok": true,
+          "drift": false,
+          "why": "declined, as it should",
+          "seconds": 0.5
+        }
+      ],
+      "notes": []
+    },
+    {
+      "id": "support",
+      "department": "고객지원팀",
+      "checks": [
+        {
+          "ask": "P1 티켓의 1차 응답 목표 시간은 얼마인가요?",
+          "kind": "extract",
+          "http": 200,
+          "answer": "P1 티cket의 1차 응답 목표 시간은 30분 이내입니다.",
+          "sources": [
+            "계약검토_표준조항.txt",
+            "고객지원_대응기준.txt",
+            "취업규칙_휴가.txt",
+            "사무운영_복리후생.txt",
+            "2026_3분기_사업계획.txt",
+            "회계처리_기준.txt",
+            "영업_가격정책.txt",
+            "개발_운영기준.txt"
+          ],
+          "ok": true,
+          "drift": false,
+          "why": "states '30'",
+          "seconds": 6.2
+        },
+        {
+          "ask": "공유 드라이브가 보이지 않는다는 문의에는 무엇을 먼저 안내하나요?",
+          "kind": "extract",
+          "http": 200,
+          "answer": "공유 드라이브가 보이지 않는다는 문의에는 연결 진단(doctor)을 먼저 실행하도록 안내해야 합니다.",
+          "sources": [
+            "계약검토_표준조항.txt",
+            "고객지원_대응기준.txt",
+            "취업규칙_휴가.txt",
+            "사무운영_복리후생.txt",
+            "2026_3분기_사업계획.txt",
+            "회계처리_기준.txt",
+            "영업_가격정책.txt",
+            "개발_운영기준.txt"
+          ],
+          "ok": true,
+          "drift": false,
+          "why": "states '진단'",
+          "seconds": 1.0
+        },
+        {
+          "ask": "응답 목표 시간을 넘기면 어떻게 되나요?",
+          "kind": "extract",
+          "http": 200,
+          "answer": "응답 목표 시간을 초과하면 자동으로 한 단계 상향됩니다.",
+          "sources": [
+            "계약검토_표준조항.txt",
+            "고객지원_대응기준.txt",
+            "사무운영_복리후생.txt",
+            "취업규칙_휴가.txt",
+            "2026_3분기_사업계획.txt",
+            "회계처리_기준.txt",
+            "영업_가격정책.txt",
+            "개발_운영기준.txt"
+          ],
+          "ok": true,
+          "drift": false,
+          "why": "states '상향'",
+          "seconds": 6.1
+        },
+        {
+          "ask": "고객사 환불 규정은 어떻게 되나요?",
+          "kind": "refuse",
+          "http": 200,
+          "answer": "문맥에서 고객사 환불 규정에 대한 정보는 찾을 수 없습니다.",
+          "sources": [
+            "계약검토_표준조항.txt",
+            "고객지원_대응기준.txt",
+            "사무운영_복리후생.txt",
+            "취업규칙_휴가.txt",
+            "회계처리_기준.txt",
+            "2026_3분기_사업계획.txt",
+            "영업_가격정책.txt",
+            "개발_운영기준.txt"
+          ],
+          "ok": true,
+          "drift": false,
+          "why": "declined, as it should",
+          "seconds": 4.5
+        }
+      ],
+      "notes": []
+    },
+    {
+      "id": "engineering",
+      "department": "개발팀",
+      "checks": [
+        {
+          "ask": "운영 배포를 하지 않는 시간대는 언제인가요?",
+          "kind": "extract",
+          "http": 200,
+          "answer": "금요일 15시 이후에는 배포하지 않습니다.",
+          "sources": [
+            "계약검토_표준조항.txt",
+            "고객지원_대응기준.txt",
+            "사무운영_복리후생.txt",
+            "취업규칙_휴가.txt",
+            "2026_3분기_사업계획.txt",
+            "회계처리_기준.txt",
+            "영업_가격정책.txt",
+            "개발_운영기준.txt"
+          ],
+          "ok": true,
+          "drift": false,
+          "why": "states '금요일'",
+          "seconds": 4.2
+        },
+        {
+          "ask": "장애 사후분석은 며칠 이내에 작성하나요?",
+          "kind": "extract",
+          "http": 200,
+          "answer": "5영업일 내에 작성합니다.",
+          "sources": [
+            "계약검토_표준조항.txt",
+            "고객지원_대응기준.txt",
+            "사무운영_복리후생.txt",
+            "취업규칙_휴가.txt",
+            "회계처리_기준.txt",
+            "2026_3분기_사업계획.txt",
+            "영업_가격정책.txt",
+            "개발_운영기준.txt"
+          ],
+          "ok": true,
+          "drift": false,
+          "why": "states '5'",
+          "seconds": 4.5
+        },
+        {
+          "ask": "도커 이미지 태그 사용 규칙은 무엇인가요?",
+          "kind": "extract",
+          "http": 200,
+          "answer": "도커 이미지 태그는 고정해야 하며, latest 태그는 사용하지 않습니다.",
+          "sources": [
+            "계약검토_표준조항.txt",
+            "고객지원_대응기준.txt",
+            "사무운영_복리후생.txt",
+            "취업규칙_휴가.txt",
+            "2026_3분기_사업계획.txt",
+            "회계처리_기준.txt",
+            "영업_가격정책.txt",
+            "개발_운영기준.txt"
+          ],
+          "ok": true,
+          "drift": false,
+          "why": "states '고정'",
+          "seconds": 5.2
+        },
+        {
+          "ask": "신입 개발자 온보딩 교육은 몇 주인가요?",
+          "kind": "refuse",
+          "http": 200,
+          "answer": "모르겠습니다. 문맥에서 관련 정보가 없습니다.",
+          "sources": [
+            "계약검토_표준조항.txt",
+            "고객지원_대응기준.txt",
+            "사무운영_복리후생.txt",
+            "취업규칙_휴가.txt",
+            "2026_3분기_사업계획.txt",
+            "회계처리_기준.txt",
+            "영업_가격정책.txt",
+            "개발_운영기준.txt"
+          ],
+          "ok": true,
+          "drift": false,
+          "why": "declined, as it should",
+          "seconds": 0.7
+        }
+      ],
+      "notes": []
+    }
+  ],
+  "routines": [
+    {
+      "routine_id": "r1",
+      "http": 502,
+      "status": "error",
+      "output": "",
+      "seconds": 10.0
+    },
+    {
+      "routine_id": "r2",
+      "http": 502,
+      "status": "error",
+      "output": "",
+      "seconds": 10.0
+    }
+  ]
+}

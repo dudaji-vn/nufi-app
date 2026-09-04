@@ -49,6 +49,73 @@ model_list:
       backend_type: cloud
       hardware_id: gemini-cloud
       supports_vision: false
+  # The model NUFI Works agents call, and the only name G1 exempts.
+  #
+  # It exists to be nameable. `exempt_models` matches a model name, so agent
+  # traffic needs one of its own — pointing agents at `gemini` would have
+  # exempted every chat user from prompt-injection defence in order to unblock
+  # one loop. Same backend, different label, and the label is the whole point.
+  - model_name: nufi-agent
+    litellm_params:
+      model: gemini/gemini-2.5-flash
+      api_key: os.environ/GEMINI_API_KEY
+    model_info:
+      backend_type: cloud
+      hardware_id: gemini-cloud
+      supports_vision: false
+  # --- Harness aliases ------------------------------------------------------
+  # Paperclip's coding harnesses (NUFI Works: claude_local, codex_local,
+  # opencode_local) each carry a HARDCODED list of their vendor's model ids and
+  # refuse anything else — provisioning a built-in agent with `gemini` returns
+  # `built_in_agent_model_unknown`. The adapters live in vendored upstream code
+  # that the fork guard will not let us edit, so the model set has to meet them
+  # where they are. Measured on the live gateway before adding these: every
+  # harness model id returned `Invalid model name passed in model=...`, which is
+  # why none of the built-in agents could run at all.
+  #
+  # The protocols were never the problem. Verified against api.codechi.me:
+  # POST /v1/messages (Anthropic shape) and POST /v1/responses (OpenAI Responses
+  # API) both answer 200, and both return real tool calls — `stop_reason:
+  # tool_use` and `finish_reason: tool_calls`. Only the names were missing.
+  #
+  # READ THIS BEFORE TRUSTING A COST REPORT: the name is a lie by construction.
+  # A request for "claude-sonnet-4-5" is answered by Gemini, and Langfuse, the
+  # console and every usage export will carry the alias, not the model that ran.
+  # `model_info.hardware_id: gemini-cloud` below is the only place that records
+  # what actually served the request — aggregate on that, never on model_name.
+  # Retire these the day the gateway offers the real models.
+  - model_name: claude-sonnet-4-5
+    litellm_params:
+      model: gemini/gemini-2.5-pro
+      api_key: os.environ/GEMINI_API_KEY
+    model_info:
+      backend_type: cloud
+      hardware_id: gemini-cloud
+      supports_vision: false
+  - model_name: claude-haiku-4-5
+    litellm_params:
+      model: gemini/gemini-2.5-flash
+      api_key: os.environ/GEMINI_API_KEY
+    model_info:
+      backend_type: cloud
+      hardware_id: gemini-cloud
+      supports_vision: false
+  - model_name: gpt-5
+    litellm_params:
+      model: gemini/gemini-2.5-pro
+      api_key: os.environ/GEMINI_API_KEY
+    model_info:
+      backend_type: cloud
+      hardware_id: gemini-cloud
+      supports_vision: false
+  - model_name: gpt-5-mini
+    litellm_params:
+      model: gemini/gemini-2.5-flash
+      api_key: os.environ/GEMINI_API_KEY
+    model_info:
+      backend_type: cloud
+      hardware_id: gemini-cloud
+      supports_vision: false
   # A `gemini-2.5-flash-title` alias used to live here so policy.yaml could
   # exempt title generation from G1. Removed 2026-08-03: measured on the
   # production gateway with G1 enforcing and titles on the guarded model, titles

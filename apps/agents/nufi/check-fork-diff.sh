@@ -30,16 +30,53 @@ ALLOWLIST=(
   # the server text it matches was rebranded -- the fallback could never fire.
   # Now matches the phrase instead of the brand. Candidate to send upstream.
   "ui/src/lib/successful-run-handoff.ts"
+  # Its test moved with it. The fix above changed what the regex matches, so the
+  # test that pins the match had to change in the same commit -- allowlisting the
+  # source without its test left main red on the very guard that caught it.
+  "ui/src/lib/successful-run-handoff.test.ts"
   # Upstream bug: the company-delete cascade removes `goals` before `projects`,
   # but projects.goal_id references goals.id, so deleting any company that has
   # both aborts on a foreign-key violation and silently leaves it in place.
   # Two lines swapped. Candidate to send upstream.
   "server/src/services/companies.ts"
+  # Its test, for the same reason the successful-run-handoff test is listed
+  # above: allowlisting a fix without its test leaves main red on the very
+  # guard that would have caught the next one. This is the second time that
+  # exact mistake shipped.
+  "server/src/__tests__/companies-service.test.ts"
   # Builds nufi/adapter, which nothing else does: it is an external adapter, so
   # its dist is gitignored and no upstream build step touches it. Without these
   # lines the image ships a server that cannot offer `nufi_agent` -- the only
   # adapter that reaches the NuFi gateway -- and says nothing about it.
   "Dockerfile"
+  # Which adapter a new company gets by default, and which one wears the
+  # "Recommended" badge. Upstream picks Claude Code and Codex because upstream
+  # ships pointed at Anthropic and OpenAI; this distribution ships pointed at
+  # the NUFI gateway, which serves Gemini. Accepting upstream's default here
+  # produces a team lead whose first run dies on
+  # `Invalid model name passed in model=claude-opus-4-8`, and the vendor
+  # harnesses narrate tool use they never performed when driven by a model
+  # their prompts were not written for -- both measured on the live gateway.
+  #
+  # There is no server-side seam for either: `recommended` is a constant in the
+  # display registry, and the default is component state. Two leaf edits, both
+  # one line of behaviour, both distribution-specific by nature.
+  "ui/src/components/OnboardingWizard.tsx"
+  "ui/src/adapters/adapter-display-registry.ts"
+  # Which company the app opens on. `GET /companies` returns every company to an
+  # instance admin, while `hasCompanyAccess` -- guarding every other company
+  # route -- requires membership and deliberately gives instance admins no
+  # blanket access. Auto-selecting from the unfiltered list lands the operator
+  # on a company where the dashboard, agents, issues, projects and routines all
+  # 403, with no way out: the company cannot even be deleted, because delete
+  # checks the same access. Observed on the live instance.
+  #
+  # The fix reads `cli-auth/me`, which the UI already fetches for
+  # CloudAccessGate, so it costs no request. Candidate to send upstream, since
+  # nothing here is NuFi-specific -- it is a mismatch between two upstream
+  # endpoints.
+  "ui/src/context/CompanyContext.tsx"
+  "ui/src/context/CompanyContext.test.tsx"
   # Single sign-on. See nufi/README.md, "Signing in with a NUFI account".
   "server/src/auth/better-auth.ts"
   # The button that reaches the plugin above. Enabling generic-oauth on the

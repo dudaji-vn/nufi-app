@@ -19,6 +19,7 @@ appliance stack sets ``enforce``.
 
 Kept intentionally stdlib-only and dependency-free to mirror the adapters.
 """
+import contextlib
 import ipaddress
 import os
 import urllib.parse
@@ -68,10 +69,8 @@ class EgressGuard:
         self.mesh_domain = (mesh_domain or "mesh").strip(".").lower()
         self._cidrs = []
         for c in mesh_cidrs or ():
-            try:
+            with contextlib.suppress(ValueError):
                 self._cidrs.append(ipaddress.ip_network(c, strict=False))
-            except ValueError:
-                pass
         self._allow = {h.strip().rstrip(".").lower()
                        for h in (allow_hosts or ()) if h and h.strip()}
 

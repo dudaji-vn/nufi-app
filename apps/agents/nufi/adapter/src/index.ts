@@ -1,8 +1,23 @@
 export const type = "nufi_agent";
 export const label = "NUFI Works";
 
+/**
+ * The dropdown a person picks from when hiring one of these agents, and the
+ * reason `gemini` is not in it.
+ *
+ * `gemini` is a working model on the gateway and it will not work here. The
+ * gateway's G1 prompt-injection control classifies a tool result as
+ * `untrusted` — threshold 0.50, one detector, no corroboration — and the
+ * classifier scores benign text near 1.0, so every agent turn after the first
+ * is refused. Measured on the smallest tool result that exists, `{"ok":true}`:
+ * blocked as `role: tool`, fine as `role: user`.
+ *
+ * `nufi-agent` resolves to the same backend and is the one model name G1
+ * exempts. Offering `gemini` here cost a full gate test: three agents were
+ * hired against it, and all four of their tasks failed on the second turn.
+ */
 export const models = [
-  { id: "gemini", label: "Gemini (via the NUFI gateway)" },
+  { id: "nufi-agent", label: "NUFI agent model (Gemini, via the NUFI gateway)" },
 ];
 
 export const agentConfigurationDoc = `# nufi_agent configuration

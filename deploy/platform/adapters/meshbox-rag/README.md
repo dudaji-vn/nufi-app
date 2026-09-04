@@ -38,7 +38,30 @@ failure.
 - raw chunks — a list `[{page_content, metadata}...]` (rag_api native) or under
   `documents`/`data`/`results`/`chunks`/`matches` → grounded-and-generated here.
 
-`POST {NUFI_RAG_URL}/documents` returns `{id|file_id, chunks?}`. `GET /health` → 200.
+`GET /health` → 200.
+
+### Ingest, and the socket that does not exist
+
+The real **rag_api** has **no `POST /documents`** — it answers `405`. Ingest is
+`POST /embed`, a *multipart* upload carrying a caller-supplied `file_id`, and
+retrieval is scoped: `POST /query` without a `file_id` is a `422`. So the adapter
+reads `GET /ids` and asks `POST /query_multiple` across everything the store
+holds, which keeps it stateless.
+
+`/embed` **appends**, so re-ingesting under the same id would leave a superseded
+revision in the index; the adapter deletes first, making a re-upload behave like
+saving over a file on the drive. The document id is `sha256(name)[:16]`, so the
+same document name always lands on the same id.
+
+A plain answer-service backend that *does* take JSON `POST /documents` and an
+unscoped `POST /query` is still supported — as the **fallback**, chosen only on a
+`404`/`405`, never to paper over a real failure.
+
+> This is worth stating plainly because the adapter shipped calling
+> `POST /documents` as its primary path and could not ingest a single document
+> against the service nufi-app actually runs. Its suite passed because the fake
+> implemented the imagined contract. `test_adapter.py` now drives **both**
+> shapes, and the rag_api fake answers `405` there exactly like the real one.
 
 ## Config (env)
 

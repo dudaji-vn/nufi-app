@@ -18,7 +18,7 @@ export const source = loader({
   baseUrl: '/docs',
   source: { ...mdxSource, files } as typeof mdxSource,
   // Render meta.json `icon` strings (Lucide names) as real icons in the
-  // sidebar tree and tabs. Without this, the raw name renders as text.
+  // sidebar tree. Without this, the raw name renders as text.
   icon(icon) {
     if (icon && icon in lucide) {
       return createElement(lucide[icon as keyof typeof lucide] as never);

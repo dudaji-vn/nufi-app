@@ -1,0 +1,287 @@
+---
+title: Department scenarios
+description: Ten agents a team can open on day one — what each does, how it is wired, and how to build your own version in an afternoon.
+---
+
+A department buys one box. On it sit a shared drive, a chat tool and an
+agent runtime. The drive already holds the work; the question is what to
+point an agent at first.
+
+These ten flows are that answer — one per team, plus two routines any team
+runs. Each is small enough to read in a minute and open enough to change.
+
+Every question and answer on this page is a real run against a box with an
+on-box model. Nothing here is an illustration.
+
+## What you can do with them
+
+| # | Team | The job it takes off someone's desk |
+|---|---|---|
+| 1 | Legal | Reviews a draft clause against your review guide and names the article that forbids it |
+| 2 | HR | Answers a leave question by **calling a calculator**, so the number is computed and not guessed |
+| 3 | General Affairs | Turns one line of instruction into a notice in the house format |
+| 4 | Corporate Strategy | Turns meeting notes into decisions with an owner and a date |
+| 5 | Finance | Picks the duplicate-payment suspects out of a payment list |
+| 6 | Sales | Breaks an RFP paragraph into a requirement checklist |
+| 7 | Customer Support | Grades tickets by priority and states the rule it used |
+| 8 | Engineering | Turns an incident log into a postmortem stub |
+| 9 | Any team | Reduces last night's mail to what needs answering today |
+| 10 | Any team | Tags a batch of files by owning team and retention |
+
+## Setting them up
+
+Three steps, and only one of them is configuration.
+
+<Steps>
+<Step>
+
+**Open Studio on the box.** It is already there — the appliance ships it.
+Sign in with your Studio account.
+
+</Step>
+<Step>
+
+**Point one field at your own model.** Every scenario uses the same model
+component, and it needs two values:
+
+| Field | What to put |
+|---|---|
+| **Ollama API URL** | the address of the model running on your box, e.g. `http://localhost:11434` |
+| **Model Name** | whatever that box serves, e.g. `qwen2.5:7b` |
+
+That field is the entire difference between an on-prem agent and a cloud
+one. There is no account to create, no key to paste, and nothing to count
+per seat.
+
+<Callout>
+Turn on **Tool Model Enabled** if the flow hands the agent a tool —
+scenario 2 does. Without it the model will answer from memory instead of
+reaching for the calculator.
+</Callout>
+
+</Step>
+<Step>
+
+**Open a scenario and press Playground.** Type the question, read the
+answer. Nothing else is required to start.
+
+</Step>
+</Steps>
+
+### Building all ten at once
+
+Doing that by hand ten times is a waste of an afternoon, so it is scripted:
+
+```bash
+cd deploy/platform/scenarios/studio
+
+# create all ten through Studio's own API
+python3 build_flows.py --key sk-… --model qwen2.5:7b \
+    --ollama http://localhost:11434
+
+# run all ten and print what each returned
+python3 run_flows.py --key sk-…
+```
+
+`run_flows.py` prints the answer for every flow and flags any that came
+back with Chinese characters in Korean prose, so you can see the state of
+all ten in one screenful rather than clicking through them.
+
+Change a department's instructions in `build_flows.py`, re-run, and you
+have your own version of this.
+
+## How one is wired
+
+### Legal — reviewing a clause against your own guide
+
+Four components, and you can read the whole thing:
+
+```
+Chat Input ─────────────┐
+                        ├─▶ On-box model ─▶ Chat Output
+Prompt (review guide) ──┘
+```
+
+The question comes in on the left. The department's review guide sits
+underneath it, in a **Prompt Template** — not general legal knowledge, but
+your team's own standard, pasted in. Change the standard and the agent
+changes with it.
+
+**Asked**
+
+> 다음 조항을 검토해줘: '본 계약의 손해배상 책임에는 상한을 두지 아니한다.'
+> 그리고 '경업금지 기간은 5년으로 한다.'
+
+**Answered**
+
+```
+(1) 위험 여부: 위험합니다.
+(2) 근거 조항 번호: 제6조, 제3조
+(3) 해야 할 조치: 무제한 손해배상 조항 삭제 및 경업금지 기간 3년 이내로 수정.
+```
+
+Both clauses caught, each against the article that forbids it, with the
+action to take.
+
+### HR — a number the model is not allowed to guess
+
+This one is worth reading even if your team is not HR.
+
+The company rule is *15 days after one full year, plus one day for every
+two years of continuous service beyond the first, capped at 25*. Applied
+to three years of service that gives **16**.
+
+Asked to work it out, the model answers **20**. At temperature zero it
+answers 20 every time — confidently, and wrong.
+
+So the flow does not let it. Six components instead of four:
+
+```
+Chat Input ──────────────┐
+Prompt (rule + refusal) ─┤
+On-box model ────────────┼─▶ Tool-calling agent ─▶ Chat Output
+CalculatorTool ──────────┘
+```
+
+Two of those feed the agent for different reasons: the model is its
+**brain**, the calculator is its **tool**. The system prompt states the
+rule and forbids the arithmetic, so the agent has to reach for the
+calculator to answer at all.
+
+**Asked** — 3년 근속한 직원의 연차휴가는 며칠인가요?
+
+**Answered**
+
+```
+3년 근속한 직원의 연차휴가는 16일입니다.
+```
+
+The Playground shows the `CALCULATOR` calls above the answer. The agent
+read *three years* out of the question, built the expression, called the
+tool, and reported what came back. None of that number was invented.
+
+<Callout type="warn">
+**Retrieval grounds finding. It does not ground reasoning.** A model
+reading the right policy will still derive the wrong number from it.
+Anything that must be *computed* — entitlements, prorations, deadlines,
+totals — belongs in a tool. That holds for every department, not just HR.
+</Callout>
+
+## Two more, briefly
+
+### Corporate Strategy — meeting notes to decisions
+
+**Asked** — meeting notes where two items got an owner and a date, and one
+did not.
+
+| 결정사항 | 담당자 | 기한 |
+|---|---|---|
+| 파일럿 후보 3곳 선정 | 김대리 | 9월 5일까지 |
+| 제안서 초안 작성 | 이과장 | 9월 10일까지 |
+| 예산 재검토 논의 | 미지정 | 미지정 |
+
+The third row is the point. The notes never assigned it, so the flow says
+so. A summariser that fills that cell to look complete is worse than no
+summariser.
+
+### Finance — duplicate payment check
+
+**Asked** — five payments, one rule: same supplier, same amount, twice
+inside thirty days.
+
+```
+대한물산 / 120만원 / 8/03, 8/19 / 중복 지급 의심 건
+```
+
+One suspect, and only one. 서울테크 also repeats at the same amount — but
+fifty-two days apart, so it is left alone. The rule was applied, not
+approximated.
+
+## How the box reaches these flows
+
+Everything above happens inside Studio, which leaves a fair question: what
+has any of it to do with the box a department bought?
+
+A member never opens Studio. They open the **box's own console**, go to
+**AI Workspace**, and press **Run** on a routine. That routine reaches a
+flow you built:
+
+```
+Member ─▶ Box console ─▶ Agent adapter ─▶ Studio flow ─▶ On-box model
+          AI Workspace   nufi-app :8902   the one you built
+```
+
+The adapter maps a routine to a flow. It lives in
+`deploy/platform/adapters/meshbox-agent/` and is configured with one
+variable:
+
+```bash
+NUFI_AGENT_URL=http://studio:7860
+NUFI_AGENT_API_KEY=sk-…
+NUFI_AGENT_FLOW_MAP='{"r1":"<legal-flow-id>","r2":"<strategy-flow-id>"}'
+```
+
+A routine with no entry in that map is **honestly unwired** — the adapter
+answers `502` rather than inventing a result.
+
+### Proving it, rather than asserting it
+
+Press **Run** on 부서 문서 QA봇 in the box console, then read the run back:
+
+```
+1. 위험 여부: 없음
+2. 근거 조항 번호: 가이드에 없음
+3. 해야 할 조치: 가이드에 없음
+```
+
+Three parts — 위험 여부, 근거 조항, 조치 — which is the Legal flow's own
+output shape, and nothing else on the box produces it. The shape of the
+answer is the proof of which flow ran.
+
+<Callout type="warn">
+**Two gaps, named rather than hidden.**
+
+The console reports the routine and its status and **never shows what came
+back** — a member pressing Run learns only that something happened. The
+result has to be read from `POST /api/v1/agent/routines/{id}/run`.
+
+And the box sends the routine's *name* and nothing else, so a flow that
+needs material asks for it. Handing a routine its meeting or its folder is
+the next piece of work, and it belongs to the box rather than the model.
+</Callout>
+
+## What these flows deliberately do not do
+
+**They do not mask personal data.** PII masking is a real feature of the
+platform, but it belongs to the guardrail layer, not to a prompt. Asked to
+mask a Korean document, a prompt left an email address untouched and
+dropped an account number entirely. Deterministic detectors handle this; a
+model asked nicely does not.
+
+**They do not answer past their material.** Each system prompt names what
+the flow may use and tells it to say so when the answer is not there. That
+is why the Strategy flow writes `미지정` and the Sales flow writes
+`조건부` rather than guessing.
+
+**They are pinned, not sampled.** Temperature is zero and `top_k` is one.
+Left to sample, the same Korean question came back finished in Chinese —
+the notice-drafting flow produced `정보资产安全及保密性을`. Greedy decoding
+removes the reach for those tokens, and makes a run repeatable enough to
+quote in a document like this one.
+
+## Adapting one to your team
+
+Open `build_flows.py` and look at any entry in `SCENARIOS`. Each is four
+fields:
+
+| Field | What it is |
+|---|---|
+| `name` | the title shown in Studio |
+| `system` | your team's standard — the part worth spending time on |
+| `ask` | the question used to check it still works |
+| `kind` | `prompt`, or `tool` to attach a calculator |
+
+The `system` field is where a scenario becomes yours. Everything else is
+scaffolding. Write the rule the way your team would explain it to a new
+hire, say plainly what to do when the answer is not in the material, and
+re-run `build_flows.py`.

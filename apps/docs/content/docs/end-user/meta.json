@@ -1,10 +1,7 @@
 {
   "title": "Using the app",
-  "description": "Use the NUFI app and the developer console",
-  "root": true,
   "icon": "MessageSquare",
   "pages": [
-    "index",
     "guides",
     "---Basics---",
     "sign-in",
@@ -20,10 +17,6 @@
     "speech",
     "---Agent apps---",
     "agent-apps",
-    "studio",
-    "agent-tasks",
-    "agent-approvals",
-    "agent-connect",
     "---Developers---",
     "api-keys"
   ]

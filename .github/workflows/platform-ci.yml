@@ -77,6 +77,12 @@ jobs:
         run: PYTHON=python ./scripts/check-guardrails-wired.sh
       - name: Pytest
         run: python -m pytest -v
+      # pyproject sets testpaths = ["tests"], so the step above never collects
+      # adapters/. The meshbox adapters are the seam the appliance integration
+      # rides on and their suites had never run in CI -- which is how a RAG
+      # adapter that could not talk to the real rag_api stayed green.
+      - name: Adapter suites
+        run: PYTHON=python ./scripts/test-adapters.sh
   build:
     name: Build images
     runs-on: ubuntu-latest
