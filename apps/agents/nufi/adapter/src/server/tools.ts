@@ -177,6 +177,64 @@ function confirm(body: unknown): unknown {
   return kept;
 }
 
+/**
+ * What a question card actually is.
+ *
+ * The server validates this strictly, and the model has to build it blind — so
+ * an empty `payload: { type: "object" }` left it guessing, and a wrong guess
+ * made it give up on asking and write a comment instead. Measured on the live
+ * board: "Không thể thu thập thông tin dạng văn bản tự do bằng công cụ
+ * ask_user_questions."
+ *
+ * It was half right. Every question carries options. But a question with an
+ * EMPTY options array is the free-text case — the person types into `otherText`
+ * — which the server accepts and the card renders.
+ */
+const QUESTIONS_PAYLOAD = OBJECT(
+  {
+    version: { type: "number", enum: [1] },
+    title: S,
+    submitLabel: S,
+    questions: {
+      type: "array",
+      description:
+        "One entry per thing you need to know. Keep it short — this is a form a person fills in.",
+      items: OBJECT(
+        {
+          id: { ...S, description: "Your own key for this question; the answer comes back under it." },
+          prompt: { ...S, description: "The question, as you would ask a colleague." },
+          helpText: S,
+          selectionMode: { type: "string", enum: ["single", "multi"] },
+          required: { type: "boolean" },
+          options: {
+            type: "array",
+            description:
+              "The choices. Use empty options for a free-text question — the person types their own answer " +
+              "and it comes back as otherText. Offer options whenever you can name the likely answers; " +
+              "they are faster to answer and easier to act on.",
+            items: OBJECT({ id: S, label: S, description: S }, ["id", "label"]),
+          },
+        },
+        ["id", "prompt", "selectionMode", "options"],
+      ),
+    },
+  },
+  ["version", "questions"],
+);
+
+/** A single yes/no, bound to something concrete. */
+const CONFIRMATION_PAYLOAD = OBJECT(
+  {
+    version: { type: "number", enum: [1] },
+    prompt: { ...S, description: "The decision, in one sentence: what happens if they say yes." },
+    detailsMarkdown: { ...S, description: "What they need to know to decide. Keep it decision-ready." },
+    acceptLabel: S,
+    rejectLabel: S,
+    allowDeclineReason: { type: "boolean" },
+  },
+  ["version", "prompt"],
+);
+
 export function buildTools(ctx: ToolContext, http: HttpFn): NufiToolBox {
   const state: ToolState = { finalStatus: null, commented: false, blockers: [], children: [], asked: false };
   const headers = {
@@ -468,8 +526,9 @@ export function buildTools(ctx: ToolContext, http: HttpFn): NufiToolBox {
       schema: {
         name: "ask_user_questions",
         description:
-          "Ask a person a short set of structured questions when information is genuinely missing and no agent could supply it. Never invent an answer you could have asked for.",
-        parameters: OBJECT({ title: S, summary: S, payload: { type: "object" } }, ["payload"]),
+          "Ask a person a short set of structured questions when information is genuinely missing and no agent could supply it. Never invent an answer you could have asked for. " +
+          "Free text is supported: give a question empty options and the person types the answer.",
+        parameters: OBJECT({ title: S, summary: S, payload: QUESTIONS_PAYLOAD }, ["payload"]),
       },
       run: async (a) => interaction("ask_user_questions", a),
     },
@@ -479,7 +538,7 @@ export function buildTools(ctx: ToolContext, http: HttpFn): NufiToolBox {
         name: "request_confirmation",
         description:
           "Ask a person for a single yes/no decision before doing something consequential. Use for one decision; use suggest_tasks to propose work and ask_user_questions to gather facts.",
-        parameters: OBJECT({ title: S, summary: S, payload: { type: "object" } }, ["payload"]),
+        parameters: OBJECT({ title: S, summary: S, payload: CONFIRMATION_PAYLOAD }, ["payload"]),
       },
       run: async (a) => interaction("request_confirmation", a),
     },
