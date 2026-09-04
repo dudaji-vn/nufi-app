@@ -169,6 +169,16 @@ export interface WakeCompany {
 }
 
 export interface WakeNeighbour {
+  /**
+   * The id, and it is the whole point of the row.
+   *
+   * The first version listed identifiers only. Measured on HAN-4: the agent
+   * reached for `read_plan` — the right tool — but `read_plan` takes an id and
+   * the wake had given it "HAN-1", so it called read_plan with no argument, got
+   * its own empty plan, and asked which task held the document. A pointer you
+   * cannot follow is not a pointer.
+   */
+  id: string;
   identifier: string;
   title: string;
   status: string;
@@ -220,16 +230,16 @@ export function wakeMessage(ctx: WakeContext): string {
     lines.push("", "## The company", "", ctx.company.name);
     if (ctx.company.mission?.trim()) lines.push("", ctx.company.mission.trim());
   }
-  const neighbours = (ctx.neighbours ?? []).filter((row) => row.identifier !== ctx.issueId);
+  const neighbours = (ctx.neighbours ?? []).filter((row) => row.id !== ctx.issueId);
   if (neighbours.length) {
     lines.push(
       "",
       "## The other tasks in this company",
       "",
-      ...neighbours.map((row) => `- ${row.identifier} [${row.status}] ${row.title}`),
+      ...neighbours.map((row) => `- ${row.identifier} [${row.status}] ${row.title} — id ${row.id}`),
       "",
-      "If one of these is the work yours builds on, read what it wrote down with",
-      "read_plan before you ask a person anything.",
+      "If one of these is the work yours builds on, read what it wrote down:",
+      'read_plan with that row\'s id, before you ask a person anything.',
     );
   }
   if (ctx.interaction) {

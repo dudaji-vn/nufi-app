@@ -271,10 +271,12 @@ export async function runWith(deps: ExecuteDeps, ctx: ExecutionContext): Promise
         .filter((row) => row?.id !== issueId && typeof row?.identifier === "string")
         .slice(0, NEIGHBOUR_LIMIT)
         .map((row) => ({
+          id: String(row.id ?? ""),
           identifier: String(row.identifier),
           title: String(row.title ?? ""),
           status: String(row.status ?? ""),
-        }));
+        }))
+        .filter((row) => row.id);
     } catch {
       await ctx.onLog("stdout", "Could not read the rest of the board this heartbeat.\n");
     }
