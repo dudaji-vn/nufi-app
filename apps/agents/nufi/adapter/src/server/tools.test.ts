@@ -411,3 +411,57 @@ describe("list_agents", () => {
     expect(calls[0].path).toBe("/api/companies/co_1/agents");
   });
 });
+
+describe("suggested tasks land on someone too", () => {
+  /**
+   * The sibling of the `create_child_issue` bug, missed when that one was
+   * fixed. Accepting a `suggest_tasks` card creates real issues from the
+   * drafts, and a draft with no assignee produces exactly the same inert task:
+   * `todo`, nobody on it, never picked up.
+   *
+   * Measured after the first fix shipped: a human accepted three proposals on
+   * DAE-3 and got DAE-13, DAE-14 and DAE-15, all with `agent=NONE`. Fixing one
+   * path and leaving its twin is how a bug survives being fixed.
+   */
+  it("fills in the proposing agent on drafts that name nobody", async () => {
+    const { fn, calls } = http();
+    const tools = buildTools(ctx(), fn);
+
+    await tools.run(call("suggest_tasks", {
+      tasks: [
+        { clientKey: "t1", title: "Post the job on LinkedIn" },
+        { clientKey: "t2", title: "Post the job on AngelList" },
+      ],
+    }));
+
+    const tasks = (calls[0].body as { payload: { tasks: Array<Record<string, unknown>> } }).payload.tasks;
+    expect(tasks).toHaveLength(2);
+    for (const t of tasks) expect(t.assigneeAgentId).toBe("agent_1");
+  });
+
+  it("leaves a draft that names its own assignee alone", async () => {
+    const { fn, calls } = http();
+    const tools = buildTools(ctx(), fn);
+
+    await tools.run(call("suggest_tasks", {
+      tasks: [{ clientKey: "t1", title: "Legal review", assigneeAgentId: "agent_legal" }],
+    }));
+
+    const tasks = (calls[0].body as { payload: { tasks: Array<Record<string, unknown>> } }).payload.tasks;
+    expect(tasks[0].assigneeAgentId).toBe("agent_legal");
+  });
+
+  /** A draft handed to a person is a person's job; do not take it back. */
+  it("does not override a draft assigned to a person", async () => {
+    const { fn, calls } = http();
+    const tools = buildTools(ctx(), fn);
+
+    await tools.run(call("suggest_tasks", {
+      tasks: [{ clientKey: "t1", title: "Sign the offer", assigneeUserId: "user_boss" }],
+    }));
+
+    const tasks = (calls[0].body as { payload: { tasks: Array<Record<string, unknown>> } }).payload.tasks;
+    expect(tasks[0].assigneeAgentId).toBeUndefined();
+    expect(tasks[0].assigneeUserId).toBe("user_boss");
+  });
+});
