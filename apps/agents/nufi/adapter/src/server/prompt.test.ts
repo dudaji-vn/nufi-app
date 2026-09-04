@@ -85,3 +85,55 @@ describe("systemPrompt", () => {
     expect(systemPrompt()).toMatch(/checkout_issue/);
   });
 });
+
+describe("the answer a person gave", () => {
+  /**
+   * The last link in "ask → answer → continue".
+   *
+   * A person's answer to `ask_user_questions` or `request_confirmation` is
+   * stored on the interaction row, in `result` — it is not a comment. So an
+   * agent woken by that answer and told to "read the comment" finds nothing,
+   * and asks again or blocks.
+   *
+   * Carrying it in the wake is the same shape as the prefetched task, and for
+   * the same second reason: a `user` span needs two detectors to agree, where
+   * a tool result needs only one to refuse the whole run.
+   */
+  it("puts the decision in the wake, where the agent will see it", () => {
+    const text = wakeMessage({
+      issueId: "issue_1",
+      companyId: "co_1",
+      agentId: "agent_1",
+      wakeReason: "issue_commented",
+      interaction: {
+        kind: "ask_user_questions",
+        status: "answered",
+        title: "Procurement details needed",
+        result: { laptop: "MacBook Pro 14, 32GB", budget: "under $3000" },
+      },
+      issue: null,
+    });
+
+    expect(text).toContain("Procurement details needed");
+    expect(text).toContain("MacBook Pro 14, 32GB");
+    expect(text).toMatch(/answered|decided/i);
+  });
+
+  it("says so when the person declined", () => {
+    const text = wakeMessage({
+      issueId: "issue_1",
+      companyId: "co_1",
+      agentId: "agent_1",
+      interaction: { kind: "request_confirmation", status: "rejected", title: "Ship it?", result: null },
+      issue: null,
+    });
+
+    expect(text).toContain("rejected");
+    expect(text).toContain("Ship it?");
+  });
+
+  it("stays quiet when no interaction is involved", () => {
+    const text = wakeMessage({ issueId: "issue_1", companyId: "co_1", agentId: "agent_1", issue: null });
+    expect(text).not.toMatch(/interaction/i);
+  });
+});

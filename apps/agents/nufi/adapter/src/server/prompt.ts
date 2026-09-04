@@ -122,6 +122,42 @@ export interface WakeContext {
    * the task in a user turn; the loop moved it, and moving it back is the fix.
    */
   issue?: WakeIssue | null;
+  /**
+   * What a person just decided, when this wake came from an interaction.
+   *
+   * The answer to `ask_user_questions` or `request_confirmation` is stored on
+   * the interaction row, in `result` — it is not a comment. An agent woken by
+   * that answer and told to read the comments finds nothing there, and asks
+   * again or blocks. Carrying it here is the same shape as the prefetched task,
+   * and for the same second reason: a `user` span needs two detectors to agree,
+   * where a tool result needs only one to refuse the whole run.
+   */
+  interaction?: WakeInteraction | null;
+}
+
+export interface WakeInteraction {
+  kind: string;
+  status: string;
+  title?: string | null;
+  result?: unknown;
+}
+
+/** The person's answer, flattened enough to read and short enough to trust. */
+function renderAnswer(result: unknown): string | null {
+  if (result === null || result === undefined) return null;
+  if (typeof result === "string") return result.trim() ? result.trim().slice(0, 2000) : null;
+  if (typeof result !== "object") return String(result);
+  const rows: string[] = [];
+  for (const [key, value] of Object.entries(result as Record<string, unknown>)) {
+    const rendered =
+      value === null || value === undefined
+        ? "(no answer)"
+        : typeof value === "object"
+          ? JSON.stringify(value).slice(0, 400)
+          : String(value);
+    rows.push(`- ${key}: ${rendered}`);
+  }
+  return rows.length ? rows.join("\n").slice(0, 2000) : null;
 }
 
 export function wakeMessage(ctx: WakeContext): string {
@@ -140,6 +176,22 @@ export function wakeMessage(ctx: WakeContext): string {
   }
   if (ctx.approvalId) {
     lines.push(`An approval was resolved (${ctx.approvalId}). Review it before anything else.`);
+  }
+  if (ctx.interaction) {
+    const { kind, status, title, result } = ctx.interaction;
+    lines.push(
+      "",
+      `## What the person decided`,
+      "",
+      `They ${status} your ${kind}${title ? ` — "${title}"` : ""}.`,
+    );
+    const answer = renderAnswer(result);
+    if (answer) lines.push("", answer);
+    lines.push(
+      "",
+      "Act on it in this heartbeat. Do not ask the same question again, and do not",
+      "wait for a comment — this is the answer.",
+    );
   }
 
   if (!ctx.issue) {

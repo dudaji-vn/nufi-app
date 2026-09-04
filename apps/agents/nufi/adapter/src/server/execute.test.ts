@@ -346,3 +346,66 @@ describe("a person answering is new work, even mid-review", () => {
     expect(patches()).toHaveLength(0);
   });
 });
+
+describe("waking on a person's answer", () => {
+  /**
+   * The wake payload names the interaction (`interactionId` in the context
+   * snapshot, set by routes/issues.ts on every response) but carries neither
+   * the question nor the answer. Reading it here is what closes
+   * "ask → answer → continue": without it the agent wakes, finds no comment,
+   * and asks again.
+   */
+  it("reads the interaction named by the wake and briefs the agent with it", async () => {
+    const seen: string[] = [];
+    const fn = async (call: any) => {
+      seen.push(`${call.method} ${call.path}`);
+      if (call.path.endsWith("/heartbeat-context")) {
+        return { status: 200, body: { issue: { status: "in_review", title: "Buy the laptop", description: "" } } };
+      }
+      if (call.path.endsWith("/interactions")) {
+        return {
+          status: 200,
+          body: [
+            { id: "other", kind: "suggest_tasks", status: "pending", result: null },
+            {
+              id: "int_1",
+              kind: "ask_user_questions",
+              status: "answered",
+              title: "Procurement details needed",
+              result: { laptop: "MacBook Pro 14" },
+            },
+          ],
+        };
+      }
+      return { status: 200, body: { ok: true } };
+    };
+
+    let wakeText = "";
+    await runWith(
+      {
+        http: fn,
+        model: {
+          async turn(messages: any) {
+            wakeText = JSON.stringify(messages);
+            return { text: "done", toolCalls: [] };
+          },
+        } as any,
+      },
+      ctx({ context: { taskId: "issue_1", wakeReason: "issue_commented", interactionId: "int_1" } }),
+    );
+
+    expect(seen).toContain("GET /api/issues/issue_1/interactions");
+    expect(wakeText).toContain("MacBook Pro 14");
+    expect(wakeText).toContain("Procurement details needed");
+  });
+
+  it("does not fetch interactions when the wake names none", async () => {
+    const seen: string[] = [];
+    const { fn } = api();
+    const wrapped = async (call: any) => { seen.push(call.path); return fn(call); };
+
+    await runWith({ http: wrapped, model: model([say("ok")]) }, ctx());
+
+    expect(seen.some((p) => p.endsWith("/interactions"))).toBe(false);
+  });
+});
