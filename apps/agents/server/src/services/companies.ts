@@ -445,12 +445,22 @@ export function companyService(db: Db) {
         }
         await tx.delete(agentTaskSessions).where(eq(agentTaskSessions.companyId, id));
         await tx.delete(activityLog).where(eq(activityLog.companyId, id));
+        // costEvents before heartbeatRuns: cost_events.heartbeat_run_id
+        // references heartbeat_runs.id, so the other order aborts the whole
+        // transaction on `cost_events_heartbeat_run_id_heartbeat_runs_id_fk`
+        // and the company survives its own deletion.
+        //
+        // It only bites a company whose agents actually ran and spent money —
+        // measured on a test company with real runs, while four with none
+        // deleted cleanly, which is why this sat unnoticed. Same shape as the
+        // projects/goals ordering below; upstream has both wrong. Candidate to
+        // send back with that one.
+        await tx.delete(costEvents).where(eq(costEvents.companyId, id));
         await tx.delete(heartbeatRuns).where(eq(heartbeatRuns.companyId, id));
         await tx.delete(agentWakeupRequests).where(eq(agentWakeupRequests.companyId, id));
         await tx.delete(agentApiKeys).where(eq(agentApiKeys.companyId, id));
         await tx.delete(agentRuntimeState).where(eq(agentRuntimeState.companyId, id));
         await tx.delete(issueComments).where(eq(issueComments.companyId, id));
-        await tx.delete(costEvents).where(eq(costEvents.companyId, id));
         await tx.delete(financeEvents).where(eq(financeEvents.companyId, id));
         await tx.delete(approvalComments).where(eq(approvalComments.companyId, id));
         await tx.delete(approvals).where(eq(approvals.companyId, id));
