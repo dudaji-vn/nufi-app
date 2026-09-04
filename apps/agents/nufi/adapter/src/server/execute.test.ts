@@ -292,3 +292,57 @@ describe("a run that delegated and stopped is waiting on the delegate", () => {
     expect(await settle(box, "Here is the answer.", "completed")).toBe("in_review");
   });
 });
+
+describe("a person answering is new work, even mid-review", () => {
+  /**
+   * The guard that stops an agent re-answering a task it already answered was
+   * unconditional on `in_review` — and that is exactly the status a task sits
+   * in while it waits for a person.
+   *
+   * So the headline flow died silently: the agent asks a question, the person
+   * answers, the server wakes the assignee with `reason: "issue_commented"`
+   * (routes/issues.ts, on every interaction response), and the adapter replied
+   * "Idle — already answered, waiting on review". The answer was dropped.
+   *
+   * Paperclip's own contract says the opposite: "issue_commented with
+   * PAPERCLIP_WAKE_COMMENT_ID → read the comment, then checkout and address the
+   * feedback (applies to in_review too)".
+   *
+   * The guard still holds for what it was built for: a plain re-dispatch of a
+   * task nobody has touched.
+   */
+  it("works a reviewed task when a comment triggered the wake", async () => {
+    const { fn, patches } = api({ status: "in_review" });
+
+    const out = await runWith(
+      { http: fn, model: model([use("update_issue", { status: "done", comment: "Thanks — done." })]) },
+      ctx({ context: { taskId: "issue_1", wakeReason: "issue_commented", wakeCommentId: "comment_9" } }),
+    );
+
+    expect(out.summary).not.toMatch(/already answered/i);
+    expect(patches()[0]).toMatchObject({ status: "done" });
+  });
+
+  it("works a reviewed task when an approval triggered the wake", async () => {
+    const { fn, patches } = api({ status: "in_review" });
+
+    const out = await runWith(
+      { http: fn, model: model([use("update_issue", { status: "done", comment: "Approved — proceeding." })]) },
+      ctx({ context: { taskId: "issue_1", wakeReason: "issue_commented", approvalId: "appr_1" } }),
+    );
+
+    expect(patches()[0]).toMatchObject({ status: "done" });
+  });
+
+  it("still refuses a plain re-dispatch of a task nobody touched", async () => {
+    const { fn, patches } = api({ status: "in_review" });
+
+    const out = await runWith(
+      { http: fn, model: model([say("more thoughts")]) },
+      ctx({ context: { taskId: "issue_1", wakeReason: "heartbeat_timer" } }),
+    );
+
+    expect(out.summary).toMatch(/already answered/i);
+    expect(patches()).toHaveLength(0);
+  });
+});
