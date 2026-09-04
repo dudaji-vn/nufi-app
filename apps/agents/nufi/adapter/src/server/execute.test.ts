@@ -450,3 +450,54 @@ describe("a question waiting on a person is a review path", () => {
     expect(await settle(box, "", "completed")).toBe("blocked");
   });
 });
+
+describe("arriving with the board in hand", () => {
+  it("fetches the company's other tasks and puts them in the wake", async () => {
+    const seen: string[] = [];
+    const fn = async (call: any) => {
+      seen.push(`${call.method} ${call.path}`);
+      if (call.path.endsWith("/heartbeat-context")) {
+        return { status: 200, body: { issue: { status: "todo", title: "Draft the letter", description: "" } } };
+      }
+      if (call.path.endsWith("/issues")) {
+        return {
+          status: 200,
+          body: [
+            { id: "issue_1", identifier: "HAN-3", title: "Draft the letter", status: "todo" },
+            { id: "issue_0", identifier: "HAN-1", title: "Open sales in Hai Phong", status: "in_review" },
+          ],
+        };
+      }
+      return { status: 200, body: { ok: true } };
+    };
+
+    let wake = "";
+    await runWith(
+      {
+        http: fn,
+        model: { async turn(messages: any) { wake = JSON.stringify(messages); return { text: "done", toolCalls: [] }; } } as any,
+      },
+      ctx(),
+    );
+
+    expect(seen).toContain("GET /api/companies/co_1/issues");
+    expect(wake).toContain("HAN-1");
+    expect(wake).toContain("Open sales in Hai Phong");
+    // Its own task is already spelled out above; listing it again is noise.
+    expect(wake).not.toContain("HAN-3");
+  });
+
+  it("still runs when the board cannot be read", async () => {
+    const fn = async (call: any) => {
+      if (call.path.endsWith("/heartbeat-context")) {
+        return { status: 200, body: { issue: { status: "todo", title: "T", description: "" } } };
+      }
+      if (call.path.endsWith("/issues")) return { status: 500, body: { error: "nope" } };
+      return { status: 200, body: { ok: true } };
+    };
+
+    const out = await runWith({ http: fn, model: model([say("done")]) }, ctx());
+
+    expect(out.exitCode).toBe(0);
+  });
+});

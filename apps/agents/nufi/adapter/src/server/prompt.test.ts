@@ -137,3 +137,49 @@ describe("the answer a person gave", () => {
     expect(text).not.toMatch(/interaction/i);
   });
 });
+
+describe("the rest of the board", () => {
+  /**
+   * A colleague joining a company can see the board. The agent could not, and
+   * no amount of telling it to look fixed that.
+   *
+   * Measured twice on HAN-2/HAN-3, same task both times — "based on the offer
+   * document from the previous task" — and both times
+   * `tools used: checkout_issue, get_issue, ask_user_questions`. The second run
+   * was after `list_issues` and `read_plan` shipped and the prompt said to
+   * check them first. It still asked, because it had no reason to believe a
+   * neighbouring task existed: an agent cannot look up what it does not know is
+   * there.
+   *
+   * So the neighbours arrive with the wake, the same way the task itself does,
+   * and for the same second reason — a `user` span rather than a tool result.
+   */
+  it("lists the neighbouring tasks so the agent knows they exist", () => {
+    const text = wakeMessage({
+      issueId: "issue_1",
+      companyId: "co_1",
+      agentId: "agent_1",
+      issue: { title: "Draft the letter", description: "Build on the previous task.", status: "todo", priority: null, goal: null, project: null },
+      neighbours: [
+        { identifier: "HAN-1", title: "Open sales in Hai Phong", status: "in_review" },
+        { identifier: "HAN-2", title: "Draft the letter", status: "in_progress" },
+      ],
+    });
+
+    expect(text).toContain("HAN-1");
+    expect(text).toContain("Open sales in Hai Phong");
+    expect(text).toMatch(/read_plan/);
+  });
+
+  it("says nothing about the board when there is nothing else on it", () => {
+    const text = wakeMessage({
+      issueId: "issue_1",
+      companyId: "co_1",
+      agentId: "agent_1",
+      issue: null,
+      neighbours: [],
+    });
+
+    expect(text).not.toMatch(/other tasks/i);
+  });
+});

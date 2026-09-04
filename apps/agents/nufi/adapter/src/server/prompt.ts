@@ -31,8 +31,11 @@ You have been woken for a specific task. Work it:
 1. Call checkout_issue FIRST, before anything else. Claiming the task is how it
    enters in_progress, and it is how two agents avoid doing the same work twice.
    Never set in_progress by hand.
-2. The task is already below. Call get_issue only to re-read it, and
-   get_comments when the thread matters — especially if a comment woke you.
+2. The task is already below, and so are the other tasks in this company. Call
+   get_issue only to re-read yours, get_comments when the thread matters —
+   especially if a comment woke you — and read_plan on a neighbouring task when
+   yours builds on it. Anything you would have asked a person for may already be
+   written down there.
 3. Do the work.
 4. Call update_issue to leave the task in a state someone can act on, with a
    comment saying what happened.
@@ -137,6 +140,23 @@ export interface WakeContext {
    * where a tool result needs only one to refuse the whole run.
    */
   interaction?: WakeInteraction | null;
+  /**
+   * The rest of the board, so the agent knows it exists.
+   *
+   * Telling it to look was not enough, twice: on HAN-2 and again on HAN-3 after
+   * `list_issues` and `read_plan` shipped, the same task — "build on the offer
+   * document from the previous task" — produced the same
+   * `checkout_issue, get_issue, ask_user_questions`. An agent cannot look up
+   * what it has no reason to believe is there. A colleague joining a company
+   * sees the board; this is that.
+   */
+  neighbours?: WakeNeighbour[];
+}
+
+export interface WakeNeighbour {
+  identifier: string;
+  title: string;
+  status: string;
 }
 
 export interface WakeInteraction {
@@ -180,6 +200,18 @@ export function wakeMessage(ctx: WakeContext): string {
   }
   if (ctx.approvalId) {
     lines.push(`An approval was resolved (${ctx.approvalId}). Review it before anything else.`);
+  }
+  const neighbours = (ctx.neighbours ?? []).filter((row) => row.identifier !== ctx.issueId);
+  if (neighbours.length) {
+    lines.push(
+      "",
+      "## The other tasks in this company",
+      "",
+      ...neighbours.map((row) => `- ${row.identifier} [${row.status}] ${row.title}`),
+      "",
+      "If one of these is the work yours builds on, read what it wrote down with",
+      "read_plan before you ask a person anything.",
+    );
   }
   if (ctx.interaction) {
     const { kind, status, title, result } = ctx.interaction;

@@ -1,5 +1,10 @@
 import { runLoop, type LoopModel } from "./loop.js";
-import { systemPrompt, wakeMessage, type WakeInteraction } from "./prompt.js";
+import {
+  systemPrompt,
+  wakeMessage,
+  type WakeInteraction,
+  type WakeNeighbour,
+} from "./prompt.js";
 import { buildTools, type HttpFn, type NufiToolBox } from "./tools.js";
 
 /**
@@ -80,6 +85,9 @@ export function resolveResponsibleUser(ctx: ExecutionContext): string | null {
  * commented or resolved an interaction, an approval landed, a blocker or child
  * finished. These are the wakes the already-answered guard must not swallow.
  */
+/** How many neighbouring tasks the wake carries. Enough to recognise one. */
+const NEIGHBOUR_LIMIT = 20;
+
 const REACTIVE_WAKES = new Set([
   "issue_commented",
   "issue_comment_mentioned",
@@ -213,6 +221,40 @@ export async function runWith(deps: ExecuteDeps, ctx: ExecutionContext): Promise
       }
     }
 
+    /**
+     * The rest of the board, delivered rather than looked up.
+     *
+     * Telling the agent to look failed twice on the same task — an agent cannot
+     * look up what it has no reason to believe exists. Capped and trimmed to
+     * identifier, title and status: enough to recognise the neighbour worth
+     * reading, small enough to carry on every wake.
+     *
+     * Best-effort, like the interaction above: a failed read costs the list,
+     * never the run.
+     */
+    let neighbours: WakeNeighbour[] = [];
+    try {
+      const res = await deps.http({
+        method: "GET",
+        path: `/api/companies/${ctx.agent.companyId}/issues`,
+        headers: { "X-Paperclip-Run-Id": ctx.runId },
+      });
+      const rows = Array.isArray(res.body)
+        ? res.body
+        : ((res.body as { issues?: unknown[] } | null)?.issues ?? []);
+      neighbours = (Array.isArray(rows) ? rows : [])
+        .map((row) => row as Record<string, unknown>)
+        .filter((row) => row?.id !== issueId && typeof row?.identifier === "string")
+        .slice(0, NEIGHBOUR_LIMIT)
+        .map((row) => ({
+          identifier: String(row.identifier),
+          title: String(row.title ?? ""),
+          status: String(row.status ?? ""),
+        }));
+    } catch {
+      await ctx.onLog("stdout", "Could not read the rest of the board this heartbeat.\n");
+    }
+
     const outcome = await runLoop({
       model: deps.model,
       tools,
@@ -225,6 +267,7 @@ export async function runWith(deps: ExecuteDeps, ctx: ExecutionContext): Promise
         wakeCommentId: readString(ctx.context, "wakeCommentId"),
         approvalId: readString(ctx.context, "approvalId"),
         interaction,
+        neighbours,
         issue: heartbeat?.issue?.title
           ? {
               title: heartbeat.issue.title,
