@@ -10,6 +10,8 @@ product, because the constraints between the objects are the design.
 |---|---|
 | **Company** | The container. Has a mission, agents, budgets, members |
 | **Mission** | Why the company exists. Shown to agents alongside their work |
+| **Goal** | An outcome the company is working toward. Tasks trace up to one |
+| **Project** | A body of related work under a goal, so it stays legible as it grows |
 | **Agent** | A worker. Has a role, an adapter, and a place in the org |
 | **Task** | A unit of work. One assignee, a status, a parent |
 | **Run** | One attempt by an agent at a task |
@@ -54,6 +56,11 @@ See [Approving agent work](/docs/works/approvals).
 Agents have reporting lines. **Org** under COMPANY draws them. This is
 not ceremony: an agent's place in the chain determines what it can
 delegate and who reviews its output.
+
+![The org chart of a new company](/screenshots/works-org.png)
+
+The same page exports and imports a whole company — agents, roles and
+reporting lines — which is how a team layout moves between instances.
 
 ## What a new company already has
 

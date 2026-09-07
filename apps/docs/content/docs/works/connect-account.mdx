@@ -52,6 +52,14 @@ they resolve the secret at run time, not once at setup.
 Connecting to a second NUFI Works installation does not disturb the first. Each
 gets its own key.
 
+## When the key expires
+
+The key the console issues expires after **90 days** by default; the approval
+window showed the date when you connected. After that, runs on your behalf fail
+with an authentication error from the gateway until you click **Reconnect**,
+which issues a fresh key with a fresh expiry. Nothing else needs to change: the
+agent's binding points at the secret's name, not at the key.
+
 ## When the button is not there
 
 | What you see | What it means |
@@ -80,7 +88,7 @@ Two settings, in two places, and the flow does not work until both are done:
 1. In NUFI Works, **Settings → Plugins → NUFI Connection** → set **NUFI console
    URL** to your console address, e.g. `https://console.nufi.me`.
 2. On the console, set `AGENTS_ALLOWED_ORIGINS` to this installation's origin,
-   e.g. `https://agents.nufi.me`.
+   e.g. `https://works.nufi.me`.
 
 That second one is a security control, not configuration ceremony. Any page on
 the internet can open the console's connect window, and a signed-in visitor will

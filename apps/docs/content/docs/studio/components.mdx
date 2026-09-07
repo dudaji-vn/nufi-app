@@ -1,6 +1,6 @@
 ---
 title: Components
-description: The eight groups in the palette, what belongs in each, and how to find one when you do not know its name.
+description: The groups in the palette, what belongs in each, and how to find one when you do not know its name.
 ---
 
 The **Components** rail is the palette. It is grouped by what a component
@@ -17,6 +17,10 @@ several providers' versions of the same idea.
 | **Processing** | Transforming data between steps |
 | **Flow Control** | Branching, looping, conditions |
 | **Utilities** | The small pieces — dates, maths, formatting |
+| **Prototypes** | Experimental components that may change or disappear between releases |
+
+A **Saved** group appears above these once you have saved a component of
+your own.
 
 Two entries sit below the groups:
 
@@ -39,7 +43,7 @@ usually a **Processing** component between them, not a different model.
 
 ## Tools
 
-An agent can be given **tools**: components attached to its `Toolset`
+An agent can be given **tools**: components attached to its **Tools**
 input rather than wired in sequence. The Simple Agent template ships with
 two — **Web Search** (`PERFORM_SEARCH`) and **URL** (`FETCH_CONTENT`) —
 and neither needs a key of its own.
@@ -52,7 +56,8 @@ choose.
 
 **MCP** exposes servers implementing the Model Context Protocol as
 components, so an external service becomes something a flow can use.
-Studio arrives with a couple registered already.
+Nothing is registered by default; add a server there and its tools appear
+as components.
 
 **Bundles** groups components by provider, for when you do know the
 vendor you want.
