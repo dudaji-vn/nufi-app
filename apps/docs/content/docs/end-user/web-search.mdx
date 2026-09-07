@@ -4,25 +4,30 @@ description: Let an agent look things up on the live web before it answers, wher
 ---
 
 A model answers from what it learned during training, which stops at a
-date and knows nothing about your situation. **Web Search** lets an
-agent look things up live before replying.
+date and knows nothing about your situation. **Web Search** lets the
+model look things up live before replying.
 
 > **Guide:** [Research a topic with web search](/docs/end-user/guides/research-with-web-search).
 
+<Callout type="warn">
+**Web Search is not switched on for `chat.nufi.me` at the moment.** The
+Tools menu there offers File Search only. This page describes the
+feature for deployments that have it, and for the day yours does.
+</Callout>
+
 ## What it needs
 
-Three things, and all three have to be true:
-
-1. You are in [Advanced mode](/docs/end-user/advanced-mode).
-2. You are chatting with an **agent**, not a plain model. Web search is
-   an agent capability; see [Agents](/docs/end-user/agents).
-3. Your organisation has connected a search provider. When it has not,
-   **Web Search** is simply absent from the menu.
+1. Your organisation has connected a search provider. When it has not,
+   **Web Search** is simply absent.
+2. You are in [Advanced mode](/docs/end-user/advanced-mode).
+3. Either a plain model, where the **Tools** menu beside the paperclip
+   lists it, or an agent with **Web Search** among its capabilities —
+   see [Agents](/docs/end-user/agents).
 
 ## Turn it on
 
 <Steps>
-<Step>In a conversation with an agent, open the **Tools** menu — the
+<Step>In a conversation with a plain model, open the **Tools** menu — the
 sliders icon beside the paperclip.</Step>
 <Step>Click **Web Search**. The gear beside it holds provider options,
 if your deployment exposes any.</Step>
@@ -30,11 +35,9 @@ if your deployment exposes any.</Step>
 open the menu again to turn it off.</Step>
 </Steps>
 
-![The Tools menu of an agent, with Web Search](/screenshots/chat-tools-menu.png)
-
 ## What happens when it is on
 
-The agent turns your question into one or more searches, reads the top
+The model turns your question into one or more searches, reads the top
 results, and writes its answer from them with numbered citations that
 link back to each page.
 
@@ -53,7 +56,7 @@ question whose source material you already pasted in.
 
 ## Privacy
 
-Whatever the agent needs to look up becomes a search query that leaves
+Whatever the model needs to look up becomes a search query that leaves
 NUFI for the search provider. Turn search off for confidential prompts.
 The security checks described in
 [How your data is protected](/docs/end-user/security) still run on what
@@ -61,7 +64,7 @@ comes back: text inside a fetched page is treated as untrusted.
 
 ## If Web Search is not in the menu
 
-In order of likelihood: you are in Basic mode; you are chatting with a
-plain model rather than an agent; the agent does not have the capability
-enabled; your organisation has not connected a provider. The first three
-you can fix yourself.
+In order of likelihood: your organisation has not connected a provider
+(the case on `chat.nufi.me` today); you are in Basic mode; you are
+chatting with an agent that does not have the capability enabled. The
+last two you can fix yourself.

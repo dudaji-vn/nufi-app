@@ -7,25 +7,26 @@ A model answers from its training data, which stops at a date. With web
 search on, an agent looks things up first and answers with citations you
 can open.
 
+<Callout type="warn">
+Web Search is not switched on for `chat.nufi.me` at the moment. This
+guide is for deployments that have it.
+</Callout>
+
 ## What you will need
 
-- [Advanced mode](/docs/end-user/advanced-mode).
-- An **agent** with **Web Search** enabled under its capabilities — see
-  [Agents](/docs/end-user/agents). Web search is not available on a
-  plain model.
-- Web search enabled by your organisation. If **Web Search** is not in
-  the agent's Tools menu at all, it has not been connected; ask your
-  administrator.
+- Web search connected by your organisation.
+- [Advanced mode](/docs/end-user/advanced-mode), and a conversation with
+  a plain model, where the **Tools** menu lists **Web Search**. An agent
+  with the capability enabled works too — see
+  [Agents](/docs/end-user/agents).
 
 ## Steps
 
 <Steps>
-<Step>Start a new chat and pick the agent from the model picker.</Step>
+<Step>Start a new chat and pick a model from the model picker.</Step>
 <Step>
 Open the **Tools** menu — the sliders icon beside the paperclip — and turn
 on **Web Search**. It stays on for the rest of the conversation.
-
-![The Tools menu of an agent, with Web Search](/screenshots/chat-tools-menu.png)
 </Step>
 <Step>
 Ask something that needs current information:
@@ -34,7 +35,7 @@ Ask something that needs current information:
 > obligations start?
 </Step>
 <Step>
-The agent turns the question into searches, reads the top results, and
+The model turns the question into searches, reads the top results, and
 answers with numbered citations that link back to each source.
 </Step>
 <Step>
@@ -45,8 +46,8 @@ Narrow and verify:
 > Read source 2 more carefully. What does it say about deadlines?
 </Step>
 <Step>
-Optionally attach one of your own files and ask the agent to compare it
-with what it found.
+Optionally attach one of your own files and ask for a comparison with
+what it found.
 </Step>
 </Steps>
 
@@ -55,10 +56,10 @@ with what it found.
 - **Ask for sources** — *"cite each claim"* — and be specific about
   scope and dates.
 - **Cross-check** anything important before you rely on it.
-- **Privacy:** what the agent looks up leaves NUFI as a search query.
+- **Privacy:** what the model looks up leaves NUFI as a search query.
   Turn search off for confidential prompts. Text that comes back from a
   web page is treated as untrusted by the security checks, so a page
-  cannot quietly redirect the agent.
+  cannot quietly redirect the model.
 
 ## Related
 

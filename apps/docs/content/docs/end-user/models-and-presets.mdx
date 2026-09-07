@@ -14,17 +14,18 @@ save that as a preset.
 
 <Steps>
 <Step>Click the **model name** at the top-left of the conversation — in
-the screenshot below it reads *gemini*.</Step>
-<Step>The menu lists the model groups available to you. A group with a
-chevron opens into its models; **Search models…** filters the list.</Step>
+the screenshot below it reads *Public*, an agent.</Step>
+<Step>The menu lists what is available to you: **My Agents**, and a group
+per model family such as **Nufi** and **Nufi-lab**. A group opens into
+its models; **Search models…** filters the list.</Step>
 <Step>Click a model. The conversation uses it from the next message on.</Step>
 </Steps>
 
 ![The model picker open, showing the available model groups](/screenshots/chat-model-menu.png)
 
-In Basic mode the picker shows a short curated list; Advanced shows
-every group, and any agents you have built appear there too. When your
-administrator adds a model, reloading the page is enough to see it.
+The picker is the same in Basic and Advanced mode; agents you build
+appear under **My Agents**. When your administrator adds a model,
+reloading the page is enough to see it.
 
 Larger models are usually better at reasoning and slower; smaller ones
 are quicker and cheaper. Try a few on the kind of question you ask most.
@@ -49,9 +50,14 @@ The settings you will actually reach for:
   (code, summaries, data); high, near 1, for varied and creative ones.
 - **Max Output Tokens** — caps how long a single reply can be.
 
-The rest — Top P, frequency and presence penalty, reasoning effort — are
-sampling controls. Leave them alone unless you know what you want.
-**Reset Model Parameters** at the bottom restores the defaults.
+The rest — Top P, frequency and presence penalty, reasoning effort,
+verbosity — are sampling controls. Leave them alone unless you know what
+you want. **Reset Model Parameters** at the bottom restores the defaults.
+
+One toggle here is a trap: **Web Search** in this panel is the model
+provider's own search option and does nothing through NUFI's gateway.
+Web search in NUFI is the Tools-menu feature described on
+[Web search](/docs/end-user/web-search).
 
 Settings apply to the current conversation only. Save a combination you
 like as a preset.
@@ -81,8 +87,6 @@ Good candidates are personas, boilerplate, and tone modifiers like
 
 ## If the model menu is empty
 
-- In Basic mode the list is curated, and it can be empty if nobody has
-  curated one yet. Switch to Advanced, or ask your administrator.
 - Reload the page once.
 - If it is still empty, the platform cannot reach its model gateway.
   Your administrators have monitoring that says why.

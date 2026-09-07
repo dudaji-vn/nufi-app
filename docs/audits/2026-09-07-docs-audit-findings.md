@@ -388,6 +388,18 @@ Commit `25fd2149d` moved `nufi_agent` to the top of the wizard and put Claude Co
 
 `helpAndFaqURL` is `https://librechat.ai` (`/api/config`). `interface.helpAndFaqURL` in `librechat.yaml` can point it at `https://docs.app.nufi.me` instead. Same family as **F19**.
 
-### F29. The repo's seed config no longer describes production — misleads
+### F29. The docs' Tools-menu screenshot showed capabilities production no longer has — docs only, fixed
 
-`deploy/railway/librechat.yaml:40-42` scopes agent capabilities to `file_search` only, but the screenshots taken on `chat.nufi.me` show Web Search, Skills, Run Code and Artifacts in the Tools menu: the admin panel's stored configuration overrides the file, and nothing in the repo records what production actually enables. An operator reading the yaml, or a docs author, gets the wrong answer. Export the live configuration from the admin panel and commit it as the seed, or state in `deploy/railway/README.md` that the panel is authoritative and the yaml is only the first boot.
+`deploy/railway/librechat.yaml:40-42` scopes agent capabilities to `file_search` only, and a signed-in capture on 2026-09-07 confirms production matches it: the Agent Builder offers File Search alone, and the Tools menu of a plain model lists File Search and nothing else. The July screenshot that showed Web Search, Skills, Run Code and Artifacts predates that scoping. Screenshot recaptured; the web-search, data-analysis and agents pages now say what `chat.nufi.me` has switched on today.
+
+### F30. `create-user` accepts a password the login form will never accept — blocks
+
+**Seen:** the login schema (`apps/chat/api/strategies/validators.js:33-36`) requires at least 8 characters and is checked before the account is looked up, so `POST /api/auth/login` with a 6-character password answers `password: String must contain at least 8 character(s)` for every account. `apps/chat/config/create-user.js` has no length check, so an operator can create an account with `123456`, and that account can then never sign in through the app or the API. `config/reset-password.js` does enforce the minimum. The shared test account was in exactly this state until its password was reset on 2026-09-07.
+
+**Proposed fix:** apply the same minimum in `create-user.js`, and print the rule in its usage text.
+
+### F31. NUFI Works opens a member on a company they cannot read — misleads
+
+**Seen:** signed in as the test account on 2026-09-07, every Works page rendered the `dudaji` company with a red *"User does not have access to this company"* banner and no data (`works-home` capture, not committed). The company switcher remembers the last company; when membership is later removed, the app keeps opening it instead of falling back to a company the member belongs to, or to the *"No company access"* state the docs describe.
+
+**Proposed fix:** on load, drop a remembered company the member no longer belongs to and select the first accessible one; show the no-access state only when there is none. The capture script now refuses to photograph this state.
