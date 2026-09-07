@@ -357,3 +357,17 @@ ships; the docs describe the panel as it is.
 
 The old users page sent admins to Features → Registration. `configMeta.ts`
 puts the section on the System tab.
+
+## Lane 6: NUFI Studio and NUFI Works
+
+### F24. A member who signs in through NUFI cannot publish a Studio flow — misleads
+
+**Seen:** `apps/nufi-agent/src/backend/base/langflow/services/database/models/api_key/crud.py:83-92` refuses API-key creation for externally authenticated users when the access ceiling is on, and `deploy/railway/agents.md:65` turns the ceiling on for the hosted Studio. `EXTERNAL_AUTH_DISABLE_API_KEYS_FOR_EXTERNAL_USERS` defaults to `true` (`lfx/services/settings/auth.py:255`). Every member reaches Studio through NUFI, so **Add New** under NUFI Studio API Keys fails for all of them with *"API key creation is disabled for externally authenticated users"*, and the run endpoint the Publish page describes has no key anyone can hold.
+
+**Why it matters:** the product pitch for Studio is "a pipeline you can call from code". On the hosted instance nobody can, short of an administrator with a local Studio account. The old Publish page did not say so.
+
+**Proposed fix:** decide which. Either (a) keep the ceiling and give administrators a documented way to issue a key for a flow on a member's behalf, or (b) set `LANGFLOW_EXTERNAL_AUTH_DISABLE_API_KEYS_FOR_EXTERNAL_USERS=false` on the hosted Studio and accept that a key carries the access the member had when it was minted. The docs now state the restriction and both routes.
+
+### F25. The Works wizard and docs disagreed about the recommended adapter — docs only, fixed
+
+Commit `25fd2149d` moved `nufi_agent` to the top of the wizard and put Claude Code and Codex behind **More Agent Adapter Types**; the docs still told members the opposite. `deploy/platform/adapters/meshbox-agent/README.md` says `NUFI_AGENT_URL=http://nufi-agent:7860`; the scenarios page said `http://studio:7860`, which is not a service name in any compose file. Both corrected.

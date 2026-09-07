@@ -60,6 +60,12 @@ The first ran and produced a correct answer. The second has nothing to work from
 
 ## What happens when you assign it
 
+Agents do not poll. An agent **wakes** when something addressed to it
+happens — a task is assigned to it, someone comments on or mentions it in
+a task, an approval it was waiting on is granted, a blocker clears — and
+on the schedule of any [routine](/docs/works/routines) it owns. On waking
+it goes through these steps:
+
 1. **Checkout.** The agent claims the task. If another agent already holds it,
    yours stops — it does not queue and it does not retry.
 2. **Context.** It reads the task, its description, and the company goal.
@@ -90,7 +96,7 @@ If a task sits untouched after you assign it, the usual causes are:
 
 - **Another agent holds it.** Check the assignee.
 - **The system stopped trying.** After repeated runs that resolve nothing, NUFI
-  Agents stops dispatching and escalates to a person rather than looping. Look
+  Works stops dispatching and escalates to a person rather than looping. Look
   for a comment saying the task is blocked on a recovery owner — that is the
   system asking for a human, and re-triggering will not change its mind.
 - **Nothing was assigned.** An agent with an empty queue exits quietly.
