@@ -1,163 +1,195 @@
 ---
 title: Environment variables
-description: Single flat table you can grep — see Deployment for the longer-form explanation.
+description: Every variable, with the value it ships with, one block per stack and per app.
 ---
 
-For prose around how to set these, see
-[Deployment → Environment variables](/docs/deployment/environment-variables).
-This page is the flat reference.
+Flat lists to grep. What each one does, and which service reads it, is on
+[Environment variables](/docs/deployment/environment-variables) for the
+stacks and on each app's page for the apps.
 
-## npuops-platform (`.env`)
+## The compose stack (`deploy/platform/.env.example`)
+
+`replace-me` values are filled by `scripts/bootstrap.sh`.
 
 ```bash
-# --- Secrets (regenerate per environment) ---
-POSTGRES_USER=
-POSTGRES_PASSWORD=
-POSTGRES_DB=
-CLICKHOUSE_USER=
-CLICKHOUSE_PASSWORD=
+LITELLM_MASTER_KEY=sk-replace-me
+LITELLM_SALT_KEY=replace-me
+POSTGRES_USER=npuops
+POSTGRES_PASSWORD=replace-me
+POSTGRES_DB=npuops
+DATABASE_URL=postgresql://npuops:replace-me@postgres:5432/npuops
 REDIS_HOST=redis
 REDIS_PORT=6379
 REDIS_PASSWORD=
-MINIO_ROOT_USER=
-MINIO_ROOT_PASSWORD=
-
-MONGO_INITDB_ROOT_USERNAME=
-MONGO_INITDB_ROOT_PASSWORD=
-MONGO_URI=mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongodb:27017/LibreChat?authSource=admin
-
-LITELLM_MASTER_KEY=
-LITELLM_SALT_KEY=
-DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/litellm
-
-JWT_SECRET=
-JWT_REFRESH_SECRET=
-CREDS_KEY=
-CREDS_IV=
-
-LANGFUSE_SALT=
-LANGFUSE_ENCRYPTION_KEY=
-LANGFUSE_NEXTAUTH_SECRET=
-LANGFUSE_NEXTAUTH_URL=
+LANGFUSE_PUBLIC_KEY=pk-lf-replace-me
+LANGFUSE_SECRET_KEY=sk-lf-replace-me
 LANGFUSE_HOST=http://langfuse-web:3000
-LANGFUSE_PUBLIC_KEY=
-LANGFUSE_SECRET_KEY=
-LANGFUSE_INIT_USER_EMAIL=
-LANGFUSE_INIT_USER_NAME=
-LANGFUSE_INIT_USER_PASSWORD=
-
+LANGFUSE_NEXTAUTH_SECRET=replace-me
+LANGFUSE_NEXTAUTH_URL=http://localhost:3000
+LANGFUSE_SALT=replace-me
+LANGFUSE_ENCRYPTION_KEY=replace-me
+LANGFUSE_INIT_USER_EMAIL=admin@npuops.local
+LANGFUSE_INIT_USER_NAME="NPUOps Admin"
+LANGFUSE_INIT_USER_PASSWORD=replace-me
+CLICKHOUSE_USER=clickhouse
+CLICKHOUSE_PASSWORD=replace-me
+MINIO_ROOT_USER=minio
+MINIO_ROOT_PASSWORD=replace-me
+APP_TITLE=NPUOps
+ALLOW_REGISTRATION=true
+ALLOW_EMAIL_LOGIN=true
+CUSTOM_FOOTER='© NPUOps'
+HELP_AND_FAQ_URL=https://npuops.local/docs
+CONSOLE_URL=http://localhost:3001
+LIBRECHAT_URL=http://localhost:3080
+PRIVACY_POLICY_URL=
+TERMS_OF_SERVICE_URL=
+JWT_SECRET=replace-me
+JWT_REFRESH_SECRET=replace-me
+CREDS_KEY=replace-me
+CREDS_IV=replace-me
+MONGO_INITDB_ROOT_USERNAME=librechat
+MONGO_INITDB_ROOT_PASSWORD=replace-me
+MONGO_URI=mongodb://librechat:replace-me@mongodb:27017/LibreChat?authSource=admin
+GPU_BACKEND_BASE_URL=http://host.docker.internal:11434/v1
+GPU_BACKEND_API_KEY=ollama
+NPU_BACKEND_BASE_URL=
+NPU_BACKEND_API_KEY=
+GEMINI_API_KEY=                  # required: the gateway will not start while it is empty
+LAKERA_API_KEY=                  # read by nothing
+GRAFANA_ADMIN_USER=admin
+GRAFANA_ADMIN_PASSWORD=replace-me
 SCANNER_MODEL_ID=protectai/deberta-v3-base-prompt-injection-v2
 SCANNER_MODEL_REVISION=90c9989b1a342275dd0d1a95aad283c04e075671
 HF_TOKEN=
+E2E_USER_EMAIL=e2e@npuops.local
+E2E_USER_PASSWORD=replace-me
+E2E_USER_NAME="E2E Bot"
+E2E_MODEL=qwen2.5-3b
+E2E_EXPECTED_HARDWARE_ID=mac-local
+E2E_ENDPOINT_NAME=NPUOps
+```
 
-GRAFANA_ADMIN_USER=admin
-GRAFANA_ADMIN_PASSWORD=
+Read by the compose file but not in the template; add them yourself:
 
-# --- Public URLs ---
-APP_TITLE=Nufi Chat
-ALLOW_REGISTRATION=true
-ALLOW_EMAIL_LOGIN=true
-LIBRECHAT_URL=http://localhost:3080
-CONSOLE_URL=http://localhost:3001
-CUSTOM_FOOTER=
-HELP_AND_FAQ_URL=
-PRIVACY_POLICY_URL=
-TERMS_OF_SERVICE_URL=
-
-# --- LLM backends (filled by add-model.sh) ---
-GPU_BACKEND_BASE_URL=
-GPU_BACKEND_API_KEY=
-NPU_BACKEND_BASE_URL=
-NPU_BACKEND_API_KEY=
-# Plus any provider key referenced from litellm/config.yaml:
-# OPENAI_API_KEY=, ANTHROPIC_API_KEY=, TOGETHER_API_KEY=, …
-
-# --- Console JIT defaults ---
+```bash
+NUFI_CONSOLE_TAG=main
 DEFAULT_USER_BUDGET=10
 DEFAULT_BUDGET_DURATION=30d
 DEFAULT_TPM_LIMIT=10000
 DEFAULT_RPM_LIMIT=60
-KEY_DEFAULT_DURATION=90d
-
-# --- E2E smoke test ---
-E2E_USER_EMAIL=e2e@npuops.local
-E2E_USER_PASSWORD=
-E2E_USER_NAME=E2E Bot
-E2E_MODEL=qwen2.5-3b
-E2E_EXPECTED_HARDWARE_ID=mac-local
-E2E_ENDPOINT_NAME=NPUOps
-
-# --- Image pinning (production) ---
-NUFI_CONSOLE_TAG=main
 ```
 
-## nufi-chat (`.env`)
+Honoured by the app but not passed by the compose file until you add them
+to the `librechat` service: `AGENTS_URL`, `COOKIE_DOMAIN`, `COOKIE_SAMESITE`.
+Honoured by the console but not passed by the compose file:
+`KEY_DEFAULT_DURATION` (`90d`), `AGENTS_ALLOWED_ORIGINS`.
+
+## The app on its own (`deploy/railway/.env.example`)
 
 ```bash
-IMAGE_TAG=main
-DOMAIN_CLIENT=
-DOMAIN_SERVER=
+IMAGE_TAG=main                   # commented out in the template
+DOMAIN_CLIENT=http://localhost:3081
+DOMAIN_SERVER=http://localhost:3081
 APP_TITLE=Nufi Chat
 ALLOW_REGISTRATION=true
 ALLOW_EMAIL_LOGIN=true
 COOKIE_DOMAIN=
-COOKIE_SAMESITE=strict      # 'lax' if COOKIE_DOMAIN is set
-CONSOLE_URL=
-
+COOKIE_SAMESITE=strict           # lax when COOKIE_DOMAIN is set
 JWT_SECRET=
 JWT_REFRESH_SECRET=
 CREDS_KEY=
 CREDS_IV=
-
 BACKEND_BASE_URL=
 BACKEND_API_KEY=
-
-SHARED_DOCKER_NETWORK=
+CONSOLE_URL=
+RAG_GOOGLE_API_KEY=
+EMBEDDINGS_PROVIDER=google_genai
+EMBEDDINGS_MODEL=gemini-embedding-001
+RAG_PORT=8000
+SHARED_DOCKER_NETWORK=npuops_npuops   # commented out in the template
+LITELLM_SYNC_ENABLED=false
+LITELLM_BASE_URL=https://api.codechi.me
+LITELLM_MASTER_KEY=
 ```
 
-## nufi-console (`.env`)
+Read by `librechat.yaml` but not passed by the compose file: `AGENTS_URL`.
+Every `GUARDRAIL_*` variable was removed from the app on 2026-07-29; the
+checks run at the gateway now.
+
+## NUFI Console
+
+No template in `apps/console`. Everything the server reads, with defaults:
 
 ```bash
 PORT=3000
+SERVER_PORT=3000                 # the Vite dev proxy's target
+SERVE_DIST=                      # serve the built app; the image sets it
+LITELLM_BASE_URL=http://litellm-proxy:4000
+LITELLM_MASTER_KEY=
 JWT_SECRET=
 JWT_REFRESH_SECRET=
-LITELLM_BASE_URL=http://localhost:4000
-LITELLM_MASTER_KEY=
-LANGFUSE_HOST=http://localhost:3000
+CHAT_BASE_URL=https://chat.nufi.me
+IDENTITY_COOKIE_DOMAIN=.nufi.me
+IDENTITY_TTL_SECONDS=28800
+LANGFUSE_HOST=http://langfuse-web:3000
 LANGFUSE_PUBLIC_KEY=
 LANGFUSE_SECRET_KEY=
-VITE_LIBRECHAT_URL=http://localhost:3080
-
 DEFAULT_USER_BUDGET=10
 DEFAULT_BUDGET_DURATION=30d
 DEFAULT_TPM_LIMIT=10000
 DEFAULT_RPM_LIMIT=60
 KEY_DEFAULT_DURATION=90d
-
-SERVE_DIST=true             # production
+AGENTS_ALLOWED_ORIGINS=          # unset disables the connect endpoint
+OIDC_ISSUER=https://console.nufi.me
+OIDC_CLIENTS=                    # JSON; see Single sign-on for the agent apps
+OIDC_PRIVATE_KEY_PEM=            # required in production
+CHOOSER_HOST=agents.nufi.me
+STUDIO_URL=https://studio.nufi.me
 ```
 
-## nufichat-admin-panel (`.env`)
+Build arguments, inlined into the browser bundle: `LIBRECHAT_URL`
+(`VITE_LIBRECHAT_URL`), `LITELLM_URL` (`VITE_LITELLM_URL`),
+`VITE_WORKS_URL`.
+
+## NUFI Admin Panel (`apps/admin-panel/.env.example`)
 
 ```bash
+SESSION_SECRET=                  # at least 32 characters; required by the image
 PORT=3000
-SESSION_SECRET=             # min 32 chars
 VITE_API_BASE_URL=http://localhost:3080
+API_SERVER_URL=                  # falls back to VITE_API_BASE_URL
 ADMIN_SSO_ONLY=false
 ADMIN_SESSION_IDLE_TIMEOUT_MS=1800000
+SESSION_COOKIE_SECURE=           # true in production
 ADMIN_PANEL_METRICS_SECRET=
-ADMIN_PANEL_STATIC_CACHE_MAX_AGE=172800
-ADMIN_PANEL_INDEX_CACHE_CONTROL=no-cache
+STATIC_CACHE_MAX_AGE=172800
+STATIC_CACHE_S_MAX_AGE=86400
+INDEX_CACHE_CONTROL="no-cache, no-store, must-revalidate"
+INDEX_PRAGMA=no-cache
+INDEX_EXPIRES=0
+ADMIN_PANEL_STATIC_CACHE_MAX_AGE=
+ADMIN_PANEL_STATIC_CACHE_S_MAX_AGE=
+ADMIN_PANEL_INDEX_CACHE_CONTROL=
+ADMIN_PANEL_INDEX_PRAGMA=
+ADMIN_PANEL_INDEX_EXPIRES=
 ```
 
-## How to generate
+## NUFI Studio and NUFI Works
 
-```bash
-openssl rand -hex 32        # JWT_SECRET, CREDS_KEY, LITELLM_MASTER_KEY, …
-openssl rand -hex 16        # CREDS_IV
-openssl rand -base64 32     # POSTGRES_PASSWORD, MINIO_ROOT_PASSWORD, …
-openssl rand -base64 24     # LANGFUSE_PUBLIC_KEY
-```
+Their variables are on [Installing NUFI Studio](/docs/deployment/studio-install),
+[Installing NUFI Works](/docs/deployment/agents-install) and
+[Single sign-on for the agent apps](/docs/deployment/agents-sso);
+`deploy/railway/agents.md` is the record of NUFI's own values.
 
-The bootstrap script in each repo handles this for you. Re-running
-the script is idempotent — only missing values are filled.
+## How the secrets are generated
+
+`scripts/bootstrap.sh` in `deploy/platform`: `openssl rand -hex 32` for
+`LITELLM_MASTER_KEY`, `LITELLM_SALT_KEY`, `JWT_SECRET`,
+`JWT_REFRESH_SECRET`, `CREDS_KEY`, `LANGFUSE_ENCRYPTION_KEY`; `-hex 16` for
+`POSTGRES_PASSWORD`, `CREDS_IV`, `MONGO_INITDB_ROOT_PASSWORD`,
+`LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `CLICKHOUSE_PASSWORD`,
+`MINIO_ROOT_PASSWORD`, `E2E_USER_PASSWORD`; `-base64 32` for
+`LANGFUSE_NEXTAUTH_SECRET`, `LANGFUSE_SALT`; `-hex 12` for
+`LANGFUSE_INIT_USER_PASSWORD`, `GRAFANA_ADMIN_PASSWORD`. Only values that
+still end in `replace-me` are filled; a blank stays blank.

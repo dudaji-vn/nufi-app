@@ -1,106 +1,137 @@
 ---
 title: Glossary
-description: Terms used throughout this manual.
+description: The terms this manual uses.
 ---
 
-**Admin panel**
-The browser-based management surface at `admin.nufi.me`. Where
-admins configure NUFI, manage users, roles, groups, and capability
-grants.
+**The NUFI app**
+The chat product, at `chat.nufi.me` when hosted by NUFI. It holds
+accounts, conversations, agents and files, and issues the session the
+other surfaces reuse. Chat is one feature of it; the manual does not call
+the product "NUFI Chat".
 
-**Agent**
-A saved AI assistant with its own name, instructions, tools, and
-knowledge files. NUFI's equivalent of a "custom GPT".
+**NUFI Console**
+The self-service developer surface at `console.nufi.me`: gateway keys,
+your own usage, per-key limits. Also the identity issuer for the agent
+products.
 
-**Backend**
-The actual AI provider behind a model — OpenAI, Anthropic, Google,
-a self-hosted vLLM server, etc. The gateway routes to it.
+**NUFI Admin Panel**
+The admin surface at `admin.app.nufi.me`: settings, users, roles, groups,
+per-role overrides, the audit log. Talks to the app's admin API; keeps its
+own session.
 
-**`backend_type`**
-A required label on every registered model — `gpu`, `npu`, or
-`cloud`. Used by reporting and the canary slider.
+**NUFI Studio**
+The flow canvas at `studio.nufi.me`: wire a model, documents and tools
+into a flow, run it, publish it as an endpoint. A vendored Langflow.
 
-**Bootstrap**
-The setup script that fills in `.env` secrets, pulls images, and
-starts the stack on first install. Idempotent — re-running is
-safe.
+**NUFI Works**
+The agent-operations app at `works.nufi.me`: give a team of agents a goal,
+approve what matters, watch the spend. A vendored Paperclip.
 
-**Budget**
-Spend cap, in USD, on a user or API key. Refreshes on the
-configured interval (default 30 days).
+**The chooser**
+`agents.nufi.me`, the page that sends a member to Studio or Works. A
+route on the console, not a service.
 
-**Capability**
-The unit of authorisation inside the admin panel. Constants like
-`MANAGE_USERS`, `MANAGE_CONFIG`, `IMPERSONATE`. Roles bundle
-capabilities; users inherit capabilities via roles.
+**Identity issuer**
+The console's second job: after asking the app who a member is, it mints
+a short-lived identity for Studio (a signed cookie checked against the
+console's published keys) and runs an OpenID Connect flow for Works.
 
-**Chat**
-The conversational surface end users interact with — at
-`chat.nufi.me` in production. The default NUFI experience.
-
-**Console**
-The self-service developer UI at `console.nufi.me`. Where users
-generate API keys, watch their usage, and tune their per-key
-limits.
-
-**Conversation**
-A single chat thread, with one or more messages. Stored in NUFI's
-database under the user's account.
+**NUFI AI Gateway**
+The one gate every model call passes through: LiteLLM with NUFI's
+guardrails inside. Routing, keys, budgets, rate limits, the five controls,
+traces and metrics. Reachable at `api.codechi.me` for NUFI's own
+deployments and at `litellm-proxy:4000` inside the compose stack.
 
 **Endpoint**
-A named integration with one or more models. The default NUFI
-deployment exposes its models through one endpoint named "Nufi".
+The app's name for a group of models behind one URL and key. NUFI
+deployments have one, pointing at the gateway: called `NPUOps` in the
+compose stack's configuration and `Nufi` on Railway.
 
-**Gateway**
-The single chokepoint every AI request goes through. Handles
-routing, authentication, budgets, rate limits, and trace
-emission. Reachable at `api.nufi.me` for API users.
+**Model name**
+What a caller asks the gateway for. It maps to a provider entry in the
+gateway's configuration, and the two can differ: NUFI's own gateway
+answers several names with Google Gemini.
 
-**`hardware_id`**
-A free-form label on every registered model identifying which
-piece of hardware serves it — e.g. `dgx-a100-01`,
-`together-cloud`, `mac-local`. Reports aggregate by this.
+**`backend_type`, `hardware_id`**
+Two labels every registered model carries: the kind of backend (`gpu`,
+`npu`, `cloud`) and the specific hardware that serves it
+(`gemini-cloud`, `mac-local`). Traces and cost reports aggregate on
+`hardware_id`, which is the only truthful record of what ran.
 
-**Override**
-A scoped config value that beats the base config for a specific
-role, group, or user. Resolved by priority — see
-[Scoped overrides](/docs/admin/scoped-overrides).
+**Virtual key**
+A gateway key issued to a person or a service, with its own budget, rate
+limits and, optionally, model allow-list. Members issue their own in the
+console. The master key is the operator's, and the app's own endpoint
+uses it on the compose stack.
 
-**Preset**
-A saved bundle of `{model, parameters, system prompt}` with a
-name. Users start new conversations from a preset.
+**Budget**
+The spend cap, in dollars, on a key or on a user in the gateway; refreshed
+on the configured interval, 30 days for a new console user.
 
-**Profile (in the config editor)**
-A scoped override on a configuration field — has a `principalType`
-(role / group / user) and a `priority`. The admin panel's "Field
-Profile Popover" lists every profile on a field, sorted by
-priority.
+**Guardrails, G1 to G4**
+The five controls at the gateway. G1 blocks prompt injection before the
+model; G2a logs personal data in the prompt; G2b hides personal data in
+the answer; G3 blocks an answer that echoes the system prompt; G4 strips
+tracking images and scripts from the answer.
 
-**Resumable streams**
-The feature where assistant replies automatically reconnect and
-resume if the user's connection drops. Backed by Redis. Required
-for multi-instance chat deployments.
+**Policy file**
+`deploy/platform/litellm/guardrails/policy.yaml`, the only place a
+guardrail decision is configured: modes, thresholds per source, failure
+behaviour, actions. Mounted into the gateway; a restart applies a change.
 
-**Safety filters**
-The pre-call hooks the gateway runs on every prompt — personal
-data detection and prompt-injection scanning. Block or mask the
-prompt before it reaches the AI provider.
+**Canonicalisation**
+The first step before any control: Unicode normalised, invisible
+characters stripped, lookalike letters folded, encoded spans decoded, so
+obfuscation cannot hide an attack from the detectors.
 
-**SKILL.md**
-A reusable instruction bundle that can be attached to an agent or
-called manually via `/skill-name`. A lighter-weight unit than an
-agent.
+**Span source**
+Who wrote a piece of the prompt: the person (`user`), the model's earlier
+turns (`assistant`), the system prompt, a tool result, or retrieved
+content (`untrusted`). Thresholds and the two-detector rule are set per
+source.
 
 **Trace**
-A top-level event in the trace viewer (usually one chat
-completion). Inside a trace, **observations** record nested calls
-(one per AI call, tool call, or guardrail decision).
+One request as Langfuse records it: user, model, hardware, tokens,
+latency, cost, and nested observations for each call the request made.
 
-**Trace viewer**
-The observability surface at `langfuse.nufi.me`. Records every AI
-request with the prompt, reply, cost, and labels.
+**Audit event**
+One record per guardrail decision: a reference code, the control, the
+verdict and the evidence, never the triggering text.
 
-**Virtual key (API key)**
-A NUFI API key issued to a specific user (or service account)
-with its own budget, rate limits, and model allow-list. Users
-self-issue them from the console.
+**Agent (in the app)**
+A saved assistant with instructions, tools and knowledge files, shareable
+with a team.
+
+**Skill**
+A reusable instruction bundle, a `SKILL.md` with optional resources, that
+an agent in the app can load.
+
+**Preset**
+A saved bundle of model, parameters and system prompt, to start a
+conversation from.
+
+**Override**
+A configuration value scoped to a role, group or user that beats the base
+value, resolved by priority. [Scoped overrides](/docs/admin/scoped-overrides).
+
+**Capability**
+The unit of authorisation in the admin panel; roles bundle capabilities,
+users inherit them through roles.
+
+**Bootstrap**
+`deploy/platform/scripts/bootstrap.sh`: fills the `replace-me` secrets
+in `.env`, pulls the images, starts the stack, registers a model, runs the
+smoke test. Re-running keeps existing values.
+
+**The compose stack**
+`deploy/platform`: the gateway with its guardrails and sidecars, Langfuse,
+the monitoring trio, the databases, and a copy of the app and the console,
+on one host.
+
+**The wrapper**
+`deploy/railway`: the app on its own, with its MongoDB and a RAG service,
+and the image Railway builds around the app's published image.
+
+**Resumable streams**
+The app's ability to reconnect and continue a reply after the connection
+drops; Redis-backed; needed when the app runs as more than one instance.
