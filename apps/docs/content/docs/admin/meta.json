@@ -10,6 +10,7 @@
     "---Users & access---",
     "roles-and-groups",
     "users",
+    "audit-log",
     "---Integrations & observability---",
     "litellm",
     "langfuse",

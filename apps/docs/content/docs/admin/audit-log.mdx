@@ -1,0 +1,41 @@
+---
+title: Audit log
+description: Every admin action, who did it, and a CSV export for compliance.
+---
+
+The **Audit log** page in the admin panel records every action taken
+through the admin API: a role created, a capability granted or revoked, a
+member added to a group, a configuration value changed. It is the answer
+to "who turned that on, and when".
+
+## What a row holds
+
+| Column | What it is |
+|---|---|
+| **Timestamp** | when the action was applied |
+| **Actor** | the account that did it |
+| **Action** | what was done |
+| **Target** | the role, group, user or setting it was done to |
+| **Capability** | the capability the actor used |
+| **Details** | the before and after, where there is one |
+| **IP address** | where the request came from |
+
+Filter by a date range, and by whether a capability was **Granted** or
+**Revoked**.
+
+## Export
+
+**Export as CSV** downloads the filtered rows. Keep the exports with your
+other compliance records; the log lives in the app's database and goes
+with its backups ([Backup and restore](/docs/deployment/backup-restore)).
+
+## What it does not record
+
+Actions in the app itself (a user sharing an agent, deleting a
+conversation) are not admin actions and are not here. Model calls are
+recorded by the gateway, in Langfuse; guardrail decisions are the
+gateway's audit events. [Langfuse](/docs/admin/langfuse) and
+[Operating the guardrails](/docs/deployment/guardrails-ops).
+
+Reading the log needs the `access:admin` capability, like the rest of the
+panel.
