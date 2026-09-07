@@ -311,3 +311,49 @@ appeared across the Overview and Reference pages and resolve nowhere. The
 gateway and the compose stack's own surfaces are under `codechi.me`; the
 admin panel is `admin.app.nufi.me`. Recorded here so the next person who
 finds an old link knows it never worked.
+
+## Lane 4: Administer
+
+### F19. The admin panel still calls itself LibreChat, and its Help page links there — misleads
+
+**Seen:** `apps/admin-panel/src/locales/en/translation.json` carries
+"for LibreChat" in `com_users_subtitle` and `com_dash_subtitle`; the Help
+page (`src/components/help/HelpPage.tsx:9-27`) links to `librechat.ai/docs`,
+the upstream GitHub repository and its Discord. An admin who clicks Help
+lands in another product's manual.
+
+**Proposed fix:** the four Help links to `https://docs.app.nufi.me/docs/admin`
+and the repository's issues; the two subtitles to "for NUFI".
+
+### F20. The Security page in the admin panel has had no data source since 2026-07-29 — misleads
+
+**Seen:** the page is still in the sidebar (`Sidebar.tsx:58-63`). Its own
+notice (`com_security_moved_body`) says the app-layer guardrails that fed it
+were removed and that an empty table means no source, not no blocks. The
+gateway's decisions, which replaced them, are not shown anywhere in the
+panel.
+
+**Proposed fix:** either point the page at the gateway (the
+`nufi_guardrail_decisions_total` counters, or the audit events) or remove
+it from the sidebar. The docs now say what the empty table means.
+
+### F21. Capability arithmetic does not add up — cosmetic
+
+21 capabilities are defined and seeded onto `ADMIN`
+(`packages/data-schemas/src/admin/capabilities.ts:22-44`); the Grants grid
+shows 20 (`manage:files` is in no category) and 18 have an English label
+(`read:skills`, `manage:skills`, `manage:files` have no `com_cap_*` key).
+The docs now say "every capability" instead of a number.
+
+### F22. The Users page exists, is wired to an API, and is disabled — cosmetic
+
+`apps/admin-panel/src/routes/_app/users.tsx:4-6` redirects to `/`; the
+components and `POST /api/admin/users` exist. It is also the only place a
+user-scoped configuration profile can be created, so user profiles are
+listed by the scope selector but cannot be made. Decide whether the page
+ships; the docs describe the panel as it is.
+
+### F23. The Registration setting is under System, not Features — docs only, fixed
+
+The old users page sent admins to Features → Registration. `configMeta.ts`
+puts the section on the System tab.

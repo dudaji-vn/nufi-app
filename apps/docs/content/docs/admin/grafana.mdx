@@ -1,76 +1,65 @@
 ---
-title: Dashboards
-description: Operational dashboards for request rate, errors, latency, and host health.
+title: Grafana
+description: The one dashboard that ships, the nine alerts behind it, and how to read them.
 ---
 
-The dashboards at `grafana.nufi.me` show the operational side of
-NUFI — request rate, error rate, latency percentiles, host health.
+Where Langfuse shows what the model said, Grafana shows how the platform
+held up while it said it: request rate, errors, latency, spend, and
+whether the security controls were running.
 
-Where the [trace viewer](/docs/admin/langfuse) shows **what** the
-AI said, the dashboards show **how the platform held up while it
-was saying it**.
+NUFI's own copy is at `grafana.codechi.me`; on a compose stack it is host
+port 3030. Sign in with `GRAFANA_ADMIN_USER` and `GRAFANA_ADMIN_PASSWORD`
+from the stack's `.env`; sign-up is off.
 
-## Sign in
+## The dashboard
 
-Use the dashboard credentials set during install. In production,
-front the dashboards with your reverse proxy so they share the
-same SSO posture as the rest of NUFI.
+One dashboard is provisioned, **LiteLLM Overview**. Its panels:
 
-## Pre-loaded dashboards
+| Panel | What it shows |
+|---|---|
+| Requests / sec (5m) | request rate at the gateway |
+| Error rate (5m) | 4xx and 5xx as a share of requests |
+| p95 latency (5m), Latency percentiles (5m) | p50, p95 and p99 |
+| Total spend (cumulative), Spend rate by model (5m) | cost, by the model name requested |
+| RPS by requested model | which models are being used |
+| Token throughput (input vs output) | tokens per second |
+| Guardrail decisions by control, Decisions in this window | what G1 to G4 did |
+| Controls enforcing, Guardrail degraded (failing open) | whether each control is on and healthy |
+| Guardrail latency p95 by control | what the checks cost in time |
+| Postgres connections by database, Redis memory | the two stores the gateway depends on |
 
-NUFI ships with:
+There is no per-user panel; Langfuse is where per-person figures live.
+The dashboard is provisioned from a file in git, so edits made in the UI
+are not kept across restarts: **Save as** a copy to work on one.
 
-- **Gateway Overview** — request rate, error rate, latency P50 /
-  P95 / P99, top models by request count, top users by request
-  count.
-- **Database health** — connection count, slow queries, replication
-  lag.
-- **Cache** — hit rate, memory usage, slow operations.
+## The alerts
 
-All three load on first visit. Click the dashboard name in the
-left rail to switch.
+Nine rules, in two files in `deploy/platform/monitoring/rules/`:
 
-## Add a panel
+| Alert | Fires when | Severity |
+|---|---|---|
+| `LiteLLMDown` | the gateway is not scraped for a minute | critical |
+| `LiteLLMHighErrorRate` | errors above 5 % for five minutes | warning |
+| `LiteLLMHighLatencyP95` | p95 above ten seconds for five minutes | warning |
+| `GuardrailMetricsAbsent` | the guardrail pipeline is not loaded | critical |
+| `MandatoryControlMissing` | a mandatory control is absent | critical |
+| `MandatoryControlStoppedEnforcing` | a mandatory control fell back to logging | critical |
+| `GuardrailDegraded` | a control is failing open | critical |
+| `GuardrailSilent` | the injection control stopped scanning while traffic continues | warning |
+| `GuardrailBlockRateHigh` | more than 5 % of requests blocked | warning |
 
-Dashboards are queries against a metrics database. To add a panel:
-
-1. Pick a dashboard → **Add → Visualisation**.
-2. Pick the metrics datasource.
-3. Write a query, e.g.
-   `sum by (model) (rate(nufi_total_requests[5m]))`.
-4. Save.
-
-## Alerts
-
-NUFI ships with three default alert rules:
-
-| Alert                       | Trigger                                | Severity   |
-|-----------------------------|----------------------------------------|------------|
-| `GatewayDown`               | Gateway not responding for 1 min       | critical   |
-| `HighErrorRate`             | Error rate > 5 % for 5 min             | warning    |
-| `HighLatencyP95`            | P95 latency > 10 s for 5 min           | warning    |
-
-Your operator can edit these in the alert rules file and reload
-without restarting the metrics service.
-
-## Routing alerts to your incident channel
-
-By default, alerts route to a no-op receiver — they are recorded
-but no notification is sent. To wire Slack, Teams, or PagerDuty,
-ask your operator to configure the alert routing.
+The critical ones already route to Slack; they reach a channel once the
+operator has put the webhook in place. Until then they fire and nobody is
+told. [Monitoring and alerts](/docs/deployment/monitoring-alerts) is the
+operator's page.
 
 ## Retention
 
-Metrics retention is 15 days by default. Past that, you have raw
-counts in the metrics database but not per-second resolution. If
-you need longer history, ask your operator to extend retention.
+Fifteen days. Prometheus deletes older data; nothing is kept at lower
+resolution. Langfuse keeps the per-request history.
 
-## When to look here vs the trace viewer
+## Grafana or Langfuse?
 
-- **Dashboards** — is the platform up? Are we slow? Is there an
-  error storm right now?
-- **Trace viewer** — what exactly did the AI see and produce for
-  user X at time T?
-
-You usually start in the dashboards (you noticed something), then
-jump to the trace viewer (to inspect a representative request).
+Grafana first, when you noticed something: is the platform up, is it slow,
+is there an error storm, did a control stop enforcing. Then Langfuse, for
+the request that shows what happened.

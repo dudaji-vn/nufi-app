@@ -83,8 +83,12 @@ docker compose up -d litellm-proxy
 curl -s -H "Authorization: Bearer $LITELLM_MASTER_KEY" http://localhost:4000/v1/models | jq '.data[].id'
 ```
 
-The name is in that list when the gateway serves it. The app picks it up on
-its next fetch; reload the page.
+The name is in that list when the gateway serves it. The app caches the
+gateway's model list when it starts, so restart it too:
+
+```bash
+docker compose restart librechat
+```
 
 ## Change or remove one
 
