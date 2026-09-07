@@ -1,74 +1,59 @@
 ---
 title: Ports
-description: Every host port the stack binds, by service.
+description: Every host port each stack binds, by service, and every dev server.
 ---
 
-## Full platform (`npuops-platform`)
+## The compose stack (`deploy/platform`, project `npuops`)
 
-| Host port | Container        | Container port | Purpose                                |
-|-----------|------------------|----------------|----------------------------------------|
-| 3080      | librechat        | 3080           | Chat UI                                |
-| 3001      | console          | 3000           | Self-service console                   |
-| 3000      | langfuse-web     | 3000           | Observability UI                       |
-| 3030      | grafana          | 3000           | Dashboards                             |
-| 4000      | gateway          | 4000           | AI gateway + admin UI             |
-| 9090      | prometheus       | 9090           | Prometheus UI (admin only)             |
-| 9093      | alertmanager     | 9093           | Alertmanager UI (admin only)           |
+| Host port | Service | Container port | What |
+|---|---|---|---|
+| 3080 | `librechat` | 3080 | the NUFI app |
+| 3001 | `console` | 3000 | NUFI Console |
+| 3000 | `langfuse-web` | 3000 | Langfuse |
+| 3030 | `grafana` | 3000 | Grafana (3000 is taken by Langfuse) |
+| 4000 | `litellm-proxy` | 4000 | the gateway, and its admin UI at `/ui` |
+| 9090 | `prometheus` | 9090 | Prometheus, admin only |
+| 9093 | `alertmanager` | 9093 | Alertmanager, admin only |
 
-Internal-only services (no host port):
+No host port: `postgres` (5432), `redis` (6379), `clickhouse` (8123,
+9000), `minio` (9000), `minio-init`, `langfuse-worker`, `mongodb` (27017),
+`postgres-exporter` (9187), `redis-exporter` (9121), `presidio-analyzer`
+(3000), `presidio-anonymizer` (3000), `nufi-scanner` (8000), and
+`e2e-test` (profile `e2e`).
 
-`postgres`, `redis`, `mongodb`, `clickhouse`, `minio`, `minio-init`,
-`langfuse-worker`, `postgres-exporter`, `redis-exporter`,
-`presidio-analyzer`, `presidio-anonymizer`, `nufi-scanner`.
+## The app on its own (`deploy/railway`, project `nufi-chat`)
 
-## Chat-only (`nufi-chat`)
+| Host port | Container | Container port | What |
+|---|---|---|---|
+| 3081 | `nufi-chat-api` | 3081 | the NUFI app |
+| none | `nufi-chat-mongo` | 27017 | MongoDB |
+| none | `nufi-chat-vectordb` | 5432 | pgvector, for uploads |
+| none | `nufi-chat-rag-api` | 8000 | the RAG service |
 
-| Host port | Container         | Container port | Purpose      |
-|-----------|-------------------|----------------|--------------|
-| 3081      | nufi-chat-api     | 3081           | Chat UI      |
-| —         | nufi-chat-mongo   | 27017          | MongoDB      |
+## Not in a compose file
 
-## Admin panel (`nufichat-admin-panel`)
+| Product | Port | Notes |
+|---|---|---|
+| NUFI Admin Panel | 3000 (`PORT`) | its own image; see [Installing the admin panel](/docs/deployment/admin-panel-install) |
+| NUFI Studio | 7860 (`PORT`) | its own image |
+| NUFI Works | 3100 (`PORT`) | its own image; the UI dev server is separate |
 
-| Host port | Container               | Container port | Purpose     |
-|-----------|-------------------------|----------------|-------------|
-| 3000      | librechat-admin-panel   | 3000           | Admin SPA   |
+## Dev servers
 
-Run on a different host port (or behind a reverse proxy) when
-co-locating with `langfuse-web`, which also defaults to 3000.
+| App | Command | Port |
+|---|---|---|
+| the NUFI app, API | `npm run backend:dev` | 3080, or `PORT` |
+| the NUFI app, client | `npm run frontend:dev` | 3090, proxying `/api` to `BACKEND_PORT` |
+| NUFI Console, API | `bun run dev` | 3000, or `PORT`; 3002 in the guide, since 3000 is Langfuse |
+| NUFI Console, client | same | 5173, proxying to `SERVER_PORT` |
+| NUFI Admin Panel | `bun run dev -- --port <n>` | 3000 by default; 3003 in the guide |
+| NUFI Studio, API | `langflow run --backend-only` | 7860, or `--port` |
+| NUFI Studio, client | `VITE_PORT=<n> npm start` | 3000 by default, which is Langfuse; 3005 in the guide |
+| NUFI Works, API | `pnpm run dev:server` | 3100 |
+| this manual | `bun run dev` | 3000 |
 
-## In dev (HMR)
-
-| Repo                | Tool      | Port       |
-|---------------------|-----------|------------|
-| the NUFI Chat application      | API       | 3080       |
-| the NUFI Chat application      | Frontend  | 3090       |
-| Admin panel         | Vite      | 3000       |
-| Console             | Vite      | 5173       |
-| Console             | Hono      | 3000       |
-| **nufi-docs**       | Next.js   | 3000       |
-
-## Picking host ports under a single host
-
-If you run everything on one machine and hit conflicts:
-
-- the NUFI Chat application dev (`:3080`) collides with the platform-bundled chat
-  (`:3080`). Run only one at a time.
-- Console dev (`:5173`) is unique.
-- Admin panel dev (`:3000`) collides with Langfuse (`:3000`). Either
-  move the admin panel to a different `PORT`, or only run one at a
-  time, or use a host-aliased subdomain (`*.localhost` →
-  `127.0.0.1`).
-
-For day-to-day dev, the cleanest layout is:
-
-- `:3080` — Chat (one or the other, never both)
-- `:3000` — Langfuse (platform) OR admin panel (dev) — pick one
-- `:3001` — Console (platform)
-- `:5173` — Console (dev)
-- `:4000` — Gateway
-- `:3030` — Grafana
-- `:3090` — the NUFI Chat application frontend dev
-
-When in doubt, `lsof -iTCP -sTCP:LISTEN -P -n | grep <port>` tells
-you who is squatting.
+With the compose stack up, 3000, 3001, 3030, 3080, 4000, 9090 and 9093
+are taken. The guides in [Develop](/docs/developer) pick ports that do
+not collide; `lsof -iTCP -sTCP:LISTEN -P -n | grep <port>` says who holds
+one. Two TanStack apps (the console and the admin panel) also share a
+devtools port, 42069, so only one of their dev servers runs at a time.

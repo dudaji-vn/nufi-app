@@ -289,3 +289,25 @@ host the documented pre-promotion check therefore fails before it starts.
 **Proposed fix:** `bootstrap.sh` creates `.venv` when it is missing, or
 the wiring check runs inside the gateway container, which already has
 PyYAML.
+
+## Lane 3: Overview and Reference
+
+### F17. The compose stack still brands itself "NPUOps" — cosmetic
+
+`deploy/platform/.env.example` ships `APP_TITLE=NPUOps`, `CUSTOM_FOOTER='©
+NPUOps'`, `HELP_AND_FAQ_URL=https://npuops.local/docs`,
+`LANGFUSE_INIT_USER_EMAIL=admin@npuops.local`; `librechat.yaml` names the
+one endpoint `NPUOps` and greets with "Welcome to NPUOps — chat routes
+through LiteLLM to GPU/NPU backends"; the Railway copy says `Nufi Chat` and
+`Nufi`. A self-hosted install therefore presents a product name that is
+neither NUFI nor consistent with the hosted one. **Proposed fix:** `NUFI`
+for the title, the endpoint and the footer in both stacks; `HELP_AND_FAQ_URL`
+to `https://docs.app.nufi.me`.
+
+### F18. Four `*.nufi.me` hostnames in the docs did not exist — docs only, fixed
+
+`api.nufi.me`, `admin.nufi.me`, `langfuse.nufi.me` and `grafana.nufi.me`
+appeared across the Overview and Reference pages and resolve nowhere. The
+gateway and the compose stack's own surfaces are under `codechi.me`; the
+admin panel is `admin.app.nufi.me`. Recorded here so the next person who
+finds an old link knows it never worked.
