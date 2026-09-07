@@ -1,100 +1,95 @@
 ---
 title: Agents and skills
-description: Build reusable AI assistants — saved instructions and capabilities you can use again and again.
+description: Build a reusable assistant with its own instructions, knowledge and tools, and hand it skills it can apply.
 ---
 
-Instead of re-explaining what you want every time, you can save a
-reusable assistant — a name, instructions, and a set of capabilities —
-and reuse it everywhere. In the NUFI app these live under **Skills**.
+Instead of re-explaining what you want in every conversation, build an
+**agent**: a name, instructions, a model, and the capabilities it is
+allowed to use. Then pick it from the model picker like any model.
 
 <Callout>
-This page is about assistants **inside a conversation**. NUFI also has two
-separate agent apps — a canvas for building flows, and an operations app for
-running agent teams. See [Studio and Works](/docs/end-user/agent-apps).
+Agents live in [Advanced mode](/docs/end-user/advanced-mode). If the
+left icon rail shows no **Agent Builder**, switch modes first.
+</Callout>
+
+<Callout>
+This page is about assistants inside a conversation. NUFI also has two
+separate agent apps — see [Studio and Works](/docs/end-user/agent-apps).
 </Callout>
 
 > **Guides:** [Build a knowledge assistant](/docs/end-user/guides/build-a-knowledge-assistant)
 > and [Automate a repeating task](/docs/end-user/guides/automate-with-agents-and-prompts).
 
+## Build one
+
+<Steps>
+<Step>Open **Agent Builder** from the left icon rail and click **Create
+New Agent**.</Step>
+<Step>Give it a **name**, choose its **model**, and write its
+**instructions** — what it does, how it speaks, what it must not do.</Step>
+<Step>Click **Create**. The agent now exists; capabilities and knowledge
+are added to a created agent, not a draft.</Step>
+<Step>Under **Capabilities**, turn on what it needs. **File Search**
+lets it answer from documents you upload to it — see
+[Knowledge](/docs/end-user/knowledge). Web Search, Run Code, Artifacts
+and Skills appear here when your organisation has enabled them.</Step>
+</Steps>
+
+![The Agent Builder with a new agent](/screenshots/chat-agent-new.png)
+
+To use it, open the model picker and choose the agent by name — agents
+are listed with a robot icon. A conversation with an agent shows the
+**Tools** menu beside the paperclip, where you can switch its
+capabilities on and off for that chat.
+
+![The Tools menu of an agent in Advanced mode](/screenshots/chat-tools-menu.png)
+
+## Writing good instructions
+
+The instructions are what turn a generic model into something that
+feels like a colleague. Be specific:
+
+- **Role** — *"You are a senior support agent for an online store."*
+- **Style** — *"Concise. Friendly. No jargon. End every reply with a
+  clear next action."*
+- **Constraints** — *"Never share personal data. For prices, link to the
+  pricing page rather than quoting numbers."*
+- **When stuck** — *"If you cannot answer with confidence, say so and
+  offer to escalate."*
+
+Short and consistent beats long and contradictory. Give the agent only
+the capabilities it needs; fewer tools means faster, cheaper and more
+predictable answers.
+
 ## Skills
 
-Open **Skills** from the left icon rail. This is where your saved
-assistants live. A new account starts empty (*"No skills yet"*).
+A **skill** is a reusable set of instructions that an agent can apply
+on demand: a review checklist, a house style, a procedure. Where the
+same guidance keeps appearing in different agents' instructions, it
+usually belongs in a skill.
+
+Skills have their own panel in the left icon rail, when your
+organisation has enabled them. A new account starts with *"No skills
+yet"*; the **+** at the top creates one, and yours are listed under
+**My Skills**. An agent picks a skill up from the **Tools** menu →
+**Skills** in a conversation.
 
 ![The Skills panel in the NUFI app](/screenshots/chat-skills.png)
 
-<Steps>
-<Step>Click **Skills** in the left icon rail.</Step>
-<Step>Click the **+** button at the top of the panel to create a new
-skill.</Step>
-<Step>Give it a **name** and write clear **instructions** — what it
-should do and how it should behave. This is the most important part.</Step>
-<Step>Save it. Your skill now appears under **My Skills** and you can
-use it in any conversation.</Step>
-</Steps>
-
-You can also reach a skill from the **Tools** menu (the sliders icon
-in the message box), alongside File Search, Web Search, Run Code, and
-Artifacts.
-
-> **Admin Settings** at the bottom of the panel is for administrators —
-> regular users can leave it alone.
-
-### Writing good instructions
-
-The instructions are what turn a generic AI into something that feels
-like a teammate. Be specific:
-
-- **Role** — *"You are a senior support agent for an e-commerce
-  store."*
-- **Style** — *"Concise. Friendly. No jargon. End every reply with a
-  clear next action."*
-- **Constraints** — *"Never share personal data. For pricing, link to
-  /pricing instead of stating numbers."*
-- **When stuck** — *"If you can't answer confidently, say so and offer
-  to escalate."*
-
-Keep them short and consistent — long, contradictory instructions make
-the assistant behave unpredictably.
-
-## Giving an assistant extra capabilities
-
-Beyond plain text, an assistant can use the tools in the **Tools**
-menu:
-
-- **Run Code** — runs code in a sandbox. Upload a CSV and ask for an
-  analysis.
-- **Web search** — looks up live information mid-conversation. See
-  [Web search](/docs/end-user/web-search).
-- **File Search** — searches documents you upload into the agent so it
-  answers from them. See
-  [Knowledge and document chat](/docs/end-user/knowledge).
-- **Artifacts** — produces rich, structured output (e.g. a rendered
-  document or app preview).
-
-Give an assistant only the capabilities it needs — fewer tools means
-faster, cheaper, more predictable behaviour.
+**Admin Settings** at the bottom of the panel is for administrators.
 
 ## Sharing
 
-What you can share, and with whom, depends on what your organisation
-has enabled. Where sharing is available you can typically:
-
-- Share an assistant with **specific teammates**.
-- Share it with a whole **team**, or a **group** inside it.
-- Publish it so **everyone in your organisation** can find it.
-
-For team sharing — agents, prompts, and knowledge files — see
-[Teams and sharing](/docs/end-user/teams).
-
-> Some deployments include a fuller agent builder with avatars,
-> attached knowledge files, and a marketplace. If you don't see those
-> options, your organisation hasn't turned them on — ask your admin.
+An agent can be shared with a team, or with a group inside it, from the
+team's **Shared** tab — see [Teams and sharing](/docs/end-user/teams).
+Teammates then find it in their own model picker.
 
 ## When things go wrong
 
-- **It ignores its instructions** — they may be too long or
-  contradictory. Try shorter, clearer phrasing.
-- **It uses the wrong tool** — turn off tools it shouldn't need.
-- **Skills are missing entirely** — your admin hasn't enabled them for
-  your team. Ask.
+- **It ignores its instructions** — they are too long or contradict
+  each other. Shorten them.
+- **It uses a tool it should not** — turn that capability off on the
+  agent.
+- **There is no Agent Builder, or no Skills panel** — you are in Basic
+  mode, or your organisation has not enabled that feature. Switch to
+  Advanced first, then ask your administrator.
