@@ -151,11 +151,20 @@ export function shouldRetryGateway(status: number, body: string): boolean {
  *
  * The guardrail's unavailable windows are short but longer than one breath.
  * Measured: three attempts 1.5s apart all landed inside a single window and the
- * run died, while eight consecutive requests before and after it passed. These
- * delays cover about seventeen seconds — nothing against a heartbeat that
- * already spends twenty-five on the model.
+ * run died, while eight consecutive requests before and after it passed.
+ *
+ * Seventeen seconds was the first answer, and it covers a busy moment rather
+ * than a restart. The injection scanner loads a CPU transformer at import,
+ * eagerly, once per uvicorn worker — so while a worker comes back the gateway
+ * answers 503 GUARDRAIL_UNAVAILABLE and the policy is fail-closed by design.
+ * Measured on a full sweep: a run died on exactly that ("A security check could
+ * not run"), and minutes later the same gateway served 6 concurrent requests
+ * 6/6. The window was a restart, not load.
+ *
+ * A heartbeat has minutes. Spending one of them beats losing the run, and this
+ * still gives up long before the run's own timeout.
  */
-const GATEWAY_RETRY_DELAYS_MS = [2000, 5000, 10000];
+export const GATEWAY_RETRY_DELAYS_MS = [2000, 5000, 10000, 20000, 30000];
 
 export const DEFAULT_AGENT_MODEL = "nufi-agent";
 
