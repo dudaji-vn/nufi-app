@@ -1,108 +1,90 @@
 ---
 title: Cloudflare tunnel
-description: Expose an internal NUFI install to the internet without opening a port.
+description: Expose a stack that has no public address, with Cloudflare Access in front of every browser-facing host.
 ---
 
-When the server is inside an office network with no inbound access —
-or you simply do not want to manage TLS and DNS yourself — a
-**Cloudflare tunnel** is the path of least resistance.
+When the server sits inside an office network with no inbound access, or
+you would rather not run TLS and DNS yourself, a Cloudflare tunnel is the
+least work. `cloudflared` on the host opens an outbound connection;
+Cloudflare receives requests for your hostnames and forwards them down it.
+No public IP, no firewall change.
 
-The tunnel is outbound: `cloudflared` on the server holds a long-lived
-connection to Cloudflare. Cloudflare receives requests for your
-hostnames and forwards them down the tunnel. No public IP, no
-firewall rules.
+This is how NUFI's own on-prem stack in Seoul is reached: five hostnames
+under `codechi.me`, four behind Cloudflare Access, the API without. The
+record of that setup, with every click, is
+`deploy/platform/docs/cloudflare-tunnel-setup.md`.
 
-## Five public hostnames
+## The hostnames
 
-Following the platform's reference layout:
+| Hostname | Target | Access |
+|---|---|---|
+| `chat.example.com` | `localhost:3080`, the NUFI app | required |
+| `console.example.com` | `localhost:3001`, NUFI Console | required |
+| `langfuse.example.com` | `localhost:3000` | required |
+| `grafana.example.com` | `localhost:3030` | required |
+| `api.example.com` | `localhost:4000`, the gateway | none: callers send a gateway key |
 
-| Hostname                  | Target              | Notes                                          |
-|---------------------------|---------------------|------------------------------------------------|
-| `chat.nufi.me`              | `librechat:3080`    | Behind Cloudflare Access (SSO)                 |
-| `console.nufi.me`           | `console:3000`      | Behind Cloudflare Access (SSO)                 |
-| `langfuse.nufi.me`          | `langfuse-web:3000` | Behind Cloudflare Access (SSO)                 |
-| `grafana.nufi.me`           | `grafana:3000`      | Behind Cloudflare Access (SSO)                 |
-| `api.nufi.me`               | `litellm-proxy:4000`| **No Access** — virtual-key auth only          |
+The ports are the compose stack's host ports. `api.example.com` stays
+outside Access on purpose: SDKs and `curl` authenticate with an
+`Authorization: Bearer` key, not a browser session, and Access would
+block them.
 
-`api.nufi.me` is deliberately not behind Access — clients hit it with a
-gateway-issued API key in the `Authorization` header, not a browser
-session.
+## Setting it up
 
-## One-time setup
-
-1. **Add your domain to Cloudflare.** Update your registrar's
-   nameservers to Cloudflare's.
-2. **Enable Zero Trust** (free plan supports up to 50 users).
-3. **Create a tunnel.** Zero Trust → Networks → Tunnels →
-   `Create Tunnel`. Name it `nufi-prod`. Copy the install command.
-4. **Install `cloudflared` on the host** as a system service:
+1. **Add the domain to Cloudflare** and move its nameservers there.
+2. **Turn on Zero Trust.** The free tier covers 50 users.
+3. **Create the tunnel** under Networks → Tunnels, connector type
+   `cloudflared`, and copy the install command; it carries the token.
+4. **Install `cloudflared` on the host** with that command, as a service:
    ```bash
-   sudo cloudflared service install <token-from-step-3>
+   sudo cloudflared service install <token>
    sudo systemctl status cloudflared
    ```
-5. **Add hostname routes.** In the tunnel's UI:
-   - `chat.nufi.me` → `http://librechat:3080`
-   - `console.nufi.me` → `http://console:3000`
-   - etc.
+5. **Add the public hostnames** in the tunnel's configuration, one per
+   row above, each pointing at `http://localhost:<port>`. `cloudflared`
+   runs on the host, so it reaches the compose services through their
+   host ports.
+6. **Tell the stack its new addresses.** The app, the console and
+   Langfuse put absolute URLs into emails, OAuth callbacks and share links:
+   ```bash
+   cd deploy/platform
+   ./scripts/update-domain.sh example.com --yes
+   docker compose up -d
+   ```
+   It rewrites `LIBRECHAT_URL`, `CONSOLE_URL` and `LANGFUSE_NEXTAUTH_URL` in
+   `.env` to `chat.`, `console.` and `langfuse.` under the domain. The app's
+   own `DOMAIN_CLIENT` and `DOMAIN_SERVER` are hardcoded to
+   `http://localhost:3080` in the compose file; change those two lines by
+   hand.
 
-Each route picks its target by Docker service name, because
-`cloudflared` runs on the host with access to the `npuops` network
-(use `--network npuops` on the cloudflared container, or run
-cloudflared inside the compose file with the right network attached).
+## Access policies
 
-## Lock it down with Access policies
+For every hostname except the API: Zero Trust → Access → Applications →
+Add, type Self-hosted, the hostname, one policy: Allow, include emails
+ending in your domain. Visitors sign in with their corporate identity at
+Cloudflare, then meet the app's own sign-in. A stolen app session alone
+does not reach the host.
 
-For each hostname *except* `api.nufi.me`:
+## Cookies across subdomains
 
-1. Zero Trust → Access → Applications → **Add application**.
-2. Type: `Self-hosted`.
-3. Hostname: pick the same domain.
-4. Add an access policy:
-   - **Action**: Allow
-   - **Include**: `Emails ending in @dudaji.com` (or your domain).
-5. Save.
+Cloudflare passes `Set-Cookie` through unchanged, so sharing the session
+between the chat and the console works the same way as with any proxy:
+`COOKIE_DOMAIN` and `COOKIE_SAMESITE=lax` on the chat service.
+[SSO and reverse proxy](/docs/deployment/sso-reverse-proxy).
 
-Visitors land on a Cloudflare Access login screen, sign in with their
-corporate email, and are then forwarded to the chat (which then
-checks its own session).
+## Limits
 
-This is two-factor in a useful sense: even if a the NUFI session is
-stolen, the attacker still needs an Access-eligible identity to reach
-the hostname.
+- **100-second responses.** The free tier closes a response that streams
+  for longer than 100 seconds. Long generations on slow models hit it;
+  the paid tier raises it.
+- **Access and the API.** Anything you put behind Access stops answering
+  to non-browser clients. Keep the gateway hostname out.
 
-## Cookie scoping under Cloudflare
+## When it does not work
 
-The cookie rewrite from [SSO + reverse proxy](/docs/deployment/sso-reverse-proxy)
-still applies. The cleanest way is to keep Caddy on the host between
-`cloudflared` and the compose stack, doing the cookie rewrite, and
-let Cloudflare just be the public face:
-
-```
-client → Cloudflare → cloudflared → Caddy on host → librechat / console / …
-```
-
-Or skip Caddy and do the cookie rewrite in a Cloudflare Worker — but
-Caddy is simpler.
-
-## Cost
-
-- Tunnel: free.
-- Access: free up to 50 users; $3/user/month above.
-- TLS: free (Cloudflare-managed).
-
-## Troubleshooting
-
-- **404 from Cloudflare** — hostname route missing or pointing at
-  the wrong service name. Check the tunnel's Public Hostnames page.
-- **502 / 521** — `cloudflared` can reach Cloudflare but cannot
-  reach the target service. Verify the target hostname resolves
-  inside the same network as `cloudflared`.
-- **Loop redirecting Access** — clock skew on the host. Sync NTP.
-- **Slow chat completions** — Cloudflare has a 100-second timeout on
-  free-plan tunnels. Long streams hit it. Either move to a paid plan
-  (longer timeout) or split big responses into smaller ones.
-
-## See also
-
-The platform repo's `docs/cloudflare-tunnel-setup.md` has the full
-walkthrough with screenshots.
+| Symptom | Cause |
+|---|---|
+| 404 from Cloudflare | no public hostname route, or a typo in it |
+| 502 or 521 | `cloudflared` reached Cloudflare but not the local port; check the service is up and the port matches |
+| Access sign-in loops | clock skew on the host; sync NTP |
+| a long answer stops at about 100 seconds | the free-tier timeout |

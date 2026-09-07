@@ -24,8 +24,12 @@ docker run -d \
   -p 7860:7860 \
   -e LANGFLOW_DATABASE_URL=postgresql://user:pass@host:5432/nufi_studio \
   -e LANGFLOW_SECRET_KEY="$(python3 -c 'import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode())')" \
-  ghcr.io/dudaji-vn/nufi-studio:latest
+  ghcr.io/dudaji-vn/nufi-studio:main
 ```
+
+`main` is the image every push to `apps/nufi-agent` produces; a
+`nufi-studio-vX.Y.Z` tag on the repository publishes `vX.Y.Z` (and
+`latest`), and none has been cut yet. NUFI's own instance follows `main`.
 
 To build it yourself, use `apps/nufi-agent/nufi/Dockerfile` rather than
 the upstream one — it is the file that applies the NUFI branding and
@@ -128,6 +132,19 @@ Then check the two things a health check cannot:
    it is still there. This is the only test that actually distinguishes
    a working `LANGFLOW_DATABASE_URL` from a typo'd one, because a bad
    URL silently falls back to SQLite.
+
+## Proving the egress policy
+
+On Kubernetes, Studio's model traffic is meant to reach the gateway and no
+vendor. The check that proves it runs from inside the pod:
+
+```bash
+apps/nufi-agent/nufi/egress/verify-egress.sh <namespace>
+```
+
+It passes only when `api.codechi.me` answers and `api.openai.com` does not.
+What it tests, and why a policy object in `kubectl describe` is not
+evidence, is on [Agent egress](/docs/deployment/agents-egress#proving-it).
 
 ## Sizing
 

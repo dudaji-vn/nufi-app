@@ -1,30 +1,33 @@
 ---
 title: SSO and reverse proxy
-description: Sharing the the NUFI session across chat, console, and admin panel.
+description: One sign-in across the app, the console and the admin panel, and the proxy configuration that makes the cookie travel.
 ---
 
-The chat and the console must share one logged-in session. Auth is a
-JWT cookie issued by the chat. Whether that cookie reaches the
-console depends on how the two are hosted.
+The app issues the session: a JWT in a cookie set by the chat. The console
+reads that cookie and verifies it with the same `JWT_REFRESH_SECRET`, so a
+member who signed in to the chat is already signed in to the console.
+Whether the cookie reaches the console depends on where the two are hosted.
+
+The admin panel is different. It keeps its own session and asks the app's
+API to authenticate, so it needs no cookie sharing, only a route to the
+app. It is also not part of the compose stack: run it from
+`apps/admin-panel` (its own image and compose file) or on Railway.
 
 ## Hosting options
 
-| Layout                                                          | Cookie shared? | Effort                              |
-|-----------------------------------------------------------------|----------------|-------------------------------------|
-| Same origin (`nufi.me/`, `nufi.me/console/`)                    | yes, automatic | Path-routing in the proxy           |
-| Subdomains (`chat.nufi.me`, `console.nufi.me`)                  | yes, with rewrite | Proxy + one cookie rewrite line  |
-| Separate domains (`org-chat.com`, `org-console.com`)            | no             | Not supported                       |
+| Layout | Cookie shared? | Effort |
+|---|---|---|
+| Same origin (`nufi.example.com/`, `nufi.example.com/console/`) | yes, automatically | path routing in the proxy |
+| Subdomains (`chat.example.com`, `console.example.com`) | yes, with two variables on the chat | proxy plus the variables |
+| Different registrable domains | no | not supported |
 
-**Pick same-origin** if you do not care about the URL.
+Same origin is the least work. Subdomains are what NUFI's own hosting uses
+(`chat.nufi.me`, `console.nufi.me`).
 
-**Pick subdomains** when branding wants `console.nufi.me` — the proxy
-rewrites `Set-Cookie` to add `Domain=.nufi.me` so the browser scopes
-the cookie across siblings.
-
-## Caddy: same-origin (path routing)
+## Caddy, same origin
 
 ```
-nufi.me {
+nufi.example.com {
   handle_path /console/* {
     reverse_proxy console:3000
   }
@@ -34,90 +37,73 @@ nufi.me {
 }
 ```
 
-No cookie tricks needed. TLS via Let's Encrypt is automatic.
+TLS from Let's Encrypt is automatic.
 
-## Caddy: subdomains (with cookie rewrite)
+## Caddy, subdomains
 
 ```
-chat.nufi.me {
-  reverse_proxy librechat:3080 {
-    header_down Set-Cookie (.+) "{1}; Domain=.nufi.me"
-  }
+chat.example.com {
+  reverse_proxy librechat:3080
 }
 
-console.nufi.me {
+console.example.com {
   reverse_proxy console:3000
 }
 
-admin.nufi.me {
-  reverse_proxy librechat-admin-panel:3000
+admin.example.com {
+  reverse_proxy admin-panel:3000
 }
 ```
 
-The `header_down` line appends `Domain=.nufi.me` to every
-`Set-Cookie` from the chat. The browser now sends the cookie to all
-subdomains of `nufi.me`.
-
-You must also set in `.env`:
+And on the chat, so that the cookie it sets is valid for every subdomain:
 
 ```bash
-COOKIE_DOMAIN=.nufi.me
-COOKIE_SAMESITE=lax      # required when COOKIE_DOMAIN is set
+COOKIE_DOMAIN=.example.com
+COOKIE_SAMESITE=lax
 ```
 
-## Traefik (subdomains)
+The wrapper stack in `deploy/railway` passes both from `.env`. The compose
+stack in `deploy/platform` does not have them; add the two lines to the
+`librechat` service's `environment:` block. `lax` is required: `strict`
+stops the browser sending the cookie on the cross-subdomain navigation
+from the chat to the console.
 
-Traefik does not rewrite `Set-Cookie` natively. Either the
-[rewrite-headers plugin](https://plugins.traefik.io/plugins/628c9eb7ffc0cd18356a979b/rewrite-headers)
-or a custom middleware:
+The proxy must forward `Set-Cookie` unchanged. Caddy does. Traefik does
+too; only add a header-rewriting middleware if you had one that strips
+`Domain`.
 
-```yaml
-labels:
-  - traefik.enable=true
-  - traefik.http.routers.librechat.rule=Host(`chat.nufi.me`)
-  - traefik.http.routers.librechat.tls.certresolver=letsencrypt
-  - traefik.http.middlewares.cookie-domain.plugin.rewriteHeaders.headers[0].name=Set-Cookie
-  - traefik.http.middlewares.cookie-domain.plugin.rewriteHeaders.headers[0].regex=(.*)
-  - traefik.http.middlewares.cookie-domain.plugin.rewriteHeaders.headers[0].replacement=$$1; Domain=.nufi.me
-  - traefik.http.routers.librechat.middlewares=cookie-domain
-```
+## What the console does with the cookie
 
-For NUFI, Caddy is the lower-effort choice.
+On every request the console reads `refreshToken`, verifies it with
+`JWT_REFRESH_SECRET` (HS256), and takes the user id from the payload as
+the identity for keys, spend and traces. A missing or invalid cookie is a
+401 and a redirect to `/unauthorized`, which links back to the chat's
+sign-in (`VITE_LIBRECHAT_URL`, inlined at build time).
 
-## Console-side: verify the shared JWT
+For the handoff into NUFI Studio and NUFI Works the id is not enough, and
+the console asks the chat for the member's email and role over
+`CHAT_BASE_URL`. That call and its variables are on
+[Single sign-on for the agent apps](/docs/deployment/agents-sso).
 
-The console does not call the chat backend. Compose passes both secrets to
-both services. On every console request the middleware:
+## Gotchas
 
-1. Reads the `refreshToken` cookie.
-2. Verifies with `JWT_REFRESH_SECRET` (HS256).
-3. Extracts `userId` from the payload.
-4. Uses it for audit + scoping.
-
-If the cookie is missing or invalid → 401, redirect to
-`/unauthorized` (which deep-links back to the chat sign-in via
-`VITE_LIBRECHAT_URL`).
-
-## Common subdomain gotchas
-
-- **`SameSite=Strict` blocks the cross-subdomain cookie.** Set
-  `COOKIE_SAMESITE=lax` whenever `COOKIE_DOMAIN` is set.
-- **Trailing dot matters.** `Domain=.nufi.me` (with leading dot) is
-  the cross-subdomain form. `Domain=nufi.me` (no dot) restricts to
-  the root only on some browsers.
-- **HTTP works, HTTPS does not.** The cookie has `Secure`. You need
-  HTTPS on every subdomain. Caddy gives you Let's Encrypt for free;
-  Cloudflare proxy gives you flexible TLS.
-- **Mixed scheme.** If chat is `https://` and console is `http://`,
-  the cookie does not travel. Move both to HTTPS.
+- **`SameSite=Strict` blocks the cross-subdomain cookie.** Set `lax` with
+  `COOKIE_DOMAIN`.
+- **The leading dot matters.** `Domain=.example.com` covers every
+  subdomain.
+- **HTTPS on every host.** The cookie is `Secure`; a plain-HTTP console
+  never receives it. Mixed schemes fail the same way.
+- **One `JWT_REFRESH_SECRET`.** The console must have the chat's value,
+  not one of its own.
 
 ## Cost
 
-- Caddy is Apache-2.0, Traefik is MIT — no license fee.
-- TLS via Let's Encrypt — free.
-- One extra container (~20 MB RAM idle for Caddy).
+Caddy (Apache-2.0) or Traefik (MIT), one container, certificates from
+Let's Encrypt. Nothing to license.
 
 ## See also
 
-- [Cloudflare tunnel](/docs/deployment/cloudflare-tunnel) — when you
-  do not have a public IP at all.
+- [Cloudflare tunnel](/docs/deployment/cloudflare-tunnel) when the host
+  has no public address.
+- [Single sign-on for the agent apps](/docs/deployment/agents-sso) for the
+  identity the console issues to Studio and Works.

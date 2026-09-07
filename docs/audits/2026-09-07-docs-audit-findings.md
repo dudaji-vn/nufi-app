@@ -172,3 +172,120 @@ devtools port per app in each `vite.config`.
 
 The README lines among these are corrected in this lane; the script, package
 and workflow items are left for a decision.
+
+## Lane 2: Deploy & operate
+
+### F10. The end-to-end smoke test calls an endpoint the app no longer has — blocks
+
+**Seen:** `./scripts/e2e-smoke-test.sh --rebuild` on the running stack
+passes liveness and registration, then stops:
+
+```
+==> 3/7 Chat via /api/ask/custom (endpoint='NPUOps')
+error: /api/ask returned HTTP 404: {"message":"Endpoint not found"}
+```
+
+**Why:** the test was written against the LibreChat 0.7 API; the NUFI app is
+at 0.8.6, where the chat route moved. The unit smoke test (`smoke-test.sh`,
+gateway only) still passes, so the failure is specific to the chat leg, which
+is the leg the test exists to cover. Every page that points at the e2e test
+as the way to prove a deployment works is pointing at a test that cannot
+pass.
+
+**Proposed fix:** update `scripts/e2e/` to the current chat API (the agents
+route), keep the Langfuse `hardware_id` assertion, and run it in
+`platform-ci` against a real stack or delete it from the documented path.
+
+### F11. The compose stack cannot share the session cookie across subdomains — misleads
+
+**Seen:** the app honours `COOKIE_DOMAIN` and `COOKIE_SAMESITE`
+(`apps/chat/api/server/utils/sessionCookies.js`), and the wrapper stack
+passes them (`deploy/railway/docker-compose.yml:33-35`). The platform
+stack's `librechat` service passes neither, so the documented
+`COOKIE_DOMAIN=.example.com` in `.env` has no effect there; the console on
+a sibling subdomain stays at `/unauthorized`.
+
+**Proposed fix:** add `COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}` and
+`COOKIE_SAMESITE: ${COOKIE_SAMESITE:-strict}` to the `librechat` service in
+`deploy/platform/docker-compose.yml`, and the two names to `.env.example`.
+
+### F12. The documented MongoDB backup cannot run — blocks
+
+**Seen:** `docker compose exec -T mongodb mongodump --archive --gzip`, as
+the backup page had it, stops with `(Unauthorized) command listDatabases
+requires authentication`; the stack's MongoDB is created with a root user.
+The page now shows the authenticated form. Nothing in `scripts/` schedules
+or performs a backup; an operator following the old page had none.
+
+**Proposed fix:** a `scripts/backup.sh` that runs the two authenticated
+dumps and the two volume snapshots, so the documented path is a script
+that CI can at least lint.
+
+### F13. The "Agents" entry in the app can never appear on either compose stack — misleads
+
+**Seen:** both `librechat.yaml` files add an **Agents** entry from
+`${AGENTS_URL}` (`deploy/platform/librechat.yaml:37`,
+`deploy/railway/librechat.yaml:31`) and say an empty value hides it. Neither
+compose file passes `AGENTS_URL` to the app: the platform stack hands the
+`librechat` service an explicit environment list without it
+(`docker-compose.yml:358-378`), and the wrapper stack likewise. The variable
+is in no `.env.example`. So on any compose deployment the link that leads
+members to NUFI Studio and NUFI Works is hidden, whatever the operator sets.
+It shows on Railway only because Railway injects every service variable.
+
+**Proposed fix:** `AGENTS_URL: ${AGENTS_URL:-}` on the `librechat` service in
+both compose files, and the variable in both `.env.example` files.
+
+### F14. The gateway's shipped models are Gemini aliases, and the on-prem app has agents off — misleads
+
+**Seen:** `deploy/platform/litellm/config.yaml:81-86` says in its own
+comments that `claude-sonnet-4-5`, `claude-haiku-4-5`, `gpt-5` and
+`gpt-5-mini` are answered by Gemini, and that cost reports carry the alias.
+`deploy/platform/librechat.yaml:25` sets `interface.agents: false`. The
+Overview pages describe a multi-provider platform with agents; the shipped
+on-prem configuration is neither.
+
+**Proposed fix:** either rename the aliases to what they are, or register
+the real providers behind them; and decide whether agents are on for the
+on-prem stack. Lane 3 rewrites the Overview to say what ships.
+
+### F15. The staging readiness check fails on `main` — blocks
+
+**Seen:** `./scripts/staging-readiness.sh` on the running stack:
+`passed 28 failed 3`, `NOT READY for staging`. With
+`PYTHON=.venv/bin/python3`: `passed 29 failed 2`. The two that remain:
+
+```
+FAIL: could not read controls from policy.yaml (is PyYAML available to python3?)
+FAIL: tool-result injection returned 200, expected 400
+```
+
+**Why:** the first is the script itself: one of its checks calls `python3`
+directly instead of `$PYTHON`, so it fails on any machine whose system
+Python lacks PyYAML even when the caller pointed `PYTHON` at the venv, as
+the wiring check asks. The second is a real disagreement between the
+policy and the test: `policy.yaml` added `tool` to `require_corroboration`
+on 2026-09-04 (`a3ee40e85`, "close the G1 agent hole with a tool span
+source"), so an injection in a tool result now needs both detectors to
+agree before it blocks; check 6e still expects a single-detector block and
+its own comment says what that means ("four of six measured
+indirect-injection payloads would be log-only"). Either the policy change
+regressed the guarantee the check protects, or the check is stale. The
+docs cannot say which; whoever made the policy change can.
+
+**Proposed fix:** make every Python call in `staging-readiness.sh` use
+`$PYTHON`; then decide 6e: restore single-detector blocking for `tool`
+spans, or change the check and the security page to say tool results are
+corroborated. Until then the "ready for staging" gate cannot pass.
+
+### F16. The wiring check silently depends on a venv that nothing creates — misleads
+
+**Seen:** `./scripts/check-guardrails-wired.sh` refuses to run without
+PyYAML and names the fix (`python3 -m venv .venv && .venv/bin/pip install
+-r litellm/requirements.txt`). `bootstrap.sh` never creates that venv, the
+README does not mention it, and `platform-ci` installs its own. On a fresh
+host the documented pre-promotion check therefore fails before it starts.
+
+**Proposed fix:** `bootstrap.sh` creates `.venv` when it is missing, or
+the wiring check runs inside the gateway container, which already has
+PyYAML.
