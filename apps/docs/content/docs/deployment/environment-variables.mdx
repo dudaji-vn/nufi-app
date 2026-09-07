@@ -1,163 +1,151 @@
 ---
 title: Environment variables
-description: Every variable in .env, what it does, how to generate it.
+description: Every variable the compose stack reads, where each one comes from, and the ones the template forgets.
 ---
 
-The `.env` file is the single source of truth for runtime config. The
-bootstrap script generates a working one; this page is the reference
-for when you need to edit by hand.
+`deploy/platform/.env` is the stack's runtime configuration.
+`bootstrap.sh` creates it from `.env.example` and fills every value that
+ends in `replace-me`; nothing else is generated for you. One rule decides
+whether a variable reaches a service: only the gateway is handed the whole
+file (`env_file`), so any `${VAR}` referenced from `litellm/config.yaml`
+works by being in `.env`. Every other service gets an explicit list in
+`docker-compose.yml`, and a variable missing from that list is invisible
+to the container however carefully you set it.
 
-## Secrets
+## Secrets bootstrap generates
 
-Generate every secret. Never check `.env` into git.
+| Variable | Generator | Read by |
+|---|---|---|
+| `LITELLM_MASTER_KEY` | hex 32 | the gateway; the app and the console call it with this key |
+| `LITELLM_SALT_KEY` | hex 32 | the gateway, key hashing |
+| `POSTGRES_PASSWORD` | hex 16 | Postgres, Langfuse, `postgres-exporter` |
+| `DATABASE_URL` | derived: `postgresql://npuops:<password>@postgres:5432/npuops` | the gateway |
+| `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` | hex 16 | the gateway, the console, the e2e test |
+| `LANGFUSE_NEXTAUTH_SECRET`, `LANGFUSE_SALT` | base64 32 | Langfuse |
+| `LANGFUSE_ENCRYPTION_KEY` | hex 32 | Langfuse |
+| `LANGFUSE_INIT_USER_PASSWORD` | hex 12 | Langfuse, the first admin's password |
+| `CLICKHOUSE_PASSWORD`, `MINIO_ROOT_PASSWORD` | hex 16 | ClickHouse, MinIO, Langfuse |
+| `JWT_SECRET`, `JWT_REFRESH_SECRET` | hex 32 | the app and the console; must be identical in both |
+| `CREDS_KEY`, `CREDS_IV` | hex 32, hex 16 | the app, credential encryption |
+| `MONGO_INITDB_ROOT_PASSWORD` | hex 16 | MongoDB |
+| `MONGO_URI` | derived: `mongodb://librechat:<password>@mongodb:27017/LibreChat?authSource=admin` | the app |
+| `GRAFANA_ADMIN_PASSWORD` | hex 12 | Grafana |
+| `E2E_USER_PASSWORD` | hex 16 | the e2e test |
 
-| Variable                    | Generate with                  | Used by                                |
-|-----------------------------|--------------------------------|----------------------------------------|
-| `POSTGRES_PASSWORD`         | `openssl rand -base64 32`      | Postgres, Gateway, trace store            |
-| `CLICKHOUSE_PASSWORD`       | `openssl rand -base64 32`      | ClickHouse, Langfuse                   |
-| `REDIS_PASSWORD`            | `openssl rand -base64 32`      | Redis (optional)                       |
-| `MONGO_INITDB_ROOT_PASSWORD`| `openssl rand -base64 32`      | MongoDB, NUFI Chat                     |
-| `MINIO_ROOT_PASSWORD`       | `openssl rand -base64 32`      | MinIO, Langfuse S3 client              |
-| `LITELLM_MASTER_KEY`        | `openssl rand -hex 32`         | gateway admin auth                     |
-| `LITELLM_SALT_KEY`          | `openssl rand -hex 32`         | Gateway key hashing                    |
-| `JWT_SECRET`                | `openssl rand -hex 32`         | Chat + Console (shared)           |
-| `JWT_REFRESH_SECRET`        | `openssl rand -hex 32`         | Chat + Console (shared)           |
-| `CREDS_KEY`                 | `openssl rand -hex 32`         | Chat credential encryption        |
-| `CREDS_IV`                  | `openssl rand -hex 16`         | Chat credential encryption        |
-| `LANGFUSE_SALT`             | `openssl rand -base64 32`      | Langfuse                               |
-| `LANGFUSE_ENCRYPTION_KEY`   | `openssl rand -hex 32`         | Langfuse encryption-at-rest            |
-| `LANGFUSE_NEXTAUTH_SECRET`  | `openssl rand -base64 32`      | Langfuse session signing               |
-| `LANGFUSE_PUBLIC_KEY`       | `openssl rand -base64 24`      | Gateway → trace store ingestion     |
-| `LANGFUSE_SECRET_KEY`       | `openssl rand -base64 32`      | Gateway → trace store ingestion     |
+Two consequences of how the fill works. A value you blanked stays blank;
+only the literal `replace-me` suffix is replaced. And once Postgres or
+MongoDB has initialised its volume, its password lives in the volume: a
+later change in `.env` breaks the connection instead of rotating the
+password. `grep -c replace-me .env` before the first `up` on a server.
 
-## Public URLs
+## Set by hand
 
-Set to match how users reach you.
+Infrastructure:
 
-| Variable                     | Example                              |
-|------------------------------|--------------------------------------|
-| `DOMAIN_CLIENT`              | `https://chat.nufi.me`          |
-| `DOMAIN_SERVER`              | `https://chat.nufi.me`          |
-| `LIBRECHAT_URL`              | `https://chat.nufi.me`          |
-| `CONSOLE_URL`                | `https://console.nufi.me`       |
-| `LANGFUSE_NEXTAUTH_URL`      | `https://langfuse.nufi.me`      |
-| `LANGFUSE_HOST`              | `https://langfuse.nufi.me`      |
-| `LANGFUSE_INIT_USER_EMAIL`   | First admin email                    |
-| `LANGFUSE_INIT_USER_PASSWORD`| First admin password                 |
+| Variable | Default | Read by |
+|---|---|---|
+| `POSTGRES_USER`, `POSTGRES_DB` | `npuops`, `npuops` | Postgres, Langfuse, the exporter |
+| `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` | `redis`, `6379`, empty | the gateway, `redis-exporter` |
+| `CLICKHOUSE_USER`, `MINIO_ROOT_USER` | `clickhouse`, `minio` | ClickHouse, MinIO, Langfuse |
+| `LANGFUSE_HOST` | `http://langfuse-web:3000` | the gateway, where it sends traces |
+| `LANGFUSE_NEXTAUTH_URL` | `http://localhost:3000` | Langfuse, its own public URL |
+| `LANGFUSE_INIT_USER_EMAIL`, `LANGFUSE_INIT_USER_NAME` | `admin@npuops.local`, `NPUOps Admin` | Langfuse, the first admin |
+| `GRAFANA_ADMIN_USER` | `admin` | Grafana |
 
-## Cross-subdomain SSO
+The app (`librechat` service):
 
-If chat and console live on different subdomains of the same parent
-domain:
+| Variable | Default | What it does |
+|---|---|---|
+| `APP_TITLE` | `NPUOps` | the name in the UI; set it to `NUFI` |
+| `ALLOW_REGISTRATION`, `ALLOW_EMAIL_LOGIN` | `true`, `true` | self sign-up; password sign-in |
+| `CUSTOM_FOOTER`, `HELP_AND_FAQ_URL`, `PRIVACY_POLICY_URL`, `TERMS_OF_SERVICE_URL` | `© NPUOps`, `https://npuops.local/docs`, empty, empty | footer text and links |
+| `CONSOLE_URL` | `http://localhost:3001` | the Console entry in the account menu; empty hides it |
+| `LIBRECHAT_URL` | `http://localhost:3080` | the app's own public URL; the compose file derives `DOMAIN_CLIENT` and `DOMAIN_SERVER` from it, and hands it to the console |
 
-```bash
-COOKIE_DOMAIN=.nufi.me
-COOKIE_SAMESITE=lax       # must be 'lax' when COOKIE_DOMAIN is set
-```
+Models, read by the gateway:
 
-Leave both blank for a same-origin or single-subdomain setup.
+| Variable | Default | What it does |
+|---|---|---|
+| `GPU_BACKEND_BASE_URL`, `GPU_BACKEND_API_KEY` | `http://host.docker.internal:11434/v1`, `ollama` | the local or GPU model server `add-model.sh` registers against |
+| `NPU_BACKEND_BASE_URL`, `NPU_BACKEND_API_KEY` | empty | the NPU server, same shape |
+| `GEMINI_API_KEY` | empty, **required** | `litellm/config.yaml` ships two Gemini entries and the gateway refuses to start while the key is empty; set it, or remove the entries and rebuild |
+| any other `os.environ/NAME` in `litellm/config.yaml` | | `add-model.sh --api-key-env NAME` adds the reference; you add the value here |
 
-## LLM backend
+Guardrails and tests:
 
-For each backend that has a `${VAR}` reference in `litellm/config.yaml`,
-set it here:
+| Variable | Default | What it does |
+|---|---|---|
+| `SCANNER_MODEL_ID`, `SCANNER_MODEL_REVISION` | `protectai/deberta-v3-base-prompt-injection-v2`, a pinned commit | the injection classifier the scanner downloads |
+| `HF_TOKEN` | empty | only if the model needs an authenticated download |
+| `E2E_USER_EMAIL`, `E2E_USER_NAME`, `E2E_MODEL`, `E2E_EXPECTED_HARDWARE_ID`, `E2E_ENDPOINT_NAME` | `e2e@npuops.local`, `E2E Bot`, `qwen2.5-3b`, `mac-local`, `NPUOps` | the end-to-end test, which does not pass today; see [Troubleshooting](/docs/deployment/troubleshooting#the-end-to-end-smoke-test-fails-at-step-3) |
+| `LAKERA_API_KEY` | empty | read by nothing; left over from an earlier control |
 
-```bash
-# Used by add-model.sh when registering local backends
-GPU_BACKEND_BASE_URL=http://host.docker.internal:11434/v1
-GPU_BACKEND_API_KEY=ollama
-NPU_BACKEND_BASE_URL=
-NPU_BACKEND_API_KEY=
+## Read by the stack, missing from the template
 
-# Cloud providers — set per provider you use
-OPENAI_API_KEY=sk-…
-ANTHROPIC_API_KEY=sk-…
-TOGETHER_API_KEY=…
-GROQ_API_KEY=…
-GEMINI_API_KEY=…
-```
+Add these to `.env` yourself.
 
-The gateway exposes every variable from `.env`, so any
-config.yaml `${VAR}` reference works without editing compose.
+| Variable | Fallback | Read by |
+|---|---|---|
+| `NUFI_CONSOLE_TAG` | `main` | the console image tag |
+| `DEFAULT_USER_BUDGET`, `DEFAULT_BUDGET_DURATION`, `DEFAULT_TPM_LIMIT`, `DEFAULT_RPM_LIMIT` | `10`, `30d`, `10000`, `60` | the console, for a newly provisioned user |
 
-## Console defaults
+Two more are honoured by the app but never reach it on this stack,
+because the `librechat` service's environment list does not include them.
+Until the two lines are added to `docker-compose.yml`, setting them in
+`.env` does nothing:
 
-JIT-provision defaults for new users:
+| Variable | What it would do |
+|---|---|
+| `AGENTS_URL` | `librechat.yaml` uses it for the **Agents** entry that leads to NUFI Studio and NUFI Works; without it the entry is hidden |
+| `COOKIE_DOMAIN`, `COOKIE_SAMESITE` | share the session across subdomains; see [SSO and reverse proxy](/docs/deployment/sso-reverse-proxy) |
 
-| Variable                  | Default | Purpose                          |
-|---------------------------|---------|----------------------------------|
-| `DEFAULT_USER_BUDGET`     | `10`    | USD / period                     |
-| `DEFAULT_BUDGET_DURATION` | `30d`   | Refresh interval                 |
-| `DEFAULT_TPM_LIMIT`       | `10000` | Tokens per minute                |
-| `DEFAULT_RPM_LIMIT`       | `60`    | Requests per minute              |
-| `KEY_DEFAULT_DURATION`    | `90d`   | TTL of issued keys               |
+Two console variables are in the same position, read by the console but
+not passed by the compose file: `KEY_DEFAULT_DURATION` (code default `90d`)
+and `AGENTS_ALLOWED_ORIGINS` (unset, which disables the connect endpoint
+for the agent products). Add them to the `console` service's
+`environment:` when you need them.
 
-Keys issued through the connect flow inherit all five, so raising
-`DEFAULT_USER_BUDGET` raises what an agent may spend on someone's behalf.
+Two notes on values. `REDIS_PASSWORD` is empty because the Redis container
+starts without `requirepass`; setting the variable alone makes the clients
+send a password Redis does not expect. `LANGFUSE_PUBLIC_KEY` and
+`LANGFUSE_SECRET_KEY` keep their `pk-lf-` and `sk-lf-` prefixes; bootstrap
+fills only the random part.
 
-## Handing keys to NUFI Works
+## Production values
 
-| Variable                 | Default | Purpose                                        |
-|--------------------------|---------|------------------------------------------------|
-| `AGENTS_ALLOWED_ORIGINS` | unset   | Origins the console will issue a gateway key to |
+On a public deployment the URLs above become the real ones: `LIBRECHAT_URL`
+and `CONSOLE_URL` to the hostnames users open, `LANGFUSE_NEXTAUTH_URL` to
+Langfuse's, and `ALLOW_REGISTRATION=false` once the admin account exists.
+Pin `NUFI_CONSOLE_TAG` to a version.
 
-Comma-separated, exact origins — `https://agents.nufi.me`. No wildcards, no
-suffix matching, and **unset disables the endpoint** rather than opening it.
+## The wrapper stack
 
-This is the security boundary of the whole connect flow, not a convenience
-setting. Any page on the internet can open `console.nufi.me/connect`; the
-visitor's chat cookie rides along and the console will correctly recognise them.
-Being asked is not suspicious — handing the key back to whoever asked is. Add
-only origins you run.
+`deploy/railway/.env.example` is a different, shorter file for the app on
+its own:
 
-The other half lives in NUFI Works itself, under Settings → Plugins → NUFI
-Connection, where an instance admin sets the console URL. Both are needed; see
-[Installing NUFI Works](/docs/deployment/agents-install#the-connect-plugin).
+| Variable | Default | What it does |
+|---|---|---|
+| `IMAGE_TAG` | `main` | the app image tag |
+| `DOMAIN_CLIENT`, `DOMAIN_SERVER` | `http://localhost:3081` | the app's public URL |
+| `APP_TITLE`, `ALLOW_REGISTRATION`, `ALLOW_EMAIL_LOGIN` | `Nufi Chat`, `true`, `true` | as above; set the title to `NUFI` |
+| `COOKIE_DOMAIN`, `COOKIE_SAMESITE` | empty, `strict` | passed through to the app here |
+| `JWT_SECRET`, `JWT_REFRESH_SECRET`, `CREDS_KEY`, `CREDS_IV` | generated by its `bootstrap.sh` | |
+| `BACKEND_BASE_URL`, `BACKEND_API_KEY` | | the gateway (`https://api.codechi.me/v1` for NUFI's own) and a key for it |
+| `CONSOLE_URL` | empty | the Console entry |
+| `RAG_GOOGLE_API_KEY`, `EMBEDDINGS_PROVIDER`, `EMBEDDINGS_MODEL`, `RAG_PORT` | , `google_genai`, `gemini-embedding-001`, `8000` | the file-upload RAG service |
+| `SHARED_DOCKER_NETWORK` | commented | join the platform stack's network on the same host |
+| `LITELLM_SYNC_ENABLED`, `LITELLM_BASE_URL`, `LITELLM_MASTER_KEY` | `false`, , | mirror admin-created endpoints into a central gateway; off by default |
 
-## E2E smoke test
+`AGENTS_URL` is referenced by that stack's `librechat.yaml` too, and not
+passed by its compose file either. On Railway the service variables reach
+the container directly, which is why the entry shows there.
 
-Required by `./scripts/e2e-smoke-test.sh`:
+## Everything else
 
-```bash
-E2E_USER_EMAIL=e2e@nufi.local
-E2E_USER_PASSWORD=<random>
-E2E_USER_NAME=E2E Bot
-E2E_MODEL=qwen2.5-3b
-E2E_EXPECTED_HARDWARE_ID=mac-local
-E2E_ENDPOINT_NAME=NPUOps
-```
-
-When `ALLOW_REGISTRATION=false`, the e2e user must be **pre-created**
-— the test only auto-registers when registration is open.
-
-## Chat feature toggles
-
-| Variable             | Default | Purpose                                          |
-|----------------------|---------|--------------------------------------------------|
-| `APP_TITLE`          | `Nufi Chat` | Brand title in the UI                        |
-| `ALLOW_REGISTRATION` | `true`  | Self-sign-up on / off                            |
-| `ALLOW_EMAIL_LOGIN`  | `true`  | Email + password login on / off                  |
-| `CUSTOM_FOOTER`      | (empty) | Footer text in the chat                          |
-| `HELP_AND_FAQ_URL`   | (empty) | "Help" link in the chat                          |
-| `PRIVACY_POLICY_URL` | (empty) | Privacy link                                     |
-| `TERMS_OF_SERVICE_URL`| (empty)| Terms link                                       |
-
-## Grafana
-
-```bash
-GRAFANA_ADMIN_USER=admin
-GRAFANA_ADMIN_PASSWORD=<random>
-```
-
-## Image tags (pin in prod)
-
-| Variable               | Example value                  |
-|------------------------|--------------------------------|
-| `NUFI_CONSOLE_TAG`     | `nufi-console-v0.2.0`          |
-| `IMAGE_TAG` (nufi-chat)| `nufi-v0.0.5`                  |
-
-The compose file uses `${NUFI_CONSOLE_TAG:-main}` as the default. In
-production, pin a specific tag and bump it intentionally.
-
-See [Reference → env vars](/docs/reference/env-vars) for the same
-table as a quick lookup.
+The console, the admin panel, NUFI Studio and NUFI Works are configured on
+their own pages: [Work on the console](/docs/developer/work-on-console)
+lists every variable the console reads,
+[Work on the admin panel](/docs/developer/work-on-admin-panel) the admin
+panel's, [Installing NUFI Studio](/docs/deployment/studio-install),
+[Installing NUFI Works](/docs/deployment/agents-install) and
+[Single sign-on for the agent apps](/docs/deployment/agents-sso) the rest.

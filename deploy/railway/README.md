@@ -98,7 +98,7 @@ docker compose up -d --force-recreate
 
 ```bash
 docker compose ps
-curl http://localhost:3081/api/health
+curl http://localhost:3081/health     # /api/health returns 404 on this app version
 docker compose exec api wget -qO- http://litellm-proxy:4000/health/liveliness
 ```
 

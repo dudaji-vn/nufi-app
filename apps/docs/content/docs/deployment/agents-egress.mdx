@@ -1,18 +1,19 @@
 ---
 title: Agent egress
-description: Keeping model traffic on the gateway — what NUFI Works enforces today, and the command that proves it.
+description: Keeping the agent products' model traffic on the gateway — what is measured today, what is only configured, and how to prove which is which.
 ---
 
-Each agent in NUFI Works runs inside a sandbox. That sandbox is meant to reach exactly
-one host — the NUFI gateway, where the security checks live — and no model
+Each agent in NUFI Works runs inside a sandbox, and each flow in NUFI
+Studio runs inside the Studio process. Both are meant to reach exactly one
+host for models, the NUFI gateway, where the security checks live, and no
 vendor directly.
 
-This page separates what is **measured** from what is **configured but not yet
+This page separates what is **measured** from what is **configured but not
 enforced**, because the difference decides whether the guarantee is real.
 
 ## What is measured today
 
-Traffic that reaches the gateway is inspected. That is not an assumption:
+Traffic that reaches the gateway is inspected, and the gateway says so:
 
 ```bash
 curl -s -H "Authorization: Bearer $KEY" https://api.codechi.me/metrics/ \
@@ -24,8 +25,8 @@ nufi_guardrail_decisions_total{action="block",control="G1",enforced="true"}   18
 nufi_guardrail_decisions_total{action="redact",control="G2b",enforced="true"}  4
 ```
 
-`enforced="true"` means the control blocks rather than merely logging. A direct
-probe confirms it end to end:
+`enforced="true"` means the control blocks rather than logs. A direct probe
+confirms it end to end:
 
 ```bash
 curl -X POST https://api.codechi.me/v1/chat/completions \
@@ -41,74 +42,93 @@ looks like an attempt to override the assistant's instructions…",
 "type":"nufi_guardrail_blocked","param":"LLM01_INJECTION"}}
 ```
 
-Every adapter NUFI enables is configured to send its traffic there, and only
-there. `apps/agents/nufi/adapters.json` sets each one's provider base URL to the
-gateway and its egress allow-list to the gateway host alone.
+In NUFI Works, `apps/agents/nufi/adapters.json` points every enabled
+adapter's provider URL at the gateway, and four of the five carry an egress
+allow-list of the gateway host alone. `node apps/agents/nufi/verify-adapters.mjs`
+checks that file stays that way, and CI runs it on every pull request.
 
 ## What is not enforced yet
 
 <Callout type="warn">
-An allow-list in configuration is a statement of intent. On its own it does not
-stop an agent reaching a vendor directly.
+An allow-list in configuration is a statement of intent. On its own it does
+not stop an agent reaching a vendor directly.
 </Callout>
 
-Standard Kubernetes NetworkPolicy cannot express hostnames. When a hostname
-allow-list is configured under the default `egressMode: standard`, the generated
-policy falls back to *"any public IPv4 address except private ranges"* — which
-is the whole internet, and no restriction at all.
+Works' Kubernetes sandbox provider turns an adapter's allow-list into a
+NetworkPolicy. Standard Kubernetes NetworkPolicy cannot express hostnames,
+so under the default `egressMode: standard` the generated policy falls back
+to "any public IPv4 address except private ranges": the whole internet.
+Hostname enforcement needs `egressMode: cilium` on a cluster running
+Cilium. Until that is deployed and verified, the honest description is:
 
-Exact hostname enforcement requires **`egressMode: cilium`** and a cluster
-running Cilium. Until that is deployed and verified, the correct description of
-this system is:
+- Traffic sent to the gateway **is** checked. Measured.
+- Nothing yet **forces** an agent to send it there. Not enforced.
 
-- Traffic sent to the gateway **is** checked. ✅ measured
-- Nothing yet **forces** an agent to send it there. ❌ not enforced
-
-Do not describe the second line as done to a customer until the check below
-passes on their deployment.
+Studio has no sandbox at all: a flow runs with the Studio server's own
+network access. Its containment is whatever network policy wraps the Studio
+pod, which is what the check below tests.
 
 ## Proving it
 
-The check exists to be failed, not to be admired:
+The only evidence that means anything is a network call attempted from
+inside the pod. Describing the policy object proves it exists, not that
+Cilium is installed, that the selector matches the running pod, or that an
+older, broader policy is not unioned on top.
+
+**NUFI Studio** ships the check:
 
 ```bash
-apps/agents/nufi/egress/verify-egress.sh <agent-namespace>
+apps/nufi-agent/nufi/egress/verify-egress.sh <studio-namespace> [pod-label-selector]
 ```
 
-It launches a probe pod carrying the agent runtime's labels and tries two hosts.
-It passes only when the gateway answers **and the vendor does not**.
+It finds a running Studio pod (default selector
+`app.kubernetes.io/name=nufi-agent`), execs into it, and tries two hosts. It
+passes only when the gateway answers **and** `api.openai.com` does not:
 
 ```
-  api.codechi.me    -> 200
-  api.anthropic.com -> 000
-PASS: only the gateway is reachable from an agent pod.
+  api.codechi.me  -> 200
+  api.openai.com  -> 000
+PASS: only the gateway is reachable from the NUFI Studio pod.
 ```
 
-A reachable vendor is the failure that matters. In likelihood order:
+It reports three outcomes, not two: a `curl` that never ran (missing from
+the image, `pods/exec` denied) is reported as inconclusive, not as a pass.
+
+**NUFI Works** has no script yet. The same test by hand, against a running
+agent pod, which the sandbox provider labels `paperclip.io/role=agent`:
+
+```bash
+POD=$(kubectl -n <agent-namespace> get pod -l paperclip.io/role=agent -o jsonpath='{.items[0].metadata.name}')
+kubectl -n <agent-namespace> exec "$POD" -- curl -s -o /dev/null -w '%{http_code}\n' --max-time 10 https://api.codechi.me/health/liveliness
+kubectl -n <agent-namespace> exec "$POD" -- curl -s -o /dev/null -w '%{http_code}\n' --max-time 10 https://api.openai.com/v1/models
+```
+
+The first must answer (200); the second must not (000). Anything else, and
+agent traffic is on the gateway by convention, not by policy. Do not
+describe the deployment as contained before this passes on it.
+
+### When the vendor answers
 
 | Symptom | Cause |
 |---|---|
-| `api.anthropic.com` answers | `egressMode` is still `standard` |
-| Policy looks right, vendor still answers | Old standard-mode policies were left in place; Kubernetes unions policies, so the permissive one still applies |
-| Gateway unreachable too | Cilium not installed, or the pod selector does not match `paperclip.ai/component=agent-runtime` |
+| the vendor answers | `egressMode` is still `standard` |
+| the policy looks right, the vendor still answers | standard-mode policies from before the switch are still there; Kubernetes unions policies, so the permissive one still applies |
+| the gateway is unreachable too | Cilium is not installed, or the selector does not match the pod's labels |
 
-### Migrating an existing cluster
-
-Switching `egressMode` from `standard` to `cilium` does **not** remove the
-policies the previous mode created. Both sets then apply and their effects are
-unioned — the old permissive fallback keeps the internet open while the new
-policy looks correct in `kubectl describe`.
+Switching `egressMode` from `standard` to `cilium` does not delete the
+policies the previous mode created:
 
 ```bash
 kubectl -n <agent-namespace> get networkpolicy
 kubectl -n <agent-namespace> delete networkpolicy <the standard-mode ones>
 ```
 
-Re-run the check afterwards. A green run taken *before* deleting them proves
+Re-run the check afterwards. A green run taken before deleting them proves
 nothing.
 
 ## What the gateway does not cover
 
-Agents that edit code are given a git workspace. The gateway can answer *which
-model was called*; it cannot answer *what was committed*. Repository credentials
-need their own scoping, and an egress policy is not a substitute for it.
+Agents that edit code are given a git workspace. The gateway can answer
+which model was called; it cannot answer what was committed. Repository
+credentials need their own scoping, and an egress policy is not a
+substitute for it.

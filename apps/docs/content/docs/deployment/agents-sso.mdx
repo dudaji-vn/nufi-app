@@ -64,6 +64,10 @@ NUFI Studio accepts it and provisions an account called
 because the role is missing too.
 </Callout>
 
+`VITE_WORKS_URL` is inlined into the browser bundle when the image is
+built, like the console's other `VITE_*` values; it is a build argument of
+`apps/console/Dockerfile`, not something the running container reads.
+
 This adds four routes: `/.well-known/jwks.json` publishes the public
 key, `/oidc/authorize`, `/oidc/token` and `/oidc/userinfo` serve the
 OAuth flow, and `/enter/studio` mints the Studio cookie and redirects.
@@ -197,3 +201,10 @@ curl -s -o /dev/null -w '%{http_code}\n' https://console.nufi.me/enter/studio
 Then confirm a tampered token is rejected: change one character in the
 `nufi_id` cookie and load Studio. It must not let you in. A guard that
 has never been observed failing is not yet known to work.
+
+`deploy/railway/verify-agents.sh` runs these checks and the reachability
+and branding ones for both products in one go:
+
+```bash
+deploy/railway/verify-agents.sh --base-suffix .nufi.me
+```

@@ -1,122 +1,100 @@
 ---
 title: Monitoring and alerts
-description: Prometheus + Grafana + Alertmanager — the operational signal layer.
+description: What Prometheus watches, the nine alerts that ship with the stack, and how to make them reach Slack.
 ---
 
-Three containers, one job: tell you when the platform is unhappy.
+Three containers in `deploy/platform`: Prometheus scrapes, Grafana draws,
+Alertmanager routes. All three are provisioned from files under
+`monitoring/`, so what you see running is what is in git.
 
 ## Prometheus
 
-Scrapes `/metrics` from:
+Four scrape jobs, in `monitoring/prometheus.yml`:
 
-- **The gateway** (metrics endpoint) — the primary signal.
-- **postgres-exporter** — connection count, slow queries.
-- **redis-exporter** — hit rate, memory, slow ops.
+| Job | Target | What it gives you |
+|---|---|---|
+| `litellm` | the gateway's `/metrics` | request rate, errors, latency, and the guardrail decision counters |
+| `postgres` | `postgres-exporter` | connections, database sizes |
+| `redis` | `redis-exporter` | memory, hit rate |
+| `prometheus` | itself | |
 
-Retention is **15 days** by default
-(`--storage.tsdb.retention.time=15d`). Bump in compose if you need
-more history.
+Retention is 15 days (`--storage.tsdb.retention.time=15d` in the compose
+file). The UI is on host port 9090, meant for an SSH tunnel rather than a
+public hostname.
 
-Reload alert rules without restarting:
+Rules reload without a restart:
 
 ```bash
 $EDITOR monitoring/rules/litellm.rules.yml
 curl -X POST http://localhost:9090/-/reload
 ```
 
-## Default alerts
+## The alerts that ship
 
-| Alert                       | Trigger                                | Severity   |
-|-----------------------------|----------------------------------------|------------|
-| `GatewayDown`               | `up{job="gateway"} == 0` for 1 min     | critical   |
-| `GatewayHighErrorRate`      | error rate > 5 % for 5 min             | warning    |
-| `GatewayHighLatencyP95`     | P95 latency > 10 s for 5 min           | warning    |
+`monitoring/rules/litellm.rules.yml` watches the gateway:
 
-Add your own in `monitoring/rules/`. The directory is gitignored only
-for `secrets/`, so your rules ship with the repo.
+| Alert | Fires when | Severity |
+|---|---|---|
+| `LiteLLMDown` | `up{job="litellm"} == 0` for 1 minute | critical |
+| `LiteLLMHighErrorRate` | 4xx and 5xx are more than 5 % of requests for 5 minutes | warning |
+| `LiteLLMHighLatencyP95` | p95 latency above 10 seconds for 5 minutes | warning |
 
-## Routing alerts to Slack
+`monitoring/rules/guardrails.rules.yml` watches whether the security
+controls are actually running, which no request metric can tell you:
 
-By default alerts route to a `noop` receiver — Alertmanager swallows
-them. Real wiring:
+| Alert | Fires when | Severity |
+|---|---|---|
+| `GuardrailMetricsAbsent` | the guardrail pipeline is not loaded, for 5 minutes | critical |
+| `MandatoryControlMissing` | a control the policy marks mandatory is absent, for 5 minutes | critical |
+| `MandatoryControlStoppedEnforcing` | a mandatory control has dropped to logging only, for 5 minutes | critical |
+| `GuardrailDegraded` | `nufi_guardrail_degraded > 0` for 2 minutes: a control is failing open | critical |
+| `GuardrailSilent` | the injection control has stopped scanning while traffic continues, for 15 minutes | warning |
+| `GuardrailBlockRateHigh` | guardrails are blocking more than 5 % of requests, for 10 minutes | warning |
+
+A critical guardrail alert means the gateway is passing traffic without the
+checks it promises. Treat it as an incident, not a warning.
+
+## Routing to Slack
+
+Out of the box the default receiver is `noop`, but the route already sends
+every `severity: critical` alert to the `slack` receiver, which reads its
+webhook from a file that is gitignored. Wire it up:
 
 ```bash
 cp monitoring/secrets/slack-webhook.example monitoring/secrets/slack-webhook
-$EDITOR monitoring/secrets/slack-webhook        # paste the webhook URL
-$EDITOR monitoring/alertmanager.yml             # change route.receiver
+$EDITOR monitoring/secrets/slack-webhook     # the incoming-webhook URL, one line, no quotes
+$EDITOR monitoring/alertmanager.yml          # the channel (#npuops-alerts), and route.receiver if warnings should go too
 docker compose restart alertmanager
 ```
 
-The webhook file is gitignored. Keep it that way.
+Alerts are grouped by name and severity, repeat every 12 hours while
+firing, and send a resolved message when they clear.
 
-## Grafana dashboards
+## Grafana
 
-Provisioned dashboards:
+Host port 3030 (3000 is Langfuse). Sign in with `GRAFANA_ADMIN_USER` and
+`GRAFANA_ADMIN_PASSWORD` from `.env`; sign-up is off in the compose file.
 
-- **Gateway Overview** — RPS, error rate, P50/P95/P99, top models,
-  top users.
-- **Postgres** — connections, slow queries, replication.
-- **Redis** — hit rate, memory.
+One dashboard is provisioned, **LiteLLM Overview**
+(`monitoring/grafana/dashboards/litellm-overview.json`): requests per
+second, error rate, p95 latency and the rest of the gateway's request
+metrics. Drop another dashboard's JSON into the same directory and restart
+Grafana to add it. Dashboards edited in the UI are not written back to the
+file; export them if you want to keep them.
 
-Add your own JSON to `monitoring/grafana/dashboards/` — Grafana picks
-it up on next reload.
-
-## Sign-in
-
-Defaults from `.env`:
-
-```bash
-GRAFANA_ADMIN_USER=admin
-GRAFANA_ADMIN_PASSWORD=<random>
-```
-
-In production, also disable sign-ups:
+## Without a browser
 
 ```bash
-GF_USERS_ALLOW_SIGN_UP=false     # already the default in compose
+curl -s http://localhost:9090/api/v1/alerts | jq      # what is firing now
+curl -s http://localhost:9090/api/v1/targets | jq     # every scrape target and whether it is up
 ```
 
-…and front Grafana with the reverse proxy on `grafana.nufi.me` so it
-shares the rest of your auth posture.
+## What to add
 
-## What to alert on
-
-Beyond the defaults, useful additions:
-
-- **Postgres connection saturation** —
-  `pg_stat_database_numbackends / pg_settings_max_connections > 0.8`
-- **MongoDB disk usage > 80 %** — via the `mongodb_exporter` if you
-  add it.
-- **ClickHouse disk usage > 70 %** — fastest-growing volume.
-- **MinIO bucket size > 80 % of allocated disk** — second-fastest.
-- **Cloudflare tunnel down** — via the Cloudflare API; out of scope
-  here but worth pairing with.
-
-## Inspection without UI
-
-```bash
-# Active alerts
-curl -s http://localhost:9090/api/v1/alerts | jq
-
-# Current targets and their up/down status
-curl -s http://localhost:9090/api/v1/targets | jq
-
-# Alertmanager routing decision for a synthetic alert
-curl -X POST http://localhost:9093/api/v2/alerts -d '...'
-```
-
-## Retention sizing
-
-- Prometheus: 15 days at this stack size ≈ 2–5 GB on disk.
-- ClickHouse (Langfuse traces): grows fastest — assume ~50 MB per
-  1000 traces.
-- MinIO (Langfuse blobs): proportional to ClickHouse.
-
-Plan to expand the disk when ClickHouse + MinIO together cross
-100 GB; the reference build alerts at 60 % of a 256 GB SSD.
-
-## See also
-
-- [Admin → Grafana](/docs/admin/grafana) — day-to-day usage.
-- [Backup and restore](/docs/deployment/backup-restore) — what to
-  back up and how often.
+Nothing in the stack watches disk, and disk is what runs out first:
+ClickHouse and MinIO grow with every trace. Add a node exporter on the host
+and alert on the data volume at 70 %. If you run on Kubernetes or a cloud
+host, use its own disk alerts instead. See
+[Infra sizing](/docs/deployment/infra-sizing) for the growth rates and
+[Backup and restore](/docs/deployment/backup-restore) for what is worth
+keeping.

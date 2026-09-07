@@ -10,14 +10,44 @@ separately from the chat app and shares only the gateway.
 
 | | |
 |---|---|
-| Node | 22 |
-| pnpm | 9.15.4 (pinned in `apps/agents/package.json`) |
-| PostgreSQL | 16 |
+| Node | 20 or newer (`engines` in `apps/agents/package.json`); the image builds on the current LTS |
+| pnpm | 9.15.4 is the pinned `packageManager`; a newer pnpm works with `--node-linker=isolated` |
+| PostgreSQL | 16 is what NUFI runs |
 | Kubernetes + Cilium | Required to *enforce* agent egress — see [Agent egress](/docs/deployment/agents-egress) |
 
 The gateway is a hard dependency: every model call goes through it.
 
-## Install
+## Run the published image
+
+The supported path is the image, `ghcr.io/dudaji-vn/nufi-works:main`
+(a `nufi-works-vX.Y.Z` tag on the repository publishes `vX.Y.Z`; none has
+been cut yet). It listens on 3100 and needs a Postgres, a volume at
+`/paperclip` for workspaces and uploads, and the adapters file that is
+already inside the image:
+
+```bash
+docker run -d --name nufi-works -p 3100:3100 -v nufi-works-data:/paperclip \
+  -e PORT=3100 \
+  -e DATABASE_URL=postgresql://user:pass@host:5432/nufi_works \
+  -e BETTER_AUTH_SECRET="$(openssl rand -hex 32)" \
+  -e PAPERCLIP_DEPLOYMENT_MODE=authenticated \
+  -e PAPERCLIP_DEPLOYMENT_EXPOSURE=public \
+  -e PAPERCLIP_PUBLIC_URL=https://works.example.com \
+  -e PAPERCLIP_HOME=/paperclip \
+  -e PAPERCLIP_ADAPTERS_FILE=/app/nufi/adapters.json \
+  ghcr.io/dudaji-vn/nufi-works:main
+```
+
+Without the volume every redeploy starts empty. With
+`PAPERCLIP_DEPLOYMENT_EXPOSURE=public` the first-admin claim in the
+browser is disabled; claim the instance while it is still `private`, then
+switch. `deploy/railway/agents.md` is the record of NUFI's own instance,
+variable by variable, including the sign-in block from
+[Single sign-on for the agent apps](/docs/deployment/agents-sso).
+
+## From source
+
+For development, or for a host where you build the image yourself:
 
 ```bash
 cd apps/agents
@@ -28,7 +58,9 @@ pnpm db:migrate
 pnpm dev:server
 ```
 
-Two of those lines are easy to skip and both fail quietly.
+[Work on NUFI Studio and NUFI Works](/docs/developer/work-on-agents) walks
+through the same steps with the values that were used to check them. Two
+of those lines are easy to skip and both fail quietly.
 
 <Callout type="warn">
 **`--node-linker=isolated` is not optional.** The UI build aliases a dependency
@@ -93,14 +125,11 @@ OK — every enabled adapter routes and egresses only to api.codechi.me.
 ```
 
 **Egress is actually confined** — the check that matters, and the one that is
-not satisfied by configuration alone:
-
-```bash
-apps/agents/nufi/egress/verify-egress.sh <agent-namespace>
-```
-
-Until this passes, agent traffic is routed to the gateway by convention, not
-held there by policy. Do not describe the deployment as protected before it does.
+not satisfied by configuration alone. There is no script for Works yet; the
+by-hand test, from inside a running agent pod, is on
+[Agent egress](/docs/deployment/agents-egress#proving-it). Until it passes,
+agent traffic is routed to the gateway by convention, not held there by
+policy. Do not describe the deployment as protected before it does.
 
 ## The connect plugin
 
@@ -122,7 +151,7 @@ nothing useful with only one.
 | Where | Setting | Value |
 |---|---|---|
 | Agents → Settings → Plugins → NUFI Connection | NUFI console URL | `https://console.nufi.me` |
-| Console environment | `AGENTS_ALLOWED_ORIGINS` | `https://agents.nufi.me` |
+| Console environment | `AGENTS_ALLOWED_ORIGINS` | `https://works.nufi.me` (the origin that opens the connect window), comma-separated with any other you run |
 
 <Callout type="warn">
 `AGENTS_ALLOWED_ORIGINS` is a security control, not configuration ceremony. Any
@@ -168,6 +197,7 @@ git fetch --depth 1 paperclip refs/tags/<tag>:refs/tags/paperclip-<tag>
 git subtree pull --prefix=apps/agents paperclip-<tag> --squash
 ```
 
-Then re-run the build, the rebrand step, and the migrations. The CI fork guard
-will reject the merge if the upgrade introduced local edits outside the
-NUFI-owned file list, which is what keeps this upgrade path working at all.
+Then re-run the build, the rebrand step, and the migrations. The `fork-guard`
+job in `agents-ci.yml` rejects the pull request if the upgrade introduced
+local edits outside the NUFI-owned file list, which is what keeps this
+upgrade path working at all.
