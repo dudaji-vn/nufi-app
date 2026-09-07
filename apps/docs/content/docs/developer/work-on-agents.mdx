@@ -1,0 +1,173 @@
+---
+title: Work on NUFI Studio and NUFI Works
+description: The two vendored products, the one rule that keeps them upgradeable, and how to run each from source.
+---
+
+NUFI Studio and NUFI Works are not written here. Each is an upstream project
+vendored into this repository with `git subtree`, pinned to a release, and
+carrying NUFI's additions beside it.
+
+| Product | Directory | Upstream | Pinned at | Licence |
+|---|---|---|---|---|
+| NUFI Studio | `apps/nufi-agent` | `langflow-ai/langflow` | `v1.11.2` | MIT |
+| NUFI Works | `apps/agents` | `paperclipai/paperclip` | `v2026.722.0` | MIT |
+
+Each pin is recorded in that app's `nufi/upstream.json`, with the command
+that vendored it and the command that brings in a newer release.
+
+## The rule
+
+Everything outside an app's allowlist stays byte-identical to upstream, so
+the next `git subtree pull` still applies. NUFI's own code lives in `nufi/`,
+plus a short list of upstream files that had to change (the branding hooks, a
+handful of bug fixes), each entry with a written reason.
+
+CI enforces it. `nufi/check-fork-diff.sh` in each app runs as the
+`fork-guard` job (`nufi-agent-ci.yml`, `agents-ci.yml`) and fails the pull
+request when an upstream file outside the list has changed. Before changing
+an upstream file, look for the seam upstream left for it: `customization/`
+in Studio, the plugin slots in Works. If there is none, add the file to the
+allowlist in `check-fork-diff.sh` with the reason. The guard scripts need
+bash 4 or newer; macOS ships 3.2, so `brew install bash` first.
+
+The other jobs in the same workflows:
+
+| App | Job | What it checks |
+|---|---|---|
+| Studio | `locale-parity` | the Korean locale still has every key the English one has |
+| Studio | `backend-brand` | no bare upstream name in backend strings |
+| Studio | `brand-css` | builds the frontend and asserts the upstream name did not survive |
+| Studio | `rebrand` | `nufi/rebrand.test.ts` with `bun test` |
+| Works | `gateway-config` | `nufi/verify-adapters.mjs`: every adapter routes through the NUFI gateway |
+| Works | `connect-plugin`, `adapter` | tests and build of the NUFI plugin and the NUFI agent adapter |
+| Works | `rebrand` | `ui/nufi-rebrand.test.ts` with vitest |
+
+Both `nufi/README.md` files explain each of these in detail; they are the
+authoritative record of what NUFI changed and why.
+
+## NUFI Studio
+
+You need `uv`, Python 3.12 or newer, and Node 22 for the frontend.
+
+```bash
+cd apps/nufi-agent
+nufi/init.sh
+```
+
+That runs upstream's `make install_backend` and `make install_frontend`, and
+deliberately skips the third step of upstream's `make init`, installing
+pre-commit hooks: in a monorepo the hooks would land in the shared
+`.git/hooks` and break every commit outside this app.
+
+For development, two processes:
+
+```bash
+.venv/bin/langflow run --backend-only --host 127.0.0.1 --port 7860 --no-open-browser
+cd src/frontend && VITE_PORT=3005 VITE_PROXY_TARGET=http://127.0.0.1:7860 npm start
+```
+
+The API answers on 7860 (`/health`, `/api/v1/version`); the UI with hot
+reload is at http://localhost:3005 and proxies API calls to it. Use
+`localhost`, not `127.0.0.1`: Vite binds the IPv6 loopback. Two of upstream's Make targets
+are not safe with the stack running: `make backend` and `make frontend` each
+`kill -9` whatever holds their hardcoded port before starting, 7860 and 3000
+respectively, and 3000 is the stack's Langfuse. Run the two commands above
+instead of the targets.
+
+To serve the built UI and the API from one process, the shape production
+runs in:
+
+```bash
+make build_frontend
+.venv/bin/langflow run --host 127.0.0.1 --port 7860 --no-open-browser
+```
+
+Without the build, `langflow run` stops with `Static files directory ...
+langflow/frontend does not exist`.
+
+Starting the backend rewrites three tracked files under
+`src/backend/base/langflow/initial_setup/starter_projects/` (upstream
+refreshes its starter flows on boot). That directory is on the allowlist
+because NUFI ships its own starter flows there, so the fork guard does not
+catch an accidental rewrite. Before committing:
+
+```bash
+git checkout -- src/backend/base/langflow/initial_setup/starter_projects/
+```
+
+Studio starts with `LANGFLOW_AUTO_LOGIN` on: no sign-in, one implicit
+superuser. Fine on your laptop, never on a host anyone else can reach; the
+production environment, including the `LANGFLOW_SECRET_KEY` format and the
+external-auth variables, is in [Deploy NUFI Studio](/docs/deployment/studio-install).
+The container is `nufi/Dockerfile`; its header has the build command, and
+the build fails if the upstream name survives anywhere in the bundle.
+
+## NUFI Works
+
+You need Node 22, pnpm 10, Docker for a Postgres.
+
+```bash
+cd apps/agents
+pnpm install --frozen-lockfile --node-linker=isolated
+pnpm run build
+docker run -d --name nufi-dev-pg -p 5433:5432 \
+  -e POSTGRES_USER=paperclip -e POSTGRES_PASSWORD=paperclip -e POSTGRES_DB=paperclip \
+  postgres:16-alpine
+```
+
+`--node-linker=isolated` is not optional: `ui/vite.config.ts` aliases a
+package to a path that only exists under pnpm's isolated layout, and a
+global pnpm setting can silently change it (`pnpm config get node-linker`
+tells you). The install fetches about 550 MB, most of it upstream's Codex
+binaries for every platform. `pnpm run build` produces the workspace packages
+the server imports; without it `dev:server` stops on a missing
+`@paperclipai/plugin-sdk/dist`.
+
+Then, with these in the environment or in `apps/agents/.env`:
+
+```bash
+DATABASE_URL=postgres://paperclip:paperclip@localhost:5433/paperclip
+PORT=3100
+BETTER_AUTH_SECRET=paperclip-dev-secret
+PAPERCLIP_ADAPTERS_FILE=/absolute/path/to/apps/agents/nufi/adapters.json
+```
+
+```bash
+pnpm db:migrate        # applies the schema; 180-odd migrations on an empty database
+pnpm run dev:server    # the API on 127.0.0.1:3100
+pnpm run dev:ui        # the UI with hot reload; `pnpm run dev` runs both
+```
+
+`PAPERCLIP_ADAPTERS_FILE` is what routes every agent's model calls through
+the NUFI gateway. Without it the app runs and nothing reaches NUFI.
+`curl http://127.0.0.1:3100/api/health` lists the enabled adapters;
+`nufi_agent` must be among them.
+
+On first start the instance is in bootstrap mode until someone claims it as
+instance admin, which the UI offers on a private (local) deployment. The
+production environment, the volume it needs and the sign-in handoff from the
+console are in [Deploy NUFI Works](/docs/deployment/agents-install) and
+[Agents SSO](/docs/deployment/agents-sso). The container is upstream's
+`Dockerfile` for the base plus `nufi/Dockerfile` for the rebrand; the header
+of the latter has the two build commands.
+
+## Updating from upstream
+
+The resync command is in `nufi/upstream.json`, next to a checklist of what
+to do after it: update the tag and commit in the same file, run the guards,
+check the Korean locale, and do the manual sweep `nufi/README.md` describes.
+Merge the result as a merge commit, not a squash: squashing a subtree pull
+breaks the one after it.
+
+## Check your work
+
+```bash
+apps/nufi-agent/nufi/check-fork-diff.sh
+apps/agents/nufi/check-fork-diff.sh
+node apps/agents/nufi/verify-adapters.mjs
+```
+
+The images are `ghcr.io/dudaji-vn/nufi-studio` and
+`ghcr.io/dudaji-vn/nufi-works`, built on every push to `main` that touches
+the app and on tags `nufi-studio-v*` and `nufi-works-v*`. See
+[Release and deploy](/docs/developer/release).

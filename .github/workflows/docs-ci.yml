@@ -27,3 +27,19 @@ jobs:
       # and was only caught by building locally because nothing ran here.
       - name: Build
         run: bun run build
+      # The sidebar model (one tree, Prev/Next across sections, section
+      # headers linking to their intro) is enforced by nine browser checks
+      # against the served build. A `root: true` slipping back into a
+      # meta.json, or a moved page without a redirect, fails here.
+      - name: Install Playwright browser
+        run: bunx playwright install --with-deps chromium
+      - name: Serve the build
+        run: |
+          bun run start -- -p 3123 > /tmp/next.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf -o /dev/null http://localhost:3123/docs/overview && exit 0
+            sleep 1
+          done
+          echo "server did not come up"; cat /tmp/next.log; exit 1
+      - name: Navigation checks
+        run: bun run check:nav http://localhost:3123

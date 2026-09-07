@@ -5,9 +5,8 @@ LiteLLM API keys, budgets, and usage. Single container — Hono serves both
 the Vite-built React SPA and the oRPC API at one origin
 (`http://localhost:3001` in the running stack).
 
-Deployed alongside the chat product (LibreChat fork) by the
-[npuops-platform](https://github.com/dudaji-vn/npuops-platform) compose stack,
-which pulls this image from `ghcr.io/dudaji-vn/nufi-console`.
+Deployed alongside the NUFI app by the `deploy/platform` compose stack in
+this repository, which pulls this image from `ghcr.io/dudaji-vn/nufi-console`.
 
 ## Stack
 
@@ -80,8 +79,8 @@ locally for HMR while editing console code.
 ## Run inside the compose stack
 
 The image is published to `ghcr.io/dudaji-vn/nufi-console` by
-`.github/workflows/docker-publish.yml` on every push to `develop`/`main` and
-on `nufi-console-v*` tags. From the npuops-platform repo:
+`.github/workflows/console-image.yml` on every push to `main` that touches
+`apps/console` and on `nufi-console-v*` tags. From `deploy/platform`:
 
 ```bash
 docker compose pull console
@@ -129,6 +128,6 @@ LiteLLM key metadata, spend rows, and Langfuse traces.
 
 ## Related repos
 
-- [npuops-platform](https://github.com/dudaji-vn/npuops-platform) — docker compose stack that runs this console alongside LiteLLM, LibreChat, Langfuse, and monitoring.
-- [LibreChat fork](https://github.com/dudaji-vn/LibreChat) — chat UI that issues the JWT this console verifies.
+- `deploy/platform` — the docker compose stack that runs this console alongside the gateway, the NUFI app, Langfuse, and monitoring.
+- `apps/chat` — the NUFI app, which issues the JWT this console verifies.
 

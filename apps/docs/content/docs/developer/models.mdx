@@ -1,0 +1,109 @@
+---
+title: Add or change a model
+description: Register a model on the gateway so the app can use it, and the one step the script does not do.
+---
+
+Models are registered on the AI gateway in
+`deploy/platform/litellm/config.yaml`. The app fills its model dropdown from
+the gateway's `/v1/models` at runtime, so a model exists for users as soon as
+the gateway serves it. `add-model.sh` writes the entry for you and enforces
+the two fields every entry must carry: `backend_type` (`gpu`, `npu` or
+`cloud`) and `hardware_id`, which is how a request's trace and cost are
+attributed to the hardware that served it. API keys go into the file as
+`os.environ/<NAME>` references, never as values.
+
+## Register one
+
+```bash
+cd deploy/platform
+./scripts/add-model.sh          # asks for each field
+```
+
+Or in one line. A model behind an OpenAI-compatible server:
+
+```bash
+./scripts/add-model.sh \
+    --name mixtral-8x7b \
+    --model 'openai/mistralai/Mixtral-8x7B-Instruct-v0.1' \
+    --base-url https://api.together.xyz/v1 \
+    --api-key-env TOGETHER_API_KEY \
+    --backend-type cloud \
+    --hardware-id together-cloud \
+    --input-cost 0.0000003 \
+    --output-cost 0.0000009
+```
+
+Several models on the same backend, with the base URL read from `.env`:
+
+```bash
+./scripts/add-model.sh --name gemma4 --model gemma4 \
+    --base-url-env GPU_BACKEND_BASE_URL \
+    --api-key-env  GPU_BACKEND_API_KEY \
+    --backend-type gpu --hardware-id mac-local
+```
+
+A provider the gateway knows natively, with no base URL and no prices,
+because LiteLLM ships both:
+
+```bash
+./scripts/add-model.sh \
+    --name gemini-2.0-flash \
+    --model 'gemini/gemini-2.0-flash' \
+    --api-key-env GEMINI_API_KEY \
+    --backend-type cloud \
+    --hardware-id gemini-cloud
+```
+
+| Flag | Meaning |
+|---|---|
+| `--name` | the name users and the app see; must not already exist |
+| `--model` | the LiteLLM model string, `provider/model` |
+| `--base-url` or `--base-url-env` | the backend, as a URL or as the name of a variable in `.env` |
+| `--api-key` or `--api-key-env` | the key, as a value (avoid) or as a variable name |
+| `--backend-type`, `--hardware-id` | required, see above |
+| `--input-cost`, `--output-cost` | price per token, for spend tracking; omit for native providers |
+| `--vision` | mark the model as accepting images |
+| `--no-librechat` | do not add the name to `librechat.yaml`'s fallback list |
+| `--no-restart`, `--no-test` | skip recreating the containers, skip the test completion |
+| `--dry-run` | print what would change |
+
+If you used `--api-key-env`, put the secret in `.env` before the next step.
+
+## Make the gateway serve it
+
+`config.yaml` is baked into the gateway image, and the script's last step
+only recreates the container from the image it already has. Until the image
+is rebuilt, the model is in the file and nowhere else: the script prints
+"is now registered", the dropdown does not change, and `/v1/models` does not
+list it.
+
+```bash
+docker compose build litellm-proxy
+docker compose up -d litellm-proxy
+curl -s -H "Authorization: Bearer $LITELLM_MASTER_KEY" http://localhost:4000/v1/models | jq '.data[].id'
+```
+
+The name is in that list when the gateway serves it. The app picks it up on
+its next fetch; reload the page.
+
+## Change or remove one
+
+There is no remove script. Edit `litellm/config.yaml` (the `model_list`
+entry) and `librechat.yaml` (the name in `models.default`), then rebuild and
+recreate as above. `add-model.sh` refuses a name that already exists rather
+than updating it, so to change a model's parameters, remove the entry first
+and register it again.
+
+## From the gateway UI instead
+
+http://localhost:4000/ui, signed in with `LITELLM_MASTER_KEY`, can add a
+model too. `store_model_in_db: true` in `config.yaml` means those live in
+the gateway's Postgres: they survive restarts, they disappear with
+`docker compose down -v`, and they are not in version control. Fine for an
+experiment; use the script for anything you want to keep.
+
+## What the app shows
+
+The dropdown is the gateway's list. Presets, per-role model access and
+budgets are the admin panel's job, not the gateway's; see
+[Administer](/docs/admin).

@@ -1,6 +1,8 @@
-# nufi-chat
+# deploy/railway
 
-Self-hosted LibreChat deployment that talks to any OpenAI-compatible LLM endpoint.
+The NUFI app on its own: a compose file and a wrapper image for hosts that
+cannot bind-mount `librechat.yaml` (Railway). It talks to any OpenAI-compatible
+LLM endpoint, normally the NUFI AI gateway.
 
 ## Prerequisites
 
@@ -16,8 +18,8 @@ The endpoint can be:
 ## Quick start
 
 ```bash
-git clone https://github.com/dudaji-vn/nufi-chat.git
-cd nufi-chat
+git clone https://github.com/dudaji-vn/nufi-app.git
+cd nufi-app/deploy/railway
 ./bootstrap.sh
 ```
 

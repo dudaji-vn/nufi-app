@@ -1,0 +1,91 @@
+---
+title: Work on the admin panel
+description: Run NUFI Admin Panel from source against the local chat.
+---
+
+`apps/admin-panel` is a TanStack Start application served by Bun. It has no
+database connection of its own: everything it shows and changes goes through
+the NUFI app's admin API over HTTP, which is why the one setting it needs is
+where that API is.
+
+## Run it
+
+Keep the [local stack](/docs/developer/run-locally) running, and make sure
+you have registered an account in the app at http://localhost:3080. The
+first account is `ADMIN`; the admin panel only admits admins.
+
+```bash
+cd apps/admin-panel
+bun install --frozen-lockfile
+cp .env.example .env
+```
+
+The template's defaults are right for the local stack: `VITE_API_BASE_URL`
+falls back to `http://localhost:3080`, and `SESSION_SECRET` may stay empty in
+development (a fixed dev value is used; production refuses to start without
+one).
+
+```bash
+bun run dev -- --port 3003
+```
+
+The `dev` script is `vite dev --port 3000`, and 3000 is Langfuse when the
+stack is up, so pass another port. Open http://localhost:3003 and sign in
+with the admin account. Sessions are the admin panel's own, so signing in to
+the chat is not enough here.
+
+If the console's dev server is running at the same time, this one exits with
+`EADDRINUSE :::42069`. Both apps ship the TanStack devtools, whose event bus
+listens on that port, and only one can hold it. Stop the other, or run the
+two in separate sessions.
+
+## How it reaches the app
+
+`src/server/utils/url.ts` resolves the API base: `VITE_API_BASE_URL` for the
+browser, `API_SERVER_URL` for calls made from the Bun server when those two
+differ (a container that reaches the chat by a service name, say). Every
+request is a call to `/api/admin/*` on the app, authenticated with the admin
+session. When something fails, the app's log is the first place to look:
+`docker compose logs -f librechat` in `deploy/platform`.
+
+## Configuration it accepts
+
+All in `.env.example`, all optional in development:
+
+| Variable | What it is | Default |
+|---|---|---|
+| `SESSION_SECRET` | session encryption key, at least 32 characters; required by `bun run start` | dev fallback |
+| `VITE_API_BASE_URL` | the app, as the browser reaches it | `http://localhost:3080` |
+| `API_SERVER_URL` | the app, as the server reaches it | falls back to the above |
+| `PORT` | listen port of the production server | `3000` |
+| `ADMIN_SSO_ONLY` | hide the password form and offer only SSO | `false` |
+| `ADMIN_SESSION_IDLE_TIMEOUT_MS` | idle timeout | 30 minutes |
+| `SESSION_COOKIE_SECURE` | send the cookie only over HTTPS | `true` in production |
+| `ADMIN_PANEL_METRICS_SECRET` | bearer token for `/metrics`; unset means 401 | |
+| `STATIC_CACHE_*`, `INDEX_*`, and their `ADMIN_PANEL_*` overrides | cache headers for assets and the HTML shell | |
+
+## Where things are
+
+- `src/routes/` are the pages; `src/components/` is grouped by area
+  (`access`, `configuration/fields`, `grants`, `users`, `auditLog`,
+  `dashboard`, `security`, `shared`, `ui`).
+- `src/components/configuration/fields/` renders the configuration form from
+  the app's schema; a new field type is a new renderer there.
+- `src/server/` is the Bun side: sessions, auth, the API proxy, metrics.
+- `server.ts` is the production entry (`Bun.serve`).
+
+## Check your work
+
+```bash
+bun run lint            # eslint src/, zero warnings in CI
+bunx tsc --noEmit       # there is no typecheck script; this is what CI runs
+bun run test            # vitest
+bun run test:e2e        # playwright, needs a running app
+bun run build
+```
+
+`admin-panel-ci.yml` runs lint, the type check and the unit tests on every
+pull request that touches `apps/admin-panel`. The image is
+`ghcr.io/dudaji-vn/nufichat-admin-panel`, built by `admin-panel-image.yml`
+on pushes to `main` and on tags `nufi-admin-v*`. See
+[Release and deploy](/docs/developer/release).

@@ -39,6 +39,21 @@ const config = {
       // runs across sections it was the last thing a new reader met before
       // "Using the app"; it belongs with the other engineering notes.
       { source: '/docs/overview/rag-integration', destination: '/docs/developer/rag-integration', permanent: true },
+
+      // The Develop section was organised by the five repositories that were
+      // merged into this one in July 2026; it is now organised by what a
+      // developer is doing. Every old page has a successor.
+      { source: '/docs/developer/quick-start', destination: '/docs/developer/run-locally', permanent: true },
+      { source: '/docs/developer/prerequisites', destination: '/docs/developer', permanent: true },
+      { source: '/docs/developer/verify-install', destination: '/docs/developer/run-locally', permanent: true },
+      { source: '/docs/developer/local-stack', destination: '/docs/developer/run-locally', permanent: true },
+      { source: '/docs/developer/nufi-chat', destination: '/docs/developer/work-on-chat', permanent: true },
+      { source: '/docs/developer/librechat-fork', destination: '/docs/developer/work-on-chat', permanent: true },
+      { source: '/docs/developer/console-dev', destination: '/docs/developer/work-on-console', permanent: true },
+      { source: '/docs/developer/admin-panel-dev', destination: '/docs/developer/work-on-admin-panel', permanent: true },
+      { source: '/docs/developer/agent-forks', destination: '/docs/developer/work-on-agents', permanent: true },
+      { source: '/docs/developer/adding-models', destination: '/docs/developer/models', permanent: true },
+      { source: '/docs/developer/release-flow', destination: '/docs/developer/release', permanent: true },
     ];
   },
 };

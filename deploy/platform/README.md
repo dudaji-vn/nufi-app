@@ -24,9 +24,9 @@ Everything runs in Docker Compose. See `docs/roadmap.md` for the weekly plan.
 - Docker Engine 24+ and Docker Compose v2 (Docker Desktop on macOS / Windows)
 - `git`
 - A GitHub Personal Access Token with `read:packages` scope, then
-  `docker login ghcr.io` once — the LibreChat image is pulled from
-  `ghcr.io/dudaji-vn/librechat` (private until the org loosens GHCR access).
-  See "LibreChat customization" below for the one-time login command.
+  `docker login ghcr.io` once — the NUFI app and console images are pulled
+  from `ghcr.io/dudaji-vn/nufichat` and `ghcr.io/dudaji-vn/nufi-console`
+  (private). See "The NUFI app image" below for the one-time login command.
 - `yq` (Mike Farah's Go-based one — bootstrap and `add-model.sh` use it):
   - macOS — `brew install yq`
   - Linux — `sudo snap install yq` or download the binary from
@@ -66,9 +66,9 @@ Windows users also need **Git for Windows** (which provides Git Bash) or
 # macOS / Linux: open Terminal.
 # Windows:       open Git Bash (right-click → "Git Bash Here") or a WSL2 shell.
 
-git clone git@github.com:dudaji-vn/npuops-platform.git
-# or: git clone https://github.com/dudaji-vn/npuops-platform.git
-cd npuops-platform
+git clone git@github.com:dudaji-vn/nufi-app.git
+# or: git clone https://github.com/dudaji-vn/nufi-app.git
+cd nufi-app/deploy/platform
 ./scripts/bootstrap.sh
 #   → asks which backend to use:
 #       • ollama     — local Ollama on this machine (auto-pulls + registers)
@@ -77,7 +77,7 @@ cd npuops-platform
 #       • mock-npu   — clone an existing model entry, tag as backend_type=npu
 #       • skip       — bring the stack up only, register models later
 #   → fills in random secrets in .env
-#   → pulls the LibreChat image from ghcr.io (~150 MB)
+#   → pulls the NUFI app image from ghcr.io
 #   → docker compose up -d
 #   → runs the smoke test (skipped if no model was registered)
 #   → prints URLs and the Langfuse admin password
@@ -98,7 +98,7 @@ cp .env.example .env
 # edit .env: replace every `replace-me` value (see comments in the file for
 # how to generate each one — e.g. `openssl rand -hex 32`)
 
-docker compose pull librechat    # ~150 MB from ghcr.io (one-time)
+docker compose pull librechat    # the NUFI app image from ghcr.io (one-time)
 docker compose up -d
 docker compose logs -f litellm-proxy   # wait for "Application startup complete"
 
@@ -187,12 +187,11 @@ network. Useful as a regression check after touching any of those services.
 ```
 
 The console-specific smoke test (login → JIT-provision → generate key →
-use vs LiteLLM → 429 on rate-limit → revoke → 401 on revoked) now lives
-in the standalone [nufi-console](https://github.com/dudaji-vn/nufi-console)
-repo:
+use vs LiteLLM → 429 on rate-limit → revoke → 401 on revoked) lives with
+the console in `apps/console`:
 
 ```bash
-cd ../nufi-console && bun run smoke
+(cd ../../apps/console && bun run smoke)
 ```
 
 Same `E2E_*` env vars; requires the stack to already be running.
@@ -541,24 +540,27 @@ revision to that model's commit sha at the same time.
 ## Layout
 
 ```
-npuops-platform/
+deploy/platform/
 ├── docker-compose.yml
-├── litellm/          # config.yaml + Dockerfile
-├── langfuse/         # Langfuse setup
-├── librechat/        # runtime config only — see "LibreChat customization"
-│   └── librechat.yaml  # mounted into the container; image lives in the fork
-├── monitoring/       # Prometheus, Grafana, alert rules
-├── scripts/          # helper scripts (smoke test, backups)
-└── docs/             # internal documentation (roadmap.md)
+├── .env.example        # copied to .env by bootstrap.sh, secrets filled in
+├── librechat.yaml      # the NUFI app's runtime config, mounted into the container
+├── litellm/            # the gateway image: config.yaml, Dockerfile, guardrails/, callbacks/, nufi-security/
+├── scanner/            # the prompt-injection classifier sidecar
+├── monitoring/         # Prometheus, Grafana, Alertmanager, alert rules
+├── adapters/           # backend adapters and their tests
+├── scenarios/          # guardrail scenario fixtures
+├── scripts/            # bootstrap, add-model, smoke tests, e2e
+├── tests/              # pytest suites
+└── docs/               # internal notes (roadmap.md)
 ```
 
 ## Console (self-service UI)
 
 The console at `http://localhost:3001` is where users self-issue LiteLLM API
-keys and view their own usage. The source lives in a separate repo —
-[dudaji-vn/nufi-console](https://github.com/dudaji-vn/nufi-console) — and is
-deployed here as a pre-built image (`ghcr.io/dudaji-vn/nufi-console`). See
-`docs/separate-developer-console.md` for the rationale.
+keys and view their own usage. The source is `apps/console` in this
+repository; this stack runs the published image
+(`ghcr.io/dudaji-vn/nufi-console`). See `docs/separate-developer-console.md`
+for why it is a separate service.
 
 **SSO**: the console verifies the LibreChat-issued JWT (shared `JWT_SECRET`)
 out of the cookie jar — sign in once at LibreChat, then open the console in
@@ -576,25 +578,26 @@ the same browser. No second login.
 NUFI_CONSOLE_TAG=v0.2.0
 ```
 
-**Develop locally**: clone the [nufi-console](https://github.com/dudaji-vn/nufi-console)
-repo as a sibling directory and run `bun run dev` there. Set the same
-`JWT_SECRET` / `JWT_REFRESH_SECRET` / `LITELLM_MASTER_KEY` as the running
-stack so auth and admin calls work in dev.
+**Develop locally**: run `apps/console` from source against this stack;
+`apps/console/README.md` and the docs page "Work on the console" have the
+variables. It must use the same `JWT_SECRET` / `JWT_REFRESH_SECRET` /
+`LITELLM_MASTER_KEY` as the running stack.
 
-## LibreChat customization
+## The NUFI app image
 
-LibreChat is forked at https://github.com/dudaji-vn/LibreChat
-(branch `npuops/main`, pinned to upstream `v0.7.5`). The fork's CI builds and
-publishes a multi-arch image to `ghcr.io/dudaji-vn/librechat:npuops-v0.7.5-N`,
-which this repo pulls via the `image:` line in `docker-compose.yml`. There
-is no local LibreChat source in this repo — only `librechat.yaml`
-runtime config, mounted into the container.
+The chat service runs the NUFI app, `ghcr.io/dudaji-vn/nufichat:main`, whose
+source is `apps/chat` in this repository. It is not a LibreChat fork with an
+upstream any more; changes are made in `apps/chat` and shipped by tagging
+`main` with `nufi-vX.Y.Z`, which `.github/workflows/chat-release.yml` turns
+into `ghcr.io/dudaji-vn/nufichat:vX.Y.Z`. This stack follows `:main`; pin a
+release by changing the `image:` line in `docker-compose.yml`. Only
+`librechat.yaml` lives here, mounted into the container.
 
 **One-time auth (every contributor + every deploy host):**
 
 ```bash
 # 1. Create a Personal Access Token at https://github.com/settings/tokens/new
-#    Scope: read:packages only. Note: e.g. "npuops-ghcr-read".
+#    Scope: read:packages only.
 # 2. Login (replace ghp_... with your token, <username> with your GH login):
 echo ghp_xxxxxxxxxxxxxxxxxxxx | docker login ghcr.io -u <username> --password-stdin
 ```
@@ -602,52 +605,10 @@ echo ghp_xxxxxxxxxxxxxxxxxxxx | docker login ghcr.io -u <username> --password-st
 Credentials persist in your Docker config — you don't need to do this again
 unless you rotate the token.
 
-**Customize LibreChat (add a feature, tweak the UI):**
-
-Work in the fork repo, not here:
-
-```bash
-git clone git@github.com:dudaji-vn/LibreChat.git
-cd LibreChat
-git checkout npuops/main
-
-# Edit normally — IDE, hot reload, all of it works.
-$EDITOR client/src/components/Nav/AccountSettings.tsx
-git commit -am "feat(nav): add Foo link"
-git push
-
-# Tag the next NPUOps release (CI builds + publishes the image).
-git tag npuops-v0.7.5-4    # bump the trailing number per release
-git push origin npuops-v0.7.5-4
-```
-
-Then, in this repo, bump the tag in `docker-compose.yml`:
-
-```yaml
-librechat:
-  image: ghcr.io/dudaji-vn/librechat:npuops-v0.7.5-4
-```
-
-`docker compose pull librechat && docker compose up -d librechat`.
-
-**Upgrade upstream LibreChat:**
-
-In the fork:
-
-```bash
-cd LibreChat
-git remote add upstream https://github.com/danny-avila/LibreChat.git  # one-time
-git fetch upstream --tags
-git checkout npuops/main
-git merge v0.7.6        # resolve any conflicts in npuops customization commits
-git push
-git tag npuops-v0.7.6-1
-git push origin npuops-v0.7.6-1
-```
-
-Then bump the image tag here. The fork keeps a clear `git log upstream/v0.7.5..npuops/main`
-diff for "what did NPUOps actually change?" — useful for security audits and
-upstream conflict triage.
+**Change the app:** work in `apps/chat` (the docs page "Work on the chat app"
+has the dev setup), then release and bump as above. On Apple Silicon the
+image is amd64-only; see the docs page "Run the stack locally" for the
+compose override.
 
 ## Documentation
 

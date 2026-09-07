@@ -1,0 +1,132 @@
+---
+title: Work on the console
+description: Run NUFI Console from source against the local stack, with hot reload.
+---
+
+`apps/console` is one Bun process. Hono serves the oRPC API and, in
+production, the Vite-built React app from the same origin. It owns no data:
+keys, budgets and spend live in the gateway's Postgres, accounts in the app's
+MongoDB, traces in Langfuse. It is also the identity issuer that NUFI Studio
+and NUFI Works trust, which is how a signed-in member gets handed into either
+product without a second password.
+
+## Run it
+
+Keep the [local stack](/docs/developer/run-locally) running. Then:
+
+```bash
+cd apps/console
+bun install --frozen-lockfile
+```
+
+There is no `.env.example` in this app. Create `.env.local` (gitignored; Bun
+loads it on its own) with the values below. The secrets are the same ones
+the stack uses, copied from `deploy/platform/.env`:
+
+```bash
+LITELLM_BASE_URL=http://localhost:4000
+LITELLM_MASTER_KEY=<LITELLM_MASTER_KEY from deploy/platform/.env>
+JWT_SECRET=<JWT_SECRET from deploy/platform/.env>
+JWT_REFRESH_SECRET=<JWT_REFRESH_SECRET from deploy/platform/.env>
+LANGFUSE_HOST=http://localhost:3000
+LANGFUSE_PUBLIC_KEY=<from deploy/platform/.env>
+LANGFUSE_SECRET_KEY=<from deploy/platform/.env>
+CHAT_BASE_URL=http://localhost:3080
+SERVER_PORT=3002
+PORT=3002
+```
+
+`JWT_SECRET` and `JWT_REFRESH_SECRET` must match the stack's, because the
+console verifies the session the chat issued. `PORT` moves the API off 3000,
+which Langfuse holds; `SERVER_PORT` tells the Vite dev server where to proxy.
+
+```bash
+bun --env-file=.env.local run dev
+```
+
+That starts two processes: Vite on **5173** serving the React app with hot
+reload, and the API on **3002** restarting on every change. Vite proxies
+`/rpc` and `/_health` to the API, so the browser only ever talks to 5173.
+
+The `--env-file` flag matters. The API is a Bun process and reads
+`.env.local` on its own, but Vite runs under Node and only sees what its
+parent hands it; without the flag it proxies to port 3000, which is Langfuse,
+and every `/rpc` call comes back as an HTML page. `curl
+http://localhost:5173/_health` answering `{"ok":true}` means the proxy is
+right.
+
+The stack's own console container keeps running on 3001; the two do not
+interfere.
+
+## Sign in
+
+Open http://localhost:3080 and sign in to the app first. The chat sets its
+session cookie on `localhost`, cookies ignore ports, so http://localhost:5173
+is already signed in when you open it. Without that cookie the console sends
+you to `/unauthorized`.
+
+Two paths verify a request, both HS256: `Authorization: Bearer <token>`
+against `JWT_SECRET`, or the `refreshToken` cookie against
+`JWT_REFRESH_SECRET`. The user id in the token is the identity everywhere:
+gateway key metadata, spend rows, Langfuse traces. A user who opens the
+console for the first time is created in the gateway on the spot
+(`server/lib/jit-provision.ts`) with the `DEFAULT_*` limits below.
+
+The cookie carries an id and nothing else. Whenever the console needs the
+member's email and role, for the handoff into Studio or Works, it asks the
+chat: `POST {CHAT_BASE_URL}/api/auth/refresh` with the cookie and a
+browser-shaped user agent, which the chat's user-agent filter requires
+(`server/lib/chat-identity.ts`). Point `CHAT_BASE_URL` at the chat you are
+actually signed in to; it defaults to production.
+
+## Everything the server reads
+
+| Variable | What it is | Default |
+|---|---|---|
+| `LITELLM_BASE_URL`, `LITELLM_MASTER_KEY` | the gateway and its admin key | |
+| `JWT_SECRET`, `JWT_REFRESH_SECRET` | the chat's signing secrets | |
+| `CHAT_BASE_URL` | the chat, for resolving a member's email and role | `https://chat.nufi.me` |
+| `IDENTITY_COOKIE_DOMAIN`, `IDENTITY_TTL_SECONDS` | the cookie the console sets for the agent products | |
+| `LANGFUSE_HOST`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` | usage and traces | |
+| `DEFAULT_USER_BUDGET`, `DEFAULT_BUDGET_DURATION`, `DEFAULT_TPM_LIMIT`, `DEFAULT_RPM_LIMIT`, `KEY_DEFAULT_DURATION` | limits for a newly provisioned user and key | `10`, `30d`, `10000`, `60` |
+| `OIDC_ISSUER`, `OIDC_CLIENTS`, `OIDC_PRIVATE_KEY_PEM` | the console as identity issuer for Studio and Works; production values are recorded in `deploy/railway/agents.md` | |
+| `STUDIO_URL`, `AGENTS_ALLOWED_ORIGINS`, `CHOOSER_HOST` | where the agent products live, and the host that serves the chooser | |
+| `PORT`, `SERVER_PORT`, `SERVE_DIST` | listen port, the Vite proxy target, whether to serve the built app | `3000`, `3000` |
+
+Two more are inlined into the browser bundle at build time, so they are
+Docker build arguments rather than runtime variables: `LIBRECHAT_URL` and
+`LITELLM_URL` become `VITE_LIBRECHAT_URL` and `VITE_LITELLM_URL`
+(`Dockerfile`, `console-image.yml`).
+
+## Where things are
+
+- `server/index.ts` mounts everything: `/_health`, `/.well-known/jwks.json`,
+  `/enter/*` and `/oidc/authorize` (the handoff into Studio and Works, behind
+  auth), `/rpc/*` (the oRPC router, behind auth), and the chooser redirect
+  for `CHOOSER_HOST`.
+- `server/router/*.ts` are the procedures: `me`, `keys`, `usage`, `models`,
+  `connect`, `ping`. One procedure becomes one typed TanStack Query hook in
+  the client.
+- `server/lib/` holds the gateway client, JIT provisioning, chat identity,
+  Langfuse, and the OIDC keys.
+- `src/routes/*.tsx` are the pages; components are kebab-case files under
+  `src/components/`.
+
+Adding a procedure: define it with Zod input and output in a `server/router`
+file, add it to the root router in `server/router/index.ts`, and call it from
+the client through the generated hook. The type flows end to end without a
+separate API client.
+
+## Check your work
+
+```bash
+bun run typecheck
+bun run lint          # Biome
+bun test
+bun run build
+```
+
+`console-ci.yml` runs the first three on every pull request that touches
+`apps/console`. The image is built by `console-image.yml` on every push to
+`main` and on tags `nufi-console-v*`, as `ghcr.io/dudaji-vn/nufi-console`.
+See [Release and deploy](/docs/developer/release).
