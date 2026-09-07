@@ -10,19 +10,19 @@
 Provides the primary entry point for selecting local files to attach to the current message before sending.
 
 #### Preconditions / access
-- A conversation must be open (or "New Chat" must be selected with the Nufi endpoint active).
-- The Nufi endpoint must be selected; file upload is disabled for endpoints that explicitly set `disabled: true`.
+- A conversation must be open (or "New Chat" must be selected with the NuFi endpoint active).
+- The NuFi endpoint must be selected; file upload is disabled for endpoints that explicitly set `disabled: true`.
 - The input area must not be in a disabled state (e.g., while a response is being generated).
 
 #### UI elements
 - **Attach Files** button (paperclip icon, `aria-label="Attach Files"`, tooltip label `com_sidepanel_attach_files` → "Attach Files") located in the chat input toolbar.
-- On the Nufi endpoint (a custom, non-Assistants endpoint that supports files), clicking the button opens a **dropdown menu** (`id="attach-file-menu"`, `aria-label="Attach File Options"`) rather than a direct file picker.
-- The dropdown lists upload destination options depending on endpoint capabilities (see Supported Types section). For the Nufi endpoint the menu shows at minimum: **"Upload to Provider"** (`com_ui_upload_provider`). The "Upload as Text" option (`com_ui_upload_ocr_text`) is **absent** for the Nufi endpoint because `context` capability is not enabled in the server configuration (`agents.capabilities` does not include `context`).
+- On the NuFi endpoint (a custom, non-Assistants endpoint that supports files), clicking the button opens a **dropdown menu** (`id="attach-file-menu"`, `aria-label="Attach File Options"`) rather than a direct file picker.
+- The dropdown lists upload destination options depending on endpoint capabilities (see Supported Types section). For the NuFi endpoint the menu shows at minimum: **"Upload to Provider"** (`com_ui_upload_provider`). The "Upload as Text" option (`com_ui_upload_ocr_text`) is **absent** for the NuFi endpoint because `context` capability is not enabled in the server configuration (`agents.capabilities` does not include `context`).
 - The hidden `<input type="file">` is opened programmatically when a menu item is chosen.
 - Keyboard: the attach button responds to `Enter` or `Space` to open the file picker.
 
 #### Functional behavior
-1. FR-1: When the user clicks the Attach Files button, a dropdown menu appears listing at least the upload type options applicable to the Nufi endpoint.
+1. FR-1: When the user clicks the Attach Files button, a dropdown menu appears listing at least the upload type options applicable to the NuFi endpoint.
 2. FR-2: Clicking a menu item sets the `accept` filter on the hidden file input (`image/*,.heif,.heic,.pdf,application/pdf` for "Upload to Provider"; unrestricted for other types) and opens the OS file picker.
 3. FR-3: After the OS file picker is dismissed, the selected files pass through client-side validation (see Validation section). Files that pass are immediately shown as in-progress chips in the input area.
 4. FR-4: The Attach Files button is visually disabled (rendered with `disabled` attribute) while `disableInputs` is true (e.g., during message generation).
@@ -37,7 +37,7 @@ Provides the primary entry point for selecting local files to attach to the curr
 - If the user opens the menu but clicks outside to dismiss, the picker does not open.
 
 #### Acceptance criteria
-1. AC-1: Given the Nufi endpoint is active and inputs are enabled, when the user clicks the Attach Files button, then a dropdown menu appears with at least the "Upload to Provider" option (and "Upload for File Search" when file search is enabled). "Upload as Text" is not shown for the Nufi endpoint in its current configuration.
+1. AC-1: Given the NuFi endpoint is active and inputs are enabled, when the user clicks the Attach Files button, then a dropdown menu appears with at least the "Upload to Provider" option (and "Upload for File Search" when file search is enabled). "Upload as Text" is not shown for the NuFi endpoint in its current configuration.
 2. AC-2: Given the dropdown is open, when the user selects "Upload to Provider", then the OS file picker opens filtered to `image/*,.heif,.heic,.pdf,application/pdf`.
 3. AC-3: Given the input area is disabled (message generating), when the button is rendered, then it has the `disabled` attribute and clicking it has no effect.
 4. AC-4: Given a file upload is disabled by endpoint config, when the user attempts to open the file picker, then a red toast "File uploads are disabled for this endpoint" appears.
@@ -50,7 +50,7 @@ Provides the primary entry point for selecting local files to attach to the curr
 Allows users to drop files from the desktop or file manager anywhere on the chat area without using the attach button.
 
 #### Preconditions / access
-- A conversation must be open with the Nufi endpoint active.
+- A conversation must be open with the NuFi endpoint active.
 - File uploads must not be disabled for the endpoint.
 
 #### UI elements
@@ -64,8 +64,8 @@ Allows users to drop files from the desktop or file manager anywhere on the chat
 #### Functional behavior
 1. FR-1: When the user drags a file over the application window, the overlay becomes visible with the upload illustration and instructional text.
 2. FR-2: When the user releases (drops) the file(s), if the endpoint's upload is disabled a toast error is shown immediately without showing the modal.
-3. FR-3: For the Nufi endpoint, the "Select Upload Type" modal appears for **any** dropped file type whenever at least one upload capability applies — not only for images. Because `file_search` is enabled in the Nufi configuration (`fileSearchEnabled = true`, `fileSearchAllowedByAgent = true` by default), the modal is shown for images, documents, and all other supported file types. The modal's primary option for the Nufi endpoint is **"Upload to Provider"** (`com_ui_upload_provider`). The user must click an option to proceed.
-4. FR-4: Files are processed directly (without the modal) only when no capability condition is met. Under the current Nufi configuration (`file_search` enabled), the modal always appears for dropped files, so this bypass path is not active.
+3. FR-3: For the NuFi endpoint, the "Select Upload Type" modal appears for **any** dropped file type whenever at least one upload capability applies — not only for images. Because `file_search` is enabled in the NuFi configuration (`fileSearchEnabled = true`, `fileSearchAllowedByAgent = true` by default), the modal is shown for images, documents, and all other supported file types. The modal's primary option for the NuFi endpoint is **"Upload to Provider"** (`com_ui_upload_provider`). The user must click an option to proceed.
+4. FR-4: Files are processed directly (without the modal) only when no capability condition is met. Under the current NuFi configuration (`file_search` enabled), the modal always appears for dropped files, so this bypass path is not active.
 5. FR-5: After the user selects an option in the modal (or files are processed directly), the same validation and upload flow used for button-selected files applies.
 6. FR-6: The overlay disappears when the user moves the dragged item outside the drop area or drops it.
 
@@ -80,7 +80,7 @@ Allows users to drop files from the desktop or file manager anywhere on the chat
 
 #### Acceptance criteria
 1. AC-1: Given the chat area is displayed and uploads are enabled, when the user drags a file over the window, then the drag-drop overlay with the upload illustration appears.
-2. AC-2: Given the overlay is shown, when the user drops any file (image or document), then the "Select Upload Type" modal appears (because `file_search` is enabled for the Nufi endpoint).
+2. AC-2: Given the overlay is shown, when the user drops any file (image or document), then the "Select Upload Type" modal appears (because `file_search` is enabled for the NuFi endpoint).
 3. AC-3: Given the modal is shown, when the user clicks "Upload to Provider", then the file begins uploading and a progress chip appears in the input area.
 4. AC-4: Given uploads are disabled by endpoint config, when the user drops a file, then a red toast "File uploads are disabled for this endpoint" appears and no modal is shown.
 5. AC-5: Given the user drags a file to the window then drags it back out without dropping, then the overlay disappears and no file is attached.
@@ -94,7 +94,7 @@ Allows users to paste image data directly from the clipboard (e.g., a screenshot
 
 #### Preconditions / access
 - The message text area (`data-testid="text-input"`) must be focused.
-- The Nufi endpoint must support image uploads.
+- The NuFi endpoint must support image uploads.
 - The clipboard must contain file data (not just text).
 
 #### UI elements
@@ -114,7 +114,7 @@ Allows users to paste image data directly from the clipboard (e.g., a screenshot
 
 #### Edge cases
 - Pasting multiple images at once: each image is processed individually; count and total size limits apply to the combined set.
-- Pasting a screenshot: browsers typically expose it as `image/png` — passes MIME validation on the Nufi endpoint.
+- Pasting a screenshot: browsers typically expose it as `image/png` — passes MIME validation on the NuFi endpoint.
 - Pasting a file whose type the browser cannot determine: MIME inference from extension is attempted; if inference fails the file is rejected with "Unable to determine file type for: `<filename>`".
 
 #### Acceptance criteria
@@ -128,16 +128,16 @@ Allows users to paste image data directly from the clipboard (e.g., a screenshot
 ### Supported Types & Limits
 
 #### Purpose
-Defines which files the Nufi endpoint accepts and the hard limits enforced at the time of selection.
+Defines which files the NuFi endpoint accepts and the hard limits enforced at the time of selection.
 
 #### Preconditions / access
-- Limits apply every time a file selection, drag-drop, or paste occurs on the Nufi endpoint.
+- Limits apply every time a file selection, drag-drop, or paste occurs on the NuFi endpoint.
 
 #### UI elements
 - No dedicated UI element displaying limits to the user before attachment is attempted; limits are surfaced via toast error messages at validation time.
 
 #### Functional behavior
-The following limits are active on the **Nufi** endpoint (sourced from deployed server configuration):
+The following limits are active on the **NuFi** endpoint (sourced from deployed server configuration):
 
 | Limit | Value |
 |---|---|
@@ -145,7 +145,7 @@ The following limits are active on the **Nufi** endpoint (sourced from deployed 
 | Maximum size per file | **20 MB** (exclusive boundary: file must be strictly less than 20 MB) |
 | Maximum total size per request | **50 MB** |
 
-Supported MIME types (the MIME is checked against the `supportedMimeTypes` regex list configured for the Nufi endpoint):
+Supported MIME types (the MIME is checked against the `supportedMimeTypes` regex list configured for the NuFi endpoint):
 
 | Type | MIME |
 |---|---|
@@ -160,7 +160,7 @@ Supported MIME types (the MIME is checked against the `supportedMimeTypes` regex
 | Word document (.docx) | `application/vnd.openxmlformats-officedocument.wordprocessingml.document` |
 | JSON | `application/json` |
 
-> **Note on HEIC/HEIF:** When uploaded via the "Upload to Provider" option, HEIC/HEIF files are converted client-side to JPEG before validation and upload, so the resulting MIME is `image/jpeg`. HEIC is accepted as an image source format even though `image/heic` is not in the Nufi supported list because conversion happens pre-validation.
+> **Note on HEIC/HEIF:** When uploaded via the "Upload to Provider" option, HEIC/HEIF files are converted client-side to JPEG before validation and upload, so the resulting MIME is `image/jpeg`. HEIC is accepted as an image source format even though `image/heic` is not in the NuFi supported list because conversion happens pre-validation.
 
 > **Note on size boundary:** The `fileSizeLimit` check uses `>=` (strict), so a file of exactly 20 MB is rejected. Only files strictly below 20 MB are accepted.
 
@@ -172,12 +172,12 @@ See [Validation & Error Handling](#validation--error-handling) for the full erro
 - A file with an unrecognized extension and an empty MIME: rejected with "Unable to determine file type for: `<filename>`".
 
 #### Acceptance criteria
-1. AC-1: Given the Nufi endpoint is active, when the user attaches an `image/png` file of 5 MB, then the file is accepted and begins uploading.
-2. AC-2: Given the Nufi endpoint is active, when the user attaches a file of exactly 20 MB, then validation rejects it with "File size limit exceeded: 20 MB".
-3. AC-3: Given the Nufi endpoint is active, when the user attaches a file of 19.9 MB, then the file is accepted and begins uploading.
-4. AC-4: Given the Nufi endpoint is active, when the user attaches a `.docx` file, then the file is accepted.
-5. AC-5: Given the Nufi endpoint is active, when the user attaches an `.mp4` video file, then validation rejects it with "Unsupported file type: video/mp4".
-6. AC-6: Given the Nufi endpoint is active, when the combined size of already-attached files plus a new file exceeds 50 MB, then the new file is rejected with "Total file size limit exceeded: 50 MB".
+1. AC-1: Given the NuFi endpoint is active, when the user attaches an `image/png` file of 5 MB, then the file is accepted and begins uploading.
+2. AC-2: Given the NuFi endpoint is active, when the user attaches a file of exactly 20 MB, then validation rejects it with "File size limit exceeded: 20 MB".
+3. AC-3: Given the NuFi endpoint is active, when the user attaches a file of 19.9 MB, then the file is accepted and begins uploading.
+4. AC-4: Given the NuFi endpoint is active, when the user attaches a `.docx` file, then the file is accepted.
+5. AC-5: Given the NuFi endpoint is active, when the user attaches an `.mp4` video file, then validation rejects it with "Unsupported file type: video/mp4".
+6. AC-6: Given the NuFi endpoint is active, when the combined size of already-attached files plus a new file exceeds 50 MB, then the new file is rejected with "Total file size limit exceeded: 50 MB".
 
 ---
 
@@ -236,7 +236,7 @@ Allows users to inspect attached files before sending and remove unwanted attach
 - **Image chip:** A rounded square (56×56 px, class `rounded-2xl`) showing the image as a background. On hover, a semi-transparent dark overlay with a `Maximize2` (expand) icon appears. Clicking opens a full-screen lightbox (`DialogPrimitive.Root`) over a `bg-black/90` backdrop, with the image at `max-h-[85vh] max-w-[90vw]`. A close button (`aria-label="Close"`) is in the top-right of the lightbox; pressing Escape also closes it.
 - **Document chip (`FileContainer`):** A 224 px wide chip with a rounded-rectangle border. Left side: file-type icon (e.g., document, spreadsheet, code). Right side: filename (truncated with `title` tooltip for long names) and file-type label (e.g., "Document", "Spreadsheet", "Code").
 - **Remove button:** A small circular `×` button (`aria-label="Remove file"`, translation key `com_ui_attach_remove`) positioned at the top-right corner of each chip (visible at all times, not just on hover). Clicking it deletes the file.
-- **Source badge:** A small icon in the bottom-right corner of the file icon area indicating the file source (e.g., OpenAI logo for OpenAI-sourced files, "T" for text-extracted files, database icon for vector-store files). For local uploads on the Nufi endpoint this badge is typically absent.
+- **Source badge:** A small icon in the bottom-right corner of the file icon area indicating the file source (e.g., OpenAI logo for OpenAI-sourced files, "T" for text-extracted files, database icon for vector-store files). For local uploads on the NuFi endpoint this badge is typically absent.
 - **Deleting state:** When the remove button is clicked on a fully uploaded file, a blue info toast "Deleting file..." (`com_ui_deleting_file`) appears briefly while the server deletion request runs.
 
 #### Functional behavior
@@ -270,33 +270,33 @@ Allows users to inspect attached files before sending and remove unwanted attach
 Clarifies how different attachment types are used by the model and which upload menu option to choose.
 
 #### Preconditions / access
-- Nufi endpoint must be selected. Vision behavior depends on the selected model supporting multimodal input (verify: not all models on the Nufi endpoint are necessarily vision-capable — check model documentation).
+- NuFi endpoint must be selected. Vision behavior depends on the selected model supporting multimodal input (verify: not all models on the NuFi endpoint are necessarily vision-capable — check model documentation).
 
 #### UI elements
 - **"Upload to Provider"** option (`com_ui_upload_provider`) in the attach menu: routes the file as a direct provider image/document input. File input filter is set to `image/*,.heif,.heic,.pdf,application/pdf`.
-- **"Upload as Text"** option (`com_ui_upload_ocr_text`): **not available on the Nufi endpoint** in its current configuration. This option only appears when `AgentCapabilities.context` is present in `agents.capabilities`; the Nufi `librechat.yaml` sets `agents.capabilities: ["file_search"]` — `context` is absent.
+- **"Upload as Text"** option (`com_ui_upload_ocr_text`): **not available on the NuFi endpoint** in its current configuration. This option only appears when `AgentCapabilities.context` is present in `agents.capabilities`; the NuFi `librechat.yaml` sets `agents.capabilities: ["file_search"]` — `context` is absent.
 
 #### Functional behavior
 1. FR-1: Files added via "Upload to Provider" are sent to the model as image/document content blocks. The model can "see" images if it supports vision; PDFs are passed as document content.
-2. FR-2: The "Upload as Text" path (OCR/document parsing to `context` tool resource) is not available on the Nufi endpoint in its current configuration. To enable it, `context` must be added to `agents.capabilities` in `librechat.yaml`.
+2. FR-2: The "Upload as Text" path (OCR/document parsing to `context` tool resource) is not available on the NuFi endpoint in its current configuration. To enable it, `context` must be added to `agents.capabilities` in `librechat.yaml`.
 3. FR-3: In `FileRow`, any file whose `type` starts with `image/` is rendered as an `Image` chip (thumbnail preview); all others are rendered as `FileContainer` (document chip).
 4. FR-4: The source badge on the chip reflects how the file was processed (e.g., "T" badge for text-source files).
 5. FR-5: GIF images attached via "Upload to Provider" are sent as static image frames. (requires manual verification on the running product: animated GIF behavior depends on the provider API — the model may not animate them.)
 
 #### Validation & errors
 - Attaching a non-image/non-PDF file via the "Upload to Provider" path: the OS file picker filter (`image/*,.heif,.heic,.pdf,application/pdf`) restricts selection; if the filter is bypassed, the MIME check in `validateFiles` will reject the unsupported type.
-- "Upload as Text" is not available on the Nufi endpoint in the current configuration; the scenario of bypassing it does not apply.
+- "Upload as Text" is not available on the NuFi endpoint in the current configuration; the scenario of bypassing it does not apply.
 
 #### Edge cases
 - A `.gif` file uploaded via "Upload to Provider": accepted (MIME `image/gif` is supported). Treated as a static image by most vision APIs.
 - An `.webp` file: accepted via "Upload to Provider" (MIME `image/webp` supported).
 - A HEIC/HEIF image: converted to JPEG client-side (toast "Converting HEIC image to JPEG..."); the converted JPEG is then uploaded.
 - A large image that exceeds 20 MB before HEIC conversion: if the converted JPEG is also ≥ 20 MB, it is rejected post-conversion.
-- Client-side image resizing: `clientImageResize` is **disabled** on the Nufi deployment (no `clientImageResize` entry in `nufi-chat/librechat.yaml`; the LibreChat default is `clientImageResize.enabled: false`). The resize code path and the "Image resized: X MB → Y MB (Z% smaller)" toast are therefore inactive on the current Nufi production deployment.
+- Client-side image resizing: `clientImageResize` is **disabled** on the NuFi deployment (no `clientImageResize` entry in `nufi-chat/librechat.yaml`; the LibreChat default is `clientImageResize.enabled: false`). The resize code path and the "Image resized: X MB → Y MB (Z% smaller)" toast are therefore inactive on the current NuFi production deployment.
 
 #### Acceptance criteria
-1. AC-1: Given a vision-capable model is selected on the Nufi endpoint, when the user attaches a PNG image via "Upload to Provider" and sends the message, then the model responds with awareness of the image content.
-2. AC-2: "Upload as Text" is not available on the Nufi endpoint in its current configuration; this scenario requires adding `context` to `agents.capabilities` in `librechat.yaml`. (requires manual verification on the running product: if `context` capability is later enabled, attaching a PDF via "Upload as Text" and sending should result in the model's response referencing the document content.)
+1. AC-1: Given a vision-capable model is selected on the NuFi endpoint, when the user attaches a PNG image via "Upload to Provider" and sends the message, then the model responds with awareness of the image content.
+2. AC-2: "Upload as Text" is not available on the NuFi endpoint in its current configuration; this scenario requires adding `context` to `agents.capabilities` in `librechat.yaml`. (requires manual verification on the running product: if `context` capability is later enabled, attaching a PDF via "Upload as Text" and sending should result in the model's response referencing the document content.)
 3. AC-3: Given a HEIC file is selected via "Upload to Provider", then a blue info toast "Converting HEIC image to JPEG..." appears, and the file chip shows a JPEG preview after conversion.
 4. AC-4: Given a non-image/non-PDF file (e.g., CSV) is attached via "Upload to Provider" (if the OS picker filter is bypassed), then validation rejects it with "Unsupported file type: text/csv".
 
@@ -326,7 +326,7 @@ Validation is performed by `validateFiles()` in the order listed below. The pipe
 6. FR-6 (Total size): After per-file checks, if `(existing total size) + (incoming total size) > totalSizeLimit (50 MB)`, reject with `"Total file size limit exceeded: 50 MB"`.
 7. FR-7 (Duplicate detection): If any combination of `name + size + type_category` matches an already-attached file, reject with `com_error_files_dupe` → "Duplicate file detected."
 
-> Note on error message sources: The `validateFiles` function generates the file-count, MIME, size, and total-size messages as raw strings (not via i18n keys). The `com_ui_attach_error_limit`, `com_ui_attach_error_type`, `com_ui_attach_error_size`, and `com_ui_attach_error_total_size` keys exist in the translation file but are currently used in separate code paths (e.g., older server-side error relays). For the Nufi endpoint client-side validation, the messages shown are the raw strings listed in FR-3 through FR-6 above. (verify: confirm exact toast text in the deployed UI for each error case.)
+> Note on error message sources: The `validateFiles` function generates the file-count, MIME, size, and total-size messages as raw strings (not via i18n keys). The `com_ui_attach_error_limit`, `com_ui_attach_error_type`, `com_ui_attach_error_size`, and `com_ui_attach_error_total_size` keys exist in the translation file but are currently used in separate code paths (e.g., older server-side error relays). For the NuFi endpoint client-side validation, the messages shown are the raw strings listed in FR-3 through FR-6 above. (verify: confirm exact toast text in the deployed UI for each error case.)
 
 #### Validation & errors (exact messages)
 
@@ -369,7 +369,7 @@ Validation is performed by `validateFiles()` in the order listed below. The pipe
 Clarifies the distinction between per-message file attachments (this section) and persistent Agent Knowledge (RAG via file search / vector store), so testers and end users choose the correct mechanism.
 
 #### Preconditions / access
-- Both features may be available simultaneously when the Nufi endpoint is used with an Agent that has File Search enabled.
+- Both features may be available simultaneously when the NuFi endpoint is used with an Agent that has File Search enabled.
 
 #### UI elements
 - **Per-message attachment** (this section): files are attached via the Attach Files button in the chat input bar. They are visible as chips between the text area and the send button. They are conversation-scoped.
@@ -379,7 +379,7 @@ Clarifies the distinction between per-message file attachments (this section) an
 1. FR-1: A per-message attachment is sent to the model once, as part of the specific message it is attached to. It is not stored for future conversations or retrievable by the model in later messages.
 2. FR-2: Agent Knowledge files are indexed into a vector store. The agent retrieves relevant excerpts automatically across all conversations.
 3. FR-3: When the Attach menu is open, the "Upload for File Search" option (`com_ui_upload_file_search`) — if shown — routes the file to the Agent's file search vector store (persistent, RAG). This is not a per-message attachment.
-4. FR-4: "Upload to Provider" in the attach menu is a per-message attachment (conversation-scoped). "Upload as Text" is not available on the Nufi endpoint in its current configuration.
+4. FR-4: "Upload to Provider" in the attach menu is a per-message attachment (conversation-scoped). "Upload as Text" is not available on the NuFi endpoint in its current configuration.
 5. FR-5: A message can include both per-message attachments and benefit from Agent Knowledge simultaneously; the two mechanisms do not conflict.
 
 #### When to use which
@@ -388,7 +388,7 @@ Clarifies the distinction between per-message file attachments (this section) an
 | Share a one-off document or image for a single question | Per-message attachment (this section) |
 | Give the agent persistent reference material to draw from across all conversations | Agent Knowledge (File Search in Agent config panel) |
 | Vision: let the model describe or analyze an image | Per-message attachment via "Upload to Provider" |
-| Extract text from a PDF or image for one message | Per-message attachment via "Upload as Text" (requires `context` capability — not enabled on Nufi by default) |
+| Extract text from a PDF or image for one message | Per-message attachment via "Upload as Text" (requires `context` capability — not enabled on NuFi by default) |
 
 #### Validation & errors
 - Files uploaded via "Upload for File Search" from the message attach menu are subject to the same per-file MIME and size validation, but their destination is the vector store rather than the message. Validation errors appear as red toasts.

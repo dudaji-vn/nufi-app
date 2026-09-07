@@ -32,7 +32,7 @@ feature sections; it tells you how to approach them.
 ### Recommended test order (by priority)
 1. **Authentication & account access** — you cannot test anything else until sign-in works.
 2. **Chat core** — sending, streaming, stop, regenerate, edit. The product's primary value.
-3. **Endpoint / model / parameters** — confirm the Nufi endpoint and live model list.
+3. **Endpoint / model / parameters** — confirm the NuFi endpoint and live model list.
 4. **Agents & File Search (RAG)** — the flagship NuFi feature; budget the most time here.
 5. **File upload & attachments** — limits and validation.
 6. **Conversation management** — search, rename, delete, archive, bookmarks, share, export,
@@ -48,8 +48,8 @@ as the minimum bar. For thorough coverage, also test the **edge cases** listed i
 the negative paths (invalid input, oversize files, backend unreachable, expired session).
 
 ### Specifically verify the NuFi-only behaviours
-- The welcome message reads **"Welcome to Nufi Chat."**
-- Exactly two endpoints are offered: **Nufi** and **Agents** — nothing else.
+- The welcome message reads **"Welcome to NuFi Chat."**
+- Exactly two endpoints are offered: **NuFi** and **Agents** — nothing else.
 - The account menu contains a **Console** entry that opens the NuFi Console **in a new tab**.
 - File limits are **5 files / 20 MB each / 50 MB total** with exactly the supported types listed.
 - RAG works **only** through an Agent with **File Search** — confirm there is no plain-chat RAG.

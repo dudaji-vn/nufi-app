@@ -1,6 +1,6 @@
 ---
 title: Agents and adapters
-description: The adapter decides what an agent actually is. The NUFI one runs on the gateway with no sandbox; the coding ones need a sandbox most instances do not have.
+description: The adapter decides what an agent actually is. The NuFi one runs on the gateway with no sandbox; the coding ones need a sandbox most instances do not have.
 ---
 
 An **agent** in Works is an employee: a name, a role, a place in the org,
@@ -11,7 +11,7 @@ what the agent actually *is* when it runs.
 
 | Adapter | Use for | Runs |
 |---|---|---|
-| `nufi_agent` | Knowledge work: research, drafting, review, answering from company documents | A NUFI model through the gateway, in the server's own process |
+| `nufi_agent` | Knowledge work: research, drafting, review, answering from company documents | A NuFi model through the gateway, in the server's own process |
 | `claude_local`, `codex_local`, `opencode_local`, `pi_local` | Repository work: code, pull requests | A coding harness in a sandbox with a git workspace |
 
 <Callout type="warn">
@@ -25,7 +25,7 @@ needs no sandbox. For knowledge work it is both the working choice and
 the cheaper one.
 </Callout>
 
-The setup wizard and the **New Agent** dialog both recommend **NUFI
+The setup wizard and the **New Agent** dialog both recommend **NuFi
 Agent** and keep the coding adapters behind **More Agent Adapter Types**,
 which matches what an instance can actually run.
 
@@ -42,14 +42,14 @@ choice as the wizard's step four. The page's tabs (**All**, **Active**,
 actually act on a task: a paused agent holds work without running it.
 The icon beside the tabs switches between the list and the org chart.
 
-## The NUFI adapter
+## The NuFi adapter
 
 `nufi_agent` reaches models two ways:
 
 | Target | What it does |
 |---|---|
-| `gateway` *(default)* | Calls a model through the NUFI gateway |
-| `chat` | Uses an agent you already built in the NUFI chat app, with its tools, MCP and documents |
+| `gateway` *(default)* | Calls a model through the NuFi gateway |
+| `chat` | Uses an agent you already built in the NuFi chat app, with its tools, MCP and documents |
 
 The second is worth knowing about: if a colleague has already built a
 good assistant in chat, an agent in Works can be that assistant rather
@@ -62,11 +62,11 @@ the model key, never the key itself — adapter config is visible in the
 interface.
 
 The normal arrangement is per person: bind `NUFI_MODEL_API_KEY` on the
-agent as a user secret, and each member connects their own NUFI account.
+agent as a user secret, and each member connects their own NuFi account.
 Runs then bill whoever the work belongs to, and revoking one person's
 access does not disturb anyone else.
 
-See [Connecting your NUFI account](/docs/works/connect-account).
+See [Connecting your NuFi account](/docs/works/connect-account).
 
 <Callout>
 An agent with no binding falls back to a server-wide key if the operator

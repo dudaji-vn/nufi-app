@@ -3,7 +3,7 @@ title: Run the stack locally
 description: The whole platform on your laptop with one script, and what to do when it does not come up.
 ---
 
-`deploy/platform` is a Docker Compose stack: the AI gateway, the NUFI app,
+`deploy/platform` is a Docker Compose stack: the AI gateway, the NuFi app,
 the console, observability and monitoring, wired together. Keep it running
 in the background. Every other guide in this section starts one app from
 source against it.
@@ -12,8 +12,8 @@ source against it.
 
 | Service | Image | Host port | What it is |
 |---|---|---|---|
-| `librechat` | `ghcr.io/dudaji-vn/nufichat:main` | 3080 | The NUFI app |
-| `console` | `ghcr.io/dudaji-vn/nufi-console:main` | 3001 | NUFI Console |
+| `librechat` | `ghcr.io/dudaji-vn/nufichat:main` | 3080 | The NuFi app |
+| `console` | `ghcr.io/dudaji-vn/nufi-console:main` | 3001 | NuFi Console |
 | `litellm-proxy` | built here from `litellm/`, tagged `nufi/litellm:local` | 4000 | The AI gateway, guardrails baked in |
 | `langfuse-web`, `langfuse-worker` | `langfuse/langfuse:3` | 3000 | A trace and a cost line per request |
 | `prometheus` | `prom/prometheus:v3.0.1` | 9090 | Metrics |
@@ -96,8 +96,8 @@ yet deployed". Grafana is on 3030.
 
 | URL | What | Sign in with |
 |---|---|---|
-| http://localhost:3080 | The NUFI app | Register. The first account becomes `ADMIN`. |
-| http://localhost:3001 | NUFI Console | The same session as the app; the cookie is shared on `localhost` |
+| http://localhost:3080 | The NuFi app | Register. The first account becomes `ADMIN`. |
+| http://localhost:3001 | NuFi Console | The same session as the app; the cookie is shared on `localhost` |
 | http://localhost:3000 | Langfuse | `admin@npuops.local` and `LANGFUSE_INIT_USER_PASSWORD` from `.env` |
 | http://localhost:3030 | Grafana | `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` from `.env`. The dashboard is **LiteLLM Overview** |
 | http://localhost:4000/ui | Gateway admin | `LITELLM_MASTER_KEY` from `.env` |

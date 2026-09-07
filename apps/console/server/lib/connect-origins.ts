@@ -19,7 +19,7 @@
  *
  * `URL.origin` does the normalising that makes exact comparison safe: it
  * lowercases the scheme and host, drops the default port, and discards path,
- * query, and fragment. So `https://Agents.NUFI.me:443/x` and
+ * query, and fragment. So `https://Agents.NuFi.me:443/x` and
  * `https://agents.nufi.me` compare equal, while nothing else does.
  */
 function canonicalise(value: string): string | null {

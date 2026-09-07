@@ -42,7 +42,7 @@ These requirements apply across all features above. Where a specific feature res
   user-visible strings are sourced from translation files (no hard-coded English in localised
   screens). The default for NuFi is English (verify: confirm the default language configured for
   the deployment).
-- **CC-13** The custom welcome message "Welcome to Nufi Chat." is shown on the chat landing screen.
+- **CC-13** The custom welcome message "Welcome to NuFi Chat." is shown on the chat landing screen.
 
 ### Accessibility
 - **CC-14** Interactive controls expose accessible names (`aria-label` / labels) and validation
@@ -74,5 +74,5 @@ The following upstream LibreChat capabilities are **not enabled** in the NuFi de
 out of scope): web search, code interpreter / artifacts execution, voice input/output (TTS/STT),
 social/OAuth sign-in via providers **other than Google** (GitHub, Discord, Facebook, Apple, OpenID,
 SAML — note that **Google sign-in IS enabled**), password reset (`ALLOW_PASSWORD_RESET=false`), and
-any chat endpoint other than **Nufi** and **Agents**. If any of these appear and are functional,
+any chat endpoint other than **NuFi** and **Agents**. If any of these appear and are functional,
 raise it as a configuration discrepancy.

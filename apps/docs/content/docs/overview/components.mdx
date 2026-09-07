@@ -1,9 +1,9 @@
 ---
 title: Components
-description: Every piece of NUFI, what it does, and where it runs.
+description: Every piece of NuFi, what it does, and where it runs.
 ---
 
-NUFI is one product made of several services. Most people only ever see
+NuFi is one product made of several services. Most people only ever see
 the app and the console. Admins also see the admin panel and, on the
 compose stack, the trace viewer and the dashboards. Everything else runs
 behind the gateway.
@@ -12,11 +12,11 @@ behind the gateway.
 
 | Surface | Hosted at | What it is for |
 |---|---|---|
-| The NUFI app | `chat.nufi.me` | conversations, files, agents, teams |
-| NUFI Console | `console.nufi.me` | self-service gateway keys and your own usage |
+| The NuFi app | `chat.nufi.me` | conversations, files, agents, teams |
+| NuFi Console | `console.nufi.me` | self-service gateway keys and your own usage |
 | Agents | `agents.nufi.me` | the door to the two agent products |
-| NUFI Studio | `studio.nufi.me` | flows on a canvas, published as endpoints |
-| NUFI Works | `works.nufi.me` | a team of agents with goals, approvals and a budget |
+| NuFi Studio | `studio.nufi.me` | flows on a canvas, published as endpoints |
+| NuFi Works | `works.nufi.me` | a team of agents with goals, approvals and a budget |
 
 Sign in once. The console reads the app's session, and the agent products
 accept an identity the console issues.
@@ -26,8 +26,8 @@ accept an identity the console issues.
 
 | Surface | Hosted at | What it is for |
 |---|---|---|
-| NUFI Admin Panel | `admin.app.nufi.me` | settings, users, roles, groups, per-role overrides, the audit log |
-| Langfuse | `langfuse.codechi.me` on NUFI's stack; host port 3000 on yours | every request as a trace: user, model, tokens, cost |
+| NuFi Admin Panel | `admin.app.nufi.me` | settings, users, roles, groups, per-role overrides, the audit log |
+| Langfuse | `langfuse.codechi.me` on NuFi's stack; host port 3000 on yours | every request as a trace: user, model, tokens, cost |
 | Grafana | `grafana.codechi.me`; host port 3030 | request rate, errors, latency, guardrail decisions |
 | The gateway's admin UI | `api.codechi.me/ui`; host port 4000 | models, keys, spend, signed in with the master key |
 | Prometheus, Alertmanager | host ports 9090 and 9093, over SSH | raw metrics and firing alerts |
@@ -38,10 +38,10 @@ accept an identity the console issues.
 
 | Service | What it does | Where it runs |
 |---|---|---|
-| The NUFI app | the conversation UI and API; owns accounts, conversations, agents, files | Railway (hosted), the compose stack (self-hosted) |
-| NUFI Console | keys, usage, the identity issuer, the chooser | both |
-| NUFI Admin Panel | the admin UI, against the app's admin API | Railway; its own image anywhere |
-| NUFI AI Gateway | LiteLLM with NUFI's guardrails: routing, keys, budgets, the five controls, traces, metrics | the compose stack |
+| The NuFi app | the conversation UI and API; owns accounts, conversations, agents, files | Railway (hosted), the compose stack (self-hosted) |
+| NuFi Console | keys, usage, the identity issuer, the chooser | both |
+| NuFi Admin Panel | the admin UI, against the app's admin API | Railway; its own image anywhere |
+| NuFi AI Gateway | LiteLLM with NuFi's guardrails: routing, keys, budgets, the five controls, traces, metrics | the compose stack |
 | Presidio analyzer and anonymizer | personal-data detection for the guardrails | the compose stack, next to the gateway |
 | `nufi-scanner` | the prompt-injection classifier the guardrails call | the compose stack, next to the gateway |
 | Langfuse | trace store: web, worker, ClickHouse, MinIO | the compose stack |
@@ -50,8 +50,8 @@ accept an identity the console issues.
 | MongoDB | the app's data | both |
 | Redis | the gateway's cache and rate-limit counters | the compose stack |
 | RAG service and pgvector | file uploads for the app, on Railway | Railway |
-| NUFI Studio | the flow canvas and its runtime; Langflow, vendored | Railway; its own image anywhere |
-| NUFI Works | the agent-team server and UI; Paperclip, vendored | Railway; its own image anywhere |
+| NuFi Studio | the flow canvas and its runtime; Langflow, vendored | Railway; its own image anywhere |
+| NuFi Works | the agent-team server and UI; Paperclip, vendored | Railway; its own image anywhere |
 
 Alerts are routed to Slack once an operator adds a webhook; until then
 critical alerts have a receiver and nowhere to go. The image names, ports
@@ -64,6 +64,6 @@ All of it is one repository, `dudaji-vn/nufi-app`: `apps/chat` (the app),
 `apps/console`, `apps/admin-panel`, `apps/nufi-agent` (Studio),
 `apps/agents` (Works), `apps/docs` (this manual), `deploy/platform` (the
 compose stack) and `deploy/railway` (the app on its own, and the Railway
-wrapper). Calling NUFI from your own code needs none of it; a key from the
-[console](/docs/end-user/api-keys) is enough. Changing NUFI starts at
+wrapper). Calling NuFi from your own code needs none of it; a key from the
+[console](/docs/end-user/api-keys) is enough. Changing NuFi starts at
 [Develop](/docs/developer).

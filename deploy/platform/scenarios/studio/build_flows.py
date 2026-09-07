@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the department agent scenarios as real NUFI Studio flows.
+"""Build the department agent scenarios as real NuFi Studio flows.
 
 The board asked for department use-case examples: a team buys a box and uses a
 shared drive, a chat tool and an AI agent. These are the agent half -- four

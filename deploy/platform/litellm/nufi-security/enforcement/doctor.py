@@ -392,7 +392,7 @@ def check_canary(ctx: "DoctorContext") -> CheckResult:
             gw = _isolated_gateway(td, ctx)
             body = {"model": pub_backend,
                     "messages": [{"role": "user",
-                                  "content": f"[NUFI-DOCTOR-CANARY] 합성 주민등록번호 {canary} 전송 시도"}],
+                                  "content": f"[NuFi-DOCTOR-CANARY] 합성 주민등록번호 {canary} 전송 시도"}],
                     "conversation_id": "nufi-doctor-canary"}
             resp = gw.process(body)
             audit_records = gw.audit.read_all()

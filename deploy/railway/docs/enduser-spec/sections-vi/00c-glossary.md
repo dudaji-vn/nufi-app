@@ -18,9 +18,9 @@ quyết* của tính năng đó.
 |---|---|
 | **NuFi Chat** | Ứng dụng chat hướng người dùng cuối; một bản fork của LibreChat được thương hiệu hóa. |
 | **NuFi Console** | Cổng tự phục vụ dành cho API key, ngân sách và mức sử dụng. |
-| **Endpoint** | Một kết nối nhà cung cấp AI được cấu hình. NuFi cung cấp hai endpoint: **Nufi** (mô hình chat) và **Agents**. |
-| **Nufi endpoint** | Endpoint chat tương thích OpenAI duy nhất; định tuyến đến backend đã cấu hình (LiteLLM trong môi trường sản xuất). |
-| **Model** (Mô hình) | Một mô hình AI cụ thể có thể chọn trong endpoint Nufi; danh sách được tải trực tiếp từ backend. |
+| **Endpoint** | Một kết nối nhà cung cấp AI được cấu hình. NuFi cung cấp hai endpoint: **NuFi** (mô hình chat) và **Agents**. |
+| **NuFi endpoint** | Endpoint chat tương thích OpenAI duy nhất; định tuyến đến backend đã cấu hình (LiteLLM trong môi trường sản xuất). |
+| **Model** (Mô hình) | Một mô hình AI cụ thể có thể chọn trong endpoint NuFi; danh sách được tải trực tiếp từ backend. |
 | **Agent** | Một trợ lý được cấu hình và tái sử dụng (mô hình + hướng dẫn + khả năng + Knowledge). Là nơi lưu trú của File Search / RAG trong NuFi. |
 | **File Search** | Khả năng của Agent cho phép RAG trên các tài liệu Knowledge đã tải lên của Agent. Là khả năng Agent duy nhất được bật trong NuFi. |
 | **Knowledge** (Kiến thức) | Các tài liệu đã tải lên vào một Agent. Lâu dài và được nhúng để truy xuất trong tất cả các cuộc hội thoại với Agent đó. |
@@ -37,7 +37,7 @@ quyết* của tính năng đó.
 | **LiteLLM** | Proxy đứng trước các mô hình AI, thực thi API key và ngân sách, và ghi lại mức sử dụng. Console quản lý các khóa đối với nó. |
 | **Budget / Spend** (Ngân sách / Chi tiêu) | Giới hạn chi tiêu và chi phí tích lũy của người dùng, được LiteLLM theo dõi và hiển thị trong Console. |
 | **Reveal-once** (Hiển thị một lần) | Màn hình hiển thị một lần duy nhất bí mật của API key mới tạo; không thể truy xuất lại sau đó. |
-| **Endpoints menu** | Menu Chat để chuyển đổi giữa các endpoint Nufi và Agents. |
+| **Endpoints menu** | Menu Chat để chuyển đổi giữa các endpoint NuFi và Agents. |
 | **pgvector / rag_api** | Cơ sở dữ liệu vector và dịch vụ nhúng hỗ trợ File Search. |
 | **Meilisearch** | Công cụ tìm kiếm hỗ trợ tìm kiếm cuộc hội thoại. |
 

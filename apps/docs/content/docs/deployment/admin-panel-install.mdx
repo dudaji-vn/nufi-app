@@ -3,11 +3,11 @@ title: Installing the admin panel
 description: The admin panel is its own image, not part of the compose stack; one container, three variables.
 ---
 
-NUFI Admin Panel is not in `deploy/platform/docker-compose.yml`. It is a
+NuFi Admin Panel is not in `deploy/platform/docker-compose.yml`. It is a
 separate image, `ghcr.io/dudaji-vn/nufichat-admin-panel`, that talks to the
-NUFI app over the app's HTTP API and keeps its own sessions. Run it
+NuFi app over the app's HTTP API and keeps its own sessions. Run it
 wherever it can reach the app: next to the stack, or on Railway, which is
-where NUFI's own copy runs (service `nufichat-admin-panel`, pinned to
+where NuFi's own copy runs (service `nufichat-admin-panel`, pinned to
 `v0.0.5`).
 
 ## Run it

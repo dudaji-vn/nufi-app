@@ -6,7 +6,7 @@ import { useCapabilities } from '@/hooks';
 
 export const Route = createFileRoute('/_app/audit-log')({
   head: () => ({
-    meta: [{ title: 'Audit Log | NUFI Admin Panel' }],
+    meta: [{ title: 'Audit Log | NuFi Admin Panel' }],
   }),
   component: AuditLogRoute,
 });

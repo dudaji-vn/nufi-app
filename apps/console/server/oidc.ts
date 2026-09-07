@@ -90,7 +90,7 @@ oidc.get('/authorize', async (c) => {
   const refreshToken = getCookie(c, 'refreshToken');
   const identity = refreshToken ? await resolveChatIdentity(refreshToken) : null;
   if (!identity) {
-    return c.json({ error: 'unauthorized', detail: 'could not resolve NUFI identity' }, 401);
+    return c.json({ error: 'unauthorized', detail: 'could not resolve NuFi identity' }, 401);
   }
 
   for (const cookie of identity.setCookies) c.header('set-cookie', cookie, { append: true });

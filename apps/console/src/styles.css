@@ -31,7 +31,7 @@
   --color-ring: var(--ring);
 }
 
-/* NUFI brand palette — mirrors super-llm/dashboard (DudajiVN company UI lib). */
+/* NuFi brand palette — mirrors super-llm/dashboard (DudajiVN company UI lib). */
 :root {
   --radius: 0.75rem;
   --background: hsl(0 0% 100%);
@@ -55,7 +55,7 @@
   --ring: hsl(262.1 83.3% 57.8%);
 }
 
-/* NUFI Cyber-Grid — Deep Void palette (dark) */
+/* NuFi Cyber-Grid — Deep Void palette (dark) */
 .dark {
   --background: hsl(240 22% 5%); /* #080810 near-black main area */
   --foreground: hsl(240 20% 92%); /* #e8e8f0 near-white text */

@@ -141,7 +141,7 @@ briefly unhealthy the panel signs you out. `docker compose logs librechat`.
 
 A schema change the running version cannot read. Roll the image back and
 restore the pre-upgrade MongoDB dump:
-[Upgrade the NUFI app](/docs/deployment/upgrade-librechat).
+[Upgrade the NuFi app](/docs/deployment/upgrade-librechat).
 
 ## The console cannot provision a user
 
@@ -158,5 +158,5 @@ gateway is down. Provisioning is retried on the next visit once it is back.
 chat version; the current app answers 404 there, so the test cannot pass
 until it is updated. `./scripts/smoke-test.sh` (gateway, trace, metrics,
 guardrail) still passes, and the four manual checks in
-[Upgrade the NUFI app](/docs/deployment/upgrade-librechat#watch-the-first-start)
+[Upgrade the NuFi app](/docs/deployment/upgrade-librechat#watch-the-first-start)
 cover the chat leg.

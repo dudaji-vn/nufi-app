@@ -30,7 +30,7 @@ Each surface signs you in separately:
 
 | Surface | Where | Sign in with |
 |---|---|---|
-| NUFI Admin Panel | `admin.app.nufi.me` on NUFI's hosting; port 3000 of its own container elsewhere | your NUFI account, if it holds `access:admin` |
+| NuFi Admin Panel | `admin.app.nufi.me` on NuFi's hosting; port 3000 of its own container elsewhere | your NuFi account, if it holds `access:admin` |
 | the gateway's admin UI | `api.codechi.me/ui`; `localhost:4000/ui` on the compose stack | the gateway master key |
 | Langfuse | `langfuse.codechi.me`; `localhost:3000` | the admin the stack seeded from `.env` (`LANGFUSE_INIT_USER_EMAIL`), then anyone invited |
 | Grafana | `grafana.codechi.me`; `localhost:3030` | `GRAFANA_ADMIN_USER` and its password from `.env` |

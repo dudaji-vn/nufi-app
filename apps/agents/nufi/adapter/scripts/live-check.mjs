@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Run the real heartbeat loop against a real NUFI Works instance, then check the
+ * Run the real heartbeat loop against a real NuFi Works instance, then check the
  * database rather than the agent's account of itself.
  *
  * This exists because of one measured failure. A vendor harness driving a

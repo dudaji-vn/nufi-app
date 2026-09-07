@@ -11,14 +11,14 @@ const COOKIE_DOMAIN = process.env.IDENTITY_COOKIE_DOMAIN ?? '.nufi.me';
 const TTL_SECONDS = Number(process.env.IDENTITY_TTL_SECONDS ?? 8 * 60 * 60);
 
 /**
- * NUFI Studio is not an OAuth client. It validates a JWT it finds in a cookie
+ * NuFi Studio is not an OAuth client. It validates a JWT it finds in a cookie
  * (LANGFLOW_EXTERNAL_AUTH_TOKEN_COOKIE) against this console's JWKS, and
  * provisions the local user on first sight. So the whole handoff is: check the
  * chat session, mint a token for Studio alone, set it, redirect.
  *
  * The cookie is scoped to the parent domain because a response from
  * console.nufi.me cannot set a cookie that only studio.nufi.me sees. That
- * means every NUFI subdomain receives it. It is audience-scoped and
+ * means every NuFi subdomain receives it. It is audience-scoped and
  * short-lived, so another subdomain can do nothing with it except replay it to
  * Studio -- which is where it was going. If a subdomain ever stops being ours,
  * this needs a per-host proxy instead.
@@ -32,7 +32,7 @@ enter.get('/studio', async (c) => {
   const refreshToken = getCookie(c, 'refreshToken');
   const identity = refreshToken ? await resolveChatIdentity(refreshToken) : null;
   if (!identity) {
-    return c.json({ error: 'unauthorized', detail: 'could not resolve NUFI identity' }, 401);
+    return c.json({ error: 'unauthorized', detail: 'could not resolve NuFi identity' }, 401);
   }
 
   // The lookup rotated the session token; hand the replacement to the browser

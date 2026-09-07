@@ -15,7 +15,7 @@
 
 ## 1. Context
 
-The NUFI platform currently has **three frontend products**:
+The NuFi platform currently has **three frontend products**:
 
 | Product | Purpose | Audience |
 |---|---|---|
@@ -86,7 +86,7 @@ LibreChat is a fast-moving open-source project (hundreds of commits per month). 
 
 ### Reason 4 — Reusability (long-term strategy)
 
-Today NPUOps Console serves NUFI Chat. But the company's **roadmap** likely includes:
+Today NPUOps Console serves NuFi Chat. But the company's **roadmap** likely includes:
 
 - RAG-as-a-Service
 - Embedding API

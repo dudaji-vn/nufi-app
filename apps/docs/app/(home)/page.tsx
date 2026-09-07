@@ -35,7 +35,7 @@ const sections: Section[] = [
   {
     title: 'Overview',
     href: '/docs/overview',
-    desc: 'What NUFI is and how the pieces fit. Read this first if you are new.',
+    desc: 'What NuFi is and how the pieces fit. Read this first if you are new.',
     icon: <Compass className="size-5" strokeWidth={1.75} />,
     tile: 'bg-sky-500/10 text-sky-600 dark:text-sky-300',
   },
@@ -47,14 +47,14 @@ const sections: Section[] = [
     tile: 'bg-violet-500/10 text-violet-600 dark:text-violet-300',
   },
   {
-    title: 'NUFI Studio',
+    title: 'NuFi Studio',
     href: '/docs/studio',
     desc: 'Build a flow on a canvas and publish it as an endpoint your code can call.',
     icon: <Workflow className="size-5" strokeWidth={1.75} />,
     tile: 'bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-300',
   },
   {
-    title: 'NUFI Works',
+    title: 'NuFi Works',
     href: '/docs/works',
     desc: 'Give a team of agents a goal, approve what matters, and watch the spend.',
     icon: <Users className="size-5" strokeWidth={1.75} />,
@@ -119,7 +119,7 @@ const paths: Path[] = [
   {
     eyebrow: 'For administrators',
     title: 'Run it for your organisation',
-    desc: 'Install NUFI on your own hardware or on Railway, set budgets and roles, and keep it healthy.',
+    desc: 'Install NuFi on your own hardware or on Railway, set budgets and roles, and keep it healthy.',
     href: '/docs/deployment',
     cta: 'Open the deployment guide',
     icon: <Rocket className="size-5" strokeWidth={1.75} />,
@@ -137,7 +137,7 @@ const paths: Path[] = [
     cta: 'Open the developer guide',
     icon: <Code className="size-5" strokeWidth={1.75} />,
     links: [
-      { label: 'Connect NUFI to your code', href: '/docs/end-user/guides/connect-nufi-to-your-code' },
+      { label: 'Connect NuFi to your code', href: '/docs/end-user/guides/connect-nufi-to-your-code' },
       { label: 'Run the stack locally', href: '/docs/developer/run-locally' },
       { label: 'Add or change a model', href: '/docs/developer/models' },
     ],
@@ -164,7 +164,7 @@ const guides = [
     icon: <Users className="size-5" strokeWidth={1.75} />,
   },
   {
-    title: 'Connect NUFI to your code',
+    title: 'Connect NuFi to your code',
     desc: 'Generate an API key in the console and make your first request.',
     href: '/docs/end-user/guides/connect-nufi-to-your-code',
     icon: <KeyRound className="size-5" strokeWidth={1.75} />,
@@ -186,7 +186,7 @@ const features = [
   },
   {
     title: 'Agents, flows, and agent teams',
-    desc: 'Build an assistant in the app, a pipeline in NUFI Studio, or a team that runs work in NUFI Works.',
+    desc: 'Build an assistant in the app, a pipeline in NuFi Studio, or a team that runs work in NuFi Works.',
   },
   {
     title: 'Shared with the right people',
@@ -207,7 +207,7 @@ export default function HomePage() {
         <div className="relative mx-auto grid w-full max-w-6xl gap-12 px-6 pb-20 pt-16 md:pt-24 lg:grid-cols-[1.05fr_1fr] lg:items-center lg:pb-28">
           <div>
             <p className="mb-4 text-xs font-medium uppercase tracking-[0.22em] text-fd-muted-foreground">
-              NUFI · User manual
+              NuFi · User manual
             </p>
             <h1 className="mb-5 text-4xl font-bold tracking-tight md:text-6xl">
               The AI app built for{' '}
@@ -224,7 +224,7 @@ export default function HomePage() {
             {/*
               "Start reading" lands on Overview, a page you can actually read,
               not on /docs, which would repeat the section grid below. "Open
-              NUFI" goes to the live app, the same place as the top nav.
+              NuFi" goes to the live app, the same place as the top nav.
             */}
             <div className="flex flex-wrap gap-3">
               <Link
@@ -238,7 +238,7 @@ export default function HomePage() {
                 href="https://chat.nufi.me"
                 className="inline-flex items-center rounded-lg border border-fd-border bg-fd-card px-5 py-2.5 text-sm font-medium transition hover:bg-fd-accent"
               >
-                Open NUFI
+                Open NuFi
               </a>
             </div>
             <ul className="mt-10 flex flex-wrap gap-x-6 gap-y-2 text-sm text-fd-muted-foreground">
@@ -377,7 +377,7 @@ export default function HomePage() {
       <section className="mx-auto w-full max-w-6xl px-6 py-20">
         <SectionHeading
           eyebrow="What you get"
-          title="What NUFI gives your team"
+          title="What NuFi gives your team"
           desc="The parts of the product the manual keeps coming back to."
         />
         <div className="grid gap-x-10 gap-y-8 sm:grid-cols-2 lg:grid-cols-3">
@@ -401,7 +401,7 @@ export default function HomePage() {
       {/* -------------------------------------------------------- footer */}
       <section className="border-t border-fd-border">
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-8 text-sm text-fd-muted-foreground">
-          <p>NUFI documentation. Describes the hosted app at chat.nufi.me and the same software on your own hardware.</p>
+          <p>NuFi documentation. Describes the hosted app at chat.nufi.me and the same software on your own hardware.</p>
           <div className="flex flex-wrap gap-x-6 gap-y-2">
             <a href="https://chat.nufi.me" className="hover:text-fd-foreground">The app</a>
             <a href="https://console.nufi.me" className="hover:text-fd-foreground">Console</a>

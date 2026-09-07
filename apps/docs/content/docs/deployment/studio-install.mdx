@@ -1,9 +1,9 @@
 ---
-title: Installing NUFI Studio
-description: What NUFI Studio needs to run, the two settings that decide whether it survives a redeploy, and how to check the install actually took.
+title: Installing NuFi Studio
+description: What NuFi Studio needs to run, the two settings that decide whether it survives a redeploy, and how to check the install actually took.
 ---
 
-NUFI Studio is a Python/FastAPI backend serving a React UI. It is
+NuFi Studio is a Python/FastAPI backend serving a React UI. It is
 deployed separately from the chat app and shares only the gateway.
 
 ## Requirements
@@ -29,10 +29,10 @@ docker run -d \
 
 `main` is the image every push to `apps/nufi-agent` produces; a
 `nufi-studio-vX.Y.Z` tag on the repository publishes `vX.Y.Z` (and
-`latest`), and none has been cut yet. NUFI's own instance follows `main`.
+`latest`), and none has been cut yet. NuFi's own instance follows `main`.
 
 To build it yourself, use `apps/nufi-agent/nufi/Dockerfile` rather than
-the upstream one — it is the file that applies the NUFI branding and
+the upstream one — it is the file that applies the NuFi branding and
 turns off upstream telemetry.
 
 <Callout type="warn">
@@ -92,9 +92,9 @@ python3 -c 'import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).deco
 the default and the instance has no accounts at all — every visitor is
 the same implicit user with access to every flow.
 
-### Signing in with a NUFI account
+### Signing in with a NuFi account
 
-Studio can accept the identity NUFI already issued, so members do not
+Studio can accept the identity NuFi already issued, so members do not
 get a second password. That is a separate piece of setup on both sides —
 see [Single sign-on for the agent apps](/docs/deployment/agents-sso).
 
@@ -126,7 +126,7 @@ curl -fsS https://studio.example.com/health_check
 Then check the two things a health check cannot:
 
 1. **The branding took.** Load the page and confirm the product name is
-   NUFI Studio. The name comes from a build-time replacement; a build
+   NuFi Studio. The name comes from a build-time replacement; a build
    that skipped it serves the upstream name to your users.
 2. **The database is Postgres.** Create a flow, redeploy, and confirm
    it is still there. This is the only test that actually distinguishes

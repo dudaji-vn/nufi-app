@@ -1,4 +1,4 @@
-// Capture documentation screenshots from the live NUFI surfaces with Playwright.
+// Capture documentation screenshots from the live NuFi surfaces with Playwright.
 //
 //   bun run screenshots                # capture everything
 //   bun run screenshots chat admin     # capture only the named surfaces
@@ -439,7 +439,7 @@ async function assertShot(page, name, { shows, hides } = {}) {
  * Make a local dev stack look like what a user actually sees.
  *
  * The local instance is branded NPUOps and signed in as the end-to-end test
- * account; production is NUFI. Showing the dev branding in user documentation
+ * account; production is NuFi. Showing the dev branding in user documentation
  * would be less accurate, not more — this is the same normalisation
  * `redactPeople` performs for teammate names, applied to the instance name.
  * Nothing about the security behaviour on screen is touched.
@@ -451,7 +451,7 @@ async function normaliseBranding(page) {
     const walk = (node) => {
       if (node.nodeType === 3) {
         if (node.nodeValue.includes('NPUOps')) {
-          node.nodeValue = node.nodeValue.replaceAll('NPUOps', 'NUFI');
+          node.nodeValue = node.nodeValue.replaceAll('NPUOps', 'NuFi');
         } else if (node.nodeValue.trim() === 'E2E Bot') {
           node.nodeValue = 'You';
         }
@@ -461,7 +461,7 @@ async function normaliseBranding(page) {
     };
     walk(document.body);
     document.querySelectorAll('textarea, [contenteditable="true"]').forEach((el) => {
-      if (el.placeholder) el.placeholder = el.placeholder.replaceAll('NPUOps', 'NUFI');
+      if (el.placeholder) el.placeholder = el.placeholder.replaceAll('NPUOps', 'NuFi');
     });
   });
 }
@@ -728,17 +728,17 @@ const captures = {
     await page.goto(`${URLS.agents}/`, { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2500);
     const seen = await page.evaluate(() => document.body.innerText);
-    if (!/NUFI Studio/.test(seen) || !/NUFI Works/.test(seen)) {
+    if (!/NuFi Studio/.test(seen) || !/NuFi Works/.test(seen)) {
       throw new Error('chooser did not render both products');
     }
     await shot(page, 'agents-chooser');
     await page.close();
   },
 
-  /** NUFI Studio: the canvas, a flow, and where a published flow is reached. */
+  /** NuFi Studio: the canvas, a flow, and where a published flow is reached. */
   async studio(context) {
     const page = await context.newPage();
-    await enterViaChooser(page, 'NUFI Studio');
+    await enterViaChooser(page, 'NuFi Studio');
     await page.waitForTimeout(3000);
     await shot(page, 'studio-home');
 
@@ -761,10 +761,10 @@ const captures = {
     await page.close();
   },
 
-  /** NUFI Works: the operations app a member lands in from the chooser. */
+  /** NuFi Works: the operations app a member lands in from the chooser. */
   async works(context) {
     const page = await context.newPage();
-    await enterViaChooser(page, 'NUFI Works');
+    await enterViaChooser(page, 'NuFi Works');
     await page.waitForTimeout(3000);
     await redactPeople(page);
     // A member whose last-used company no longer admits them gets every page

@@ -311,9 +311,9 @@ const DEFINITIONS = validateBuiltInAgentDefinitions([
   /**
    * NuFi: `nufi_agent` first, and the default.
    *
-   * Upstream lists only vendor harnesses here. NUFI Works serves none of them —
+   * Upstream lists only vendor harnesses here. NuFi Works serves none of them —
    * the container has no vendor CLI and no vendor key, and every model call goes
-   * through the NUFI gateway. Without this, enabling a built-in produced an
+   * through the NuFi gateway. Without this, enabling a built-in produced an
    * agent that could never run, and fixing its adapter was refused with
    * `built_in_agent_adapter_not_allowed`.
    */
@@ -332,9 +332,9 @@ const DEFINITIONS = validateBuiltInAgentDefinitions([
   /**
    * NuFi: `nufi_agent` first, and the default.
    *
-   * Upstream lists only vendor harnesses here. NUFI Works serves none of them —
+   * Upstream lists only vendor harnesses here. NuFi Works serves none of them —
    * the container has no vendor CLI and no vendor key, and every model call goes
-   * through the NUFI gateway. Without this, enabling a built-in produced an
+   * through the NuFi gateway. Without this, enabling a built-in produced an
    * agent that could never run, and fixing its adapter was refused with
    * `built_in_agent_adapter_not_allowed`.
    */
@@ -366,9 +366,9 @@ const DEFINITIONS = validateBuiltInAgentDefinitions([
   /**
    * NuFi: `nufi_agent` first, and the default.
    *
-   * Upstream lists only vendor harnesses here. NUFI Works serves none of them —
+   * Upstream lists only vendor harnesses here. NuFi Works serves none of them —
    * the container has no vendor CLI and no vendor key, and every model call goes
-   * through the NUFI gateway. Without this, enabling a built-in produced an
+   * through the NuFi gateway. Without this, enabling a built-in produced an
    * agent that could never run, and fixing its adapter was refused with
    * `built_in_agent_adapter_not_allowed`.
    */
@@ -444,16 +444,16 @@ const DEFINITIONS = validateBuiltInAgentDefinitions([
   /**
    * NuFi: `nufi_agent` first, and the default.
    *
-   * Upstream lists only vendor harnesses here. NUFI Works serves none of them —
+   * Upstream lists only vendor harnesses here. NuFi Works serves none of them —
    * the container has no vendor CLI and no vendor key, and every model call goes
-   * through the NUFI gateway. Without this, enabling a built-in produced an
+   * through the NuFi gateway. Without this, enabling a built-in produced an
    * agent that could never run, and fixing its adapter was refused with
    * `built_in_agent_adapter_not_allowed`.
    */
     allowedAdapterTypes: ["nufi_agent", "claude_local", "codex_local", "gemini_local", "opencode_local", "process"],
     defaultAdapterType: "nufi_agent",
     defaultAdapterConfig: {
-      // NuFi: the adapter above serves one model, through the NUFI gateway.
+      // NuFi: the adapter above serves one model, through the NuFi gateway.
       // Upstream's `claude-haiku-4-5` is refused by its own validation here.
       model: "nufi-agent",
     },

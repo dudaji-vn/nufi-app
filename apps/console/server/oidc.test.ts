@@ -4,7 +4,7 @@ import type { AuthedUser } from './middleware/auth.ts';
 import { oidc } from './oidc.ts';
 
 /**
- * The authorization-code half of the identity issuer, used by NUFI Works.
+ * The authorization-code half of the identity issuer, used by NuFi Works.
  *
  * Everything here is about what must NOT happen. An unregistered redirect_uri
  * must never receive a code, because that is how a page on the internet walks
@@ -144,7 +144,7 @@ describe('authorize', () => {
   });
 
   // The session cookie carries `{ id, sessionId }` and nothing else, so an
-  // identity built from it alone has no email -- which NUFI Works rejects at
+  // identity built from it alone has no email -- which NuFi Works rejects at
   // the end of the round trip, after the member has watched a redirect that
   // looks like it worked. No email, no code.
   it('refuses to issue a code when the identity has no email', async () => {

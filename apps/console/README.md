@@ -1,11 +1,11 @@
-# NUFI Console
+# NuFi Console
 
-Self-service developer console for the NUFI AI platform: end users manage
+Self-service developer console for the NuFi AI platform: end users manage
 LiteLLM API keys, budgets, and usage. Single container — Hono serves both
 the Vite-built React SPA and the oRPC API at one origin
 (`http://localhost:3001` in the running stack).
 
-Deployed alongside the NUFI app by the `deploy/platform` compose stack in
+Deployed alongside the NuFi app by the `deploy/platform` compose stack in
 this repository, which pulls this image from `ghcr.io/dudaji-vn/nufi-console`.
 
 ## Stack
@@ -128,6 +128,6 @@ LiteLLM key metadata, spend rows, and Langfuse traces.
 
 ## Related repos
 
-- `deploy/platform` — the docker compose stack that runs this console alongside the gateway, the NUFI app, Langfuse, and monitoring.
-- `apps/chat` — the NUFI app, which issues the JWT this console verifies.
+- `deploy/platform` — the docker compose stack that runs this console alongside the gateway, the NuFi app, Langfuse, and monitoring.
+- `apps/chat` — the NuFi app, which issues the JWT this console verifies.
 

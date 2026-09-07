@@ -159,7 +159,7 @@ describeEmbeddedPostgres("built-in agents", () => {
     const definitions = listBuiltInAgentDefinitions();
     expect(definitions.map((definition) => definition.key).sort()).toEqual(["briefs", "learning", "reflection-coach", "summarizer"]);
     const summarizer = definitions.find((definition) => definition.key === "summarizer");
-    // NuFi: this fork runs built-ins on the NUFI gateway, not a vendor harness.
+    // NuFi: this fork runs built-ins on the NuFi gateway, not a vendor harness.
     expect(summarizer).toMatchObject({
       defaultAdapterType: "nufi_agent",
       defaultAdapterConfig: { model: "nufi-agent" },
@@ -982,7 +982,7 @@ describeEmbeddedPostgres("built-in agents", () => {
     expect(grantKeys).not.toContain("skills:create");
   });
 
-  it("materializes the Summarizer bundle paused on the NUFI adapter with a disabled routine", async () => {
+  it("materializes the Summarizer bundle paused on the NuFi adapter with a disabled routine", async () => {
     const companyId = await seedCompany();
     const root = await agentService(db).create(companyId, {
       name: "CEO",
@@ -1441,12 +1441,12 @@ describeEmbeddedPostgres("built-in agents", () => {
   });
 });
 
-describe("built-in agents on NUFI Works", () => {
+describe("built-in agents on NuFi Works", () => {
   /**
    * Upstream's built-in agents may only run on a vendor harness — claude_local,
-   * codex_local, gemini_local, opencode_local, process. NUFI Works serves none
+   * codex_local, gemini_local, opencode_local, process. NuFi Works serves none
    * of those: the harness runs in a container with no vendor CLI and no vendor
-   * key, and every model call goes through the NUFI gateway via `nufi_agent`.
+   * key, and every model call goes through the NuFi gateway via `nufi_agent`.
    *
    * So on this fork the four built-ins were unusable by construction. Enabling
    * one produced an agent that could never run, and correcting its adapter was
@@ -1462,7 +1462,7 @@ describe("built-in agents on NUFI Works", () => {
     }
   });
 
-  it("reaches for the NUFI adapter first, since it is the one that works here", () => {
+  it("reaches for the NuFi adapter first, since it is the one that works here", () => {
     for (const definition of listBuiltInAgentDefinitions()) {
       const fallback = definition.defaultAdapterType ?? definition.allowedAdapterTypes?.[0];
       expect(fallback, `${definition.key} should default to nufi_agent`).toBe("nufi_agent");

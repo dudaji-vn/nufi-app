@@ -8,7 +8,7 @@
  *
  * It must run on EVERY server build. If it does not, the two bundles disagree
  * and every string compared between them silently stops matching: the client
- * looks for "NUFI needs a disposition…" while the server keeps writing
+ * looks for "NuFi needs a disposition…" while the server keeps writing
  * "Paperclip needs a disposition…". Nothing throws.
  *
  * Usage:
@@ -40,7 +40,7 @@ const dist = args.find((a) => !a.startsWith("--")) ?? join(HERE, "..", "server",
  *   export declare const SUCCESSFUL_RUN_HANDOFF_REQUIRED_NOTICE_BODY =
  *     "Paperclip needs a disposition before this issue can continue.";
  *
- * while the matching .js now says NUFI. A consumer comparing against that
+ * while the matching .js now says NuFi. A consumer comparing against that
  * constant would typecheck against a literal the runtime never produces. A
  * declaration that disagrees with its own implementation is worse than no
  * declaration.

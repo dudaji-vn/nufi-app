@@ -22,7 +22,7 @@ services:
       MONGO_URI: mongodb://mongo:27017/LibreChat
       DOMAIN_CLIENT: ${DOMAIN_CLIENT}
       DOMAIN_SERVER: ${DOMAIN_SERVER}
-      APP_TITLE: ${APP_TITLE:-Nufi Chat}
+      APP_TITLE: ${APP_TITLE:-NuFi}
       ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-true}
       ALLOW_EMAIL_LOGIN: ${ALLOW_EMAIL_LOGIN:-true}
       JWT_SECRET: ${JWT_SECRET}

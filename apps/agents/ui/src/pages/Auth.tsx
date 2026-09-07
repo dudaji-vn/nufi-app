@@ -26,7 +26,7 @@ export function AuthPage() {
   const autoStarted = useRef(false);
 
   /**
-   * Hand off to the NUFI console.
+   * Hand off to the NuFi console.
    *
    * The button is rendered without probing first: the only way to ask whether
    * the provider exists is to start the flow, and doing that on mount would set
@@ -41,12 +41,12 @@ export function AuthPage() {
     try {
       const url = await authApi.signInOAuth({ providerId: "nufi", callbackURL: nextPath });
       if (!url) {
-        setError("This instance is not connected to a NUFI console. Sign in with your email and password.");
+        setError("This instance is not connected to a NuFi console. Sign in with your email and password.");
         return;
       }
       window.location.assign(url);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not reach the NUFI console.");
+      setError(err instanceof Error ? err.message : "Could not reach the NuFi console.");
     } finally {
       setOauthPending(false);
     }
@@ -70,7 +70,7 @@ export function AuthPage() {
 
   /**
    * Arriving from the chooser at agents.nufi.me means the visitor has already
-   * chosen NUFI Works and already has a NUFI session; making them press a
+   * chosen NuFi Works and already has a NuFi session; making them press a
    * second button is a step that exists only because this product signs in
    * over OAuth while Studio reads a cookie. So `?sso=1` starts the flow on
    * arrival and the two products feel the same.
@@ -160,7 +160,7 @@ export function AuthPage() {
             onClick={startOAuth}
             disabled={oauthPending}
           >
-            {oauthPending ? "Redirecting…" : "Continue with NUFI"}
+            {oauthPending ? "Redirecting…" : "Continue with NuFi"}
           </Button>
 
           <div className="mt-4 flex items-center gap-3">

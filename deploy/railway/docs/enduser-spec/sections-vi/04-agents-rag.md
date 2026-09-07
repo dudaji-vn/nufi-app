@@ -4,7 +4,7 @@
 
 NuFi Chat cung cấp hai cách khác nhau để trò chuyện với AI:
 
-**Endpoint Nufi thông thường** — chế độ chat mặc định. Người dùng chọn "Nufi" từ bộ
+**Endpoint NuFi thông thường** — chế độ chat mặc định. Người dùng chọn "NuFi" từ bộ
 chọn endpoint/model. Các file đính kèm qua nút 📎 được gửi dưới dạng tệp đính kèm
 theo tin nhắn và chỉ có hiệu lực trong tin nhắn đó; chúng không được lưu trữ lâu dài
 và không khả dụng trong bất kỳ cuộc hội thoại hoặc phiên làm việc nào trong tương
@@ -44,14 +44,14 @@ trong trình chỉnh sửa agent. Tính năng duy nhất người dùng có th�
 ### Chọn endpoint Agents
 
 **Mục đích:** Định tuyến một cuộc hội thoại qua hạ tầng Agents thay vì endpoint
-chat Nufi thông thường.
+chat NuFi thông thường.
 
 **Điều kiện tiên quyết / truy cập:** `interface.agents: true` và
 `interface.endpointsMenu: true` phải được đặt trong `librechat.yaml` (cả hai đều đã
 được bật). Mọi người dùng đã xác thực đều có thể chuyển đổi endpoint.
 
 **Thành phần giao diện:**
-- Bộ chọn endpoint / model trên thanh công cụ phía trên (mặc định ghi nhãn "Nufi")
+- Bộ chọn endpoint / model trên thanh công cụ phía trên (mặc định ghi nhãn "NuFi")
 - Mục dropdown ghi nhãn **"Agents"** (`com_ui_agents`)
 - Sau khi chọn, bảng bên phải hiển thị bảng điều khiển Agent builder
 
@@ -70,7 +70,7 @@ chat Nufi thông thường.
 **Trạng thái & trường hợp đặc biệt:**
 - Nếu `interface.endpointsMenu` được đặt thành `false`, bộ chọn sẽ bị ẩn và endpoint
   Agents sẽ không thể truy cập được.
-- Chuyển từ Agents sang Nufi giữa chừng trong một cuộc hội thoại không xóa cuộc hội
+- Chuyển từ Agents sang NuFi giữa chừng trong một cuộc hội thoại không xóa cuộc hội
   thoại đó; nó chỉ thay đổi endpoint cho tin nhắn tiếp theo mà thôi.
 
 **Tiêu chí chấp nhận:**
@@ -172,7 +172,7 @@ tùy chọn tinh chỉnh các tham số suy luận.
 - **Tiêu đề Model Parameters** (`com_ui_model_parameters`)
 - **Combobox Provider** — nhãn `com_ui_provider` (bắt buộc `*`); liệt kê tất cả các
   endpoint không phải assistant đã được cấu hình, ngoại trừ `agents` chính nó. Trong
-  NuFi, nhà cung cấp duy nhất có thể chọn là **"Nufi"** (endpoint tương thích
+  NuFi, nhà cung cấp duy nhất có thể chọn là **"NuFi"** (endpoint tương thích
   OpenAI tùy chỉnh).
 - **Combobox Model** — nhãn `com_ui_model` (bắt buộc `*`); được điền từ danh sách
   model được tải về cho nhà cung cấp đã chọn. Bị vô hiệu hóa cho đến khi chọn nhà
@@ -194,14 +194,14 @@ tùy chọn tinh chỉnh các tham số suy luận.
    "Model Parameters have been reset." cho trình đọc màn hình.
 
 **Trạng thái & trường hợp đặc biệt:**
-- Nếu backend Nufi không thể truy cập, danh sách model hiển thị placeholder
+- Nếu backend NuFi không thể truy cập, danh sách model hiển thị placeholder
   "loading..." (từ mặc định `librechat.yaml`) cho đến khi tải thành công hoặc hết
   thời gian chờ.
-- Trong NuFi chỉ có một nhà cung cấp ("Nufi"); combobox Provider vẫn được hiển thị
+- Trong NuFi chỉ có một nhà cung cấp ("NuFi"); combobox Provider vẫn được hiển thị
   nhưng chỉ có một tùy chọn.
 
 **Tiêu chí chấp nhận:**
-- AC-1 — Giả sử bảng phụ Model đang mở và Provider là "Nufi", khi người dùng mở
+- AC-1 — Giả sử bảng phụ Model đang mở và Provider là "NuFi", khi người dùng mở
   dropdown Model, thì danh sách chứa ít nhất một model được tải từ backend.
 - AC-2 — Giả sử đã chọn một model, khi người dùng nhấp "Back to builder", thì
   builder chính hiển thị tên model đã chọn trong nút Model.
@@ -279,7 +279,7 @@ có thể truy xuất các đoạn trích liên quan tại thời điểm chat t
 - Hộp kiểm "Enable File Search" phải được chọn.
 - Dịch vụ `rag_api` phải có thể truy cập được.
 
-**Giới hạn file (từ `librechat.yaml` `fileConfig.endpoints.Nufi`):**
+**Giới hạn file (từ `librechat.yaml` `fileConfig.endpoints.NuFi`):**
 - Tối đa **5 files** mỗi agent (`fileLimit: 5`)
 - Giới hạn kích thước mỗi file: **20 MB** (`fileSizeLimit: 20`)
 - Giới hạn tổng kích thước trên tất cả các file: **50 MB** (`totalSizeLimit: 50`)
@@ -290,10 +290,10 @@ có thể truy xuất các đoạn trích liên quan tại thời điểm chat t
   `application/vnd.openxmlformats-officedocument.wordprocessingml.document` (`.docx`),
   `application/json`
 
-> Lưu ý: Cấu hình file NuFi được áp dụng dưới khóa nhà cung cấp "Nufi"; endpoint
-> Agents kế thừa các giới hạn này khi nhà cung cấp của agent là Nufi. **ĐÃ XÁC NHẬN:**
-> `useAgentFileConfig` phân giải về cấu hình Nufi đã hợp nhất (fileLimit 5,
-> fileSizeLimit 20 MB, totalSizeLimit 50 MB) qua nhánh `endpoints["Nufi"]` trong
+> Lưu ý: Cấu hình file NuFi được áp dụng dưới khóa nhà cung cấp "NuFi"; endpoint
+> Agents kế thừa các giới hạn này khi nhà cung cấp của agent là NuFi. **ĐÃ XÁC NHẬN:**
+> `useAgentFileConfig` phân giải về cấu hình NuFi đã hợp nhất (fileLimit 5,
+> fileSizeLimit 20 MB, totalSizeLimit 50 MB) qua nhánh `endpoints["NuFi"]` trong
 > `file-config.ts`.
 
 **Thành phần giao diện (lấy từ `FileSearch.tsx`):**
@@ -477,7 +477,7 @@ các tài liệu Knowledge đã tải lên.
   cuộc hội thoại mới với Agent A, thì các tài liệu Knowledge giống nhau vẫn khả dụng
   để truy xuất mà không cần tải lên lại.
 - AC-4 — Giả sử một cuộc hội thoại đang sử dụng Agent A, khi người dùng chuyển sang
-  endpoint Nufi thông thường cho một tin nhắn mới, thì không có truy xuất RAG nào
+  endpoint NuFi thông thường cho một tin nhắn mới, thì không có truy xuất RAG nào
   xảy ra.
 
 ---

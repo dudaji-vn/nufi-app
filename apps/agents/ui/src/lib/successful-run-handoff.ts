@@ -72,7 +72,7 @@ export function isSuccessfulRunHandoffEscalationComment(text: string) {
     // string literals, not regex literals, so a pattern anchored on the
     // upstream name survives the build unchanged while the server-side text it
     // is meant to match does not -- and the two can never agree. The server
-    // emits "NUFI exhausted the bounded corrective handoff"; this pattern was
+    // emits "NuFi exhausted the bounded corrective handoff"; this pattern was
     // still looking for "Paperclip exhausted the bounded successful-run
     // handoff correction", so this fallback had never matched anything.
     // Matching the phrase rather than the brand is immune to both.

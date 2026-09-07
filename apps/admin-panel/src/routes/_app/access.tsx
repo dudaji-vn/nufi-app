@@ -19,7 +19,7 @@ export const Route = createFileRoute('/_app/access')({
     tab: typeof search.tab === 'string' ? search.tab : undefined,
   }),
   head: () => ({
-    meta: [{ title: 'Access | NUFI Admin Panel' }],
+    meta: [{ title: 'Access | NuFi Admin Panel' }],
   }),
   component: AccessRoute,
 });

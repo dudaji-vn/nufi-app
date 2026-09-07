@@ -166,7 +166,7 @@ export const authApi = {
   },
 
   /**
-   * Start the OAuth handoff to the NUFI console.
+   * Start the OAuth handoff to the NuFi console.
    *
    * better-auth's generic-oauth sign-in is a POST that returns the authorize
    * URL rather than redirecting, and it sets the `state` cookie on this origin

@@ -11,18 +11,18 @@ This section specifies the end-user-visible behaviour of the core chat loop in N
 - **Preconditions / access:** Any authenticated user. Displayed automatically on first load and whenever the URL is `/c/new` or no `conversationId` is present (see `ChatView.tsx` lines 64–66: `isLandingPage` is true when `messagesTree` is empty and `conversationId === Constants.NEW_CONVO || !conversationId`).
 
 - **UI elements:**
-  - **Greeting text** (`Landing.tsx` lines 135–138): rendered by `SplitText` with a word-by-word entrance animation (`easeOutCubic`, 50 ms delay per word). When `startupConfig.interface.customWelcome` is a string it is used as-is, unless it contains the `{{user.name}}` template token — in which case the user's name is substituted at that position; otherwise a time-of-day greeting is appended with `, <user.name>` if the user has a name set. NuFi Chat sets `customWelcome: "Welcome to Nufi Chat."` (no `{{user.name}}` token), so the greeting is always **"Welcome to Nufi Chat."** (no time-of-day variation, no user name appended).
+  - **Greeting text** (`Landing.tsx` lines 135–138): rendered by `SplitText` with a word-by-word entrance animation (`easeOutCubic`, 50 ms delay per word). When `startupConfig.interface.customWelcome` is a string it is used as-is, unless it contains the `{{user.name}}` template token — in which case the user's name is substituted at that position; otherwise a time-of-day greeting is appended with `, <user.name>` if the user has a name set. NuFi Chat sets `customWelcome: "Welcome to NuFi."` (no `{{user.name}}` token), so the greeting is always **"Welcome to NuFi Chat."** (no time-of-day variation, no user name appended).
   - **Endpoint icon** (`Landing.tsx` lines 147–167): a 41×41 px rounded icon for the active endpoint/agent rendered by `ConvoIcon`.
   - **Optional birthday icon** (shown only when `startupConfig.showBirthdayIcon` is true; not expected in NuFi default config).
-  - **Description text** (shown only when the active entity has a `description` or `greeting` field; not applicable to the plain "Nufi" endpoint).
+  - **Description text** (shown only when the active entity has a `description` or `greeting` field; not applicable to the plain "NuFi" endpoint).
   - **Chat input form** (`ChatView.tsx` line 102): positioned below the greeting. When `centerFormOnLanding` is true (`ChatForm.tsx` lines 233–238) an extra bottom margin is applied on the landing page. The layout pivot from centred to bottom-aligned is controlled by `isLandingPage` (which flips when messages appear), not directly by `isSubmitting`.
-  - **Conversation Starters** (`ConversationStarters.tsx`, `ChatView.tsx` line 103): rendered only when the active agent/assistant exposes `conversation_starters`. Not present for the base "Nufi" endpoint.
-  - **Footer** (`Footer.tsx`): displays "NUFI \<VERSION\>" (or `config.customFooter` if set). Hidden on mobile (`sm:flex`). Renders privacy-policy and terms-of-service links if configured.
+  - **Conversation Starters** (`ConversationStarters.tsx`, `ChatView.tsx` line 103): rendered only when the active agent/assistant exposes `conversation_starters`. Not present for the base "NuFi" endpoint.
+  - **Footer** (`Footer.tsx`): displays "NuFi \<VERSION\>" (or `config.customFooter` if set). Hidden on mobile (`sm:flex`). Renders privacy-policy and terms-of-service links if configured.
   - **"New Chat" button** (sidebar, `NewChat.tsx` `aria-label="com_ui_new_chat"`): pencil-like `NewChatIcon`. Ctrl/Cmd+Click opens `/c/new` in a new browser tab.
 
 - **Functional behavior:**
   - FR-1. When the user navigates to `/c/new` or clicks "New Chat", `ChatView` renders the `Landing` component and the `ChatForm` instead of `MessagesView`.
-  - FR-2. The greeting text "Welcome to Nufi Chat." is displayed with a staggered letter/word animation (SplitText).
+  - FR-2. The greeting text "Welcome to NuFi Chat." is displayed with a staggered letter/word animation (SplitText).
   - FR-3. If the resolved entity has a non-empty `name` field, that name is shown instead of the greeting; if it additionally has a `description` or `greeting`, that text appears below the icon.
   - FR-4. Clicking "New Chat" clears the messages cache for the previous conversation (`clearMessagesCache`) and calls `newConversation()`, then navigates to `/c/new`.
   - FR-5. Ctrl/Cmd+clicking "New Chat" opens `/c/new` in a new tab without clearing the current session.
@@ -33,7 +33,7 @@ This section specifies the end-user-visible behaviour of the core chat loop in N
   - On mobile (`max-width: 768px`) the sidebar is collapsed; the "New Chat" button is hidden (`max-md:hidden`). New conversations are started from the `OpenSidebar` menu.
 
 - **Acceptance criteria:**
-  - AC-1. Given a logged-in user navigates to `/c/new`, when the page renders, then the text "Welcome to Nufi Chat." appears in the landing area with an animated entrance.
+  - AC-1. Given a logged-in user navigates to `/c/new`, when the page renders, then the text "Welcome to NuFi Chat." appears in the landing area with an animated entrance.
   - AC-2. Given the user is on a conversation page with messages, when they click "New Chat", then the URL changes to `/c/new` and the landing screen is shown.
   - AC-3. Given the user Ctrl/Cmd+clicks "New Chat", when the browser handles the click, then `/c/new` opens in a new tab and the current tab remains unchanged.
   - AC-4. Given a conversation is loading (spinner visible), when loading completes with messages, then the landing screen does not flash before MessagesView appears.
@@ -44,7 +44,7 @@ This section specifies the end-user-visible behaviour of the core chat loop in N
 
 - **Purpose:** Allow the user to type a message and submit it to the model.
 
-- **Preconditions / access:** An authenticated user with at least one endpoint configured. The "Nufi" endpoint must be available. Input is disabled (`disableInputs`) when `requiresKey` is true (API key required but missing) or when an invalid assistant is selected.
+- **Preconditions / access:** An authenticated user with at least one endpoint configured. The "NuFi" endpoint must be available. Input is disabled (`disableInputs`) when `requiresKey` is true (API key required but missing) or when an invalid assistant is selected.
 
 - **UI elements:**
   - **Message textarea** (`ChatForm.tsx` line 303): `TextareaAutosize`, `id="main-textarea"`, `data-testid="text-input"`, `aria-label` → `com_ui_message_input`. Starts at 44 px height, expands up to 45 vh (mobile) / 55 vh (desktop).
@@ -96,7 +96,7 @@ This section specifies the end-user-visible behaviour of the core chat loop in N
   - **PlaceholderRow** (`ui/PlaceholderRow.tsx`): shown in `MessageRender` (`lines 237–239`) while `hasNoChildren && isSubmitting`; replaces the hover-buttons row during generation so layout does not shift.
 
 - **Functional behavior:**
-  - FR-1. **SSE transport selection (`useAdaptiveSSE.ts`):** For all non-Assistants endpoints (including "Nufi"), the **resumable SSE** path (`useResumableSSE`) is active. For Assistants endpoints, the standard `useSSE` is active. Both hooks are always mounted to comply with React's Rules of Hooks; the inactive one receives a `null` submission to remain inert.
+  - FR-1. **SSE transport selection (`useAdaptiveSSE.ts`):** For all non-Assistants endpoints (including "NuFi"), the **resumable SSE** path (`useResumableSSE`) is active. For Assistants endpoints, the standard `useSSE` is active. Both hooks are always mounted to comply with React's Rules of Hooks; the inactive one receives a `null` submission to remain inert.
   - FR-2. **Resume on navigation:** `useResumeOnLoad` (called in `ChatView.tsx` line 61) detects an active job for the current `conversationId` after navigation and resumes streaming. It waits until `!isLoading` to avoid a race condition.
   - FR-3. **Markdown rendered live:** As tokens arrive, the `Markdown` component re-renders with the growing `content` string. `rehype-highlight` syntax-highlights code; `rehype-katex` / `remark-math` renders LaTeX (when `LaTeXParsing` setting is on); `remark-gfm` enables tables, strikethrough, and task lists.
   - FR-4. **Auto-scroll during streaming:** `useMessageScrolling` calls `scrollToBottom()` on every tree update while `isSubmitting && abortScroll !== true`. If the user scrolls up manually, `abortScroll` is set to true and auto-scroll stops.
@@ -148,7 +148,7 @@ This section specifies the end-user-visible behaviour of the core chat loop in N
 
 - **Purpose:** Request a new response to the same user turn, discarding the current assistant message.
 
-- **Preconditions / access:** The message must be an assistant message (`isCreatedByUser === false`). `regenerateEnabled` is true when: not a user message, not a search result, not currently editing, not currently submitting, and the endpoint is one of: `openAI`, `custom`, `google`, `agents`, `bedrock`, `anthropic`, `azureOpenAI` (see `useGenerationsByLatest.ts` lines 46–59). "Nufi" uses a `custom` endpoint type, so regenerate is supported.
+- **Preconditions / access:** The message must be an assistant message (`isCreatedByUser === false`). `regenerateEnabled` is true when: not a user message, not a search result, not currently editing, not currently submitting, and the endpoint is one of: `openAI`, `custom`, `google`, `agents`, `bedrock`, `anthropic`, `azureOpenAI` (see `useGenerationsByLatest.ts` lines 46–59). "NuFi" uses a `custom` endpoint type, so regenerate is supported.
 
 - **UI elements:**
   - **Regenerate button** (`HoverButtons.tsx` lines 252–260): `RegenerateIcon` (19 px), `title` → `com_ui_regenerate`. Hover buttons are hidden at `md:opacity-0` and revealed on `group-hover` / `group-focus-within` / `group-[.final-completion]`. The Regenerate button has class `active` so it may be always visible on the last message.
@@ -174,7 +174,7 @@ This section specifies the end-user-visible behaviour of the core chat loop in N
 
 - **Purpose:** Allow the user to correct a previously sent message and re-run the conversation from that point.
 
-- **Preconditions / access:** The button `isEditableEndpoint` must be true (same endpoint list as Regenerate; "Nufi"/custom qualifies). `hideEditButton` is false (not submitting, not an error, not a search result). Both user messages and assistant messages can be edited.
+- **Preconditions / access:** The button `isEditableEndpoint` must be true (same endpoint list as Regenerate; "NuFi"/custom qualifies). `hideEditButton` is false (not submitting, not an error, not a search result). Both user messages and assistant messages can be edited.
 
 - **UI elements:**
   - **Edit button** (`HoverButtons.tsx` lines 223–235): `EditIcon` (19 px), `id="edit-<messageId>"`, `title` → `com_ui_edit`. Hidden/disabled via `isVisible={!hideEditButton}`. Active state when `isEditing === true`.

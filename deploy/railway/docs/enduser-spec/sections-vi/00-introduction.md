@@ -34,7 +34,7 @@ nó được mô tả từ góc nhìn của người dùng cuối thay vì tham 
 bao gồm tìm kiếm web, trình thông dịch mã, giọng nói (TTS/STT), đăng nhập mạng xã hội / OAuth qua các
 nhà cung cấp **khác ngoài Google** (GitHub, Discord, Facebook, Apple, OpenID, SAML — riêng đăng nhập
 bằng Google thì **có** được bật và nằm trong phạm vi), và bất kỳ endpoint nào khác ngoài endpoint
-**Nufi** tùy chỉnh duy nhất và endpoint **Agents**.
+**NuFi** tùy chỉnh duy nhất và endpoint **Agents**.
 Khi một tính năng như vậy hiển thị trong code nhưng bị vô hiệu hóa qua cấu hình, nó sẽ được bỏ
 qua hoặc được đánh dấu rõ ràng là *không được bật trong NuFi*.
 

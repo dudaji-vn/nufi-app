@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 #
-# NUFI Studio — the Langflow fork, built with the NuFi brand baked in.
+# NuFi Studio — the Langflow fork, built with the NuFi brand baked in.
 #
 # Upstream's docker/build_and_push.Dockerfile is not in the fork allowlist, so
 # the NuFi image is defined here instead of by patching that file.
@@ -62,7 +62,7 @@ ENV PYTHONUNBUFFERED=1 \
 # from a product we are white-labelling. Off in the image so it cannot be lost
 # with an environment variable.
 #
-# Note the value: Langflow compares DO_NOT_TRACK.lower() == "true". NUFI Works
+# Note the value: Langflow compares DO_NOT_TRACK.lower() == "true". NuFi Works
 # compares it to "1". The same variable does not disable both.
 WORKDIR /app
 
@@ -88,7 +88,7 @@ RUN set -eu; \
     d=./src/backend/base/langflow/frontend; \
     if [ ! -f "$d/index.html" ]; then \
       echo "the frontend was never copied into the image"; exit 1; fi; \
-    if ! grep -q 'NUFI Studio' "$d/index.html"; then \
+    if ! grep -q 'NuFi Studio' "$d/index.html"; then \
       echo "index.html does not carry the product name -- the rebrand plugin did not run"; exit 1; fi; \
     if grep -qi 'langflow' "$d/index.html"; then \
       echo "index.html still names the upstream product"; exit 1; fi; \

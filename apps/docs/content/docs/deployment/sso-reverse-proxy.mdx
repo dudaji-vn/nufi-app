@@ -21,7 +21,7 @@ app. It is also not part of the compose stack: run it from
 | Subdomains (`chat.example.com`, `console.example.com`) | yes, with two variables on the chat | proxy plus the variables |
 | Different registrable domains | no | not supported |
 
-Same origin is the least work. Subdomains are what NUFI's own hosting uses
+Same origin is the least work. Subdomains are what NuFi's own hosting uses
 (`chat.nufi.me`, `console.nufi.me`).
 
 ## Caddy, same origin
@@ -80,7 +80,7 @@ the identity for keys, spend and traces. A missing or invalid cookie is a
 401 and a redirect to `/unauthorized`, which links back to the chat's
 sign-in (`VITE_LIBRECHAT_URL`, inlined at build time).
 
-For the handoff into NUFI Studio and NUFI Works the id is not enough, and
+For the handoff into NuFi Studio and NuFi Works the id is not enough, and
 the console asks the chat for the member's email and role over
 `CHAT_BASE_URL`. That call and its variables are on
 [Single sign-on for the agent apps](/docs/deployment/agents-sso).

@@ -229,7 +229,7 @@ test('resyncEndpoint is a no-op for an unknown endpoint name', async () => {
 type GatewayDeps = Parameters<typeof createLiteLLMGateway>[0];
 
 test('skips an endpoint that already points at the gateway instead of double-proxying it', async () => {
-  // Regression: the production "Nufi" endpoint's baseURL already resolved to the
+  // Regression: the production "NuFi" endpoint's baseURL already resolved to the
   // gateway, so syncing it registered a model whose upstream was LiteLLM itself.
   enable();
   const db = fakeDb();
@@ -261,7 +261,7 @@ test('skips an endpoint that already points at the gateway instead of double-pro
 });
 
 test('never registers the "loading..." placeholder as a model', async () => {
-  // Regression: this took the production "Nufi" endpoint down — its only
+  // Regression: this took the production "NuFi" endpoint down — its only
   // registered model was literally named "loading...".
   enable();
   const db = fakeDb();

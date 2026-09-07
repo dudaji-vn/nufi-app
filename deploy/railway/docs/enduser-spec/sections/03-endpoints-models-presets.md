@@ -1,6 +1,6 @@
 ## Endpoint, Model Selection & Parameters
 
-This section documents the endpoint selector, model selector, conversation parameter panel, and preset management for the NuFi Chat deployment. The deployed configuration (`librechat.yaml`) enables exactly two endpoints — **Nufi** (a custom OpenAI-compatible endpoint) and **Agents** — and sets `endpointsMenu`, `modelSelect`, `parameters`, and `presets` all to `true`.
+This section documents the endpoint selector, model selector, conversation parameter panel, and preset management for the NuFi Chat deployment. The deployed configuration (`librechat.yaml`) enables exactly two endpoints — **NuFi** (a custom OpenAI-compatible endpoint) and **Agents** — and sets `endpointsMenu`, `modelSelect`, `parameters`, and `presets` all to `true`.
 
 ---
 
@@ -8,7 +8,7 @@ This section documents the endpoint selector, model selector, conversation param
 
 #### Purpose
 
-Provides a single unified control — rendered as a pill-shaped trigger button in the conversation header — through which the user picks both the endpoint (Nufi or Agents) and, for endpoints that have models, the specific model to use. The selected endpoint/model combination is applied to the active conversation immediately.
+Provides a single unified control — rendered as a pill-shaped trigger button in the conversation header — through which the user picks both the endpoint (NuFi or Agents) and, for endpoints that have models, the specific model to use. The selected endpoint/model combination is applied to the active conversation immediately.
 
 #### Preconditions / Access
 
@@ -20,15 +20,15 @@ Provides a single unified control — rendered as a pill-shaped trigger button i
 
 - **Trigger button** — pill button in the conversation header (`aria-label="Select a model"`). Displays:
   - An endpoint/model icon (the configured icon for the selected endpoint, or a default Bot icon).
-  - A **display label**: for the Nufi endpoint, the raw model ID string; for the Agents endpoint, the agent name. Falls back to `"Select a model"` (i18n key `com_ui_select_model`) when nothing is selected.
+  - A **display label**: for the NuFi endpoint, the raw model ID string; for the Agents endpoint, the agent name. Falls back to `"Select a model"` (i18n key `com_ui_select_model`) when nothing is selected.
 - **Dropdown panel** — opens below the trigger. Contains:
   - A **search combobox** (`id="model-search"`, accessible label from `com_endpoint_search_models`; actual `placeholder` attribute is a space `" "`).
   - **Endpoint items** — one expandable row per endpoint; for endpoints with models, the row expands to a submenu.
-  - Within the Nufi submenu: a **per-endpoint search field** (placeholder `com_endpoint_search_endpoint_models` filled with the endpoint label), then the list of model rows.
+  - Within the NuFi submenu: a **per-endpoint search field** (placeholder `com_endpoint_search_endpoint_models` filled with the endpoint label), then the list of model rows.
   - Within the Agents submenu: a per-endpoint search field (placeholder `com_endpoint_search_var` filled with "Agents"), then the list of agent rows.
 - **Checkmark icon** (`CheckCircle2`) — appears beside the currently selected item; a `VisuallyHidden` span announces `com_a11y_selected` to screen readers.
 - **Pin / Unpin button** — appears on hover or focus within a model row; toggles the model as a favorite. Aria-label is `com_ui_pin` / `com_ui_unpin`.
-- **Settings gear button** (`SettingsIcon`) — appears beside an endpoint label only when the endpoint requires a user-supplied API key. Not applicable to the Nufi or Agents endpoints in the NuFi deployment (keys are configured server-side).
+- **Settings gear button** (`SettingsIcon`) — appears beside an endpoint label only when the endpoint requires a user-supplied API key. Not applicable to the NuFi or Agents endpoints in the NuFi deployment (keys are configured server-side).
 
 #### Functional Behavior
 
@@ -36,9 +36,9 @@ Provides a single unified control — rendered as a pill-shaped trigger button i
 
 **FR-2.** When the dropdown is open, typing in the global search field filters all endpoints and models in real time (debounced 200 ms). Results show a flat list grouped by endpoint heading. If the query matches an endpoint label but not any of its model IDs, all models under that endpoint are shown. If a query matches neither an endpoint label nor any model, no results render and the text `com_files_no_results` is displayed. A live-region (`role="alert" aria-live="polite"`) announces the result count.
 
-**FR-3.** The **Nufi endpoint row** expands to a sub-panel showing models fetched from the backend (fetch: true in `librechat.yaml`). The per-endpoint search field within this sub-panel filters Nufi models by the typed string (case-insensitive substring match).
+**FR-3.** The **NuFi endpoint row** expands to a sub-panel showing models fetched from the backend (fetch: true in `librechat.yaml`). The per-endpoint search field within this sub-panel filters NuFi models by the typed string (case-insensitive substring match).
 
-**FR-4.** Clicking a model row under Nufi selects that endpoint and model and immediately starts or continues the conversation with those settings. The trigger button display updates to reflect the new selection.
+**FR-4.** Clicking a model row under NuFi selects that endpoint and model and immediately starts or continues the conversation with those settings. The trigger button display updates to reflect the new selection.
 
 **FR-5.** The **Agents endpoint row** expands to a sub-panel listing available agents by name (resolved via the agents map). Selecting an agent sets `endpoint = "agents"` and `agent_id = <selected agent id>` on the conversation.
 
@@ -48,8 +48,8 @@ Provides a single unified control — rendered as a pill-shaped trigger button i
 
 #### States & Edge Cases
 
-- **Backend unreachable (Nufi models endpoint fails):** The model list for Nufi contains only the placeholder entry `"loading..."` (the sole default configured in `librechat.yaml`). The dropdown renders this single item. No spinner or error message is shown in the dropdown itself; the placeholder string is the only feedback. (requires manual verification on the running product: whether a loading spinner or error state is surfaced beyond the single placeholder model — static analysis is consistent with only `"loading..."` being shown)
-- **Empty model list returned:** If the backend returns an empty array, the dropdown for Nufi shows no model rows (the sub-panel is empty). No explicit "no models" message is rendered in this code path.
+- **Backend unreachable (NuFi models endpoint fails):** The model list for NuFi contains only the placeholder entry `"loading..."` (the sole default configured in `librechat.yaml`). The dropdown renders this single item. No spinner or error message is shown in the dropdown itself; the placeholder string is the only feedback. (requires manual verification on the running product: whether a loading spinner or error state is surfaced beyond the single placeholder model — static analysis is consistent with only `"loading..."` being shown)
+- **Empty model list returned:** If the backend returns an empty array, the dropdown for NuFi shows no model rows (the sub-panel is empty). No explicit "no models" message is rendered in this code path.
 - **Assistants endpoint loading models:** While assistants data is fetching (`isAssistantsEndpoint` is true and `endpoint.models === undefined`), a `Spinner` is rendered inside the Assistants sub-panel instead of model rows. This applies to the legacy `assistants` / `azureAssistants` endpoints, not the Agents endpoint.
 - **No endpoint selected:** The trigger button displays the localized string `"Select a model"`.
 - **modelSelect: false + no Model Specs:** The entire selector component is not rendered. Not applicable in the NuFi deployment.
@@ -58,15 +58,15 @@ Provides a single unified control — rendered as a pill-shaped trigger button i
 
 **AC-1.** Given the page is loaded and authenticated, when the user views the conversation header, then the model selector trigger button is visible and shows the currently selected endpoint label or "Select a model".
 
-**AC-2.** Given the selector is closed, when the user clicks the trigger button, then the dropdown opens and lists the "Nufi" and "Agents" endpoint rows.
+**AC-2.** Given the selector is closed, when the user clicks the trigger button, then the dropdown opens and lists the "NuFi" and "Agents" endpoint rows.
 
 **AC-3.** Given the dropdown is open, when the user types a partial model name in the global search box, then only matching endpoints and models appear within 200 ms.
 
 **AC-4.** Given the dropdown is open and the user types a string with no matches, when the search completes, then the text "No results" (or the localized equivalent) is displayed.
 
-**AC-5.** Given the user clicks a model under Nufi, when the selection completes, then the trigger button display updates to the chosen model ID and the conversation's endpoint and model are set accordingly.
+**AC-5.** Given the user clicks a model under NuFi, when the selection completes, then the trigger button display updates to the chosen model ID and the conversation's endpoint and model are set accordingly.
 
-**AC-6.** Given the Nufi backend models endpoint is unreachable, when the user opens the Nufi sub-panel, then the entry "loading..." is shown as the only model option and no unhandled error occurs.
+**AC-6.** Given the NuFi backend models endpoint is unreachable, when the user opens the NuFi sub-panel, then the entry "loading..." is shown as the only model option and no unhandled error occurs.
 
 **AC-7.** Given a model is selected, when the user activates the pin toggle for that model, then the model is marked as a favorite and the pin icon remains persistently visible on that row.
 
@@ -81,15 +81,15 @@ Exposes model-level inference parameters — temperature, top-p, penalties, toke
 #### Preconditions / Access
 
 - `interface.parameters: true` is set in `librechat.yaml` (it is).
-- The active conversation's endpoint is a "param endpoint": `custom` (Nufi) and `agents` both qualify via the `paramEndpoints` set defined in `schemas.ts`.
-- Parameters for the Nufi (`custom`) endpoint are accessed via the **SidePanel right rail** — a `SlidersHorizontal` icon in the right-hand side panel navigation, which opens the **Parameters** panel (`Panel.tsx`). This link is added to the nav when `isParamEndpoint === true && !isAgentsEndpoint` (`useSideNavLinks.ts:181-194`).
-- The header gear button (`Settings2`, `id="parameters-button"`) that opens the OptionsPopover is rendered **only** when `interface.parameters === true` AND `paramEndpoint === false` (i.e., the endpoint is NOT in `paramEndpoints`). Because both `custom` (Nufi) and `agents` are in `paramEndpoints`, the header gear button is **never shown** for either endpoint in the NuFi deployment.
+- The active conversation's endpoint is a "param endpoint": `custom` (NuFi) and `agents` both qualify via the `paramEndpoints` set defined in `schemas.ts`.
+- Parameters for the NuFi (`custom`) endpoint are accessed via the **SidePanel right rail** — a `SlidersHorizontal` icon in the right-hand side panel navigation, which opens the **Parameters** panel (`Panel.tsx`). This link is added to the nav when `isParamEndpoint === true && !isAgentsEndpoint` (`useSideNavLinks.ts:181-194`).
+- The header gear button (`Settings2`, `id="parameters-button"`) that opens the OptionsPopover is rendered **only** when `interface.parameters === true` AND `paramEndpoint === false` (i.e., the endpoint is NOT in `paramEndpoints`). Because both `custom` (NuFi) and `agents` are in `paramEndpoints`, the header gear button is **never shown** for either endpoint in the NuFi deployment.
 
 #### UI Elements
 
 There are two distinct surfaces that expose parameters:
 
-**(a) In-conversation SidePanel Parameters panel (`Panel.tsx`)** — the primary path for the Nufi endpoint:
+**(a) In-conversation SidePanel Parameters panel (`Panel.tsx`)** — the primary path for the NuFi endpoint:
 - A `SlidersHorizontal` icon in the right-hand SidePanel nav opens the **Parameters** panel.
 - The panel renders parameters from `paramSettings[EModelEndpoint.custom]` (the flat `openAI` array, `parameterSettings.ts`).
 - Layout: a plain **2-column CSS grid** (`grid-cols-2`, `Panel.tsx:146`).
@@ -129,7 +129,7 @@ There are two distinct surfaces that expose parameters:
 | `disableStreaming` | `com_endpoint_disable_streaming_label` | `switch` | `false` | boolean | Disable token streaming (`com_endpoint_disable_streaming`) |
 | `fileTokenLimit` | `com_ui_file_token_limit` | `input` (number) | undefined | Any positive integer | Per-file token limit for context inclusion (`com_ui_file_token_limit_desc`) |
 
-> Note: `reasoning_effort`, `reasoning_summary`, `verbosity`, `useResponsesApi`, and `web_search` are part of the `openAI` parameter list in code and therefore present in the panel for the `custom` (Nufi) endpoint. Whether the configured Nufi backend model honors all of these depends on the backend implementation; unsupported parameters are silently ignored by most OpenAI-compatible servers.
+> Note: `reasoning_effort`, `reasoning_summary`, `verbosity`, `useResponsesApi`, and `web_search` are part of the `openAI` parameter list in code and therefore present in the panel for the `custom` (NuFi) endpoint. Whether the configured NuFi backend model honors all of these depends on the backend implementation; unsupported parameters are silently ignored by most OpenAI-compatible servers.
 
 #### Reset & Save-as-Preset Controls
 
@@ -140,11 +140,11 @@ Located below the parameter grid in the OptionsPopover / Side Panel context:
 
 #### Functional Behavior
 
-**FR-1.** Clicking the `SlidersHorizontal` icon in the right-hand SidePanel nav opens the Parameters panel for the Nufi endpoint. The header gear button (`id="parameters-button"`) is not shown for the Nufi or Agents endpoints (it is only rendered when the active endpoint is not in `paramEndpoints`).
+**FR-1.** Clicking the `SlidersHorizontal` icon in the right-hand SidePanel nav opens the Parameters panel for the NuFi endpoint. The header gear button (`id="parameters-button"`) is not shown for the NuFi or Agents endpoints (it is only rendered when the active endpoint is not in `paramEndpoints`).
 
 **FR-2.** Each slider parameter renders a horizontal draggable slider plus a numeric input (in the older `Advanced.tsx` view) or a dynamic slider component (in the `Panel.tsx` SidePanel view). Dragging or typing updates the value immediately; the change is debounced before being written to the conversation state.
 
-**FR-3.** Double-clicking a slider resets that individual parameter to its default value. In the SidePanel path (Nufi endpoint), this is implemented in `DynamicSlider.tsx` via `onDoubleClick`.
+**FR-3.** Double-clicking a slider resets that individual parameter to its default value. In the SidePanel path (NuFi endpoint), this is implemented in `DynamicSlider.tsx` via `onDoubleClick`.
 
 **FR-4.** Stop sequences accept up to 4 entries entered as tags (chip-style input). Existing tags can be removed individually.
 
@@ -156,18 +156,18 @@ Located below the parameter grid in the OptionsPopover / Side Panel context:
 
 **FR-8.** The parameters panel is read-only when `readonly` prop is set — all inputs and sliders are disabled. (requires manual verification on the running product: which surfaces pass `readonly: true` — no call site passes `readonly={true}` in the SidePanel path based on static analysis; may be triggered by shared-conversation read-only mode)
 
-**FR-9.** When the endpoint changes (e.g., switching from Nufi to Agents), the parameters effect runs, removes keys no longer in the new parameter set, and the panel re-renders with the new endpoint's controls.
+**FR-9.** When the endpoint changes (e.g., switching from NuFi to Agents), the parameters effect runs, removes keys no longer in the new parameter set, and the panel re-renders with the new endpoint's controls.
 
 #### States & Edge Cases
 
 - **No endpoint selected:** The EndpointSettings component returns `null` and no parameter panel is rendered.
-- **Header gear button shown vs. hidden:** The header gear button (`id="parameters-button"`) is rendered only when `paramEndpoint === false` (`HeaderOptions.tsx`). Both `custom` (Nufi) and `agents` are in `paramEndpoints`, so `paramEndpoint === true` for both — meaning the **gear button is never shown** for either endpoint in the NuFi deployment. The Nufi endpoint's parameters are accessed via the SidePanel right rail (`SlidersHorizontal` icon); the Agents endpoint accesses its parameters via the SidePanel agent builder.
+- **Header gear button shown vs. hidden:** The header gear button (`id="parameters-button"`) is rendered only when `paramEndpoint === false` (`HeaderOptions.tsx`). Both `custom` (NuFi) and `agents` are in `paramEndpoints`, so `paramEndpoint === true` for both — meaning the **gear button is never shown** for either endpoint in the NuFi deployment. The NuFi endpoint's parameters are accessed via the SidePanel right rail (`SlidersHorizontal` icon); the Agents endpoint accesses its parameters via the SidePanel agent builder.
 - **Number input out of range:** The `DynamicInput` component does not enforce min/max at the UI level for number fields; out-of-range values are passed to the backend which may reject them.
 - **Missing `maxContextTokens` or `max_tokens`:** If left blank (undefined), the backend uses its own defaults; the placeholder text is the localized `com_nav_theme_system` ("System").
 
 #### Acceptance Criteria
 
-**AC-1.** Given the Nufi endpoint is active, when the user clicks the `SlidersHorizontal` icon in the right-hand SidePanel, then the Parameters panel opens and displays a 2-column grid of parameters.
+**AC-1.** Given the NuFi endpoint is active, when the user clicks the `SlidersHorizontal` icon in the right-hand SidePanel, then the Parameters panel opens and displays a 2-column grid of parameters.
 
 **AC-2.** Given the SidePanel Parameters panel is open, when the user drags the Temperature slider from 1.0 to 0.5 and sends a message, then the API request includes `temperature: 0.5`.
 
@@ -179,7 +179,7 @@ Located below the parameter grid in the OptionsPopover / Side Panel context:
 
 **AC-6.** Given temperature is set to 1.5 (within range), when the user reopens the SidePanel Parameters panel, then the slider shows 1.5 (state persists for the lifetime of the conversation).
 
-**AC-7.** Given either the Nufi or Agents endpoint is selected, when the user views the conversation header, then no parameters gear button is shown (both endpoints are in `paramEndpoints`, so `paramEndpoint === true` suppresses the header button). Parameters for Nufi are accessed via the SidePanel right rail; parameters for Agents are accessed via the SidePanel agent builder.
+**AC-7.** Given either the NuFi or Agents endpoint is selected, when the user views the conversation header, then no parameters gear button is shown (both endpoints are in `paramEndpoints`, so `paramEndpoint === true` suppresses the header button). Parameters for NuFi are accessed via the SidePanel right rail; parameters for Agents are accessed via the SidePanel agent builder.
 
 ---
 
@@ -194,7 +194,7 @@ Presets are named snapshots of a conversation's endpoint, model, and parameter s
 - `interface.presets: true` is set in `librechat.yaml` (it is).
 - User must be authenticated; presets are persisted per user on the server.
 - The Presets button (`BookCopy` icon, `id="presets-button"`, `aria-label` from `com_endpoint_examples`, `data-testid="presets-button"`) is visible in the conversation header when presets are enabled.
-- Note: Agents-endpoint presets are explicitly excluded from the Edit Preset dialog (the component returns `null` if `isAgentsEndpoint(endpoint)`); Nufi-endpoint presets are fully supported.
+- Note: Agents-endpoint presets are explicitly excluded from the Edit Preset dialog (the component returns `null` if `isAgentsEndpoint(endpoint)`); NuFi-endpoint presets are fully supported.
 
 #### UI Elements
 
@@ -212,7 +212,7 @@ Presets are named snapshots of a conversation's endpoint, model, and parameter s
 - Title: `com_ui_edit_preset_title` (includes preset name).
 - **Preset Name** field — `Label` ("Preset name", `com_endpoint_preset_name`), `Input` with placeholder `com_endpoint_set_custom_name`.
 - **Endpoint** dropdown — `SelectDropDown` with label `com_endpoint`, lists available non-agents endpoints. Changing the endpoint triggers model and setting re-initialization.
-- **PopoverButtons** row — endpoint-specific auxiliary buttons (e.g., for the Google endpoint; no extra buttons for Nufi's `custom` type).
+- **PopoverButtons** row — endpoint-specific auxiliary buttons (e.g., for the Google endpoint; no extra buttons for NuFi's `custom` type).
 - **EndpointSettings** panel (same two-column layout as the conversation parameters panel, populated with the preset's stored values).
 - **Action buttons:** "Export" (`com_endpoint_export`) and "Save" (`com_ui_save`).
 
@@ -298,7 +298,7 @@ Presets are named snapshots of a conversation's endpoint, model, and parameter s
 
 #### Acceptance Criteria
 
-**AC-1.** Given the user is on a conversation using the Nufi endpoint with Temperature set to 0.7, when they click "Save as preset", name it "Low Temp", and click "Save", then the preset appears in the presets list and a toast confirms the save.
+**AC-1.** Given the user is on a conversation using the NuFi endpoint with Temperature set to 0.7, when they click "Save as preset", name it "Low Temp", and click "Save", then the preset appears in the presets list and a toast confirms the save.
 
 **AC-2.** Given the preset "Low Temp" exists, when the user opens the presets menu and clicks "Low Temp", then the conversation's temperature is set to 0.7 and a toast reads `"Low Temp" Active!`.
 

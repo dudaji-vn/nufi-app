@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 /**
  * The door at agents.nufi.me.
  *
- * A visitor arriving here has a NUFI session already; the only thing they have
+ * A visitor arriving here has a NuFi session already; the only thing they have
  * to do is pick. So the page is a choice and nothing else — no navigation, no
  * console chrome, and one sentence per product that says what it is FOR, since
  * the names alone do not tell someone which one they want.
@@ -15,13 +15,13 @@ export const Route = createFileRoute('/choose')({
 
 const PRODUCTS = [
   {
-    name: 'NUFI Studio',
+    name: 'NuFi Studio',
     blurb: 'Build a flow on a canvas. Connect a model, a knowledge base and a tool, then run it.',
     href: '/enter/studio',
     external: false,
   },
   {
-    name: 'NUFI Works',
+    name: 'NuFi Works',
     blurb: 'Put agents to work. Give a team a goal, approve what matters, and watch the spend.',
     // `?sso=1` makes Works start the console handoff on arrival. Without it a
     // visitor who has already chosen a product here meets a login page and has
@@ -38,7 +38,7 @@ function Choose() {
   // agents.nufi.me that they are in the console.
   useEffect(() => {
     const previous = document.title;
-    document.title = 'NUFI Agents';
+    document.title = 'NuFi Agents';
     return () => {
       document.title = previous;
     };
@@ -46,10 +46,10 @@ function Choose() {
 
   return (
     <section className="mx-auto max-w-3xl px-4 py-16 sm:py-24">
-      <img src="/nufi-logo.svg" alt="NUFI" className="h-6 w-auto" />
+      <img src="/nufi-logo.svg" alt="NuFi" className="h-6 w-auto" />
       <h1 className="mt-8 text-3xl font-semibold tracking-tight">Agents</h1>
       <p className="mt-2 text-muted-foreground">
-        Two ways to work with agents on NUFI. You are already signed in.
+        Two ways to work with agents on NuFi. You are already signed in.
       </p>
 
       <div className="mt-10 grid gap-4 sm:grid-cols-2">

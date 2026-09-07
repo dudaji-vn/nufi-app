@@ -16,7 +16,7 @@ people:
 | OS | Ubuntu 22.04 LTS | anything with a current Docker works |
 
 This carries roughly fifty active users at a hundred prompts a day each.
-The internal record for NUFI's own host is
+The internal record for NuFi's own host is
 `deploy/platform/docs/deployment-infra.md`.
 
 ## Per-service caps
@@ -30,7 +30,7 @@ limits, so nothing enforces these until you add them.
 | `nufi-scanner` | 1 | 2 GB |
 | Presidio (each) | 0.5 | 1 GB |
 | the gateway | 1 | 2 GB |
-| the NUFI app | 1 | 2 GB |
+| the NuFi app | 1 | 2 GB |
 | Langfuse web and worker | 1 each | 2 GB each |
 | Postgres, MongoDB | 1 each | 2 GB each |
 | the console | 0.5 | 512 MB |
@@ -86,7 +86,7 @@ internal use:
 | Redis 7.4 | RSALv2 / SSPL | cannot be offered as a hosted service |
 
 Running the stack for your own organisation is fine under all three.
-Distributing NUFI to others would mean swapping in FerretDB, SeaweedFS and
+Distributing NuFi to others would mean swapping in FerretDB, SeaweedFS and
 Valkey, which speak the same protocols.
 
 ## Cost

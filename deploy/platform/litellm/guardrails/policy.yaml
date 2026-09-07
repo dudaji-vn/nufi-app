@@ -58,7 +58,7 @@ controls:
     # injection scanner runs one uvicorn worker over a CPU transformer with an
     # 8s budget and collapses under any concurrency -- 1 concurrent request
     # succeeded, 3 gave 3/3 GUARDRAIL_UNAVAILABLE, 6 gave 6/6. Every agent in a
-    # NUFI Works company past the first was unusable. And 93% of the text handed
+    # NuFi Works company past the first was unusable. And 93% of the text handed
     # to it was the agent's own system prompt: 3197 characters of 3432.
     #
     # What this gives up is the audit record for system spans, which
@@ -312,7 +312,7 @@ controls:
       #   사업자등록번호는 220-81-62517            ->  PHONE_NUMBER 0.40
       #
       # Nothing actionable on any Korean identifier (0.40 is under the 0.50
-      # threshold above). NUFI serves Korean customers.
+      # threshold above). NuFi serves Korean customers.
       #
       # What is IN, and why these three: KR_RRN and KR_FOREIGNER_REG are the
       # resident- and foreigner-registration numbers -- the Korean counterpart

@@ -22,7 +22,7 @@
 }
 
 /* ──────────────────────────────────────────────────────────────────
- * NUFI design tokens — Cyber-Grid Deep Void palette
+ * NuFi design tokens — Cyber-Grid Deep Void palette
  * (mirrors super-llm/dashboard globals.css)
  * Two parallel surfaces:
  *   1. HSL triplet vars (--background, --primary, etc.) — for shadcn utils
@@ -70,7 +70,7 @@
 
 @layer theme {
   :root {
-    /* NUFI brand */
+    /* NuFi brand */
     --brand-primary: #7b82f0;
     --brand-primary-hover: #6970e0;
     --brand-secondary: #e8967f;
@@ -105,7 +105,7 @@
     --sidebar-border: 220 13% 91%;
     --sidebar-ring: 236 80% 65%;
 
-    /* Legacy --cui-color-* (light) — literal NUFI-toned values */
+    /* Legacy --cui-color-* (light) — literal NuFi-toned values */
     --cui-color-stroke-default: #e2e8f0;
     --cui-color-stroke-muted: #e2e8f0;
     --cui-color-stroke-intense: #cbd5e1;
@@ -180,7 +180,7 @@
     --sidebar-border: 230 20% 13%;
     --sidebar-ring: 236 80% 75%;
 
-    /* Legacy --cui-color-* (dark — literal NUFI navy values) */
+    /* Legacy --cui-color-* (dark — literal NuFi navy values) */
     --cui-color-stroke-default: #181d28;
     --cui-color-stroke-muted: #181d28;
     --cui-color-stroke-intense: #2a2f3e;
@@ -344,7 +344,7 @@ code {
   margin: 0;
 }
 
-/* click-ui Tabs underline (styled-components theme leak): force NUFI primary */
+/* click-ui Tabs underline (styled-components theme leak): force NuFi primary */
 [role='tablist'] [role='tab'][aria-selected='true'] {
   border-bottom-color: hsl(var(--primary)) !important;
   color: hsl(var(--foreground)) !important;
@@ -358,13 +358,13 @@ code {
   color: hsl(var(--foreground)) !important;
 }
 
-/* click-ui Switch (styled-components): force NUFI primary when checked */
+/* click-ui Switch (styled-components): force NuFi primary when checked */
 [role='switch'][aria-checked='true'] {
   background-color: hsl(var(--primary)) !important;
   border-color: hsl(var(--primary)) !important;
 }
 
-/* click-ui Button (styled-components): ensure primary buttons use NUFI primary */
+/* click-ui Button (styled-components): ensure primary buttons use NuFi primary */
 button[data-cui-button-type='primary'] {
   background-color: hsl(var(--primary)) !important;
   color: hsl(var(--primary-foreground)) !important;

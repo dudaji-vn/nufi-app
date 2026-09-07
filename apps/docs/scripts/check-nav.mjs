@@ -14,8 +14,8 @@ const base = (process.argv[2] ?? 'http://localhost:3000').replace(/\/$/, '');
 const SECTIONS = [
   'Overview',
   'Using the app',
-  'NUFI Studio',
-  'NUFI Works',
+  'NuFi Studio',
+  'NuFi Works',
   'Administer',
   'Deploy & operate',
   'Develop',
@@ -32,7 +32,7 @@ const PAGES = {
   redirectedFrom: '/docs/overview/rag-integration', // moved in PR #60
   redirectedTo: '/docs/developer/rag-integration',
   deepInSection: '/docs/works/tasks',
-  deepSectionLabel: 'NUFI Works',
+  deepSectionLabel: 'NuFi Works',
   deepSectionIntro: '/docs/works',
 };
 

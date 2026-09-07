@@ -146,7 +146,7 @@ export function deriveAuthTrustedOrigins(config: Config, opts?: { listenPort?: n
 }
 
 /**
- * "Sign in with NUFI" -- the console at NUFI_OIDC_ISSUER is the identity
+ * "Sign in with NuFi" -- the console at NUFI_OIDC_ISSUER is the identity
  * provider, and this consumes it through better-auth's supported extension
  * point rather than by patching how sessions are made.
  *

@@ -4,7 +4,7 @@
 
 NuFi Chat exposes two distinct ways to talk with an AI:
 
-**Plain Nufi endpoint** — the default chat mode. The user selects "Nufi" from the
+**Plain NuFi endpoint** — the default chat mode. The user selects "NuFi" from the
 endpoint/model selector. Files attached via the 📎 button are sent as message
 attachments and are scoped to that single message; they are not stored
 persistently and are unavailable in any future conversation or new session.
@@ -44,14 +44,14 @@ the agent editor. The only capability a user can enable is File Search.
 ### Selecting the Agents endpoint
 
 **Purpose:** Route a conversation through the Agents infrastructure instead of
-the plain Nufi chat endpoint.
+the plain NuFi chat endpoint.
 
 **Preconditions / access:** `interface.agents: true` and `interface.endpointsMenu: true`
 must be set in `librechat.yaml` (both are enabled). All authenticated users can
 switch endpoints.
 
 **UI elements:**
-- Endpoint / model selector in the top toolbar (labelled "Nufi" by default)
+- Endpoint / model selector in the top toolbar (labelled "NuFi" by default)
 - Dropdown entry labelled **"Agents"** (`com_ui_agents`)
 - After selection, the right-side panel shows the Agent builder panel
 
@@ -70,7 +70,7 @@ switch endpoints.
 **States & edge cases:**
 - If `interface.endpointsMenu` were set to `false`, the selector would be hidden
   and the Agents endpoint would be unreachable.
-- Switching away from Agents to Nufi mid-conversation does not delete the
+- Switching away from Agents to NuFi mid-conversation does not delete the
   conversation; it changes the endpoint for the next message only.
 
 **Acceptance criteria:**
@@ -169,7 +169,7 @@ reached by clicking the **Model** button in the main builder.
 - **Model Parameters** heading (`com_ui_model_parameters`)
 - **Provider** combobox — label `com_ui_provider` (required `*`); lists all
   configured non-assistant endpoints except `agents` itself. In NuFi the only
-  selectable provider is **"Nufi"** (the custom OpenAI-compatible endpoint).
+  selectable provider is **"NuFi"** (the custom OpenAI-compatible endpoint).
 - **Model** combobox — label `com_ui_model` (required `*`); populated from models
   fetched for the selected provider. Disabled until a provider is chosen
   (placeholder: `com_ui_select_provider_first`).
@@ -190,13 +190,13 @@ reached by clicking the **Model** button in the main builder.
    announces "Model Parameters have been reset." to screen readers.
 
 **States & edge cases:**
-- If the Nufi backend is unreachable, the model list shows the placeholder
+- If the NuFi backend is unreachable, the model list shows the placeholder
   "loading..." (from `librechat.yaml` default) until fetch succeeds or times out.
-- In NuFi there is only one provider ("Nufi"); the Provider combobox still renders
+- In NuFi there is only one provider ("NuFi"); the Provider combobox still renders
   but with a single option.
 
 **Acceptance criteria:**
-- AC-1 — Given the Model sub-panel is open and Provider is "Nufi", when the user
+- AC-1 — Given the Model sub-panel is open and Provider is "NuFi", when the user
   opens the Model dropdown, then the list contains at least one model fetched from
   the backend.
 - AC-2 — Given a model is selected, when the user clicks "Back to builder", then
@@ -273,7 +273,7 @@ agent can retrieve relevant excerpts at chat time via RAG.
 - "Enable File Search" checkbox must be checked.
 - `rag_api` service must be reachable.
 
-**File limits (from `librechat.yaml` `fileConfig.endpoints.Nufi`):**
+**File limits (from `librechat.yaml` `fileConfig.endpoints.NuFi`):**
 - Maximum **5 files** per agent (`fileLimit: 5`)
 - Per-file size limit: **20 MB** (`fileSizeLimit: 20`)
 - Total size limit across all files: **50 MB** (`totalSizeLimit: 50`)
@@ -284,10 +284,10 @@ agent can retrieve relevant excerpts at chat time via RAG.
   `application/vnd.openxmlformats-officedocument.wordprocessingml.document` (`.docx`),
   `application/json`
 
-> Note: The NuFi file config is applied under the "Nufi" provider key; the Agents
-> endpoint inherits these limits when the agent's provider is Nufi. **CONFIRMED:**
-> `useAgentFileConfig` resolves to the merged Nufi config (fileLimit 5,
-> fileSizeLimit 20 MB, totalSizeLimit 50 MB) via the `endpoints["Nufi"]` branch in
+> Note: The NuFi file config is applied under the "NuFi" provider key; the Agents
+> endpoint inherits these limits when the agent's provider is NuFi. **CONFIRMED:**
+> `useAgentFileConfig` resolves to the merged NuFi config (fileLimit 5,
+> fileSizeLimit 20 MB, totalSizeLimit 50 MB) via the `endpoints["NuFi"]` branch in
 > `file-config.ts`.
 
 **UI elements (sourced from `FileSearch.tsx`):**
@@ -468,7 +468,7 @@ uploaded Knowledge documents.
   conversation with Agent A, then the same Knowledge documents are available for
   retrieval without re-uploading.
 - AC-4 — Given a conversation using Agent A, when the user switches to the plain
-  Nufi endpoint for a new message, then no RAG retrieval occurs.
+  NuFi endpoint for a new message, then no RAG retrieval occurs.
 
 ---
 

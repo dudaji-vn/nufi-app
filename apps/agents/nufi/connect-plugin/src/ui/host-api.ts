@@ -97,9 +97,9 @@ export function createDefinition(companyId: string): Promise<unknown> {
     method: "POST",
     body: JSON.stringify({
       key: SECRET_KEY,
-      name: "NUFI gateway key",
+      name: "NuFi gateway key",
       description:
-        "Each member's own key for the NUFI model gateway. Set it from Settings → NUFI; agents bound to it call the gateway as whoever the work belongs to.",
+        "Each member's own key for the NuFi model gateway. Set it from Settings → NuFi; agents bound to it call the gateway as whoever the work belongs to.",
       usageGuidance: "Bind on an agent as env NUFI_MODEL_API_KEY with a user secret reference.",
     }),
   });

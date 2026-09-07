@@ -3,7 +3,7 @@ title: FAQ
 description: Questions operators ask before and after deploying.
 ---
 
-## Does NUFI host AI models?
+## Does NuFi host AI models?
 
 No. The gateway routes to whatever you point it at: a model server of your
 own (vLLM, TGI, Ollama), or OpenAI, Anthropic, Google, Together, Groq, any
@@ -14,7 +14,7 @@ provider with an OpenAI-compatible API. Bring your own model.
 Yes. `deploy/railway` is the app on its own: the chat, a MongoDB, and a
 small RAG service for file uploads, pointed at any OpenAI-compatible
 endpoint through `BACKEND_BASE_URL` and `BACKEND_API_KEY`. No gateway, no
-guardrails, no observability. It is what NUFI's Railway staging runs, and
+guardrails, no observability. It is what NuFi's Railway staging runs, and
 it works on one host with `./bootstrap.sh`.
 
 ## Can I run several app instances behind a load balancer?
@@ -87,7 +87,7 @@ up -d` (the gateway and the console read it), and update anything else
 that calls the gateway with it. Keys users issued keep working; only the
 master key changed.
 
-## Does NUFI work behind Cloudflare Access or a corporate proxy?
+## Does NuFi work behind Cloudflare Access or a corporate proxy?
 
 Yes. It is HTTPS. Behind Cloudflare Access, the Access sign-in comes first,
 then the app's own.

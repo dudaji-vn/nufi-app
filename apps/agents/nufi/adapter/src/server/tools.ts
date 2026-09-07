@@ -1,5 +1,5 @@
 /**
- * The tools a NUFI agent can actually use.
+ * The tools a NuFi agent can actually use.
  *
  * Paperclip hands its agents a REST API and a procedure, not a tool list — the
  * vendor harnesses reach it with `bash` and `curl`. This adapter has no shell,

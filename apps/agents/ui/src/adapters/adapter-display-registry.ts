@@ -67,11 +67,11 @@ const adapterDisplayMap: Record<string, AdapterDisplayInfo> = {
     disabledLabel: "Use Claude Code or Codex with the ACP engine",
     hideFromVisualSelection: true,
   },
-  // NUFI distribution: `nufi_agent` is the recommended choice, and the vendor
+  // NuFi distribution: `nufi_agent` is the recommended choice, and the vendor
   // harnesses are not.
   //
   // Upstream recommends Claude Code and Codex because upstream ships pointed at
-  // Anthropic and OpenAI. This distribution ships pointed at the NUFI gateway,
+  // Anthropic and OpenAI. This distribution ships pointed at the NuFi gateway,
   // which serves Gemini. Measured there on a real task: the Claude harness ran,
   // then reported "I'll create a task", "saved it to
   // cloudflow_agreement_brief.md" and "I will mark the task as completed" —
@@ -82,8 +82,8 @@ const adapterDisplayMap: Record<string, AdapterDisplayInfo> = {
   // own Anthropic or OpenAI key should still be able to pick one. What changes
   // is that nobody is steered into it by a green badge.
   nufi_agent: {
-    label: "NUFI Agent",
-    description: "Runs on your NUFI gateway",
+    label: "NuFi Agent",
+    description: "Runs on your NuFi gateway",
     icon: Cpu,
     recommended: true,
   },

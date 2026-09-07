@@ -3,7 +3,7 @@ title: GHCR images
 description: Signing in to the registry, which images exist, how they are tagged, and how to pin one.
 ---
 
-Every NUFI image is on the GitHub Container Registry under
+Every NuFi image is on the GitHub Container Registry under
 [`ghcr.io/dudaji-vn`](https://github.com/orgs/dudaji-vn/packages). They are
 private: every machine that pulls one signs in first.
 
@@ -26,11 +26,11 @@ scope. Sign in again.
 
 | Image | What it is | Built by |
 |---|---|---|
-| `ghcr.io/dudaji-vn/nufichat` | the NUFI app | `chat-release.yml` |
-| `ghcr.io/dudaji-vn/nufi-console` | NUFI Console | `console-image.yml` |
-| `ghcr.io/dudaji-vn/nufichat-admin-panel` | NUFI Admin Panel | `admin-panel-image.yml` |
-| `ghcr.io/dudaji-vn/nufi-studio` | NUFI Studio | `nufi-agent-image.yml` |
-| `ghcr.io/dudaji-vn/nufi-works` | NUFI Works | `agents-image.yml` |
+| `ghcr.io/dudaji-vn/nufichat` | the NuFi app | `chat-release.yml` |
+| `ghcr.io/dudaji-vn/nufi-console` | NuFi Console | `console-image.yml` |
+| `ghcr.io/dudaji-vn/nufichat-admin-panel` | NuFi Admin Panel | `admin-panel-image.yml` |
+| `ghcr.io/dudaji-vn/nufi-studio` | NuFi Studio | `nufi-agent-image.yml` |
+| `ghcr.io/dudaji-vn/nufi-works` | NuFi Works | `agents-image.yml` |
 
 The gateway (`nufi/litellm:local`) and the injection scanner
 (`nufi/scanner:local`) are not published; the compose stack builds them on

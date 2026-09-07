@@ -37,7 +37,7 @@ async function testEnvironment() {
       message: "No server-wide NUFI_MODEL_API_KEY",
       detail:
         "Runs will use each member's own gateway key, bound to the agent as the NUFI_MODEL_API_KEY secret. " +
-        "Members connect theirs under Settings → NUFI. A member who has not connected cannot run this agent.",
+        "Members connect theirs under Settings → NuFi. A member who has not connected cannot run this agent.",
     });
   }
 

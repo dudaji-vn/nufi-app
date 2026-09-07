@@ -9,13 +9,13 @@ it.
 
 ## The key
 
-Calls are authenticated with a **NUFI Studio API key** — a different
+Calls are authenticated with a **NuFi Studio API key** — a different
 thing from the gateway key that lets Studio reach models. This one lets
 your code reach Studio.
 
 <Callout type="warn">
-**On NUFI's hosted Studio, an account that signed in through NUFI cannot
-create an API key.** Studio treats a NUFI session as externally
+**On NuFi's hosted Studio, an account that signed in through NuFi cannot
+create an API key.** Studio treats a NuFi session as externally
 authenticated and refuses to mint a key for it, so that no key can carry
 more access than the session it came from. **Add New** fails with
 *"API key creation is disabled for externally authenticated users"*.
@@ -23,13 +23,13 @@ more access than the session it came from. **Add New** fails with
 Ask a Studio administrator to issue the key from a local Studio account
 that owns a copy of the flow. On an instance of your own, the setting is
 `LANGFLOW_EXTERNAL_AUTH_DISABLE_API_KEYS_FOR_EXTERNAL_USERS`; it defaults
-to `true` whenever the NUFI sign-in ceiling is on.
+to `true` whenever the NuFi sign-in ceiling is on.
 </Callout>
 
 ![Studio API keys](/screenshots/studio-api-keys.png)
 
 <Steps>
-<Step>Open **Settings → NUFI Studio API Keys**.</Step>
+<Step>Open **Settings → NuFi Studio API Keys**.</Step>
 <Step>Click **Add New**.</Step>
 <Step>Give it a description you will recognise, and an expiry if the
 caller is short-lived. **No expiration** is the default.</Step>
@@ -41,7 +41,7 @@ The table tracks **Last Used** and **Total Uses** per key, which is how
 you tell a key that is still in service from one you can revoke.
 
 <Callout type="warn">
-A key issued to you does not expire when your NUFI session does, and it
+A key issued to you does not expire when your NuFi session does, and it
 does not carry your access level. Someone holding it keeps whatever it
 can do until the key is deleted. Give each caller its own key so you can
 revoke one without breaking the rest.

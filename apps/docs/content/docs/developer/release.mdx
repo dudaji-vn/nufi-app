@@ -11,11 +11,11 @@ and it does not move any pinned deployment.
 
 | Product | Tag | Workflow | Image | Railway service |
 |---|---|---|---|---|
-| NUFI app | `nufi-vX.Y.Z` | `chat-release.yml` | `ghcr.io/dudaji-vn/nufichat:vX.Y.Z` | `nufi-chat` builds `deploy/railway/Dockerfile`, whose base image is the `BASE` variable |
-| NUFI Console | `nufi-console-vX.Y.Z` | `console-image.yml` | `ghcr.io/dudaji-vn/nufi-console:vX.Y.Z` | `nufi-console`, pinned to a version tag |
-| NUFI Admin Panel | `nufi-admin-vX.Y.Z` | `admin-panel-image.yml` | `ghcr.io/dudaji-vn/nufichat-admin-panel:vX.Y.Z` | `nufichat-admin-panel`, pinned to a version tag |
-| NUFI Studio | `nufi-studio-vX.Y.Z` | `nufi-agent-image.yml` | `ghcr.io/dudaji-vn/nufi-studio:vX.Y.Z` | `nufi-studio`, follows `:main` |
-| NUFI Works | `nufi-works-vX.Y.Z` | `agents-image.yml` | `ghcr.io/dudaji-vn/nufi-works:vX.Y.Z` | `nufi-works`, follows `:main` |
+| NuFi app | `nufi-vX.Y.Z` | `chat-release.yml` | `ghcr.io/dudaji-vn/nufichat:vX.Y.Z` | `nufi-chat` builds `deploy/railway/Dockerfile`, whose base image is the `BASE` variable |
+| NuFi Console | `nufi-console-vX.Y.Z` | `console-image.yml` | `ghcr.io/dudaji-vn/nufi-console:vX.Y.Z` | `nufi-console`, pinned to a version tag |
+| NuFi Admin Panel | `nufi-admin-vX.Y.Z` | `admin-panel-image.yml` | `ghcr.io/dudaji-vn/nufichat-admin-panel:vX.Y.Z` | `nufichat-admin-panel`, pinned to a version tag |
+| NuFi Studio | `nufi-studio-vX.Y.Z` | `nufi-agent-image.yml` | `ghcr.io/dudaji-vn/nufi-studio:vX.Y.Z` | `nufi-studio`, follows `:main` |
+| NuFi Works | `nufi-works-vX.Y.Z` | `agents-image.yml` | `ghcr.io/dudaji-vn/nufi-works:vX.Y.Z` | `nufi-works`, follows `:main` |
 | This site | none | `docs-ci.yml` on pull requests | none | `nufi-docs` builds `apps/docs` on every merge to `main` |
 
 Every image also gets `:latest` on a release tag. Each product's version

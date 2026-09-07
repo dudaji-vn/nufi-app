@@ -127,7 +127,7 @@ async function step(name: string, fn: () => Promise<void>): Promise<void> {
   }
 }
 
-console.log(`\n${C.bold}NUFI Console — smoke test${C.reset}`);
+console.log(`\n${C.bold}NuFi Console — smoke test${C.reset}`);
 console.log(`  Console:   ${CONSOLE}`);
 console.log(`  LibreChat: ${LIBRECHAT}`);
 console.log(`  LiteLLM:   ${LITELLM}`);

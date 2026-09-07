@@ -123,7 +123,7 @@ export function buildHttp(ctx: ExecutionContext): HttpFn {
 /**
  * One model turn, in the OpenAI tool-calling shape.
  *
- * Verified against the live NUFI gateway before this was written: a
+ * Verified against the live NuFi gateway before this was written: a
  * `/v1/chat/completions` request carrying `tools` comes back with
  * `finish_reason: "tool_calls"` and well-formed arguments, so nothing here is
  * speculative about what the gateway supports.
@@ -131,7 +131,7 @@ export function buildHttp(ctx: ExecutionContext): HttpFn {
 /**
  * Whether a gateway refusal is worth trying again.
  *
- * The NUFI gateway fails closed when a guardrail cannot run: it answers 503
+ * The NuFi gateway fails closed when a guardrail cannot run: it answers 503
  * `GUARDRAIL_UNAVAILABLE` and says, in the body, "This is usually temporary —
  * please retry." Observed twice while this loop was being built, both times
  * mid-run after several turns had already succeeded, and never reproducible on
@@ -210,7 +210,7 @@ export function buildModel(ctx: ExecutionContext): LoopModel {
       if (!modelKey) {
         throw new Error(
           `${keyEnv} is not set — no credential to call the model with. ` +
-            `Connect your NUFI account under Settings → NUFI, or set ${keyEnv} on the server.`,
+            `Connect your NuFi account under Settings → NuFi, or set ${keyEnv} on the server.`,
         );
       }
 

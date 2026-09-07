@@ -8,7 +8,7 @@ reply, the account id the app attached, the model name and the hardware
 that served it, tokens, latency, cost. It is what you open when someone
 says "the model got this wrong" or "where did the budget go".
 
-NUFI's own copy is at `langfuse.codechi.me`; on a compose stack of your
+NuFi's own copy is at `langfuse.codechi.me`; on a compose stack of your
 own it is host port 3000.
 
 ## Sign in
@@ -24,7 +24,7 @@ people's prompts small.
 
 A **trace** is one request. Inside it, **observations** are the calls it
 made, usually one model call. Each carries its own timing, model, input,
-output and cost. NUFI adds two fields to every trace, `hardware_id` and
+output and cost. NuFi adds two fields to every trace, `hardware_id` and
 `backend_type`, from the model entry that served it.
 
 ## Find one user's requests
@@ -42,13 +42,13 @@ gateway's log holds the event.
 ## Compare, score, keep
 
 Langfuse's datasets, experiments and scores work as its documentation
-describes; NUFI does not change them. Scores you add to traces show up in
+describes; NuFi does not change them. Scores you add to traces show up in
 its dashboards.
 
 ## Cost
 
 Langfuse's dashboards break spend down by model and by user. Because
-NUFI's gateway answers several model names with the same provider, the
+NuFi's gateway answers several model names with the same provider, the
 per-model figure follows the name asked for; the split by actual hardware
 is the **Spend rate by model** panel in [Grafana](/docs/admin/grafana),
 which reads the gateway's own counters.

@@ -15,7 +15,7 @@ export const Route = createFileRoute('/login')({
     };
   },
   head: () => ({
-    meta: [{ title: 'Sign in | NUFI Admin Panel' }],
+    meta: [{ title: 'Sign in | NuFi Admin Panel' }],
   }),
   component: LoginPage,
 });

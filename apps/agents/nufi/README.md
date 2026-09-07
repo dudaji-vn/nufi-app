@@ -138,7 +138,7 @@ never diverge:
 | `server/dist` | `nufi/rebrand-server-dist.mjs` | **must be run after every `tsc`** |
 
 The server step is not optional. Skip it and the two sides disagree: the client
-looks for `"NUFI needs a disposition…"` while the server keeps writing
+looks for `"NuFi needs a disposition…"` while the server keeps writing
 `"Paperclip needs a disposition…"`, and every comparison between them stops
 matching with no error. `--check` exists to catch that:
 
@@ -179,7 +179,7 @@ which the transform does not touch:
 Nothing currently emits that sentence — 0 occurrences in `server/src` and
 `server/dist`; it appears only in the client's own test fixture. So it is inert
 today. If upstream starts emitting it, this fork will silently fail to match,
-because the server will say NUFI and the pattern still says Paperclip. Anyone
+because the server will say NuFi and the pattern still says Paperclip. Anyone
 rebasing onto a tag that adds that message needs to update the pattern by hand.
 
 ## The rename was partial, and why it no longer is
@@ -212,7 +212,7 @@ Measured on the current build:
 | | Rewrite every string | Rendered props only |
 |---|---|---|
 | `Paperclip` left in bundle | 4 | **172** |
-| `NUFI` in bundle | 257 | **89** |
+| `NuFi` in bundle | 257 | **89** |
 | Handoff comparison | **broken** | intact |
 
 The second column is worse branding and correct behaviour. A missed rename is
@@ -338,8 +338,8 @@ A run with no credential at all still fails loudly and names both fixes.
 
 ## The connect plugin
 
-`nufi/connect-plugin` adds **Settings → NUFI**, where a member hands this app
-their own gateway key using the session they already have at NUFI chat. Design
+`nufi/connect-plugin` adds **Settings → NuFi**, where a member hands this app
+their own gateway key using the session they already have at NuFi chat. Design
 and threat model: `docs/superpowers/specs/2026-08-17-nufi-agents-connect-design.md`.
 
 It is a Paperclip plugin rather than a patch to `ui/src` for the usual reason —
@@ -352,8 +352,8 @@ pnpm --dir nufi/connect-plugin build
 pnpm paperclipai plugin install "$PWD/nufi/connect-plugin"
 ```
 
-Then, as an instance admin, set **NUFI console URL** under Settings → Plugins →
-NUFI Connection, and list this app's origin in `AGENTS_ALLOWED_ORIGINS` on the
+Then, as an instance admin, set **NuFi console URL** under Settings → Plugins →
+NuFi Connection, and list this app's origin in `AGENTS_ALLOWED_ORIGINS` on the
 console. Both are required; the console refuses to issue a key to an origin it
 was not told about, which is the only thing standing between this flow and a
 credential-theft page.
@@ -394,7 +394,7 @@ first consumer to run the effect kept the only completion callback. Every
 component that mounted while an import was in flight returned early and never
 re-rendered, leaving `isLoading` stale at `true`.
 
-Measured on a fresh page load of **Settings → NUFI**: the module was fetched
+Measured on a fresh page load of **Settings → NuFi**: the module was fetched
 (HTTP 200) and imported successfully, the sidebar entry rendered, and the page
 itself sat on "Loading..." indefinitely — until an unrelated in-app navigation
 forced a re-render. `CompanySettingsPluginPage` is the only consumer that gates
@@ -407,9 +407,9 @@ after: stuck on a cold load, renders on a cold load.
 
 Drop the allowlist entry once an upstream release carries the fix.
 
-### `server/src/auth/better-auth.ts` — signing in with a NUFI account
+### `server/src/auth/better-auth.ts` — signing in with a NuFi account
 
-Upstream configures better-auth with email and password and no plugins. NUFI
+Upstream configures better-auth with email and password and no plugins. NuFi
 Works is reached from `chat.nufi.me`, where the member already has a session,
 so a second password is a second account to lose rather than a security
 measure.

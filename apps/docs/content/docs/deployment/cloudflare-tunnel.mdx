@@ -9,7 +9,7 @@ least work. `cloudflared` on the host opens an outbound connection;
 Cloudflare receives requests for your hostnames and forwards them down it.
 No public IP, no firewall change.
 
-This is how NUFI's own on-prem stack in Seoul is reached: five hostnames
+This is how NuFi's own on-prem stack in Seoul is reached: five hostnames
 under `codechi.me`, four behind Cloudflare Access, the API without. The
 record of that setup, with every click, is
 `deploy/platform/docs/cloudflare-tunnel-setup.md`.
@@ -18,8 +18,8 @@ record of that setup, with every click, is
 
 | Hostname | Target | Access |
 |---|---|---|
-| `chat.example.com` | `localhost:3080`, the NUFI app | required |
-| `console.example.com` | `localhost:3001`, NUFI Console | required |
+| `chat.example.com` | `localhost:3080`, the NuFi app | required |
+| `console.example.com` | `localhost:3001`, NuFi Console | required |
 | `langfuse.example.com` | `localhost:3000` | required |
 | `grafana.example.com` | `localhost:3030` | required |
 | `api.example.com` | `localhost:4000`, the gateway | none: callers send a gateway key |

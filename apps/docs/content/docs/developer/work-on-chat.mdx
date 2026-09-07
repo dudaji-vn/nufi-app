@@ -1,9 +1,9 @@
 ---
 title: Work on the chat app
-description: Run the NUFI app from source against the local stack, with hot reload on both sides.
+description: Run the NuFi app from source against the local stack, with hot reload on both sides.
 ---
 
-`apps/chat` is the NUFI app: an Express API in `api/`, a React client in
+`apps/chat` is the NuFi app: an Express API in `api/`, a React client in
 `client/`, and shared TypeScript packages in `packages/`. It began as a
 LibreChat fork and is now its own codebase. There is no upstream remote and
 nothing is merged from upstream; a change you want from there is ported by
@@ -75,7 +75,7 @@ version: 1.2.1
 cache: true
 endpoints:
   custom:
-    - name: "NUFI"
+    - name: "NuFi"
       apiKey: "${LITELLM_MASTER_KEY}"
       baseURL: "http://localhost:4000/v1"
       models:
@@ -83,7 +83,7 @@ endpoints:
         default: ["_no-model-registered"]
       titleConvo: true
       titleModel: "current_model"
-      modelDisplayLabel: "NUFI"
+      modelDisplayLabel: "NuFi"
 ```
 
 `models.default` must not be empty: the file is validated with Zod and an
@@ -99,7 +99,7 @@ BACKEND_PORT=3081 npm run frontend:dev    # the client on 3090, hot reload, prox
 ```
 
 Open http://localhost:3090 and register; the first account is `ADMIN`. The
-model dropdown lists what the gateway serves, under **NUFI**.
+model dropdown lists what the gateway serves, under **NuFi**.
 
 ```bash
 curl -s http://localhost:3081/health      # OK
@@ -110,7 +110,7 @@ change in `packages/*` run the matching `npm run build:<package>` and let it
 restart; and after a crash it waits rather than retrying, so type `rs` in its
 terminal once the cause is fixed.
 
-## Where NUFI's changes live
+## Where NuFi's changes live
 
 There is no separate directory for them. Team workspaces and groups, the
 audit log, the Basic and Advanced interface modes, the link into the agent
