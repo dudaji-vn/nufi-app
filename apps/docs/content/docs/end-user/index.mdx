@@ -1,69 +1,73 @@
 ---
 title: Welcome to the NUFI app
-description: Everything you can do inside the NUFI app and your developer console.
+description: Everything you can do inside the NUFI app and your developer console, and where to start.
 ---
 
-The NUFI app is your AI workspace — a private, secure space where you
-can talk to powerful AI models, build assistants, search the web, work
-with files, and let the AI write code for you.
+The NUFI app is your AI workspace: a private place to talk to AI models,
+work with your documents, build assistants, and share them with your
+team, with every message checked by security controls you never have to
+think about.
 
 You will use two web apps:
 
-- **The app** at `chat.nufi.me` — your day-to-day conversations,
-  agents, files, presets.
-- **The console** at `console.nufi.me` — only needed if you want to
-  call NUFI from your own code or scripts. Sign in once at the app;
-  the console reads the same session.
+- **The app** at `chat.nufi.me` — conversations, files, agents,
+  presets, teams.
+- **The console** at `console.nufi.me` — only if you want to call NUFI
+  from your own code. Sign in once at the app; the console reads the
+  same session.
 
-If your organisation has turned them on, there are also two agent apps
-behind `agents.nufi.me` — see [Studio and Works](/docs/end-user/agent-apps).
-They accept the session you already have, so there is no second password.
+There are also two agent apps behind `agents.nufi.me` — a canvas for
+building flows and an operations app for running agent teams. They
+accept the session you already have; see
+[Studio and Works](/docs/end-user/agent-apps).
+
+<Callout title="One switch to know about">
+A new account shows the **Basic** interface: a chat window and little
+else. Agents, prompts, presets, teams and the Tools menu appear when you
+switch to **Advanced** from the avatar menu. Pages that need it say so.
+See [Basic and Advanced mode](/docs/end-user/advanced-mode).
+</Callout>
 
 ## Quick links
 
 <Cards>
   <Card icon={<Library />} title="Guides" href="/docs/end-user/guides">
     Step-by-step playbooks: chat with a document, build a team knowledge
-    assistant, research the web, and more.
+    assistant, connect your code, and more.
   </Card>
-  <Card icon={<Key />} title="Sign in" href="/docs/end-user/sign-in">
-    Create your account, log in, set up two-factor authentication.
+  <Card icon={<Key />} title="Sign in and your account" href="/docs/end-user/sign-in">
+    Create your account, sign in, turn on two-factor, find your settings.
   </Card>
   <Card icon={<ShieldCheck />} title="How your data is protected" href="/docs/end-user/security">
-    What is checked on every message, what happens when something is found,
-    and where your conversations are stored.
+    What is checked on every message, what happens when something is
+    found, and what is stored.
   </Card>
   <Card icon={<MessageSquare />} title="Start chatting" href="/docs/end-user/chat">
-    Send messages, edit replies, branch conversations, search history.
+    Send messages, edit and retry, manage and share conversations.
   </Card>
-  <Card icon={<Bot />} title="Pick a model" href="/docs/end-user/models-and-presets">
-    Switch between AI models, save presets, tune the response style.
+  <Card icon={<Bot />} title="Models and presets" href="/docs/end-user/models-and-presets">
+    Choose a model, tune how it answers, save the combination.
   </Card>
   <Card icon={<FileText />} title="Files and images" href="/docs/end-user/files-and-images">
-    Upload documents and images, generate images from prompts.
+    Attach documents and images and ask about them.
   </Card>
-  <Card icon={<Bot />} title="Agents" href="/docs/end-user/agents">
-    Build no-code assistants with tools, knowledge files, and skills.
-  </Card>
-  <Card icon={<Workflow />} title="Studio and Works" href="/docs/end-user/agent-apps">
-    The two agent apps — what each is for, and why neither asks you to
-    sign in again.
-  </Card>
-  <Card icon={<Sparkles />} title="Build a flow" href="/docs/studio">
-    Wire a model, your documents and a tool into a pipeline you can
-    publish as an endpoint.
+  <Card icon={<Bot />} title="Agents and skills" href="/docs/end-user/agents">
+    Build a reusable assistant with instructions, knowledge and tools.
   </Card>
   <Card icon={<Library />} title="Knowledge" href="/docs/end-user/knowledge">
-    Ground answers in your own documents (RAG) and quote the source.
+    Ground answers in your own documents.
   </Card>
   <Card icon={<GroupIcon />} title="Teams" href="/docs/end-user/teams">
-    Share knowledge, agents, and prompts with your team or a group.
+    Share knowledge, agents and prompts with a team or a group inside it.
   </Card>
   <Card icon={<Search />} title="Web search" href="/docs/end-user/web-search">
-    Let the AI look up live information from the internet.
+    Let an agent look things up on the live web, where it is enabled.
   </Card>
   <Card icon={<Mic />} title="Speech" href="/docs/end-user/speech">
-    Talk to the app hands-free and have replies read aloud.
+    Dictate messages and have replies read aloud.
+  </Card>
+  <Card icon={<Workflow />} title="Studio and Works" href="/docs/end-user/agent-apps">
+    The two agent apps, and why neither asks you to sign in again.
   </Card>
   <Card icon={<Key />} title="API keys" href="/docs/end-user/api-keys">
     Generate keys for your own apps and watch your usage.
@@ -72,12 +76,12 @@ They accept the session you already have, so there is no second password.
 
 ## New here?
 
-Start with [Sign in](/docs/end-user/sign-in), then jump to
+Start with [Sign in](/docs/end-user/sign-in), then
 [Start chatting](/docs/end-user/chat). Everything else can wait until
 you need it.
 
-## Need help?
+## If something looks different
 
-If something does not work the way this guide describes, your
-deployment might be configured differently — ask your administrator
-inside your organisation.
+This manual describes `chat.nufi.me` as it is today. Your organisation
+can turn features on or off centrally, so a menu item may be missing
+for you even in Advanced mode. When it is, ask your administrator.

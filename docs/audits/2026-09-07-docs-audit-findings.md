@@ -371,3 +371,23 @@ puts the section on the System tab.
 ### F25. The Works wizard and docs disagreed about the recommended adapter — docs only, fixed
 
 Commit `25fd2149d` moved `nufi_agent` to the top of the wizard and put Claude Code and Codex behind **More Agent Adapter Types**; the docs still told members the opposite. `deploy/platform/adapters/meshbox-agent/README.md` says `NUFI_AGENT_URL=http://nufi-agent:7860`; the scenarios page said `http://studio:7860`, which is not a service name in any compose file. Both corrected.
+
+## Lane 5: Using the app
+
+### F26. The hosted app calls itself "Nufi Chat" — cosmetic
+
+`https://chat.nufi.me/api/config` returns `appTitle: "Nufi Chat"`, from `APP_TITLE` in `deploy/railway/docker-compose.yml:24`, and `deploy/railway/librechat.yaml:5` sets `customWelcome: "Welcome to Nufi Chat."`, which is baked into three screenshots. The product is the NUFI app; chat is one of its features. Set `APP_TITLE=NUFI` and change the welcome line, then recapture the screenshots.
+
+### F27. Nobody can reset a password on chat.nufi.me — blocks
+
+**Seen:** `/api/config` reports `emailEnabled: false` and `passwordResetEnabled: false`, so the sign-in screen has no reset link. The admin panel's Users page, the one place an administrator could reset a password, is disabled (**F22**). A member with a password account who forgets it has no path back except creating a new account.
+
+**Proposed fix:** either configure email on the Railway service (`EMAIL_*` variables) so self-service reset works, or ship the Users page with a reset action. The docs now say to ask an administrator, which is true only once one of those exists.
+
+### F28. Help & FAQ in the account menu opens LibreChat's site — cosmetic
+
+`helpAndFaqURL` is `https://librechat.ai` (`/api/config`). `interface.helpAndFaqURL` in `librechat.yaml` can point it at `https://docs.app.nufi.me` instead. Same family as **F19**.
+
+### F29. The repo's seed config no longer describes production — misleads
+
+`deploy/railway/librechat.yaml:40-42` scopes agent capabilities to `file_search` only, but the screenshots taken on `chat.nufi.me` show Web Search, Skills, Run Code and Artifacts in the Tools menu: the admin panel's stored configuration overrides the file, and nothing in the repo records what production actually enables. An operator reading the yaml, or a docs author, gets the wrong answer. Export the live configuration from the admin panel and commit it as the seed, or state in `deploy/railway/README.md` that the panel is authoritative and the yaml is only the first boot.

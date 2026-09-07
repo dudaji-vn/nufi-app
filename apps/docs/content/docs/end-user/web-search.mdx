@@ -1,73 +1,67 @@
 ---
 title: Web search
-description: Let the AI look up live information from the internet.
+description: Let an agent look things up on the live web before it answers, where your organisation has enabled it.
 ---
 
-By default the AI answers from what it learned during training — which
-has a cutoff date and knows nothing about your specific situation.
-**Web search** lets it look things up live before replying.
+A model answers from what it learned during training, which stops at a
+date and knows nothing about your situation. **Web Search** lets an
+agent look things up live before replying.
 
-> **Guide:** For the full research flow, see
-> [Research a topic with web search](/docs/end-user/guides/research-with-web-search).
+> **Guide:** [Research a topic with web search](/docs/end-user/guides/research-with-web-search).
+
+## What it needs
+
+Three things, and all three have to be true:
+
+1. You are in [Advanced mode](/docs/end-user/advanced-mode).
+2. You are chatting with an **agent**, not a plain model. Web search is
+   an agent capability; see [Agents](/docs/end-user/agents).
+3. Your organisation has connected a search provider. When it has not,
+   **Web Search** is simply absent from the menu.
 
 ## Turn it on
 
 <Steps>
-<Step>Click the **Tools** menu — the sliders icon next to the
-paperclip at the bottom of the message box.</Step>
-<Step>Click **Web Search** to enable it. (The gear next to it opens
-search options, if your deployment exposes any.)</Step>
-<Step>Ask your question as normal. Web search stays on for the rest of
-the conversation — open the menu again to turn it off.</Step>
+<Step>In a conversation with an agent, open the **Tools** menu — the
+sliders icon beside the paperclip.</Step>
+<Step>Click **Web Search**. The gear beside it holds provider options,
+if your deployment exposes any.</Step>
+<Step>Ask as normal. Search stays on for the rest of the conversation;
+open the menu again to turn it off.</Step>
 </Steps>
 
-![The Tools menu with Web Search](/screenshots/chat-tools-menu.png)
+![The Tools menu of an agent, with Web Search](/screenshots/chat-tools-menu.png)
 
-## What happens when search is on
+## What happens when it is on
 
-1. The AI turns your prompt into one or more search queries.
-2. It searches the web and fetches the top results.
-3. It picks the most relevant snippets.
-4. It writes its answer using them, with inline **citations** linking
-   back to each source.
+The agent turns your question into one or more searches, reads the top
+results, and writes its answer from them with numbered citations that
+link back to each page.
 
-You'll see the citations as small numbered links — hover one to see
-the snippet it came from.
+Search shines for anything newer than the model's training — news,
+prices, versions, live figures — and for answers you want to be able to
+verify. It adds nothing to brainstorming, creative writing, or a
+question whose source material you already pasted in.
 
-## When to use it
+## Tips
 
-Web search shines for:
-
-- **Latest news, prices, events** — anything newer than the model's
-  training data.
-- **Specific facts** — exact dates, current versions, live stats.
-- **Citations** — when you want links backing up the answer.
-
-It's less useful for brainstorming, creative writing, pure math/code,
-or when you already pasted the source material into your prompt.
-
-## Tips for better results
-
-- **Be specific** — *"Compare the iPhone 16 Pro and Galaxy S25 Ultra
-  on 2025 camera reviews"* beats *"which phone is better?"*.
-- **Ask for citations** — *"with sources"* or *"cite each claim"*.
-- **Drill in** — *"Read source [2] more carefully — what does it say
-  about battery life?"*
+- **Be specific.** *"Compare the 2025 camera reviews of phone A and
+  phone B"* beats *"which phone is better?"*
+- **Ask for sources** — *"cite each claim"* — and drill in: *"read source
+  2 again; what does it say about deadlines?"*
+- **Cross-check** anything you will act on.
 
 ## Privacy
 
-Whatever the AI needs to look up becomes part of a search query, which
-leaves NUFI for the search provider. **Don't** put confidential
-content into a search-enabled prompt — turn search off for those.
+Whatever the agent needs to look up becomes a search query that leaves
+NUFI for the search provider. Turn search off for confidential prompts.
+The security checks described in
+[How your data is protected](/docs/end-user/security) still run on what
+comes back: text inside a fetched page is treated as untrusted.
 
-## If Web Search isn't in the menu
+## If Web Search is not in the menu
 
-Your organisation hasn't connected a search provider. Ask your admin
-to enable it.
-
-## Cost
-
-Search-augmented replies cost a little more — extra fetches plus a
-longer prompt. You'll see it on the
-[Usage](/docs/end-user/api-keys) page if you query a lot; for most
-people it stays well within budget.
+In order of likelihood: you are in Basic mode; you are chatting with a
+plain model rather than an agent; the agent does not have the capability
+enabled; your organisation has not connected a provider. The first three
+you can fix yourself.

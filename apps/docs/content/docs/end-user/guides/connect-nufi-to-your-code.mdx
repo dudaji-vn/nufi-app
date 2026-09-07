@@ -3,83 +3,77 @@ title: Connect NUFI to your code
 description: Create an API key in the console and make your first request from your own app.
 ---
 
-Want to call NUFI from a script, an internal tool, or an integration? Create an
-API key in the console and use it with anything that speaks the OpenAI API
-format. This guide gets you from zero to a first working request.
+Want to call NUFI from a script, an internal tool, or an integration?
+Generate a key in the console and use it with anything that speaks the
+OpenAI API.
 
-## What you'll need
+## What you will need
 
-- Access to the console at `console.nufi.me` (you sign in at the app first — the
-  console reads the same login).
-- A way to run `curl`, or an OpenAI-compatible SDK in your language.
+- Access to `console.nufi.me`. You sign in at the app first; the console
+  reads the same session.
+- `curl`, or an OpenAI-compatible SDK in your language.
 
 ## Steps
 
 <Steps>
 <Step>
-Sign in at the app, then open the **console** from the avatar menu
-(bottom-left) → **Console**, or go straight to `console.nufi.me`.
+Sign in at the app, then open the **console** from the avatar menu →
+**Console**, or go to `console.nufi.me`.
 
 ![The developer console](/screenshots/console-home.png)
 </Step>
 <Step>
-Open the **API keys** tab, click **Generate**, give the key a name (e.g.
-`laptop`), and copy it — the full key is shown **once**.
+Open **API keys**, click **Generate Key**, give it an **Alias** such as
+`laptop`, and click **Generate**. The key is shown once, together with
+ready-made snippets. Copy it and click **I've saved it**.
 </Step>
 <Step>
-Note the base URL and a model name: the endpoint is `https://api.nufi.me/v1`
-and a model is e.g. `qwen2.5-7b`.
-</Step>
-<Step>
-Make your first request. From the command line:
+Make the first request. The base URL is `https://api.codechi.me/v1` and
+`gemini` is the general-purpose model:
 
 ```bash
-curl https://api.nufi.me/v1/chat/completions \
-  -H "Authorization: Bearer sk-nufi-…" \
+curl https://api.codechi.me/v1/chat/completions \
+  -H "Authorization: Bearer sk-…" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "qwen2.5-7b",
+    "model": "gemini",
     "messages": [{"role": "user", "content": "hello"}]
   }'
 ```
 
-Or from Python with the OpenAI SDK:
+Or from Python:
 
 ```python
 from openai import OpenAI
 
-client = OpenAI(base_url="https://api.nufi.me/v1", api_key="sk-nufi-…")
+client = OpenAI(base_url="https://api.codechi.me/v1", api_key="sk-…")
 print(client.chat.completions.create(
-    model="qwen2.5-7b",
+    model="gemini",
     messages=[{"role": "user", "content": "hello"}],
 ).choices[0].message.content)
 ```
 </Step>
 <Step>
-Watch usage and budget in the console's **Usage** tab — every call is logged
-with model, time, and tokens spent.
+Open the console's **Usage** tab. The call is there, with its model, time
+and tokens.
 </Step>
 </Steps>
 
-## What you get
-
-Programmatic access to NUFI from your own code, with the same OpenAI-compatible
-parameters you already know (`stream`, `tools`, `temperature`, `max_tokens`).
-
 ## Make it better
 
-- **Keep keys secret** — use environment variables, never commit them to git.
-- **One key per app** so you can revoke it cleanly when you retire the app.
-- **Rotate keys** periodically, and set **tight per-key budgets** for unattended
-  scripts.
+- **Keep the key out of the code.** Read it from an environment
+  variable; never commit it.
+- **One key per app**, so retiring the app is one revoke.
+- **Give unattended scripts a small budget and a short expiry** when you
+  generate the key.
 
 ## Related
 
 <Cards>
   <Card title="API keys" href="/docs/end-user/api-keys">
-    Full reference: generate, use, revoke, budgets, and best practices.
+    The full reference: limits, revoking, and what the console shows.
   </Card>
-  <Card title="Overview" href="/docs/overview">
-    How NUFI fits together.
+  <Card title="How your data is protected" href="/docs/end-user/security">
+    The same checks run on API calls as on messages in the app.
   </Card>
 </Cards>

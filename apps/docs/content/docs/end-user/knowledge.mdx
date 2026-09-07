@@ -15,6 +15,11 @@ grounded in your content rather than guessed.
 > **Guide:** For a full walkthrough, see
 > [Build a knowledge assistant](/docs/end-user/guides/build-a-knowledge-assistant).
 
+<Callout>
+Building a knowledge agent needs [Advanced mode](/docs/end-user/advanced-mode);
+the **Agent Builder** is in the left icon rail only there.
+</Callout>
+
 ## Two ways to chat with a document
 
 | | Quick attach | Knowledge agent |
@@ -73,8 +78,8 @@ per question, you can keep the conversation going:
 
 The AI pulls the relevant passages and answers from them — for the
 question above it would answer **18 days** because that's what the
-document says, not a generic guess. When an answer is built from your
-files, NUFI shows which document it drew on so you can check the source.
+document says, not a generic guess. Ask it to name the document and
+section it used, so you can check the source.
 
 ## Share knowledge with a team
 
@@ -86,9 +91,10 @@ See [Teams and sharing](/docs/end-user/teams#share-a-knowledge-file).
 
 ## What works well
 
-- **File types** — PDF, plain text, Markdown, and common document
-  formats. Text-based documents retrieve best; a scanned image of text
-  won't unless it has a text layer.
+- **File types** — PDF, plain text, Markdown, CSV, Word and JSON: the
+  same list as [Files and images](/docs/end-user/files-and-images#what-you-can-attach).
+  Text-based documents retrieve best; a scanned image of text won't
+  unless it has a text layer.
 - **Structure helps** — clear headings and short sections retrieve more
   accurately than one long wall of text.
 - **Split very large documents** — several focused files usually beat
@@ -96,9 +102,8 @@ See [Teams and sharing](/docs/end-user/teams#share-a-knowledge-file).
 - **Name files clearly** — names show up next to the answer, so
   `2024-hr-handbook.pdf` is friendlier than `doc1.pdf`.
 
-Your admin sets the upload size and count limits — see
-[Files and images](/docs/end-user/files-and-images#what-works) for the
-typical defaults.
+Files uploaded into an agent have their own limits, larger than a
+message attachment's. Your administrator sets them.
 
 ## Tips for better answers
 

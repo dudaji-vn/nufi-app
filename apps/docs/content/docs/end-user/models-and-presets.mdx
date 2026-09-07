@@ -1,96 +1,88 @@
 ---
 title: Models and presets
-description: Switch between AI models, tune the response style, and save presets.
+description: Choose which model answers, tune how it replies, and save the combination as a preset.
 ---
 
-NUFI can offer several AI models. You choose which one answers each
-conversation, and you can fine-tune how it replies.
+NUFI offers several models. You choose which one answers each
+conversation, and in Advanced mode you can shape how it replies and
+save that as a preset.
 
-> **Guide:** See [Draft, refine, and translate writing](/docs/end-user/guides/draft-and-refine-writing)
-> for presets and saved prompts in action.
+> **Guide:** [Draft, refine, and translate writing](/docs/end-user/guides/draft-and-refine-writing)
+> uses presets and saved prompts.
 
 ## Pick a model
 
 <Steps>
-<Step>Click the **model name** at the top-left of the conversation
-(in the screenshot below it reads *gemini*).</Step>
-<Step>A menu opens listing the model groups available to you —
-for example **Nufi** and **Sun LLM**. Use the **Search models…** box
-to filter when the list is long.</Step>
-<Step>Click a group, then pick a model from it. The conversation now
-uses that model. A ✓ marks the one currently selected.</Step>
+<Step>Click the **model name** at the top-left of the conversation — in
+the screenshot below it reads *gemini*.</Step>
+<Step>The menu lists the model groups available to you. A group with a
+chevron opens into its models; **Search models…** filters the list.</Step>
+<Step>Click a model. The conversation uses it from the next message on.</Step>
 </Steps>
 
 ![The model picker open, showing the available model groups](/screenshots/chat-model-menu.png)
 
-The list updates automatically — when your admin adds a new model,
-refreshing the page is enough to see it. Newer or larger models are
-usually more capable but slower and cost more against your budget;
-smaller models are faster and cheaper. Try a few and see what fits.
+In Basic mode the picker shows a short curated list; Advanced shows
+every group, and any agents you have built appear there too. When your
+administrator adds a model, reloading the page is enough to see it.
+
+Larger models are usually better at reasoning and slower; smaller ones
+are quicker and cheaper. Try a few on the kind of question you ask most.
 
 ## Tune the response style
 
-Open **Parameters** from the left icon rail. A panel slides out where
-you can shape how the model behaves:
+<Callout>
+The Parameters panel is in [Advanced mode](/docs/end-user/advanced-mode)
+only, and only for plain models — an agent carries its own settings.
+</Callout>
+
+Open **Parameters** from the left icon rail:
 
 ![The Parameters panel with model settings](/screenshots/chat-parameters.png)
 
-The settings you'll actually reach for:
+The settings you will actually reach for:
 
 - **Custom Instructions** — what the model should know before your
-  first message: a persona, a tone, standing rules. This steers the
-  whole conversation. *("You are a concise assistant. Reply in
-  Vietnamese.")*
-- **Temperature** — low (near 0) for precise, repeatable answers
-  (code, summaries, data). High (near 1) for creative, varied answers
-  (brainstorming, copy-writing).
+  first message: a persona, a tone, standing rules. *("You are a concise
+  assistant. Reply in Vietnamese.")*
+- **Temperature** — low, near 0, for precise and repeatable answers
+  (code, summaries, data); high, near 1, for varied and creative ones.
 - **Max Output Tokens** — caps how long a single reply can be.
-- **Web Search** — toggle live web lookups for this conversation (see
-  [Web search](/docs/end-user/web-search)).
 
-The advanced controls (Top P, frequency / presence penalty, reasoning
-effort) are sampling knobs — leave them alone unless you know what you
-want. Click **Reset Model Parameters** at the bottom to go back to
-defaults.
+The rest — Top P, frequency and presence penalty, reasoning effort — are
+sampling controls. Leave them alone unless you know what you want.
+**Reset Model Parameters** at the bottom restores the defaults.
 
-Settings apply to the **current conversation only**. Start a new chat
-to reset, or save your favourite combination as a **preset**.
+Settings apply to the current conversation only. Save a combination you
+like as a preset.
 
 ## Presets
 
-A preset is a saved bundle of `{ model, parameters, instructions }`
-under a name.
+A preset is a saved bundle of model, parameters and instructions under a
+name. **Presets** in the top bar lists yours — *"No presets yet, use the
+settings button to create one"* until you make one.
 
 ![The Presets menu](/screenshots/chat-presets-menu.png)
 
-- **See your presets** — click **Presets** in the top bar. When you
-  have none yet it says *"No presets yet, use the settings button to
-  create one."*
-- **Create one** — set up a model and its parameters the way you like,
-  then save it from the settings/parameters panel and give it a clear
-  name (e.g. *"Code review"*, *"Translation EN→VN"*, *"Friendly
-  reply"*).
-- **Use one** — pick it from the **Presets** menu; new conversations
-  start with all its settings applied.
-- **Import / Clear all** — bring in a preset someone exported, or wipe
-  your list, from the same menu.
+- **Create one** — set a model and its parameters the way you like, then
+  save from the Parameters panel under a clear name: *Code review*,
+  *Translation EN→VN*, *Friendly reply*.
+- **Use one** — pick it from the menu. A new conversation starts with
+  all its settings applied.
+- **Import** and **Clear all** are in the same menu.
 
 ## Saved prompts
 
-A **saved prompt** is lighter than a preset — just a chunk of text you
-reuse often, with no model or parameters attached.
-
-Manage them under **Prompts** in the left icon rail. Insert one
-mid-conversation by typing `/` at the start of the message box and
-picking from the list. Good candidates: frequently-used personas,
-tedious boilerplate, tone modifiers like *"Rewrite in plain English,
-no jargon."*
+A saved prompt is lighter than a preset: a piece of text you reuse,
+with no model attached. Manage them under **Prompts** in the left icon
+rail, and insert one by typing `/` at the start of the message box.
+Good candidates are personas, boilerplate, and tone modifiers like
+*"Rewrite in plain English, no jargon."*
 
 ## If the model menu is empty
 
-- Refresh the page once.
-- If it's still empty, the platform can't reach the AI provider — ask
-  your admin; they have monitoring that tells them what's wrong.
-- If models appear but every reply errors with *"unauthorised"*, open
-  the [console](/docs/end-user/api-keys) once. The first visit sets up
-  your account automatically.
+- In Basic mode the list is curated, and it can be empty if nobody has
+  curated one yet. Switch to Advanced, or ask your administrator.
+- Reload the page once.
+- If it is still empty, the platform cannot reach its model gateway.
+  Your administrators have monitoring that says why.

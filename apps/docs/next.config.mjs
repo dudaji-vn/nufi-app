@@ -19,6 +19,7 @@ const config = {
       { source: '/docs/end-user/agent-connect', destination: '/docs/works/connect-account', permanent: true },
       // The short Studio page duplicated the Studio section it linked to.
       { source: '/docs/end-user/studio', destination: '/docs/studio', permanent: true },
+      { source: '/docs/end-user/guides/generate-images', destination: '/docs/end-user/files-and-images', permanent: true },
 
       // Same shape, milder symptom: /docs/operations and /docs/getting-started
       // were page pools with no tab of their own, referenced by exactly one
