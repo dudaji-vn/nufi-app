@@ -3,9 +3,9 @@ title: Agent egress
 description: Keeping the agent products' model traffic on the gateway — what is measured today, what is only configured, and how to prove which is which.
 ---
 
-Each agent in NUFI Works runs inside a sandbox, and each flow in NUFI
+Each agent in NuFi Works runs inside a sandbox, and each flow in NuFi
 Studio runs inside the Studio process. Both are meant to reach exactly one
-host for models, the NUFI gateway, where the security checks live, and no
+host for models, the NuFi gateway, where the security checks live, and no
 vendor directly.
 
 This page separates what is **measured** from what is **configured but not
@@ -42,7 +42,7 @@ looks like an attempt to override the assistant's instructions…",
 "type":"nufi_guardrail_blocked","param":"LLM01_INJECTION"}}
 ```
 
-In NUFI Works, `apps/agents/nufi/adapters.json` points every enabled
+In NuFi Works, `apps/agents/nufi/adapters.json` points every enabled
 adapter's provider URL at the gateway, and four of the five carry an egress
 allow-list of the gateway host alone. `node apps/agents/nufi/verify-adapters.mjs`
 checks that file stays that way, and CI runs it on every pull request.
@@ -75,7 +75,7 @@ inside the pod. Describing the policy object proves it exists, not that
 Cilium is installed, that the selector matches the running pod, or that an
 older, broader policy is not unioned on top.
 
-**NUFI Studio** ships the check:
+**NuFi Studio** ships the check:
 
 ```bash
 apps/nufi-agent/nufi/egress/verify-egress.sh <studio-namespace> [pod-label-selector]
@@ -88,13 +88,13 @@ passes only when the gateway answers **and** `api.openai.com` does not:
 ```
   api.codechi.me  -> 200
   api.openai.com  -> 000
-PASS: only the gateway is reachable from the NUFI Studio pod.
+PASS: only the gateway is reachable from the NuFi Studio pod.
 ```
 
 It reports three outcomes, not two: a `curl` that never ran (missing from
 the image, `pods/exec` denied) is reported as inconclusive, not as a pass.
 
-**NUFI Works** has no script yet. The same test by hand, against a running
+**NuFi Works** has no script yet. The same test by hand, against a running
 agent pod, which the sandbox provider labels `paperclip.io/role=agent`:
 
 ```bash

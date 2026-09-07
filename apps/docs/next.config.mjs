@@ -6,7 +6,7 @@ const withMDX = createMDX();
 const config = {
   reactStrictMode: true,
 
-  // The NUFI Works pages used to live under /docs/end-user. They were listed
+  // The NuFi Works pages used to live under /docs/end-user. They were listed
   // in the Works sidebar by cross-reference, which rendered fine but kept the
   // canonical URL in the chat section -- so clicking "Assigning work to
   // agents" from the Works sidebar threw you into the "Using the app" tab.

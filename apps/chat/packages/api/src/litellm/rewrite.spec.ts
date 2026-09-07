@@ -75,7 +75,7 @@ describe('applyEndpointRewrite', () => {
       decrypt,
       getConfig: () => GATEWAY,
     });
-    const cfg = configWith([{ name: 'Nufi', baseURL: 'https://base.example/v1', apiKey: '${KEY}' }]);
+    const cfg = configWith([{ name: 'NuFi', baseURL: 'https://base.example/v1', apiKey: '${KEY}' }]);
     const out = await rewrite(cfg, {});
     const ep = (out.endpoints!.custom as any[])[0];
     expect(ep.baseURL).toBe('https://base.example/v1');

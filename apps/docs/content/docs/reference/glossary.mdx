@@ -3,27 +3,27 @@ title: Glossary
 description: The terms this manual uses.
 ---
 
-**The NUFI app**
-The chat product, at `chat.nufi.me` when hosted by NUFI. It holds
+**The NuFi app**
+The chat product, at `chat.nufi.me` when hosted by NuFi. It holds
 accounts, conversations, agents and files, and issues the session the
 other surfaces reuse. Chat is one feature of it; the manual does not call
-the product "NUFI Chat".
+the product "NuFi Chat".
 
-**NUFI Console**
+**NuFi Console**
 The self-service developer surface at `console.nufi.me`: gateway keys,
 your own usage, per-key limits. Also the identity issuer for the agent
 products.
 
-**NUFI Admin Panel**
+**NuFi Admin Panel**
 The admin surface at `admin.app.nufi.me`: settings, users, roles, groups,
 per-role overrides, the audit log. Talks to the app's admin API; keeps its
 own session.
 
-**NUFI Studio**
+**NuFi Studio**
 The flow canvas at `studio.nufi.me`: wire a model, documents and tools
 into a flow, run it, publish it as an endpoint. A vendored Langflow.
 
-**NUFI Works**
+**NuFi Works**
 The agent-operations app at `works.nufi.me`: give a team of agents a goal,
 approve what matters, watch the spend. A vendored Paperclip.
 
@@ -36,20 +36,20 @@ The console's second job: after asking the app who a member is, it mints
 a short-lived identity for Studio (a signed cookie checked against the
 console's published keys) and runs an OpenID Connect flow for Works.
 
-**NUFI AI Gateway**
-The one gate every model call passes through: LiteLLM with NUFI's
+**NuFi AI Gateway**
+The one gate every model call passes through: LiteLLM with NuFi's
 guardrails inside. Routing, keys, budgets, rate limits, the five controls,
-traces and metrics. Reachable at `api.codechi.me` for NUFI's own
+traces and metrics. Reachable at `api.codechi.me` for NuFi's own
 deployments and at `litellm-proxy:4000` inside the compose stack.
 
 **Endpoint**
-The app's name for a group of models behind one URL and key. NUFI
+The app's name for a group of models behind one URL and key. NuFi
 deployments have one, pointing at the gateway: called `NPUOps` in the
-compose stack's configuration and `Nufi` on Railway.
+compose stack's configuration and `NuFi` on Railway.
 
 **Model name**
 What a caller asks the gateway for. It maps to a provider entry in the
-gateway's configuration, and the two can differ: NUFI's own gateway
+gateway's configuration, and the two can differ: NuFi's own gateway
 answers several names with Google Gemini.
 
 **`backend_type`, `hardware_id`**

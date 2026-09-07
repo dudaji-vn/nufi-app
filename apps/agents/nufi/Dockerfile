@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 #
-# NUFI Works — upstream's image with the NuFi rename applied to server/dist.
+# NuFi Works — upstream's image with the NuFi rename applied to server/dist.
 #
 # Why a wrapper rather than an edit to ../Dockerfile: that file is not in the
 # fork allowlist, and a copy of it here would drift out of date on the next
@@ -54,7 +54,7 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 # https://telemetry.paperclip.ing/ingest and an AWS API Gateway in us-east-1.
 # Off in the image so a deployment elsewhere cannot quietly start reporting.
 #
-# Note the value: this codebase compares DO_NOT_TRACK to "1". NUFI Studio
+# Note the value: this codebase compares DO_NOT_TRACK to "1". NuFi Studio
 # compares it to "true". Setting one value for both leaves one of them sending.
 ENV PAPERCLIP_TELEMETRY_DISABLED=1 \
     DO_NOT_TRACK=1

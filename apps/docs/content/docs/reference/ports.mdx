@@ -7,8 +7,8 @@ description: Every host port each stack binds, by service, and every dev server.
 
 | Host port | Service | Container port | What |
 |---|---|---|---|
-| 3080 | `librechat` | 3080 | the NUFI app |
-| 3001 | `console` | 3000 | NUFI Console |
+| 3080 | `librechat` | 3080 | the NuFi app |
+| 3001 | `console` | 3000 | NuFi Console |
 | 3000 | `langfuse-web` | 3000 | Langfuse |
 | 3030 | `grafana` | 3000 | Grafana (3000 is taken by Langfuse) |
 | 4000 | `litellm-proxy` | 4000 | the gateway, and its admin UI at `/ui` |
@@ -25,7 +25,7 @@ No host port: `postgres` (5432), `redis` (6379), `clickhouse` (8123,
 
 | Host port | Container | Container port | What |
 |---|---|---|---|
-| 3081 | `nufi-chat-api` | 3081 | the NUFI app |
+| 3081 | `nufi-chat-api` | 3081 | the NuFi app |
 | none | `nufi-chat-mongo` | 27017 | MongoDB |
 | none | `nufi-chat-vectordb` | 5432 | pgvector, for uploads |
 | none | `nufi-chat-rag-api` | 8000 | the RAG service |
@@ -34,22 +34,22 @@ No host port: `postgres` (5432), `redis` (6379), `clickhouse` (8123,
 
 | Product | Port | Notes |
 |---|---|---|
-| NUFI Admin Panel | 3000 (`PORT`) | its own image; see [Installing the admin panel](/docs/deployment/admin-panel-install) |
-| NUFI Studio | 7860 (`PORT`) | its own image |
-| NUFI Works | 3100 (`PORT`) | its own image; the UI dev server is separate |
+| NuFi Admin Panel | 3000 (`PORT`) | its own image; see [Installing the admin panel](/docs/deployment/admin-panel-install) |
+| NuFi Studio | 7860 (`PORT`) | its own image |
+| NuFi Works | 3100 (`PORT`) | its own image; the UI dev server is separate |
 
 ## Dev servers
 
 | App | Command | Port |
 |---|---|---|
-| the NUFI app, API | `npm run backend:dev` | 3080, or `PORT` |
-| the NUFI app, client | `npm run frontend:dev` | 3090, proxying `/api` to `BACKEND_PORT` |
-| NUFI Console, API | `bun run dev` | 3000, or `PORT`; 3002 in the guide, since 3000 is Langfuse |
-| NUFI Console, client | same | 5173, proxying to `SERVER_PORT` |
-| NUFI Admin Panel | `bun run dev -- --port <n>` | 3000 by default; 3003 in the guide |
-| NUFI Studio, API | `langflow run --backend-only` | 7860, or `--port` |
-| NUFI Studio, client | `VITE_PORT=<n> npm start` | 3000 by default, which is Langfuse; 3005 in the guide |
-| NUFI Works, API | `pnpm run dev:server` | 3100 |
+| the NuFi app, API | `npm run backend:dev` | 3080, or `PORT` |
+| the NuFi app, client | `npm run frontend:dev` | 3090, proxying `/api` to `BACKEND_PORT` |
+| NuFi Console, API | `bun run dev` | 3000, or `PORT`; 3002 in the guide, since 3000 is Langfuse |
+| NuFi Console, client | same | 5173, proxying to `SERVER_PORT` |
+| NuFi Admin Panel | `bun run dev -- --port <n>` | 3000 by default; 3003 in the guide |
+| NuFi Studio, API | `langflow run --backend-only` | 7860, or `--port` |
+| NuFi Studio, client | `VITE_PORT=<n> npm start` | 3000 by default, which is Langfuse; 3005 in the guide |
+| NuFi Works, API | `pnpm run dev:server` | 3100 |
 | this manual | `bun run dev` | 3000 |
 
 With the compose stack up, 3000, 3001, 3030, 3080, 4000, 9090 and 9093

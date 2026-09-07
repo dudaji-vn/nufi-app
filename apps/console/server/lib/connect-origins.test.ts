@@ -11,7 +11,7 @@ describe('parseAllowedOrigins', () => {
   });
 
   it('tolerates trailing slashes, paths, and mixed case in configuration', () => {
-    expect(parseAllowedOrigins('https://Agents.NUFI.me/some/path')).toEqual([
+    expect(parseAllowedOrigins('https://Agents.NuFi.me/some/path')).toEqual([
       'https://agents.nufi.me',
     ]);
   });

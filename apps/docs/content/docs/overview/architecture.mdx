@@ -3,9 +3,9 @@ title: Architecture
 description: The surfaces, the gateway between them and the models, and the two deployments behind the hostnames.
 ---
 
-NUFI is a set of small products around one gateway. People use the app,
+NuFi is a set of small products around one gateway. People use the app,
 the console, and the two agent products; every model call any of them
-makes goes through the NUFI AI Gateway, which routes it, checks it, prices
+makes goes through the NuFi AI Gateway, which routes it, checks it, prices
 it and records it; the gateway calls whichever provider serves the model.
 
 ## At a glance
@@ -15,13 +15,13 @@ it and records it; the gateway calls whichever provider serves the model.
      │                                                                      │
      ▼                                                                      ▼
   ┌──────────────┐  one cookie  ┌──────────────┐  vouches for   ┌──────────────────────┐
-  │ the NUFI app │ ◄──────────► │ NUFI Console │ ─────────────► │ NUFI Studio  (flows) │
-  │ chat.nufi.me │              │ console.     │  identity      │ NUFI Works   (agents)│
+  │ the NuFi app │ ◄──────────► │ NuFi Console │ ─────────────► │ NuFi Studio  (flows) │
+  │ chat.nufi.me │              │ console.     │  identity      │ NuFi Works   (agents)│
   └──────┬───────┘              └──────┬───────┘                └──────────┬───────────┘
          │ endpoint key                │ per-user keys                     │ agent key
          ▼                             ▼                                   ▼
   ┌──────────────────────────────────────────────────────────────────────────────────┐
-  │                              NUFI AI Gateway                                     │
+  │                              NuFi AI Gateway                                     │
   │  routing · keys and budgets · five guardrails (G1–G4) · trace · metrics         │
   └───────────┬────────────────────────────────┬──────────────────────┬──────────────┘
               │                                │                      │
@@ -33,38 +33,38 @@ it and records it; the gateway calls whichever provider serves the model.
      │ your own server│               │ tokens, cost    │    │                  │
      └────────────────┘               └─────────────────┘    └──────────────────┘
 
-  NUFI Admin Panel (admin.app.nufi.me) ──► the app's admin API: settings, users, roles, groups
+  NuFi Admin Panel (admin.app.nufi.me) ──► the app's admin API: settings, users, roles, groups
 ```
 
 ## What sits where
 
-- **The NUFI app** is where conversations happen. It holds accounts,
+- **The NuFi app** is where conversations happen. It holds accounts,
   conversations, agents and files in its own MongoDB, and sends every
   completion to the gateway through one configured endpoint, with the
   signed-in account's id attached to each request.
-- **NUFI Console** is where a developer creates gateway keys and watches
+- **NuFi Console** is where a developer creates gateway keys and watches
   their own usage. It reads the app's session cookie, so there is no
   second sign-in, and it creates the person in the gateway on their first
   visit with the deployment's default budget and limits. It is also the
   identity issuer for the agent products: it publishes signing keys, mints
-  a short-lived identity for NUFI Studio, and runs an OpenID Connect flow
-  for NUFI Works, after asking the app who the member is.
-- **NUFI Studio** (a canvas for flows, published as endpoints) and
-  **NUFI Works** (a team of agents with goals, approvals and budgets) are
+  a short-lived identity for NuFi Studio, and runs an OpenID Connect flow
+  for NuFi Works, after asking the app who the member is.
+- **NuFi Studio** (a canvas for flows, published as endpoints) and
+  **NuFi Works** (a team of agents with goals, approvals and budgets) are
   separate products with their own databases. Their model calls go to the
   gateway under a model name reserved for agents.
-- **The gateway** is LiteLLM with NUFI's guardrail package inside it. It
+- **The gateway** is LiteLLM with NuFi's guardrail package inside it. It
   knows the models, holds the keys, budgets and rate limits, runs the five
   security controls, and emits one trace and one set of metrics per
   request. [Security](/docs/overview/security) explains the controls.
-- **The providers** are whatever the operator registered: NUFI's own
+- **The providers** are whatever the operator registered: NuFi's own
   gateway ships with Google Gemini behind several names, and any
   OpenAI-compatible server (vLLM, Ollama, a vendor API) can be added.
 - **Langfuse** keeps a trace per request: the user id the app sent, the
   model name and the hardware that served it, tokens, latency, cost.
   **Prometheus** scrapes the gateway's request and guardrail metrics,
   **Grafana** draws them, **Alertmanager** routes the nine alerts.
-- **NUFI Admin Panel** configures the app: features, users, roles,
+- **NuFi Admin Panel** configures the app: features, users, roles,
   groups, per-role overrides. It talks to the app's admin API over HTTP
   and has no database of its own.
 
@@ -83,27 +83,27 @@ default.
 
 ## Two deployments
 
-NUFI's hosted product is two deployments that meet at the gateway.
+NuFi's hosted product is two deployments that meet at the gateway.
 
 | | The compose stack (`deploy/platform`) | Railway |
 |---|---|---|
-| Runs | the gateway with the guardrails and their sidecars, Langfuse, Prometheus, Grafana, Alertmanager, the databases, and a copy of the app and the console | the app (`chat.nufi.me`), the console, the admin panel, NUFI Studio, NUFI Works |
+| Runs | the gateway with the guardrails and their sidecars, Langfuse, Prometheus, Grafana, Alertmanager, the databases, and a copy of the app and the console | the app (`chat.nufi.me`), the console, the admin panel, NuFi Studio, NuFi Works |
 | Where | one Linux host, reached through a Cloudflare tunnel under `codechi.me` | Railway's cloud, under `nufi.me` |
 | Model calls | inside the Docker network | to the compose stack's gateway over the internet, at `api.codechi.me` |
 | Agents in the app | off in the shipped configuration | on |
 
-A self-hosted NUFI is the compose stack alone: everything in one place,
-one `.env`, one script. [Deploying NUFI](/docs/deployment) is that path.
+A self-hosted NuFi is the compose stack alone: everything in one place,
+one `.env`, one script. [Deploying NuFi](/docs/deployment) is that path.
 
 ## Hostnames
 
 | Hostname | What | Who reaches it |
 |---|---|---|
-| `chat.nufi.me` | the NUFI app | everyone |
-| `console.nufi.me` | NUFI Console, and the identity issuer | developers; every member entering Studio or Works |
+| `chat.nufi.me` | the NuFi app | everyone |
+| `console.nufi.me` | NuFi Console, and the identity issuer | developers; every member entering Studio or Works |
 | `agents.nufi.me` | the chooser between Studio and Works; a route on the console, not a service | everyone |
-| `studio.nufi.me`, `works.nufi.me` | NUFI Studio, NUFI Works | members |
-| `admin.app.nufi.me` | NUFI Admin Panel | admins |
+| `studio.nufi.me`, `works.nufi.me` | NuFi Studio, NuFi Works | members |
+| `admin.app.nufi.me` | NuFi Admin Panel | admins |
 | `docs.app.nufi.me` | this manual | everyone |
 | `api.codechi.me` | the gateway's API, for code and for the Railway app | keys only; no browser sign-in in front |
 | `chat.`, `console.`, `langfuse.`, `grafana.codechi.me` | the compose stack's own app, console, trace viewer and dashboards | staff, behind Cloudflare Access |

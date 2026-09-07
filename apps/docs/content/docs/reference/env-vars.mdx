@@ -91,7 +91,7 @@ Honoured by the console but not passed by the compose file:
 IMAGE_TAG=main                   # commented out in the template
 DOMAIN_CLIENT=http://localhost:3081
 DOMAIN_SERVER=http://localhost:3081
-APP_TITLE=Nufi Chat
+APP_TITLE=NuFi
 ALLOW_REGISTRATION=true
 ALLOW_EMAIL_LOGIN=true
 COOKIE_DOMAIN=
@@ -117,7 +117,7 @@ Read by `librechat.yaml` but not passed by the compose file: `AGENTS_URL`.
 Every `GUARDRAIL_*` variable was removed from the app on 2026-07-29; the
 checks run at the gateway now.
 
-## NUFI Console
+## NuFi Console
 
 No template in `apps/console`. Everything the server reads, with defaults:
 
@@ -152,7 +152,7 @@ Build arguments, inlined into the browser bundle: `LIBRECHAT_URL`
 (`VITE_LIBRECHAT_URL`), `LITELLM_URL` (`VITE_LITELLM_URL`),
 `VITE_WORKS_URL`.
 
-## NUFI Admin Panel (`apps/admin-panel/.env.example`)
+## NuFi Admin Panel (`apps/admin-panel/.env.example`)
 
 ```bash
 SESSION_SECRET=                  # at least 32 characters; required by the image
@@ -175,12 +175,12 @@ ADMIN_PANEL_INDEX_PRAGMA=
 ADMIN_PANEL_INDEX_EXPIRES=
 ```
 
-## NUFI Studio and NUFI Works
+## NuFi Studio and NuFi Works
 
-Their variables are on [Installing NUFI Studio](/docs/deployment/studio-install),
-[Installing NUFI Works](/docs/deployment/agents-install) and
+Their variables are on [Installing NuFi Studio](/docs/deployment/studio-install),
+[Installing NuFi Works](/docs/deployment/agents-install) and
 [Single sign-on for the agent apps](/docs/deployment/agents-sso);
-`deploy/railway/agents.md` is the record of NUFI's own values.
+`deploy/railway/agents.md` is the record of NuFi's own values.
 
 ## How the secrets are generated
 

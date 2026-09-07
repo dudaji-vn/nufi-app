@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "NUFI Works",
-  "short_name": "NUFI Works",
+  "name": "NuFi Works",
+  "short_name": "NuFi Works",
   "description": "Agent work management — goals, tasks, budgets and approval gates for a team of agents.",
   "start_url": "/",
   "scope": "/",

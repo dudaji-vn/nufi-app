@@ -1,8 +1,8 @@
 # deploy/railway
 
-The NUFI app on its own: a compose file and a wrapper image for hosts that
+The NuFi app on its own: a compose file and a wrapper image for hosts that
 cannot bind-mount `librechat.yaml` (Railway). It talks to any OpenAI-compatible
-LLM endpoint, normally the NUFI AI gateway.
+LLM endpoint, normally the NuFi AI gateway.
 
 ## Prerequisites
 

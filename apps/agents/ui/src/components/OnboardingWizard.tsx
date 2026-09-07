@@ -168,7 +168,7 @@ export function OnboardingWizard() {
   const [agentName, setAgentName] = useState((saved?.agentName as string) ?? "Chief of staff");
   // `nufi_agent`, not `claude_local`. Upstream defaults to Claude Code because
   // upstream ships pointed at Anthropic; this distribution ships pointed at the
-  // NUFI gateway. A customer who accepts the default gets a team lead whose
+  // NuFi gateway. A customer who accepts the default gets a team lead whose
   // first run dies on `Invalid model name passed in model=claude-opus-4-8` —
   // which is exactly what happened the first time anyone clicked through this
   // wizard, and the reason it was found by the operator rather than by us.

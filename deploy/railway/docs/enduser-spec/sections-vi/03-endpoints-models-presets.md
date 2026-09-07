@@ -1,6 +1,6 @@
 ## Endpoint, Chọn Model & Tham Số
 
-Phần này tài liệu hóa bộ chọn endpoint, bộ chọn model, bảng tham số hội thoại và quản lý preset cho triển khai NuFi Chat. Cấu hình đã triển khai (`librechat.yaml`) bật đúng hai endpoint — **Nufi** (endpoint tương thích OpenAI tùy chỉnh) và **Agents** — và đặt `endpointsMenu`, `modelSelect`, `parameters`, và `presets` đều là `true`.
+Phần này tài liệu hóa bộ chọn endpoint, bộ chọn model, bảng tham số hội thoại và quản lý preset cho triển khai NuFi Chat. Cấu hình đã triển khai (`librechat.yaml`) bật đúng hai endpoint — **NuFi** (endpoint tương thích OpenAI tùy chỉnh) và **Agents** — và đặt `endpointsMenu`, `modelSelect`, `parameters`, và `presets` đều là `true`.
 
 ---
 
@@ -8,7 +8,7 @@ Phần này tài liệu hóa bộ chọn endpoint, bộ chọn model, bảng tha
 
 #### Mục đích
 
-Cung cấp một điều khiển thống nhất duy nhất — được hiển thị dưới dạng nút kích hoạt hình viên thuốc trong tiêu đề hội thoại — qua đó người dùng chọn cả endpoint (Nufi hoặc Agents) và, với các endpoint có model, model cụ thể sẽ sử dụng. Tổ hợp endpoint/model đã chọn được áp dụng ngay lập tức vào hội thoại đang hoạt động.
+Cung cấp một điều khiển thống nhất duy nhất — được hiển thị dưới dạng nút kích hoạt hình viên thuốc trong tiêu đề hội thoại — qua đó người dùng chọn cả endpoint (NuFi hoặc Agents) và, với các endpoint có model, model cụ thể sẽ sử dụng. Tổ hợp endpoint/model đã chọn được áp dụng ngay lập tức vào hội thoại đang hoạt động.
 
 #### Điều kiện tiên quyết / truy cập
 
@@ -20,15 +20,15 @@ Cung cấp một điều khiển thống nhất duy nhất — được hiển t
 
 - **Nút kích hoạt (Trigger button)** — nút hình viên thuốc trong tiêu đề hội thoại (`aria-label="Select a model"`). Hiển thị:
   - Icon endpoint/model (icon đã cấu hình cho endpoint đang chọn, hoặc icon Bot mặc định).
-  - **Nhãn hiển thị (display label)**: với endpoint Nufi, chuỗi ID model thô; với endpoint Agents, tên agent. Hiển thị dự phòng là `"Select a model"` (khóa i18n `com_ui_select_model`) khi chưa chọn gì.
+  - **Nhãn hiển thị (display label)**: với endpoint NuFi, chuỗi ID model thô; với endpoint Agents, tên agent. Hiển thị dự phòng là `"Select a model"` (khóa i18n `com_ui_select_model`) khi chưa chọn gì.
 - **Bảng dropdown** — mở bên dưới nút kích hoạt. Chứa:
   - Một **combobox tìm kiếm** (`id="model-search"`, nhãn truy cập từ `com_endpoint_search_models`; thuộc tính `placeholder` thực tế là một khoảng trắng `" "`).
   - **Các mục endpoint** — một hàng có thể mở rộng cho mỗi endpoint; với các endpoint có model, hàng mở rộng thành submenu.
-  - Trong submenu Nufi: một **trường tìm kiếm theo endpoint** (placeholder `com_endpoint_search_endpoint_models` điền nhãn endpoint), rồi đến danh sách các hàng model.
+  - Trong submenu NuFi: một **trường tìm kiếm theo endpoint** (placeholder `com_endpoint_search_endpoint_models` điền nhãn endpoint), rồi đến danh sách các hàng model.
   - Trong submenu Agents: trường tìm kiếm theo endpoint (placeholder `com_endpoint_search_var` điền "Agents"), rồi đến danh sách các hàng agent.
 - **Icon dấu tích (Checkmark icon)** (`CheckCircle2`) — xuất hiện bên cạnh mục đang chọn; một span `VisuallyHidden` thông báo `com_a11y_selected` cho trình đọc màn hình.
 - **Nút Pin / Unpin** — xuất hiện khi di chuột hoặc focus vào hàng model; bật/tắt model làm yêu thích. Aria-label là `com_ui_pin` / `com_ui_unpin`.
-- **Nút bánh răng cài đặt (Settings gear button)** (`SettingsIcon`) — xuất hiện bên cạnh nhãn endpoint chỉ khi endpoint yêu cầu khóa API do người dùng cung cấp. Không áp dụng cho endpoint Nufi hoặc Agents trong triển khai NuFi (khóa được cấu hình phía server).
+- **Nút bánh răng cài đặt (Settings gear button)** (`SettingsIcon`) — xuất hiện bên cạnh nhãn endpoint chỉ khi endpoint yêu cầu khóa API do người dùng cung cấp. Không áp dụng cho endpoint NuFi hoặc Agents trong triển khai NuFi (khóa được cấu hình phía server).
 
 #### Hành vi chức năng
 
@@ -36,9 +36,9 @@ Cung cấp một điều khiển thống nhất duy nhất — được hiển t
 
 **FR-2.** Khi dropdown đang mở, gõ vào trường tìm kiếm toàn cục sẽ lọc tất cả endpoint và model theo thời gian thực (debounced 200 ms). Kết quả hiển thị dạng danh sách phẳng được nhóm theo tiêu đề endpoint. Nếu truy vấn khớp nhãn endpoint nhưng không khớp ID model nào của nó, tất cả model thuộc endpoint đó sẽ hiển thị. Nếu truy vấn không khớp nhãn endpoint lẫn model nào, không có kết quả nào hiển thị và văn bản `com_files_no_results` được hiển thị. Một live-region (`role="alert" aria-live="polite"`) thông báo số lượng kết quả.
 
-**FR-3.** **Hàng endpoint Nufi** mở rộng thành sub-panel hiển thị các model được tải từ backend (fetch: true trong `librechat.yaml`). Trường tìm kiếm theo endpoint trong sub-panel này lọc model Nufi theo chuỗi đã gõ (khớp chuỗi con không phân biệt hoa thường).
+**FR-3.** **Hàng endpoint NuFi** mở rộng thành sub-panel hiển thị các model được tải từ backend (fetch: true trong `librechat.yaml`). Trường tìm kiếm theo endpoint trong sub-panel này lọc model NuFi theo chuỗi đã gõ (khớp chuỗi con không phân biệt hoa thường).
 
-**FR-4.** Nhấn vào hàng model trong Nufi sẽ chọn endpoint và model đó, đồng thời bắt đầu hoặc tiếp tục hội thoại với cài đặt đó ngay lập tức. Nút kích hoạt cập nhật để phản ánh lựa chọn mới.
+**FR-4.** Nhấn vào hàng model trong NuFi sẽ chọn endpoint và model đó, đồng thời bắt đầu hoặc tiếp tục hội thoại với cài đặt đó ngay lập tức. Nút kích hoạt cập nhật để phản ánh lựa chọn mới.
 
 **FR-5.** **Hàng endpoint Agents** mở rộng thành sub-panel liệt kê các agent khả dụng theo tên (được giải quyết qua bản đồ agents). Chọn một agent đặt `endpoint = "agents"` và `agent_id = <id agent đã chọn>` cho hội thoại.
 
@@ -48,8 +48,8 @@ Cung cấp một điều khiển thống nhất duy nhất — được hiển t
 
 #### Trạng thái & trường hợp đặc biệt
 
-- **Backend không khả dụng (endpoint model Nufi lỗi):** Danh sách model của Nufi chỉ chứa mục placeholder `"loading..."` (mục mặc định duy nhất được cấu hình trong `librechat.yaml`). Dropdown hiển thị mục đơn này. Không có spinner hay thông báo lỗi trong dropdown; chuỗi placeholder là phản hồi duy nhất. (cần xác minh thực tế trên sản phẩm đang chạy: liệu spinner tải hay trạng thái lỗi có được hiển thị ngoài model placeholder duy nhất hay không — phân tích mã tĩnh nhất quán với việc chỉ hiển thị `"loading..."`.)
-- **Backend trả về danh sách model rỗng:** Nếu backend trả về mảng rỗng, dropdown của Nufi không hiển thị hàng model nào (sub-panel trống). Không có thông báo "không có model" rõ ràng nào được hiển thị trong luồng code này.
+- **Backend không khả dụng (endpoint model NuFi lỗi):** Danh sách model của NuFi chỉ chứa mục placeholder `"loading..."` (mục mặc định duy nhất được cấu hình trong `librechat.yaml`). Dropdown hiển thị mục đơn này. Không có spinner hay thông báo lỗi trong dropdown; chuỗi placeholder là phản hồi duy nhất. (cần xác minh thực tế trên sản phẩm đang chạy: liệu spinner tải hay trạng thái lỗi có được hiển thị ngoài model placeholder duy nhất hay không — phân tích mã tĩnh nhất quán với việc chỉ hiển thị `"loading..."`.)
+- **Backend trả về danh sách model rỗng:** Nếu backend trả về mảng rỗng, dropdown của NuFi không hiển thị hàng model nào (sub-panel trống). Không có thông báo "không có model" rõ ràng nào được hiển thị trong luồng code này.
 - **Endpoint Assistants đang tải model:** Trong khi dữ liệu assistants đang được tải (`isAssistantsEndpoint` trả về true và `endpoint.models === undefined`), một `Spinner` được hiển thị trong sub-panel Assistants thay vì các hàng model. Điều này áp dụng cho các endpoint legacy `assistants` / `azureAssistants`, không áp dụng cho endpoint Agents.
 - **Chưa chọn endpoint:** Nút kích hoạt hiển thị chuỗi đã bản địa hóa `"Select a model"`.
 - **modelSelect: false + không có Model Specs:** Toàn bộ component bộ chọn không được hiển thị. Không áp dụng trong triển khai NuFi.
@@ -58,15 +58,15 @@ Cung cấp một điều khiển thống nhất duy nhất — được hiển t
 
 **AC-1.** Giả sử trang đã tải và đã xác thực, khi người dùng xem tiêu đề hội thoại, thì nút kích hoạt bộ chọn model hiển thị và cho thấy nhãn endpoint đang chọn hoặc "Select a model".
 
-**AC-2.** Giả sử bộ chọn đang đóng, khi người dùng nhấn nút kích hoạt, thì dropdown mở ra và liệt kê hàng endpoint "Nufi" và "Agents".
+**AC-2.** Giả sử bộ chọn đang đóng, khi người dùng nhấn nút kích hoạt, thì dropdown mở ra và liệt kê hàng endpoint "NuFi" và "Agents".
 
 **AC-3.** Giả sử dropdown đang mở, khi người dùng gõ một phần tên model vào ô tìm kiếm toàn cục, thì chỉ các endpoint và model khớp xuất hiện trong vòng 200 ms.
 
 **AC-4.** Giả sử dropdown đang mở và người dùng gõ một chuỗi không có kết quả khớp, khi tìm kiếm hoàn tất, thì văn bản "No results" (hoặc bản tương đương đã bản địa hóa) được hiển thị.
 
-**AC-5.** Giả sử người dùng nhấn vào một model trong Nufi, khi lựa chọn hoàn tất, thì nút kích hoạt cập nhật hiển thị ID model đã chọn và endpoint cùng model của hội thoại được đặt tương ứng.
+**AC-5.** Giả sử người dùng nhấn vào một model trong NuFi, khi lựa chọn hoàn tất, thì nút kích hoạt cập nhật hiển thị ID model đã chọn và endpoint cùng model của hội thoại được đặt tương ứng.
 
-**AC-6.** Giả sử endpoint backend model Nufi không khả dụng, khi người dùng mở sub-panel Nufi, thì mục "loading..." được hiển thị là tùy chọn model duy nhất và không có lỗi không xử lý nào xảy ra.
+**AC-6.** Giả sử endpoint backend model NuFi không khả dụng, khi người dùng mở sub-panel NuFi, thì mục "loading..." được hiển thị là tùy chọn model duy nhất và không có lỗi không xử lý nào xảy ra.
 
 **AC-7.** Giả sử một model đã được chọn, khi người dùng kích hoạt nút bật/tắt pin cho model đó, thì model được đánh dấu là yêu thích và icon pin luôn hiển thị liên tục trên hàng đó.
 
@@ -81,15 +81,15 @@ Hiển thị các tham số suy luận cấp model — temperature, top-p, các 
 #### Điều kiện tiên quyết / truy cập
 
 - `interface.parameters: true` được đặt trong `librechat.yaml` (đã đặt).
-- Endpoint của hội thoại đang hoạt động là "param endpoint": cả `custom` (Nufi) và `agents` đều đủ điều kiện thông qua tập `paramEndpoints` được định nghĩa trong `schemas.ts`.
-- Tham số của endpoint Nufi (`custom`) được truy cập qua **thanh bên phải (SidePanel right rail)** — icon `SlidersHorizontal` trong điều hướng của SidePanel bên phải, mở bảng **Parameters** (`Panel.tsx`). Liên kết này được thêm vào nav khi `isParamEndpoint === true && !isAgentsEndpoint` (`useSideNavLinks.ts:181-194`).
-- Nút bánh răng trong tiêu đề (`Settings2`, `id="parameters-button"`) mở OptionsPopover **chỉ** được hiển thị khi `interface.parameters === true` VÀ `paramEndpoint === false` (tức là endpoint KHÔNG nằm trong `paramEndpoints`). Do cả `custom` (Nufi) và `agents` đều nằm trong `paramEndpoints`, nút bánh răng trong tiêu đề **không bao giờ được hiển thị** cho cả hai endpoint trong triển khai NuFi.
+- Endpoint của hội thoại đang hoạt động là "param endpoint": cả `custom` (NuFi) và `agents` đều đủ điều kiện thông qua tập `paramEndpoints` được định nghĩa trong `schemas.ts`.
+- Tham số của endpoint NuFi (`custom`) được truy cập qua **thanh bên phải (SidePanel right rail)** — icon `SlidersHorizontal` trong điều hướng của SidePanel bên phải, mở bảng **Parameters** (`Panel.tsx`). Liên kết này được thêm vào nav khi `isParamEndpoint === true && !isAgentsEndpoint` (`useSideNavLinks.ts:181-194`).
+- Nút bánh răng trong tiêu đề (`Settings2`, `id="parameters-button"`) mở OptionsPopover **chỉ** được hiển thị khi `interface.parameters === true` VÀ `paramEndpoint === false` (tức là endpoint KHÔNG nằm trong `paramEndpoints`). Do cả `custom` (NuFi) và `agents` đều nằm trong `paramEndpoints`, nút bánh răng trong tiêu đề **không bao giờ được hiển thị** cho cả hai endpoint trong triển khai NuFi.
 
 #### Thành phần giao diện
 
 Có hai bề mặt riêng biệt hiển thị tham số:
 
-**(a) Bảng Parameters trong SidePanel trong hội thoại (`Panel.tsx`)** — đường dẫn chính cho endpoint Nufi:
+**(a) Bảng Parameters trong SidePanel trong hội thoại (`Panel.tsx`)** — đường dẫn chính cho endpoint NuFi:
 - Icon `SlidersHorizontal` trong nav của SidePanel bên phải mở bảng **Parameters**.
 - Bảng hiển thị tham số từ `paramSettings[EModelEndpoint.custom]` (mảng `openAI` phẳng, `parameterSettings.ts`).
 - Bố cục: **lưới CSS 2 cột** (`grid-cols-2`, `Panel.tsx:146`).
@@ -129,7 +129,7 @@ Có hai bề mặt riêng biệt hiển thị tham số:
 | `disableStreaming` | `com_endpoint_disable_streaming_label` | `switch` | `false` | boolean | Tắt streaming token (`com_endpoint_disable_streaming`) |
 | `fileTokenLimit` | `com_ui_file_token_limit` | `input` (number) | undefined | Số nguyên dương bất kỳ | Giới hạn token theo tệp để đưa vào ngữ cảnh (`com_ui_file_token_limit_desc`) |
 
-> Lưu ý: `reasoning_effort`, `reasoning_summary`, `verbosity`, `useResponsesApi`, và `web_search` là một phần của danh sách tham số `openAI` trong code và do đó xuất hiện trong bảng tham số cho endpoint `custom` (Nufi). Liệu model backend Nufi đã cấu hình có hỗ trợ tất cả các tham số này hay không phụ thuộc vào cài đặt backend; các tham số không được hỗ trợ thường bị hầu hết các server tương thích OpenAI bỏ qua.
+> Lưu ý: `reasoning_effort`, `reasoning_summary`, `verbosity`, `useResponsesApi`, và `web_search` là một phần của danh sách tham số `openAI` trong code và do đó xuất hiện trong bảng tham số cho endpoint `custom` (NuFi). Liệu model backend NuFi đã cấu hình có hỗ trợ tất cả các tham số này hay không phụ thuộc vào cài đặt backend; các tham số không được hỗ trợ thường bị hầu hết các server tương thích OpenAI bỏ qua.
 
 #### Điều Khiển Đặt Lại & Lưu Dưới Dạng Preset
 
@@ -140,11 +140,11 @@ Nằm bên dưới lưới tham số trong ngữ cảnh OptionsPopover / Side Pa
 
 #### Hành vi chức năng
 
-**FR-1.** Nhấn icon `SlidersHorizontal` trong nav của SidePanel bên phải sẽ mở bảng Parameters cho endpoint Nufi. Nút bánh răng trong tiêu đề (`id="parameters-button"`) không được hiển thị cho endpoint Nufi hoặc Agents (chỉ được hiển thị khi endpoint đang hoạt động không nằm trong `paramEndpoints`).
+**FR-1.** Nhấn icon `SlidersHorizontal` trong nav của SidePanel bên phải sẽ mở bảng Parameters cho endpoint NuFi. Nút bánh răng trong tiêu đề (`id="parameters-button"`) không được hiển thị cho endpoint NuFi hoặc Agents (chỉ được hiển thị khi endpoint đang hoạt động không nằm trong `paramEndpoints`).
 
 **FR-2.** Mỗi tham số slider hiển thị một thanh trượt ngang có thể kéo cùng một ô nhập số (trong giao diện `Advanced.tsx` cũ hơn) hoặc một component slider động (trong giao diện SidePanel `Panel.tsx`). Kéo hoặc gõ cập nhật giá trị ngay lập tức; thay đổi được debounced trước khi ghi vào trạng thái hội thoại.
 
-**FR-3.** Double-click vào slider sẽ đặt lại tham số riêng lẻ đó về giá trị mặc định. Trong đường dẫn SidePanel (endpoint Nufi), hành vi này được thực hiện trong `DynamicSlider.tsx` qua `onDoubleClick`.
+**FR-3.** Double-click vào slider sẽ đặt lại tham số riêng lẻ đó về giá trị mặc định. Trong đường dẫn SidePanel (endpoint NuFi), hành vi này được thực hiện trong `DynamicSlider.tsx` qua `onDoubleClick`.
 
 **FR-4.** Chuỗi Stop (Stop sequences) chấp nhận tối đa 4 mục được nhập dưới dạng tags (nhập kiểu chip). Các tag hiện có có thể được xóa từng cái.
 
@@ -156,18 +156,18 @@ Nằm bên dưới lưới tham số trong ngữ cảnh OptionsPopover / Side Pa
 
 **FR-8.** Bảng tham số chỉ đọc khi prop `readonly` được đặt — tất cả ô nhập và slider bị vô hiệu hóa. (cần xác minh thực tế trên sản phẩm đang chạy: những bề mặt nào truyền `readonly: true` — không có vị trí gọi nào truyền `readonly={true}` trong đường dẫn SidePanel dựa trên phân tích tĩnh; có thể được kích hoạt bởi chế độ chỉ đọc của hội thoại được chia sẻ)
 
-**FR-9.** Khi endpoint thay đổi (ví dụ: chuyển từ Nufi sang Agents), hiệu ứng tham số chạy, xóa các khóa không còn trong tập tham số mới, và bảng hiển thị lại với các điều khiển của endpoint mới.
+**FR-9.** Khi endpoint thay đổi (ví dụ: chuyển từ NuFi sang Agents), hiệu ứng tham số chạy, xóa các khóa không còn trong tập tham số mới, và bảng hiển thị lại với các điều khiển của endpoint mới.
 
 #### Trạng thái & trường hợp đặc biệt
 
 - **Chưa chọn endpoint:** Component EndpointSettings trả về `null` và không có bảng tham số nào được hiển thị.
-- **Nút bánh răng trong tiêu đề hiển thị hay ẩn:** Nút bánh răng trong tiêu đề (`id="parameters-button"`) chỉ được hiển thị khi `paramEndpoint === false` (`HeaderOptions.tsx`). Cả `custom` (Nufi) và `agents` đều nằm trong `paramEndpoints`, nên `paramEndpoint === true` với cả hai — nghĩa là **nút bánh răng không bao giờ được hiển thị** cho cả hai endpoint trong triển khai NuFi. Tham số của endpoint Nufi được truy cập qua thanh bên phải của SidePanel (icon `SlidersHorizontal`); tham số của endpoint Agents được truy cập qua SidePanel agent builder.
+- **Nút bánh răng trong tiêu đề hiển thị hay ẩn:** Nút bánh răng trong tiêu đề (`id="parameters-button"`) chỉ được hiển thị khi `paramEndpoint === false` (`HeaderOptions.tsx`). Cả `custom` (NuFi) và `agents` đều nằm trong `paramEndpoints`, nên `paramEndpoint === true` với cả hai — nghĩa là **nút bánh răng không bao giờ được hiển thị** cho cả hai endpoint trong triển khai NuFi. Tham số của endpoint NuFi được truy cập qua thanh bên phải của SidePanel (icon `SlidersHorizontal`); tham số của endpoint Agents được truy cập qua SidePanel agent builder.
 - **Ô nhập số ngoài khoảng:** Component `DynamicInput` không áp đặt min/max ở cấp độ giao diện cho các trường số; các giá trị ngoài khoảng được truyền đến backend và backend có thể từ chối.
 - **`maxContextTokens` hoặc `max_tokens` bị thiếu:** Nếu để trống (undefined), backend sử dụng mặc định riêng của nó; văn bản placeholder là `com_nav_theme_system` đã bản địa hóa ("System").
 
 #### Tiêu chí chấp nhận
 
-**AC-1.** Giả sử endpoint Nufi đang hoạt động, khi người dùng nhấn icon `SlidersHorizontal` trong SidePanel bên phải, thì bảng Parameters mở ra và hiển thị lưới tham số 2 cột.
+**AC-1.** Giả sử endpoint NuFi đang hoạt động, khi người dùng nhấn icon `SlidersHorizontal` trong SidePanel bên phải, thì bảng Parameters mở ra và hiển thị lưới tham số 2 cột.
 
 **AC-2.** Giả sử bảng Parameters trong SidePanel đang mở, khi người dùng kéo thanh trượt Temperature từ 1.0 xuống 0.5 và gửi tin nhắn, thì yêu cầu API bao gồm `temperature: 0.5`.
 
@@ -179,7 +179,7 @@ Nằm bên dưới lưới tham số trong ngữ cảnh OptionsPopover / Side Pa
 
 **AC-6.** Giả sử temperature được đặt thành 1.5 (trong khoảng hợp lệ), khi người dùng mở lại bảng Parameters trong SidePanel, thì thanh trượt hiển thị 1.5 (trạng thái tồn tại trong suốt vòng đời hội thoại).
 
-**AC-7.** Giả sử endpoint Nufi hoặc Agents được chọn, khi người dùng xem tiêu đề hội thoại, thì không có nút bánh răng tham số nào được hiển thị (cả hai endpoint đều nằm trong `paramEndpoints`, nên `paramEndpoint === true` sẽ ẩn nút trong tiêu đề). Tham số của Nufi được truy cập qua thanh bên phải của SidePanel; tham số của Agents được truy cập qua SidePanel agent builder.
+**AC-7.** Giả sử endpoint NuFi hoặc Agents được chọn, khi người dùng xem tiêu đề hội thoại, thì không có nút bánh răng tham số nào được hiển thị (cả hai endpoint đều nằm trong `paramEndpoints`, nên `paramEndpoint === true` sẽ ẩn nút trong tiêu đề). Tham số của NuFi được truy cập qua thanh bên phải của SidePanel; tham số của Agents được truy cập qua SidePanel agent builder.
 
 ---
 
@@ -194,7 +194,7 @@ Presets là các bản chụp có tên của endpoint, model và cài đặt tha
 - `interface.presets: true` được đặt trong `librechat.yaml` (đã đặt).
 - Người dùng phải đã xác thực; presets được lưu trữ theo người dùng trên server.
 - Nút Presets (icon `BookCopy`, `id="presets-button"`, `aria-label` từ `com_endpoint_examples`, `data-testid="presets-button"`) hiển thị trong tiêu đề hội thoại khi presets được bật.
-- Lưu ý: Presets của endpoint Agents bị loại trừ một cách rõ ràng khỏi hộp thoại Edit Preset (component trả về `null` nếu `isAgentsEndpoint(endpoint)`); presets của endpoint Nufi được hỗ trợ đầy đủ.
+- Lưu ý: Presets của endpoint Agents bị loại trừ một cách rõ ràng khỏi hộp thoại Edit Preset (component trả về `null` nếu `isAgentsEndpoint(endpoint)`); presets của endpoint NuFi được hỗ trợ đầy đủ.
 
 #### Thành phần giao diện
 
@@ -212,7 +212,7 @@ Presets là các bản chụp có tên của endpoint, model và cài đặt tha
 - Tiêu đề: `com_ui_edit_preset_title` (bao gồm tên preset).
 - Trường **Preset Name** — `Label` ("Preset name", `com_endpoint_preset_name`), `Input` với placeholder `com_endpoint_set_custom_name`.
 - Dropdown **Endpoint** — `SelectDropDown` với nhãn `com_endpoint`, liệt kê các endpoint không phải agents khả dụng. Thay đổi endpoint kích hoạt khởi tạo lại model và cài đặt.
-- Hàng **PopoverButtons** — các nút phụ trợ theo endpoint (ví dụ: cho endpoint Google; không có nút thêm cho loại `custom` của Nufi).
+- Hàng **PopoverButtons** — các nút phụ trợ theo endpoint (ví dụ: cho endpoint Google; không có nút thêm cho loại `custom` của NuFi).
 - Bảng **EndpointSettings** (cùng bố cục hai cột như bảng tham số hội thoại, được điền với các giá trị đã lưu của preset).
 - **Nút hành động:** "Export" (`com_endpoint_export`) và "Save" (`com_ui_save`).
 
@@ -298,7 +298,7 @@ Presets là các bản chụp có tên của endpoint, model và cài đặt tha
 
 #### Tiêu chí chấp nhận
 
-**AC-1.** Giả sử người dùng đang ở trong một hội thoại sử dụng endpoint Nufi với Temperature đặt thành 0.7, khi họ nhấn "Save as preset", đặt tên là "Low Temp", và nhấn "Save", thì preset xuất hiện trong danh sách presets và một toast xác nhận việc lưu.
+**AC-1.** Giả sử người dùng đang ở trong một hội thoại sử dụng endpoint NuFi với Temperature đặt thành 0.7, khi họ nhấn "Save as preset", đặt tên là "Low Temp", và nhấn "Save", thì preset xuất hiện trong danh sách presets và một toast xác nhận việc lưu.
 
 **AC-2.** Giả sử preset "Low Temp" tồn tại, khi người dùng mở menu presets và nhấn "Low Temp", thì temperature của hội thoại được đặt thành 0.7 và một toast hiển thị `"Low Temp" Active!`.
 

@@ -1,16 +1,16 @@
 ---
 title: Agent roles and budgets
-description: Setting up an agent team in NUFI Works — roles, who approves what, whose key pays, and how spend is bounded.
+description: Setting up an agent team in NuFi Works — roles, who approves what, whose key pays, and how spend is bounded.
 ---
 
 <Callout>
-This page is about **NUFI Works**. Managing the app's users, roles and
+This page is about **NuFi Works**. Managing the app's users, roles and
 groups is [Roles and groups](/docs/admin/roles-and-groups).
 </Callout>
 
 ## Companies and employees
 
-A **company** in NUFI Works is a team with a goal. Its **employees** are
+A **company** in NuFi Works is a team with a goal. Its **employees** are
 agents; each has a role, an adapter that decides how it runs, and a place
 in the reporting chain. Creating one starts with the goal and the first
 employee; tasks, budgets and approvals hang off that.
@@ -19,10 +19,10 @@ employee; tasks, budgets and approvals hang off that.
 
 | Adapter | Use for | Runs |
 |---|---|---|
-| `nufi_agent` | knowledge work: research, drafting, review | a NUFI model through the gateway |
+| `nufi_agent` | knowledge work: research, drafting, review | a NuFi model through the gateway |
 | `claude_local`, `codex_local`, `opencode_local`, `pi_local` | repository work: code, pull requests | a coding harness in a sandbox with a git workspace |
 
-`nufi_agent` is the NUFI-built one. Its configuration names the
+`nufi_agent` is the NuFi-built one. Its configuration names the
 environment variable holding the model key rather than the key itself:
 
 ```json
@@ -58,9 +58,9 @@ Two ways to give employees a key:
 
 - **One key for the instance.** `NUFI_MODEL_API_KEY` in the server's
   environment. Every run bills that key, and revoking it stops everyone.
-- **Each member's own key.** An administrator opens **Settings → NUFI**
+- **Each member's own key.** An administrator opens **Settings → NuFi**
   once and adds `NUFI_MODEL_API_KEY` as a secret slot; each member then
-  connects their NUFI account, which mints a gateway key for them and
+  connects their NuFi account, which mints a gateway key for them and
   fills their slot. Bind the secret to an employee as an environment
   variable of the same name and every run resolves it to the key of the
   person the work belongs to. Spend lands on that person in the console
@@ -68,8 +68,8 @@ Two ways to give employees a key:
   others.
 
 The second is the intended setup for a shared instance;
-[Connecting your NUFI account](/docs/works/connect-account) is the
-member's side, [Installing NUFI Works](/docs/deployment/agents-install#the-connect-plugin)
+[Connecting your NuFi account](/docs/works/connect-account) is the
+member's side, [Installing NuFi Works](/docs/deployment/agents-install#the-connect-plugin)
 the operator's.
 
 ## Roles and the reporting chain

@@ -10,7 +10,7 @@
 
 ### [WRONG] Parameters Panel — Access mechanism & trigger button (§ Conversation Parameters Panel, Preconditions / Access; FR-1; AC-1; AC-7)
 
-**Spec says:** The parameters gear button (`Settings2`, `id="parameters-button"`) is shown in the conversation header for the Nufi (`custom`) endpoint; "gear button is shown for `custom` (Nufi)"; AC-7 says the gear button is NOT shown for the Agents endpoint.
+**Spec says:** The parameters gear button (`Settings2`, `id="parameters-button"`) is shown in the conversation header for the NuFi (`custom`) endpoint; "gear button is shown for `custom` (NuFi)"; AC-7 says the gear button is NOT shown for the Agents endpoint.
 
 **Reality (inverted condition):** `HeaderOptions.tsx:50` renders the gear button ONLY when `paramEndpoint === false`:
 
@@ -19,16 +19,16 @@
   <TooltipAnchor id="parameters-button" …>
 ```
 
-`isParamEndpoint` (`schemas.ts:149-162`) checks `paramEndpoints` (`schemas.ts:86-94`), which includes BOTH `EModelEndpoint.custom` AND `EModelEndpoint.agents`. Therefore `paramEndpoint` is `true` for both Nufi and Agents — the gear button is **never shown** for either in the NuFi deployment. For the Nufi (`custom`) endpoint, parameters are accessed through the **SidePanel right rail** (`Parameters` component, `Panel.tsx`), added to the nav links when `isParamEndpoint === true && !isAgentsEndpoint` (`useSideNavLinks.ts:181-194`). The OptionsPopover/gear path is dead code for this deployment.
+`isParamEndpoint` (`schemas.ts:149-162`) checks `paramEndpoints` (`schemas.ts:86-94`), which includes BOTH `EModelEndpoint.custom` AND `EModelEndpoint.agents`. Therefore `paramEndpoint` is `true` for both NuFi and Agents — the gear button is **never shown** for either in the NuFi deployment. For the NuFi (`custom`) endpoint, parameters are accessed through the **SidePanel right rail** (`Parameters` component, `Panel.tsx`), added to the nav links when `isParamEndpoint === true && !isAgentsEndpoint` (`useSideNavLinks.ts:181-194`). The OptionsPopover/gear path is dead code for this deployment.
 
 - Evidence: `client/src/components/Chat/Input/HeaderOptions.tsx:50,65`; `packages/data-provider/src/schemas.ts:86-94,149-162`; `client/src/hooks/Nav/useSideNavLinks.ts:181-194`
-- Suggested correction: Remove all references to `id="parameters-button"` and the OptionsPopover as the access path for Nufi parameters. Replace with: parameters are accessed via the SidePanel icon (SlidersHorizontal) in the right rail. The OptionsPopover / gear button path is shown only when the endpoint is NOT in `paramEndpoints` (none of the two NuFi endpoints qualify). AC-7 should be inverted: it is the Agents endpoint for which the SidePanel Parameters link is suppressed (`!isAgentsEndpoint` guard in `useSideNavLinks.ts:184`).
+- Suggested correction: Remove all references to `id="parameters-button"` and the OptionsPopover as the access path for NuFi parameters. Replace with: parameters are accessed via the SidePanel icon (SlidersHorizontal) in the right rail. The OptionsPopover / gear button path is shown only when the endpoint is NOT in `paramEndpoints` (none of the two NuFi endpoints qualify). AC-7 should be inverted: it is the Agents endpoint for which the SidePanel Parameters link is suppressed (`!isAgentsEndpoint` guard in `useSideNavLinks.ts:184`).
 
 ---
 
 ### [WRONG] Parameters Panel — Layout for in-conversation use (§ Conversation Parameters Panel, UI Elements; FR-2)
 
-**Spec says:** The EndpointSettings panel for the Nufi endpoint uses `custom` → `OpenAISettings` → two-column layout (col1 3/5, col2 2/5) with parameters from `presetSettings[EModelEndpoint.custom]` = `openAIColumns`.
+**Spec says:** The EndpointSettings panel for the NuFi endpoint uses `custom` → `OpenAISettings` → two-column layout (col1 3/5, col2 2/5) with parameters from `presetSettings[EModelEndpoint.custom]` = `openAIColumns`.
 
 **Reality:** The SidePanel `Parameters` component (`Panel.tsx`) uses `paramSettings[EModelEndpoint.custom]` (the flat `openAI` array, `parameterSettings.ts:1052-1070`), not `presetSettings`. It renders a plain 2-column CSS grid (`grid-cols-2`, `Panel.tsx:146`), not a 3/5 + 2/5 split. The `presetSettings` / `OpenAISettings` / `openAIColumns` two-column layout described in the spec applies only to the **Edit Preset Dialog** (`EndpointSettings` component, `EndpointSettings.tsx`; `OpenAI.tsx:6,19`). FR-2's mention of "dynamic slider component (in the `Panel.tsx` SidePanel view)" is correct, but the column layout framing refers to a path only active in the preset editor.
 
@@ -155,7 +155,7 @@ if (isAssistantsEndpoint(endpoint.value) && endpoint.models === undefined) {
 
 ---
 
-### [RUNTIME-ONLY] VERIFY-RESOLVED: Nufi model fetch fallback (§ States & Edge Cases, "Backend unreachable")
+### [RUNTIME-ONLY] VERIFY-RESOLVED: NuFi model fetch fallback (§ States & Edge Cases, "Backend unreachable")
 
 **Spec says (verify marker):** "verify: whether a loading spinner or error state is surfaced beyond the single placeholder model"
 

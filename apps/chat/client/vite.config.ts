@@ -91,8 +91,8 @@ export default defineConfig(({ command }) => ({
       },
       includeAssets: [],
       manifest: {
-        name: 'NUFI',
-        short_name: 'NUFI',
+        name: 'NuFi',
+        short_name: 'NuFi',
         start_url: '/',
         display: 'standalone',
         background_color: '#080810',

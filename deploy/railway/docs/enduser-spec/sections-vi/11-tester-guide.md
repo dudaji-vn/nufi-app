@@ -36,7 +36,7 @@ mô tả tính năng; nó hướng dẫn bạn cách tiếp cận chúng.
    đăng nhập hoạt động.
 2. **Chức năng chat cốt lõi** — gửi tin nhắn, streaming, dừng, tạo lại, chỉnh sửa. Giá trị chính
    của sản phẩm.
-3. **Endpoint / model / tham số** — xác nhận Nufi endpoint và danh sách model hiện có.
+3. **Endpoint / model / tham số** — xác nhận NuFi endpoint và danh sách model hiện có.
 4. **Agents & File Search (RAG)** — tính năng nổi bật của NuFi; dành nhiều thời gian nhất ở đây.
 5. **Tải lên tệp & tệp đính kèm** — giới hạn và xác thực.
 6. **Quản lý cuộc trò chuyện** — tìm kiếm, đổi tên, xóa, lưu trữ, đánh dấu, chia sẻ, xuất dữ liệu,
@@ -53,8 +53,8 @@ là mức tối thiểu cần đạt. Để có độ bao phủ kỹ lưỡng, h
 không thể tiếp cận, phiên làm việc đã hết hạn).
 
 ### Đặc biệt xác minh các hành vi chỉ có ở NuFi
-- Thông báo chào mừng phải hiển thị đúng là **"Welcome to Nufi Chat."**
-- Đúng hai endpoint được cung cấp: **Nufi** và **Agents** — không có gì khác.
+- Thông báo chào mừng phải hiển thị đúng là **"Welcome to NuFi Chat."**
+- Đúng hai endpoint được cung cấp: **NuFi** và **Agents** — không có gì khác.
 - Menu tài khoản chứa mục **Console** mở NuFi Console **trong tab mới**.
 - Giới hạn tệp là **5 files / 20 MB mỗi tệp / 50 MB tổng cộng** với đúng các loại tệp được hỗ trợ
   đã liệt kê.

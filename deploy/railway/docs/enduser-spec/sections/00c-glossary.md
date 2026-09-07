@@ -17,9 +17,9 @@ user may or may not have, the gate is noted in that feature's *Preconditions*.
 |---|---|
 | **NuFi Chat** | The end-user chat application; a branded fork of LibreChat. |
 | **NuFi Console** | The self-service portal for API keys, budget and usage. |
-| **Endpoint** | A configured AI provider connection. NuFi exposes two: **Nufi** (the chat model) and **Agents**. |
-| **Nufi endpoint** | The single OpenAI-compatible chat endpoint; routes to the configured backend (LiteLLM in production). |
-| **Model** | A specific AI model selectable under the Nufi endpoint; the list is fetched live from the backend. |
+| **Endpoint** | A configured AI provider connection. NuFi exposes two: **NuFi** (the chat model) and **Agents**. |
+| **NuFi endpoint** | The single OpenAI-compatible chat endpoint; routes to the configured backend (LiteLLM in production). |
+| **Model** | A specific AI model selectable under the NuFi endpoint; the list is fetched live from the backend. |
 | **Agent** | A reusable, configured assistant (model + instructions + capabilities + Knowledge). The home of File Search / RAG in NuFi. |
 | **File Search** | The Agent capability that enables RAG over the Agent's uploaded Knowledge documents. The only Agent capability enabled in NuFi. |
 | **Knowledge** | Documents uploaded into an Agent. Persistent and embedded for retrieval across all conversations with that Agent. |
@@ -36,7 +36,7 @@ user may or may not have, the gate is noted in that feature's *Preconditions*.
 | **LiteLLM** | The proxy that fronts the AI models, enforces API keys and budgets, and records usage. The Console manages keys against it. |
 | **Budget / Spend** | The user's spending limit and accumulated cost, tracked by LiteLLM and shown in the Console. |
 | **Reveal-once** | The one-time display of a newly created API key's secret; it cannot be retrieved again afterwards. |
-| **Endpoints menu** | The Chat menu for switching between the Nufi and Agents endpoints. |
+| **Endpoints menu** | The Chat menu for switching between the NuFi and Agents endpoints. |
 | **pgvector / rag_api** | The vector database and embedding service backing File Search. |
 | **Meilisearch** | The search engine backing conversation search. |
 

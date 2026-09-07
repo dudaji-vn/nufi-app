@@ -29,7 +29,7 @@ import { PRODUCT, rebrandAll, rebrandRenderedProps } from "../nufi/rebrand.mjs";
 
 /**
  * The whole-string rewrite, now that nufi/rebrand-server-dist.mjs applies the
- * same rules to server/dist. Both sides of every comparison say NUFI, so the
+ * same rules to server/dist. Both sides of every comparison say NuFi, so the
  * handoff equality that broke under a one-sided rewrite holds again.
  *
  * If the server transform is ever dropped, this MUST go back to

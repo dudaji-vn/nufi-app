@@ -24,9 +24,9 @@ Everything runs in Docker Compose. See `docs/roadmap.md` for the weekly plan.
 - Docker Engine 24+ and Docker Compose v2 (Docker Desktop on macOS / Windows)
 - `git`
 - A GitHub Personal Access Token with `read:packages` scope, then
-  `docker login ghcr.io` once — the NUFI app and console images are pulled
+  `docker login ghcr.io` once — the NuFi app and console images are pulled
   from `ghcr.io/dudaji-vn/nufichat` and `ghcr.io/dudaji-vn/nufi-console`
-  (private). See "The NUFI app image" below for the one-time login command.
+  (private). See "The NuFi app image" below for the one-time login command.
 - `yq` (Mike Farah's Go-based one — bootstrap and `add-model.sh` use it):
   - macOS — `brew install yq`
   - Linux — `sudo snap install yq` or download the binary from
@@ -77,7 +77,7 @@ cd nufi-app/deploy/platform
 #       • mock-npu   — clone an existing model entry, tag as backend_type=npu
 #       • skip       — bring the stack up only, register models later
 #   → fills in random secrets in .env
-#   → pulls the NUFI app image from ghcr.io
+#   → pulls the NuFi app image from ghcr.io
 #   → docker compose up -d
 #   → runs the smoke test (skipped if no model was registered)
 #   → prints URLs and the Langfuse admin password
@@ -98,7 +98,7 @@ cp .env.example .env
 # edit .env: replace every `replace-me` value (see comments in the file for
 # how to generate each one — e.g. `openssl rand -hex 32`)
 
-docker compose pull librechat    # the NUFI app image from ghcr.io (one-time)
+docker compose pull librechat    # the NuFi app image from ghcr.io (one-time)
 docker compose up -d
 docker compose logs -f litellm-proxy   # wait for "Application startup complete"
 
@@ -543,7 +543,7 @@ revision to that model's commit sha at the same time.
 deploy/platform/
 ├── docker-compose.yml
 ├── .env.example        # copied to .env by bootstrap.sh, secrets filled in
-├── librechat.yaml      # the NUFI app's runtime config, mounted into the container
+├── librechat.yaml      # the NuFi app's runtime config, mounted into the container
 ├── litellm/            # the gateway image: config.yaml, Dockerfile, guardrails/, callbacks/, nufi-security/
 ├── scanner/            # the prompt-injection classifier sidecar
 ├── monitoring/         # Prometheus, Grafana, Alertmanager, alert rules
@@ -583,9 +583,9 @@ NUFI_CONSOLE_TAG=v0.2.0
 variables. It must use the same `JWT_SECRET` / `JWT_REFRESH_SECRET` /
 `LITELLM_MASTER_KEY` as the running stack.
 
-## The NUFI app image
+## The NuFi app image
 
-The chat service runs the NUFI app, `ghcr.io/dudaji-vn/nufichat:main`, whose
+The chat service runs the NuFi app, `ghcr.io/dudaji-vn/nufichat:main`, whose
 source is `apps/chat` in this repository. It is not a LibreChat fork with an
 upstream any more; changes are made in `apps/chat` and shipped by tagging
 `main` with `nufi-vX.Y.Z`, which `.github/workflows/chat-release.yml` turns

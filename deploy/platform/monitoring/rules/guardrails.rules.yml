@@ -1,4 +1,4 @@
-# Alert rules for the NUFI guardrail pipeline.
+# Alert rules for the NuFi guardrail pipeline.
 #
 # These exist because the failure this subsystem was built to end is not a
 # control that breaks loudly — it is a control that stops running while every

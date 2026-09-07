@@ -93,7 +93,7 @@ function AuthLayout({
           />
 
           <div className="relative z-10 inline-flex w-fit items-center gap-3 rounded-2xl bg-white px-4 py-2.5 shadow-lg ring-1 ring-white/10">
-            <img src="/assets/nufi-logo.svg" alt="NUFI" className="h-9 w-auto" />
+            <img src="/assets/nufi-logo.svg" alt="NuFi" className="h-9 w-auto" />
           </div>
 
           <div className="relative z-10 max-w-lg">
@@ -107,7 +107,7 @@ function AuthLayout({
           </div>
 
           <div className="relative z-10 text-xs text-muted-foreground">
-            © {new Date().getFullYear()} NUFI · All rights reserved
+            © {new Date().getFullYear()} NuFi · All rights reserved
           </div>
         </div>
 
@@ -119,7 +119,7 @@ function AuthLayout({
               <div className="mb-8 flex justify-center lg:hidden">
                 <BlinkAnimation active={isFetching}>
                   <div className="inline-flex items-center rounded-2xl bg-white px-4 py-2.5 shadow-md ring-1 ring-black/5 dark:ring-white/10">
-                    <img src="/assets/nufi-logo.svg" alt="NUFI" className="h-9 w-auto" />
+                    <img src="/assets/nufi-logo.svg" alt="NuFi" className="h-9 w-auto" />
                   </div>
                 </BlinkAnimation>
               </div>

@@ -1,6 +1,6 @@
 name: agents-image
 
-# The NUFI Works image: upstream's build, with the server-dist rename applied
+# The NuFi Works image: upstream's build, with the server-dist rename applied
 # on top. ui/dist is branded by a Vite plugin during the upstream build;
 # server/dist has no such hook, which is what the second stage is for.
 

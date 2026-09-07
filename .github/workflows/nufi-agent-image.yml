@@ -1,6 +1,6 @@
 name: nufi-agent-image
 
-# The NUFI Studio image. Built here rather than by Railway so the build does
+# The NuFi Studio image. Built here rather than by Railway so the build does
 # not have to fit inside a deploy, and so the image that ships is the same one
 # a person can pull and inspect.
 

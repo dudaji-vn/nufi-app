@@ -27,8 +27,8 @@ function RootLayout() {
       <header className="border-b">
         <div className="mx-auto flex h-14 max-w-5xl items-center gap-4 px-4 sm:gap-6 sm:px-6">
           <Link to="/" className="flex items-center gap-2">
-            <img src="/nufi-logo.svg" alt="NUFI" className="h-5 w-auto" />
-            <span className="font-semibold tracking-tight">NUFI Console</span>
+            <img src="/nufi-logo.svg" alt="NuFi" className="h-5 w-auto" />
+            <span className="font-semibold tracking-tight">NuFi Console</span>
           </Link>
           <nav className="flex flex-1 items-center gap-3 text-sm sm:gap-4">
             <NavLink to="/">Profile</NavLink>

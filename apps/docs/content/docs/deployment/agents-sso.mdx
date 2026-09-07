@@ -1,14 +1,14 @@
 ---
 title: Single sign-on for the agent apps
-description: How the console issues identity to NUFI Studio and NUFI Works, what to set on each of the three sides, and the two constraints that will bite you later if you skip them.
+description: How the console issues identity to NuFi Studio and NuFi Works, what to set on each of the three sides, and the two constraints that will bite you later if you skip them.
 ---
 
-Without this, NUFI Studio and NUFI Works each have their own accounts
-and their own passwords, and a member who already signed in to NUFI
+Without this, NuFi Studio and NuFi Works each have their own accounts
+and their own passwords, and a member who already signed in to NuFi
 meets two more login screens. With it, they click through and are
 already in.
 
-The console does the vouching. It already verifies a NUFI session and
+The console does the vouching. It already verifies a NuFi session and
 issues gateway keys from it; issuing an identity is the same job with a
 different output, which is why it lives there rather than in a fourth
 service. One place decides who may enter which product.
@@ -57,9 +57,9 @@ CHAT_BASE_URL=https://chat.nufi.me
 cookie carries an id and a session id — no email and no role — so the
 console asks the chat app who the member actually is before it issues
 anything. Without that lookup every identity it mints has no email, and
-the failure is not obvious: NUFI Works refuses the sign-in with
+the failure is not obvious: NuFi Works refuses the sign-in with
 `email_is_missing` at the end of a round trip that looks like it worked,
-NUFI Studio accepts it and provisions an account called
+NuFi Studio accepts it and provisions an account called
 `external-<hash>` for a real person, and everyone arrives as an editor
 because the role is missing too.
 </Callout>
@@ -97,7 +97,7 @@ the sign-in fails for whoever the load balancer sent elsewhere. Scaling
 out means moving them to a shared store first.
 </Callout>
 
-## NUFI Studio
+## NuFi Studio
 
 ```bash
 LANGFLOW_AUTO_LOGIN=false
@@ -124,7 +124,7 @@ Turning it on means anyone who can reach Studio can hand it a token
 they wrote themselves.
 </Callout>
 
-## NUFI Works
+## NuFi Works
 
 ```bash
 NUFI_OIDC_ISSUER=https://console.nufi.me
@@ -157,7 +157,7 @@ everyone out of it.
 
 ## Access levels
 
-A NUFI administrator arrives as an admin. Everyone else arrives as an
+A NuFi administrator arrives as an admin. Everyone else arrives as an
 editor. That mapping is fixed in the console.
 
 Studio treats it as a ceiling rather than an assignment, so a local
@@ -165,12 +165,12 @@ account cannot be promoted past what the console vouched for.
 
 ## What this does not do
 
-**It does not decide who may use which product.** Every NUFI account
+**It does not decide who may use which product.** Every NuFi account
 can open both. There is no invite list and no per-product entitlement.
 If you need one, it belongs in the console, because that is where the
 decision is made — and it does not exist yet.
 
-**It does not sign people out.** Signing out of NUFI does not revoke a
+**It does not sign people out.** Signing out of NuFi does not revoke a
 session already issued to Studio or Works; those expire on their own
 schedule, eight hours by default. Shorten `IDENTITY_TTL_SECONDS` if
 that window is too long for your risk tolerance, and tell people to
@@ -178,7 +178,7 @@ close the tabs on shared machines.
 
 **The Studio cookie is scoped to the parent domain.** A response from
 the console cannot set a cookie that only Studio receives, so it is
-scoped to `.nufi.me` and every NUFI subdomain gets a copy. It is
+scoped to `.nufi.me` and every NuFi subdomain gets a copy. It is
 audience-scoped and short-lived — another subdomain can do nothing with
 it except send it to Studio, which is where it was going. This holds
 only while every `*.nufi.me` host is operated by you. If one ever is

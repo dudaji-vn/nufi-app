@@ -34,7 +34,7 @@ upstream project.
 **Out of scope** — upstream LibreChat capabilities that are **not enabled** in the NuFi
 configuration, including web search, the code interpreter, voice (TTS/STT), social/OAuth sign-in
 via providers **other than Google** (GitHub, Discord, Facebook, Apple, OpenID, SAML — Google sign-in
-**is** enabled and is in scope), and any endpoint other than the single custom **Nufi** endpoint
+**is** enabled and is in scope), and any endpoint other than the single custom **NuFi** endpoint
 plus the **Agents** endpoint.
 Where such a capability is visible in code but disabled by configuration, it is either omitted or
 explicitly marked as *not enabled in NuFi*.

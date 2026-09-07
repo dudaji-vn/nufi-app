@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Asserts the public surface of both agent products: reachable, carrying the
-# NuFi name, and shut to anyone without a NUFI session.
+# NuFi name, and shut to anyone without a NuFi session.
 #
 # The negative cases are the point. A deploy that returns 200 tells you the
 # process started; it tells you nothing about whether the door is closed. Every
@@ -53,7 +53,7 @@ echo
 echo "== white label =="
 check "studio names no upstream"   "$(countcs Langflow "$(body "$STUDIO/")")"  "0"
 check "works names no upstream"    "$(countcs Paperclip "$(body "$WORKS/")")"  "0"
-check "studio carries the product" "$(count 'NUFI Studio' "$(body "$STUDIO/")" | awk '{print ($1>0)?"yes":"no"}')" "yes"
+check "studio carries the product" "$(count 'NuFi Studio' "$(body "$STUDIO/")" | awk '{print ($1>0)?"yes":"no"}')" "yes"
 
 echo
 echo "== the door is shut =="

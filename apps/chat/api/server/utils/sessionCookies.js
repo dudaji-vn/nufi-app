@@ -3,7 +3,7 @@ const { shouldUseSecureCookie } = require('@librechat/api');
 /**
  * Cookie options for session-level cookies (refreshToken, token_provider,
  * openid_*). Honours COOKIE_DOMAIN and COOKIE_SAMESITE so the cookies can be
- * shared with sibling subdomain apps — e.g. the NUFI console at
+ * shared with sibling subdomain apps — e.g. the NuFi console at
  * console.nufi.me reading auth set by chat.nufi.me. Defaults preserve the
  * original LibreChat behaviour (sameSite=strict, no domain).
  *

@@ -48,7 +48,7 @@ export async function requestKey(options: {
   const popup = win.open(url, "nufi-connect", POPUP_FEATURES);
   if (!popup) {
     throw new ConnectCancelled(
-      "The browser blocked the NUFI sign-in window. Allow pop-ups for this site and try again.",
+      "The browser blocked the NuFi sign-in window. Allow pop-ups for this site and try again.",
     );
   }
 
@@ -81,7 +81,7 @@ export async function requestKey(options: {
      */
     const timer = setInterval(() => {
       if (!popup.closed) return;
-      finish(() => reject(new ConnectCancelled("The NUFI window closed before a key was issued.")));
+      finish(() => reject(new ConnectCancelled("The NuFi window closed before a key was issued.")));
     }, pollMs);
 
     win.addEventListener("message", onMessage);

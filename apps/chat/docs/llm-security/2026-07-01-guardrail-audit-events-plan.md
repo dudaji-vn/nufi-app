@@ -1406,7 +1406,7 @@ import { useCapabilities } from '@/hooks';
 
 export const Route = createFileRoute('/_app/security')({
   head: () => ({
-    meta: [{ title: 'Security events | NUFI Admin Panel' }],
+    meta: [{ title: 'Security events | NuFi Admin Panel' }],
   }),
   component: SecurityRoute,
 });

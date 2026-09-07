@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-13
 **Status:** Approved for planning
-**Owner:** NUFI fork (LibreChat)
+**Owner:** NuFi fork (LibreChat)
 
 ## 1. Summary
 
@@ -191,5 +191,5 @@ All changes are in `/client`. No backend, no `packages/*` schema changes.
 
 ## 10. Rollout
 - Pure frontend, low risk, easy rollback (default atom value).
-- Ship via the standard NUFI release flow: feature branch → PR to `develop` → merge `develop` →
+- Ship via the standard NuFi release flow: feature branch → PR to `develop` → merge `develop` →
   `fork/main` → tag `nufi-vX.Y.Z`.

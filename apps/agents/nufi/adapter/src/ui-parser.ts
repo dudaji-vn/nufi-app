@@ -4,7 +4,7 @@
  * This adapter's runs are short: one line naming the task, the model's answer,
  * and a disposition marker written by execute.ts. There is no tool-call stream
  * to reconstruct — the harness adapters have that, and this one deliberately
- * does not, because the work happens behind the NUFI gateway rather than in a
+ * does not, because the work happens behind the NuFi gateway rather than in a
  * sandbox on this machine.
  *
  * Kept self-contained: the UI loads this module dynamically and it must not

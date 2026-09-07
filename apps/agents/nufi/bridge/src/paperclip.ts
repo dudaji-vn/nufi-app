@@ -60,7 +60,7 @@ export const paperclip = {
   /**
    * The field is `description`, not `body`. Reading `body` yields undefined and
    * the agent receives a title with no detail — which does not fail, it
-   * fabricates. Measured: given only "Summarise what the NUFI agent-app design
+   * fabricates. Measured: given only "Summarise what the NuFi agent-app design
    * decided", the model invented a non-custodial crypto product and said so
    * confidently. A silently empty prompt is the worst shape this can fail in,
    * so `parseHeartbeatContext` asserts the field is there.

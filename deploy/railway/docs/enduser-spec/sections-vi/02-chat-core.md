@@ -11,18 +11,18 @@ Phần này mô tả hành vi hiển thị phía người dùng cuối của vò
 - **Điều kiện tiên quyết / truy cập:** Bất kỳ người dùng đã xác thực. Được hiển thị tự động khi tải trang lần đầu và bất cứ khi nào URL là `/c/new` hoặc không có `conversationId` (xem `ChatView.tsx` dòng 64–66: `isLandingPage` là true khi `messagesTree` rỗng và `conversationId === Constants.NEW_CONVO || !conversationId`).
 
 - **Thành phần giao diện:**
-  - **Văn bản chào mừng** (`Landing.tsx` dòng 135–138): được hiển thị bởi `SplitText` với hiệu ứng xuất hiện từng từ (`easeOutCubic`, độ trễ 50 ms mỗi từ). Khi `startupConfig.interface.customWelcome` là một chuỗi, nó được sử dụng như nguyên bản, trừ trường hợp chuỗi đó chứa token mẫu `{{user.name}}` — khi đó tên người dùng sẽ được thay thế vào vị trí đó; nếu không, lời chào theo thời gian trong ngày được thêm vào kèm `, <user.name>` nếu người dùng đã đặt tên. NuFi Chat đặt `customWelcome: "Welcome to Nufi Chat."` (không có token `{{user.name}}`), vì vậy lời chào luôn là **"Welcome to Nufi Chat."** (không có biến thể theo thời gian trong ngày, không thêm tên người dùng).
+  - **Văn bản chào mừng** (`Landing.tsx` dòng 135–138): được hiển thị bởi `SplitText` với hiệu ứng xuất hiện từng từ (`easeOutCubic`, độ trễ 50 ms mỗi từ). Khi `startupConfig.interface.customWelcome` là một chuỗi, nó được sử dụng như nguyên bản, trừ trường hợp chuỗi đó chứa token mẫu `{{user.name}}` — khi đó tên người dùng sẽ được thay thế vào vị trí đó; nếu không, lời chào theo thời gian trong ngày được thêm vào kèm `, <user.name>` nếu người dùng đã đặt tên. NuFi Chat đặt `customWelcome: "Welcome to NuFi."` (không có token `{{user.name}}`), vì vậy lời chào luôn là **"Welcome to NuFi Chat."** (không có biến thể theo thời gian trong ngày, không thêm tên người dùng).
   - **Biểu tượng endpoint** (`Landing.tsx` dòng 147–167): biểu tượng bo góc 41×41 px cho endpoint/agent đang hoạt động, được hiển thị bởi `ConvoIcon`.
   - **Biểu tượng sinh nhật tùy chọn** (chỉ hiển thị khi `startupConfig.showBirthdayIcon` là true; không dự kiến trong cấu hình mặc định của NuFi).
-  - **Văn bản mô tả** (chỉ hiển thị khi thực thể đang hoạt động có trường `description` hoặc `greeting`; không áp dụng cho endpoint "Nufi" thông thường).
+  - **Văn bản mô tả** (chỉ hiển thị khi thực thể đang hoạt động có trường `description` hoặc `greeting`; không áp dụng cho endpoint "NuFi" thông thường).
   - **Biểu mẫu nhập chat** (`ChatView.tsx` dòng 102): được đặt bên dưới lời chào. Khi `centerFormOnLanding` là true (`ChatForm.tsx` dòng 233–238), một khoảng cách đáy bổ sung được áp dụng trên trang khởi đầu. Điểm chuyển bố cục từ căn giữa sang căn dưới cùng được điều khiển bởi `isLandingPage` (thay đổi khi có tin nhắn xuất hiện), không phải trực tiếp bởi `isSubmitting`.
-  - **Conversation Starters** (`ConversationStarters.tsx`, `ChatView.tsx` dòng 103): chỉ hiển thị khi agent/assistant đang hoạt động có `conversation_starters`. Không có cho endpoint "Nufi" cơ sở.
-  - **Footer** (`Footer.tsx`): hiển thị "NUFI \<VERSION\>" (hoặc `config.customFooter` nếu được đặt). Ẩn trên thiết bị di động (`sm:flex`). Hiển thị liên kết chính sách bảo mật và điều khoản dịch vụ nếu được cấu hình.
+  - **Conversation Starters** (`ConversationStarters.tsx`, `ChatView.tsx` dòng 103): chỉ hiển thị khi agent/assistant đang hoạt động có `conversation_starters`. Không có cho endpoint "NuFi" cơ sở.
+  - **Footer** (`Footer.tsx`): hiển thị "NuFi \<VERSION\>" (hoặc `config.customFooter` nếu được đặt). Ẩn trên thiết bị di động (`sm:flex`). Hiển thị liên kết chính sách bảo mật và điều khoản dịch vụ nếu được cấu hình.
   - **Nút "New Chat"** (thanh bên, `NewChat.tsx` `aria-label="com_ui_new_chat"`): biểu tượng bút chì `NewChatIcon`. Ctrl/Cmd+Click mở `/c/new` trong tab trình duyệt mới.
 
 - **Hành vi chức năng:**
   - FR-1. Khi người dùng điều hướng đến `/c/new` hoặc nhấp "New Chat", `ChatView` hiển thị thành phần `Landing` và `ChatForm` thay vì `MessagesView`.
-  - FR-2. Văn bản chào mừng "Welcome to Nufi Chat." được hiển thị với hiệu ứng hoạt hình xuất hiện từng chữ/từ (SplitText).
+  - FR-2. Văn bản chào mừng "Welcome to NuFi Chat." được hiển thị với hiệu ứng hoạt hình xuất hiện từng chữ/từ (SplitText).
   - FR-3. Nếu thực thể được giải quyết có trường `name` không rỗng, tên đó được hiển thị thay cho lời chào; nếu nó còn có `description` hoặc `greeting`, văn bản đó xuất hiện bên dưới biểu tượng.
   - FR-4. Nhấp "New Chat" xóa bộ đệm tin nhắn của cuộc trò chuyện trước (`clearMessagesCache`) và gọi `newConversation()`, sau đó điều hướng đến `/c/new`.
   - FR-5. Ctrl/Cmd+nhấp "New Chat" mở `/c/new` trong tab mới mà không xóa phiên hiện tại.
@@ -33,7 +33,7 @@ Phần này mô tả hành vi hiển thị phía người dùng cuối của vò
   - Trên thiết bị di động (`max-width: 768px`), thanh bên bị thu gọn; nút "New Chat" bị ẩn (`max-md:hidden`). Cuộc trò chuyện mới được bắt đầu từ menu `OpenSidebar`.
 
 - **Tiêu chí chấp nhận:**
-  - AC-1. Giả sử người dùng đã đăng nhập điều hướng đến `/c/new`, khi trang hiển thị, thì văn bản "Welcome to Nufi Chat." xuất hiện trong khu vực khởi đầu với hiệu ứng hoạt hình vào.
+  - AC-1. Giả sử người dùng đã đăng nhập điều hướng đến `/c/new`, khi trang hiển thị, thì văn bản "Welcome to NuFi Chat." xuất hiện trong khu vực khởi đầu với hiệu ứng hoạt hình vào.
   - AC-2. Giả sử người dùng đang ở trang trò chuyện có tin nhắn, khi họ nhấp "New Chat", thì URL thay đổi thành `/c/new` và màn hình khởi đầu được hiển thị.
   - AC-3. Giả sử người dùng Ctrl/Cmd+nhấp "New Chat", khi trình duyệt xử lý lần nhấp, thì `/c/new` mở trong tab mới và tab hiện tại không thay đổi.
   - AC-4. Giả sử một cuộc trò chuyện đang tải (spinner hiển thị), khi tải hoàn tất với tin nhắn, thì màn hình khởi đầu không xuất hiện thoáng qua trước khi MessagesView xuất hiện.
@@ -44,7 +44,7 @@ Phần này mô tả hành vi hiển thị phía người dùng cuối của vò
 
 - **Mục đích:** Cho phép người dùng nhập tin nhắn và gửi đến mô hình.
 
-- **Điều kiện tiên quyết / truy cập:** Người dùng đã xác thực với ít nhất một endpoint được cấu hình. Endpoint "Nufi" phải khả dụng. Đầu vào bị vô hiệu hóa (`disableInputs`) khi `requiresKey` là true (cần khóa API nhưng bị thiếu) hoặc khi một assistant không hợp lệ được chọn.
+- **Điều kiện tiên quyết / truy cập:** Người dùng đã xác thực với ít nhất một endpoint được cấu hình. Endpoint "NuFi" phải khả dụng. Đầu vào bị vô hiệu hóa (`disableInputs`) khi `requiresKey` là true (cần khóa API nhưng bị thiếu) hoặc khi một assistant không hợp lệ được chọn.
 
 - **Thành phần giao diện:**
   - **Textarea tin nhắn** (`ChatForm.tsx` dòng 303): `TextareaAutosize`, `id="main-textarea"`, `data-testid="text-input"`, `aria-label` → `com_ui_message_input`. Bắt đầu ở chiều cao 44 px, mở rộng tối đa 45 vh (di động) / 55 vh (máy tính để bàn).
@@ -96,7 +96,7 @@ Phần này mô tả hành vi hiển thị phía người dùng cuối của vò
   - **PlaceholderRow** (`ui/PlaceholderRow.tsx`): hiển thị trong `MessageRender` (`dòng 237–239`) trong khi `hasNoChildren && isSubmitting`; thay thế hàng nút hover trong quá trình tạo để bố cục không bị dịch chuyển.
 
 - **Hành vi chức năng:**
-  - FR-1. **Lựa chọn giao thức SSE (`useAdaptiveSSE.ts`):** Đối với tất cả các endpoint không phải Assistants (bao gồm "Nufi"), đường dẫn **SSE có thể tiếp tục** (`useResumableSSE`) đang hoạt động. Đối với các endpoint Assistants, `useSSE` tiêu chuẩn đang hoạt động. Cả hai hook luôn được mount để tuân thủ quy tắc Hooks của React; hook không hoạt động nhận submission là `null` để ở trạng thái không làm gì.
+  - FR-1. **Lựa chọn giao thức SSE (`useAdaptiveSSE.ts`):** Đối với tất cả các endpoint không phải Assistants (bao gồm "NuFi"), đường dẫn **SSE có thể tiếp tục** (`useResumableSSE`) đang hoạt động. Đối với các endpoint Assistants, `useSSE` tiêu chuẩn đang hoạt động. Cả hai hook luôn được mount để tuân thủ quy tắc Hooks của React; hook không hoạt động nhận submission là `null` để ở trạng thái không làm gì.
   - FR-2. **Tiếp tục sau điều hướng:** `useResumeOnLoad` (được gọi trong `ChatView.tsx` dòng 61) phát hiện một công việc đang hoạt động cho `conversationId` hiện tại sau khi điều hướng và tiếp tục phát trực tuyến. Nó chờ cho đến khi `!isLoading` để tránh điều kiện tranh chấp.
   - FR-3. **Markdown được hiển thị trực tiếp:** Khi token đến, thành phần `Markdown` hiển thị lại với chuỗi `content` đang phát triển. `rehype-highlight` tô sáng cú pháp mã; `rehype-katex` / `remark-math` hiển thị LaTeX (khi cài đặt `LaTeXParsing` được bật); `remark-gfm` hỗ trợ bảng, gạch ngang và danh sách nhiệm vụ.
   - FR-4. **Tự động cuộn trong khi phát trực tuyến:** `useMessageScrolling` gọi `scrollToBottom()` trên mỗi lần cập nhật cây trong khi `isSubmitting && abortScroll !== true`. Nếu người dùng cuộn lên thủ công, `abortScroll` được đặt thành true và tự động cuộn dừng.
@@ -148,7 +148,7 @@ Phần này mô tả hành vi hiển thị phía người dùng cuối của vò
 
 - **Mục đích:** Yêu cầu phản hồi mới cho cùng một lượt người dùng, loại bỏ tin nhắn assistant hiện tại.
 
-- **Điều kiện tiên quyết / truy cập:** Tin nhắn phải là tin nhắn assistant (`isCreatedByUser === false`). `regenerateEnabled` là true khi: không phải tin nhắn người dùng, không phải kết quả tìm kiếm, không đang chỉnh sửa, không đang gửi, và endpoint là một trong: `openAI`, `custom`, `google`, `agents`, `bedrock`, `anthropic`, `azureOpenAI` (xem `useGenerationsByLatest.ts` dòng 46–59). "Nufi" sử dụng loại endpoint `custom`, vì vậy tạo lại được hỗ trợ.
+- **Điều kiện tiên quyết / truy cập:** Tin nhắn phải là tin nhắn assistant (`isCreatedByUser === false`). `regenerateEnabled` là true khi: không phải tin nhắn người dùng, không phải kết quả tìm kiếm, không đang chỉnh sửa, không đang gửi, và endpoint là một trong: `openAI`, `custom`, `google`, `agents`, `bedrock`, `anthropic`, `azureOpenAI` (xem `useGenerationsByLatest.ts` dòng 46–59). "NuFi" sử dụng loại endpoint `custom`, vì vậy tạo lại được hỗ trợ.
 
 - **Thành phần giao diện:**
   - **Nút Regenerate** (`HoverButtons.tsx` dòng 252–260): `RegenerateIcon` (19 px), `title` → `com_ui_regenerate`. Các nút hover bị ẩn ở `md:opacity-0` và hiển thị khi `group-hover` / `group-focus-within` / `group-[.final-completion]`. Nút Regenerate có class `active` nên có thể luôn hiển thị trên tin nhắn cuối cùng.
@@ -174,7 +174,7 @@ Phần này mô tả hành vi hiển thị phía người dùng cuối của vò
 
 - **Mục đích:** Cho phép người dùng sửa một tin nhắn đã gửi trước đó và chạy lại cuộc trò chuyện từ điểm đó.
 
-- **Điều kiện tiên quyết / truy cập:** Nút `isEditableEndpoint` phải là true (cùng danh sách endpoint như Regenerate; "Nufi"/custom đủ điều kiện). `hideEditButton` là false (không đang gửi, không phải lỗi, không phải kết quả tìm kiếm). Cả tin nhắn người dùng và tin nhắn assistant đều có thể được chỉnh sửa.
+- **Điều kiện tiên quyết / truy cập:** Nút `isEditableEndpoint` phải là true (cùng danh sách endpoint như Regenerate; "NuFi"/custom đủ điều kiện). `hideEditButton` là false (không đang gửi, không phải lỗi, không phải kết quả tìm kiếm). Cả tin nhắn người dùng và tin nhắn assistant đều có thể được chỉnh sửa.
 
 - **Thành phần giao diện:**
   - **Nút Edit** (`HoverButtons.tsx` dòng 223–235): `EditIcon` (19 px), `id="edit-<messageId>"`, `title` → `com_ui_edit`. Ẩn/vô hiệu hóa qua `isVisible={!hideEditButton}`. Trạng thái active khi `isEditing === true`.

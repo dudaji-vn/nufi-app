@@ -49,7 +49,7 @@ model_list:
       backend_type: cloud
       hardware_id: gemini-cloud
       supports_vision: false
-  # The model NUFI Works agents call, and the only name G1 exempts.
+  # The model NuFi Works agents call, and the only name G1 exempts.
   #
   # It exists to be nameable. `exempt_models` matches a model name, so agent
   # traffic needs one of its own — pointing agents at `gemini` would have
@@ -64,7 +64,7 @@ model_list:
       hardware_id: gemini-cloud
       supports_vision: false
   # --- Harness aliases ------------------------------------------------------
-  # Paperclip's coding harnesses (NUFI Works: claude_local, codex_local,
+  # Paperclip's coding harnesses (NuFi Works: claude_local, codex_local,
   # opencode_local) each carry a HARDCODED list of their vendor's model ids and
   # refuse anything else — provisioning a built-in agent with `gemini` returns
   # `built_in_agent_model_unknown`. The adapters live in vendored upstream code

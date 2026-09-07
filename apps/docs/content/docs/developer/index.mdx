@@ -1,6 +1,6 @@
 ---
 title: Develop
-description: Run NUFI on your machine, change one app, and ship it.
+description: Run NuFi on your machine, change one app, and ship it.
 ---
 
 Everything is in one repository,
@@ -10,12 +10,12 @@ next to it is the one to read.
 
 | Directory | What it is | Guide |
 |---|---|---|
-| `deploy/platform` | The stack: AI gateway, observability, monitoring, and the NUFI app and console as containers | [Run the stack locally](/docs/developer/run-locally) |
-| `apps/chat` | The NUFI app | [Work on the chat app](/docs/developer/work-on-chat) |
-| `apps/console` | NUFI Console, and the identity issuer for the agent products | [Work on the console](/docs/developer/work-on-console) |
-| `apps/admin-panel` | NUFI Admin Panel | [Work on the admin panel](/docs/developer/work-on-admin-panel) |
-| `apps/nufi-agent` | NUFI Studio, a vendored Langflow | [Work on Studio and Works](/docs/developer/work-on-agents) |
-| `apps/agents` | NUFI Works, a vendored Paperclip | [Work on Studio and Works](/docs/developer/work-on-agents) |
+| `deploy/platform` | The stack: AI gateway, observability, monitoring, and the NuFi app and console as containers | [Run the stack locally](/docs/developer/run-locally) |
+| `apps/chat` | The NuFi app | [Work on the chat app](/docs/developer/work-on-chat) |
+| `apps/console` | NuFi Console, and the identity issuer for the agent products | [Work on the console](/docs/developer/work-on-console) |
+| `apps/admin-panel` | NuFi Admin Panel | [Work on the admin panel](/docs/developer/work-on-admin-panel) |
+| `apps/nufi-agent` | NuFi Studio, a vendored Langflow | [Work on Studio and Works](/docs/developer/work-on-agents) |
+| `apps/agents` | NuFi Works, a vendored Paperclip | [Work on Studio and Works](/docs/developer/work-on-agents) |
 | `deploy/railway` | The wrapper image that runs the chat on Railway | [Release and deploy](/docs/developer/release) |
 | `apps/docs` | This site | `apps/docs/README.md` |
 
@@ -27,7 +27,7 @@ it is no longer where work happens; nothing in this section asks you to
 clone anything but `nufi-app`.
 </Callout>
 
-## Three ways to have a NUFI to work against
+## Three ways to have a NuFi to work against
 
 1. **The hosted staging.** `chat.nufi.me`, `console.nufi.me`,
    `agents.nufi.me`. Fine for reading the product or for changes that are
@@ -50,8 +50,8 @@ clone anything but `nufi-app`.
 | A GitHub token with `read:packages` | pulling the chat and console images from `ghcr.io/dudaji-vn` | | `docker login ghcr.io` |
 | Bun | console, admin panel, this site | 1.3 | `bun --version` |
 | Node and npm | the chat app | 20.19 or newer, or 22.12 or newer | `node --version` |
-| pnpm | NUFI Works | 10 | `pnpm --version` |
-| `uv` and Python 3.12 | NUFI Studio | | `uv --version` |
+| pnpm | NuFi Works | 10 | `pnpm --version` |
+| `uv` and Python 3.12 | NuFi Studio | | `uv --version` |
 | Ollama | a free local model for the stack, optional | | `ollama list` |
 
 On Apple Silicon there is one more step before the stack starts; it is in

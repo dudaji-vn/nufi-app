@@ -39,14 +39,14 @@ export const Route = createRootRoute({
       },
       {
         name: 'description',
-        content: 'NUFI Admin Panel',
+        content: 'NuFi Admin Panel',
       },
       {
         name: 'theme-color',
         content: '#080810',
       },
       {
-        title: 'NUFI Admin Panel',
+        title: 'NuFi Admin Panel',
       },
     ],
     links: [

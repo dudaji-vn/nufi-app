@@ -5,7 +5,7 @@
 // four answers and moved on.
 export const WEEK = {
   title: {
-    eyebrow: 'NUFI APP · WEEK OF 25–31 AUGUST 2026',
+    eyebrow: 'NuFi APP · WEEK OF 25–31 AUGUST 2026',
     head: 'Ten department agents, built and running',
     sub: ['One per team the product introduction names, plus the routines any team shares.',
           'Every answer in this recording is produced live, on the box, while filming.'],

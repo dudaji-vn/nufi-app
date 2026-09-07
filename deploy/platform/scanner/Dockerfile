@@ -25,7 +25,7 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=180s --retries=10 \
 #     3 concurrent requests -> 3/3 GUARDRAIL_UNAVAILABLE
 #     6 concurrent requests -> 6/6 GUARDRAIL_UNAVAILABLE
 #
-# Every NUFI Works company with two working agents failed on that. It also
+# Every NuFi Works company with two working agents failed on that. It also
 # explains a day of "intermittent" guardrail errors that were nothing of the
 # sort — each one coincided with a second agent running.
 #

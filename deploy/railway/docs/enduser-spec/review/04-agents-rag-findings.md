@@ -92,8 +92,8 @@
 
 ### [NEEDS-FIX] Uploading Knowledge documents — verify marker on fileConfig inheritance
 
-- **Spec marks:** `(verify: confirm agents endpoint inherits Nufi fileConfig limits or uses separate config)`
-- **Resolution: CONFIRMED.** When the agent's provider is "Nufi", `useAgentFileConfig` calls `getEndpointFileConfig({ endpoint: "Nufi", ... })`. Since "Nufi" is a custom endpoint type, the resolver's branch at `file-config.ts:594-622` looks up `mergedFileConfig.endpoints["Nufi"]` and returns the merged Nufi config with all its limits (fileLimit 5, fileSizeLimit 20 MB, totalSizeLimit 50 MB).
+- **Spec marks:** `(verify: confirm agents endpoint inherits NuFi fileConfig limits or uses separate config)`
+- **Resolution: CONFIRMED.** When the agent's provider is "NuFi", `useAgentFileConfig` calls `getEndpointFileConfig({ endpoint: "NuFi", ... })`. Since "NuFi" is a custom endpoint type, the resolver's branch at `file-config.ts:594-622` looks up `mergedFileConfig.endpoints["NuFi"]` and returns the merged NuFi config with all its limits (fileLimit 5, fileSizeLimit 20 MB, totalSizeLimit 50 MB).
 - **Evidence:** `client/src/hooks/Agents/useAgentFileConfig.ts:29-33`; `packages/data-provider/src/file-config.ts:594-622`.
 
 ---
@@ -161,7 +161,7 @@
 | Claim | Evidence |
 |---|---|
 | `capabilities: ["file_search"]` at librechat.yaml lines 34-36 | `nufi-chat/librechat.yaml:34-36` |
-| fileLimit 5 / fileSizeLimit 20 MB / totalSizeLimit 50 MB under `Nufi` endpoint | `nufi-chat/librechat.yaml:61-64` |
+| fileLimit 5 / fileSizeLimit 20 MB / totalSizeLimit 50 MB under `NuFi` endpoint | `nufi-chat/librechat.yaml:61-64` |
 | supportedMimeTypes list (pdf, txt, md, csv, docx, json, images) | `nufi-chat/librechat.yaml:65-77` |
 | Image uploads rejected for `file_search` tool resource | `api/server/services/Files/process.js:553-554` |
 | Dual storage pattern: storage first, then vectors | `api/server/services/Files/process.js:742-792` |

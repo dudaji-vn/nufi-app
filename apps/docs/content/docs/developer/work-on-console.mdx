@@ -1,13 +1,13 @@
 ---
 title: Work on the console
-description: Run NUFI Console from source against the local stack, with hot reload.
+description: Run NuFi Console from source against the local stack, with hot reload.
 ---
 
 `apps/console` is one Bun process. Hono serves the oRPC API and, in
 production, the Vite-built React app from the same origin. It owns no data:
 keys, budgets and spend live in the gateway's Postgres, accounts in the app's
-MongoDB, traces in Langfuse. It is also the identity issuer that NUFI Studio
-and NUFI Works trust, which is how a signed-in member gets handed into either
+MongoDB, traces in Langfuse. It is also the identity issuer that NuFi Studio
+and NuFi Works trust, which is how a signed-in member gets handed into either
 product without a second password.
 
 ## Run it

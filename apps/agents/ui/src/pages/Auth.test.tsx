@@ -261,7 +261,7 @@ describe("AuthPage", () => {
   // to reach it from the browser. Everything was green: the endpoint returned
   // the right authorize URL to curl. A person could not sign in. These two
   // assertions are what that costs.
-  it("offers the NUFI handoff", async () => {
+  it("offers the NuFi handoff", async () => {
     const { root, queryClient } = await mount();
     const button = [...container.querySelectorAll("button")].find((b) =>
       /continue with nufi/i.test(b.textContent ?? ""),

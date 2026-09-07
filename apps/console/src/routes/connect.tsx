@@ -6,9 +6,9 @@ import { Button } from '@/components/ui/button';
 import { api, isUnauthorized } from '@/lib/orpc';
 
 /**
- * Consent screen for handing a gateway key to another NUFI app.
+ * Consent screen for handing a gateway key to another NuFi app.
  *
- * Opened as a popup by NUFI Works. The chat cookie arrives with this top-level
+ * Opened as a popup by NuFi Works. The chat cookie arrives with this top-level
  * navigation, so the console knows who the visitor is; this page asks whether
  * they want a key minted for the app that opened it, and delivers the answer
  * back through `postMessage`.
@@ -62,17 +62,17 @@ function ConnectPage() {
   if (done) {
     return (
       <Panel icon={<Check className="size-5 text-primary" />} title="Connected">
-        <p>Your key has been sent to NUFI Works. You can close this window.</p>
+        <p>Your key has been sent to NuFi Works. You can close this window.</p>
       </Panel>
     );
   }
 
   if (!hasOpener) {
     return (
-      <Panel icon={<AlertTriangle className="size-5" />} title="Open this from NUFI Works">
+      <Panel icon={<AlertTriangle className="size-5" />} title="Open this from NuFi Works">
         <p>
           This page issues a key to an app that opened it. Nothing opened this one, so there is
-          nowhere to send a key. Start from Settings → NUFI in the Agents app.
+          nowhere to send a key. Start from Settings → NuFi in the Agents app.
         </p>
       </Panel>
     );
@@ -83,7 +83,7 @@ function ConnectPage() {
       <Panel icon={<AlertTriangle className="size-5" />} title="Incomplete request">
         <p>
           This link is missing information the Agents app should have supplied. Try again from
-          Settings → NUFI.
+          Settings → NuFi.
         </p>
       </Panel>
     );
@@ -133,7 +133,7 @@ function ConnectPage() {
     return begin.data.reason === 'disabled' ? (
       <Panel icon={<AlertTriangle className="size-5" />} title="Not enabled on this console">
         <p>
-          Handing keys to other NUFI apps is switched off here. An administrator turns it on by
+          Handing keys to other NuFi apps is switched off here. An administrator turns it on by
           listing the Agents address in <code className="font-mono">AGENTS_ALLOWED_ORIGINS</code>.
         </p>
       </Panel>
@@ -153,11 +153,11 @@ function ConnectPage() {
   return (
     <Panel
       icon={<ShieldCheck className="size-5 text-primary" />}
-      title="Give NUFI Works a gateway key"
+      title="Give NuFi Works a gateway key"
     >
       <p>
         <span className="font-mono break-all">{begin.data.origin}</span> is asking for a key that
-        lets it call NUFI models as {email ? <strong>{email}</strong> : 'you'}. Everything it spends
+        lets it call NuFi models as {email ? <strong>{email}</strong> : 'you'}. Everything it spends
         counts against your budget.
       </p>
 

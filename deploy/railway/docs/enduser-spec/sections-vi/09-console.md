@@ -12,7 +12,7 @@ NuFi Console là cổng thông tin tự phục vụ dành cho nhà phát triển
 
 **Luồng truy cập không được phép:** Khi bất kỳ lệnh gọi API nào trả về HTTP 401, SPA chuyển hướng đến route `/unauthorized`, hiển thị thông báo "Sign in required" kèm nội dung giải thích và nút "Open chat" liên kết sâu đến URL LibreChat (cấu hình qua `VITE_LIBRECHAT_URL`, mặc định là `http://localhost:3080`).
 
-**Điều hướng:** Thanh header cố định chứa logo NUFI, tên ứng dụng "NUFI Console" và ba liên kết điều hướng: **Profile** (Hồ sơ), **Usage** (Mức sử dụng) và **API keys**. Nút chuyển giao diện sáng/tối xuất hiện ở bên phải. Thông báo Toast xuất hiện ở góc dưới bên phải.
+**Điều hướng:** Thanh header cố định chứa logo NuFi, tên ứng dụng "NuFi Console" và ba liên kết điều hướng: **Profile** (Hồ sơ), **Usage** (Mức sử dụng) và **API keys**. Nút chuyển giao diện sáng/tối xuất hiện ở bên phải. Thông báo Toast xuất hiện ở góc dưới bên phải.
 
 ---
 

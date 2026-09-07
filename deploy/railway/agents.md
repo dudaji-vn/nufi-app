@@ -1,4 +1,4 @@
-# NUFI Studio and NUFI Works on Railway
+# NuFi Studio and NuFi Works on Railway
 
 Deploy notes for the two agent products and the identity the console issues
 for them. Written so the next person can rebuild this from nothing.
@@ -14,8 +14,8 @@ Plan: `docs/superpowers/plans/2026-08-26-nufi-agents-cloud.md`.
 | Host | Service | What it is |
 |---|---|---|
 | `agents.nufi.me` | `nufi-console` | the chooser — a route, not a service |
-| `studio.nufi.me` | `nufi-studio` | NUFI Studio, the flow canvas |
-| `works.nufi.me` | `nufi-works` | NUFI Works, the agent operations app |
+| `studio.nufi.me` | `nufi-studio` | NuFi Studio, the flow canvas |
+| `works.nufi.me` | `nufi-works` | NuFi Works, the agent operations app |
 | `console.nufi.me` | `nufi-console` | the identity issuer, unchanged otherwise |
 
 `agents.nufi.me` is a second custom domain on the existing console service.
@@ -172,9 +172,9 @@ private key component.
 
 ## Not deployed yet
 
-Agents in NUFI Works cannot run until there is a Kubernetes cluster with
+Agents in NuFi Works cannot run until there is a Kubernetes cluster with
 Cilium. It is the only sandbox provider that reads `nufi/adapters.json`'s
 `allowFqdns`, so it is the only one where "model traffic goes to the gateway
 and nowhere else" is enforced rather than merely asserted. Everything above
 stands without it: both products are reachable, branded, and entered with a
-NUFI account.
+NuFi account.

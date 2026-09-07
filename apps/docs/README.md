@@ -1,6 +1,6 @@
-# NUFI Docs
+# NuFi Docs
 
-User manual for the entire NUFI AI platform — chat, console, admin panel, and
+User manual for the entire NuFi AI platform — chat, console, admin panel, and
 self-hosted deployment. Built with [Fumadocs](https://fumadocs.dev) on top of
 Next.js 15 + MDX.
 
@@ -35,10 +35,10 @@ intro as a first child with the same label.
 content/docs/
 ├── index.mdx                 # Welcome — a task router, not a section list
 ├── meta.json                 # Section order (= reading order)
-├── overview/                 # What NUFI is, architecture, components, security
+├── overview/                 # What NuFi is, architecture, components, security
 ├── end-user/                 # Chat, models, agents, files, teams, API keys
-├── studio/                   # NUFI Studio: flows on a canvas, publish as endpoint
-├── works/                    # NUFI Works: agents, tasks, approvals, costs
+├── studio/                   # NuFi Studio: flows on a canvas, publish as endpoint
+├── works/                    # NuFi Works: agents, tasks, approvals, costs
 ├── admin/                    # Admin panel, roles, LiteLLM, Langfuse, Grafana
 ├── deployment/               # Compose, SSO, tunnel, monitoring, troubleshooting
 ├── developer/                # Local stack, the codebases, release flow, design notes

@@ -5,7 +5,7 @@ export const SCRIPT = {
     dir: 'ltr',
     font: '"IBM Plex Sans","Helvetica Neue",Arial,sans-serif',
     title: {
-      eyebrow: 'NUFI TEAM · ON-PREM AI APPLIANCE',
+      eyebrow: 'NuFi TEAM · ON-PREM AI APPLIANCE',
       head: 'One box. The department&rsquo;s work stays inside it.',
       sub: ['A shared drive, an assistant that answers from your own documents,',
             'and a wall that is enforced rather than promised.',
@@ -98,7 +98,7 @@ export const SCRIPT = {
     dir: 'ltr',
     font: '"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif',
     title: {
-      eyebrow: 'NUFI TEAM · 부서 협업 AI 어플라이언스',
+      eyebrow: 'NuFi TEAM · 부서 협업 AI 어플라이언스',
       head: '박스 한 대. 부서의 일이 그 안에서 끝납니다.',
       sub: ['공유 드라이브, 우리 문서로 답하는 도우미,',
             '그리고 말이 아니라 실제로 집행되는 경계.',

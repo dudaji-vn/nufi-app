@@ -17,7 +17,7 @@ The number on each tab counts how many values are configured there.
 | Tab | What it holds |
 |---|---|
 | **AI providers** | credentials and options per provider: OpenAI, Google, Anthropic, Azure OpenAI, Bedrock, Assistants, Agents |
-| **Custom endpoints** | your own OpenAI-compatible endpoints; on NUFI this is the gateway |
+| **Custom endpoints** | your own OpenAI-compatible endpoints; on NuFi this is the gateway |
 | **Model specs** | the curated model entries users see, each a model plus a preset |
 | **MCP** | Model Context Protocol servers, the tools agents can call |
 | **Features** | interface toggles, speech, actions, memory, web search, OCR, tool filters, summarisation |
@@ -54,7 +54,7 @@ resolve.
 
 ## Custom endpoints and the gateway
 
-On NUFI, the one custom endpoint is the gateway, and the model dropdown
+On NuFi, the one custom endpoint is the gateway, and the model dropdown
 users see is the gateway's model list. The app caches that list when it
 starts; a model registered on the gateway afterwards appears after the app
 is restarted (`docker compose restart librechat` on the compose stack, a

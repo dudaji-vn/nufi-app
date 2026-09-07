@@ -1,14 +1,14 @@
 ---
 title: The app on its own
-description: deploy/railway runs the NUFI app without the rest of the stack, on one host or on Railway.
+description: deploy/railway runs the NuFi app without the rest of the stack, on one host or on Railway.
 ---
 
-`deploy/railway` is the NUFI app alone: the chat, its MongoDB, and a small
+`deploy/railway` is the NuFi app alone: the chat, its MongoDB, and a small
 RAG service for file uploads, pointed at any OpenAI-compatible endpoint.
 No gateway of its own, no guardrails, no Langfuse. It exists for two
 places: a single host where the full stack is too much, and Railway, where
 a bind-mounted `librechat.yaml` is impossible and the directory doubles as
-a wrapper image. NUFI's own staging (`chat.nufi.me`) is this, calling the
+a wrapper image. NuFi's own staging (`chat.nufi.me`) is this, calling the
 gateway of the on-prem stack over the internet.
 
 ## One host
@@ -26,7 +26,7 @@ default, `--no-up` writes `.env` and stops.
 
 | Service | Container | Host port | What it is |
 |---|---|---|---|
-| `api` | `nufi-chat-api` | 3081 | the NUFI app, `ghcr.io/dudaji-vn/nufichat:${IMAGE_TAG:-main}` |
+| `api` | `nufi-chat-api` | 3081 | the NuFi app, `ghcr.io/dudaji-vn/nufichat:${IMAGE_TAG:-main}` |
 | `mongo` | `nufi-chat-mongo` | none | `mongo:4.4` |
 | `vectordb` | `nufi-chat-vectordb` | none | pgvector, the embeddings for uploaded files |
 | `rag_api` | `nufi-chat-rag-api` | none | chunks and embeds uploads; Gemini embeddings by default |
@@ -35,7 +35,7 @@ Variables, all in `.env` and listed on
 [Environment variables](/docs/deployment/environment-variables#the-wrapper-stack):
 `BACKEND_BASE_URL` and `BACKEND_API_KEY` are the endpoint the app sends
 every completion to (`https://api.codechi.me/v1` plus a gateway key, for
-NUFI's own), `DOMAIN_CLIENT` and `DOMAIN_SERVER` its public URL,
+NuFi's own), `DOMAIN_CLIENT` and `DOMAIN_SERVER` its public URL,
 `COOKIE_DOMAIN` and `COOKIE_SAMESITE` for a console on a sibling
 subdomain, `RAG_GOOGLE_API_KEY` for uploads.
 
@@ -85,14 +85,14 @@ image; the wrapper only changes when the config does. To upgrade, set
 [Release and deploy](/docs/developer/release).
 
 The other Railway services in the same project pull published images
-directly: the console (pinned tag), the admin panel (pinned tag), NUFI
-Studio and NUFI Works (`main`), plus MongoDB, pgvector, Meilisearch and the
+directly: the console (pinned tag), the admin panel (pinned tag), NuFi
+Studio and NuFi Works (`main`), plus MongoDB, pgvector, Meilisearch and the
 RAG service as Railway-managed containers. Their variables, hostnames and
 the sign-in wiring between them are recorded in `deploy/railway/agents.md`.
 
 Two scripts live beside the wrapper. `verify-agents.sh` asserts that both
-agent products are reachable, carry the NUFI name, and refuse anyone
-without a NUFI session. `demo.sh` parks the whole Railway project between
+agent products are reachable, carry the NuFi name, and refuse anyone
+without a NuFi session. `demo.sh` parks the whole Railway project between
 demos and wakes it on demand: most of the bill there is idle memory, and
 services that hold a database connection never sleep on their own.
 

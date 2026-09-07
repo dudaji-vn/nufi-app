@@ -52,7 +52,7 @@ ALLOWLIST=(
   # Which adapter a new company gets by default, and which one wears the
   # "Recommended" badge. Upstream picks Claude Code and Codex because upstream
   # ships pointed at Anthropic and OpenAI; this distribution ships pointed at
-  # the NUFI gateway, which serves Gemini. Accepting upstream's default here
+  # the NuFi gateway, which serves Gemini. Accepting upstream's default here
   # produces a team lead whose first run dies on
   # `Invalid model name passed in model=claude-opus-4-8`, and the vendor
   # harnesses narrate tool use they never performed when driven by a model
@@ -79,9 +79,9 @@ ALLOWLIST=(
 
   # The four built-in agents (briefs, learning, reflection-coach, summarizer)
   # may only run on a vendor harness upstream: claude_local, codex_local,
-  # gemini_local, opencode_local, process. NUFI Works serves none of those --
+  # gemini_local, opencode_local, process. NuFi Works serves none of those --
   # the container has no vendor CLI and no vendor key, and the egress check in
-  # this same CI proves every enabled adapter must reach the NUFI gateway. So a
+  # this same CI proves every enabled adapter must reach the NuFi gateway. So a
   # built-in was unusable by construction: enabling one produced an agent that
   # could never run, and correcting its adapter was refused with
   # `built_in_agent_adapter_not_allowed`. Observed on the live instance, where
@@ -93,7 +93,7 @@ ALLOWLIST=(
   "server/src/services/built-in-agents.ts"
   "server/src/__tests__/built-in-agents.test.ts"
   "ui/src/context/CompanyContext.test.tsx"
-  # Single sign-on. See nufi/README.md, "Signing in with a NUFI account".
+  # Single sign-on. See nufi/README.md, "Signing in with a NuFi account".
   "server/src/auth/better-auth.ts"
   # The button that reaches the plugin above. Enabling generic-oauth on the
   # server is invisible without it: better-auth's sign-in is a POST that also

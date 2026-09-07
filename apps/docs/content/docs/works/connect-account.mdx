@@ -1,14 +1,14 @@
 ---
-title: Connecting your NUFI account
-description: Give NUFI Works a gateway key from the session you already have, so agents run on your budget and your usage — not a shared credential.
+title: Connecting your NuFi account
+description: Give NuFi Works a gateway key from the session you already have, so agents run on your budget and your usage — not a shared credential.
 ---
 
 <Callout>
-This page is part of the [NUFI Works](/docs/works) documentation. It only applies once an administrator has
+This page is part of the [NuFi Works](/docs/works) documentation. It only applies once an administrator has
 finished the one-time setup described at the bottom.
 </Callout>
 
-Agents reach NUFI models through the gateway, and the gateway needs a key.
+Agents reach NuFi models through the gateway, and the gateway needs a key.
 Connecting yours takes about ten seconds and does not involve copying anything.
 
 ## Why it is per person
@@ -24,9 +24,9 @@ until someone asks a question you cannot answer from the data:
 
 ## Connecting
 
-1. Open **Settings → NUFI**.
-2. Click **Connect NUFI account**. A NUFI console window opens.
-3. If you are not signed in, sign in at NUFI chat and return to that window.
+1. Open **Settings → NuFi**.
+2. Click **Connect NuFi account**. A NuFi console window opens.
+3. If you are not signed in, sign in at NuFi chat and return to that window.
 4. Read what is being issued — the budget, the rate limit, and when it expires —
    and click **Approve**.
 
@@ -35,7 +35,7 @@ never shown, and never needs to be: it goes straight from the console into
 encrypted storage.
 
 <Callout type="warn">
-Approve this **only** in a window you opened yourself from Settings → NUFI. The
+Approve this **only** in a window you opened yourself from Settings → NuFi. The
 console will refuse an app it has not been told about, but the habit is the
 point: a page asking for a credential is a page worth reading before you agree.
 </Callout>
@@ -49,7 +49,7 @@ workspace at the same time, so there is never a forgotten credential left live.
 Anything still using the old key stops working immediately. Agents keep working:
 they resolve the secret at run time, not once at setup.
 
-Connecting to a second NUFI Works installation does not disturb the first. Each
+Connecting to a second NuFi Works installation does not disturb the first. Each
 gets its own key.
 
 ## When the key expires
@@ -85,7 +85,7 @@ so it is worth checking.
 
 Two settings, in two places, and the flow does not work until both are done:
 
-1. In NUFI Works, **Settings → Plugins → NUFI Connection** → set **NUFI console
+1. In NuFi Works, **Settings → Plugins → NuFi Connection** → set **NuFi console
    URL** to your console address, e.g. `https://console.nufi.me`.
 2. On the console, set `AGENTS_ALLOWED_ORIGINS` to this installation's origin,
    e.g. `https://works.nufi.me`.
@@ -96,5 +96,5 @@ be recognised there — the allow-list is what stops the console from handing th
 key back to whoever asked. Matching is exact: no wildcards, no suffix matching,
 and an empty value disables the feature rather than opening it.
 
-See [Installing NUFI Works](/docs/deployment/agents-install) for the plugin
+See [Installing NuFi Works](/docs/deployment/agents-install) for the plugin
 install itself.

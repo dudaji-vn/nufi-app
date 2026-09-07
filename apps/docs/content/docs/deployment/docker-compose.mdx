@@ -12,7 +12,7 @@ opens have host ports.
 
 ```
 postgres ─┬─► langfuse-worker ─┐
-          ├─► langfuse-web ────┼─► litellm-proxy ─► librechat   (the NUFI app)
+          ├─► langfuse-web ────┼─► litellm-proxy ─► librechat   (the NuFi app)
           └─► litellm-proxy    │                  └─► console
                                │
 clickhouse ──► langfuse-worker │
@@ -31,7 +31,7 @@ postgres-exporter, redis-exporter → prometheus
 
 | Service | Image | Note |
 |---|---|---|
-| `librechat` | `ghcr.io/dudaji-vn/nufichat:main` | the NUFI app; `librechat.yaml` is mounted from the platform root |
+| `librechat` | `ghcr.io/dudaji-vn/nufichat:main` | the NuFi app; `librechat.yaml` is mounted from the platform root |
 | `console` | `ghcr.io/dudaji-vn/nufi-console:${NUFI_CONSOLE_TAG:-main}` | |
 | `litellm-proxy` | built from `litellm/`, `nufi/litellm:local` | config, callbacks and guardrail code are baked in; `litellm/guardrails/policy.yaml` is mounted |
 | `nufi-scanner` | built from `scanner/`, `nufi/scanner:local` | the injection classifier; 700 MB model on first start |
@@ -44,7 +44,7 @@ postgres-exporter, redis-exporter → prometheus
 
 The admin panel is not in this file. It runs from its own image
 (`ghcr.io/dudaji-vn/nufichat-admin-panel`) wherever you put it, pointed at
-the app's URL; NUFI's own copy runs on Railway.
+the app's URL; NuFi's own copy runs on Railway.
 
 ## Host ports
 
@@ -123,7 +123,7 @@ docker compose down -v     # stop and delete every volume
 a user in the app and sends a message through the gateway. It targets a
 chat route the current app no longer serves and fails at its third step;
 until it is updated, `./scripts/smoke-test.sh` plus the manual checks in
-[Upgrade the NUFI app](/docs/deployment/upgrade-librechat#watch-the-first-start)
+[Upgrade the NuFi app](/docs/deployment/upgrade-librechat#watch-the-first-start)
 are the working verification.
 
 ## Layout

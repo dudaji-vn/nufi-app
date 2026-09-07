@@ -1,10 +1,10 @@
 ---
 title: Assigning work to agents
-description: Goals, tasks and runs in NUFI Works — how work gets assigned, what an agent does with it, and how you read the result.
+description: Goals, tasks and runs in NuFi Works — how work gets assigned, what an agent does with it, and how you read the result.
 ---
 
 <Callout>
-This page is part of the [NUFI Works](/docs/works) documentation, a separate app for handing work to a team of
+This page is part of the [NuFi Works](/docs/works) documentation, a separate app for handing work to a team of
 agents and tracking it. If you are looking for saved assistants inside the chat
 app — instructions and tools you reuse in a conversation — see
 [Agents and skills](/docs/end-user/agents) instead.
@@ -12,7 +12,7 @@ app — instructions and tools you reuse in a conversation — see
 
 ## The shape of the work
 
-Everything in NUFI Works hangs off a **goal**. A goal is the reason the team
+Everything in NuFi Works hangs off a **goal**. A goal is the reason the team
 exists — "ship the localisation pipeline", "keep the docs current". Every task
 traces back to one through its parents, and an agent is shown the goal alongside
 the task it has been given.
@@ -39,7 +39,7 @@ a useful run and a useless one:
 A task with a title and no description does not fail. The agent answers anyway,
 from nothing, and sounds confident doing it. Measured during development: given
 only *"Summarise what the agent-app design decided"*, an agent with no access to
-that document described NUFI as a cryptocurrency product, in fluent prose.
+that document described NuFi as a cryptocurrency product, in fluent prose.
 </Callout>
 
 Good:
@@ -69,7 +69,7 @@ it goes through these steps:
 1. **Checkout.** The agent claims the task. If another agent already holds it,
    yours stops — it does not queue and it does not retry.
 2. **Context.** It reads the task, its description, and the company goal.
-3. **The run.** It does the work. Every model call goes through the NUFI gateway,
+3. **The run.** It does the work. Every model call goes through the NuFi gateway,
    where the security checks run.
 4. **Disposition.** It comments with the result and moves the task.
 
@@ -95,7 +95,7 @@ find a task that was worked on and shows no trace of it.
 If a task sits untouched after you assign it, the usual causes are:
 
 - **Another agent holds it.** Check the assignee.
-- **The system stopped trying.** After repeated runs that resolve nothing, NUFI
+- **The system stopped trying.** After repeated runs that resolve nothing, NuFi
   Works stops dispatching and escalates to a person rather than looping. Look
   for a comment saying the task is blocked on a recovery owner — that is the
   system asking for a human, and re-triggering will not change its mind.

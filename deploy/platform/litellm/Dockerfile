@@ -1,4 +1,4 @@
-# Derived LiteLLM image with the NUFI guardrail package baked in, so the same
+# Derived LiteLLM image with the NuFi guardrail package baked in, so the same
 # artifact runs on the on-prem compose stack and on the production gateway.
 #
 # Pinned rather than :main-stable, per the project's "pin every image" rule.

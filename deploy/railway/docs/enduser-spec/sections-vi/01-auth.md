@@ -16,7 +16,7 @@
 
 ### Đăng ký
 
-- **Mục đích:** Cho phép người dùng mới tạo tài khoản email/mật khẩu trên Nufi Chat.
+- **Mục đích:** Cho phép người dùng mới tạo tài khoản email/mật khẩu trên NuFi Chat.
 
 - **Điều kiện tiên quyết / truy cập:**
   - `ALLOW_REGISTRATION=true` (biến môi trường server). API phản hồi với `registrationEnabled: true`
