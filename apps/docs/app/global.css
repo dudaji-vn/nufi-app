@@ -26,3 +26,58 @@
 .dark .nufi-mark {
   filter: brightness(0) invert(1);
 }
+
+/* Front-page hero backdrop: a faint grid fading out towards the bottom, with
+   two soft colour washes (the primary indigo and the brand's coral) behind
+   the headline. Everything is decorative and sits behind the content. */
+.nufi-hero-bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, color-mix(in oklab, var(--color-fd-border) 70%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, var(--color-fd-border) 70%, transparent) 1px, transparent 1px);
+  background-size: 40px 40px;
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.55), transparent 85%);
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.55), transparent 85%);
+}
+.nufi-hero-bg::before,
+.nufi-hero-bg::after {
+  content: '';
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(80px);
+  opacity: 0.35;
+}
+.nufi-hero-bg::before {
+  width: 36rem;
+  height: 36rem;
+  left: -10rem;
+  top: -12rem;
+  background: var(--color-fd-primary);
+}
+.nufi-hero-bg::after {
+  width: 28rem;
+  height: 28rem;
+  right: -6rem;
+  top: 4rem;
+  background: oklch(0.72 0.17 25);
+}
+.dark .nufi-hero-bg::before,
+.dark .nufi-hero-bg::after {
+  opacity: 0.22;
+}
+
+/* Glow behind the hero screenshot so the window frame lifts off the page. */
+.nufi-hero-glow {
+  position: absolute;
+  inset: -8% -6%;
+  pointer-events: none;
+  border-radius: 2rem;
+  background: radial-gradient(
+    closest-side,
+    color-mix(in oklab, var(--color-fd-primary) 35%, transparent),
+    transparent
+  );
+  filter: blur(40px);
+}
