@@ -1,8 +1,8 @@
-import Image from 'next/image';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import {
   ArrowRight,
+  ArrowUp,
   BookMarked,
   Bot,
   Code,
@@ -10,6 +10,8 @@ import {
   FileText,
   KeyRound,
   MessageSquare,
+  Mic,
+  Paperclip,
   Rocket,
   ShieldCheck,
   SlidersHorizontal,
@@ -255,30 +257,7 @@ export default function HomePage() {
             </ul>
           </div>
 
-          {/* A real conversation from chat.nufi.me in a window frame. The
-              screenshot is the same file the user guide uses, so the front
-              page and the manual never show two different products. */}
-          <div className="relative">
-            <div className="nufi-hero-glow" aria-hidden />
-            <div className="relative overflow-hidden rounded-xl border border-fd-border bg-fd-card shadow-2xl shadow-black/10 dark:shadow-black/40">
-              <div className="flex items-center gap-1.5 border-b border-fd-border bg-fd-muted/60 px-3 py-2">
-                <span className="size-2.5 rounded-full bg-fd-border" />
-                <span className="size-2.5 rounded-full bg-fd-border" />
-                <span className="size-2.5 rounded-full bg-fd-border" />
-                <span className="ml-3 rounded-md bg-fd-background px-2 py-0.5 text-[11px] text-fd-muted-foreground">
-                  chat.nufi.me
-                </span>
-              </div>
-              <Image
-                src="/screenshots/chat-conversation.png"
-                alt="A conversation in the NUFI app"
-                width={1440}
-                height={900}
-                priority
-                className="block w-full"
-              />
-            </div>
-          </div>
+          <HeroMock />
         </div>
       </section>
 
@@ -431,6 +410,121 @@ export default function HomePage() {
         </div>
       </section>
     </main>
+  );
+}
+
+/**
+ * The hero visual. A screenshot of the real app at this size is mostly white
+ * space with unreadable text, so this is a hand-drawn window instead: crisp
+ * at any size, follows the theme, and shows one exchange the manual actually
+ * teaches — a question answered from an attached handbook, with the source
+ * named, File Search on, and the security check that ran on it. The 18-day
+ * answer is the same example the Knowledge page uses.
+ */
+function HeroMock() {
+  return (
+    <div className="relative">
+      <div className="nufi-hero-glow" aria-hidden />
+      <div className="relative overflow-hidden rounded-2xl border border-fd-border bg-fd-card shadow-2xl shadow-black/10 dark:shadow-black/40">
+        {/* window chrome */}
+        <div className="flex items-center gap-1.5 border-b border-fd-border bg-fd-muted/60 px-3 py-2">
+          <span className="size-2.5 rounded-full bg-fd-border" />
+          <span className="size-2.5 rounded-full bg-fd-border" />
+          <span className="size-2.5 rounded-full bg-fd-border" />
+          <span className="ml-3 rounded-md bg-fd-background px-2 py-0.5 text-[11px] text-fd-muted-foreground">
+            chat.nufi.me
+          </span>
+        </div>
+
+        <div className="flex">
+          {/* rail */}
+          <div className="hidden w-11 flex-none flex-col items-center gap-3 border-r border-fd-border py-3 text-fd-muted-foreground sm:flex">
+            <MessageSquare className="size-4" strokeWidth={1.75} />
+            <Bot className="size-4" strokeWidth={1.75} />
+            <FileText className="size-4" strokeWidth={1.75} />
+            <Users className="size-4" strokeWidth={1.75} />
+            <span className="mt-auto size-6 rounded-full bg-fd-primary/20" />
+          </div>
+
+          {/* conversation */}
+          <div className="flex min-w-0 flex-1 flex-col">
+            <div className="flex items-center justify-between border-b border-fd-border px-4 py-2 text-xs">
+              <span className="inline-flex items-center gap-1.5 rounded-md border border-fd-border px-2 py-1 font-medium">
+                <Bot className="size-3.5 text-fd-primary" strokeWidth={2} />
+                Handbook assistant
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2 py-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-300">
+                <ShieldCheck className="size-3.5" strokeWidth={2} />
+                Checked
+              </span>
+            </div>
+
+            <div className="space-y-5 px-4 py-5 text-[13px] leading-relaxed">
+              {/* user turn */}
+              <div className="flex gap-3">
+                <span className="mt-0.5 flex size-6 flex-none items-center justify-center rounded-full bg-fd-primary/15 text-[10px] font-semibold text-fd-primary">
+                  You
+                </span>
+                <div className="min-w-0">
+                  <div className="mb-2 inline-flex items-center gap-1.5 rounded-lg border border-fd-border bg-fd-background px-2 py-1 text-xs text-fd-muted-foreground">
+                    <FileText className="size-3.5 text-rose-500" strokeWidth={2} />
+                    Employee Handbook.pdf
+                  </div>
+                  <p>How many days of paid leave do new joiners get?</p>
+                </div>
+              </div>
+
+              {/* assistant turn */}
+              <div className="flex gap-3">
+                <span className="mt-0.5 flex size-6 flex-none items-center justify-center rounded-full bg-fd-primary text-fd-primary-foreground">
+                  <Bot className="size-3.5" strokeWidth={2} />
+                </span>
+                <div className="min-w-0 space-y-2">
+                  <p>
+                    New employees get <strong>18 days</strong> of paid annual
+                    leave in their first year, rising to 20 after two full
+                    years. Unused days carry over once, up to five.
+                  </p>
+                  <p className="inline-flex items-center gap-1.5 rounded-md bg-fd-muted px-2 py-1 text-xs text-fd-muted-foreground">
+                    <FileText className="size-3.5" strokeWidth={2} />
+                    Employee Handbook.pdf · section 4.2
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* composer */}
+            <div className="px-4 pb-4">
+              <div className="rounded-xl border border-fd-border bg-fd-background px-3 py-2.5">
+                <p className="text-[13px] text-fd-muted-foreground">Message Handbook assistant</p>
+                <div className="mt-3 flex items-center gap-2 text-fd-muted-foreground">
+                  <Paperclip className="size-4" strokeWidth={1.75} />
+                  <span className="inline-flex items-center gap-1 rounded-full bg-fd-primary/10 px-2 py-0.5 text-[11px] font-medium text-fd-primary">
+                    <SlidersHorizontal className="size-3" strokeWidth={2} />
+                    File Search
+                  </span>
+                  <Mic className="ml-auto size-4" strokeWidth={1.75} />
+                  <span className="flex size-6 items-center justify-center rounded-full bg-fd-primary text-fd-primary-foreground">
+                    <ArrowUp className="size-3.5" strokeWidth={2.5} />
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* floating chip: the same knowledge, shared with a team */}
+      <div className="absolute -bottom-4 left-4 hidden items-center gap-2 rounded-xl border border-fd-border bg-fd-card px-3 py-2 text-xs shadow-lg shadow-black/10 sm:flex dark:shadow-black/40">
+        <span className="flex size-6 items-center justify-center rounded-md bg-violet-500/10 text-violet-600 dark:text-violet-300">
+          <Users className="size-3.5" strokeWidth={2} />
+        </span>
+        <span>
+          <span className="font-medium">Shared with your team</span>
+          <span className="text-fd-muted-foreground"> · one source, same answers</span>
+        </span>
+      </div>
+    </div>
   );
 }
 
