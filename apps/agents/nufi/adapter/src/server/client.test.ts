@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 
 import {
   DEFAULT_AGENT_MODEL,
+  GATEWAY_RETRY_DELAYS_MS,
   buildModel,
   requireRunToken,
   resolveModelKey,
@@ -139,5 +140,32 @@ describe("the model an agent calls", () => {
       "Nufi-lab/models/gemini-2.5-pro",
     );
     expect(resolveModelName({})).toBe(DEFAULT_AGENT_MODEL);
+  });
+});
+
+describe("riding out a scanner restart", () => {
+  /**
+   * Seventeen seconds covers a busy moment. It does not cover a restart.
+   *
+   * The injection scanner loads a CPU transformer at import — eagerly, one per
+   * uvicorn worker — so while a worker is coming back the gateway answers 503
+   * GUARDRAIL_UNAVAILABLE, and the policy is fail-closed by design. Measured on
+   * the final sweep: a run died on exactly that, its comment reading "gateway
+   * 503 ... A security check could not run". Minutes later the same gateway
+   * served 6 concurrent requests 6/6, so the window was a restart rather than
+   * load.
+   *
+   * A heartbeat has minutes. Spending one of them beats losing the run, and the
+   * delays still give up long before the run's own timeout.
+   */
+  it("keeps trying for longer than a worker takes to come back", () => {
+    const total = GATEWAY_RETRY_DELAYS_MS.reduce((sum, ms) => sum + ms, 0);
+
+    expect(total).toBeGreaterThanOrEqual(60_000);
+    expect(total).toBeLessThan(120_000);
+  });
+
+  it("still gives up rather than retrying forever", () => {
+    expect(GATEWAY_RETRY_DELAYS_MS.length).toBeLessThanOrEqual(6);
   });
 });
