@@ -11,7 +11,7 @@ import { SENTINEL_VIRTUAL_KEY } from './naming';
  * runtime `baseURL` replaced with the LiteLLM base. An `active` record injects
  * the working virtual key; a `pending`/`failed` record injects a sentinel key
  * so requests error clearly and never reach the real provider. Endpoints WITHOUT
- * a sync record (e.g. the YAML base "Nufi") are passed through unchanged.
+ * a sync record (e.g. the YAML base "NuFi") are passed through unchanged.
  */
 
 interface RewriterDeps {

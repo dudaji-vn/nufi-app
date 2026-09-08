@@ -8,7 +8,7 @@ process.env.JWT_SECRET ??= 'test-access-secret';
 process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret';
 
 /**
- * The authorization-code half of the identity issuer, used by NUFI Works.
+ * The authorization-code half of the identity issuer, used by NuFi Works.
  *
  * Everything here is about what must NOT happen. An unregistered redirect_uri
  * must never receive a code, because that is how a page on the internet walks
@@ -151,7 +151,7 @@ describe('authorize', () => {
   });
 
   // The session cookie carries `{ id, sessionId }` and nothing else, so an
-  // identity built from it alone has no email -- which NUFI Works rejects at
+  // identity built from it alone has no email -- which NuFi Works rejects at
   // the end of the round trip, after the member has watched a redirect that
   // looks like it worked. No email, no code.
   it('refuses to issue a code when the identity has no email', async () => {
@@ -214,10 +214,10 @@ describe('authorize', () => {
     expect(res.headers.get('location')).toBeNull();
     // `works` is an internal key. This endpoint is reached by a top-level
     // browser navigation from the Works `?sso=1` handoff, so a member could
-    // read it -- and /enter/studio says "NUFI Studio" for the same refusal.
+    // read it -- and /enter/studio says "NuFi Studio" for the same refusal.
     expect(await res.json()).toEqual({
       error: 'forbidden',
-      detail: 'not entitled to NUFI Works',
+      detail: 'not entitled to NuFi Works',
     });
   });
 

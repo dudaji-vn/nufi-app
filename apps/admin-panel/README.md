@@ -1,6 +1,6 @@
 # LibreChat Admin Panel
 
-A browser-based management interface for [LibreChat](https://github.com/danny-avila/LibreChat). It connects to the same database as the main application and provides a GUI for tasks that would otherwise require editing `librechat.yaml` directly.
+A browser-based management interface for the NuFi app (`apps/chat`). It talks to the app's admin HTTP API (`VITE_API_BASE_URL`), not to its database, and provides a GUI for tasks that would otherwise require editing `librechat.yaml` directly.
 
 ## Features
 

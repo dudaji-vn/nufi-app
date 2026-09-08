@@ -48,6 +48,26 @@ controls:
       - untrusted
       - user
       - assistant
+      - tool
+    # Do not spend scanner budget on `system`. G1 cannot act on it from either
+    # direction -- it is absent from `enforce_sources` above, and its threshold
+    # below is 1.01, above the maximum score a detector can return -- so every
+    # system span was scored to produce a verdict that was then discarded.
+    #
+    # The cost was the product. Measured 2026-09-03 on this gateway: the
+    # injection scanner runs one uvicorn worker over a CPU transformer with an
+    # 8s budget and collapses under any concurrency -- 1 concurrent request
+    # succeeded, 3 gave 3/3 GUARDRAIL_UNAVAILABLE, 6 gave 6/6. Every agent in a
+    # NuFi Works company past the first was unusable. And 93% of the text handed
+    # to it was the agent's own system prompt: 3197 characters of 3432.
+    #
+    # What this gives up is the audit record for system spans, which
+    # `ControlConfig.enforceable` deliberately keeps for spans it cannot act on.
+    # For an agent whose system prompt is the same bytes on every single request,
+    # that record is noise. Remove this line if a deployment's system prompts are
+    # attacker-influenced.
+    skip_sources:
+      - system
     # For a user or assistant span, one detector crossing its threshold is not
     # enough: the verdict must be reached by two distinct detectors. This is the
     # only reason enforcing on either is safe, and removing it silently re-arms
@@ -63,6 +83,20 @@ controls:
     require_corroboration:
       - user
       - assistant
+      # A tool result here is this product's own API returning company-authored
+      # issue text and comments — the same words that reach the model as `user`
+      # in the wake briefing, arriving by a different pipe. Scoring one channel
+      # on a single detector and the other on two was an accident of harness
+      # shape, not a judgement about the text.
+      #
+      # The cost is real and is the reason this took a second look: of six
+      # realistic indirect-injection payloads measured 2026-07-30, four are
+      # invisible to the regex detector, and on this source they become
+      # log-only. Against that: the alternative that shipped was
+      # `exempt_models: [nufi-agent]`, which gave those four NOTHING, along with
+      # everything else G1 catches. A control that has to be switched off to let
+      # the product run stops nothing at all.
+      - tool
     # Empty on purpose, and it took a live measurement to get here.
     #
     # LibreChat makes a second, asynchronous request per message to generate the
@@ -86,11 +120,38 @@ controls:
     # If a future control genuinely needs one, scope it to an explicit model
     # name rather than a pattern, and read nufi_guardrail_exemptions_total
     # against conversation volume to keep the hole visible in use.
+    # Empty, and it took closing a hole to get here.
+    #
+    # `nufi-agent` was listed below until 2026-09-04, because G1 could not
+    # coexist with a tool-calling agent as this control was then configured, for
+    # arithmetic rather than content: a tool result reached the gateway as
+    # `role: "tool"`, `spans.py` mapped it to `untrusted`, and `untrusted`
+    # blocks on one detector. The classifier scores benign text near 1.0 — this
+    # file says so three times over. Measured 2026-09-03, the smallest tool
+    # result that exists:
+    #
+    #     {"ok":true}  as role=tool  -> 400 LLM01_INJECTION
+    #     {"ok":true}  as role=user  -> 200
+    #
+    # Eleven characters, and every agent turn after the first carries one.
+    #
+    # What the exemption cost was the whole control on exactly the traffic that
+    # needs it most: an agent reads company-authored issue text while holding
+    # tools that mutate the tracker, which is a live indirect-injection path.
+    # The comment that shipped it named its own replacement — "a `tool` span
+    # source with its own corroboration requirement" — and that is what is
+    # above. G1 now applies to agent runs on every span.
     exempt_models: []
     thresholds:
       # A jailbreak string inside a retrieved document is near-certain attack;
       # the same string typed by a user may be a question about the topic.
       user: 0.90
+      # Watched as closely as foreign content, acted on only with a second
+      # opinion — the same shape as `assistant` below, for the same reason: the
+      # threshold keeps the span visible in the audit trail and lets a
+      # classifier finding count toward corroboration, while
+      # `require_corroboration` is what decides whether it can stop a request.
+      tool: 0.50
       # Deliberately the SAME as `untrusted`, not a midpoint between it and
       # `user`, and the reason is a measurement rather than a preference.
       #
@@ -172,6 +233,8 @@ controls:
       # to what it detected before the split. It has no `enforce_sources` and no
       # `require_corroboration`, and it only logs, so nothing else changes.
       assistant: 0.50
+      # Unchanged by the split: what a tool result already scored as `untrusted`.
+      tool: 0.50
       untrusted: 0.50
       system: 1.01
     # Input PII is never masked. Masking corrupts the user's task — the model
@@ -249,7 +312,7 @@ controls:
       #   사업자등록번호는 220-81-62517            ->  PHONE_NUMBER 0.40
       #
       # Nothing actionable on any Korean identifier (0.40 is under the 0.50
-      # threshold above). NUFI serves Korean customers.
+      # threshold above). NuFi serves Korean customers.
       #
       # What is IN, and why these three: KR_RRN and KR_FOREIGNER_REG are the
       # resident- and foreigner-registration numbers -- the Korean counterpart
@@ -307,6 +370,8 @@ controls:
       # value so that relabelling those output spans some day cannot silently
       # change what G2b redacts.
       assistant: 0.50
+      # Unchanged by the split: what a tool result already scored as `untrusted`.
+      tool: 0.50
       untrusted: 0.50
       system: 1.01
     action: redact
@@ -354,6 +419,8 @@ controls:
       # because `policy._parse_control` requires every source, and set to
       # `untrusted`'s value so a future relabel cannot change what G3 blocks.
       assistant: 0.60
+      # Unchanged by the split: what a tool result already scored as `untrusted`.
+      tool: 0.60
       untrusted: 0.60
       system: 1.01
     action: block
@@ -373,6 +440,8 @@ controls:
       # and set to `untrusted`'s value so a future relabel cannot change what G4
       # strips.
       assistant: 0.99
+      # Unchanged by the split: what a tool result already scored as `untrusted`.
+      tool: 0.99
       untrusted: 0.99
       system: 1.01
     action: redact

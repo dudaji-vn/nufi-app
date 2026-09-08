@@ -10,19 +10,19 @@
 Cung cấp điểm truy cập chính để chọn tệp cục bộ đính kèm vào tin nhắn hiện tại trước khi gửi.
 
 #### Điều kiện tiên quyết / truy cập
-- Một cuộc hội thoại phải đang mở (hoặc "New Chat" phải được chọn với endpoint Nufi đang hoạt động).
-- Endpoint Nufi phải được chọn; tính năng tải lên tệp bị vô hiệu hóa đối với các endpoint đặt tường minh `disabled: true`.
+- Một cuộc hội thoại phải đang mở (hoặc "New Chat" phải được chọn với endpoint NuFi đang hoạt động).
+- Endpoint NuFi phải được chọn; tính năng tải lên tệp bị vô hiệu hóa đối với các endpoint đặt tường minh `disabled: true`.
 - Vùng nhập liệu không được ở trạng thái bị vô hiệu hóa (ví dụ: trong khi phản hồi đang được tạo).
 
 #### Thành phần giao diện
 - Nút **Attach Files** (biểu tượng kẹp giấy, `aria-label="Attach Files"`, nhãn tooltip `com_sidepanel_attach_files` → "Attach Files") nằm trên thanh công cụ nhập liệu của cuộc trò chuyện.
-- Trên endpoint Nufi (endpoint tùy chỉnh không phải Assistants hỗ trợ tệp), nhấp vào nút sẽ mở **menu thả xuống** (`id="attach-file-menu"`, `aria-label="Attach File Options"`) thay vì mở trực tiếp hộp thoại chọn tệp.
-- Menu thả xuống liệt kê các tùy chọn đích tải lên tùy theo khả năng của endpoint (xem phần Các loại được hỗ trợ). Đối với endpoint Nufi, menu hiển thị ít nhất: **"Upload to Provider"** (`com_ui_upload_provider`). Tùy chọn "Upload as Text" (`com_ui_upload_ocr_text`) **không có sẵn** trên endpoint Nufi vì khả năng `context` không được bật trong cấu hình server (`agents.capabilities` không bao gồm `context`).
+- Trên endpoint NuFi (endpoint tùy chỉnh không phải Assistants hỗ trợ tệp), nhấp vào nút sẽ mở **menu thả xuống** (`id="attach-file-menu"`, `aria-label="Attach File Options"`) thay vì mở trực tiếp hộp thoại chọn tệp.
+- Menu thả xuống liệt kê các tùy chọn đích tải lên tùy theo khả năng của endpoint (xem phần Các loại được hỗ trợ). Đối với endpoint NuFi, menu hiển thị ít nhất: **"Upload to Provider"** (`com_ui_upload_provider`). Tùy chọn "Upload as Text" (`com_ui_upload_ocr_text`) **không có sẵn** trên endpoint NuFi vì khả năng `context` không được bật trong cấu hình server (`agents.capabilities` không bao gồm `context`).
 - Thẻ `<input type="file">` ẩn được mở theo chương trình khi người dùng chọn một mục trong menu.
 - Bàn phím: nút đính kèm phản hồi `Enter` hoặc `Space` để mở hộp thoại chọn tệp.
 
 #### Hành vi chức năng
-1. FR-1: Khi người dùng nhấp vào nút Attach Files, menu thả xuống xuất hiện liệt kê ít nhất các tùy chọn loại tải lên áp dụng cho endpoint Nufi.
+1. FR-1: Khi người dùng nhấp vào nút Attach Files, menu thả xuống xuất hiện liệt kê ít nhất các tùy chọn loại tải lên áp dụng cho endpoint NuFi.
 2. FR-2: Nhấp vào một mục menu sẽ đặt bộ lọc `accept` trên trường input tệp ẩn (`image/*,.heif,.heic,.pdf,application/pdf` cho "Upload to Provider"; không hạn chế cho các loại khác) và mở hộp thoại chọn tệp của hệ điều hành.
 3. FR-3: Sau khi hộp thoại chọn tệp của hệ điều hành bị đóng, các tệp được chọn đi qua quá trình kiểm tra hợp lệ phía client (xem phần Kiểm tra hợp lệ). Các tệp vượt qua kiểm tra được hiển thị ngay lập tức dưới dạng chip đang xử lý trong vùng nhập liệu.
 4. FR-4: Nút Attach Files bị vô hiệu hóa về mặt hiển thị (được render với thuộc tính `disabled`) khi `disableInputs` là true (ví dụ: trong quá trình tạo tin nhắn).
@@ -37,7 +37,7 @@ Cung cấp điểm truy cập chính để chọn tệp cục bộ đính kèm v
 - Nếu người dùng mở menu nhưng nhấp ra ngoài để đóng, hộp thoại chọn tệp sẽ không mở.
 
 #### Tiêu chí chấp nhận
-1. AC-1: Giả sử endpoint Nufi đang hoạt động và đầu vào được bật, khi người dùng nhấp vào nút Attach Files, thì menu thả xuống xuất hiện với ít nhất tùy chọn "Upload to Provider" (và "Upload for File Search" khi file search được bật). "Upload as Text" không hiển thị trên endpoint Nufi theo cấu hình hiện tại.
+1. AC-1: Giả sử endpoint NuFi đang hoạt động và đầu vào được bật, khi người dùng nhấp vào nút Attach Files, thì menu thả xuống xuất hiện với ít nhất tùy chọn "Upload to Provider" (và "Upload for File Search" khi file search được bật). "Upload as Text" không hiển thị trên endpoint NuFi theo cấu hình hiện tại.
 2. AC-2: Giả sử menu thả xuống đang mở, khi người dùng chọn "Upload to Provider", thì hộp thoại chọn tệp của hệ điều hành mở ra với bộ lọc `image/*,.heif,.heic,.pdf,application/pdf`.
 3. AC-3: Giả sử vùng nhập liệu bị vô hiệu hóa (đang tạo tin nhắn), khi nút được render, thì nút có thuộc tính `disabled` và nhấp vào nó không có tác dụng gì.
 4. AC-4: Giả sử tính năng tải lên tệp bị vô hiệu hóa theo cấu hình endpoint, khi người dùng cố mở hộp thoại chọn tệp, thì xuất hiện toast đỏ "File uploads are disabled for this endpoint".
@@ -50,7 +50,7 @@ Cung cấp điểm truy cập chính để chọn tệp cục bộ đính kèm v
 Cho phép người dùng thả tệp từ màn hình nền hoặc trình quản lý tệp vào bất kỳ đâu trên vùng trò chuyện mà không cần dùng nút đính kèm.
 
 #### Điều kiện tiên quyết / truy cập
-- Một cuộc hội thoại phải đang mở với endpoint Nufi đang hoạt động.
+- Một cuộc hội thoại phải đang mở với endpoint NuFi đang hoạt động.
 - Tính năng tải lên tệp không được bị vô hiệu hóa cho endpoint.
 
 #### Thành phần giao diện
@@ -64,8 +64,8 @@ Cho phép người dùng thả tệp từ màn hình nền hoặc trình quản 
 #### Hành vi chức năng
 1. FR-1: Khi người dùng kéo tệp vào cửa sổ ứng dụng, lớp phủ hiển thị với hình minh họa tải lên và văn bản hướng dẫn.
 2. FR-2: Khi người dùng thả (drop) (các) tệp, nếu tính năng tải lên của endpoint bị vô hiệu hóa thì toast lỗi hiển thị ngay lập tức mà không hiển thị hộp thoại.
-3. FR-3: Đối với endpoint Nufi, hộp thoại "Select Upload Type" xuất hiện với **bất kỳ** loại tệp được thả nào khi có ít nhất một khả năng tải lên áp dụng — không chỉ với hình ảnh. Vì `file_search` được bật trong cấu hình Nufi (`fileSearchEnabled = true`, `fileSearchAllowedByAgent = true` theo mặc định), hộp thoại hiển thị với hình ảnh, tài liệu và tất cả các loại tệp được hỗ trợ khác. Tùy chọn chính của hộp thoại cho endpoint Nufi là **"Upload to Provider"** (`com_ui_upload_provider`). Người dùng phải nhấp vào một tùy chọn để tiếp tục.
-4. FR-4: Tệp được xử lý trực tiếp (không qua hộp thoại) chỉ khi không có điều kiện khả năng nào được đáp ứng. Theo cấu hình hiện tại của Nufi (`file_search` được bật), hộp thoại luôn xuất hiện với các tệp được thả, do đó đường bỏ qua này không được kích hoạt.
+3. FR-3: Đối với endpoint NuFi, hộp thoại "Select Upload Type" xuất hiện với **bất kỳ** loại tệp được thả nào khi có ít nhất một khả năng tải lên áp dụng — không chỉ với hình ảnh. Vì `file_search` được bật trong cấu hình NuFi (`fileSearchEnabled = true`, `fileSearchAllowedByAgent = true` theo mặc định), hộp thoại hiển thị với hình ảnh, tài liệu và tất cả các loại tệp được hỗ trợ khác. Tùy chọn chính của hộp thoại cho endpoint NuFi là **"Upload to Provider"** (`com_ui_upload_provider`). Người dùng phải nhấp vào một tùy chọn để tiếp tục.
+4. FR-4: Tệp được xử lý trực tiếp (không qua hộp thoại) chỉ khi không có điều kiện khả năng nào được đáp ứng. Theo cấu hình hiện tại của NuFi (`file_search` được bật), hộp thoại luôn xuất hiện với các tệp được thả, do đó đường bỏ qua này không được kích hoạt.
 5. FR-5: Sau khi người dùng chọn một tùy chọn trong hộp thoại (hoặc tệp được xử lý trực tiếp), quy trình kiểm tra hợp lệ và tải lên giống như đối với tệp được chọn qua nút sẽ áp dụng.
 6. FR-6: Lớp phủ biến mất khi người dùng di chuyển mục đang kéo ra khỏi vùng thả hoặc thả tệp.
 
@@ -80,7 +80,7 @@ Cho phép người dùng thả tệp từ màn hình nền hoặc trình quản 
 
 #### Tiêu chí chấp nhận
 1. AC-1: Giả sử vùng trò chuyện đang hiển thị và tính năng tải lên được bật, khi người dùng kéo tệp vào cửa sổ, thì lớp phủ kéo-thả với hình minh họa tải lên xuất hiện.
-2. AC-2: Giả sử lớp phủ đang hiển thị, khi người dùng thả bất kỳ tệp nào (hình ảnh hay tài liệu), thì hộp thoại "Select Upload Type" xuất hiện (vì `file_search` được bật cho endpoint Nufi).
+2. AC-2: Giả sử lớp phủ đang hiển thị, khi người dùng thả bất kỳ tệp nào (hình ảnh hay tài liệu), thì hộp thoại "Select Upload Type" xuất hiện (vì `file_search` được bật cho endpoint NuFi).
 3. AC-3: Giả sử hộp thoại đang hiển thị, khi người dùng nhấp vào "Upload to Provider", thì tệp bắt đầu tải lên và chip tiến trình xuất hiện trong vùng nhập liệu.
 4. AC-4: Giả sử tính năng tải lên bị vô hiệu hóa theo cấu hình endpoint, khi người dùng thả tệp, thì toast đỏ "File uploads are disabled for this endpoint" xuất hiện và không có hộp thoại nào được hiển thị.
 5. AC-5: Giả sử người dùng kéo tệp vào cửa sổ rồi kéo ra ngoài mà không thả, thì lớp phủ biến mất và không có tệp nào được đính kèm.
@@ -94,7 +94,7 @@ Cho phép người dùng dán dữ liệu hình ảnh trực tiếp từ clipboa
 
 #### Điều kiện tiên quyết / truy cập
 - Vùng nhập văn bản của tin nhắn (`data-testid="text-input"`) phải được focus.
-- Endpoint Nufi phải hỗ trợ tải lên hình ảnh.
+- Endpoint NuFi phải hỗ trợ tải lên hình ảnh.
 - Clipboard phải chứa dữ liệu tệp (không chỉ là văn bản).
 
 #### Thành phần giao diện
@@ -114,7 +114,7 @@ Cho phép người dùng dán dữ liệu hình ảnh trực tiếp từ clipboa
 
 #### Trường hợp đặc biệt
 - Dán nhiều hình ảnh cùng lúc: mỗi hình ảnh được xử lý riêng lẻ; giới hạn số lượng và tổng kích thước áp dụng cho tổng hợp.
-- Dán ảnh chụp màn hình: trình duyệt thường hiển thị nó là `image/png` — vượt qua kiểm tra MIME trên endpoint Nufi.
+- Dán ảnh chụp màn hình: trình duyệt thường hiển thị nó là `image/png` — vượt qua kiểm tra MIME trên endpoint NuFi.
 - Dán tệp mà trình duyệt không thể xác định loại: suy luận MIME từ phần mở rộng được thử; nếu suy luận thất bại, tệp bị từ chối với "Unable to determine file type for: `<filename>`".
 
 #### Tiêu chí chấp nhận
@@ -128,16 +128,16 @@ Cho phép người dùng dán dữ liệu hình ảnh trực tiếp từ clipboa
 ### Các Loại Được Hỗ Trợ & Giới Hạn
 
 #### Mục đích
-Xác định các tệp mà endpoint Nufi chấp nhận và các giới hạn cứng được áp dụng tại thời điểm chọn tệp.
+Xác định các tệp mà endpoint NuFi chấp nhận và các giới hạn cứng được áp dụng tại thời điểm chọn tệp.
 
 #### Điều kiện tiên quyết / truy cập
-- Giới hạn áp dụng mỗi khi xảy ra chọn tệp, kéo-thả, hoặc dán trên endpoint Nufi.
+- Giới hạn áp dụng mỗi khi xảy ra chọn tệp, kéo-thả, hoặc dán trên endpoint NuFi.
 
 #### Thành phần giao diện
 - Không có thành phần giao diện riêng biệt hiển thị giới hạn cho người dùng trước khi thử đính kèm; giới hạn được hiển thị qua thông báo toast lỗi tại thời điểm kiểm tra hợp lệ.
 
 #### Hành vi chức năng
-Các giới hạn sau đang hoạt động trên endpoint **Nufi** (lấy từ cấu hình server đã triển khai):
+Các giới hạn sau đang hoạt động trên endpoint **NuFi** (lấy từ cấu hình server đã triển khai):
 
 | Giới hạn | Giá trị |
 |---|---|
@@ -145,7 +145,7 @@ Các giới hạn sau đang hoạt động trên endpoint **Nufi** (lấy từ c
 | Kích thước tối đa mỗi tệp | **20 MB** (ranh giới loại trừ: tệp phải nghiêm ngặt nhỏ hơn 20 MB) |
 | Tổng kích thước tối đa mỗi yêu cầu | **50 MB** |
 
-Các loại MIME được hỗ trợ (MIME được kiểm tra với danh sách regex `supportedMimeTypes` được cấu hình cho endpoint Nufi):
+Các loại MIME được hỗ trợ (MIME được kiểm tra với danh sách regex `supportedMimeTypes` được cấu hình cho endpoint NuFi):
 
 | Loại | MIME |
 |---|---|
@@ -160,7 +160,7 @@ Các loại MIME được hỗ trợ (MIME được kiểm tra với danh sách 
 | Tài liệu Word (.docx) | `application/vnd.openxmlformats-officedocument.wordprocessingml.document` |
 | JSON | `application/json` |
 
-> **Lưu ý về HEIC/HEIF:** Khi tải lên qua tùy chọn "Upload to Provider", tệp HEIC/HEIF được chuyển đổi phía client sang JPEG trước khi kiểm tra hợp lệ và tải lên, do đó MIME kết quả là `image/jpeg`. HEIC được chấp nhận như một định dạng nguồn hình ảnh mặc dù `image/heic` không có trong danh sách hỗ trợ của Nufi vì quá trình chuyển đổi xảy ra trước kiểm tra hợp lệ.
+> **Lưu ý về HEIC/HEIF:** Khi tải lên qua tùy chọn "Upload to Provider", tệp HEIC/HEIF được chuyển đổi phía client sang JPEG trước khi kiểm tra hợp lệ và tải lên, do đó MIME kết quả là `image/jpeg`. HEIC được chấp nhận như một định dạng nguồn hình ảnh mặc dù `image/heic` không có trong danh sách hỗ trợ của NuFi vì quá trình chuyển đổi xảy ra trước kiểm tra hợp lệ.
 
 > **Lưu ý về ranh giới kích thước:** Kiểm tra `fileSizeLimit` sử dụng `>=` (nghiêm ngặt), vì vậy tệp có kích thước đúng bằng 20 MB bị từ chối. Chỉ các tệp nghiêm ngặt nhỏ hơn 20 MB được chấp nhận.
 
@@ -172,12 +172,12 @@ Xem [Kiểm tra hợp lệ & Xử lý lỗi](#validation--error-handling) để 
 - Tệp có phần mở rộng không nhận dạng được và MIME rỗng: bị từ chối với "Unable to determine file type for: `<filename>`".
 
 #### Tiêu chí chấp nhận
-1. AC-1: Giả sử endpoint Nufi đang hoạt động, khi người dùng đính kèm tệp `image/png` có dung lượng 5 MB, thì tệp được chấp nhận và bắt đầu tải lên.
-2. AC-2: Giả sử endpoint Nufi đang hoạt động, khi người dùng đính kèm tệp có kích thước đúng bằng 20 MB, thì quá trình kiểm tra hợp lệ từ chối tệp với "File size limit exceeded: 20 MB".
-3. AC-3: Giả sử endpoint Nufi đang hoạt động, khi người dùng đính kèm tệp 19,9 MB, thì tệp được chấp nhận và bắt đầu tải lên.
-4. AC-4: Giả sử endpoint Nufi đang hoạt động, khi người dùng đính kèm tệp `.docx`, thì tệp được chấp nhận.
-5. AC-5: Giả sử endpoint Nufi đang hoạt động, khi người dùng đính kèm tệp video `.mp4`, thì quá trình kiểm tra hợp lệ từ chối tệp với "Unsupported file type: video/mp4".
-6. AC-6: Giả sử endpoint Nufi đang hoạt động, khi tổng kích thước các tệp đã đính kèm cộng với tệp mới vượt quá 50 MB, thì tệp mới bị từ chối với "Total file size limit exceeded: 50 MB".
+1. AC-1: Giả sử endpoint NuFi đang hoạt động, khi người dùng đính kèm tệp `image/png` có dung lượng 5 MB, thì tệp được chấp nhận và bắt đầu tải lên.
+2. AC-2: Giả sử endpoint NuFi đang hoạt động, khi người dùng đính kèm tệp có kích thước đúng bằng 20 MB, thì quá trình kiểm tra hợp lệ từ chối tệp với "File size limit exceeded: 20 MB".
+3. AC-3: Giả sử endpoint NuFi đang hoạt động, khi người dùng đính kèm tệp 19,9 MB, thì tệp được chấp nhận và bắt đầu tải lên.
+4. AC-4: Giả sử endpoint NuFi đang hoạt động, khi người dùng đính kèm tệp `.docx`, thì tệp được chấp nhận.
+5. AC-5: Giả sử endpoint NuFi đang hoạt động, khi người dùng đính kèm tệp video `.mp4`, thì quá trình kiểm tra hợp lệ từ chối tệp với "Unsupported file type: video/mp4".
+6. AC-6: Giả sử endpoint NuFi đang hoạt động, khi tổng kích thước các tệp đã đính kèm cộng với tệp mới vượt quá 50 MB, thì tệp mới bị từ chối với "Total file size limit exceeded: 50 MB".
 
 ---
 
@@ -236,7 +236,7 @@ Cho phép người dùng kiểm tra các tệp đính kèm trước khi gửi v�
 - **Chip hình ảnh:** Hình vuông bo tròn (56×56 px, class `rounded-2xl`) hiển thị hình ảnh dưới dạng nền. Khi hover, lớp phủ tối nửa trong suốt với biểu tượng `Maximize2` (mở rộng) xuất hiện. Nhấp vào mở lightbox toàn màn hình (`DialogPrimitive.Root`) với nền `bg-black/90`, hình ảnh có `max-h-[85vh] max-w-[90vw]`. Nút đóng (`aria-label="Close"`) ở góc trên bên phải của lightbox; nhấn Escape cũng đóng nó.
 - **Chip tài liệu (`FileContainer`):** Chip rộng 224 px với viền hình chữ nhật bo tròn. Phía trái: biểu tượng loại tệp (ví dụ: tài liệu, bảng tính, code). Phía phải: tên tệp (được cắt ngắn với tooltip `title` cho tên dài) và nhãn loại tệp (ví dụ: "Document", "Spreadsheet", "Code").
 - **Nút xóa:** Nút `×` hình tròn nhỏ (`aria-label="Remove file"`, translation key `com_ui_attach_remove`) đặt ở góc trên bên phải của mỗi chip (hiển thị mọi lúc, không chỉ khi hover). Nhấp vào xóa tệp.
-- **Huy hiệu nguồn:** Biểu tượng nhỏ ở góc dưới bên phải của vùng biểu tượng tệp cho biết nguồn của tệp (ví dụ: logo OpenAI cho tệp từ nguồn OpenAI, "T" cho tệp được trích xuất văn bản, biểu tượng cơ sở dữ liệu cho tệp vector-store). Đối với tải lên cục bộ trên endpoint Nufi, huy hiệu này thường vắng mặt.
+- **Huy hiệu nguồn:** Biểu tượng nhỏ ở góc dưới bên phải của vùng biểu tượng tệp cho biết nguồn của tệp (ví dụ: logo OpenAI cho tệp từ nguồn OpenAI, "T" cho tệp được trích xuất văn bản, biểu tượng cơ sở dữ liệu cho tệp vector-store). Đối với tải lên cục bộ trên endpoint NuFi, huy hiệu này thường vắng mặt.
 - **Trạng thái đang xóa:** Khi nút xóa được nhấp trên tệp đã tải lên hoàn toàn, toast thông tin màu xanh "Deleting file..." (`com_ui_deleting_file`) xuất hiện ngắn gọn trong khi yêu cầu xóa server đang chạy.
 
 #### Hành vi chức năng
@@ -270,33 +270,33 @@ Cho phép người dùng kiểm tra các tệp đính kèm trước khi gửi v�
 Làm rõ cách các loại đính kèm khác nhau được mô hình sử dụng và tùy chọn menu tải lên nào cần chọn.
 
 #### Điều kiện tiên quyết / truy cập
-- Endpoint Nufi phải được chọn. Hành vi Vision phụ thuộc vào việc mô hình được chọn có hỗ trợ đầu vào đa phương thức hay không (cần xác minh: không phải tất cả mô hình trên endpoint Nufi đều nhất thiết hỗ trợ vision — kiểm tra tài liệu mô hình).
+- Endpoint NuFi phải được chọn. Hành vi Vision phụ thuộc vào việc mô hình được chọn có hỗ trợ đầu vào đa phương thức hay không (cần xác minh: không phải tất cả mô hình trên endpoint NuFi đều nhất thiết hỗ trợ vision — kiểm tra tài liệu mô hình).
 
 #### Thành phần giao diện
 - Tùy chọn **"Upload to Provider"** (`com_ui_upload_provider`) trong menu đính kèm: định tuyến tệp như một đầu vào hình ảnh/tài liệu trực tiếp của nhà cung cấp. Bộ lọc đầu vào tệp được đặt thành `image/*,.heif,.heic,.pdf,application/pdf`.
-- Tùy chọn **"Upload as Text"** (`com_ui_upload_ocr_text`): **không khả dụng trên endpoint Nufi** theo cấu hình hiện tại. Tùy chọn này chỉ xuất hiện khi `AgentCapabilities.context` có trong `agents.capabilities`; `librechat.yaml` của Nufi đặt `agents.capabilities: ["file_search"]` — `context` không có trong đó.
+- Tùy chọn **"Upload as Text"** (`com_ui_upload_ocr_text`): **không khả dụng trên endpoint NuFi** theo cấu hình hiện tại. Tùy chọn này chỉ xuất hiện khi `AgentCapabilities.context` có trong `agents.capabilities`; `librechat.yaml` của NuFi đặt `agents.capabilities: ["file_search"]` — `context` không có trong đó.
 
 #### Hành vi chức năng
 1. FR-1: Các tệp được thêm qua "Upload to Provider" được gửi đến mô hình dưới dạng các khối nội dung hình ảnh/tài liệu. Mô hình có thể "nhìn thấy" hình ảnh nếu nó hỗ trợ vision; PDF được truyền dưới dạng nội dung tài liệu.
-2. FR-2: Đường "Upload as Text" (OCR/phân tích tài liệu thành tài nguyên công cụ `context`) không khả dụng trên endpoint Nufi theo cấu hình hiện tại. Để bật, cần thêm `context` vào `agents.capabilities` trong `librechat.yaml`.
+2. FR-2: Đường "Upload as Text" (OCR/phân tích tài liệu thành tài nguyên công cụ `context`) không khả dụng trên endpoint NuFi theo cấu hình hiện tại. Để bật, cần thêm `context` vào `agents.capabilities` trong `librechat.yaml`.
 3. FR-3: Trong `FileRow`, bất kỳ tệp nào có `type` bắt đầu bằng `image/` được render dưới dạng chip `Image` (xem trước thumbnail); tất cả các tệp khác được render dưới dạng `FileContainer` (chip tài liệu).
 4. FR-4: Huy hiệu nguồn trên chip phản ánh cách tệp được xử lý (ví dụ: huy hiệu "T" cho các tệp nguồn văn bản).
 5. FR-5: Hình ảnh GIF được đính kèm qua "Upload to Provider" được gửi dưới dạng các khung hình tĩnh. (cần xác minh trên sản phẩm đang chạy: hành vi GIF động phụ thuộc vào API nhà cung cấp — mô hình có thể không animate chúng.)
 
 #### Kiểm tra hợp lệ & lỗi
 - Đính kèm tệp không phải hình ảnh/PDF qua đường "Upload to Provider": bộ lọc hộp thoại chọn tệp (`image/*,.heif,.heic,.pdf,application/pdf`) hạn chế lựa chọn; nếu bộ lọc bị bỏ qua, kiểm tra MIME trong `validateFiles` sẽ từ chối loại không được hỗ trợ.
-- "Upload as Text" không khả dụng trên endpoint Nufi theo cấu hình hiện tại; tình huống bỏ qua nó không áp dụng.
+- "Upload as Text" không khả dụng trên endpoint NuFi theo cấu hình hiện tại; tình huống bỏ qua nó không áp dụng.
 
 #### Trường hợp đặc biệt
 - Tệp `.gif` được tải lên qua "Upload to Provider": được chấp nhận (MIME `image/gif` được hỗ trợ). Được hầu hết các API vision xử lý như hình ảnh tĩnh.
 - Tệp `.webp`: được chấp nhận qua "Upload to Provider" (MIME `image/webp` được hỗ trợ).
 - Hình ảnh HEIC/HEIF: được chuyển đổi sang JPEG phía client (toast "Converting HEIC image to JPEG..."); JPEG đã chuyển đổi sau đó được tải lên.
 - Hình ảnh lớn vượt quá 20 MB trước khi chuyển đổi HEIC: nếu JPEG đã chuyển đổi cũng ≥ 20 MB, nó bị từ chối sau khi chuyển đổi.
-- Thay đổi kích thước hình ảnh phía client: `clientImageResize` **bị tắt** trên triển khai Nufi (không có mục `clientImageResize` trong `nufi-chat/librechat.yaml`; giá trị mặc định của LibreChat là `clientImageResize.enabled: false`). Đường code resize và toast "Image resized: X MB → Y MB (Z% smaller)" do đó không hoạt động trên triển khai production Nufi hiện tại.
+- Thay đổi kích thước hình ảnh phía client: `clientImageResize` **bị tắt** trên triển khai NuFi (không có mục `clientImageResize` trong `nufi-chat/librechat.yaml`; giá trị mặc định của LibreChat là `clientImageResize.enabled: false`). Đường code resize và toast "Image resized: X MB → Y MB (Z% smaller)" do đó không hoạt động trên triển khai production NuFi hiện tại.
 
 #### Tiêu chí chấp nhận
-1. AC-1: Giả sử mô hình hỗ trợ vision được chọn trên endpoint Nufi, khi người dùng đính kèm hình ảnh PNG qua "Upload to Provider" và gửi tin nhắn, thì mô hình phản hồi với nhận thức về nội dung hình ảnh.
-2. AC-2: "Upload as Text" không khả dụng trên endpoint Nufi theo cấu hình hiện tại; tình huống này yêu cầu thêm khả năng `context` vào `agents.capabilities` trong `librechat.yaml`. (cần xác minh trên sản phẩm đang chạy: nếu khả năng `context` được bật sau này, đính kèm PDF qua "Upload as Text" và gửi phải dẫn đến phản hồi của mô hình tham chiếu nội dung tài liệu.)
+1. AC-1: Giả sử mô hình hỗ trợ vision được chọn trên endpoint NuFi, khi người dùng đính kèm hình ảnh PNG qua "Upload to Provider" và gửi tin nhắn, thì mô hình phản hồi với nhận thức về nội dung hình ảnh.
+2. AC-2: "Upload as Text" không khả dụng trên endpoint NuFi theo cấu hình hiện tại; tình huống này yêu cầu thêm khả năng `context` vào `agents.capabilities` trong `librechat.yaml`. (cần xác minh trên sản phẩm đang chạy: nếu khả năng `context` được bật sau này, đính kèm PDF qua "Upload as Text" và gửi phải dẫn đến phản hồi của mô hình tham chiếu nội dung tài liệu.)
 3. AC-3: Giả sử tệp HEIC được chọn qua "Upload to Provider", thì toast thông tin màu xanh "Converting HEIC image to JPEG..." xuất hiện, và chip tệp hiển thị xem trước JPEG sau khi chuyển đổi.
 4. AC-4: Giả sử tệp không phải hình ảnh/PDF (ví dụ: CSV) được đính kèm qua "Upload to Provider" (nếu bộ lọc hộp thoại chọn tệp của hệ điều hành bị bỏ qua), thì quá trình kiểm tra hợp lệ từ chối tệp với "Unsupported file type: text/csv".
 
@@ -326,7 +326,7 @@ Kiểm tra hợp lệ được thực hiện bởi `validateFiles()` theo thứ 
 6. FR-6 (Tổng kích thước): Sau kiểm tra mỗi tệp, nếu `(tổng kích thước hiện có) + (tổng kích thước đến) > totalSizeLimit (50 MB)`, từ chối với `"Total file size limit exceeded: 50 MB"`.
 7. FR-7 (Phát hiện trùng lặp): Nếu bất kỳ kết hợp nào của `name + size + type_category` khớp với một tệp đã đính kèm, từ chối với `com_error_files_dupe` → "Duplicate file detected."
 
-> Lưu ý về nguồn thông báo lỗi: Hàm `validateFiles` tạo ra các thông báo về số lượng tệp, MIME, kích thước và tổng kích thước dưới dạng chuỗi thô (không qua khóa i18n). Các khóa `com_ui_attach_error_limit`, `com_ui_attach_error_type`, `com_ui_attach_error_size` và `com_ui_attach_error_total_size` tồn tại trong tệp dịch nhưng hiện được sử dụng trong các đường code riêng biệt (ví dụ: relay lỗi phía server cũ hơn). Đối với kiểm tra hợp lệ phía client của endpoint Nufi, các thông báo hiển thị là các chuỗi thô được liệt kê trong FR-3 đến FR-6 ở trên. (cần xác minh: xác nhận văn bản toast chính xác trong giao diện đã triển khai cho từng trường hợp lỗi.)
+> Lưu ý về nguồn thông báo lỗi: Hàm `validateFiles` tạo ra các thông báo về số lượng tệp, MIME, kích thước và tổng kích thước dưới dạng chuỗi thô (không qua khóa i18n). Các khóa `com_ui_attach_error_limit`, `com_ui_attach_error_type`, `com_ui_attach_error_size` và `com_ui_attach_error_total_size` tồn tại trong tệp dịch nhưng hiện được sử dụng trong các đường code riêng biệt (ví dụ: relay lỗi phía server cũ hơn). Đối với kiểm tra hợp lệ phía client của endpoint NuFi, các thông báo hiển thị là các chuỗi thô được liệt kê trong FR-3 đến FR-6 ở trên. (cần xác minh: xác nhận văn bản toast chính xác trong giao diện đã triển khai cho từng trường hợp lỗi.)
 
 #### Kiểm tra hợp lệ & lỗi (thông báo chính xác)
 
@@ -369,7 +369,7 @@ Kiểm tra hợp lệ được thực hiện bởi `validateFiles()` theo thứ 
 Làm rõ sự khác biệt giữa đính kèm tệp theo tin nhắn (phần này) và Agent Knowledge lâu dài (RAG qua file search / vector store), để người kiểm thử và người dùng cuối chọn đúng cơ chế.
 
 #### Điều kiện tiên quyết / truy cập
-- Cả hai tính năng có thể đồng thời khả dụng khi endpoint Nufi được sử dụng với Agent có File Search được bật.
+- Cả hai tính năng có thể đồng thời khả dụng khi endpoint NuFi được sử dụng với Agent có File Search được bật.
 
 #### Thành phần giao diện
 - **Đính kèm theo tin nhắn** (phần này): tệp được đính kèm qua nút Attach Files trong thanh nhập liệu cuộc trò chuyện. Chúng hiển thị dưới dạng chip giữa vùng nhập văn bản và nút gửi. Chúng có phạm vi theo cuộc hội thoại.
@@ -379,7 +379,7 @@ Làm rõ sự khác biệt giữa đính kèm tệp theo tin nhắn (phần này
 1. FR-1: Đính kèm theo tin nhắn được gửi đến mô hình một lần, như một phần của tin nhắn cụ thể mà nó được đính kèm. Nó không được lưu trữ cho các cuộc hội thoại trong tương lai hoặc có thể được truy xuất bởi mô hình trong các tin nhắn sau.
 2. FR-2: Các tệp Agent Knowledge được lập chỉ mục vào vector store. Agent tự động truy xuất các đoạn liên quan qua tất cả các cuộc hội thoại.
 3. FR-3: Khi menu Attach đang mở, tùy chọn "Upload for File Search" (`com_ui_upload_file_search`) — nếu được hiển thị — định tuyến tệp đến vector store file search của Agent (lâu dài, RAG). Đây không phải là đính kèm theo tin nhắn.
-4. FR-4: "Upload to Provider" trong menu đính kèm là đính kèm theo tin nhắn (phạm vi theo cuộc hội thoại). "Upload as Text" không khả dụng trên endpoint Nufi theo cấu hình hiện tại.
+4. FR-4: "Upload to Provider" trong menu đính kèm là đính kèm theo tin nhắn (phạm vi theo cuộc hội thoại). "Upload as Text" không khả dụng trên endpoint NuFi theo cấu hình hiện tại.
 5. FR-5: Một tin nhắn có thể bao gồm cả đính kèm theo tin nhắn và hưởng lợi từ Agent Knowledge đồng thời; hai cơ chế không xung đột nhau.
 
 #### Khi nào dùng cơ chế nào
@@ -388,7 +388,7 @@ Làm rõ sự khác biệt giữa đính kèm tệp theo tin nhắn (phần này
 | Chia sẻ tài liệu hoặc hình ảnh một lần cho một câu hỏi duy nhất | Đính kèm theo tin nhắn (phần này) |
 | Cung cấp cho agent tài liệu tham khảo lâu dài để truy xuất qua tất cả các cuộc hội thoại | Agent Knowledge (File Search trong bảng cấu hình Agent) |
 | Vision: để mô hình mô tả hoặc phân tích hình ảnh | Đính kèm theo tin nhắn qua "Upload to Provider" |
-| Trích xuất văn bản từ PDF hoặc hình ảnh cho một tin nhắn | Đính kèm theo tin nhắn qua "Upload as Text" (yêu cầu khả năng `context` — không được bật mặc định trên Nufi) |
+| Trích xuất văn bản từ PDF hoặc hình ảnh cho một tin nhắn | Đính kèm theo tin nhắn qua "Upload as Text" (yêu cầu khả năng `context` — không được bật mặc định trên NuFi) |
 
 #### Kiểm tra hợp lệ & lỗi
 - Các tệp được tải lên qua "Upload for File Search" từ menu đính kèm tin nhắn phải tuân theo cùng kiểm tra MIME và kích thước mỗi tệp, nhưng đích đến của chúng là vector store thay vì tin nhắn. Lỗi kiểm tra hợp lệ xuất hiện dưới dạng toast đỏ.

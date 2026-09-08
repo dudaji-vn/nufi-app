@@ -2,7 +2,7 @@ version: 1.3.11
 cache: true
 
 interface:
-  customWelcome: "Welcome to Nufi Chat."
+  customWelcome: "Welcome to NuFi."
   # Must be visible so users can switch to the Agents endpoint (where RAG /
   # File Search lives). With it hidden, agents are unreachable.
   endpointsMenu: true
@@ -25,7 +25,7 @@ interface:
     externalUrl: "${CONSOLE_URL}"
     openNewTab: true
   # Adds an "Agents" entry pointing at the chooser, which is where a member
-  # picks between NUFI Studio and NUFI Works. Same interpolation rule as above:
+  # picks between NuFi Studio and NuFi Works. Same interpolation rule as above:
   # an empty ${AGENTS_URL} hides the entry rather than showing a dead link.
   customAgents:
     externalUrl: "${AGENTS_URL}"
@@ -33,7 +33,7 @@ interface:
 
 endpoints:
   # Agents endpoint — hosts the File Search (RAG) capability. A user creates an
-  # agent backed by the Nufi model, enables File Search, and uploads documents;
+  # agent backed by the NuFi model, enables File Search, and uploads documents;
   # those are embedded via rag_api (RAG_API_URL) into pgvector and retrieved at
   # chat time. Scoped to file_search only to keep the demo focused (no code
   # interpreter / web search buttons that need extra services).
@@ -58,7 +58,7 @@ endpoints:
         default: ["loading..."]
       titleConvo: true
       titleModel: "current_model"
-      modelDisplayLabel: "Nufi"
+      modelDisplayLabel: "NuFi"
       forcePrompt: false
       summarize: false
 

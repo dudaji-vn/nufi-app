@@ -3,7 +3,7 @@ import { DashboardPage } from '@/components/dashboard';
 
 export const Route = createFileRoute('/_app/')({
   head: () => ({
-    meta: [{ title: 'Dashboard | NUFI Admin Panel' }],
+    meta: [{ title: 'Dashboard | NuFi Admin Panel' }],
   }),
   component: DashboardRoute,
 });

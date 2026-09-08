@@ -12,7 +12,7 @@ The NuFi Console is a self-service developer portal, separate from the chat appl
 
 **Unauthorized flow:** When any API call returns HTTP 401, the SPA redirects to the `/unauthorized` route, which shows the message "Sign in required" with explanatory copy and an "Open chat" button that deep-links to the LibreChat URL (configured via `VITE_LIBRECHAT_URL`, defaulting to `http://localhost:3080`).
 
-**Navigation:** A persistent header bar contains the NUFI logo, the app name "NUFI Console", and three nav links: **Profile**, **Usage**, and **API keys**. A theme toggle (light/dark) appears on the right. Toast notifications appear bottom-right.
+**Navigation:** A persistent header bar contains the NuFi logo, the app name "NuFi Console", and three nav links: **Profile**, **Usage**, and **API keys**. A theme toggle (light/dark) appears on the right. Toast notifications appear bottom-right.
 
 ---
 

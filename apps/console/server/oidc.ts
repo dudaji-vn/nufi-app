@@ -215,9 +215,9 @@ oidc.post('/token', async (c) => {
  * first-party upstream may hold it.
  *
  * Deliberately carries no entitlement check. `AGENT_ENTITLEMENTS` answers "may
- * this member open NUFI Studio / NUFI Works"; this endpoint mints a subject
+ * this member open NuFi Studio / NuFi Works"; this endpoint mints a subject
  * asserted by a trusted server, for an audience that is neither product, and
- * the member it names may not have a NUFI account at all. Gating it on a
+ * the member it names may not have a NuFi account at all. Gating it on a
  * product list would refuse a token that was never a door into a product.
  */
 oidc.post('/federated-token', async (c) => {

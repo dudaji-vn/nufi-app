@@ -1,5 +1,5 @@
 /**
- * Audit log entry as returned by the NUFI admin audit-log endpoint
+ * Audit log entry as returned by the NuFi admin audit-log endpoint
  * (`/api/admin/audit-log`). Defined locally rather than imported from
  * `@librechat/data-schemas` so the panel is decoupled from the data-schemas
  * publish cycle: the installed version still types `AdminAuditLogEntry` as the

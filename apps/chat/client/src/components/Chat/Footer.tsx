@@ -25,7 +25,7 @@ function Footer({ className }: { className?: string }) {
   );
 
   const mainContentParts = (
-    typeof config?.customFooter === 'string' ? config.customFooter : 'NUFI ' + Constants.VERSION
+    typeof config?.customFooter === 'string' ? config.customFooter : 'NuFi ' + Constants.VERSION
   ).split('|');
 
   useEffect(() => {

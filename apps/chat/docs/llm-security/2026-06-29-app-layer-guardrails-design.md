@@ -76,7 +76,7 @@ Both were **disabled** in commit `eebcb35` (npuops-platform, 2026-05-12):
 ## 3. Architecture
 
 LibreChat v0.8.6 routes **all** chat through the unified **agents engine** —
-both the custom "Nufi" endpoint and the Agents/RAG endpoint. This gives us a
+both the custom "NuFi" endpoint and the Agents/RAG endpoint. This gives us a
 **single chokepoint**:
 
 ```
@@ -86,7 +86,7 @@ User → POST /api/agents/:endpoint   (api/server/routes/agents/chat.js)
         │        • injection detected → denyRequest()  → BLOCK, no model call
         │        • PII detected       → log/audit, prompt UNCHANGED → next()
         │
-        ├──→ AgentController → client.sendMessage()  (model: Nufi / RAG agent)
+        ├──→ AgentController → client.sendMessage()  (model: NuFi / RAG agent)
         │
         └─[2] outputGuard  (in controllers/agents/request.js, right after
                  `response = await client.sendMessage(...)`)

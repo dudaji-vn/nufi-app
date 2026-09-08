@@ -1,6 +1,14 @@
 import { describe, expect, it } from "bun:test";
 
-import { resolveModelKey } from "./client";
+import {
+  DEFAULT_AGENT_MODEL,
+  GATEWAY_RETRY_DELAYS_MS,
+  buildModel,
+  requireRunToken,
+  resolveModelKey,
+  resolveModelName,
+  shouldRetryGateway,
+} from "./client";
 
 describe("resolveModelKey", () => {
   /**
@@ -54,5 +62,110 @@ describe("resolveModelKey", () => {
 
   it("trims surrounding whitespace from a bound value", () => {
     expect(resolveModelKey({ env: { K: " sk-mine\n" } }, "K", {})).toBe("sk-mine");
+  });
+});
+
+describe("requireRunToken", () => {
+  /**
+   * The whole point of the guard: an empty token is not "anonymous access", it
+   * is a 404 on every issue in the company, which reads as data loss rather
+   * than a credential problem.
+   */
+  it("refuses an absent token and names the cause", () => {
+    expect(() => requireRunToken("")).toThrow(/supportsLocalAgentJwt/);
+    expect(() => requireRunToken("   ")).toThrow(/No Paperclip run token/);
+  });
+
+  it("passes a real token through untouched", () => {
+    expect(requireRunToken("eyJhbGciOi.J9.sig")).toBe("eyJhbGciOi.J9.sig");
+  });
+});
+
+describe("shouldRetryGateway", () => {
+  /**
+   * "A security check could not run, so this request was refused rather than
+   * sent unchecked. This is usually temporary — please retry." Taking the
+   * gateway at its word, and only there.
+   */
+  it("retries a guardrail that could not run", () => {
+    expect(shouldRetryGateway(503, '{"param":"GUARDRAIL_UNAVAILABLE"}')).toBe(true);
+  });
+
+  /**
+   * A refusal that names a policy is a decision, not a hiccup. Retrying it
+   * would be arguing with the security stack until it gives in.
+   */
+  it("never retries a policy decision", () => {
+    expect(shouldRetryGateway(400, '{"param":"LLM01_INJECTION"}')).toBe(false);
+    expect(shouldRetryGateway(403, '{"param":"nufi_guardrail_blocked"}')).toBe(false);
+  });
+
+  it("leaves ordinary failures alone", () => {
+    expect(shouldRetryGateway(401, "bad key")).toBe(false);
+    expect(shouldRetryGateway(429, "rate limited")).toBe(false);
+    expect(shouldRetryGateway(503, "upstream gone")).toBe(false);
+  });
+});
+
+describe("the model an agent calls", () => {
+  /**
+   * The default is a security boundary, not a preference.
+   *
+   * `nufi-agent` is the single model name G1 exempts, and the exemption exists
+   * because a tool-calling agent cannot pass that control at all: a tool result
+   * is classified `untrusted`, which blocks on one detector at threshold 0.50,
+   * and the classifier scores benign text near 1.0. Measured on the smallest
+   * possible tool result — `{"ok":true}` — blocked as role=tool, fine as
+   * role=user.
+   *
+   * Defaulting to `gemini` would kill every run on its second turn. Exempting
+   * `gemini` instead would strip prompt-injection defence from every chat user
+   * to save one loop. The label is what keeps the hole the size of the problem.
+   */
+  it("defaults to the alias the exemption is scoped to", () => {
+    const model = buildModel({
+      runId: "r",
+      agent: { id: "a", companyId: "c" },
+      config: {},
+      context: {},
+      onLog: async () => {},
+    });
+    expect(model).toBeDefined();
+    // The default lives in client.ts; assert on the contract the policy relies on.
+    expect(DEFAULT_AGENT_MODEL).toBe("nufi-agent");
+  });
+
+  it("still lets an operator name a different model", () => {
+    expect(resolveModelName({ model: "Nufi-lab/models/gemini-2.5-pro" })).toBe(
+      "Nufi-lab/models/gemini-2.5-pro",
+    );
+    expect(resolveModelName({})).toBe(DEFAULT_AGENT_MODEL);
+  });
+});
+
+describe("riding out a scanner restart", () => {
+  /**
+   * Seventeen seconds covers a busy moment. It does not cover a restart.
+   *
+   * The injection scanner loads a CPU transformer at import — eagerly, one per
+   * uvicorn worker — so while a worker is coming back the gateway answers 503
+   * GUARDRAIL_UNAVAILABLE, and the policy is fail-closed by design. Measured on
+   * the final sweep: a run died on exactly that, its comment reading "gateway
+   * 503 ... A security check could not run". Minutes later the same gateway
+   * served 6 concurrent requests 6/6, so the window was a restart rather than
+   * load.
+   *
+   * A heartbeat has minutes. Spending one of them beats losing the run, and the
+   * delays still give up long before the run's own timeout.
+   */
+  it("keeps trying for longer than a worker takes to come back", () => {
+    const total = GATEWAY_RETRY_DELAYS_MS.reduce((sum, ms) => sum + ms, 0);
+
+    expect(total).toBeGreaterThanOrEqual(60_000);
+    expect(total).toBeLessThan(120_000);
+  });
+
+  it("still gives up rather than retrying forever", () => {
+    expect(GATEWAY_RETRY_DELAYS_MS.length).toBeLessThanOrEqual(6);
   });
 });

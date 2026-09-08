@@ -10,15 +10,15 @@
 
 ### [WRONG] Attach Button — FR-1, AC-1: First dropdown item is "Upload to Provider", not "Upload Image"
 
-**Spec says:** The Nufi endpoint attach dropdown shows at minimum **"Upload Image"** (`com_ui_upload_image_input`) and **"Upload as Text"** (`com_ui_upload_ocr_text`).
+**Spec says:** The NuFi endpoint attach dropdown shows at minimum **"Upload Image"** (`com_ui_upload_image_input`) and **"Upload as Text"** (`com_ui_upload_ocr_text`).
 
-**Reality:** The Nufi endpoint is `EModelEndpoint.custom`, which is a member of `documentSupportedProviders`. The branch at `AttachFileMenu.tsx:164-185` uses `isDocumentSupportedProvider(endpointType)` to decide which first item to render. Because `custom` is in that set (`schemas.ts:53`), the first item rendered is **"Upload to Provider"** (`com_ui_upload_provider`) with icon `FileImageIcon`, not "Upload Image" with `ImageUpIcon`. The "Upload Image" label only appears for endpoints that are **not** document-supported.
+**Reality:** The NuFi endpoint is `EModelEndpoint.custom`, which is a member of `documentSupportedProviders`. The branch at `AttachFileMenu.tsx:164-185` uses `isDocumentSupportedProvider(endpointType)` to decide which first item to render. Because `custom` is in that set (`schemas.ts:53`), the first item rendered is **"Upload to Provider"** (`com_ui_upload_provider`) with icon `FileImageIcon`, not "Upload Image" with `ImageUpIcon`. The "Upload Image" label only appears for endpoints that are **not** document-supported.
 
 **Evidence:**
 - `client/src/components/Chat/Input/Files/AttachFileMenu.tsx:164-185`
 - `packages/data-provider/src/schemas.ts:49-64`
 
-**Suggested correction:** In FR-1 and AC-1, replace "Upload Image" (`com_ui_upload_image_input`) with "Upload to Provider" (`com_ui_upload_provider`) as the primary upload option for the Nufi endpoint.
+**Suggested correction:** In FR-1 and AC-1, replace "Upload Image" (`com_ui_upload_image_input`) with "Upload to Provider" (`com_ui_upload_provider`) as the primary upload option for the NuFi endpoint.
 
 ---
 
@@ -26,21 +26,21 @@
 
 **Spec says:** Clicking "Upload Image" sets the `accept` filter to `image/*,.heif,.heic`.
 
-**Reality:** The Nufi endpoint uses the "Upload to Provider" path, which sets `fileType = 'image_document'` and triggers `inputRef.current.accept = 'image/*,.heif,.heic,.pdf,application/pdf'` — images **and** PDFs, not images-only.
+**Reality:** The NuFi endpoint uses the "Upload to Provider" path, which sets `fileType = 'image_document'` and triggers `inputRef.current.accept = 'image/*,.heif,.heic,.pdf,application/pdf'` — images **and** PDFs, not images-only.
 
 **Evidence:**
 - `client/src/components/Chat/Input/Files/AttachFileMenu.tsx:128-130` (image_document accept string)
 - `client/src/components/Chat/Input/Files/AttachFileMenu.tsx:171-183` (fileType assigned as 'image_document' for custom endpoint)
 
-**Suggested correction:** In FR-2 and AC-2, the accept attribute for the primary Nufi upload option is `image/*,.heif,.heic,.pdf,application/pdf`.
+**Suggested correction:** In FR-2 and AC-2, the accept attribute for the primary NuFi upload option is `image/*,.heif,.heic,.pdf,application/pdf`.
 
 ---
 
-### [WRONG] Attach Button — "Upload as Text" option availability for Nufi endpoint
+### [WRONG] Attach Button — "Upload as Text" option availability for NuFi endpoint
 
-**Spec says:** The Nufi endpoint dropdown shows at minimum "Upload as Text" (`com_ui_upload_ocr_text`).
+**Spec says:** The NuFi endpoint dropdown shows at minimum "Upload as Text" (`com_ui_upload_ocr_text`).
 
-**Reality:** "Upload as Text" only renders when `capabilities.contextEnabled === true` (`AttachFileMenu.tsx:197`). `contextEnabled` is `true` only when `AgentCapabilities.context` is present in the agents endpoint capabilities array (`useAgentCapabilities.ts:41-43`). The `nufi-chat/librechat.yaml` sets `agents.capabilities: ["file_search"]` — `context` is absent. Therefore `contextEnabled = false` and "Upload as Text" is **not shown** in the Nufi endpoint attach menu unless the server-side agents config is changed.
+**Reality:** "Upload as Text" only renders when `capabilities.contextEnabled === true` (`AttachFileMenu.tsx:197`). `contextEnabled` is `true` only when `AgentCapabilities.context` is present in the agents endpoint capabilities array (`useAgentCapabilities.ts:41-43`). The `nufi-chat/librechat.yaml` sets `agents.capabilities: ["file_search"]` — `context` is absent. Therefore `contextEnabled = false` and "Upload as Text" is **not shown** in the NuFi endpoint attach menu unless the server-side agents config is changed.
 
 **Evidence:**
 - `client/src/components/Chat/Input/Files/AttachFileMenu.tsx:197-205`
@@ -48,13 +48,13 @@
 - `client/src/hooks/Agents/useGetAgentsConfig.ts:22-32`
 - `nufi-chat/librechat.yaml:34-36`
 
-**Suggested correction:** The menu for the Nufi endpoint shows only "Upload to Provider" (and "Upload for File Search" when fileSearch is enabled). "Upload as Text" requires adding `context` to `agents.capabilities` in `librechat.yaml`.
+**Suggested correction:** The menu for the NuFi endpoint shows only "Upload to Provider" (and "Upload for File Search" when fileSearch is enabled). "Upload as Text" requires adding `context` to `agents.capabilities` in `librechat.yaml`.
 
 ---
 
 ### [WRONG] Drag-and-Drop — FR-3, FR-4: Modal appears for ALL files (not just images) when File Search is enabled
 
-**Spec says (FR-3):** "For the Nufi endpoint, if the dragged files are images, the 'Select Upload Type' modal appears."
+**Spec says (FR-3):** "For the NuFi endpoint, if the dragged files are images, the 'Select Upload Type' modal appears."
 
 **Spec says (FR-4):** "If no modal is needed (e.g., non-image files where only one destination is valid), files are processed directly."
 
@@ -74,15 +74,15 @@ With nufi-chat `agents.capabilities: ["file_search"]`, `fileSearchEnabled = true
 
 ### [WRONG] Drag-and-Drop — FR-3: DragDropModal shows "Upload to Provider", not "Upload Image"
 
-**Spec says (FR-3):** The "Select Upload Type" modal offers "Upload Image" for the Nufi endpoint.
+**Spec says (FR-3):** The "Select Upload Type" modal offers "Upload Image" for the NuFi endpoint.
 
-**Reality:** `DragDropModal.tsx:77-118` applies the same `isDocumentSupportedProvider(endpointType)` test. For the Nufi custom endpoint, the first option label is `localize('com_ui_upload_provider')` ("Upload to Provider"), not `localize('com_ui_upload_image_input')` ("Upload Image"). The "Upload Image" label only renders when the provider is NOT document-supported.
+**Reality:** `DragDropModal.tsx:77-118` applies the same `isDocumentSupportedProvider(endpointType)` test. For the NuFi custom endpoint, the first option label is `localize('com_ui_upload_provider')` ("Upload to Provider"), not `localize('com_ui_upload_image_input')` ("Upload Image"). The "Upload Image" label only renders when the provider is NOT document-supported.
 
 **Evidence:**
 - `client/src/components/Chat/Input/Files/DragDropModal.tsx:77-118`
 - `packages/data-provider/src/schemas.ts:49-64`
 
-**Suggested correction:** In FR-3 (Drag-and-Drop section), replace "Upload Image" with "Upload to Provider" as the modal option for the Nufi endpoint.
+**Suggested correction:** In FR-3 (Drag-and-Drop section), replace "Upload Image" with "Upload to Provider" as the modal option for the NuFi endpoint.
 
 ---
 
@@ -162,11 +162,11 @@ The key `fileTypes.csv` exists (→ `spreadsheet`) but is only reachable if the 
 
 ---
 
-### [VERIFY-RESOLVED] clientImageResize enabled on Nufi production
+### [VERIFY-RESOLVED] clientImageResize enabled on NuFi production
 
 **Spec (verify marker):** "whether this is enabled on NuFi production deployment."
 
-**Resolution: CONFIRMED DISABLED (by default).** `nufi-chat/librechat.yaml` does not configure `fileConfig.clientImageResize`. The LibreChat default is `clientImageResize.enabled: false` (`packages/data-provider/src/file-config.ts:436-441`). Therefore, the resize toast ("Image resized: X MB → Y MB") will **not** appear on the current Nufi deployment. The resize code path in `useFileHandling.ts:362-382` is present but inactive.
+**Resolution: CONFIRMED DISABLED (by default).** `nufi-chat/librechat.yaml` does not configure `fileConfig.clientImageResize`. The LibreChat default is `clientImageResize.enabled: false` (`packages/data-provider/src/file-config.ts:436-441`). Therefore, the resize toast ("Image resized: X MB → Y MB") will **not** appear on the current NuFi deployment. The resize code path in `useFileHandling.ts:362-382` is present but inactive.
 
 **Evidence:**
 - `packages/data-provider/src/file-config.ts:436-441`

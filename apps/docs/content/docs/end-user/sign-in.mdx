@@ -1,80 +1,105 @@
 ---
-title: Sign in
-description: Create your account, log in, enable two-factor, sign out.
+title: Sign in and your account
+description: Create your account, sign in, turn on two-factor authentication, and find your way around Settings.
 ---
 
-![The NUFI app sign-in screen](/screenshots/chat-sign-in.png)
+![The NuFi app sign-in screen](/screenshots/chat-sign-in.png)
 
 ## Create your account
 
 <Steps>
 <Step>Open `chat.nufi.me`.</Step>
-<Step>Click **Sign up** (under *"Don't have an account?"*).</Step>
-<Step>Enter your name, email, and a strong password, then submit.</Step>
+<Step>Click **Sign up**, under *"Don't have an account?"*.</Step>
+<Step>Enter your name, email address and a password, and submit. You
+are signed in straight away.</Step>
 </Steps>
 
-Depending on how your organisation set NUFI up, you might instead see
-a **Continue with Google** (or Microsoft / company SSO) button. Use
-that — you won't need a separate password. If neither option appears,
-your administrator creates accounts for everyone; ask them.
+Or click **Continue with Google** and skip the password. A Google
+account and an email account with the same address are two different
+accounts, so pick one way and keep to it.
 
 ## Sign in
 
-On the **Welcome back** screen, enter your **email address** and
-**password** and click **Continue** — or use **Continue with Google**
-if your organisation set up single sign-on.
+On the **Welcome back** screen, enter your email address and password
+and click **Continue**, or use **Continue with Google**.
 
-Once signed in, you stay signed in for several days. You also get into
-the **console** (`console.nufi.me`) automatically — no second login.
+You stay signed in for a while after that, and the same session opens
+the **console** at `console.nufi.me` and the agent apps behind
+`agents.nufi.me`. There is no second login.
+
+## Forgot your password?
+
+`chat.nufi.me` sends no email, so there is no reset link on the sign-in
+screen. Ask your administrator to reset the password for you. If you
+signed up with Google there is nothing to reset: use Google's own
+recovery.
 
 ## Two-factor authentication
 
-Two-factor (**2FA**) adds a code from your phone on top of your
-password. Strongly recommended.
+Two-factor authentication (2FA) asks for a code from your phone on top
+of your password. It is available for accounts with a password; a Google
+account is protected by Google's own second factor instead.
 
 <Steps>
-<Step>Open the **avatar menu** at the **bottom-left** → **Settings**.</Step>
-<Step>Go to the **Account** section and click **Enable two-factor**.</Step>
-<Step>Scan the QR code with an authenticator app (Google
-Authenticator, 1Password, Authy, Microsoft Authenticator — any work).</Step>
-<Step>Type the 6-digit code from the app to confirm.</Step>
-<Step>**Save the backup codes** somewhere safe — you'll need them if
-you lose your phone.</Step>
+<Step>Open the **avatar menu** at the bottom-left and choose **Settings**.</Step>
+<Step>On the **Account** tab, click **Enable 2FA**.</Step>
+<Step>Scan the QR code with an authenticator app — Google Authenticator,
+1Password, Authy, Microsoft Authenticator all work.</Step>
+<Step>Type the six-digit code from the app to confirm.</Step>
+<Step>**Save the backup codes** somewhere safe. They are what gets you
+in if you lose the phone. You can regenerate them later from the same
+tab.</Step>
 </Steps>
 
-Next time you sign in, NUFI asks for the 6-digit code after your
-password.
+From then on, sign-in asks for the six-digit code after your password.
 
-## Reset your password
+## The account menu
 
-Click **Forgot password** on the sign-in screen. If your organisation
-has email delivery configured, a reset link arrives within a minute.
-If it doesn't, ask your administrator to reset it for you.
+Click your **avatar** at the bottom-left of the app:
 
-## Your account menu
+![The account menu — My Files, Help & FAQ, Console, Agents, Settings, Advanced, Log out](/screenshots/chat-agents-menu.png)
 
-Click your **avatar at the bottom-left** of the app to open the
-account menu:
+| Entry | What it opens |
+|---|---|
+| **My Files** | Every file you have uploaded, in any conversation or agent |
+| **Help & FAQ** | The help site of the chat engine NuFi is built on |
+| **Console** | Your developer console, for [API keys](/docs/end-user/api-keys) |
+| **Agents** | The chooser for [Studio and Works](/docs/end-user/agent-apps) |
+| **Settings** | The tabs below |
+| **Advanced** / **Basic** | Switches the interface mode — see [Basic and Advanced mode](/docs/end-user/advanced-mode) |
+| **Log out** | Signs you out on this device |
 
-![The account menu — My Files, Help & FAQ, Console, Settings, Log out](/screenshots/chat-account-menu.png)
+## Settings
 
-From here you can open **My Files**, jump to the **Console** to manage
-[API keys](/docs/end-user/api-keys), open **Settings** (display name,
-avatar, password, two-factor, active sessions), or **Log out**.
+| Tab | What is in it |
+|---|---|
+| **General** | **Interface** (Basic or Advanced), **Theme**, **Language**, a few display toggles, and **Archived chats** |
+| **Chat**, **Commands** | Advanced mode only: how messages render, and which `/` commands are active |
+| **Speech** | Dictation and read-aloud — see [Speech](/docs/end-user/speech) |
+| **Personalization** | What the assistant is allowed to remember about you, where memories are enabled |
+| **Data controls** | Import conversations, **Shared links**, **Revoke Keys**, delete the speech cache, **Clear all chats** |
+| **Account** | Display username in messages, profile picture, 2FA, backup codes, **Delete account** |
+
+<Callout type="warn">
+Two entries here cannot be undone. **Clear all chats** deletes every
+conversation you have. **Delete account** removes the account and its
+data. Neither asks your administrator first.
+</Callout>
 
 ## Sign out
 
-Avatar menu (bottom-left) → **Log out**. This signs you out everywhere
-your account is open.
+Avatar menu → **Log out**. That ends the session on the device you are
+using. Other browsers where you are signed in stay signed in; on a
+shared machine, log out there too.
 
 ## Common issues
 
-- **"Registration is disabled"** — your organisation only allows
-  admin-created accounts. Ask your admin to invite you.
-- **"Loop between chat and console"** — sign out fully, clear cookies
-  for `nufi.me`, then sign in again at the app.
-- **2FA code rejected** — your phone clock and the server clock are
-  out of sync. Open your phone settings → Date & Time → toggle
-  **Set automatically** on.
-- **Forgot the email you used** — your admin can tell you (or merge
-  duplicate accounts).
+- **I created an account with Google and now the password form rejects
+  me.** The two are separate accounts. Use **Continue with Google**.
+- **The 2FA code is rejected.** Your phone's clock has drifted. Turn on
+  *Set automatically* in its date and time settings.
+- **I am bounced between the app and the console.** Log out, clear
+  cookies for `nufi.me`, and sign in again at the app.
+- **I cannot find the Agents entry or the Advanced switch.** Your app
+  is older than this page, or the menu was cut off on a small screen.
+  Scroll the menu, or ask your administrator.

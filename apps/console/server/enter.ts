@@ -32,14 +32,14 @@ function safeNext(next: string | undefined): string {
 }
 
 /**
- * NUFI Studio is not an OAuth client. It validates a JWT it finds in a cookie
+ * NuFi Studio is not an OAuth client. It validates a JWT it finds in a cookie
  * (LANGFLOW_EXTERNAL_AUTH_TOKEN_COOKIE) against this console's JWKS, and
  * provisions the local user on first sight. So the whole handoff is: check the
  * chat session, mint a token for Studio alone, set it, redirect.
  *
  * The cookie is scoped to the parent domain because a response from
  * console.nufi.me cannot set a cookie that only studio.nufi.me sees. That
- * means every NUFI subdomain receives it. It is audience-scoped and
+ * means every NuFi subdomain receives it. It is audience-scoped and
  * short-lived, so another subdomain can do nothing with it except replay it to
  * Studio -- which is where it was going. If a subdomain ever stops being ours,
  * this needs a per-host proxy instead.

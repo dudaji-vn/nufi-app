@@ -1,14 +1,14 @@
 ---
 title: Single sign-on for the agent apps
-description: How the console issues identity to NUFI Studio and NUFI Works, what to set on each of the three sides, and the two constraints that will bite you later if you skip them.
+description: How the console issues identity to NuFi Studio and NuFi Works, what to set on each of the three sides, and the two constraints that will bite you later if you skip them.
 ---
 
-Without this, NUFI Studio and NUFI Works each have their own accounts
-and their own passwords, and a member who already signed in to NUFI
+Without this, NuFi Studio and NuFi Works each have their own accounts
+and their own passwords, and a member who already signed in to NuFi
 meets two more login screens. With it, they click through and are
 already in.
 
-The console does the vouching. It already verifies a NUFI session and
+The console does the vouching. It already verifies a NuFi session and
 issues gateway keys from it; issuing an identity is the same job with a
 different output, which is why it lives there rather than in a fourth
 service. One place decides who may enter which product.
@@ -59,22 +59,22 @@ variable, what it decides, and what happens if you leave it out:
 
 | Variable | What it decides | Left unset |
 |---|---|---|
-| `OIDC_CLIENTS` | Which OAuth clients exist, and — through `"product"` — which product each one is the front door to. **A client with no `"product"` is admitted without an entitlement check**, which is correct for a federation client and silently disables the gate for a member-facing one. The console logs a warning at boot naming any client in that state. | No client can sign in; NUFI Works keeps its own login. |
-| `AGENT_ENTITLEMENTS` | Who may enter each product, as JSON: `{"studio":["@dudaji.vn"],"works":["a@b.c"]}`. An entry is a full address or an `@domain` suffix; `*` is everyone. A product with no list of its own stays open. A NUFI administrator is always entitled. | **Both products open to every member.** Deliberate: deploying the gate must not lock out the people already using it. A *malformed* value closes both to everyone but an administrator. |
+| `OIDC_CLIENTS` | Which OAuth clients exist, and — through `"product"` — which product each one is the front door to. **A client with no `"product"` is admitted without an entitlement check**, which is correct for a federation client and silently disables the gate for a member-facing one. The console logs a warning at boot naming any client in that state. | No client can sign in; NuFi Works keeps its own login. |
+| `AGENT_ENTITLEMENTS` | Who may enter each product, as JSON: `{"studio":["@dudaji.vn"],"works":["a@b.c"]}`. An entry is a full address or an `@domain` suffix; `*` is everyone. A product with no list of its own stays open. A NuFi administrator is always entitled. | **Both products open to every member.** Deliberate: deploying the gate must not lock out the people already using it. A *malformed* value closes both to everyone but an administrator. |
 | `CHAT_BASE_URL` | Where the console asks chat who the member is. Needs to be reachable **from the console** — a private-network host is fine. | `https://chat.nufi.me`. |
 | `CHAT_PUBLIC_URL` | Where the console sends a member's **browser** to sign back in. Needs to be resolvable by that browser. | Falls back to `CHAT_BASE_URL`. |
 | `CHOOSER_HOST` | The hostname that serves the two-product chooser, and where a member who is refused a product is sent to read why. | `agents.nufi.me`. |
 | `STUDIO_URL` | Where `/enter/studio` redirects once it has minted the cookie. | `https://studio.nufi.me`. |
-| `VITE_WORKS_URL` | The NUFI Works link on the chooser. Build-time, not runtime: it is baked into the SPA by Vite, so changing it needs a rebuild. | `https://works.nufi.me`. |
+| `VITE_WORKS_URL` | The NuFi Works link on the chooser. Build-time, not runtime: it is baked into the SPA by Vite, so changing it needs a rebuild. | `https://works.nufi.me`. |
 
 <Callout type="warn">
 **`CHAT_BASE_URL` has to be reachable from the console.** The chat session
 cookie carries an id and a session id — no email and no role — so the
 console asks the chat app who the member actually is before it issues
 anything. Without that lookup every identity it mints has no email, and
-the failure is not obvious: NUFI Works refuses the sign-in with
+the failure is not obvious: NuFi Works refuses the sign-in with
 `email_is_missing` at the end of a round trip that looks like it worked,
-NUFI Studio accepts it and provisions an account called
+NuFi Studio accepts it and provisions an account called
 `external-<hash>` for a real person, and everyone arrives as an editor
 because the role is missing too.
 
@@ -89,6 +89,10 @@ the requirement above but is not something a browser can resolve.
 public chat host has nothing new to set — only a private-networking one
 needs to set it separately.
 </Callout>
+
+`VITE_WORKS_URL` is inlined into the browser bundle when the image is
+built, like the console's other `VITE_*` values; it is a build argument of
+`apps/console/Dockerfile`, not something the running container reads.
 
 This adds four routes: `/.well-known/jwks.json` publishes the public
 key, `/oidc/authorize`, `/oidc/token` and `/oidc/userinfo` serve the
@@ -119,7 +123,7 @@ the sign-in fails for whoever the load balancer sent elsewhere. Scaling
 out means moving them to a shared store first.
 </Callout>
 
-## NUFI Studio
+## NuFi Studio
 
 ```bash
 LANGFLOW_AUTO_LOGIN=false
@@ -146,7 +150,7 @@ Turning it on means anyone who can reach Studio can hand it a token
 they wrote themselves.
 </Callout>
 
-## NUFI Works
+## NuFi Works
 
 ```bash
 NUFI_OIDC_ISSUER=https://console.nufi.me
@@ -179,7 +183,7 @@ everyone out of it.
 
 ## Access levels
 
-A NUFI administrator arrives as an admin. Everyone else arrives as an
+A NuFi administrator arrives as an admin. Everyone else arrives as an
 editor. That mapping is fixed in the console.
 
 Studio treats it as a ceiling rather than an assignment, so a local
@@ -197,13 +201,13 @@ clicking into it.
 Unset, both products are open to every member — the same behaviour as
 before there was a gate, so turning this on is a decision you make
 rather than one a deploy makes for you. A malformed value closes both
-products to everyone except a NUFI administrator; an administrator is
+products to everyone except a NuFi administrator; an administrator is
 always entitled, so a typo in one Railway variable cannot lock out the
 person who has to fix it.
 
 A refusal is shaped by who asked. A browser navigation is sent to the
 chooser, which explains itself; a scripted caller gets `403` and JSON.
-A member with no NUFI session at all is sent to chat's login page, and
+A member with no NuFi session at all is sent to chat's login page, and
 gets `401` if it was a script that asked — which is what the standing
 check in `deploy/railway/verify-agents.sh` asserts.
 
@@ -211,14 +215,14 @@ check in `deploy/railway/verify-agents.sh` asserts.
 **`/oidc/federated-token` deliberately carries no entitlement check.** It
 is not a third door into either product: a trusted federation client
 authenticates as itself and asserts a subject for a different audience —
-typically a member of an on-premises deployment who has no NUFI account
+typically a member of an on-premises deployment who has no NuFi account
 at all — so a product entitlement list has nothing to say about it. The
 gate covers the two endpoints a member can navigate to, and only those.
 </Callout>
 
 ## What this does not do
 
-**It does not sign people out.** Signing out of NUFI does not revoke a
+**It does not sign people out.** Signing out of NuFi does not revoke a
 session already issued to Studio or Works; those expire on their own
 schedule, eight hours by default. Shorten `IDENTITY_TTL_SECONDS` if
 that window is too long for your risk tolerance, and tell people to
@@ -226,7 +230,7 @@ close the tabs on shared machines.
 
 **The Studio cookie is scoped to the parent domain.** A response from
 the console cannot set a cookie that only Studio receives, so it is
-scoped to `.nufi.me` and every NUFI subdomain gets a copy. It is
+scoped to `.nufi.me` and every NuFi subdomain gets a copy. It is
 audience-scoped and short-lived — another subdomain can do nothing with
 it except send it to Studio, which is where it was going. This holds
 only while every `*.nufi.me` host is operated by you. If one ever is
@@ -249,3 +253,10 @@ curl -s -o /dev/null -w '%{http_code}\n' https://console.nufi.me/enter/studio
 Then confirm a tampered token is rejected: change one character in the
 `nufi_id` cookie and load Studio. It must not let you in. A guard that
 has never been observed failing is not yet known to work.
+
+`deploy/railway/verify-agents.sh` runs these checks and the reachability
+and branding ones for both products in one go:
+
+```bash
+deploy/railway/verify-agents.sh --base-suffix .nufi.me
+```

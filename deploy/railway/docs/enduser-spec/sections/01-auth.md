@@ -16,7 +16,7 @@
 
 ### Registration
 
-- **Purpose:** Allow a new user to create an email/password account on Nufi Chat.
+- **Purpose:** Allow a new user to create an email/password account on NuFi Chat.
 
 - **Preconditions / access:**
   - `ALLOW_REGISTRATION=true` (server env). The API responds with `registrationEnabled: true`

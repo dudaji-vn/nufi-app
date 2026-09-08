@@ -7,22 +7,22 @@ với nhau, chia sẻ một lần đăng nhập duy nhất. Trên môi trường
 
 1. **NuFi Chat** — ứng dụng hội thoại nơi người dùng trò chuyện với các mô hình AI, đính kèm tệp,
    xây dựng Agents với kiến thức tài liệu (RAG), và quản lý các cuộc hội thoại. Đây là một bản fork
-   tùy chỉnh của dự án mã nguồn mở LibreChat, được thương hiệu hóa thành *Nufi Chat* và được cấu
+   tùy chỉnh của dự án mã nguồn mở LibreChat, được thương hiệu hóa thành *NuFi Chat* và được cấu
    hình để hiển thị một tập hợp các tính năng được chọn lọc của LibreChat.
 2. **NuFi Console** — cổng tự phục vụ dành cho nhà phát triển, nơi cùng những người dùng đó quản
    lý **LiteLLM API key** của riêng mình, xem **ngân sách và mức sử dụng**, và có được quyền truy
    cập lập trình vào nền tảng. Console được truy cập từ mục **Console** trong menu tài khoản Chat
    và tin tưởng phiên đăng nhập giống như Chat.
 
-### Mô hình backend duy nhất: "Nufi"
-NuFi Chat được cấu hình với đúng một endpoint chat, hiển thị là **Nufi**. Đây là một endpoint tương
+### Mô hình backend duy nhất: "NuFi"
+NuFi Chat được cấu hình với đúng một endpoint chat, hiển thị là **NuFi**. Đây là một endpoint tương
 thích OpenAI: backend Chat chuyển tiếp các yêu cầu đến một upstream đã cấu hình
 (`BACKEND_BASE_URL`) bằng một API key (`BACKEND_API_KEY`). Trong cấu trúc sản xuất, upstream đó là
 một proxy **LiteLLM**, cũng là hệ thống mà NuFi Console cấp phát API key và theo dõi ngân sách.
 Danh sách các mô hình có thể chọn được tải trực tiếp từ backend đó, vì vậy dropdown mô hình phản
 ánh bất cứ điều gì backend hiện đang cung cấp.
 
-Ngoài endpoint **Nufi**, endpoint **Agents** cũng được bật. Agents là nơi khả năng Retrieval-Augmented Generation (RAG) của nền tảng hoạt động — xem bên dưới.
+Ngoài endpoint **NuFi**, endpoint **Agents** cũng được bật. Agents là nơi khả năng Retrieval-Augmented Generation (RAG) của nền tảng hoạt động — xem bên dưới.
 
 ### Cách một tin nhắn chat di chuyển
 ```
@@ -36,7 +36,7 @@ Phản hồi được phát trực tuyến về trình duyệt và hiển thị 
 RAG — cho phép mô hình trả lời từ các tài liệu người dùng đã tải lên — **chỉ** khả dụng thông qua
 một **Agent** có khả năng **File Search**. Quy trình là:
 ```
-User creates an Agent (on the Nufi model) → enables File Search → uploads documents into the
+User creates an Agent (on the NuFi model) → enables File Search → uploads documents into the
 Agent's Knowledge → documents are sent to the RAG service (rag_api) → embedded into a vector
 database (pgvector) → at chat time, relevant passages are retrieved and given to the model.
 ```
@@ -49,7 +49,7 @@ Một sự phân biệt quan trọng mà kiểm thử viên phải nội tâm h�
   cuộc hội thoại** — nó là ngữ cảnh chỉ cho chat hiện tại, không tồn tại sang cuộc hội thoại mới,
   và **không** đưa dữ liệu vào cơ sở dữ liệu vector.
 
-**Không có RAG cho chat thông thường**: tải lên tài liệu trên endpoint Nufi thông thường sẽ thêm
+**Không có RAG cho chat thông thường**: tải lên tài liệu trên endpoint NuFi thông thường sẽ thêm
 nó dưới dạng ngữ cảnh ngắn hạn, không phải kiến thức có thể truy xuất.
 
 ### Cách hai sản phẩm chia sẻ một phiên

@@ -34,7 +34,7 @@ traffic that flows through admin-created custom endpoints. Concretely:
 
 - No change to the admin-panel UI in Phase 1 (it keeps showing the real provider
   values the admin typed).
-- Not managing the YAML-defined base endpoint (`Nufi` in `librechat.yaml`). That
+- Not managing the YAML-defined base endpoint (`NuFi` in `librechat.yaml`). That
   is operator-controlled deployment config — the operator points
   `BACKEND_BASE_URL` at LiteLLM directly if desired. Only **admin-panel-created**
   custom endpoints are governed by this sync system.
@@ -194,7 +194,7 @@ merged = await rewriteCustomEndpointsToLiteLLM(merged, { tenantId });
   - `models.fetch` → `true`; `models.default` → the `litellmModelName` list.
     (The scoped virtual key makes `/v1/models` return exactly this endpoint's
     namespaced models, keeping the dropdown correct and isolated.)
-- Endpoints **without** a sync record (e.g. the YAML base `Nufi`) pass through
+- Endpoints **without** a sync record (e.g. the YAML base `NuFi`) pass through
   unchanged.
 
 Because the rewritten config is what gets cached (TTL 60s), the extra DB lookup

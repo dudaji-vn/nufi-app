@@ -9,6 +9,7 @@ import {
 } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Company } from "@paperclipai/shared";
+import { accessApi } from "../api/access";
 import { companiesApi } from "../api/companies";
 import { companiesListQueryOptions, type CompanyListResult } from "../api/companies-query";
 import { queryKeys } from "../lib/queryKeys";
@@ -40,12 +41,39 @@ export function resolveBootstrapCompanySelection(input: {
   sidebarCompanies: Array<Pick<Company, "id">>;
   selectedCompanyId: string | null;
   storedCompanyId: string | null;
+  /**
+   * The companies this user can actually work in, or undefined while that is
+   * still loading.
+   *
+   * `GET /companies` returns every company to an instance admin, but
+   * `hasCompanyAccess` — which guards every other company route — requires
+   * membership and deliberately gives instance admins no blanket access. So the
+   * list can contain companies whose every request will 403, and landing on one
+   * leaves the app on a wall of loading skeletons with no visible way out: the
+   * dashboard, agents, issues, projects and routines all refused, and the
+   * company cannot even be left by deleting it, because delete checks the same
+   * access. Observed exactly that way on the live instance.
+   *
+   * Undefined means "not known yet", which must not be read as "no access" —
+   * that would blank the app on every cold start.
+   */
+  accessibleCompanyIds?: string[];
 }) {
   if (input.companies.length === 0) return null;
 
-  const selectableCompanies = input.sidebarCompanies.length > 0
+  const listed = input.sidebarCompanies.length > 0
     ? input.sidebarCompanies
     : input.companies;
+
+  // Narrow to what the user can use, but only when that narrowing leaves
+  // something. A user who is a member of nothing gets the old behaviour rather
+  // than a blank screen: every request refuses either way, and picking one at
+  // least leaves the company switcher reachable.
+  const accessible = input.accessibleCompanyIds;
+  const usable = accessible
+    ? listed.filter((company) => accessible.includes(company.id))
+    : listed;
+  const selectableCompanies = usable.length > 0 ? usable : listed;
   if (input.selectedCompanyId && selectableCompanies.some((company) => company.id === input.selectedCompanyId)) {
     return input.selectedCompanyId;
   }
@@ -72,6 +100,21 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
     useQuery<CompanyListResult>(companiesListQueryOptions);
   const companies = companiesResult.companies;
   const companyListUnauthorized = companiesResult.unauthorized;
+  /**
+   * Which of those companies this user can actually work in.
+   *
+   * Read-only, cached alongside the same key `CloudAccessGate` already uses, so
+   * this adds no request of its own. `undefined` while it loads, which
+   * `resolveBootstrapCompanySelection` treats as "not known yet" rather than
+   * "no access".
+   */
+  const { data: boardAccess } = useQuery({
+    queryKey: queryKeys.access.currentBoardAccess,
+    queryFn: () => accessApi.getCurrentBoardAccess(),
+    retry: false,
+    staleTime: 60_000,
+  });
+
   const sidebarCompanies = useMemo(
     () => companies.filter((company) => company.status !== "archived"),
     [companies],
@@ -95,12 +138,13 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
       sidebarCompanies,
       selectedCompanyId,
       storedCompanyId: localStorage.getItem(STORAGE_KEY),
+      accessibleCompanyIds: boardAccess?.companyIds,
     });
     if (next === null || next === selectedCompanyId) return;
     setSelectedCompanyIdState(next);
     setSelectionSource("bootstrap");
     localStorage.setItem(STORAGE_KEY, next);
-  }, [companies, companyListUnauthorized, isLoading, selectedCompanyId, sidebarCompanies]);
+  }, [boardAccess?.companyIds, companies, companyListUnauthorized, isLoading, selectedCompanyId, sidebarCompanies]);
 
   const setSelectedCompanyId = useCallback((companyId: string, options?: CompanySelectionOptions) => {
     setSelectedCompanyIdState(companyId);

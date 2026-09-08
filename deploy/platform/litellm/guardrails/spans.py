@@ -25,24 +25,29 @@ from guardrails.types import Span, SpanSource
 #              read. Requires corroboration, and measured against three
 #              realistic refusals the regex detector fires on none of them, so
 #              the requirement costs nothing here.
-#   tool       a result that arrived from elsewhere mid-conversation. This is
-#   function   where indirect injection lands, so it stays on the
-#              single-detector path: of six realistic indirect-injection
-#              payloads, four are invisible to the regex detector and would
-#              become log-only if corroboration were required here.
+#   tool       a result the product's own API returned mid-conversation. Split
+#   function   out of `untrusted` on 2026-09-04: while these were untrusted
+#              they blocked on the classifier alone, and `{"ok":true}` as
+#              role=tool returned 400 where the same eleven characters as
+#              role=user returned 200. Every agent turn after the first carries
+#              one, so the control could only be kept by exempting the agent's
+#              model from G1 outright -- a hole, not a control. What flows
+#              through here is company-authored issue text and comments: the
+#              same words that reach the model as `user`, so they get the same
+#              corroboration requirement. The cost is named in policy.yaml.
 #
 # An UNRECOGNISED role keeps falling back to `UNTRUSTED` in `extract_spans`
 # below, and that is now load-bearing in a second way: it must not fall back to
-# `ASSISTANT` either. `assistant` is the lenient branch of this table, so a
-# default of `ASSISTANT` would hand the corroboration discount to anyone who
-# can invent a role string.
+# `ASSISTANT` or `TOOL` either. Both are corroboration-requiring branches of
+# this table, so either default would hand that discount to anyone who can
+# invent a role string.
 _ROLE_SOURCE = {
     "system": SpanSource.SYSTEM,
     "developer": SpanSource.SYSTEM,
     "user": SpanSource.USER,
     "assistant": SpanSource.ASSISTANT,
-    "tool": SpanSource.UNTRUSTED,
-    "function": SpanSource.UNTRUSTED,
+    "tool": SpanSource.TOOL,
+    "function": SpanSource.TOOL,
 }
 
 

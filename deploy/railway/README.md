@@ -1,6 +1,8 @@
-# nufi-chat
+# deploy/railway
 
-Self-hosted LibreChat deployment that talks to any OpenAI-compatible LLM endpoint.
+The NuFi app on its own: a compose file and a wrapper image for hosts that
+cannot bind-mount `librechat.yaml` (Railway). It talks to any OpenAI-compatible
+LLM endpoint, normally the NuFi AI gateway.
 
 ## Prerequisites
 
@@ -16,8 +18,8 @@ The endpoint can be:
 ## Quick start
 
 ```bash
-git clone https://github.com/dudaji-vn/nufi-chat.git
-cd nufi-chat
+git clone https://github.com/dudaji-vn/nufi-app.git
+cd nufi-app/deploy/railway
 ./bootstrap.sh
 ```
 
@@ -96,7 +98,7 @@ docker compose up -d --force-recreate
 
 ```bash
 docker compose ps
-curl http://localhost:3081/api/health
+curl http://localhost:3081/health     # /api/health returns 404 on this app version
 docker compose exec api wget -qO- http://litellm-proxy:4000/health/liveliness
 ```
 

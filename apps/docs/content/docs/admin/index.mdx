@@ -3,38 +3,38 @@ title: For admins
 description: Where to look for each admin task, by surface.
 ---
 
-Day-to-day administration is split across four surfaces. Pick the
-one that owns what you want to change.
+Administration is spread across four surfaces. Pick the one that owns what
+you want to change.
 
-| Want to…                                                                  | Use…                                                          |
-|---------------------------------------------------------------------------|---------------------------------------------------------------|
-| Change app features, allowed file types, providers, branding             | [Admin panel → Configuration](/docs/admin/configuration)      |
-| Give someone a role, or add people to a group                            | [Admin panel → Access (Members)](/docs/admin/users)           |
-| Define roles and groups                                                   | [Admin panel → Roles and groups](/docs/admin/roles-and-groups)|
-| Choose which capabilities a role holds                                    | [Admin panel → Grants](/docs/admin/capabilities)              |
-| Apply a per-role or per-group override (e.g. raise the file size cap)     | [Admin panel → Scoped overrides](/docs/admin/scoped-overrides)|
-| Register a new AI model, set budgets, set rate limits                     | [Gateway admin](/docs/admin/litellm)                          |
-| Read a single user's conversation, debug a bad reply                      | [Trace viewer](/docs/admin/langfuse)                          |
-| Watch error rate, latency, request rate, host health                      | [Dashboards](/docs/admin/grafana)                             |
+| Want to… | Use… |
+|---|---|
+| Change app features, providers, file limits, branding | [Admin panel → Configuration](/docs/admin/configuration) |
+| Give a set of people different settings | [Admin panel → Configuration profiles](/docs/admin/scoped-overrides) |
+| Define roles and groups, assign members | [Admin panel → Access](/docs/admin/roles-and-groups) |
+| Choose which admin capabilities a role holds | [Admin panel → Grants](/docs/admin/capabilities) |
+| See who changed what, and export it | [Admin panel → Audit log](/docs/admin/audit-log) |
+| Register a model, set budgets and rate limits on keys | [Gateway admin](/docs/admin/litellm) |
+| Read one user's requests, find a bad reply, watch cost | [Langfuse](/docs/admin/langfuse) |
+| Watch error rate, latency, guardrail decisions | [Grafana](/docs/admin/grafana) |
+| Set up an agent team, its roles and its budget | [Agent roles and budgets](/docs/admin/agents-org-and-budgets) |
 
-## The admin role
+## Who is an admin
 
-The first user registered on a fresh NUFI install gets the `ADMIN`
-role automatically. Every later user defaults to `USER`. The
-[Roles and groups](/docs/admin/roles-and-groups) page covers how to
-elevate later users to admin.
+The first account registered on a fresh install gets the `ADMIN` role;
+every later account is `USER`. What the admin panel actually checks at
+sign-in is a capability, `access:admin`, which `ADMIN` holds and which you
+can grant to a role of your own. [Roles and groups](/docs/admin/roles-and-groups)
+covers elevating people.
 
-Admin status applies separately to each surface:
+Each surface signs you in separately:
 
-- **Admin panel** — uses your NUFI sign-in. Only `ADMIN`-role
-  accounts can sign in.
-- **Gateway admin** — has its own master key. Set during install.
-- **Trace viewer** — has its own user model. The first user on a
-  fresh install becomes the org owner.
-- **Dashboards** — has its own user model. Initial credentials are
-  set during install.
+| Surface | Where | Sign in with |
+|---|---|---|
+| NuFi Admin Panel | `admin.app.nufi.me` on NuFi's hosting; port 3000 of its own container elsewhere | your NuFi account, if it holds `access:admin` |
+| the gateway's admin UI | `api.codechi.me/ui`; `localhost:4000/ui` on the compose stack | the gateway master key |
+| Langfuse | `langfuse.codechi.me`; `localhost:3000` | the admin the stack seeded from `.env` (`LANGFUSE_INIT_USER_EMAIL`), then anyone invited |
+| Grafana | `grafana.codechi.me`; `localhost:3030` | `GRAFANA_ADMIN_USER` and its password from `.env` |
 
-Yes, four separate sign-ins. Each system is independent so a
-compromise of one does not cascade. The chat sign-in is the
-canonical user identity; the others are operational tools you only
-open when you need them.
+Four sign-ins on purpose: a compromise of one does not open the others.
+The app's account is the identity that matters; the other three are
+operating tools you open when you need them.

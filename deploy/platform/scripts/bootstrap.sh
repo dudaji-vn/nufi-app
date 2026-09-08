@@ -19,8 +19,8 @@
 #   • Docker Desktop  ≥ 4.0  — https://www.docker.com   (give it ≥4 GB RAM)
 #   • git
 #   • A `docker login ghcr.io` session with a PAT scoped read:packages —
-#     LibreChat ships from ghcr.io/dudaji-vn/librechat (private). See
-#     README.md → "LibreChat customization" for the one-time login.
+#     the NuFi app ships from ghcr.io/dudaji-vn/nufichat (private). See
+#     README.md → "The NuFi app image" for the one-time login.
 #   • yq (Mike Farah's, NOT Ubuntu's apt python-yq) —
 #       macOS:    brew install yq
 #       Linux:    sudo snap install yq  (or binary from github.com/mikefarah/yq/releases)
@@ -601,10 +601,10 @@ fi
 # -----------------------------------------------------------------------------
 step "5/6 Starting Docker stack"
 
-# LibreChat ships from the fork repo at ghcr.io/dudaji-vn/librechat. Pull it
-# explicitly first so the ~150 MB download shows progress instead of
-# disappearing inside `docker compose up -d`. Requires `docker login ghcr.io`
-# beforehand — see README.md "LibreChat customization" for the one-time auth.
+# The NuFi app ships from ghcr.io/dudaji-vn/nufichat. Pull it explicitly
+# first so the download shows progress instead of disappearing inside
+# `docker compose up -d`. Requires `docker login ghcr.io` beforehand — see
+# README.md "The NuFi app image" for the one-time auth.
 docker compose pull librechat
 ok "librechat image ready"
 
@@ -771,7 +771,7 @@ cat <<EOF
     LiteLLM proxy    http://localhost:4000
     Langfuse UI      http://localhost:3000
     LibreChat        http://localhost:3080
-    Grafana          http://localhost:3002   (not yet deployed)
+    Grafana          http://localhost:3030
 
   ${BOLD}Langfuse login:${RESET}
     email:    admin@npuops.local

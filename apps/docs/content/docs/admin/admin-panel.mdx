@@ -1,11 +1,13 @@
 ---
 title: Admin panel basics
-description: Sign in, find your way around, and understand the capability model behind every action.
+description: Sign in, find your way around, and the capability model behind every action.
 ---
 
-The admin panel is the web app at `admin.nufi.me` where you manage
-NUFI for your organisation — configuration, roles, groups, members,
-and capability grants.
+NuFi Admin Panel is the web app where you manage the NuFi app for your
+organisation: configuration, roles, groups, members, capability grants,
+and the audit log of who changed what. NuFi's own copy is at
+`admin.app.nufi.me`; a self-hosted one runs from its own image
+([Installing the admin panel](/docs/deployment/admin-panel-install)).
 
 ![The admin panel dashboard with quick links](/screenshots/admin-home.png)
 
@@ -14,61 +16,74 @@ and capability grants.
 ![The admin panel sign-in screen](/screenshots/admin-sign-in.png)
 
 <Steps>
-<Step>Open `admin.nufi.me`. The admin panel does **not** auto-SSO from
-the app — it has its own sign-in.</Step>
-<Step>Enter the **email and password** of a NUFI account whose role is
-`ADMIN`, then click **Sign in**. (If single sign-on is configured, use
-that instead.)</Step>
-<Step>If your account has two-factor enabled, type the 6-digit code
-when prompted.</Step>
+<Step>Open the admin panel. It keeps its own session and does not pick up
+the app's sign-in, so you sign in here even if the app is open in another
+tab.</Step>
+<Step>Enter the **email and password** of a NuFi account, then **Sign
+in**. The account must hold the `access:admin` capability, which the
+`ADMIN` role has. If single sign-on is configured, **Sign in with SSO**
+instead.</Step>
+<Step>If the account has two-factor authentication, enter the 6-digit code
+from your authenticator app when asked.</Step>
 </Steps>
 
-When SSO-only mode is enabled, the email/password form is hidden and
-visitors are redirected to the identity provider.
+With SSO-only mode on, the panel goes straight to the identity provider.
+If that redirect fails, the password form comes back with a note saying so.
 
 ## Find your way around
 
-The left sidebar has five destinations:
+The left sidebar has seven destinations:
 
-| Section | What it's for |
-|---------|---------------|
-| **Dashboard** | The home screen with quick links to every area |
-| **Configuration** | Every setting NUFI reads — providers, models, features, files, system. See [Configuration](/docs/admin/configuration) |
-| **Access** | Define **roles** and **groups**, and assign **members**. See [Roles and groups](/docs/admin/roles-and-groups) |
-| **Grants** | Choose which **capabilities** each role holds. See [Capabilities](/docs/admin/capabilities) |
-| **Help** | Links to documentation and support |
+| Section | What it is for |
+|---|---|
+| **Dashboard** | quick links to Configuration, Access, Grants and Help |
+| **Configuration** | every setting the app reads: providers, custom endpoints, model specs, MCP, features, files, system. [Configuration](/docs/admin/configuration) |
+| **Access** | roles, groups and their members. [Roles and groups](/docs/admin/roles-and-groups) |
+| **Grants** | which admin capabilities each role holds. [Capabilities](/docs/admin/capabilities) |
+| **Audit log** | every admin action, with a CSV export. [Audit log](/docs/admin/audit-log) |
+| **Security** | a page that has had no data source since July 2026; see below |
+| **Help** | links to documentation |
 
-Your account avatar sits at the bottom-left; the **Command menu**
-(`⌘K` / search) at the top-right jumps to any page.
+The **Security** page used to show the app's own guardrail decisions.
+Those controls moved to the gateway on 2026-07-29 and the page says so at
+the top; an empty table there means the page has nothing to read from,
+not that nothing was blocked. The gateway's decisions are on the Grafana
+dashboard and in the gateway's audit events:
+[Operating the guardrails](/docs/deployment/guardrails-ops).
+
+Your account sits at the bottom left of the sidebar. **⌘K** (Ctrl+K)
+opens a command menu that jumps to any page, configuration tab or
+section.
+
+Some of the panel's own text still says "LibreChat", the project the app
+grew from, and the Help page links to that project's documentation rather
+than this manual. The panel is NuFi's; the strings have not caught up.
 
 ## The capability model
 
-Every admin action is gated by a **capability**. You don't hand out
-individual permissions — you grant a **role** a bundle of
-capabilities (on the [Grants](/docs/admin/capabilities) page), then put
-people into that role (on the [Access](/docs/admin/roles-and-groups)
-page).
+Every admin action is gated by a **capability**. You do not hand out
+individual permissions; you grant a **role** a set of capabilities on the
+[Grants](/docs/admin/capabilities) page, then put people into that role on
+[Access](/docs/admin/roles-and-groups).
 
-Out of the box there are two **System** roles:
+Two **System** roles ship built in:
 
-- **`ADMIN`** — holds every capability (20 of them).
-- **`USER`** — holds none; ordinary app access only.
+- **`ADMIN`** holds every capability.
+- **`USER`** holds none: ordinary use of the app, nothing here.
 
-To create a constrained sub-admin, make a new role, grant it just the
-capabilities it needs, and add the relevant people as members.
+A constrained sub-admin is a new role with only the capabilities it needs.
 
 ## A typical workflow
 
 <Steps>
-<Step>A teammate needs limited admin powers. On **Access → Roles**,
-click **Create role** and name it (e.g. `SUPPORT`).</Step>
+<Step>A teammate needs limited admin powers. On **Access → Roles**, click
+**Create role** and name it, say `SUPPORT`.</Step>
 <Step>On **Grants**, open that role and tick only the capabilities it
-should have.</Step>
+should have. Include `access:admin`, or the teammate cannot sign in
+here.</Step>
 <Step>Back on **Access**, open the role's **Members** tab and add the
 teammate.</Step>
-<Step>Need a group to see a particular model or higher limit? Create a
-**Group** under Access, add members, then add a scoped override for it
-in **Configuration** (see [Scoped overrides](/docs/admin/scoped-overrides)).</Step>
+<Step>A set of people needs a different model or a higher limit? Create a
+**Group** under Access, add the members, then give the group a
+configuration profile: [Configuration profiles](/docs/admin/scoped-overrides).</Step>
 </Steps>
-
-The next pages walk through each area in detail.

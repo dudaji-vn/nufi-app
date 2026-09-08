@@ -33,8 +33,12 @@ credential at its source and update the variable.
 
 ## Variables that already exist
 
-A new account has `FLOW_ID` and `COMPONENT_ID` with empty values. Those
-are created by Studio for its own use — leave them alone.
+Connecting a model under **Model Providers** creates two here:
+`OPENAI_COMPATIBLE_BASE_URL` as a Global variable holding the gateway
+address, and `OPENAI_COMPATIBLE_API_KEY` as a Credential. Some accounts
+also show `FLOW_ID`, `COMPONENT_ID` and `FIELD_NAME` with empty values,
+which Studio creates for its own assistant features. Leave all of them
+alone.
 
 ## If saving a credential fails
 
@@ -43,4 +47,4 @@ saving one returns an error mentioning a *Fernet key*, the instance's
 `LANGFLOW_SECRET_KEY` is not a valid encryption key and no credential can
 be stored until an administrator fixes it. That is a deployment problem,
 not something you can work around — see
-[Installing NUFI Studio](/docs/deployment/studio-install).
+[Installing NuFi Studio](/docs/deployment/studio-install).

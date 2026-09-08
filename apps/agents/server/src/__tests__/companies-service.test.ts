@@ -11,7 +11,10 @@ import {
   companySkillVersions,
   companySkills,
   companyMemberships,
+  costEvents,
   createDb,
+  issueThreadInteractions,
+  issues,
   heartbeatRunEvents,
   heartbeatRuns,
   principalPermissionGrants,
@@ -863,5 +866,123 @@ describeEmbeddedPostgres("companyService", () => {
     expect(archiveActivity[0]).toMatchObject({
       details: { agentsPaused: 1, runsCancelled: 1 },
     });
+  });
+
+  /**
+   * The delete cascade must run in an order Postgres accepts, and the only way
+   * to know is to make it delete something real.
+   *
+   * This is the second ordering bug in the same function. The first —
+   * `projects` after `goals` — shipped a fix with no test, so nothing stopped
+   * the next one: `heartbeat_runs` deleted before `cost_events`, which
+   * references them. Both abort the whole transaction and leave the company
+   * sitting there, having reported nothing but a 500.
+   *
+   * It hid because it needs a company whose agents actually ran and spent
+   * money. Measured on the live instance: four test companies with no runs
+   * deleted cleanly, and the one with real runs returned 500 every time.
+   */
+  it("deletes a company whose agents ran and recorded costs", async () => {
+    const companyId = randomUUID();
+    const agentId = randomUUID();
+    const runId = randomUUID();
+
+    await db.insert(companies).values({ id: companyId, name: "Spent Money", issuePrefix: "SPD" });
+    await db.insert(agents).values({
+      id: agentId,
+      companyId,
+      name: "Worker",
+      role: "engineer",
+      status: "idle",
+      adapterType: "codex_local",
+      adapterConfig: {},
+      runtimeConfig: {},
+      permissions: {},
+    });
+    await db.insert(heartbeatRuns).values({
+      id: runId,
+      companyId,
+      agentId,
+      invocationSource: "timer",
+      status: "succeeded",
+    });
+    await db.insert(costEvents).values({
+      companyId,
+      agentId,
+      heartbeatRunId: runId,
+      provider: "nufi",
+      model: "nufi-agent",
+      costCents: 7,
+      occurredAt: new Date("2026-09-04T00:00:00Z"),
+    });
+
+    const removed = await companyService(db).remove(companyId);
+
+    expect(removed?.id).toBe(companyId);
+    const left = await db.select({ id: companies.id }).from(companies).where(eq(companies.id, companyId));
+    expect(left).toHaveLength(0);
+    const orphans = await db.select({ id: costEvents.id }).from(costEvents).where(eq(costEvents.companyId, companyId));
+    expect(orphans).toHaveLength(0);
+  });
+
+  /**
+   * The second ordering bug in this function, found the same way as the first:
+   * by trying to delete a company that had actually been used.
+   *
+   * `issue_thread_interactions` holds every question, confirmation and task
+   * proposal an agent puts in front of a person — so any company where the
+   * agent did its job has rows here, and deleting it failed with
+   *
+   *   update or delete on table "issues" violates foreign key constraint
+   *   "issue_thread_interactions_issue_id_issues_id_fk"
+   *
+   * Measured on the live instance against three companies at once. Every one of
+   * them was undeletable, and the error the operator saw was "Internal server
+   * error".
+   */
+  it("deletes a company whose agents asked people questions", async () => {
+    const companyId = randomUUID();
+    const agentId = randomUUID();
+    const issueId = randomUUID();
+
+    await db.insert(companies).values({ id: companyId, name: "Asked Things", issuePrefix: "ASK" });
+    await db.insert(agents).values({
+      id: agentId,
+      companyId,
+      name: "Worker",
+      role: "engineer",
+      status: "idle",
+      adapterType: "nufi_agent",
+      adapterConfig: {},
+      runtimeConfig: {},
+      permissions: {},
+    });
+    await db.insert(issues).values({
+      id: issueId,
+      companyId,
+      identifier: "ASK-1",
+      title: "Prepare the price list",
+      status: "in_review",
+      priority: "medium",
+      assigneeAgentId: agentId,
+    });
+    await db.insert(issueThreadInteractions).values({
+      companyId,
+      issueId,
+      kind: "ask_user_questions",
+      status: "pending",
+      continuationPolicy: "wake_assignee",
+      createdByAgentId: agentId,
+      payload: { version: 1, questions: [] },
+    });
+
+    const removed = await companyService(db).remove(companyId);
+
+    expect(removed?.id).toBe(companyId);
+    const left = await db
+      .select({ id: issueThreadInteractions.id })
+      .from(issueThreadInteractions)
+      .where(eq(issueThreadInteractions.companyId, companyId));
+    expect(left).toHaveLength(0);
   });
 });

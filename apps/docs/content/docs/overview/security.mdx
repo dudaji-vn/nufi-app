@@ -3,12 +3,16 @@ title: Security
 description: How every model call is checked — one gate, five controls, and what each one is for.
 ---
 
-Every model call in NUFI passes through one gate. Five checks run there — two
+Every model call in NuFi passes through one gate. Five checks run there — two
 before the model answers, three after. This page explains what they do and why
 they are arranged this way.
 
 This is the architecture view. For what a person actually sees when a check
 fires, read [How your data is protected](/docs/end-user/security).
+
+All of it runs at the gateway, in `deploy/platform`, since July 2026. The
+app itself has no filters of its own any more; a deployment that bypasses
+the gateway bypasses every check on this page.
 
 ## One gate
 
@@ -244,14 +248,17 @@ differently depending on which of those it is.
 
 A jailbreak sitting inside a retrieved document is almost certainly an attack.
 The identical words typed by a person are usually an ordinary request. So text
-from a document or a tool can be stopped on a single detector, while text a
-person wrote requires two independent detectors to agree.
+that arrived inside a retrieved document can be stopped on a single detector,
+while text a person wrote requires two independent detectors to agree.
 
-Anything the model itself said earlier is treated like a person's text, not like
-a document. Without that distinction, the model's own polite refusal — *"I can't
-process personal information like email addresses"* — reads to a classifier
-exactly like an attack, and every conversation in which the assistant declined
-something would be dead from that turn onward.
+Anything the model itself said earlier, and anything a tool returned, is
+watched as closely as a document (a lower threshold) but acted on only with a
+second opinion, like a person's text. Without that distinction, the model's own
+polite refusal — *"I can't process personal information like email
+addresses"* — reads to a classifier exactly like an attack, and every
+conversation in which the assistant declined something would be dead from that
+turn onward. Tool results were moved into the same class in September 2026,
+which trades some single-detector catches for agents that can finish a task.
 
 ## Two detectors, because neither is trustworthy alone
 
@@ -322,8 +329,9 @@ trusting.
     use them.
   </Accordion>
   <Accordion title="Supply chain">
-    Container images are pinned to exact versions, but dependencies and model
-    provenance are not scanned.
+    The infrastructure images are pinned to exact versions. The app follows
+    `main` on the compose stack and its RAG service follows `latest`;
+    dependencies and model provenance are not scanned.
   </Accordion>
   <Accordion title="Accuracy">
     These checks are about safety, not truth. Nothing here stops a model from
@@ -347,6 +355,7 @@ trusting.
     Follow a single message from the browser through the gateway and back.
   </Card>
   <Card title="Architecture" href="/docs/overview/architecture">
-    The four surfaces and how they connect.
+    The surfaces, the gateway between them and the models, and the two
+    deployments behind the hostnames.
   </Card>
 </Cards>

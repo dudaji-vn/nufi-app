@@ -44,7 +44,7 @@ là tài liệu có thẩm quyền cho chi tiết đó.
   các chuỗi hiển thị với người dùng đều được lấy từ các tệp dịch (không có chuỗi tiếng Anh cứng
   trong các màn hình đã bản địa hóa). Ngôn ngữ mặc định của NuFi là tiếng Anh (cần xác minh: xác nhận
   ngôn ngữ mặc định được cấu hình cho deployment).
-- **CC-13** Thông báo chào mừng tùy chỉnh "Welcome to Nufi Chat." được hiển thị trên màn hình
+- **CC-13** Thông báo chào mừng tùy chỉnh "Welcome to NuFi Chat." được hiển thị trên màn hình
   landing của chat.
 
 ### Khả năng tiếp cận
@@ -77,6 +77,6 @@ Các tính năng LibreChat thượng nguồn sau đây **không được bật**
 được coi là ngoài phạm vi): tìm kiếm web, trình thông dịch code / thực thi artifacts, nhập/xuất giọng
 nói (TTS/STT), đăng nhập mạng xã hội / OAuth qua các nhà cung cấp **khác ngoài Google** (GitHub,
 Discord, Facebook, Apple, OpenID, SAML — lưu ý rằng **đăng nhập bằng Google ĐÃ được bật**), đặt lại
-mật khẩu (`ALLOW_PASSWORD_RESET=false`), và bất kỳ chat endpoint nào khác ngoài **Nufi** và
+mật khẩu (`ALLOW_PASSWORD_RESET=false`), và bất kỳ chat endpoint nào khác ngoài **NuFi** và
 **Agents**. Nếu bất kỳ tính năng nào trong số này xuất hiện và hoạt động được, hãy ghi nhận đó là sự
 khác biệt về cấu hình.

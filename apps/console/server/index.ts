@@ -17,8 +17,8 @@ app.use('*', logger());
 
 app.get('/_health', (c) => c.json({ ok: true }));
 
-// The public half of the identity signing key. NUFI Studio fetches this to
-// verify the token in its cookie; NUFI Works uses it for the id_token from the
+// The public half of the identity signing key. NuFi Studio fetches this to
+// verify the token in its cookie; NuFi Works uses it for the id_token from the
 // authorization-code exchange. Cached briefly so a key rotation propagates in
 // minutes rather than on a restart.
 app.get('/.well-known/jwks.json', async (c) => {
@@ -40,7 +40,7 @@ app.get('/.well-known/jwks.json', async (c) => {
 app.use('/enter/*', auth({ bounceHtml: true }));
 app.route('/enter', enter);
 
-// The authorization-code flow NUFI Works signs in through. Only /authorize
+// The authorization-code flow NuFi Works signs in through. Only /authorize
 // sits behind the session check: /token and /userinfo are called by the Works
 // server, which carries no browser cookie, so requiring one there would break
 // the exchange rather than secure it. They authenticate by client secret and

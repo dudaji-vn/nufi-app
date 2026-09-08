@@ -1,0 +1,189 @@
+---
+title: Run the stack locally
+description: The whole platform on your laptop with one script, and what to do when it does not come up.
+---
+
+`deploy/platform` is a Docker Compose stack: the AI gateway, the NuFi app,
+the console, observability and monitoring, wired together. Keep it running
+in the background. Every other guide in this section starts one app from
+source against it.
+
+## What comes up
+
+| Service | Image | Host port | What it is |
+|---|---|---|---|
+| `librechat` | `ghcr.io/dudaji-vn/nufichat:main` | 3080 | The NuFi app |
+| `console` | `ghcr.io/dudaji-vn/nufi-console:main` | 3001 | NuFi Console |
+| `litellm-proxy` | built here from `litellm/`, tagged `nufi/litellm:local` | 4000 | The AI gateway, guardrails baked in |
+| `langfuse-web`, `langfuse-worker` | `langfuse/langfuse:3` | 3000 | A trace and a cost line per request |
+| `prometheus` | `prom/prometheus:v3.0.1` | 9090 | Metrics |
+| `grafana` | `grafana/grafana:11.4.0` | 3030 | Dashboards |
+| `alertmanager` | `prom/alertmanager:v0.27.0` | 9093 | Alert routing |
+| `postgres` | `postgres:16-alpine` | none | Gateway keys and spend; Langfuse |
+| `mongodb` | `mongo:4.4` | none | The app's data. 4.4 because the target VM has no AVX |
+| `redis` | `redis:7.4-alpine` | none | Cache and rate limits |
+| `clickhouse`, `minio`, `minio-init` | | none | Langfuse storage; `minio-init` runs once and exits |
+| `presidio-analyzer`, `presidio-anonymizer` | `mcr.microsoft.com/presidio-*:2.2.362` | none | PII detection for the guardrails |
+| `nufi-scanner` | built here from `scanner/`, tagged `nufi/scanner:local` | none | Prompt-injection classifier; downloads a 700 MB model on first start |
+| `postgres-exporter`, `redis-exporter` | | none | Metrics for Prometheus |
+
+The databases have no host ports. The apps you run from source talk to the
+gateway on 4000 and to the chat on 3080, which is all they need.
+
+## Before you start
+
+Install the tools in the [prerequisites table](/docs/developer#before-you-start),
+then sign in to the registry once. The chat and console images are private:
+
+```bash
+# a GitHub personal access token with the read:packages scope
+echo ghp_xxxxxxxxxxxxxxxxxxxx | docker login ghcr.io -u <your-github-username> --password-stdin
+```
+
+Ollama is optional. Install it only if you want a free local model; a cloud
+key or any OpenAI-compatible server on your network works instead.
+
+### Apple Silicon
+
+The two images from `ghcr.io/dudaji-vn` are built for `linux/amd64` only. On
+an arm64 Mac, `docker compose up` stops with `no matching manifest for
+linux/arm64/v8`, and because the pull is one transaction it also takes down
+anything that was already running. Create
+`deploy/platform/docker-compose.override.yml` (it is gitignored, and
+Compose reads it automatically):
+
+```yaml
+services:
+  librechat:
+    platform: linux/amd64
+  console:
+    platform: linux/amd64
+```
+
+Both then run under emulation: correct, slower, and hungrier for memory.
+
+## Bring it up
+
+```bash
+cd deploy/platform
+./scripts/bootstrap.sh --backend ollama --model qwen2.5:3b   # a local model through Ollama
+./scripts/bootstrap.sh --backend cloud                       # an OpenAI, Anthropic, Together or Groq key
+./scripts/bootstrap.sh --backend skip                        # the stack only; register a model later
+```
+
+Without flags it asks. In order, the script:
+
+1. Checks for `docker`, `docker compose`, `openssl`, `curl`, `git`, `yq`, and
+   that the Docker daemon is up.
+2. Copies `.env.example` to `.env` if there is none, then fills every secret
+   still set to `replace-me`. Re-running is safe: values already in `.env`
+   are kept.
+3. Pulls the chat image, then `docker compose up -d`.
+4. Waits up to five minutes for the gateway to report healthy.
+5. Registers your model with `add-model.sh` (see
+   [Add or change a model](/docs/developer/models)).
+6. Runs the smoke test, then prints the URLs and the Langfuse login.
+
+Other flags: `--backend remote` for a vLLM, TGI or any OpenAI-compatible
+server on your network; `--backend mock-npu` to clone a registered model
+tagged as NPU for testing routing; `--domain <host>` to rewrite the public
+URLs; `--skip-pull` to skip `ollama pull`; `--skip-smoke-test`.
+
+One line it prints is wrong: the URL list says Grafana is on 3002 and "not
+yet deployed". Grafana is on 3030.
+
+## Check it works
+
+| URL | What | Sign in with |
+|---|---|---|
+| http://localhost:3080 | The NuFi app | Register. The first account becomes `ADMIN`. |
+| http://localhost:3001 | NuFi Console | The same session as the app; the cookie is shared on `localhost` |
+| http://localhost:3000 | Langfuse | `admin@npuops.local` and `LANGFUSE_INIT_USER_PASSWORD` from `.env` |
+| http://localhost:3030 | Grafana | `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` from `.env`. The dashboard is **LiteLLM Overview** |
+| http://localhost:4000/ui | Gateway admin | `LITELLM_MASTER_KEY` from `.env` |
+
+Then run the smoke test:
+
+```bash
+./scripts/smoke-test.sh
+```
+
+It prints eight numbered checks and `all checks passed`: gateway liveness,
+the model list, a chat completion, a streamed completion, a 4xx for an
+unknown model, a Langfuse trace for the request it just made, the request
+counter in Prometheus, and a recorded decision from the prompt-injection
+control.
+
+The three health endpoints, when you want them by hand:
+
+```bash
+curl -s http://localhost:4000/health/liveliness   # "I'm alive!"
+curl -s http://localhost:3080/health              # OK   (it is /health; /api/health returns 404)
+curl -s http://localhost:3001/_health             # {"ok":true}
+```
+
+## After `git pull`
+
+The gateway and the scanner are built on your machine from `litellm/` and
+`scanner/`. `docker compose up -d` never rebuilds them. When a pull touches
+either directory, or `litellm/config.yaml`:
+
+```bash
+docker compose build litellm-proxy nufi-scanner
+docker compose up -d
+```
+
+The symptom of forgetting is a gateway that restarts in a loop. Its log ends
+with `unknown threshold key(s)` naming a policy key the old image does not
+know:
+
+```bash
+docker compose logs --tail 50 litellm-proxy
+```
+
+## Day to day
+
+```bash
+docker compose ps                     # every service, with (healthy) or not
+docker compose logs -f litellm-proxy  # follow one service
+docker compose restart librechat
+docker compose down                   # stop; keep the data
+docker compose down -v                # stop and drop every volume
+```
+
+What to edit, and what to do afterwards:
+
+| Change | File | Afterwards |
+|---|---|---|
+| Register or change a model | `litellm/config.yaml`, through `./scripts/add-model.sh` | `docker compose build litellm-proxy && docker compose up -d litellm-proxy` (the file is baked into the image) |
+| Chat-side configuration: endpoints, interface | `librechat.yaml`, at the platform root | `docker compose restart librechat` |
+| Guardrail thresholds and enforcement mode | `litellm/guardrails/policy.yaml` (mounted into the container) | `docker compose restart litellm-proxy` |
+| Guardrail code, LiteLLM callbacks | `litellm/guardrails/*.py`, `litellm/callbacks/*.py` | rebuild, as above |
+| Alert rules | `monitoring/rules/*.yml` | `curl -X POST http://localhost:9090/-/reload` |
+
+Secrets live in `deploy/platform/.env` and nowhere else; the other apps read
+them from there when you run them from source.
+
+## Variables the stack reads that `.env.example` does not list
+
+Add these to `.env` yourself when you need them.
+
+| Variable | Read by | Default |
+|---|---|---|
+| `AGENTS_URL` | `librechat.yaml`, the link from the app to the agent products | unset |
+| `NUFI_CONSOLE_TAG` | the console image tag | `main` |
+| `DEFAULT_USER_BUDGET` | the console, budget for a newly provisioned user | `10` |
+| `DEFAULT_BUDGET_DURATION` | the console | `30d` |
+| `DEFAULT_TPM_LIMIT` | the console | `10000` |
+| `DEFAULT_RPM_LIMIT` | the console | `60` |
+
+## When it does not come up
+
+| Symptom | Cause | Do |
+|---|---|---|
+| `litellm-proxy` restarts in a loop, log says `unknown threshold key(s)` | the local gateway image is older than the checkout | rebuild, see above |
+| `no matching manifest for linux/arm64/v8` | Apple Silicon | the override file, see above |
+| `litellm-proxy` exits mentioning Gemini | the gateway config ships two Gemini entries and LiteLLM refuses to start when `GEMINI_API_KEY` is empty | set the key in `.env`, or remove the two entries from `litellm/config.yaml` and rebuild |
+| `nufi-scanner` stays unhealthy for minutes on first start | it is downloading its 700 MB model | wait; the health check allows five minutes |
+| the app's model dropdown shows `_no-model-registered` | no model is registered, or the app cannot reach `/v1/models` on the gateway | register one with `add-model.sh`; check `docker compose logs librechat` |
+| `docker compose pull librechat` is denied | not signed in to the registry | `docker login ghcr.io` with a `read:packages` token |

@@ -3,7 +3,7 @@
  *
  * Three endpoints can turn a member away -- `/enter/studio`, `/enter/products`
  * and `/oidc/authorize` -- and two of them are reached by a top-level browser
- * navigation, not by a script. A member who clicks "NUFI Studio" and lands on
+ * navigation, not by a script. A member who clicks "NuFi Studio" and lands on
  * `{"error":"unauthorized"}` has been given a status code where a page was
  * needed. So the refusal is shaped by who asked, and every refusal site shares
  * one implementation: three doors that behave differently for a member in the
@@ -26,7 +26,7 @@ const CHAT_URL = (
 ).replace(/\/+$/, '');
 
 /**
- * Where a member with no NUFI session is sent.
+ * Where a member with no NuFi session is sent.
  *
  * No return parameter is attached. Chat's login page does read one --
  * `client/src/utils/redirect.ts` exports `REDIRECT_PARAM = 'redirect_to'` and
@@ -60,7 +60,7 @@ export function refuse(
 }
 
 /** A member whose chat session is gone gets sent to sign back in. */
-export function noSession(c: Context, detail = 'could not resolve NUFI identity'): Response {
+export function noSession(c: Context, detail = 'could not resolve NuFi identity'): Response {
   return refuse(c, CHAT_LOGIN_URL, { error: 'unauthorized', detail }, 401);
 }
 

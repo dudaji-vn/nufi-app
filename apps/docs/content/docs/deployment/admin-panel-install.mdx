@@ -1,0 +1,72 @@
+---
+title: Installing the admin panel
+description: The admin panel is its own image, not part of the compose stack; one container, three variables.
+---
+
+NuFi Admin Panel is not in `deploy/platform/docker-compose.yml`. It is a
+separate image, `ghcr.io/dudaji-vn/nufichat-admin-panel`, that talks to the
+NuFi app over the app's HTTP API and keeps its own sessions. Run it
+wherever it can reach the app: next to the stack, or on Railway, which is
+where NuFi's own copy runs (service `nufichat-admin-panel`, pinned to
+`v0.0.5`).
+
+## Run it
+
+```bash
+docker run -d --name nufi-admin-panel -p 3000:3000 \
+  -e SESSION_SECRET="$(openssl rand -hex 32)" \
+  -e VITE_API_BASE_URL=https://chat.example.com \
+  -e API_SERVER_URL=http://librechat:3080 \
+  ghcr.io/dudaji-vn/nufichat-admin-panel:v0.0.5
+```
+
+| Variable | Required | What it is |
+|---|---|---|
+| `SESSION_SECRET` | yes; the container refuses to start without one of at least 32 characters | encrypts the panel's own session cookie |
+| `VITE_API_BASE_URL` | yes | the app as the browser reaches it; the panel's page calls it directly and OAuth redirects go through it |
+| `API_SERVER_URL` | when it differs | the app as the panel's server reaches it, such as a compose service name; falls back to `VITE_API_BASE_URL` |
+| `PORT` | no | listen port, `3000` |
+| `ADMIN_SSO_ONLY` | no | hide the password form and offer only SSO, `false` |
+| `ADMIN_SESSION_IDLE_TIMEOUT_MS` | no | idle sign-out, 30 minutes |
+| `SESSION_COOKIE_SECURE` | no | `true` in production; set `false` only on plain HTTP |
+| `ADMIN_PANEL_METRICS_SECRET` | no | bearer token for `/metrics`; unset means the endpoint answers 401 |
+
+Sign in with an account that has the `ADMIN` role in the app; the first
+account registered in the app has it. The panel's sessions are separate
+from the app's, so signing in to the chat is not enough here, and the
+cookie-sharing setup for the console does not apply.
+
+## Next to the compose stack
+
+Put the container on the stack's network so `API_SERVER_URL` can use the
+service name:
+
+```bash
+docker run -d --name nufi-admin-panel --network npuops -p 3003:3000 \
+  -e SESSION_SECRET="$(openssl rand -hex 32)" \
+  -e VITE_API_BASE_URL=http://localhost:3080 \
+  -e API_SERVER_URL=http://librechat:3080 \
+  ghcr.io/dudaji-vn/nufichat-admin-panel:v0.0.5
+```
+
+Host port 3003 because 3000 is Langfuse and 3001 the console. Behind a
+reverse proxy it gets its own hostname; the Caddy block is on
+[SSO and reverse proxy](/docs/deployment/sso-reverse-proxy#caddy-subdomains).
+
+`apps/admin-panel/docker-compose.yml` in the repository still pulls the
+upstream image the panel was forked from, not this one; use the commands
+above until it is corrected.
+
+## Check it works
+
+Open the panel, sign in, open **Configuration**: the form is built from the
+app's schema, so a page of settings means the API round trip works. A blank
+page with a network error means the browser cannot reach
+`VITE_API_BASE_URL`; a sign-in that never completes means the server cannot
+reach `API_SERVER_URL`.
+
+## Upgrade
+
+A `nufi-admin-vX.Y.Z` tag on `main` publishes `vX.Y.Z`; pull it and
+recreate the container. There is no database to migrate: the panel stores
+nothing but sessions.

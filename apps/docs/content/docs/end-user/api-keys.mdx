@@ -1,167 +1,135 @@
 ---
 title: API keys
-description: Generate keys for your own apps and watch your usage.
+description: Generate keys in the console for your own code, call NuFi's gateway with them, and watch what they spend.
 ---
 
 The **console** at `console.nufi.me` is where you manage API keys for
-your own code — scripts, internal tools, integrations. You only need
-this page if you call NUFI from your own software. If you only use
-the app, ignore everything here.
+your own code — scripts, internal tools, integrations. If you only use
+the app, you do not need this page.
 
-You sign in at the app first; the console reads the same login. No
-second password. Open it from the app's **avatar menu (bottom-left) →
-Console**, or go straight to `console.nufi.me`.
+You sign in at the app first; the console reads the same session. Open
+it from the avatar menu → **Console**, or go to `console.nufi.me`.
 
-![The NUFI console overview](/screenshots/console-home.png)
+![The NuFi console overview](/screenshots/console-home.png)
 
-The top navigation has three tabs — **Profile**, **Usage**, and
-**API keys**.
-
-> **Guide:** For a first-request walkthrough, see
-> [Connect NUFI to your code](/docs/end-user/guides/connect-nufi-to-your-code).
+> **Guide:** [Connect NuFi to your code](/docs/end-user/guides/connect-nufi-to-your-code).
 
 ## What the console shows
 
-### Profile (`/`)
+Three tabs across the top:
 
-- Your name and email.
-- Your monthly budget and how much you have used so far.
-- A 7-day usage chart.
-- Your most-used API keys.
+| Tab | What is on it |
+|---|---|
+| **Profile** | Your email and role, how much of your budget is available (or *unlimited usage*), a 7-day usage chart, where the spend went, your per-minute limits, and your most-used keys |
+| **Usage** | Charts for the last 7, 30 or 90 days, spend by model, and your 50 most recent requests |
+| **API keys** | Every key you have generated: **Name**, **Usage**, **Limits**, **Created**, **Expires**, and a revoke button |
 
-### API keys
-
-- A table of every key you have generated.
-- Each row shows the key's nickname, when it was last used, its
-  remaining budget, and a masked preview of the token.
-- Buttons to **generate** new keys and **revoke** ones you no longer
-  need.
-
-### Usage (`/usage`)
-
-- Charts for the last 7, 30, or 90 days.
-- Spend broken down by model.
-- A table of your most recent requests.
+The first time you open the console, your account is set up with your
+organisation's default budget and limits.
 
 ## Generate a key
 
 <Steps>
-<Step>Open the **API keys** tab and click **Generate**.</Step>
-<Step>Give the key a friendly name — `laptop`, `prod-job`,
-`zapier-integration`. You can have as many as you want.</Step>
-<Step>Optional: tighten the limits for this key (lower budget than
-your account default, slower rate limit). Useful for service keys
-where you do not want a runaway script to drain your budget.</Step>
-<Step>Click **Generate**. The next window shows the real key
-**once** — copy it immediately.</Step>
-<Step>Close the window. After this, only the prefix
-(`sk-nufi-…d7c`) is visible. NUFI does not store the full key, so
-there is no "show me again" option.</Step>
+<Step>Open **API keys** and click **Generate Key**.</Step>
+<Step>Give it an **Alias** you will recognise later — `laptop`,
+`nightly-report`. It is required.</Step>
+<Step>Adjust the limits if you want them tighter than your account's:
+**Max budget** and **Budget period**, tokens and requests per minute,
+and **Expires**. The defaults are $10 per 30 days, 10,000 tokens and 60
+requests a minute, expiring in 90 days. A short-lived key with a small
+budget is the right shape for an unattended script.</Step>
+<Step>Click **Generate**. The next window shows the key **once**, with
+ready-made `curl`, Python and JavaScript snippets. Copy it, then click
+**I've saved it**.</Step>
 </Steps>
 
-If you lose a key, just revoke it and generate a new one.
+After that the list shows only the first three and the last four
+characters, `sk-…d7c9`. The console does not keep the full key. If you
+lose it, revoke it and generate another.
 
 ## Use a key
 
-The key works with anything that speaks the OpenAI API format.
-
-### From the command line
+The gateway speaks the OpenAI API, so anything that can talk to OpenAI
+can talk to NuFi: point it at the base URL below with your key. `gemini`
+is the general-purpose model alias; the model picker in the app and the
+console's own snippets list the others.
 
 ```bash
-curl https://api.nufi.me/v1/chat/completions \
-  -H "Authorization: Bearer sk-nufi-…" \
+curl https://api.codechi.me/v1/chat/completions \
+  -H "Authorization: Bearer sk-…" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "qwen2.5-7b",
+    "model": "gemini",
     "messages": [{"role": "user", "content": "hello"}]
   }'
 ```
 
-### From Python
-
 ```python
 from openai import OpenAI
 
-client = OpenAI(
-    base_url="https://api.nufi.me/v1",
-    api_key="sk-nufi-…",
-)
+client = OpenAI(base_url="https://api.codechi.me/v1", api_key="sk-…")
 print(client.chat.completions.create(
-    model="qwen2.5-7b",
+    model="gemini",
     messages=[{"role": "user", "content": "hello"}],
 ).choices[0].message.content)
 ```
-
-### From Node / TypeScript
 
 ```ts
 import OpenAI from 'openai';
 
 const client = new OpenAI({
-  baseURL: 'https://api.nufi.me/v1',
+  baseURL: 'https://api.codechi.me/v1',
   apiKey: process.env.NUFI_API_KEY,
 });
 
 const reply = await client.chat.completions.create({
-  model: 'qwen2.5-7b',
+  model: 'gemini',
   messages: [{ role: 'user', content: 'hello' }],
 });
-
 console.log(reply.choices[0].message.content);
 ```
 
-All the usual OpenAI parameters work — `stream: true` for streaming
-replies, `tools: [...]` for function calling, `temperature`,
-`max_tokens`, etc.
+The usual parameters work: `stream: true`, `tools`, `temperature`,
+`max_tokens`. Every call goes through the same security checks as a
+message in the app — see
+[How your data is protected](/docs/end-user/security).
 
 ## Revoke a key
 
-Open the **API keys** tab, find the row, click **·  ·  · ** →
-**Revoke**. The key
-stops working within seconds. Revoking cannot be undone — but you
-can always generate a fresh one with the same nickname.
+On **API keys**, click the **trash icon** at the end of the row and
+confirm **Revoke**. The key stops working within seconds, and there is
+no undo — generate a fresh one under the same alias if you need to.
 
-Always revoke a key when:
-
-- A laptop with the key on it is lost.
-- A teammate who had the key leaves.
-- You suspect the key has been exposed in a public repo or log.
+Revoke a key when a laptop holding it is lost, when someone who had it
+leaves, or when you suspect it ended up in a repository or a log.
 
 ## Budgets and limits
 
-Two layers protect you:
+Two layers, and both are enforced by the gateway rather than by your
+code:
 
-1. **Account budget** — your overall cap, set by your admin. Every
-   key you issue counts against this.
-2. **Per-key budget** — you can make individual keys tighter (e.g.
-   a service key gets $5/month even if your account has $100).
+1. **Your account budget**, set by your administrator. Every key you
+   issue draws on it.
+2. **The key's own limits** — budget, period, per-minute rates, expiry —
+   which can only be tighter than the account's.
 
-When a budget runs out, calls return a `429 Budget reached` error.
-Either wait for the next cycle, ask your admin to raise the
-account budget, or revoke and re-issue a key with a higher cap.
+When a budget is used up, calls are refused with an error naming the
+budget until the period rolls over, or until your administrator raises
+it. An expired key is refused too; generate a new one.
 
-## See exactly what your code did
+## Seeing what your code did
 
-Every call you make is logged with your account. The console's
-**Usage** page shows the last 50 calls — model, time, tokens spent.
-For deeper investigation (the actual prompt, the full reply, why a
-call was slow), your admin has access to a more detailed trace
-viewer.
+**Usage** lists your last 50 requests with model, time and tokens. For
+the prompt itself and the full reply, your administrators have a trace
+viewer — see [Langfuse](/docs/admin/langfuse) — and can look up a
+request by your account and time.
 
-## First-time setup
+## Good habits
 
-The first time you open the console, your account is set up
-automatically with your organisation's default budget and limits.
-If you ever see "user not found" errors from `api.nufi.me`, just
-open the console once — that fixes it.
-
-## Best practices
-
-- **One key per app.** Easier to revoke when you decommission the
-  app.
-- **Never commit keys to git.** Even private repos eventually leak.
-  Use a secret manager or environment variable.
-- **Rotate every 90 days.** Even without a known breach. Generate a
-  new key, swap it in, revoke the old one.
-- **Set tight per-key budgets** for unattended scripts. A bug should
-  not drain your whole month.
+- **One key per app**, so retiring the app is one revoke.
+- **Never commit a key.** Use an environment variable or a secret
+  manager.
+- **Let keys expire.** The 90-day default is a rotation schedule; keep
+  it.
+- **Small budgets for unattended scripts.** A bug should not spend your
+  month.

@@ -1,4 +1,4 @@
-// Records the weekly report: department agents built and run in NUFI Studio.
+// Records the weekly report: department agents built and run in NuFi Studio.
 //
 // It answers the two questions a customer asks, in order -- what can this do,
 // and how would we set it up -- so the setup is shown rather than assumed, and

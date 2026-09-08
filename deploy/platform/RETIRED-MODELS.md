@@ -4,7 +4,7 @@ Measured against `api.codechi.me` on 2026-08-28 by calling every model the
 gateway lists in `/v1/models` with a one-token completion.
 
 **24 of 31 work. Seven do not**, and they are still offered to every client —
-NUFI chat, NUFI Studio, and any agent adapter. A caller that picks one gets an
+NuFi chat, NuFi Studio, and any agent adapter. A caller that picks one gets an
 opaque failure: Studio, for instance, shows only *"An error occurred"*.
 
 Worse, four of the dead names sort to the **top** of Studio's model dropdown,

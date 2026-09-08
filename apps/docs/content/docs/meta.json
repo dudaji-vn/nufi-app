@@ -1,4 +1,14 @@
 {
-  "title": "NUFI Documentation",
-  "pages": ["index"]
+  "title": "NuFi Documentation",
+  "pages": [
+    "index",
+    "overview",
+    "end-user",
+    "studio",
+    "works",
+    "admin",
+    "deployment",
+    "developer",
+    "reference"
+  ]
 }

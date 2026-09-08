@@ -13,7 +13,7 @@ import {
 } from "./host-api.js";
 
 /**
- * Settings → NUFI.
+ * Settings → NuFi.
  *
  * One job: get this member's own gateway key into their own agent runs, without
  * anyone reading a credential out of one browser tab and typing it into
@@ -117,7 +117,7 @@ export function NufiConnectionPage({ context }: PluginWidgetProps) {
   if (!companyId) {
     return (
       <Page>
-        <P>Open this page inside a company to connect your NUFI account.</P>
+        <P>Open this page inside a company to connect your NuFi account.</P>
       </Page>
     );
   }
@@ -125,10 +125,10 @@ export function NufiConnectionPage({ context }: PluginWidgetProps) {
   return (
     <Page>
       <h1 style={{ fontSize: 24, fontWeight: 600, letterSpacing: "-0.01em", margin: 0 }}>
-        NUFI account
+        NuFi account
       </h1>
       <P>
-        Agents reach NUFI models through the gateway, and the gateway needs a key. Connect yours and
+        Agents reach NuFi models through the gateway, and the gateway needs a key. Connect yours and
         the agents you are responsible for call as <strong>you</strong> — your budget, your usage,
         revocable on its own.
       </P>
@@ -139,8 +139,8 @@ export function NufiConnectionPage({ context }: PluginWidgetProps) {
         <Card tone="warn">
           <strong>Not pointed at a console yet.</strong>
           <P muted>
-            An instance administrator sets <Code>NUFI console URL</Code> under Settings → Plugins →
-            NUFI Connection, and lists this app's address in <Code>AGENTS_ALLOWED_ORIGINS</Code> on
+            An instance administrator sets <Code>NuFi console URL</Code> under Settings → Plugins →
+            NuFi Connection, and lists this app's address in <Code>AGENTS_ALLOWED_ORIGINS</Code> on
             the console. Until both are done, keys have to be pasted in by hand under Settings →
             Secrets.
           </P>
@@ -179,10 +179,10 @@ export function NufiConnectionPage({ context }: PluginWidgetProps) {
             variant={connected ? "outline" : "solid"}
           >
             {status === "working"
-              ? "Waiting for NUFI…"
+              ? "Waiting for NuFi…"
               : connected
                 ? "Reconnect"
-                : "Connect NUFI account"}
+                : "Connect NuFi account"}
           </Button>
         </Card>
       )}

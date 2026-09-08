@@ -1,4 +1,4 @@
-// Capture documentation screenshots from the live NUFI surfaces with Playwright.
+// Capture documentation screenshots from the live NuFi surfaces with Playwright.
 //
 //   bun run screenshots                # capture everything
 //   bun run screenshots chat admin     # capture only the named surfaces
@@ -31,7 +31,7 @@ if (!EMAIL || !PASSWORD) {
 
 const URLS = {
   chat: 'https://chat.nufi.me',
-  admin: 'https://nufichat-admin-panel-production.up.railway.app',
+  admin: 'https://admin.app.nufi.me',
   chatmenu: 'https://chat.nufi.me',
   console: 'https://console.nufi.me',
   // The agent products. Both are entered through the chooser rather than a
@@ -156,6 +156,73 @@ async function enterViaChooser(page, product) {
     throw new Error(`${product}: landed on an error page, not the product — ${body.slice(0, 120)}`);
   }
   return page.url();
+}
+
+/**
+ * Every account starts in the Basic interface, which hides the menus the docs
+ * describe (Presets, Tools, Parameters, Skills, Agent Builder, Teams). The
+ * switch is remembered per browser in localStorage, so write the same key the
+ * account-menu toggle writes and reload. Captured before this call, a shot
+ * shows Basic — which is what chat-home and the account menu should show.
+ */
+async function enableAdvancedMode(page) {
+  await page.evaluate(() => {
+    localStorage.setItem('uiMode', JSON.stringify('advanced'));
+    localStorage.setItem('uiModeIntroSeen', 'true');
+  });
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page
+    .getByRole('textbox', { name: /message input/i })
+    .first()
+    .waitFor({ timeout: 20000 })
+    .catch(() => {});
+  await page.waitForTimeout(2500);
+}
+
+/**
+ * Move the current conversation from whatever is selected (usually the last
+ * used agent) to a plain model under the Nufi group. The Tools menu and the
+ * Parameters panel render only for plain models.
+ */
+async function selectPlainModel(page) {
+  try {
+    await page.getByRole('button', { name: /select a model/i }).first().click({ timeout: 8000 });
+    await page.waitForTimeout(800);
+    await page.getByText(/^Nufi$/).first().click({ timeout: 8000 });
+    await page.waitForTimeout(800);
+    const options = page.locator('[role="option"], [role="menuitem"], [role="menuitemradio"]');
+    const gemini = options.filter({ hasText: /^gemini$/i }).first();
+    if (await gemini.count()) {
+      await gemini.click({ timeout: 8000 });
+    } else {
+      await options.first().click({ timeout: 8000 });
+    }
+    await page.waitForTimeout(1500);
+  } catch (err) {
+    console.error(`  ! could not select a plain model: ${err.message.split('\n')[0]}`);
+    await page.keyboard.press('Escape').catch(() => {});
+  }
+}
+
+/** Settings → General: theme, language, and the Interface (Basic/Advanced) switch. */
+async function captureSettingsGeneral(page) {
+  try {
+    await page.getByRole('button', { name: /account settings/i }).first().click({ timeout: 8000 });
+    await page.waitForTimeout(600);
+    const item = page.getByRole('menuitem', { name: /^settings$/i }).first();
+    if (await item.count()) {
+      await item.click({ timeout: 8000 });
+    } else {
+      await page.getByText(/^settings$/i).first().click({ timeout: 8000 });
+    }
+    await page.waitForTimeout(1500);
+    await shot(page, 'chat-settings-general');
+    await page.keyboard.press('Escape').catch(() => {});
+    await page.waitForTimeout(400);
+  } catch (err) {
+    console.error(`  ✗ chat-settings-general skipped: ${err.message.split('\n')[0]}`);
+    await page.keyboard.press('Escape').catch(() => {});
+  }
 }
 
 async function shot(page, name) {
@@ -372,7 +439,7 @@ async function assertShot(page, name, { shows, hides } = {}) {
  * Make a local dev stack look like what a user actually sees.
  *
  * The local instance is branded NPUOps and signed in as the end-to-end test
- * account; production is NUFI. Showing the dev branding in user documentation
+ * account; production is NuFi. Showing the dev branding in user documentation
  * would be less accurate, not more — this is the same normalisation
  * `redactPeople` performs for teammate names, applied to the instance name.
  * Nothing about the security behaviour on screen is touched.
@@ -384,7 +451,7 @@ async function normaliseBranding(page) {
     const walk = (node) => {
       if (node.nodeType === 3) {
         if (node.nodeValue.includes('NPUOps')) {
-          node.nodeValue = node.nodeValue.replaceAll('NPUOps', 'NUFI');
+          node.nodeValue = node.nodeValue.replaceAll('NPUOps', 'NuFi');
         } else if (node.nodeValue.trim() === 'E2E Bot') {
           node.nodeValue = 'You';
         }
@@ -394,7 +461,7 @@ async function normaliseBranding(page) {
     };
     walk(document.body);
     document.querySelectorAll('textarea, [contenteditable="true"]').forEach((el) => {
-      if (el.placeholder) el.placeholder = el.placeholder.replaceAll('NPUOps', 'NUFI');
+      if (el.placeholder) el.placeholder = el.placeholder.replaceAll('NPUOps', 'NuFi');
     });
   });
 }
@@ -484,10 +551,18 @@ const captures = {
     await page.waitForTimeout(4000);
     await shot(page, 'chat-home');
 
+    // The feature menus below exist only in the Advanced interface.
+    await enableAdvancedMode(page);
+
     // Feature menus, each opened from the composer / top bar / left rail.
     await clickShot(page, /select a model/i, 'chat-model-menu');
     await clickShot(page, /presets/i, 'chat-presets-menu');
     await clickShot(page, /attach file options/i, 'chat-attach-menu');
+
+    // The Tools menu and the Parameters panel belong to plain models, not to
+    // agents (an agent carries its capabilities in the builder), so switch the
+    // conversation to a plain model before photographing them.
+    await selectPlainModel(page);
     await clickShot(page, /tools options/i, 'chat-tools-menu');
     await clickShot(page, /^parameters$/i, 'chat-parameters', { close: false });
     // The Parameters side panel stays open — toggle it shut for a clean shot.
@@ -514,7 +589,10 @@ const captures = {
 
     // Left-rail panels referenced by the docs.
     await clickShot(page, /^skills$/i, 'chat-skills');
-    await clickShot(page, /account settings/i, 'chat-account-menu');
+    // Settings → General, where the Interface (Basic / Advanced) switch lives.
+    // The account menu itself is photographed by the `chatmenu` surface, which
+    // redacts the signed-in email; this surface deliberately does not repeat it.
+    await captureSettingsGeneral(page);
 
     // Knowledge (RAG) and Teams surfaces.
     await captureKnowledgeAgent(page).catch((err) =>
@@ -570,7 +648,13 @@ const captures = {
       .first()
       .waitFor({ timeout: 15000 })
       .catch(() => {});
-    await page.waitForTimeout(4000);
+    // The usage chart arrives last; photographing its skeleton looks broken.
+    await page
+      .locator('[class*="animate-pulse"]')
+      .first()
+      .waitFor({ state: 'hidden', timeout: 20000 })
+      .catch(() => {});
+    await page.waitForTimeout(2000);
     await shot(page, 'console-home');
     await page.close();
   },
@@ -644,17 +728,17 @@ const captures = {
     await page.goto(`${URLS.agents}/`, { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2500);
     const seen = await page.evaluate(() => document.body.innerText);
-    if (!/NUFI Studio/.test(seen) || !/NUFI Works/.test(seen)) {
+    if (!/NuFi Studio/.test(seen) || !/NuFi Works/.test(seen)) {
       throw new Error('chooser did not render both products');
     }
     await shot(page, 'agents-chooser');
     await page.close();
   },
 
-  /** NUFI Studio: the canvas, a flow, and where a published flow is reached. */
+  /** NuFi Studio: the canvas, a flow, and where a published flow is reached. */
   async studio(context) {
     const page = await context.newPage();
-    await enterViaChooser(page, 'NUFI Studio');
+    await enterViaChooser(page, 'NuFi Studio');
     await page.waitForTimeout(3000);
     await shot(page, 'studio-home');
 
@@ -677,12 +761,18 @@ const captures = {
     await page.close();
   },
 
-  /** NUFI Works: the operations app a member lands in from the chooser. */
+  /** NuFi Works: the operations app a member lands in from the chooser. */
   async works(context) {
     const page = await context.newPage();
-    await enterViaChooser(page, 'NUFI Works');
+    await enterViaChooser(page, 'NuFi Works');
     await page.waitForTimeout(3000);
     await redactPeople(page);
+    // A member whose last-used company no longer admits them gets every page
+    // with a red "User does not have access to this company" banner and no
+    // data. That is a state worth fixing on the instance, not photographing.
+    if (/does not have access/i.test(await page.evaluate(() => document.body.innerText))) {
+      throw new Error('the signed-in member has no access to the selected company — pick one they belong to before capturing');
+    }
     // An instance with no company lands on the onboarding wizard, which is a
     // real screen worth documenting but is NOT the operations UI. Name the file
     // after what is actually on it rather than captioning a setup step as a

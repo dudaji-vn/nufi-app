@@ -18,6 +18,7 @@ import {
   costEvents,
   financeEvents,
   issueReadStates,
+  issueThreadInteractions,
   approvalComments,
   approvals,
   activityLog,
@@ -445,12 +446,22 @@ export function companyService(db: Db) {
         }
         await tx.delete(agentTaskSessions).where(eq(agentTaskSessions.companyId, id));
         await tx.delete(activityLog).where(eq(activityLog.companyId, id));
+        // costEvents before heartbeatRuns: cost_events.heartbeat_run_id
+        // references heartbeat_runs.id, so the other order aborts the whole
+        // transaction on `cost_events_heartbeat_run_id_heartbeat_runs_id_fk`
+        // and the company survives its own deletion.
+        //
+        // It only bites a company whose agents actually ran and spent money —
+        // measured on a test company with real runs, while four with none
+        // deleted cleanly, which is why this sat unnoticed. Same shape as the
+        // projects/goals ordering below; upstream has both wrong. Candidate to
+        // send back with that one.
+        await tx.delete(costEvents).where(eq(costEvents.companyId, id));
         await tx.delete(heartbeatRuns).where(eq(heartbeatRuns.companyId, id));
         await tx.delete(agentWakeupRequests).where(eq(agentWakeupRequests.companyId, id));
         await tx.delete(agentApiKeys).where(eq(agentApiKeys.companyId, id));
         await tx.delete(agentRuntimeState).where(eq(agentRuntimeState.companyId, id));
         await tx.delete(issueComments).where(eq(issueComments.companyId, id));
-        await tx.delete(costEvents).where(eq(costEvents.companyId, id));
         await tx.delete(financeEvents).where(eq(financeEvents.companyId, id));
         await tx.delete(approvalComments).where(eq(approvalComments.companyId, id));
         await tx.delete(approvals).where(eq(approvals.companyId, id));
@@ -464,6 +475,21 @@ export function companyService(db: Db) {
         await tx.delete(routineTriggers).where(eq(routineTriggers.companyId, id));
         await tx.delete(routineRevisions).where(eq(routineRevisions.companyId, id));
         await tx.delete(routines).where(eq(routines.companyId, id));
+        /**
+         * Before `issues`, and before `issueComments` — an interaction points at
+         * both. This is the second ordering bug found in this function, and both
+         * were found the same way: by deleting a company that had been used.
+         *
+         * Every question, confirmation and task proposal an agent puts in front
+         * of a person lands here, so any company where the agent did its job has
+         * rows. Measured on the live instance, three companies at once:
+         *
+         *   update or delete on table "issues" violates foreign key constraint
+         *   "issue_thread_interactions_issue_id_issues_id_fk"
+         *
+         * What the operator saw was "Internal server error".
+         */
+        await tx.delete(issueThreadInteractions).where(eq(issueThreadInteractions.companyId, id));
         await tx.delete(issueReadStates).where(eq(issueReadStates.companyId, id));
         await tx.delete(documents).where(eq(documents.companyId, id));
         await tx.delete(issues).where(eq(issues.companyId, id));

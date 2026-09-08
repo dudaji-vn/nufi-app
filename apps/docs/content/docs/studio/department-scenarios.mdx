@@ -46,7 +46,7 @@ component, and it needs two values:
 
 | Field | What to put |
 |---|---|
-| **Ollama API URL** | the address of the model running on your box, e.g. `http://localhost:11434` |
+| **Ollama API URL** | the model server as seen from the Studio container, e.g. `http://host.docker.internal:11434` for Ollama on the same machine |
 | **Model Name** | whatever that box serves, e.g. `qwen2.5:7b` |
 
 That field is the entire difference between an on-prem agent and a cloud
@@ -216,7 +216,7 @@ The adapter maps a routine to a flow. It lives in
 variable:
 
 ```bash
-NUFI_AGENT_URL=http://studio:7860
+NUFI_AGENT_URL=http://nufi-agent:7860
 NUFI_AGENT_API_KEY=sk-…
 NUFI_AGENT_FLOW_MAP='{"r1":"<legal-flow-id>","r2":"<strategy-flow-id>"}'
 ```
@@ -271,12 +271,14 @@ quote in a document like this one.
 
 ## Adapting one to your team
 
-Open `build_flows.py` and look at any entry in `SCENARIOS`. Each is four
+Open `build_flows.py` and look at any entry in `SCENARIOS`. Each is six
 fields:
 
 | Field | What it is |
 |---|---|
+| `id` | the short key the adapter's flow map refers to |
 | `name` | the title shown in Studio |
+| `desc` | one line for the flow list |
 | `system` | your team's standard — the part worth spending time on |
 | `ask` | the question used to check it still works |
 | `kind` | `prompt`, or `tool` to attach a calculator |
@@ -285,3 +287,12 @@ The `system` field is where a scenario becomes yours. Everything else is
 scaffolding. Write the rule the way your team would explain it to a new
 hire, say plainly what to do when the answer is not in the material, and
 re-run `build_flows.py`.
+
+## Related
+
+- [Connect a model](/docs/studio/connect-a-model) — the same model field,
+  pointed at NuFi's gateway instead of a box.
+- [Publishing a flow](/docs/studio/publish) — the run endpoint the adapter
+  calls, and who can hold a key for it.
+- [Knowledge](/docs/studio/knowledge) — when a scenario should answer from
+  the shared drive rather than from its system prompt.

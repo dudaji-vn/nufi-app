@@ -1,5 +1,5 @@
 /**
- * The popup handshake between this app and the NUFI console.
+ * The popup handshake between this app and the NuFi console.
  *
  * Kept separate from the React component because this is the part that has to
  * be right: a `message` listener hears from every frame, browser extension, and

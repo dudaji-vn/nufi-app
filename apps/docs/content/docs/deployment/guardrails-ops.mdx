@@ -1,0 +1,107 @@
+---
+title: Operating the guardrails
+description: The one file that decides what the gateway blocks, what needs a rebuild, and the two checks that catch a control that is silently absent.
+---
+
+The security controls run inside the gateway. What they do is decided by
+one file, `deploy/platform/litellm/guardrails/policy.yaml`; how they do it
+is code baked into the gateway image. Operating them means knowing which
+of those two you just changed, and running the checks that tell you a
+control is actually there, because a missing one is silent: no gauge, no
+log line, a green dashboard.
+
+## The policy
+
+Five controls, each with a mode, a failure behaviour and an action:
+
+| Control | What it does | Runs | If its detector is down | Action |
+|---|---|---|---|---|
+| `G1` | prompt injection | before the model | refuses the request (`fail: closed`) | block |
+| `G2a` | personal data in the prompt | before the model, log only | passes (`fail: open`) | log |
+| `G2b` | personal data in the answer | after the model | passes | redact |
+| `G3` | the system prompt echoed back | after the model | passes | block |
+| `G4` | tracking images and scripts in the answer | after the model | passes | redact |
+
+`G1` and `G4` are `mandatory: true`: the readiness check and the
+`MandatoryControl*` alerts treat their absence as an incident. Thresholds
+per source (a person's text, the model's earlier turns, retrieved content,
+tool results) live in the same file, with the reasoning in its comments.
+[Security](/docs/overview/security) explains the model; this page is about
+running it.
+
+## What needs what
+
+| You changed | Then |
+|---|---|
+| `policy.yaml` (thresholds, `mode`, `action`, an entity list) | `docker compose restart litellm-proxy`; the file is mounted read-only into the container |
+| anything under `litellm/guardrails/*.py`, `litellm/callbacks/`, `litellm/config.yaml` | `docker compose build litellm-proxy && docker compose up -d litellm-proxy`; these are baked into the image |
+| `scanner/` | `docker compose build nufi-scanner && docker compose up -d nufi-scanner` |
+
+The gateway runs with `--num_workers 1` on purpose. Its guardrail gauges
+live in the process's Prometheus registry, and a second worker would
+publish a second, disagreeing set. Scale with more containers, not more
+workers.
+
+## Two checks
+
+**Is every declared control wired?** A control can be declared in
+`policy.yaml`, missing from `litellm/config.yaml`, and never load; nothing
+inside the process notices. This reconciles the three files against each
+other:
+
+```bash
+cd deploy/platform
+PYTHON=.venv/bin/python3 ./scripts/check-guardrails-wired.sh
+```
+
+```
+all 5 declared controls are wired and able to run: G1, G2a, G2b, G3, G4
+```
+
+It needs PyYAML; the repo's `.venv` has it (`python3 -m venv .venv &&
+.venv/bin/pip install -r litellm/requirements.txt`), a bare system Python
+usually does not, and the script refuses to run rather than skip. CI runs
+it on every change to `deploy/platform`.
+
+**Is the pipeline doing its job on the running stack?** The smoke test says
+the gateway answers; this says the controls decide:
+
+```bash
+./scripts/staging-readiness.sh                  # everything
+SKIP_ENFORCE=1 ./scripts/staging-readiness.sh   # without the enforce rehearsal
+```
+
+It needs the full stack up and a model in `/v1/models`. Every check in it
+is written to be able to fail; run it before promoting a change to a shared
+host, and after any rebuild of the gateway image.
+
+As of 2026-09-07 it does not pass on `main`: 29 of 31 checks, with one
+check still calling the system `python3` regardless of `PYTHON`, and check
+6e expecting an injection inside a tool result to block on a single
+detector, which the policy stopped doing on 2026-09-04 when tool results
+were moved to corroboration. Until one of the two is changed, read the
+result as "29 of 31 and these two", not as "not ready".
+
+## Watching it
+
+The nine alerts in [Monitoring and alerts](/docs/deployment/monitoring-alerts#the-alerts-that-ship)
+are the operational half of this page. `GuardrailMetricsAbsent`,
+`MandatoryControlMissing` and `MandatoryControlStoppedEnforcing` are the
+ones that fire when a control disappears; wire the Slack webhook so a
+person sees them. On the gateway's own `/metrics`:
+
+```bash
+curl -s -H "Authorization: Bearer $LITELLM_MASTER_KEY" http://localhost:4000/metrics/ | grep nufi_guardrail
+```
+
+`nufi_guardrail_enabled` and `nufi_guardrail_degraded` per control, and
+`nufi_guardrail_decisions_total` by control and action, are what the
+dashboard and the alerts read.
+
+## Rehearsing a change
+
+Switch a control to `mode: logging_only` (or `enforce: false` where the
+policy offers it), restart the gateway, watch `nufi_guardrail_decisions_total`
+for what it *would* have done, then switch it back. The audit record for
+each decision is written to the gateway's log with an id and the control,
+never the text that triggered it, so the rehearsal leaves no prompt behind.

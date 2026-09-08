@@ -1,62 +1,72 @@
 ---
-title: Developer setup
-description: One landing page that maps each app in the monorepo to its dev workflow.
+title: Develop
+description: Run NuFi on your machine, change one app, and ship it.
 ---
 
-Everything lives in one repository,
-[`dudaji-vn/nufi-app`](https://github.com/dudaji-vn/nufi-app). Pick the
-app you need.
+Everything is in one repository,
+[`dudaji-vn/nufi-app`](https://github.com/dudaji-vn/nufi-app). One clone is
+the whole system. Pick the directory you are about to change, and the guide
+next to it is the one to read.
 
-| Path | Purpose | Dev guide |
+| Directory | What it is | Guide |
 |---|---|---|
-| `deploy/platform` | Compose stack — everything wired together | [Local stack](/docs/developer/local-stack) |
-| `apps/chat` | The chat application (a LibreChat fork) | [LibreChat fork](/docs/developer/librechat-fork) |
-| `apps/admin-panel` | Admin panel SPA | [Admin panel dev](/docs/developer/admin-panel-dev) |
-| `apps/console` | Self-service developer console, and the identity issuer | [Console dev](/docs/developer/console-dev) |
-| `apps/nufi-agent` | NUFI Studio (a Langflow fork) | [The agent forks](/docs/developer/agent-forks) |
-| `apps/agents` | NUFI Works (a Paperclip fork) | [The agent forks](/docs/developer/agent-forks) |
-| `apps/docs` | This documentation site | — |
+| `deploy/platform` | The stack: AI gateway, observability, monitoring, and the NuFi app and console as containers | [Run the stack locally](/docs/developer/run-locally) |
+| `apps/chat` | The NuFi app | [Work on the chat app](/docs/developer/work-on-chat) |
+| `apps/console` | NuFi Console, and the identity issuer for the agent products | [Work on the console](/docs/developer/work-on-console) |
+| `apps/admin-panel` | NuFi Admin Panel | [Work on the admin panel](/docs/developer/work-on-admin-panel) |
+| `apps/nufi-agent` | NuFi Studio, a vendored Langflow | [Work on Studio and Works](/docs/developer/work-on-agents) |
+| `apps/agents` | NuFi Works, a vendored Paperclip | [Work on Studio and Works](/docs/developer/work-on-agents) |
+| `deploy/railway` | The wrapper image that runs the chat on Railway | [Release and deploy](/docs/developer/release) |
+| `apps/docs` | This site | `apps/docs/README.md` |
 
 <Callout>
-Earlier documentation described these as separate repositories
-(`npuops-platform`, `nufi-chat`, `LibreChat`, `nufichat-admin-panel`,
-`nufi-console`). They were merged into the monorepo and archived — if you
-have a clone of one, it is no longer where work happens.
+Earlier guides described these as separate repositories (`npuops-platform`,
+`nufi-chat`, `LibreChat`, `nufichat-admin-panel`, `nufi-console`). They were
+merged into this one in July 2026 and archived. If you have a clone of one,
+it is no longer where work happens; nothing in this section asks you to
+clone anything but `nufi-app`.
 </Callout>
 
-## How they relate
+## Three ways to have a NuFi to work against
 
-```
-       compose-stack glue                ─── npuops-platform (you usually run this)
-            │
-            ├──── pulls image ──── nufi-chat (also a standalone repo)
-            │                          │
-            │                          └── built from ──── LibreChat fork
-            │
-            ├──── pulls image ──── nufi-console
-            └──── pulls image ──── nufichat-admin-panel (separate compose / proxy)
-```
+1. **The hosted staging.** `chat.nufi.me`, `console.nufi.me`,
+   `agents.nufi.me`. Fine for reading the product or for changes that are
+   purely client-side. You cannot change server behaviour there.
+2. **The local stack.** `deploy/platform` brings up every service on your
+   laptop with one script, in about ten minutes and ten gigabytes. This is
+   the setup every other guide in this section assumes.
+   [Run the stack locally](/docs/developer/run-locally).
+3. **One app's dev server against the local stack.** Keep the stack running,
+   then start only the app you are changing from its directory, with hot
+   reload. That is what the four "Work on" guides do.
 
-The general flow is:
+## Before you start
 
-1. **`npuops-platform`** is the long-running stack you keep up
-   (`docker compose up -d`) so every other repo has something to talk
-   to (LiteLLM, Langfuse, MongoDB).
-2. You **clone the specific repo** you are working on as a sibling
-   directory.
-3. You **run that repo's dev server locally** (with HMR) against the
-   running platform stack.
-4. Once a change is ready, you **tag** the repo — CI builds a new
-   image — and **bump the tag** in `npuops-platform/docker-compose.yml`.
+| Tool | Needed for | Version | Check |
+|---|---|---|---|
+| Docker Desktop with Compose v2 | the stack | give Docker at least 4 GB of RAM | `docker compose version` |
+| `git`, `curl`, `openssl` | the bootstrap script | any recent | |
+| `yq` (Mike Farah's Go build, not the Python one from `apt`) | the bootstrap and model scripts | v4 | `yq --version` |
+| A GitHub token with `read:packages` | pulling the chat and console images from `ghcr.io/dudaji-vn` | | `docker login ghcr.io` |
+| Bun | console, admin panel, this site | 1.3 | `bun --version` |
+| Node and npm | the chat app | 20.19 or newer, or 22.12 or newer | `node --version` |
+| pnpm | NuFi Works | 10 | `pnpm --version` |
+| `uv` and Python 3.12 | NuFi Studio | | `uv --version` |
+| Ollama | a free local model for the stack, optional | | `ollama list` |
 
-The four sub-guides cover the dev-server command, the env vars, and
-the gotchas for each repo.
+On Apple Silicon there is one more step before the stack starts; it is in
+[Run the stack locally](/docs/developer/run-locally#apple-silicon).
 
-## A note on Node vs Bun
+## Which package manager where
 
-- **LibreChat fork** — Node 20.19+ / 22+ / 23+, npm.
-- **Admin panel, nufi-console** — Bun 1.3+.
-- **nufi-docs (this site)** — pnpm 10+.
+Each app keeps its own lockfile and its own package manager. There is no
+root install step, on purpose: the apps do not share dependencies, and a
+root workspace would force one toolchain on a Python app and a Bun app.
 
-All three coexist on the same machine; the package managers do not
-fight.
+| Directory | Manager | Install |
+|---|---|---|
+| `apps/chat` | npm | `npm ci` |
+| `apps/console`, `apps/admin-panel`, `apps/docs` | Bun | `bun install --frozen-lockfile` |
+| `apps/agents` | pnpm | `pnpm install --frozen-lockfile --node-linker=isolated` |
+| `apps/nufi-agent` | `uv` through `make` | `nufi/init.sh` |
+| `deploy/platform` | none; Docker Compose | `./scripts/bootstrap.sh` |

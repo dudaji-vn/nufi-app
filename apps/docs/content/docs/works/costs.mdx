@@ -11,8 +11,23 @@ that visible rather than to discover it at the end of the month.
 **Month Spend** sits on the dashboard beside the agent and task counts,
 with the budget state under it — *"Unlimited budget"* when none is set.
 
-**Costs** under COMPANY is the detail: spend broken down rather than
-totalled.
+**Costs** under COMPANY is the detail: inference spend for the chosen
+period, the budget state, and a finance ledger for charges that are not
+tied to a single request. Its tabs — **Overview**, **Budgets**,
+**Providers**, **Billers**, **Finance** — split that by what you want to
+know.
+
+![The Costs page of a new company](/screenshots/works-costs.png)
+
+## Setting a company budget
+
+**Costs → Budgets** is where a monthly cap goes. Until one is set the
+budget card reads **Open** with *"No monthly cap configured"*, and the
+inference ledger says *"Unlimited budget"* — which is a statement, not a
+warning. A budget can also be set per agent. When one is exhausted, Works
+cancels the work in that scope rather than letting it run over; see
+[Budgets in NuFi Works](/docs/admin/agents-org-and-budgets) for how an
+administrator sets them.
 
 ## Whose ledger
 
@@ -24,7 +39,7 @@ With each member's own key bound to the agents they use, every model call
 an agent makes on someone's behalf lands on their ledger, and revoking
 one person changes nothing for anybody else.
 
-See [Connecting your NUFI account](/docs/works/connect-account).
+See [Connecting your NuFi account](/docs/works/connect-account).
 
 ## What bounds it
 
@@ -32,7 +47,7 @@ Three limits stack, and they are enforced in different places:
 
 | Limit | Set where | Bounds |
 |---|---|---|
-| Key budget and rate limits | The NUFI console, per key | What that key can spend at all |
+| Key budget and rate limits | The NuFi console, per key | What that key can spend at all |
 | Company budget | Works, per company | What the company's agents may spend |
 | Approvals | Works, per task | Work that proceeds without a person looking |
 

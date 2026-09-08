@@ -1,110 +1,82 @@
 ---
-title: Upgrade the chat backend
-description: Bumping the chat application version without breaking the world.
+title: Upgrade the NuFi app
+description: Moving a running deployment to a new app release without losing anyone's conversations.
 ---
 
-NUFI's chat application is its own codebase. New releases land
-periodically. This page walks through how operators bump the version
-in production safely.
+The NuFi app ships as `ghcr.io/dudaji-vn/nufichat:vX.Y.Z`; a new release is
+a new tag. Upgrading is pinning the deployment at that tag, with a backup
+taken first so the step back exists.
 
-There are two upgrades to think about:
+## Before
 
-1. **New chat version available** — a new image tag is published.
-2. **Deploy that new tag** — update the image in your compose file
-   and roll it out.
+Read the release notes for the tag. Three things force a maintenance
+window:
 
-## Decide whether to upgrade
+- a database schema change (rare; the app runs its migrations on first
+  start of the new image, and the old image cannot always read the result)
+- a renamed or removed key in `librechat.yaml`
+- a new required environment variable
 
-Read the chat backend's release notes **before** rolling out a new
-version. Look for:
-
-- **Breaking schema changes** in the database (rare, but they
-  happen at major versions).
-- **Removed or renamed configuration keys** (force a config
-  update).
-- **New required environment variables** (force a `.env` update).
-
-If any of those apply, plan a maintenance window and a rollback
-path.
-
-## Take a backup first
-
-Always take a fresh database backup right before bumping. See
-[Backup and restore](/docs/deployment/backup-restore). The rollback
-plan depends on this backup existing.
-
-## Bump the image tag
-
-In `npuops-platform/docker-compose.yml`, change the chat image's
-tag:
-
-```yaml
-chat:
-  image: ghcr.io/dudaji-vn/nufichat:nufi-v0.0.6   # previous: nufi-v0.0.5
-```
-
-Then:
+Then take the backup, whatever the notes say:
 
 ```bash
-docker compose pull chat
-docker compose up -d chat
-docker compose logs -f chat
+cd deploy/platform
+docker compose exec -T mongodb sh -c \
+  'mongodump --archive --gzip -u "$MONGO_INITDB_ROOT_USERNAME" -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin' \
+  > "/backups/mongo_pre_v0.1.12.gz"
 ```
 
-## Watch for schema migrations
+[Backup and restore](/docs/deployment/backup-restore) has the Postgres side
+too; the app's data is in MongoDB.
 
-The chat application's schema migrations run automatically on first
-boot of the new image. The container logs them at INFO level —
-tail the logs on the first start to confirm they all pass.
+## Move the pin
 
-If a migration fails:
-
-1. Restore the database backup taken before the upgrade.
-2. Roll back the image tag (see [Release flow](/docs/developer/release-flow)).
-3. Open an issue describing the failure.
-
-## Smoke-test
-
-After the new container is healthy:
-
-1. Sign in. Pick a model. Send a message. Confirm the reply
-   arrives.
-2. Open a recent conversation. Confirm it loads and history is
-   intact.
-3. Generate an API key. Make a call against `api.nufi.me`.
-   Confirm 200.
-4. Check the trace viewer. Confirm new traces are landing.
-
-If all four pass, the upgrade is done.
-
-## Roll back
-
-If something is wrong:
+On the compose stack, the `librechat` service in
+`deploy/platform/docker-compose.yml`:
 
 ```yaml
-chat:
-  image: ghcr.io/dudaji-vn/nufichat:nufi-v0.0.5   # previous good
+librechat:
+  image: ghcr.io/dudaji-vn/nufichat:v0.1.12   # was v0.1.11
 ```
 
 ```bash
-docker compose pull chat
-docker compose up -d chat
+docker compose pull librechat
+docker compose up -d librechat
+docker compose logs -f librechat
 ```
 
-If the new version ran schema migrations that the old version
-cannot read, also restore the database backup. This is why a
-fresh backup before every upgrade is non-negotiable.
+On Railway, the `nufi-chat` service builds a wrapper image whose base is
+the `BASE` variable: set it to `ghcr.io/dudaji-vn/nufichat:v0.1.12` and
+redeploy. On the standalone wrapper stack in `deploy/railway`, set
+`IMAGE_TAG=v0.1.12` in `.env` and `docker compose pull && docker compose up -d`.
 
-## Keep your customisation small
+## Watch the first start
 
-If your team has customised the chat application, the value of the
-customisation is the small, auditable diff over the upstream base.
-The smaller the diff, the less painful each upgrade. Push general-
-purpose customisations upstream as PRs whenever you can.
+Migrations, when there are any, run once and log at INFO. Wait for the
+health check to go green (`docker compose ps librechat`), then:
 
-## See also
+1. Sign in. Pick a model. Send a message and get a reply.
+2. Open a conversation from before the upgrade.
+3. Open the console; the usage page still shows history.
+4. Open Langfuse; the message you just sent has a trace.
 
-- [Backup and restore](/docs/deployment/backup-restore) — the
-  backup to take **before** you merge.
-- [Release flow](/docs/developer/release-flow) — the standard ship
-  pipeline.
+## Step back
+
+Put the previous tag back and pull. If the new version ran a migration the
+old one cannot read, restore the MongoDB dump from before the upgrade first:
+
+```bash
+docker compose exec -T mongodb sh -c \
+  'mongorestore --archive --gzip --drop -u "$MONGO_INITDB_ROOT_USERNAME" -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin' \
+  < /backups/mongo_pre_v0.1.12.gz
+```
+
+This is why the backup before every upgrade is not optional.
+
+## What this page does not cover
+
+The gateway, the console, Studio and Works each have their own image and
+their own pin; the same pull-and-recreate applies to the console
+(`NUFI_CONSOLE_TAG`), and the gateway is rebuilt from source, not pulled:
+see [Run the stack locally](/docs/developer/run-locally#after-git-pull).
+Which tag exists for what is in [GHCR images](/docs/deployment/ghcr-images).

@@ -1,70 +1,71 @@
 ---
 title: Research a topic with web search
-description: Get up-to-date, source-cited answers by letting NUFI search the live web, then drill into the sources.
+description: Get up-to-date, source-cited answers by letting an agent search the live web, then drill into the sources.
 ---
 
-By default the AI answers from what it learned during training, which has a
-cutoff date. **Web search** lets it look things up live and answer with
-citations you can open and verify — so you can research a topic and trust the
-sources.
+A model answers from its training data, which stops at a date. With web
+search on, an agent looks things up first and answers with citations you
+can open.
 
-## What you'll need
+<Callout type="warn">
+Web Search is not switched on for `chat.nufi.me` at the moment. This
+guide is for deployments that have it.
+</Callout>
 
-- Web search enabled for your organisation — you'll see **Web Search** in the
-  **Tools** menu. (If it's missing, ask your admin.)
+## What you will need
+
+- Web search connected by your organisation.
+- [Advanced mode](/docs/end-user/advanced-mode), and a conversation with
+  a plain model, where the **Tools** menu lists **Web Search**. An agent
+  with the capability enabled works too — see
+  [Agents](/docs/end-user/agents).
 
 ## Steps
 
 <Steps>
-<Step>Start a **new chat**.</Step>
+<Step>Start a new chat and pick a model from the model picker.</Step>
 <Step>
-Open the **Tools** menu (the sliders icon next to the paperclip) and turn on
-**Web Search**. It stays on for the rest of the conversation.
-
-![The Tools menu with Web Search](/screenshots/chat-tools-menu.png)
+Open the **Tools** menu — the sliders icon beside the paperclip — and turn
+on **Web Search**. It stays on for the rest of the conversation.
 </Step>
 <Step>
-Ask a question that needs current information, for example:
+Ask something that needs current information:
 
 > What changed in the EU AI Act timeline this year, and when do the main
 > obligations start?
 </Step>
 <Step>
-NUFI turns your question into searches, reads the top results, and answers with
-inline **citations** — small numbered links back to each source.
+The model turns the question into searches, reads the top results, and
+answers with numbered citations that link back to each source.
 </Step>
 <Step>
-Drill in and narrow:
+Narrow and verify:
 
 > Focus on obligations for small companies.
 
-> Read source [2] more carefully — what does it say about deadlines?
+> Read source 2 more carefully. What does it say about deadlines?
 </Step>
 <Step>
-Optional: attach one of your own files and ask NUFI to **compare** it against
-what it found on the web.
+Optionally attach one of your own files and ask for a comparison with
+what it found.
 </Step>
 </Steps>
 
-## What you get
-
-An answer backed by links you can check yourself — a paragraph with `[1] [2]`
-citations you hover to preview and click to open the original page.
-
 ## Make it better
 
-- **Ask for sources explicitly** — add *"with sources"* or *"cite each claim"*.
-- **Be specific** — *"Compare the 2025 camera reviews of phone A vs phone B"*
-  beats *"which phone is better?"*.
+- **Ask for sources** — *"cite each claim"* — and be specific about
+  scope and dates.
 - **Cross-check** anything important before you rely on it.
-- **Privacy:** whatever the AI looks up becomes a search query that leaves NUFI
-  for the search provider — turn search **off** for confidential prompts.
+- **Privacy:** what the model looks up leaves NuFi as a search query.
+  Turn search off for confidential prompts. Text that comes back from a
+  web page is treated as untrusted by the security checks, so a page
+  cannot quietly redirect the model.
 
 ## Related
 
 <Cards>
   <Card title="Web search" href="/docs/end-user/web-search">
-    How web search works, when to use it, and privacy notes.
+    What it needs, how it works, and privacy.
   </Card>
   <Card title="Chat with a document" href="/docs/end-user/guides/chat-with-a-document">
     Combine live search with your own files.

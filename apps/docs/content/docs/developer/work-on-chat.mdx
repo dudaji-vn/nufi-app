@@ -1,0 +1,137 @@
+---
+title: Work on the chat app
+description: Run the NuFi app from source against the local stack, with hot reload on both sides.
+---
+
+`apps/chat` is the NuFi app: an Express API in `api/`, a React client in
+`client/`, and shared TypeScript packages in `packages/`. It began as a
+LibreChat fork and is now its own codebase. There is no upstream remote and
+nothing is merged from upstream; a change you want from there is ported by
+hand. Do not add an upstream remote.
+
+| Workspace | What it is | Rule |
+|---|---|---|
+| `api/` | the Express server, JavaScript | keep changes small; new backend code does not go here |
+| `packages/api` | TypeScript backend code the server calls into | new backend code goes here |
+| `packages/data-schemas` | database models and schemas | |
+| `packages/data-provider` | API types, endpoints and the data service, shared by client and server | |
+| `client/` | the React app | user-facing text through `useLocalize()` |
+| `packages/client` | shared frontend utilities | |
+
+`apps/chat/CLAUDE.md` is the style guide the code follows: single-word file
+names, early returns over nesting, no `any`, a fixed import order.
+
+## Run it
+
+You need Node 20.19 or newer (or 22.12 or newer), npm, the
+[local stack](/docs/developer/run-locally) for the gateway, and a MongoDB
+you can reach. The stack's MongoDB has no host port, so run one for
+development:
+
+```bash
+docker run -d --name nufi-dev-mongo -p 27018:27017 mongo:4.4
+```
+
+Install, then build the packages the server imports and the client bundle it
+serves. Both are one-time steps, repeated only when those sources change:
+
+```bash
+cd apps/chat
+npm ci
+npm run build:packages    # the API imports packages/*/dist and will not start without it
+npm run build:client      # the API serves client/dist/index.html and will not start without it
+```
+
+`npm run smart-reinstall` does all three at once through Turborepo, when you
+would rather have one command than three.
+
+Create `.env` (gitignored):
+
+```bash
+HOST=localhost
+PORT=3081
+MONGO_URI=mongodb://127.0.0.1:27018/LibreChat
+DOMAIN_CLIENT=http://localhost:3090
+DOMAIN_SERVER=http://localhost:3081
+ENDPOINTS=custom
+ALLOW_EMAIL_LOGIN=true
+ALLOW_REGISTRATION=true
+SEARCH=false
+JWT_SECRET=<openssl rand -hex 32>
+JWT_REFRESH_SECRET=<openssl rand -hex 32>
+CREDS_KEY=<openssl rand -hex 32>
+CREDS_IV=<openssl rand -hex 16>
+LITELLM_MASTER_KEY=<LITELLM_MASTER_KEY from deploy/platform/.env>
+```
+
+3081, because the stack's own copy of the app holds 3080. `SEARCH=false`,
+because the stack's Meilisearch has no host port either. `.env.example`
+documents every other option.
+
+Create `librechat.yaml` (gitignored) with the gateway as the one endpoint:
+
+```yaml
+version: 1.2.1
+cache: true
+endpoints:
+  custom:
+    - name: "NuFi"
+      apiKey: "${LITELLM_MASTER_KEY}"
+      baseURL: "http://localhost:4000/v1"
+      models:
+        fetch: true
+        default: ["_no-model-registered"]
+      titleConvo: true
+      titleModel: "current_model"
+      modelDisplayLabel: "NuFi"
+```
+
+`models.default` must not be empty: the file is validated with Zod and an
+empty list stops the app at startup. `deploy/platform/librechat.yaml` is the
+production version of this file, with the reasoning for each line in its
+comments.
+
+Then, in two terminals:
+
+```bash
+npm run backend:dev                       # the API on 3081, restarts on change
+BACKEND_PORT=3081 npm run frontend:dev    # the client on 3090, hot reload, proxies /api to 3081
+```
+
+Open http://localhost:3090 and register; the first account is `ADMIN`. The
+model dropdown lists what the gateway serves, under **NuFi**.
+
+```bash
+curl -s http://localhost:3081/health      # OK
+```
+
+Two things the watchers do not do: `nodemon` only watches `api/`, so after a
+change in `packages/*` run the matching `npm run build:<package>` and let it
+restart; and after a crash it waits rather than retrying, so type `rs` in its
+terminal once the cause is fixed.
+
+## Where NuFi's changes live
+
+There is no separate directory for them. Team workspaces and groups, the
+audit log, the Basic and Advanced interface modes, the link into the agent
+products: all ordinary code across the workspaces above. The design notes for
+those features are in `apps/chat/docs/`.
+
+## Check your work
+
+```bash
+npm run lint
+npm run test:api                          # jest; uses an in-memory MongoDB, no container needed
+npm run test:client
+cd packages/api && npx jest <pattern>     # one package, one pattern
+npm run e2e                               # Playwright, needs the app running
+```
+
+## Ship it
+
+A tag `nufi-vX.Y.Z` on `main` builds `ghcr.io/dudaji-vn/nufichat:vX.Y.Z`;
+see [Release and deploy](/docs/developer/release). The gateway endpoint
+for a deployment is not in this app: it is `deploy/platform/librechat.yaml`
+for the compose stack and `deploy/railway/librechat.yaml` for Railway.
+`librechat.example.yaml` here is the upstream sample and knows nothing about
+the gateway.

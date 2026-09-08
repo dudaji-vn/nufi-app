@@ -1,77 +1,76 @@
 ---
-title: What is NUFI?
+title: What is NuFi?
 description: An AI platform built for organisations — your models, your budgets, your controls.
 ---
 
-NUFI is an **AI platform** for teams and organisations. Think
-Claude, ChatGPT, or Gemini — but with the AI models you choose, the
-budget controls you decide, and a developer console for building on
-top.
+NuFi is an **AI platform** for teams and organisations. Think Claude,
+ChatGPT or Gemini, but with the models you choose, budgets you decide, one
+gate every request passes through, and a developer console for building
+on top.
 
-If you have ever wished ChatGPT could use your company's preferred
-model, respect your team budgets, and let your developers call it
-from their own code with self-served API keys — that is NUFI.
+If you have ever wished ChatGPT could use your company's preferred model,
+respect your team budgets, tell you what it said to whom, and let your
+developers call it from their own code with self-served keys, that is
+NuFi.
 
-## What you can do with NUFI
+## What you can do with NuFi
 
-- **Chat with any AI model.** NUFI works with frontier models from
-  OpenAI, Anthropic, Google, Mistral, Meta, and others — plus
-  open-source models you host yourself. Switch between them per
-  conversation.
-- **Work with files and images.** Drop PDFs, docs, code, screenshots
-  into a conversation. The AI reads them and answers in context.
-- **Build agents.** No-code AI assistants with custom instructions,
-  tools, and knowledge files — shareable with your team.
-- **Generate images.** From text prompts, or by editing existing
-  images.
-- **Search the web.** When the AI needs live information, it can
-  search and cite sources.
-- **Talk by voice.** Hands-free conversation with speech-to-text
-  and read-aloud.
-- **Connect via API.** Self-service API keys with their own budgets
-  for your scripts and apps.
+- **Chat with the models your organisation offers.** The gateway can front
+  any provider with an OpenAI-compatible API, from OpenAI, Anthropic and
+  Google to a model server on your own hardware. Which ones appear in the
+  dropdown is your operator's decision, per deployment.
+- **Work with files and images.** Drop PDFs, documents, code and
+  screenshots into a conversation; the model reads them and answers in
+  context.
+- **Build agents.** No-code assistants with instructions, tools and
+  knowledge files, shareable with a team. On by default on NuFi's hosted
+  app; an operator can turn them off.
+- **Build flows and run agent teams.** NuFi Studio is a canvas for
+  pipelines you publish as endpoints; NuFi Works gives a team of agents a
+  goal and an approval gate. Both open with the account you already have.
+- **Search the web and talk by voice**, where the operator has enabled
+  them.
+- **Connect from code.** Self-service API keys from the console, each
+  with its own budget and rate limit, on the same account.
 
-## Who NUFI is for
+## Who NuFi is for
 
-NUFI is designed around three audiences:
+- **Knowledge workers** who want one AI workspace for research, writing,
+  coding and analysis.
+- **Developers** who want a modern model behind one key without juggling
+  provider accounts.
+- **Admins** responsible for AI adoption: who can use what, how much each
+  team can spend, what every request was checked for.
 
-- **Knowledge workers** who want a single AI workspace for their
-  day-to-day work — research, writing, coding, analysis.
-- **Developers** who want to call modern AI from their own code
-  without managing infrastructure or juggling provider keys.
-- **Admins** responsible for AI adoption inside an organisation —
-  who can use what models, how much each team can spend, what
-  features are turned on for whom.
+## What makes NuFi different
 
-## What makes NUFI different
-
-| | Public AI products | NUFI |
+| | Public AI products | NuFi |
 |---|---|---|
-| **Account model** | Per-user paid SaaS | Centralised per-organisation |
-| **Budget control** | Hidden in pricing | Visible, per-user and per-team caps |
-| **Model choice** | Locked to vendor | Any provider, any model |
-| **Audit & visibility** | None | Every request logged, attributable |
-| **API access** | Separate billing | Same account, same budget |
-| **Privacy** | Vendor's terms apply | You choose what leaves your boundary |
+| Accounts | per-user SaaS | one organisation, your identity provider if you have one |
+| Budgets | hidden in pricing | visible, per key and per user, set by you |
+| Model choice | the vendor's | any provider, or your own hardware |
+| Security checks | the vendor's, unseen | five controls at one gate, with a policy file you can read |
+| Audit | none | every request traced with who, which model, what it cost |
+| API access | separate billing | the same account, the same budget |
+| Where it runs | the vendor's cloud | your host, or NuFi's |
 
-## The two surfaces
+## The surfaces
 
-You will use one or both:
+| Surface | Where | Who |
+|---|---|---|
+| The NuFi app | `chat.nufi.me` | everyone |
+| NuFi Console | `console.nufi.me` | developers, and anyone entering the agent products |
+| NuFi Studio and NuFi Works | `agents.nufi.me`, which opens `studio.nufi.me` or `works.nufi.me` | builders and teams running agents |
+| NuFi Admin Panel | `admin.app.nufi.me` | admins |
 
-- **The app** — `chat.nufi.me`. Where day-to-day conversations
-  happen. This is what end users see.
-- **The console** — `console.nufi.me`. Where developers manage
-  their own API keys, watch their usage, and tune their limits.
-  Same login as the chat.
-
-Admins also have a third surface — the **admin panel** at
-`admin.nufi.me` — for managing the whole platform. End users do not
-need to know about it.
+One sign-in. The app issues it, the console reads it, and the console
+vouches for you to Studio and Works. The admin panel keeps its own
+session against the same accounts.
 
 ## Next steps
 
-- [Architecture](/docs/overview/architecture) — how NUFI is
-  organised.
-- [Components](/docs/overview/components) — what runs where.
-- [Data flow](/docs/overview/data-flow) — follow a single message
-  end to end.
+- [Architecture](/docs/overview/architecture): what runs where, and the
+  two deployments behind the hostnames.
+- [Components](/docs/overview/components): every service, in one table.
+- [Data flow](/docs/overview/data-flow): a single message, end to end.
+- [Security](/docs/overview/security): the five checks at the gate.

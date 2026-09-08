@@ -1,78 +1,74 @@
 ---
 title: Roles and groups
-description: Manage who can do what (roles) and who sees what (groups) on the Access page.
+description: Who can do what (roles) and who sees what (groups), on the Access page.
 ---
 
-The **Access** page is where you manage **roles** and **groups** and
-assign people to them. It has two tabs — **Roles** and **Groups**.
+The **Access** page manages **roles** and **groups** and the people in
+them. It has two tabs, **Roles** and **Groups**.
 
-![Access management — the Roles tab with the built-in ADMIN and USER roles](/screenshots/admin-access.png)
+![Access management, the Roles tab with the built-in ADMIN and USER roles](/screenshots/admin-access.png)
 
-Roles and groups are separate ideas:
+Roles and groups are different ideas:
 
-| Concept | Attaches | Used for |
-|---------|----------|----------|
-| **Role** | Capability grants | Who can perform which admin action |
-| **Group** | Config overrides | Which features and limits a user sees |
+| Concept | Carries | Used for |
+|---|---|---|
+| **Role** | admin capabilities (set on Grants), the app's feature permissions, and optionally a configuration profile | who may administer what, and which features a role may use |
+| **Group** | a configuration profile | which settings and limits a set of people get |
 
 ## Roles
 
-A role is a named bundle of capabilities. Two **System** roles ship
-built in and can't be deleted:
-
-- **`ADMIN`** — every capability.
-- **`USER`** — ordinary app access, no admin powers.
+Two **System** roles ship built in and cannot be deleted or renamed:
+`ADMIN`, with every capability, and `USER`, with none. You can still
+manage their members.
 
 ### Create a role
 
 <Steps>
 <Step>On **Access → Roles**, click **Create role**.</Step>
-<Step>Give it a **Name** and an optional **Description**.</Step>
-<Step>Save. Then assign its capabilities on the
-[Grants](/docs/admin/capabilities) page.</Step>
+<Step>Give it a **Name** and, optionally, a **Description**.</Step>
+<Step>Save, then set its capabilities on [Grants](/docs/admin/capabilities).
+A role that should sign in to this panel needs `access:admin`.</Step>
 </Steps>
 
 ### Edit a role and its members
 
-Click a role to open the **Edit role** dialog. It has three tabs:
+Click a role to open **Edit role**. It has three tabs:
 
 ![The Edit role dialog with Details, Permissions, and Members tabs](/screenshots/admin-role-detail.png)
 
-- **Details** — the name and description.
-- **Permissions** — the capabilities the role grants (also editable
-  from [Grants](/docs/admin/capabilities)).
-- **Members** — **who is in the role**. This is where you add or
-  remove the people who hold it. Changes take effect on the member's
-  next request.
+- **Details**: name and description.
+- **Permissions**: the app's features for this role. Prompts, agents,
+  memories, MCP servers, remote agents, bookmarks, multi-conversation,
+  temporary chat, running code, web search, file search, file citations,
+  the people picker, the marketplace. These are not admin capabilities;
+  those are on Grants.
+- **Members**: who holds the role. Add or remove people here; the change
+  applies on their next request.
 
-> System roles (`ADMIN`, `USER`) show a **System** badge and can't be
-> renamed or deleted, but you can still manage their members.
+A person can be added to more than one role's members. Keep one admin
+role per person: the app's own account record carries a single role name,
+and the panel does not promise which one wins when two apply.
 
 ## Groups
 
-A group is a named set of people that exists so you can attach
-**config overrides** to them without editing each person individually.
-Examples:
-
-- `power-users` — higher file-size and rate-limit caps.
-- `beta-features` — see flags that are off for everyone else.
+A group is a named set of people, so you can give them a configuration
+profile once instead of editing each person. `power-users` with a higher
+upload cap, `beta` with a feature the rest do not have.
 
 ### Create a group and add members
 
 <Steps>
-<Step>On **Access → Groups**, create a group and name it.</Step>
-<Step>Open it and add members — takes effect immediately, no sign-out
-needed.</Step>
-<Step>Give the group a different setting by adding a scoped override
-for it in [Configuration](/docs/admin/configuration). See
-[Scoped overrides](/docs/admin/scoped-overrides).</Step>
+<Step>On **Access → Groups**, click **Create group** and name it.</Step>
+<Step>Open it and add members. No sign-out needed; membership is read on
+each request.</Step>
+<Step>Give the group its settings with a profile in
+[Configuration](/docs/admin/configuration):
+[Configuration profiles](/docs/admin/scoped-overrides).</Step>
 </Steps>
 
-## Roles vs groups — which do I use?
+## Roles or groups?
 
-- Use a **role** to control **admin capabilities** (who can edit
-  config, manage members, etc.).
-- Use a **group** to control **what the app shows** a set of people
-  (models, features, limits) via config overrides.
-
-A person can be in one role and any number of groups.
+A **role** for what someone may do: administer, and which features of the
+app they may use. A **group** for what the app shows and allows a set of
+people: models, limits, features on or off, through a profile. A person
+holds roles and belongs to any number of groups.

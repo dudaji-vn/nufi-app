@@ -16,31 +16,31 @@ describe("rebrandStrings", () => {
   describe("renders", () => {
     it("renames JSX text, once React has compiled it to a children prop", () => {
       expect(rebrandStrings('_jsx("h1", { children: "Welcome to Paperclip" })')).toBe(
-        '_jsx("h1", { children: "Welcome to NUFI" })',
+        '_jsx("h1", { children: "Welcome to NuFi" })',
       );
     });
 
     it("renames a placeholder", () => {
       expect(rebrandStrings('_jsx("input", { placeholder: "Search Paperclip" })')).toBe(
-        '_jsx("input", { placeholder: "Search NUFI" })',
+        '_jsx("input", { placeholder: "Search NuFi" })',
       );
     });
 
     it("renames a quoted prop key", () => {
       expect(rebrandStrings('{ "aria-label": "Open Paperclip menu" }')).toBe(
-        '{ "aria-label": "Open NUFI menu" }',
+        '{ "aria-label": "Open NuFi menu" }',
       );
     });
 
     it("renames inside a template literal prop", () => {
       expect(rebrandStrings("{ title: `Paperclip retried this task.` }")).toBe(
-        "{ title: `NUFI retried this task.` }",
+        "{ title: `NuFi retried this task.` }",
       );
     });
 
     it("renames a hyphenated compound", () => {
       expect(rebrandStrings('{ description: "the Paperclip-managed bundle" }')).toBe(
-        '{ description: "the NUFI-managed bundle" }',
+        '{ description: "the NuFi-managed bundle" }',
       );
     });
   });
@@ -50,7 +50,7 @@ describe("rebrandStrings", () => {
    * are compared against comment bodies the SERVER wrote, and renaming one side
    * makes the equality fail silently. They are safe now because
    * nufi/rebrand-server-dist.mjs applies the identical rules to server/dist, so
-   * both sides say NUFI.
+   * both sides say NuFi.
    *
    * If that server step is ever dropped, these tests should be reverted along
    * with it — they encode a precondition, not a preference.
@@ -61,12 +61,12 @@ describe("rebrandStrings", () => {
         rebrandStrings(
           'const NOTICE_BODY = "Paperclip needs a disposition before this issue can continue.";',
         ),
-      ).toBe('const NOTICE_BODY = "NUFI needs a disposition before this issue can continue.";');
+      ).toBe('const NOTICE_BODY = "NuFi needs a disposition before this issue can continue.";');
     });
 
     it("renames a bare call argument", () => {
       expect(rebrandStrings('toast("Paperclip failed to dispatch")')).toBe(
-        'toast("NUFI failed to dispatch")',
+        'toast("NuFi failed to dispatch")',
       );
     });
 

@@ -1,129 +1,120 @@
 ---
 title: Backup and restore
-description: What is worth backing up, how to schedule it, how to restore.
+description: What is worth backing up, the exact commands, how to restore, and the drill that proves the backups are real.
 ---
 
-The state that matters lives in four volumes. Everything else
-(Prometheus metrics, Redis cache) is rebuilt automatically and not
-worth backing up.
+The state that matters lives in four volumes. Everything else (metrics,
+cache, provisioned dashboards) is rebuilt on start and not worth keeping.
 
 ## What to back up
 
-| Volume             | What is in it                                       | Frequency | RPO target |
-|--------------------|-----------------------------------------------------|-----------|------------|
-| `postgres-data`    | Gateway keys, budgets; trace metadata            | Nightly   | 24 h       |
-| `mongodb-data`     | chat conversations, users, agents              | Nightly   | 24 h       |
-| `clickhouse-data`  | Langfuse traces                                     | Weekly    | 7 d        |
-| `minio-data`       | Langfuse blob payloads                              | Weekly    | 7 d        |
+| Volume | What is in it | Frequency |
+|---|---|---|
+| `npuops_postgres-data` | two databases: `npuops` (gateway keys, budgets, spend) and `langfuse` (trace metadata) | nightly |
+| `npuops_mongodb-data` | the NuFi app: users, conversations, agents, files metadata | nightly |
+| `npuops_clickhouse-data` | Langfuse traces | weekly |
+| `npuops_minio-data` | Langfuse blob payloads | weekly |
 
-Postgres + MongoDB are the **business-critical** stores. Without them
-you lose user accounts and conversation history. ClickHouse + MinIO
-are **forensic** — losing them costs you observability history, not
-operational state.
+Postgres and MongoDB are the business-critical stores; without them you
+lose accounts, keys and conversation history. ClickHouse and MinIO are
+forensic; losing them costs observability history, not operation.
+
+The commands below run from `deploy/platform`. Credentials come from the
+containers' own environment, so nothing has to be pasted on the host.
 
 ## Postgres
 
-Logical dump on a schedule:
-
 ```bash
-docker compose exec -T postgres \
-  pg_dumpall -U "$POSTGRES_USER" \
+docker compose exec -T postgres sh -c 'pg_dumpall -U "$POSTGRES_USER"' \
   | gzip > "/backups/pg_$(date +%F).sql.gz"
 ```
 
-Stick that in `cron` or systemd-timer. Keep 30 days. Restore:
+Restore into a fresh Postgres (the dump recreates both databases):
 
 ```bash
-gunzip < pg_2026-05-25.sql.gz | \
-  docker compose exec -T postgres psql -U "$POSTGRES_USER"
+gunzip < /backups/pg_2026-09-07.sql.gz \
+  | docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER"'
 ```
 
 ## MongoDB
 
+The stack's MongoDB has a root user, so `mongodump` must authenticate:
+
 ```bash
-docker compose exec -T mongodb \
-  mongodump --archive --gzip \
+docker compose exec -T mongodb sh -c \
+  'mongodump --archive --gzip -u "$MONGO_INITDB_ROOT_USERNAME" -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin' \
   > "/backups/mongo_$(date +%F).gz"
 ```
 
-Restore:
+Without the three auth flags it stops at `command listDatabases requires
+authentication`. Restore:
 
 ```bash
-docker compose exec -T mongodb \
-  mongorestore --archive --gzip --drop < mongo_2026-05-25.gz
+docker compose exec -T mongodb sh -c \
+  'mongorestore --archive --gzip --drop -u "$MONGO_INITDB_ROOT_USERNAME" -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin' \
+  < /backups/mongo_2026-09-07.gz
 ```
 
-`--drop` clears existing collections first — use only on a fresh
-target.
+`--drop` replaces every collection with the archive's copy. Use it on a
+fresh target, or when you mean it.
 
-## ClickHouse + MinIO
+## ClickHouse and MinIO
 
-Both are too large for daily logical dumps. Snapshot the underlying
-volumes weekly instead:
+Too large for logical dumps. Snapshot the volumes with the services
+stopped, so the files are consistent:
 
 ```bash
-docker run --rm \
-  -v npuops_clickhouse-data:/data \
-  -v "$PWD/backups:/out" \
-  alpine tar czf "/out/clickhouse_$(date +%F).tar.gz" /data
+docker compose stop clickhouse minio
+docker run --rm -v npuops_clickhouse-data:/data -v "$PWD/backups:/out" alpine \
+  tar czf "/out/clickhouse_$(date +%F).tar.gz" /data
+docker run --rm -v npuops_minio-data:/data -v "$PWD/backups:/out" alpine \
+  tar czf "/out/minio_$(date +%F).tar.gz" /data
+docker compose start clickhouse minio
 ```
 
-…and the same for `npuops_minio-data`. Restore by extracting back
-into the volume while the service is stopped.
+Restore by extracting into the volume while the service is stopped, the
+same way in reverse.
 
-For larger deployments, replicate to off-host storage — S3, NFS,
-restic, borg, your IT team's preferred tool. Don't keep backups on
-the same disk as production data.
+## Schedule it and ship it
 
-## Ship backups off-host
-
-Whatever scheduler you use, end the script with a copy to off-host
-storage. Examples:
+Put the dumps in a cron job or a systemd timer, keep 30 days, and end the
+script with a copy to somewhere that is not the same disk:
 
 ```bash
-# Rsync to a separate VM
-rsync -av /backups/ backup-vm:/srv/nufi/
-
-# S3 / MinIO
-aws s3 sync /backups s3://nufi-backups/nufi/
-
-# B2 / Wasabi etc.
-restic backup /backups
+rsync -av /backups/ backup-host:/srv/nufi/      # another machine
+aws s3 sync /backups s3://nufi-backups/nufi/    # object storage
+restic backup /backups                           # deduplicated, encrypted
 ```
 
 ## Restore drill
 
-Schedule a drill once a quarter. The drill:
+Once a quarter:
 
-1. Spin up a parallel compose stack on a separate host.
-2. Stop it. Replace its volumes with the latest backups.
-3. Start it.
-4. Sign in. Pick a recent conversation. Issue a chat. Confirm
-   everything works.
+1. Bring up a second stack on another host with `bootstrap.sh --backend skip`.
+2. Stop it. Restore the Postgres and MongoDB dumps into it; extract the two
+   volume snapshots.
+3. Start it. Sign in, open a recent conversation, send a message, generate
+   a key in the console.
 
-Untested backups are not backups. The drill is the only way you
-learn the gotchas (e.g. ClickHouse migration mismatches if the schema
-moved forward) before an actual incident.
+Untested backups are not backups. The drill is where you find out that a
+schema moved, or that the ClickHouse snapshot was taken while it was
+writing.
 
 ## What you do not back up
 
-- **Prometheus metrics**. Cheap to lose; would only impact graphs.
-- **Redis**. Rate-limit counters and cache. Reset on restart.
-- **Grafana data**. Dashboards are provisioned from
-  `monitoring/grafana/dashboards/` (in git), so a fresh container
-  reads them on first boot.
-- **MinIO `langfuse` bucket bootstrap**. Recreated by `minio-init` on
-  startup.
+- Prometheus data (`npuops_prometheus-data`): 15 days of metrics, cheap
+  to lose.
+- Redis (`npuops_redis-data`): rate-limit counters and cache, reset on
+  restart.
+- Grafana (`npuops_grafana-data`): the dashboard is provisioned from
+  `monitoring/grafana/dashboards/` in git; a fresh container has it.
+- The MinIO bucket itself: `minio-init` recreates it on every start.
+- `.env`: not a volume, and not in git. Keep a copy in your secrets
+  manager; without it a restored stack cannot decrypt anything.
 
-## On Postgres tablespace growth
+## If the Postgres dump keeps growing
 
-Langfuse stores **metadata** in Postgres and **traces** in ClickHouse.
-That keeps Postgres small (~1–5 GB at moderate scale). If your
-Postgres dump grows past ~10 GB, something else is wrong — typically
-The gateway's spend logs not being purged. Set
-`spend_logs_max_size` in `litellm/config.yaml` to enforce retention.
-
-## See also
-
-- [Operations → Troubleshooting](/docs/deployment/troubleshooting) —
-  recovering from common failure modes.
+Langfuse keeps metadata in Postgres and the traces themselves in
+ClickHouse, so Postgres stays small, a few gigabytes at moderate use. A dump
+past ten gigabytes almost always means the gateway's spend logs are not
+being pruned; LiteLLM has a retention setting for them.

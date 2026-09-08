@@ -44,7 +44,7 @@ export default function StartupLayout({ isAuthenticated }: { isAuthenticated?: b
   }, [isAuthenticated, navigate, data]);
 
   useEffect(() => {
-    document.title = startupConfig?.appTitle || 'NUFI';
+    document.title = startupConfig?.appTitle || 'NuFi';
   }, [startupConfig?.appTitle]);
 
   useEffect(() => {

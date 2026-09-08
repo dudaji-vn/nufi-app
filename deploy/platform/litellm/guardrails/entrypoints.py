@@ -681,10 +681,20 @@ class BaseNufiGuardrail(CustomGuardrail):
         G2a/G2b an absent Korean detector is a control that reports every
         Korean identifier clean. Neither may present as a quiet scan. The
         caller's `_on_outage` decides what an outage costs.
+
+        Spans this control declares in `skip_sources` never reach the scanners.
+        That is a budget decision, not a security one, and it is off unless a
+        policy asks for it: `_parse_control` refuses a `skip_sources` that
+        overlaps `enforce_sources`, so nothing a control can act on can be
+        skipped here. Every scanner still runs on every request -- they are
+        handed fewer spans, not fewer scanners.
         """
+        scannable = self._control.scannable(spans)
+        if not scannable:
+            return []
         findings: list[Finding] = []
         for scanner in self._scanners:
-            findings.extend(await scanner.scan(spans))
+            findings.extend(await scanner.scan(scannable))
         return findings
 
     def _exempt(self, data: dict[str, Any] | None) -> bool:

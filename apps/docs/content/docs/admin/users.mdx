@@ -1,53 +1,54 @@
 ---
 title: Users and membership
-description: Where user accounts come from and how you assign them roles and groups.
+description: Where accounts come from, and how you give people roles and groups.
 ---
 
-People get a NUFI account by **signing in to the app** at
-`chat.nufi.me` (self-registration or SSO, depending on how you've set
-up [Configuration → Features / Registration](/docs/admin/configuration)).
-As an admin, you don't create accounts in a separate "Users" screen —
-you control what each person can do by assigning them to **roles** and
-**groups** on the [Access](/docs/admin/roles-and-groups) page.
+People get a NuFi account by signing in to the app: self-registration
+when it is open, or your identity provider. Registration is switched on
+the **System** tab of [Configuration](/docs/admin/configuration). The
+admin panel has no user-creation screen in the shipped build (the page
+exists in the code and is disabled), so as an admin you decide what each
+person can do by putting them into **roles** and **groups** on
+[Access](/docs/admin/roles-and-groups).
 
 ## Give someone admin powers
 
 <Steps>
-<Step>Make sure the person has signed in to the app at least once so
-their account exists.</Step>
-<Step>Open **Access → Roles** and click the role you want them in
-(e.g. `ADMIN`, or a custom sub-admin role).</Step>
-<Step>Go to the **Members** tab and add them.</Step>
-<Step>Save. They pick up the role on their next request — no sign-out
-needed.</Step>
+<Step>Make sure the person has signed in to the app at least once, so the
+account exists.</Step>
+<Step>Open **Access → Roles** and click the role: `ADMIN`, or a sub-admin
+role of your own that holds `access:admin`.</Step>
+<Step>On the **Members** tab, add them.</Step>
+<Step>Save. They can open the admin panel on their next request.</Step>
 </Steps>
 
 ![The Members tab lives inside each role on the Access page](/screenshots/admin-role-detail.png)
 
-To **remove** someone's powers, open the role's **Members** tab and
-remove them; they fall back to the default `USER` role.
+To take the powers away, remove them from the role's **Members**. With no
+admin role left, they are an ordinary user of the app again.
 
 ## Give a set of people different features or limits
 
-Use a **group** rather than editing people one by one:
-
 <Steps>
 <Step>On **Access → Groups**, create a group and add the members.</Step>
-<Step>In [Configuration](/docs/admin/configuration), add a scoped
-override for that group — a model, a feature flag, a higher cap.</Step>
+<Step>In [Configuration](/docs/admin/configuration), create a profile for
+the group and set the model, feature or limit.</Step>
 </Steps>
 
-See [Scoped overrides](/docs/admin/scoped-overrides) for how the
-override resolves.
+[Configuration profiles](/docs/admin/scoped-overrides) explains how the
+values resolve when a person is in several groups.
 
-## What about budgets, API keys, and usage?
+## Budgets, keys and usage
 
-Per-user **budgets, rate limits, and API keys** are managed in the
-gateway and surfaced to each user in their own
-[console](/docs/end-user/api-keys). For org-wide model access and
-limits, use **Configuration** plus group overrides; for the gateway's
-own admin UI see [Gateway admin](/docs/admin/litellm).
+Budgets, rate limits and API keys live in the gateway, not here. Each
+member manages their own keys in [NuFi Console](/docs/end-user/api-keys),
+where they also see their spend; an admin sees everything in the
+gateway's own UI, [Gateway admin](/docs/admin/litellm). The app's own
+traffic runs on one shared gateway key, so a person's chat usage shows up
+in Langfuse under their id but is not capped per person by the gateway.
 
-> The roles available when you assign membership are the ones defined
-> on [Access](/docs/admin/roles-and-groups); the capabilities each role
-> carries are set on [Grants](/docs/admin/capabilities).
+## Removing a person
+
+Delete the account in the app's own settings, or disable it at your
+identity provider; the admin panel does not delete accounts. Their
+conversations and files go with the account.

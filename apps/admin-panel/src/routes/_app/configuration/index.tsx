@@ -20,7 +20,7 @@ export const Route = createFileRoute('/_app/configuration/')({
     scope: typeof search.scope === 'string' ? search.scope : undefined,
   }),
   head: () => ({
-    meta: [{ title: 'Configuration | NUFI Admin Panel' }],
+    meta: [{ title: 'Configuration | NuFi Admin Panel' }],
   }),
   component: ConfigurationPage,
 });

@@ -6,7 +6,7 @@ const withMDX = createMDX();
 const config = {
   reactStrictMode: true,
 
-  // The NUFI Works pages used to live under /docs/end-user. They were listed
+  // The NuFi Works pages used to live under /docs/end-user. They were listed
   // in the Works sidebar by cross-reference, which rendered fine but kept the
   // canonical URL in the chat section -- so clicking "Assigning work to
   // agents" from the Works sidebar threw you into the "Using the app" tab.
@@ -19,6 +19,7 @@ const config = {
       { source: '/docs/end-user/agent-connect', destination: '/docs/works/connect-account', permanent: true },
       // The short Studio page duplicated the Studio section it linked to.
       { source: '/docs/end-user/studio', destination: '/docs/studio', permanent: true },
+      { source: '/docs/end-user/guides/generate-images', destination: '/docs/end-user/files-and-images', permanent: true },
 
       // Same shape, milder symptom: /docs/operations and /docs/getting-started
       // were page pools with no tab of their own, referenced by exactly one
@@ -34,6 +35,26 @@ const config = {
       { source: '/docs/getting-started/quick-start', destination: '/docs/developer/quick-start', permanent: true },
       { source: '/docs/getting-started/verify-install', destination: '/docs/developer/verify-install', permanent: true },
       { source: '/docs/getting-started', destination: '/docs/developer', permanent: true },
+
+      // A design note on RAG paths sat at the end of Overview. Once Prev/Next
+      // runs across sections it was the last thing a new reader met before
+      // "Using the app"; it belongs with the other engineering notes.
+      { source: '/docs/overview/rag-integration', destination: '/docs/developer/rag-integration', permanent: true },
+
+      // The Develop section was organised by the five repositories that were
+      // merged into this one in July 2026; it is now organised by what a
+      // developer is doing. Every old page has a successor.
+      { source: '/docs/developer/quick-start', destination: '/docs/developer/run-locally', permanent: true },
+      { source: '/docs/developer/prerequisites', destination: '/docs/developer', permanent: true },
+      { source: '/docs/developer/verify-install', destination: '/docs/developer/run-locally', permanent: true },
+      { source: '/docs/developer/local-stack', destination: '/docs/developer/run-locally', permanent: true },
+      { source: '/docs/developer/nufi-chat', destination: '/docs/developer/work-on-chat', permanent: true },
+      { source: '/docs/developer/librechat-fork', destination: '/docs/developer/work-on-chat', permanent: true },
+      { source: '/docs/developer/console-dev', destination: '/docs/developer/work-on-console', permanent: true },
+      { source: '/docs/developer/admin-panel-dev', destination: '/docs/developer/work-on-admin-panel', permanent: true },
+      { source: '/docs/developer/agent-forks', destination: '/docs/developer/work-on-agents', permanent: true },
+      { source: '/docs/developer/adding-models', destination: '/docs/developer/models', permanent: true },
+      { source: '/docs/developer/release-flow', destination: '/docs/developer/release', permanent: true },
     ];
   },
 };

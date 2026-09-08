@@ -7,7 +7,9 @@ Single repo for the whole NuFi system. One clone = the whole picture.
 | `apps/chat/` | The chat app (originally a LibreChat fork; fully ours since 2026-07 — no upstream sync) | `ghcr.io/dudaji-vn/nufichat` (tag `nufi-v*` on main) |
 | `apps/console/` | End-user API-key/usage console (Bun + Vite + Hono) | `ghcr.io/dudaji-vn/nufi-console` |
 | `apps/admin-panel/` | Admin panel (TanStack Start + Bun; originally an ex-fork of ClickHouse/librechat-admin-panel) | `ghcr.io/dudaji-vn/nufichat-admin-panel` |
-| `apps/docs/` | Docs site (Fumadocs / Next.js) | — |
+| `apps/nufi-agent/` | NuFi Studio (vendored Langflow; NuFi's part is `nufi/`) | `ghcr.io/dudaji-vn/nufi-studio` (tag `nufi-studio-v*`) |
+| `apps/agents/` | NuFi Works (vendored Paperclip; NuFi's part is `nufi/`) | `ghcr.io/dudaji-vn/nufi-works` (tag `nufi-works-v*`) |
+| `apps/docs/` | Docs site (Fumadocs / Next.js) | Railway `nufi-docs`, on every merge to `main` |
 | `deploy/railway/` | Railway staging wrapper (pulls the nufichat image, bakes `librechat.yaml`) | Railway service |
 | `deploy/platform/` | On-prem platform: LiteLLM, Langfuse, guardrails, monitoring | docker-compose |
 

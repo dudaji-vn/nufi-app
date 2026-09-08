@@ -1,82 +1,91 @@
 ---
 title: Gateway admin
-description: Add models, issue API keys, set budgets, watch spend.
+description: Register models, issue keys, set budgets and rate limits, and know what the gateway does not bound.
 ---
 
-The **NUFI AI Gateway** is the single chokepoint every AI request
-passes through. Its admin UI lives at `api.nufi.me/ui` and is the
-source of truth for **models**, **API keys**, **budgets**, and
-**routing rules**.
+The **NuFi AI Gateway** is the one gate every model call passes. It holds
+the model list, the keys, the budgets and the rate limits, runs the
+security controls, and writes the trace. Its admin UI is LiteLLM's: at
+`api.codechi.me/ui` on NuFi's stack, `http://localhost:4000/ui` on a
+compose stack of your own. Sign in with the gateway master key
+(`LITELLM_MASTER_KEY` in the stack's `.env`).
 
-Sign in with the gateway master key (set during install).
+## Models
 
-## What lives where
+Two ways to register one.
 
-There are two ways to register a new AI model.
+**In the configuration file**, `deploy/platform/litellm/config.yaml`,
+through `add-model.sh`. Version-controlled, reproduced on every deploy,
+and the one to use for anything that stays. The file is baked into the
+gateway image, so the gateway serves the new model only after
+`docker compose build litellm-proxy && docker compose up -d litellm-proxy`;
+[Add or change a model](/docs/developer/models) has the whole procedure.
 
-1. **In configuration files** (version-controlled, replayed on
-   every restart). Use the `add-model` helper script.
-2. **In the admin UI** (persisted to the gateway's own database).
-   Faster for one-off experiments — but not in version control and
-   not visible to the `add-model` script.
+**In the admin UI**, saved to the gateway's database. Right for trying a
+model for a day; not in version control and not seen by the script.
 
-Prefer the script for anything that ships. Use the UI for "let me
-try this model for a day and see if it works".
+Either way, the app caches the gateway's model list when it starts. A new
+model reaches the dropdown after the app restarts (`docker compose restart
+librechat`, or a redeploy on Railway).
 
-When you add a model from the UI, the chat caches the model list at
-startup. To make a UI-added model show up in the chat dropdown,
-ask your operator to restart the chat application.
+Every entry carries two labels: `backend_type` (`gpu`, `npu`, `cloud`) and
+`hardware_id` (`gemini-cloud`, `mac-local`, whatever names the box). Traces
+and the Grafana spend panels aggregate on `hardware_id`; a model without
+them exists but is invisible to reporting. `add-model.sh` refuses to
+register without them; the UI lets you leave them blank. Fill them in.
 
-## Required model metadata
+NuFi's own gateway ships with Google Gemini behind every model name it
+offers, including names that look like other vendors' models; the
+`hardware_id` on each entry (`gemini-cloud`) is the truthful record.
 
-Every model must carry two fields:
+## Keys
 
-- `backend_type` — `gpu`, `npu`, or `cloud`. Used by reporting.
-- `hardware_id` — a free-form string like `dgx-a100-01`,
-  `together-cloud`, `mac-local`. Reports aggregate by this.
+A key is what a person or a program presents to the gateway. LiteLLM's key
+form gives it an owner, a budget with a refresh period, per-minute token
+and request limits, a model allow-list, and optionally a team.
 
-The UI lets you leave both blank, which means the model exists but
-is invisible to dashboards. Always fill them in.
+Members issue their own keys in [NuFi Console](/docs/end-user/api-keys),
+which creates them in the gateway with the deployment's defaults
+(`DEFAULT_USER_BUDGET` and its siblings). Issue a key here yourself when it
+belongs to no person: a CI job, an integration, an agent that runs under a
+service identity.
 
-## API keys (virtual keys)
+## What the gateway bounds, and what it does not
 
-A virtual key is what end users present when calling NUFI from
-their own code. It carries:
+Budgets and rate limits attach to keys. Every key a member creates is
+bounded per member. The app's own traffic, every conversation in the chat,
+goes through one key for the whole deployment, so its budget bounds the
+app as a whole and not any one person. Per-person figures for chat traffic
+come from Langfuse, which records the account id the app attaches to each
+request. NuFi Works keeps its own budgets per company and per agent,
+outside the gateway: [Agent roles and budgets](/docs/admin/agents-org-and-budgets).
 
-- The owning user identity.
-- Budget cap, budget refresh duration.
-- Per-minute token and request limits.
-- A model allow-list (or `*` for any).
-- A team (optional, for tiered plans).
+## Teams
 
-End users issue their own keys from the
-[console](/docs/end-user/api-keys). You can also issue keys from
-the gateway admin UI directly when you need a key not bound to a
-user — e.g. a CI job's service key.
-
-## Teams (tiered plans)
-
-**Teams** let you bucket users by plan (`free`, `pro`, `premium`).
-Each team has its own budget, rate limits, and model allow-list.
-Moving a user between teams is the upgrade flow:
-
-1. Create the teams with the limits you want.
-2. The platform attaches new users to a default team (the
-   organisation's free tier).
-3. On payment / approval, move the user to the next team.
-4. The user sees the new caps on their next request.
+LiteLLM's teams give a set of keys a shared budget, limits and model list.
+The gateway on NuFi's stack uses them to decide which models a key may
+see; no tiers are preconfigured, and nothing attaches a new member to a
+team automatically. Create teams in the UI when you need a shared cap.
 
 ## Watching spend
 
-The admin UI's **Usage** page is the live view. For longer
-retention and per-trace detail, use the [trace viewer](/docs/admin/langfuse).
+The UI's **Usage** page is the live view by key and model. For history,
+per-request detail and the account id, use [Langfuse](/docs/admin/langfuse);
+for rates and totals over time, the spend panels in [Grafana](/docs/admin/grafana).
 
 ## Routing
 
-The gateway can define routing groups — e.g. send `qwen2.5-*` to
-your local GPU, fall back to a cloud provider on failure. The
-gateway handles retries and fallbacks transparently.
+The shipped configuration routes by model name and shuffles between
+entries that share one. There are no fallbacks and no traffic splitting
+configured; LiteLLM can do both, and the file has a note about switching
+to weighted routing when a canary split is wanted, but neither is turned
+on today.
 
-The canary slider feature uses this mechanism to split traffic
-between two providers by percentage, which is useful for safely
-rolling out a new model.
+## Guardrails
+
+The security controls run here: `deploy/platform/litellm/guardrails/policy.yaml`
+decides what is blocked, logged or redacted, and a check script confirms
+the controls are wired. The gateway UI does not show them; the Grafana
+dashboard and the alerts do. [Operating the guardrails](/docs/deployment/guardrails-ops)
+is the operator's page; [Security](/docs/overview/security) explains the
+model.

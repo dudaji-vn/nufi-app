@@ -1,7 +1,7 @@
 /**
  * Who may open which agent product.
  *
- * Every door into NUFI Studio and NUFI Works passes through this console, so
+ * Every door into NuFi Studio and NuFi Works passes through this console, so
  * the answer lives here rather than in each product. The rules are read from
  * the environment on every call: an entitlement change is an ops action, and
  * making it a restart would tempt someone to keep the list in code.
@@ -22,8 +22,8 @@ export type Product = 'studio' | 'works';
  * can read maps through here rather than interpolating the key.
  */
 export const PRODUCT_NAMES: Readonly<Record<Product, string>> = {
-  studio: 'NUFI Studio',
-  works: 'NUFI Works',
+  studio: 'NuFi Studio',
+  works: 'NuFi Works',
 };
 
 /** The products a member-facing OIDC client may be the front door to. */

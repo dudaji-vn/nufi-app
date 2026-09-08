@@ -1,67 +1,63 @@
 ---
-title: Trace viewer
-description: Inspect every conversation, debug bad replies, watch cost.
+title: Langfuse
+description: "Every request as a trace: who, which model, what it cost, and where to look when a reply was wrong."
 ---
 
-The **trace viewer** at `langfuse.nufi.me` records every AI request
-NUFI handles — the prompt, the reply, the latency, the token
-counts, the cost, and the user identity. This is what you open when
-a user says "the AI got it wrong" or "where did our budget go this
-month?"
+Langfuse records every request the gateway handled: the prompt and the
+reply, the account id the app attached, the model name and the hardware
+that served it, tokens, latency, cost. It is what you open when someone
+says "the model got this wrong" or "where did the budget go".
+
+NuFi's own copy is at `langfuse.codechi.me`; on a compose stack of your
+own it is host port 3000.
 
 ## Sign in
 
-The first user to register on a fresh install becomes the **org
-owner**. Subsequent users you invite from **Settings → Members**.
+The stack seeds an organisation (`npuops`), a project (`npuops-default`)
+and one admin at first start, from `LANGFUSE_INIT_USER_EMAIL` and
+`LANGFUSE_INIT_USER_PASSWORD` in `.env`. Sign in as that admin, then
+invite others from **Settings → Members**. Langfuse's accounts are its own,
+separate from the app's, which keeps the set of people who can read other
+people's prompts small.
 
-The trace viewer has its own user model, separate from the chat.
-This is intentional — it limits who can read other users'
-conversations to a small set of trusted operators.
+## What a trace is
 
-## What is a trace?
+A **trace** is one request. Inside it, **observations** are the calls it
+made, usually one model call. Each carries its own timing, model, input,
+output and cost. NuFi adds two fields to every trace, `hardware_id` and
+`backend_type`, from the model entry that served it.
 
-A **trace** is a top-level event — usually one chat completion.
-Inside a trace, **observations** record nested calls (one per AI
-call, one per tool call, one per safety filter). Each observation
-has its own duration, model, prompt, reply, and cost.
+## Find one user's requests
 
-## What you actually do here
+1. **Traces**, filter by user id and a time range. The id is the app's
+   account id, which the app sends with each request.
+2. Open the trace; the observation shows the system prompt, the messages,
+   the reply, and the model that answered.
 
-### Debug a specific user complaint
+A guardrail block does not appear as a reply here: the gateway refused
+before or after the model, and the refusal is an audit event with a
+reference code. The person who was refused can quote that code; the
+gateway's log holds the event.
 
-A user says "the model lied to me at 2 pm".
+## Compare, score, keep
 
-1. **Traces** → filter `userId = <their id>` and timeframe `last
-   2h`.
-2. Find the trace, click in.
-3. The **Observations** panel shows every step — the system
-   prompt, the user prompt, the assistant reply, any tool calls,
-   any safety filter decisions.
+Langfuse's datasets, experiments and scores work as its documentation
+describes; NuFi does not change them. Scores you add to traces show up in
+its dashboards.
 
-### Compare two models on the same prompt
+## Cost
 
-1. **Datasets** → create a dataset of prompts you care about.
-2. **Datasets → Run** → pick the two models.
-3. Read the diff and the latency comparison.
-
-### Score a model run
-
-For feedback collection:
-
-1. Open a trace.
-2. Click **Add score** in the observation.
-3. Tag it (`quality`, `helpfulness`, `1-5`, …).
-
-Scores aggregate into the dashboard panels and the Datasets view.
-
-### Watch cost
-
-**Dashboard → Cost** shows daily and monthly spend broken down by
-model, user, and hardware. Useful for "which team is burning
-through the budget?" questions.
+Langfuse's dashboards break spend down by model and by user. Because
+NuFi's gateway answers several model names with the same provider, the
+per-model figure follows the name asked for; the split by actual hardware
+is the **Spend rate by model** panel in [Grafana](/docs/admin/grafana),
+which reads the gateway's own counters.
 
 ## Retention
 
-By default, traces are kept forever. If your trace store grows too
-large, ask your operator to set a retention policy — typically 90
-days for development, 1 year for production.
+Nothing is deleted by default. The traces live in ClickHouse and MinIO on
+the compose stack, and those are the volumes that grow;
+[Backup and restore](/docs/deployment/backup-restore) and
+[Infra sizing](/docs/deployment/infra-sizing) say how fast. Ask the
+operator for a retention policy when the disk alert first fires, not
+after.

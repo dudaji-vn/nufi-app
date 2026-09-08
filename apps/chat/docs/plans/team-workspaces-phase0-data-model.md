@@ -260,5 +260,5 @@ Use the existing harness pattern (`MongoMemoryServer`, register models, call the
   audit-log reference pattern; `develop` is currently behind by 6 commits).
 - Bump `@librechat/data-schemas` `0.0.51 → 0.0.52` and rebuild `dist` so `/api` consumes the new
   methods. (Done at the end of the phase.)
-- PR target to be confirmed with the maintainer at merge time (per the NUFI release flow,
+- PR target to be confirmed with the maintainer at merge time (per the NuFi release flow,
   feature → `develop`; but `develop` is stale relative to `fork/main`).

@@ -1,0 +1,106 @@
+---
+title: The app on its own
+description: deploy/railway runs the NuFi app without the rest of the stack, on one host or on Railway.
+---
+
+`deploy/railway` is the NuFi app alone: the chat, its MongoDB, and a small
+RAG service for file uploads, pointed at any OpenAI-compatible endpoint.
+No gateway of its own, no guardrails, no Langfuse. It exists for two
+places: a single host where the full stack is too much, and Railway, where
+a bind-mounted `librechat.yaml` is impossible and the directory doubles as
+a wrapper image. NuFi's own staging (`chat.nufi.me`) is this, calling the
+gateway of the on-prem stack over the internet.
+
+## One host
+
+```bash
+cd deploy/railway
+./bootstrap.sh
+```
+
+The script checks Docker and `openssl`, creates `.env` from `.env.example`,
+generates `JWT_SECRET`, `JWT_REFRESH_SECRET`, `CREDS_KEY` and `CREDS_IV`,
+asks for the public URLs, the title, and the model endpoint, then pulls and
+starts. Re-running keeps what is already in `.env`. `--yes` takes every
+default, `--no-up` writes `.env` and stops.
+
+| Service | Container | Host port | What it is |
+|---|---|---|---|
+| `api` | `nufi-chat-api` | 3081 | the NuFi app, `ghcr.io/dudaji-vn/nufichat:${IMAGE_TAG:-main}` |
+| `mongo` | `nufi-chat-mongo` | none | `mongo:4.4` |
+| `vectordb` | `nufi-chat-vectordb` | none | pgvector, the embeddings for uploaded files |
+| `rag_api` | `nufi-chat-rag-api` | none | chunks and embeds uploads; Gemini embeddings by default |
+
+Variables, all in `.env` and listed on
+[Environment variables](/docs/deployment/environment-variables#the-wrapper-stack):
+`BACKEND_BASE_URL` and `BACKEND_API_KEY` are the endpoint the app sends
+every completion to (`https://api.codechi.me/v1` plus a gateway key, for
+NuFi's own), `DOMAIN_CLIENT` and `DOMAIN_SERVER` its public URL,
+`COOKIE_DOMAIN` and `COOKIE_SAMESITE` for a console on a sibling
+subdomain, `RAG_GOOGLE_API_KEY` for uploads.
+
+### Same host as the stack
+
+When the compose stack runs on the same machine, the app can reach the
+gateway by service name instead of a public URL:
+
+```bash
+ln -sf docker-compose.shared-network.yml docker-compose.override.yml
+# SHARED_DOCKER_NETWORK=npuops_npuops in .env
+# BACKEND_BASE_URL=http://litellm-proxy:4000/v1
+docker compose up -d
+```
+
+`rm docker-compose.override.yml && docker compose up -d --force-recreate`
+leaves shared mode.
+
+### Check it works
+
+```bash
+docker compose ps
+curl -s http://localhost:3081/health                                            # OK
+docker compose exec api wget -qO- http://litellm-proxy:4000/health/liveliness   # shared mode only
+```
+
+Then open `http://<host>:3081`, register, pick a model, send a message.
+
+### Day to day
+
+```bash
+docker compose logs -f api
+docker compose pull && docker compose up -d           # a new IMAGE_TAG
+git pull && docker compose up -d --force-recreate     # a changed librechat.yaml
+docker compose down                                    # keep the data
+```
+
+## Railway
+
+The `nufi-chat` service on Railway builds `deploy/railway/Dockerfile`: a
+wrapper whose base image is the `BASE` service variable
+(`ghcr.io/dudaji-vn/nufichat:v0.1.12`), with `librechat.yaml` copied in and
+a one-line patch that stops the app's free-disk check from exiting on
+Railway's small ephemeral disk. The app's code is entirely in the base
+image; the wrapper only changes when the config does. To upgrade, set
+`BASE` to the new image and redeploy; see
+[Release and deploy](/docs/developer/release).
+
+The other Railway services in the same project pull published images
+directly: the console (pinned tag), the admin panel (pinned tag), NuFi
+Studio and NuFi Works (`main`), plus MongoDB, pgvector, Meilisearch and the
+RAG service as Railway-managed containers. Their variables, hostnames and
+the sign-in wiring between them are recorded in `deploy/railway/agents.md`.
+
+Two scripts live beside the wrapper. `verify-agents.sh` asserts that both
+agent products are reachable, carry the NuFi name, and refuse anyone
+without a NuFi session. `demo.sh` parks the whole Railway project between
+demos and wakes it on demand: most of the bill there is idle memory, and
+services that hold a database connection never sleep on their own.
+
+## When it does not work
+
+| Symptom | Cause |
+|---|---|
+| `network npuops_npuops not found` | shared mode is on and the stack is down, or its network is named differently; `docker network ls` |
+| `Server listening` never appears in `docker compose logs api` | a missing `.env` value; re-run `./bootstrap.sh` |
+| the model dropdown is empty | the app cannot reach `BACKEND_BASE_URL`, or the endpoint serves no models |
+| `denied: denied` on pull | `docker login ghcr.io` with a `read:packages` token |

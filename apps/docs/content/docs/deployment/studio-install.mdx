@@ -1,9 +1,9 @@
 ---
-title: Installing NUFI Studio
-description: What NUFI Studio needs to run, the two settings that decide whether it survives a redeploy, and how to check the install actually took.
+title: Installing NuFi Studio
+description: What NuFi Studio needs to run, the two settings that decide whether it survives a redeploy, and how to check the install actually took.
 ---
 
-NUFI Studio is a Python/FastAPI backend serving a React UI. It is
+NuFi Studio is a Python/FastAPI backend serving a React UI. It is
 deployed separately from the chat app and shares only the gateway.
 
 ## Requirements
@@ -24,11 +24,15 @@ docker run -d \
   -p 7860:7860 \
   -e LANGFLOW_DATABASE_URL=postgresql://user:pass@host:5432/nufi_studio \
   -e LANGFLOW_SECRET_KEY="$(python3 -c 'import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode())')" \
-  ghcr.io/dudaji-vn/nufi-studio:latest
+  ghcr.io/dudaji-vn/nufi-studio:main
 ```
 
+`main` is the image every push to `apps/nufi-agent` produces; a
+`nufi-studio-vX.Y.Z` tag on the repository publishes `vX.Y.Z` (and
+`latest`), and none has been cut yet. NuFi's own instance follows `main`.
+
 To build it yourself, use `apps/nufi-agent/nufi/Dockerfile` rather than
-the upstream one — it is the file that applies the NUFI branding and
+the upstream one — it is the file that applies the NuFi branding and
 turns off upstream telemetry.
 
 <Callout type="warn">
@@ -88,9 +92,9 @@ python3 -c 'import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).deco
 the default and the instance has no accounts at all — every visitor is
 the same implicit user with access to every flow.
 
-### Signing in with a NUFI account
+### Signing in with a NuFi account
 
-Studio can accept the identity NUFI already issued, so members do not
+Studio can accept the identity NuFi already issued, so members do not
 get a second password. That is a separate piece of setup on both sides —
 see [Single sign-on for the agent apps](/docs/deployment/agents-sso).
 
@@ -122,12 +126,25 @@ curl -fsS https://studio.example.com/health_check
 Then check the two things a health check cannot:
 
 1. **The branding took.** Load the page and confirm the product name is
-   NUFI Studio. The name comes from a build-time replacement; a build
+   NuFi Studio. The name comes from a build-time replacement; a build
    that skipped it serves the upstream name to your users.
 2. **The database is Postgres.** Create a flow, redeploy, and confirm
    it is still there. This is the only test that actually distinguishes
    a working `LANGFLOW_DATABASE_URL` from a typo'd one, because a bad
    URL silently falls back to SQLite.
+
+## Proving the egress policy
+
+On Kubernetes, Studio's model traffic is meant to reach the gateway and no
+vendor. The check that proves it runs from inside the pod:
+
+```bash
+apps/nufi-agent/nufi/egress/verify-egress.sh <namespace>
+```
+
+It passes only when `api.codechi.me` answers and `api.openai.com` does not.
+What it tests, and why a policy object in `kubectl describe` is not
+evidence, is on [Agent egress](/docs/deployment/agents-egress#proving-it).
 
 ## Sizing
 

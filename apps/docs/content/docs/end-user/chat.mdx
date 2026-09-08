@@ -1,110 +1,100 @@
 ---
 title: Start chatting
-description: Send your first message, edit, branch, bookmark, run two chats side by side, and use temporary chat.
+description: Send a message, edit and retry, manage your conversations, share one, and the extras that appear in Advanced mode.
 ---
 
-The NUFI app works like ChatGPT — type a question, press **Enter**,
-and the answer streams back word by word. This page walks you through
-it click by click.
+Type a question, press **Enter**, and the answer streams back. This page
+walks through the rest, click by click.
 
-![A conversation in the NUFI app, with the answer toolbar under the reply](/screenshots/chat-conversation.png)
+![A conversation in the NuFi app, with the answer toolbar under the reply](/screenshots/chat-conversation.png)
 
-> **Guides:** Try [Draft, refine, and translate writing](/docs/end-user/guides/draft-and-refine-writing)
+> **Guides:** [Draft, refine, and translate writing](/docs/end-user/guides/draft-and-refine-writing)
 > and [Chat with a document](/docs/end-user/guides/chat-with-a-document).
 
 ## Send your first message
 
 <Steps>
-<Step>Open `chat.nufi.me`. You land on a **New chat** with an empty
-message box at the bottom that says **"Message Nufi"**.</Step>
-<Step>Click the box and type your question, for example
-*"In one friendly sentence, what can you help me with?"*</Step>
-<Step>Press **Enter** to send. (Use **Shift + Enter** if you want a
-new line instead of sending.)</Step>
-<Step>The reply streams in under **Nufi**. Wait for it to finish —
-that's it, you're chatting.</Step>
+<Step>Open `chat.nufi.me`. You land on a new chat with an empty box at
+the bottom that says **Message**, followed by the name of the model or
+agent that will answer — *NuFi* in the screenshots here.</Step>
+<Step>Type a question — *"In one sentence, what can you help me with?"*</Step>
+<Step>Press **Enter** to send. **Shift + Enter** adds a line instead.</Step>
+<Step>The reply streams in under the assistant's name. That is all there
+is to it.</Step>
 </Steps>
 
-While a reply is still streaming you can click **Stop** to cancel it,
-or **Regenerate** afterwards to ask for a different answer to the same
-question.
+While a reply is streaming, **Stop** cancels it. Afterwards,
+**Regenerate** asks for a different answer to the same message.
 
 ## The answer toolbar
 
-Hover (or look just under) any reply from Nufi and a small row of
-icons appears — left to right:
+Hover a reply and a row of small buttons appears under it, left to
+right:
 
-| Icon | What it does |
-|------|--------------|
-| 🔊 Speaker | Read the reply aloud — see [Speech](/docs/end-user/speech) |
-| ⧉ Copy | Copy the reply to your clipboard |
-| ✏️ Pencil | Edit your message and try again (see below) |
-| ⑂ Branch | Fork a new conversation from this point |
-| 👍 / 👎 | Tell your admins whether the answer was good |
-| ⟳ Regenerate | Ask for a fresh answer |
+| Button | What it does |
+|---|---|
+| Speaker | Reads the reply aloud — see [Speech](/docs/end-user/speech) |
+| Copy | Copies the reply |
+| Edit | Changes the message and, if you want, asks again |
+| Fork | Starts a new conversation from this point *(Advanced mode)* |
+| Thumbs up / down | Rates the answer for your administrators |
+| Regenerate | Asks for a fresh answer |
+| Continue | Appears when a reply stopped early; asks the model to carry on |
 
 ## Edit and try again
 
-Click the **pencil** on a message *you* sent, change the wording, and
-click **Save**. The conversation **branches**: your original reply is
-kept on one branch, the edited prompt creates a new reply on another.
-Use the small arrows under the reply to switch between them.
+Click the pencil on a message *you* sent and change the wording. Then:
 
-This is how you ask *"what if I phrase it differently?"* without
-losing the original answer.
+- **Save & Submit** sends the edited message and gets a new reply. The
+  original stays: small arrows under the message let you switch between
+  the two versions, so you can compare answers to two phrasings.
+- **Save** just fixes the text of the message without asking again.
 
-## Start a new chat
+## Your conversations
 
-Click **New chat** (top of the left sidebar) any time you want a
-clean, separate conversation. Past chats are listed below it, grouped
-by **Previous 7 days**, **Previous 30 days**, and so on. Click any one
-to reopen it.
+The left sidebar lists your chats under **Today**, **Yesterday**,
+**Previous 7 days** and **Previous 30 days**. The pencil-and-square icon
+at the top starts a **New chat**; **Search messages** finds a
+conversation by any word you remember from it.
 
-## Two chats side by side
-
-The **Add multi-conversation** button in the top bar (next to the
-model name) opens a second conversation **beside** the first. Handy
-for:
-
-- Comparing how two models answer the same question.
-- Drafting in one pane while reading reference material in the other.
+Hover a conversation for its menu: **Rename**, **Duplicate**,
+**Archive**, **Delete**. Archived chats leave the list but are kept —
+**Settings → General → Archived chats** lists them and brings one back.
 
 ## Temporary chat
 
-The **Temporary Chat** button in the top bar starts an **ephemeral**
-conversation — nothing is saved. Close the tab and it's gone. Use it
-for one-off or sensitive questions you don't want kept in your
-history.
+**Temporary Chat** at the top-right starts a conversation that is not
+saved. Close it and it is gone. Use it for one-off questions you do not
+want in your history.
 
-## Find an old answer
+## Share or export a conversation
 
-Click **Search messages** at the top of the sidebar and type a word
-you remember. Results jump straight to the matching message — useful
-when you recall an answer but not which chat it came from.
+**Share** in the top bar creates a link to the conversation. Anyone in
+your organisation who is signed in can open it; the link does not work
+for people outside. Your name, and anything you add after sharing, stay
+private. **Settings → Data controls → Shared links** lists every link
+you have made and lets you delete one.
 
-## Bookmarks
+**Export**, in the same menu, saves the conversation as a file in the
+format you choose.
 
-Star a conversation to add it to **Bookmarks** in the left sidebar.
-Keep the handful of chats you return to often within easy reach.
+## In Advanced mode
 
-## Keyboard shortcuts
+These appear once you switch to [Advanced](/docs/end-user/advanced-mode):
 
-| Shortcut          | Action                                  |
-|-------------------|-----------------------------------------|
-| **Enter**         | Send the message                        |
-| **Shift + Enter** | New line in the message box             |
-| **Ctrl/⌘ + K**    | Jump bar — find anything                |
-| **/** (in box)    | Insert a saved prompt or run a command  |
+- **Add multi-conversation** in the top bar opens a second conversation
+  beside the first — the quickest way to compare two models on one
+  question.
+- **Bookmarks**: the tag icon in the top bar puts a named tag on the
+  conversation, and the **Bookmarks** panel in the rail lists them.
+- **Fork**, under any message, starts a new conversation that keeps
+  everything up to that point.
+- `/` at the start of the message box inserts a saved prompt — see
+  [Models and presets](/docs/end-user/models-and-presets#saved-prompts).
 
 ## Limits
 
-NUFI is shared across your organisation, so each account has limits:
-
-- **Speed limit** — how many messages per minute. If you go very
-  fast, the app shows a "please slow down" notice. Wait a few
-  seconds.
-- **Monthly budget** — how much your account can spend on AI per
-  cycle. If you hit it, you will see "Budget reached". Ask your
-  admin to increase it if you need more.
-
-Your current usage is visible in the [console](/docs/end-user/api-keys).
+The app is shared across your organisation, so requests are
+rate-limited. If you send very quickly you get *"Too many requests. Try
+again later"* — wait a few seconds. Spend is measured centrally by your
+administrators; nothing in the app asks you to top up.

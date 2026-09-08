@@ -6,8 +6,8 @@
  * role. Minting an identity from those claims alone produces a token with
  * `email: undefined`, which is not a small gap:
  *
- *   - NUFI Works refuses the sign-in outright (`email_is_missing`).
- *   - NUFI Studio accepts it and provisions a user named `external-<hash>`,
+ *   - NuFi Works refuses the sign-in outright (`email_is_missing`).
+ *   - NuFi Studio accepts it and provisions a user named `external-<hash>`,
  *     which looks like a real account and belongs to nobody.
  *   - Every member arrives as an editor, because `role` is absent too, so the
  *     admin mapping silently never applies.

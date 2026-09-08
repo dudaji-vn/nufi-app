@@ -1,6 +1,6 @@
 ---
 title: Publishing a flow
-description: Turning a flow into an endpoint your own code can call, and the key it needs.
+description: Turning a flow into an endpoint your own code can call, the key it needs, and who is allowed to hold one.
 ---
 
 A flow that only runs in the Playground is a prototype. Publishing turns
@@ -9,14 +9,27 @@ it.
 
 ## The key
 
-Calls are authenticated with a **NUFI Studio API key** — a different
+Calls are authenticated with a **NuFi Studio API key** — a different
 thing from the gateway key that lets Studio reach models. This one lets
 your code reach Studio.
+
+<Callout type="warn">
+**On NuFi's hosted Studio, an account that signed in through NuFi cannot
+create an API key.** Studio treats a NuFi session as externally
+authenticated and refuses to mint a key for it, so that no key can carry
+more access than the session it came from. **Add New** fails with
+*"API key creation is disabled for externally authenticated users"*.
+
+Ask a Studio administrator to issue the key from a local Studio account
+that owns a copy of the flow. On an instance of your own, the setting is
+`LANGFLOW_EXTERNAL_AUTH_DISABLE_API_KEYS_FOR_EXTERNAL_USERS`; it defaults
+to `true` whenever the NuFi sign-in ceiling is on.
+</Callout>
 
 ![Studio API keys](/screenshots/studio-api-keys.png)
 
 <Steps>
-<Step>Open **Settings → NUFI Studio API Keys**.</Step>
+<Step>Open **Settings → NuFi Studio API Keys**.</Step>
 <Step>Click **Add New**.</Step>
 <Step>Give it a description you will recognise, and an expiry if the
 caller is short-lived. **No expiration** is the default.</Step>
@@ -28,17 +41,29 @@ The table tracks **Last Used** and **Total Uses** per key, which is how
 you tell a key that is still in service from one you can revoke.
 
 <Callout type="warn">
-A key issued to you does not expire when your NUFI session does, and it
+A key issued to you does not expire when your NuFi session does, and it
 does not carry your access level. Someone holding it keeps whatever it
 can do until the key is deleted. Give each caller its own key so you can
 revoke one without breaking the rest.
 </Callout>
 
-## Sharing a flow
+## Calling it
 
-**Share** on the flow canvas is where publication happens. Studio gives
-you the endpoint and the shape of the request; the key above is what
-authenticates it.
+Every flow has a run endpoint from the moment it exists. **Share → API
+access** on the canvas shows it with your flow id filled in, together with
+the request in several languages. The shape is:
+
+```bash
+curl -X POST "https://studio.nufi.me/api/v1/run/<flow-id>" \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: <your Studio API key>" \
+  -d '{"input_value": "Which clauses need escalating?", "input_type": "chat", "output_type": "chat"}'
+```
+
+`input_type` and `output_type` name the kind of component the message
+enters through and leaves from; both default to `chat`, which is right for
+any flow built from the chat templates. The reply carries the flow's
+outputs, and the same call works from any language that can send JSON.
 
 ## Before you publish
 

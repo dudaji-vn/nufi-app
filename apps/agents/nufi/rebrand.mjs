@@ -11,8 +11,8 @@
  * breaks every comparison between them — see rebrandAll below.
  */
 
-export const BRAND = "NUFI";
-export const PRODUCT = "NUFI Works";
+export const BRAND = "NuFi";
+export const PRODUCT = "NuFi Works";
 
 /**
  * Quoted strings are matched WITHOUT newlines. An apostrophe in a comment

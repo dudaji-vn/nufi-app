@@ -1,134 +1,99 @@
 ---
 title: FAQ
-description: Questions we get often.
+description: Questions operators ask before and after deploying.
 ---
 
-## Does NUFI host AI models?
+## Does NuFi host AI models?
 
-No. NUFI routes through its gateway to whatever AI provider you
-point at — your own model server, OpenAI, Anthropic, Together,
-Groq, OpenRouter, anything that speaks the OpenAI Chat Completions
-API. Bring your own model.
+No. The gateway routes to whatever you point it at: a model server of your
+own (vLLM, TGI, Ollama), or OpenAI, Anthropic, Google, Together, Groq, any
+provider with an OpenAI-compatible API. Bring your own model.
 
-## Can I run only the chat?
+## Can I run only the app?
 
-Yes. Use the **nufi-chat** standalone deployment — chat application
-+ database, no gateway. Point it at any OpenAI-compatible endpoint.
+Yes. `deploy/railway` is the app on its own: the chat, a MongoDB, and a
+small RAG service for file uploads, pointed at any OpenAI-compatible
+endpoint through `BACKEND_BASE_URL` and `BACKEND_API_KEY`. No gateway, no
+guardrails, no observability. It is what NuFi's Railway staging runs, and
+it works on one host with `./bootstrap.sh`.
 
-## Can I run multiple chat instances behind a load balancer?
+## Can I run several app instances behind a load balancer?
 
-Yes. NUFI supports horizontal scaling with Redis-backed resumable
-streams. Set the relevant Redis env vars. You also need a load
-balancer in front.
+Yes. The app supports Redis-backed resumable streams for multi-instance
+deployments; set its `REDIS_*` variables and put a load balancer in front.
+The compose stack runs one instance.
 
-## How do users sign up?
+## How do users get accounts?
 
-By default anyone with the chat URL can register. The first
-registered user becomes admin; the rest are regular users. In
-production, disable self-sign-up and create users from the admin
-panel (and/or wire in your identity provider).
+With `ALLOW_REGISTRATION=true` anyone who reaches the URL can register; the
+first account becomes `ADMIN`. For production, set it to `false` and create
+users in the admin panel, or connect your identity provider: the app
+supports OpenID Connect, and the admin panel signs in against the same
+accounts.
 
-## What models do you recommend?
+## Which models should I offer?
 
-Depends on what you have. Common combinations:
+Whatever you have. The gateway's shipped configuration serves `gemini`,
+`claude-sonnet-4-5`, `claude-haiku-4-5`, `gpt-5` and `gpt-5-mini` given
+the provider keys, and a local Ollama model such as `qwen2.5:7b` for
+laptops. Expose several; per-user and per-team allow-lists decide who sees
+which.
 
-- **Local laptops** — Ollama with `qwen2.5:3b` or `llama3.2:3b`.
-- **GPU pilot** — a model server hosting
-  `qwen2.5-7b-instruct` or `llama-3.1-8b-instruct`.
-- **Cloud** — `gpt-4o`, `claude-3.5-sonnet`, `gemini-1.5-pro` for
-  quality; `gpt-4o-mini`, `claude-3.5-haiku` for cost.
+## How do I limit what someone spends?
 
-Mix and match — NUFI lets you expose all of them and per-user
-allow-list which ones each user can call.
+Two layers, both in the gateway: a budget on the user, and a budget on
+each key the user issues in the console. The console shows both to the
+user. Defaults for new users come from `DEFAULT_USER_BUDGET` and its
+siblings, on the console.
 
-## How do I limit a user's spend?
+## Can I show certain models only to certain people?
 
-Two layers:
+Yes. In the gateway, per-key and per-team `allowed_models` decide what a
+call may use (policy). In the app, the admin panel's per-role and
+per-group overrides decide what appears in the dropdown (presentation).
+Use both: present only what you have allowed.
 
-1. **Account budget** — set on the user. Applies to everything the
-   user does across all keys.
-2. **Per-key budget** — set when the user issues a key. Tighter
-   than the account budget.
+## How do I add a provider?
 
-Both are visible to the user in the
-[console](/docs/end-user/api-keys).
+`./scripts/add-model.sh` with the base URL, the key's variable name and the
+model id, then rebuild the gateway image.
+[Add or change a model](/docs/developer/models).
 
-## Can I expose only specific models to specific users?
+## Where do conversations live?
 
-Yes — three ways:
+In the app's MongoDB. Only the prompt goes to the provider. A user deletes
+a conversation in the app; an admin deletes a user, and their
+conversations and files, in the admin panel.
 
-- **Teams** — bucket users by plan, attach an `allowed_models`
-  list to each team.
-- **Per-user models** — virtual keys can have an `allowed_models`
-  set; you can edit per user from the gateway admin UI.
-- **Endpoint scoping** — per-role / per-group config overrides on
-  which endpoints and models are visible.
+## Is every prompt logged?
 
-Pick the layer based on whether the gate is **policy** (gateway)
-or **presentation** (chat UI). Usually both — present only the
-models you have policy-allowed.
+Yes: the gateway sends each request and reply to Langfuse, which is how
+"what did this user see?" gets answered and how spend is attributed. A
+temporary chat in the app is not persisted by the app, but still passes
+through the gateway. To stop the recording, remove the `LANGFUSE_*`
+variables from the gateway's environment; you lose observability and the
+console's usage figures.
 
-## How do I add a new AI provider?
+## Why does the trace store grow so fast?
 
-Use the `add-model` helper. Any OpenAI-compatible endpoint works —
-pass the base URL, the API key, and the model identifier. See
-[Adding a model](/docs/developer/adding-models).
-
-## Where do my conversations live?
-
-In NUFI's own database. They are not sent to AI providers beyond
-the prompt itself. If you want to delete a conversation, the chat
-UI does it. If you want to delete a user's entire history, the
-admin panel's "Delete user" cascade-deletes their conversations
-and files.
-
-## Is my prompt logged?
-
-Yes — every chat completion is recorded with the full prompt and
-reply. This is the trade-off for being able to debug bad replies
-and answer "what did user X see?". If you have prompts you do not
-want logged, use **temporary chat** in the UI; temporary
-conversations are not persisted.
-
-## Can I disable conversation logging?
-
-Yes. Ask your operator to remove the trace store credentials from
-the gateway and the recording stops. You lose observability and
-the console's usage analytics in exchange.
-
-## Why is the trace store growing so fast?
-
-It stores every conversation in detail. At moderate usage, expect
-~50 MB per 1000 conversations. Apply a retention policy if needed.
-
-## How do I sign people in via my identity provider?
-
-NUFI supports OpenID Connect out of the box. Add the OIDC settings
-to your deployment, restart, and the sign-in screen gets a "Sign
-in with \<provider\>" button. The admin panel reads the same auth.
+It keeps every request in full. Plan on roughly 50 MB per thousand
+requests and see [Backup and restore](/docs/deployment/backup-restore) for
+retention.
 
 ## How do I rotate the gateway master key?
 
-1. Generate a new key.
-2. Set it in the deployment env, restart the gateway.
-3. Update every consumer that uses it.
-4. User-issued API keys keep working — only the master key
-   changed.
+Generate a new one, set `LITELLM_MASTER_KEY` in `.env`, `docker compose
+up -d` (the gateway and the console read it), and update anything else
+that calls the gateway with it. Keys users issued keep working; only the
+master key changed.
 
-## Does NUFI work behind Cloudflare Access / Zscaler / corporate proxy?
+## Does NuFi work behind Cloudflare Access or a corporate proxy?
 
-Yes. NUFI is just HTTPS. Anything that fronts HTTPS works. If you
-put NUFI behind Cloudflare Access, signing in to Access lets you
-through to the chat sign-in.
+Yes. It is HTTPS. Behind Cloudflare Access, the Access sign-in comes first,
+then the app's own.
 
-## Where do I report a bug?
+## Where do I report a problem?
 
-The component that owns the surface:
-
-- Chat behaviour or UI → the NUFI chat repo.
-- Admin panel → the admin panel repo.
-- Developer console → the console repo.
-- Compose / env / install → the platform repo.
-
-If you are not sure, file on the platform repo — the team will
-route it.
+The repository, `dudaji-vn/nufi-app`, holds every component; open an issue
+there and name the surface (app, console, admin panel, Studio, Works,
+stack).

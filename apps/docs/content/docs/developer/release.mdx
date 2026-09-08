@@ -1,0 +1,69 @@
+---
+title: Release and deploy
+description: Tag main, let CI build the image, then point the deployment at it.
+---
+
+Every product releases the same way: a tag on `main` with the product's
+prefix. CI builds the image, names it after the version in the tag, and pushes
+it to GHCR. Deployments pull by tag. Merging to `main` on its own builds a
+rolling `:main` image and a `:sha-<short>` one; it does not make a release,
+and it does not move any pinned deployment.
+
+| Product | Tag | Workflow | Image | Railway service |
+|---|---|---|---|---|
+| NuFi app | `nufi-vX.Y.Z` | `chat-release.yml` | `ghcr.io/dudaji-vn/nufichat:vX.Y.Z` | `nufi-chat` builds `deploy/railway/Dockerfile`, whose base image is the `BASE` variable |
+| NuFi Console | `nufi-console-vX.Y.Z` | `console-image.yml` | `ghcr.io/dudaji-vn/nufi-console:vX.Y.Z` | `nufi-console`, pinned to a version tag |
+| NuFi Admin Panel | `nufi-admin-vX.Y.Z` | `admin-panel-image.yml` | `ghcr.io/dudaji-vn/nufichat-admin-panel:vX.Y.Z` | `nufichat-admin-panel`, pinned to a version tag |
+| NuFi Studio | `nufi-studio-vX.Y.Z` | `nufi-agent-image.yml` | `ghcr.io/dudaji-vn/nufi-studio:vX.Y.Z` | `nufi-studio`, follows `:main` |
+| NuFi Works | `nufi-works-vX.Y.Z` | `agents-image.yml` | `ghcr.io/dudaji-vn/nufi-works:vX.Y.Z` | `nufi-works`, follows `:main` |
+| This site | none | `docs-ci.yml` on pull requests | none | `nufi-docs` builds `apps/docs` on every merge to `main` |
+
+Every image also gets `:latest` on a release tag. Each product's version
+numbers are independent: the console can be at `v0.1.7` while the app is at
+`v0.1.12`. The workflows are path-filtered, so a commit that touches only
+`deploy/` never rebuilds the app image.
+
+## Cut a release
+
+```bash
+git checkout main && git pull
+git tag nufi-v0.1.13           # the product's prefix, then the version
+git push origin nufi-v0.1.13
+```
+
+Then watch the workflow finish and confirm the image exists:
+
+```bash
+gh run list --workflow chat-release.yml --limit 1
+docker manifest inspect ghcr.io/dudaji-vn/nufichat:v0.1.13 > /dev/null && echo published
+```
+
+## Point the deployment at it
+
+**Pinned services** (`nufi-chat`, `nufi-console`, `nufichat-admin-panel`)
+change only when someone changes the reference:
+
+- `nufi-chat`: set the `BASE` service variable to the full image reference,
+  `ghcr.io/dudaji-vn/nufichat:v0.1.13`, and redeploy. The wrapper in
+  `deploy/railway/` copies `librechat.yaml` on top of that base and patches
+  the disk-space check that Railway's small ephemeral disk would trip.
+- `nufi-console`, `nufichat-admin-panel`: change the service's source image
+  to the new tag.
+
+**Services on `:main`** (`nufi-studio`, `nufi-works`, `nufi-docs`) redeploy
+themselves after every merge that touches their directory. A version tag on
+those two images is a bookmark, not a deployment.
+
+Rolling back is the same move in the other direction: point `BASE` or the
+source image at the previous tag.
+
+## What the local stacks consume
+
+- `deploy/platform/docker-compose.yml` runs the app from `nufichat:main`
+  and the console from `nufi-console:${NUFI_CONSOLE_TAG:-main}`. Set
+  `NUFI_CONSOLE_TAG` in `.env` to pin the console; the app follows `main`.
+- `deploy/railway/docker-compose.yml`, for running the chat wrapper on your
+  own machine, pins with `IMAGE_TAG` in its `.env`.
+
+Both pull on `docker compose pull` and pick the new image up on the next
+`docker compose up -d`.

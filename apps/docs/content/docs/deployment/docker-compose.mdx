@@ -1,17 +1,18 @@
 ---
 title: Docker Compose
-description: "The compose stack — services, volumes, networks, profiles."
+description: The compose stack in deploy/platform, service by service, with the volumes, ports and the one rule about rebuilding.
 ---
 
-The full platform is one Compose file (`docker-compose.yml` in the
-`npuops-platform` repo). Every service runs inside the `npuops`
-bridge network.
+The platform is one compose file, `deploy/platform/docker-compose.yml`,
+project name `npuops`, one bridge network of the same name. Services reach
+each other by name (`http://litellm-proxy:4000`); only the ones a person
+opens have host ports.
 
-## Services at a glance
+## Services
 
 ```
 postgres ─┬─► langfuse-worker ─┐
-          ├─► langfuse-web ────┼─► litellm-proxy ─► librechat
+          ├─► langfuse-web ────┼─► litellm-proxy ─► librechat   (the NuFi app)
           └─► litellm-proxy    │                  └─► console
                                │
 clickhouse ──► langfuse-worker │
@@ -20,7 +21,7 @@ minio ──┬─► minio-init ────────┘
         └─► langfuse-{worker,web}
 
 presidio-analyzer  ─┐
-presidio-anonymizer ┼─► litellm-proxy (guardrails)
+presidio-anonymizer ┼─► litellm-proxy   (guardrails)
 nufi-scanner ───────┘
 
 prometheus → grafana
@@ -28,103 +29,115 @@ prometheus → alertmanager
 postgres-exporter, redis-exporter → prometheus
 ```
 
+| Service | Image | Note |
+|---|---|---|
+| `librechat` | `ghcr.io/dudaji-vn/nufichat:main` | the NuFi app; `librechat.yaml` is mounted from the platform root |
+| `console` | `ghcr.io/dudaji-vn/nufi-console:${NUFI_CONSOLE_TAG:-main}` | |
+| `litellm-proxy` | built from `litellm/`, `nufi/litellm:local` | config, callbacks and guardrail code are baked in; `litellm/guardrails/policy.yaml` is mounted |
+| `nufi-scanner` | built from `scanner/`, `nufi/scanner:local` | the injection classifier; 700 MB model on first start |
+| `presidio-analyzer`, `presidio-anonymizer` | `mcr.microsoft.com/presidio-*:2.2.362` | PII detection for the guardrails |
+| `langfuse-web`, `langfuse-worker` | `langfuse/langfuse:3`, `langfuse-worker:3` | |
+| `postgres`, `redis`, `clickhouse`, `minio`, `minio-init` | pinned images | `minio-init` creates the bucket and exits |
+| `mongodb` | `mongo:4.4` | the last version that runs without AVX, for the target VM |
+| `prometheus`, `grafana`, `alertmanager`, `postgres-exporter`, `redis-exporter` | pinned images | |
+| `e2e-test` | built from `scripts/e2e/`, profile `e2e` | never starts by default; see the note below |
+
+The admin panel is not in this file. It runs from its own image
+(`ghcr.io/dudaji-vn/nufichat-admin-panel`) wherever you put it, pointed at
+the app's URL; NuFi's own copy runs on Railway.
+
+## Host ports
+
+| Host port | Service | In production |
+|---|---|---|
+| 3080 | `librechat` | behind the reverse proxy |
+| 3001 | `console` | behind the reverse proxy |
+| 3000 | `langfuse-web` | behind the reverse proxy, or admin-only |
+| 3030 | `grafana` | behind the reverse proxy, or admin-only |
+| 4000 | `litellm-proxy` | behind the reverse proxy, as the API host |
+| 9090 | `prometheus` | admin-only: firewall it, reach it over SSH |
+| 9093 | `alertmanager` | admin-only |
+
+The databases, the scanner, the Presidio sidecars and the exporters have
+no host ports.
+
 ## Volumes
 
-Persisted Docker volumes:
+| Volume | Holds | Back up |
+|---|---|---|
+| `npuops_postgres-data` | gateway keys, budgets, spend; Langfuse metadata | yes |
+| `npuops_mongodb-data` | the app's users and conversations | yes |
+| `npuops_clickhouse-data` | Langfuse traces; the largest | yes, weekly |
+| `npuops_minio-data` | Langfuse payloads | yes, weekly |
+| `npuops_redis-data` | rate-limit counters, cache | no |
+| `npuops_prometheus-data` | 15 days of metrics | no |
+| `npuops_grafana-data` | Grafana state; the dashboard is provisioned from git | no |
 
-- `postgres-data` — Gateway keys, trace metadata.
-- `mongodb-data` — chat conversations.
-- `clickhouse-data` — Langfuse traces (largest).
-- `minio-data` — Langfuse blob payloads.
-- `redis-data` — rate-limit counters.
-- `prometheus-data` — 15 days of metrics.
-- `grafana-data` — Grafana state.
+[Backup and restore](/docs/deployment/backup-restore) has the commands.
 
-Back up the first four — they hold platform data.
+## Start order and health
 
-## Networks
+The databases, the gateway, the app, the console, the guardrail sidecars
+and the monitoring services have health checks (the Langfuse pair and the
+two exporters do not), and `depends_on` uses `service_healthy`, so the
+gateway waits for Postgres, Redis and all three guardrail sidecars, and the
+app waits for MongoDB and the gateway. When `docker compose up -d` seems stuck, `docker compose ps`
+names the service that is not healthy; `docker compose logs -f <service>`
+says why. The scanner is the slow one on first start.
 
-Only one — `npuops` bridge. Every service joins it. Services reach
-each other by service name (e.g. `http://litellm-proxy:4000`).
+## The one rule: what needs a rebuild
 
-If you also run [`nufi-chat`](/docs/developer/nufi-chat) on the same
-host and want it to reach the gateway by name, enable shared-
-network mode (see the nufi-chat repo).
-
-## Host port bindings
-
-| Host port | Service       | Behind reverse proxy?     |
-|-----------|---------------|---------------------------|
-| 3080      | librechat     | Yes — `chat.nufi.me`        |
-| 3001      | console       | Yes — `console.nufi.me`     |
-| 3000      | langfuse-web  | Yes — `langfuse.nufi.me`    |
-| 3030      | grafana       | Yes — `grafana.nufi.me`     |
-| 4000      | litellm-proxy | Yes — `api.nufi.me`         |
-| 9090      | prometheus    | No — admin SSH tunnel     |
-| 9093      | alertmanager  | No — admin SSH tunnel     |
-
-In production you front them with Caddy/Traefik and drop the host port
-bindings for the admin-only services (Prometheus, Alertmanager).
-SSH-tunnel them when you need to look in.
-
-## Profiles
-
-The compose file uses one Docker profile:
-
-- **`e2e`** — the `e2e-test` service that runs the end-to-end smoke
-  test. Never starts on a default `docker compose up`; invoke via
-  `./scripts/e2e-smoke-test.sh`.
-
-## Healthchecks
-
-Every long-running service has a healthcheck. `service_healthy`
-dependencies enforce ordering — e.g. the gateway waits for
-Postgres, Redis, Langfuse, and all three guardrails before starting.
-
-If a deploy gets stuck "Starting", `docker compose ps` will show
-which service is unhealthy. Tail its logs:
+Two services are built on the host, and `docker compose up -d` never
+rebuilds them. After a `git pull` that touches `litellm/` or `scanner/`,
+and after `add-model.sh`:
 
 ```bash
-docker compose logs -f <service>
+docker compose build litellm-proxy nufi-scanner
+docker compose up -d
 ```
 
-## Common ops
+What a change needs:
+
+| You changed | Then |
+|---|---|
+| `litellm/guardrails/policy.yaml` | `docker compose restart litellm-proxy` (it is mounted) |
+| `litellm/config.yaml`, `litellm/callbacks/*`, `litellm/guardrails/*.py` | rebuild, as above |
+| `librechat.yaml` | `docker compose restart librechat` |
+| `.env` | `docker compose up -d` recreates the services whose environment changed |
+| an image tag | `docker compose pull <service> && docker compose up -d <service>` |
+| `monitoring/rules/*.yml` | `curl -X POST http://localhost:9090/-/reload` |
+
+## Day to day
 
 ```bash
-# Apply a config change without rebuilding
-docker compose restart litellm-proxy
-
-# Bump an image (after editing the tag in docker-compose.yml)
-docker compose pull librechat
-docker compose up -d librechat
-
-# Take everything down, keep data
-docker compose down
-
-# Take everything down AND drop data (destructive!)
-docker compose down -v
+docker compose ps
+docker compose logs -f litellm-proxy
+docker compose restart librechat
+docker compose down        # stop, keep the volumes
+docker compose down -v     # stop and delete every volume
 ```
 
-## Layout reminder
+## The `e2e` profile
+
+`./scripts/e2e-smoke-test.sh` runs the `e2e-test` service, which registers
+a user in the app and sends a message through the gateway. It targets a
+chat route the current app no longer serves and fails at its third step;
+until it is updated, `./scripts/smoke-test.sh` plus the manual checks in
+[Upgrade the NuFi app](/docs/deployment/upgrade-librechat#watch-the-first-start)
+are the working verification.
+
+## Layout
 
 ```
-npuops-platform/
+deploy/platform/
 ├── docker-compose.yml
-├── .env                       # gitignored
-├── litellm/
-│   ├── config.yaml
-│   ├── callbacks/
-│   └── Dockerfile             # only if rebuilding the gateway with custom hooks
-├── librechat/
-│   └── librechat.yaml         # mounted into the chat container
-├── monitoring/
-│   ├── prometheus.yml
-│   ├── alertmanager.yml
-│   ├── rules/
-│   ├── secrets/slack-webhook  # gitignored
-│   └── grafana/{dashboards,provisioning}/
-└── scripts/
+├── .env                 # created by bootstrap.sh from .env.example; gitignored
+├── librechat.yaml       # the app's configuration, mounted into librechat
+├── litellm/             # the gateway image: config.yaml, Dockerfile, guardrails/, callbacks/
+├── scanner/             # the injection classifier image
+├── monitoring/          # prometheus.yml, alertmanager.yml, rules/, grafana/
+└── scripts/             # bootstrap.sh, add-model.sh, smoke-test.sh, e2e/
 ```
 
-See [Environment variables](/docs/deployment/environment-variables)
-for what goes in `.env`.
+The wrapper stack for the app alone, with its own MongoDB and a RAG
+service, is `deploy/railway/`; see [FAQ](/docs/deployment/faq#can-i-run-only-the-app).

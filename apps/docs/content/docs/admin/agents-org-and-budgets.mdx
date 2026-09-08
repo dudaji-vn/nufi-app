@@ -1,80 +1,111 @@
 ---
 title: Agent roles and budgets
-description: Setting up an agent team in NUFI Works — roles, who approves what, and how spend is bounded.
+description: Setting up an agent team in NuFi Works — roles, who approves what, whose key pays, and how spend is bounded.
 ---
 
 <Callout>
-This page is about **NUFI Works**. Managing chat users, roles and groups is
-covered in [Roles and groups](/docs/admin/roles-and-groups).
+This page is about **NuFi Works**. Managing the app's users, roles and
+groups is [Roles and groups](/docs/admin/roles-and-groups).
 </Callout>
 
 ## Companies and employees
 
-A **company** in NUFI Works is a team with a goal. Its **employees** are agents.
-Each has a role, an adapter that decides how it runs, and a place in the
-reporting chain.
-
-Creating one starts with the goal and the first employee. Everything else —
-tasks, budgets, approvals — hangs off that.
+A **company** in NuFi Works is a team with a goal. Its **employees** are
+agents; each has a role, an adapter that decides how it runs, and a place
+in the reporting chain. Creating one starts with the goal and the first
+employee; tasks, budgets and approvals hang off that.
 
 ## Choosing an adapter
 
-The adapter decides what an employee actually is.
-
 | Adapter | Use for | Runs |
 |---|---|---|
-| `nufi_agent` | Knowledge work: research, drafting, review | A NUFI model through the gateway |
-| `claude_local`, `codex_local`, `opencode_local`, `pi_local` | Repository work: code, PRs | A coding harness in a sandbox with a git workspace |
+| `nufi_agent` | knowledge work: research, drafting, review | a NuFi model through the gateway |
+| `claude_local`, `codex_local`, `opencode_local`, `pi_local` | repository work: code, pull requests | a coding harness in a sandbox with a git workspace |
 
-`nufi_agent` is the NUFI-built one. Its configuration names the environment
-variable holding the model key rather than the key itself:
+`nufi_agent` is the NuFi-built one. Its configuration names the
+environment variable holding the model key rather than the key itself:
 
 ```json
-{ "target": "gateway", "model": "gemini", "apiKeyEnv": "NUFI_MODEL_API_KEY" }
+{
+  "target": "gateway",
+  "gatewayUrl": "https://api.codechi.me/v1",
+  "model": "gemini",
+  "apiKeyEnv": "NUFI_MODEL_API_KEY",
+  "maxTokens": 4096
+}
 ```
 
+All five have defaults; `target`, `model` and `apiKeyEnv` are what you
+usually set. `maxTokens` matters more than it looks: a cap too low for the
+task returns an empty answer, and the run is blocked for a reason that
+never mentions the cap.
+
 <Callout type="warn">
-Never paste a key into adapter configuration. Configuration is visible in the UI
-to anyone who can view the employee. `apiKeyEnv` holds the **name** of a
-variable; the value stays in the deployment environment.
+Never paste a key into adapter configuration. Configuration is visible in
+the UI to anyone who can view the employee. `apiKeyEnv` holds the **name**
+of a variable; the value stays in the environment, or in a member's own
+secret.
 </Callout>
 
 Adapters that cannot be held behind the gateway are not offered. Cursor
-authenticates against its own cloud and cannot be redirected; Gemini CLI speaks
-a different API shape and has not been verified through the gateway. Both are
-disabled rather than shipped with an unverified claim attached.
+authenticates against its own cloud and cannot be redirected; Gemini CLI
+speaks a different API shape and has not been verified through the
+gateway. Both are disabled rather than shipped with an unverified claim.
+
+## Whose key pays
+
+Two ways to give employees a key:
+
+- **One key for the instance.** `NUFI_MODEL_API_KEY` in the server's
+  environment. Every run bills that key, and revoking it stops everyone.
+- **Each member's own key.** An administrator opens **Settings → NuFi**
+  once and adds `NUFI_MODEL_API_KEY` as a secret slot; each member then
+  connects their NuFi account, which mints a gateway key for them and
+  fills their slot. Bind the secret to an employee as an environment
+  variable of the same name and every run resolves it to the key of the
+  person the work belongs to. Spend lands on that person in the console
+  and in Langfuse, and revoking one member changes nothing for the
+  others.
+
+The second is the intended setup for a shared instance;
+[Connecting your NuFi account](/docs/works/connect-account) is the
+member's side, [Installing NuFi Works](/docs/deployment/agents-install#the-connect-plugin)
+the operator's.
 
 ## Roles and the reporting chain
 
-Roles come from a fixed set: `ceo`, `cto`, `cmo`, `cfo`, `security`, `engineer`,
-`designer`, `pm`, `qa`, `devops`, `researcher`, `general`.
+Roles come from a fixed set: `ceo`, `cto`, `cmo`, `cfo`, `security`,
+`engineer`, `designer`, `pm`, `qa`, `devops`, `researcher`, `general`.
 
-The chain matters for two things: who an escalation reaches, and who can approve
-what. An employee with no valid chain to the top is flagged — an agent whose
-manager was deleted has nobody to escalate to, which is exactly the state you do
-not want to discover during an incident.
+The chain decides who an escalation reaches and who may approve what. An
+employee with no valid chain to the top is flagged: an agent whose manager
+was deleted has nobody to escalate to, which is the state you do not want
+to discover during an incident.
 
 ## Budgets
 
-Spend is tracked per company. Every run reports its cost back, and the total is
-visible against the company rather than buried per user.
+Budgets are set per **company** and per **agent**, on the **Costs →
+Budgets** tab, as a monthly amount. Every run reports its cost, and when a
+scope reaches its amount the work in that scope is cancelled, not merely
+flagged.
 
-Two behaviours matter more than the number:
+Two behaviours matter beside the number:
 
-**Runs that resolve nothing get cut off.** After repeated attempts that produce
-no clear disposition, the system stops dispatching and escalates to a person.
-This is the practical bound on runaway spend — an agent stuck in a loop cannot
-keep paying for the loop.
+**Runs that resolve nothing get cut off.** After three consecutive runs
+without a disposition, the system stops dispatching and escalates to the
+recovery owner. An agent stuck in a loop cannot keep paying for the loop.
 
-**A rate-limited or failed run still reports.** It comments the error and blocks
-the task. You will see the failure in the thread rather than an unexplained gap
-in the budget.
+**A failed or rate-limited run still reports.** It comments the error on
+the task and blocks it; you see the failure in the thread rather than a
+gap in the budget.
 
-## What to set up before handing this to a team
+## Before handing this to a team
 
-1. A goal that is specific enough to reject work against.
-2. One employee, with `nufi_agent`, and the model key set in the environment.
-3. A person named as recovery owner — escalations need somewhere to go.
-4. The egress check passing on your cluster. Until it does, agent traffic is
-   *routed* to the gateway rather than *confined* to it — see
+1. A goal specific enough to reject work against.
+2. One employee on `nufi_agent`, with a key: the instance's, or the
+   member secret above.
+3. A person named as recovery owner.
+4. Budgets on the company, and on any agent that does repository work.
+5. The egress check passing on the cluster. Until it does, agent traffic
+   is routed to the gateway rather than confined to it:
    [Agent egress](/docs/deployment/agents-egress).

@@ -69,7 +69,7 @@ export function auth({ bounceHtml = false }: AuthOptions = {}): MiddlewareHandle
     }
 
     if (!payload || !source) {
-      return deny(c, bounceHtml, 'no valid NUFI session');
+      return deny(c, bounceHtml, 'no valid NuFi session');
     }
 
     const id = pickString(payload, ['id', 'userId', '_id', 'sub']);

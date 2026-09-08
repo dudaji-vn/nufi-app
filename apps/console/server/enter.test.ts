@@ -228,7 +228,7 @@ describe('entitlement', () => {
       headers: { cookie: 'refreshToken=rt-test', accept: '*/*' },
     });
     expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({ error: 'forbidden', detail: 'not entitled to NUFI Studio' });
+    expect(await res.json()).toEqual({ error: 'forbidden', detail: 'not entitled to NuFi Studio' });
   });
 
   it('reports per-product entitlement to the chooser', async () => {

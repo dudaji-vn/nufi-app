@@ -1,199 +1,503 @@
 import { describe, expect, it } from "bun:test";
 
-import { runWith, type ExecutionContext } from "./execute";
+import { resolveResponsibleUser, runWith, settle, type ExecutionContext } from "./execute";
+import type { ModelTurn } from "./loop";
+import type { HttpCall } from "./tools";
 
 function ctx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
   return {
     runId: "run_1",
     agent: { id: "agent_1", companyId: "co_1" },
     config: {},
-    context: { taskId: "issue_1" },
+    context: { taskId: "issue_1", responsibleUserId: "user_9" },
     onLog: async () => {},
     ...overrides,
   };
 }
 
-function deps(overrides: Record<string, unknown> = {}) {
-  const calls: string[] = [];
-  return {
-    calls,
-    fetchIssue: async () => {
-      calls.push("fetch");
-      return { title: "Draft the approvals page", description: "Cover review gates.", goal: null, status: "todo" };
-    },
-    complete: async () => {
-      calls.push("complete");
-      return "A review gate holds a run until a named role approves it.";
-    },
-    comment: async (_id: string, body: string) => {
-      calls.push(`comment:${body.slice(0, 24)}`);
-    },
-    setStatus: async (_id: string, s: string) => {
-      calls.push(`status:${s}`);
-    },
-    lastComment: async () => null,
-    ...overrides,
+/** Serves heartbeat-context and records every mutation the run makes. */
+function api(opts: { status?: string; responses?: Record<string, { status: number; body?: unknown }> } = {}) {
+  const calls: HttpCall[] = [];
+  const fn = async (call: HttpCall) => {
+    calls.push(call);
+    const canned = opts.responses?.[`${call.method} ${call.path}`];
+    if (canned) return canned;
+    if (call.path.endsWith("/heartbeat-context")) {
+      return { status: 200, body: { issue: { status: opts.status ?? "todo", title: "T", description: "D" } } };
+    }
+    return { status: 200, body: { ok: true } };
   };
+  const patches = () => calls.filter((c) => c.method === "PATCH").map((c) => c.body as Record<string, unknown>);
+  return { fn, calls, patches };
 }
 
+function model(turns: ModelTurn[]) {
+  let i = 0;
+  return { async turn() { return turns[Math.min(i++, turns.length - 1)]; } };
+}
+
+const say = (t: string): ModelTurn => ({ text: t, toolCalls: [] });
+const use = (name: string, args: unknown = {}): ModelTurn => ({
+  text: "",
+  toolCalls: [{ id: "c1", name, arguments: args }],
+});
+
 describe("runWith", () => {
-  it("answers, comments, and settles the issue in review", async () => {
-    const d = deps();
-    const result = await runWith(d, ctx());
+  it("exits idle when nothing is assigned", async () => {
+    const { fn, calls } = api();
+    const out = await runWith({ http: fn, model: model([say("hi")]) }, ctx({ context: {} }));
 
-    expect(result.exitCode).toBe(0);
-    expect(d.calls).toEqual([
-      "fetch",
-      "complete",
-      "comment:A review gate holds a ru",
-      "status:in_review",
-    ]);
-  });
-
-  it("blocks the issue when the model refuses, rather than leaving it open", async () => {
-    const d = deps({ complete: async () => "I cannot answer this without the document." });
-    const result = await runWith(d, ctx());
-
-    expect(result.exitCode).toBe(0);
-    expect(d.calls.at(-1)).toBe("status:blocked");
+    expect(out.exitCode).toBe(0);
+    expect(out.summary).toMatch(/Idle/);
+    expect(calls).toHaveLength(0);
   });
 
   /**
-   * The spike's finding, encoded: an issue left untouched is what made Paperclip
-   * escalate to a recovery owner and then stop dispatching. A failed run still
-   * owes a disposition.
+   * Paperclip re-dispatches an agent that still holds an assignment. Measured
+   * before this guard: one task collected four full answers in twenty seconds
+   * and a human could not close it.
    */
-  it("still settles the issue when the model call throws", async () => {
-    const d = deps({
-      complete: async () => {
-        throw new Error("gateway 503");
-      },
-    });
-    const result = await runWith(d, ctx());
+  it("does not re-answer a task already waiting on a person", async () => {
+    const { fn, patches } = api({ status: "in_review" });
+    const out = await runWith({ http: fn, model: model([say("more thoughts")]) }, ctx());
 
-    expect(result.exitCode).toBe(1);
-    expect(result.errorMessage).toBe("gateway 503");
-    expect(d.calls).toContain("status:blocked");
+    expect(out.summary).toMatch(/already answered/i);
+    expect(patches()).toHaveLength(0);
+  });
+
+  it("lets the agent set its own final state and does not second-guess it", async () => {
+    const { fn, patches } = api();
+    const out = await runWith(
+      {
+        http: fn,
+        model: model([use("update_issue", { status: "done", comment: "Filed." }), say("Done.")]),
+      },
+      ctx(),
+    );
+
+    expect(out.summary).toBe("Done");
+    expect(patches()).toHaveLength(1);
+    expect(patches()[0]).toMatchObject({ status: "done" });
   });
 
   /**
-   * A task that cannot be worked on is a correct decision, not a failed run.
-   * Reporting non-zero made Paperclip raise "run failed" toasts for the agent
-   * getting it right, which looks like a crash to anyone watching.
+   * The backstop. Three consecutive runs that leave no disposition make
+   * Paperclip escalate to a recovery owner and stop dispatching the agent.
    */
-  /**
-   * Paperclip re-dispatches while an assignment stands. Without this, one task
-   * collected four answers in twenty seconds and could not be closed: every
-   * approval was undone by the next run. The loop has no natural end and every
-   * lap costs a model call.
-   */
-  it("does no work when the task is already answered and awaiting review", async () => {
-    const d = deps({
-      fetchIssue: async () => ({ title: "T", description: "D", goal: null, status: "in_review" }),
-    });
-    const result = await runWith(d, ctx());
+  it("settles a task the agent talked about but never touched", async () => {
+    const { fn, patches } = api();
+    const out = await runWith({ http: fn, model: model([say("Here is my answer.")]) }, ctx());
 
-    expect(result.exitCode).toBe(0);
-    expect(result.summary).toContain("already answered");
-    // No model call, no comment, no status write — the point is that a second
-    // dispatch costs nothing.
-    expect(d.calls).toEqual([]);
+    expect(out.summary).toMatch(/awaiting review/i);
+    expect(patches()[0]).toMatchObject({ status: "in_review", comment: "Here is my answer." });
   });
 
-  it("does no work on a task a person has already closed", async () => {
-    const d = deps({
-      fetchIssue: async () => ({ title: "T", description: "D", goal: null, status: "done" }),
-    });
-    await runWith(d, ctx());
-    expect(d.calls).toEqual([]);
-  });
+  /** A run that spends its whole budget mid-thought is blocked, not "in review". */
+  it("blocks when the turn budget runs out", async () => {
+    const { fn, patches } = api();
+    const out = await runWith({ http: fn, model: model([use("get_issue")]) }, ctx());
 
-  it("blocks an unworkable task WITHOUT reporting the run as failed", async () => {
-    const d = deps({
-      fetchIssue: async () => ({ title: "Do the thing", description: "", goal: null, status: "todo" }),
-    });
-    const result = await runWith(d, ctx());
-
-    expect(result.exitCode).toBe(0);
-    expect(result.summary).toContain("not workable");
-    expect(d.calls).toContain("status:blocked");
-  });
-
-  it("still reports non-zero when the gateway genuinely fails", async () => {
-    const d = deps({
-      complete: async () => {
-        throw new Error("gateway 503");
-      },
-    });
-    const result = await runWith(d, ctx());
-
-    expect(result.exitCode).toBe(1);
-    expect(d.calls).toContain("status:blocked");
+    expect(out.summary).toBe("Blocked");
+    expect(patches()[0]).toMatchObject({ status: "blocked" });
+    expect(String(patches()[0].comment)).toMatch(/turn budget/i);
   });
 
   /**
-   * Observed on a live server: a timer heartbeat with nothing assigned produced
-   * `paperclip-run-unassigned-…` and reported `Status: failed` while the agent
-   * was in fact working correctly on another issue. An idle tick must be a
-   * clean exit, or every quiet heartbeat looks like a fault and buries the real
-   * ones.
+   * The settle must not believe the model. A model that will narrate creating a
+   * task will narrate closing one, so the backstop reads what the tools
+   * recorded — and a rejected PATCH recorded nothing.
    */
-  it("exits cleanly, not as a failure, when there is no task to work on", async () => {
-    const d = deps();
-    const result = await runWith(d, ctx({ context: {} }));
+  it("still settles when the agent's own status update was refused", async () => {
+    const { fn, patches } = api({
+      responses: { "PATCH /api/issues/issue_1": { status: 422, body: { error: "invalid_issue_disposition" } } },
+    });
+    await runWith(
+      { http: fn, model: model([use("update_issue", { status: "done" }), say("All finished!")]) },
+      ctx(),
+    );
 
-    expect(result.exitCode).toBe(0);
-    expect(result.summary).toBe("Idle — no task assigned");
-    expect(d.calls).toEqual([]);
+    // Its own attempt, then the backstop's — the run never claims success on a 422.
+    expect(patches()).toHaveLength(2);
+  });
+
+  it("blocks the task and reports non-zero when the control plane is unreachable", async () => {
+    const { fn, patches } = api({
+      responses: { "GET /api/issues/issue_1/heartbeat-context": { status: 404, body: { error: "Issue not found" } } },
+    });
+    const out = await runWith({ http: fn, model: model([say("never runs")]) }, ctx());
+
+    expect(out.exitCode).toBe(1);
+    expect(out.errorMessage).toContain("heartbeat-context 404");
+    expect(patches()[0]).toMatchObject({ status: "blocked" });
+  });
+
+  it("passes the wake reason through to the agent", async () => {
+    const { fn } = api();
+    let seen = "";
+    const spy = {
+      async turn(messages: { role: string; content: string }[]) {
+        seen = messages.map((m) => m.content).join("\n");
+        return say("ok");
+      },
+    };
+    await runWith(
+      { http: fn, model: spy },
+      ctx({ context: { taskId: "issue_1", wakeReason: "issue_commented", wakeCommentId: "cmt_7" } }),
+    );
+
+    expect(seen).toContain("issue_commented");
+    expect(seen).toContain("cmt_7");
+  });
+});
+
+describe("resolveResponsibleUser", () => {
+  it("prefers the run context", () => {
+    expect(resolveResponsibleUser(ctx())).toBe("user_9");
+  });
+
+  /** The token is ours; this reads one claim and verifies nothing. */
+  it("falls back to the run token's claim", () => {
+    const claims = Buffer.from(JSON.stringify({ responsible_user_id: "user_jwt" })).toString("base64url");
+    const withToken = ctx({ context: { taskId: "issue_1" }, authToken: `h.${claims}.sig` });
+
+    expect(resolveResponsibleUser(withToken)).toBe("user_jwt");
+  });
+
+  it("returns null rather than throwing on a malformed token", () => {
+    expect(resolveResponsibleUser(ctx({ context: { taskId: "i" }, authToken: "not-a-jwt" }))).toBeNull();
+    expect(resolveResponsibleUser(ctx({ context: { taskId: "i" }, authToken: "a.!!!.c" }))).toBeNull();
+  });
+});
+
+describe("the task briefing", () => {
+  /**
+   * The heartbeat context is fetched once and used twice — the already-answered
+   * guard, and the wake. Letting the agent fetch it instead puts the task text
+   * in an `untrusted` span, which G1 refuses on a single detector; LEG-8 died
+   * that way, on an ordinary HR leave policy.
+   */
+  it("hands the agent the task instead of making it fetch one", async () => {
+    const calls: HttpCall[] = [];
+    const fn = async (call: HttpCall) => {
+      calls.push(call);
+      if (call.path.endsWith("/heartbeat-context")) {
+        return {
+          status: 200,
+          body: {
+            issue: { status: "todo", title: "Review clause 12.2", description: "It voids termination." },
+            goal: { title: "Cut vendor risk" },
+          },
+        };
+      }
+      return { status: 200, body: {} };
+    };
+
+    let seen = "";
+    const spy = {
+      async turn(messages: { role: string; content: string }[]) {
+        seen = messages.map((m) => m.content).join("\n");
+        return say("ok");
+      },
+    };
+    await runWith({ http: fn, model: spy }, ctx());
+
+    expect(seen).toContain("Review clause 12.2");
+    expect(seen).toContain("It voids termination.");
+    expect(seen).toContain("Cut vendor risk");
+    // Fetched once for both purposes, not once per purpose.
+    expect(calls.filter((c) => c.path.endsWith("/heartbeat-context"))).toHaveLength(1);
+  });
+});
+
+describe("settling honestly when the model just stops", () => {
+  const toolbox = (state: Partial<import("./tools.js").ToolState>) => {
+    const seen: any[] = [];
+    return {
+      seen,
+      box: {
+        state: { finalStatus: null, commented: false, blockers: [], children: [], ...state },
+        run: async (c: any) => { seen.push(c); return { ok: true, result: {} }; },
+      } as any,
+    };
+  };
+
+  /**
+   * `in_review` claims a reviewer. When the agent blocked itself behind work it
+   * just created, there is no reviewer — there is a dependency, and saying
+   * "review" means nothing wakes this task when that dependency lands.
+   */
+  it("blocks on the children it created rather than claiming a review", async () => {
+    const { box, seen } = toolbox({ blockers: ["child_a", "child_b"] });
+
+    const out = await settle(box, "I created a subtask to gather the data.", "completed");
+
+    expect(out).toBe("blocked");
+    expect(seen[0].arguments.status).toBe("blocked");
+    expect(seen[0].arguments.blockedByIssueIds).toEqual(["child_a", "child_b"]);
   });
 
   /**
-   * A rate-limited gateway made Paperclip retry, and every retry failed the
-   * same way — producing ~20 identical `gateway 429` comments on one task. The
-   * signal was in the first; the rest buried it.
+   * A task with nothing written on it is not awaiting review; nobody can review
+   * an empty result. Saying so puts it in front of a person instead of parking
+   * it in a queue that looks healthy.
    */
-  it("does not repeat a failure comment that is already the latest one", async () => {
-    const d = deps({
-      complete: async () => {
-        throw new Error("gateway 429");
-      },
-      lastComment: async () => "The agent run failed: gateway 429",
-    });
-    const result = await runWith(d, ctx());
+  it("does not send an empty result to review", async () => {
+    const { box, seen } = toolbox({});
 
-    expect(result.exitCode).toBe(1);
-    expect(d.calls.some((c) => c.startsWith("comment"))).toBe(false);
-    expect(d.calls).toContain("status:blocked");
+    const out = await settle(box, "   ", "completed");
+
+    expect(out).toBe("blocked");
+    expect(String(seen[0].arguments.comment)).toMatch(/without leaving a written result/);
   });
 
-  it("still comments when the latest comment is a different failure", async () => {
-    const posted: string[] = [];
-    const d = deps({
-      complete: async () => {
-        throw new Error("gateway 503");
-      },
-      comment: async (_id: string, body: string) => {
-        posted.push(body);
-      },
-      lastComment: async () => "The agent run failed: gateway 429",
-    });
-    await runWith(d, ctx());
+  it("still sends a real written answer to review", async () => {
+    const { box, seen } = toolbox({});
 
-    expect(posted).toEqual(["The agent run failed: gateway 503"]);
+    const out = await settle(box, "Here are the four suppliers at risk, and why.", "completed");
+
+    expect(out).toBe("in_review");
+    expect(seen[0].arguments.status).toBe("in_review");
+  });
+});
+
+describe("a run that delegated and stopped is waiting on the delegate", () => {
+  const toolbox = (state: Partial<import("./tools.js").ToolState>) => {
+    const seen: any[] = [];
+    return {
+      seen,
+      box: {
+        state: { finalStatus: null, commented: false, blockers: [], children: [], ...state },
+        run: async (c: any) => { seen.push(c); return { ok: true, result: {} }; },
+      } as any,
+    };
+  };
+
+  /**
+   * Measured on DAE-30: "Task claimed. Created subtask DAE-33 to research
+   * alternative steel suppliers" — and the board said `in_review`, with nobody
+   * reviewing and no blocker. The child it just created is the thing it is
+   * waiting for, whether or not it thought to say so.
+   */
+  it("blocks on children it created rather than claiming a review", async () => {
+    const { box, seen } = toolbox({ children: ["child_1"] });
+
+    const out = await settle(box, "Created a subtask to research suppliers.", "completed");
+
+    expect(out).toBe("blocked");
+    expect(seen[0].arguments.blockedByIssueIds).toEqual(["child_1"]);
   });
 
-  it("does not mask the original failure when settling also fails", async () => {
-    const d = deps({
-      complete: async () => {
-        throw new Error("gateway 503");
-      },
-      comment: async () => {
-        throw new Error("api down");
-      },
-    });
-    const result = await runWith(d, ctx());
+  it("still reviews a written answer that delegated nothing", async () => {
+    const { box } = toolbox({});
+    expect(await settle(box, "Here is the answer.", "completed")).toBe("in_review");
+  });
+});
 
-    expect(result.exitCode).toBe(1);
-    expect(result.errorMessage).toBe("gateway 503");
+describe("a person answering is new work, even mid-review", () => {
+  /**
+   * The guard that stops an agent re-answering a task it already answered was
+   * unconditional on `in_review` — and that is exactly the status a task sits
+   * in while it waits for a person.
+   *
+   * So the headline flow died silently: the agent asks a question, the person
+   * answers, the server wakes the assignee with `reason: "issue_commented"`
+   * (routes/issues.ts, on every interaction response), and the adapter replied
+   * "Idle — already answered, waiting on review". The answer was dropped.
+   *
+   * Paperclip's own contract says the opposite: "issue_commented with
+   * PAPERCLIP_WAKE_COMMENT_ID → read the comment, then checkout and address the
+   * feedback (applies to in_review too)".
+   *
+   * The guard still holds for what it was built for: a plain re-dispatch of a
+   * task nobody has touched.
+   */
+  it("works a reviewed task when a comment triggered the wake", async () => {
+    const { fn, patches } = api({ status: "in_review" });
+
+    const out = await runWith(
+      { http: fn, model: model([use("update_issue", { status: "done", comment: "Thanks — done." })]) },
+      ctx({ context: { taskId: "issue_1", wakeReason: "issue_commented", wakeCommentId: "comment_9" } }),
+    );
+
+    expect(out.summary).not.toMatch(/already answered/i);
+    expect(patches()[0]).toMatchObject({ status: "done" });
+  });
+
+  it("works a reviewed task when an approval triggered the wake", async () => {
+    const { fn, patches } = api({ status: "in_review" });
+
+    const out = await runWith(
+      { http: fn, model: model([use("update_issue", { status: "done", comment: "Approved — proceeding." })]) },
+      ctx({ context: { taskId: "issue_1", wakeReason: "issue_commented", approvalId: "appr_1" } }),
+    );
+
+    expect(patches()[0]).toMatchObject({ status: "done" });
+  });
+
+  it("still refuses a plain re-dispatch of a task nobody touched", async () => {
+    const { fn, patches } = api({ status: "in_review" });
+
+    const out = await runWith(
+      { http: fn, model: model([say("more thoughts")]) },
+      ctx({ context: { taskId: "issue_1", wakeReason: "heartbeat_timer" } }),
+    );
+
+    expect(out.summary).toMatch(/already answered/i);
+    expect(patches()).toHaveLength(0);
+  });
+});
+
+describe("waking on a person's answer", () => {
+  /**
+   * The wake payload names the interaction (`interactionId` in the context
+   * snapshot, set by routes/issues.ts on every response) but carries neither
+   * the question nor the answer. Reading it here is what closes
+   * "ask → answer → continue": without it the agent wakes, finds no comment,
+   * and asks again.
+   */
+  it("reads the interaction named by the wake and briefs the agent with it", async () => {
+    const seen: string[] = [];
+    const fn = async (call: any) => {
+      seen.push(`${call.method} ${call.path}`);
+      if (call.path.endsWith("/heartbeat-context")) {
+        return { status: 200, body: { issue: { status: "in_review", title: "Buy the laptop", description: "" } } };
+      }
+      if (call.path.endsWith("/interactions")) {
+        return {
+          status: 200,
+          body: [
+            { id: "other", kind: "suggest_tasks", status: "pending", result: null },
+            {
+              id: "int_1",
+              kind: "ask_user_questions",
+              status: "answered",
+              title: "Procurement details needed",
+              result: { laptop: "MacBook Pro 14" },
+            },
+          ],
+        };
+      }
+      return { status: 200, body: { ok: true } };
+    };
+
+    let wakeText = "";
+    await runWith(
+      {
+        http: fn,
+        model: {
+          async turn(messages: any) {
+            wakeText = JSON.stringify(messages);
+            return { text: "done", toolCalls: [] };
+          },
+        } as any,
+      },
+      ctx({ context: { taskId: "issue_1", wakeReason: "issue_commented", interactionId: "int_1" } }),
+    );
+
+    expect(seen).toContain("GET /api/issues/issue_1/interactions");
+    expect(wakeText).toContain("MacBook Pro 14");
+    expect(wakeText).toContain("Procurement details needed");
+  });
+
+  it("does not fetch interactions when the wake names none", async () => {
+    const seen: string[] = [];
+    const { fn } = api();
+    const wrapped = async (call: any) => { seen.push(call.path); return fn(call); };
+
+    await runWith({ http: wrapped, model: model([say("ok")]) }, ctx());
+
+    expect(seen.some((p) => p.endsWith("/interactions"))).toBe(false);
+  });
+});
+
+describe("a question waiting on a person is a review path", () => {
+  const toolbox = (state: Partial<import("./tools.js").ToolState>) => {
+    const seen: any[] = [];
+    return {
+      seen,
+      box: {
+        state: { finalStatus: null, commented: false, blockers: [], children: [], asked: false, ...state },
+        run: async (c: any) => { seen.push(c); return { ok: true, result: {} }; },
+      } as any,
+    };
+  };
+
+  /**
+   * Paperclip is explicit: "If your heartbeat creates a pending board/user
+   * interaction ... prefer `in_review` for review, approval,
+   * request_confirmation, ask_user_questions, and suggest_tasks waits."
+   *
+   * The empty-result rule from the previous fix would otherwise block a
+   * heartbeat whose whole point was to put a question in front of a person —
+   * the card sits pending while the task reads as stuck.
+   */
+  it("reviews when it left a question pending, even with nothing written", async () => {
+    const { box, seen } = toolbox({ asked: true });
+
+    const out = await settle(box, "   ", "completed");
+
+    expect(out).toBe("in_review");
+    expect(seen[0].arguments.status).toBe("in_review");
+  });
+
+  it("still blocks an empty run that asked nobody anything", async () => {
+    const { box } = toolbox({});
+    expect(await settle(box, "  ", "completed")).toBe("blocked");
+  });
+
+  it("a delegated blocker still outranks a pending question", async () => {
+    const { box } = toolbox({ asked: true, children: ["child_1"] });
+    expect(await settle(box, "", "completed")).toBe("blocked");
+  });
+});
+
+describe("arriving with the board in hand", () => {
+  it("fetches the company's other tasks and puts them in the wake", async () => {
+    const seen: string[] = [];
+    const fn = async (call: any) => {
+      seen.push(`${call.method} ${call.path}`);
+      if (call.path.endsWith("/heartbeat-context")) {
+        return { status: 200, body: { issue: { status: "todo", title: "Draft the letter", description: "" } } };
+      }
+      if (call.path.endsWith("/issues")) {
+        return {
+          status: 200,
+          body: [
+            { id: "issue_1", identifier: "HAN-3", title: "Draft the letter", status: "todo" },
+            { id: "issue_0", identifier: "HAN-1", title: "Open sales in Hai Phong", status: "in_review" },
+          ],
+        };
+      }
+      return { status: 200, body: { ok: true } };
+    };
+
+    let wake = "";
+    await runWith(
+      {
+        http: fn,
+        model: { async turn(messages: any) { wake = JSON.stringify(messages); return { text: "done", toolCalls: [] }; } } as any,
+      },
+      ctx(),
+    );
+
+    expect(seen).toContain("GET /api/companies/co_1/issues");
+    expect(wake).toContain("HAN-1");
+    expect(wake).toContain("Open sales in Hai Phong");
+    // Its own task is already spelled out above; listing it again is noise.
+    expect(wake).not.toContain("HAN-3");
+  });
+
+  it("still runs when the board cannot be read", async () => {
+    const fn = async (call: any) => {
+      if (call.path.endsWith("/heartbeat-context")) {
+        return { status: 200, body: { issue: { status: "todo", title: "T", description: "" } } };
+      }
+      if (call.path.endsWith("/issues")) return { status: 500, body: { error: "nope" } };
+      return { status: 200, body: { ok: true } };
+    };
+
+    const out = await runWith({ http: fn, model: model([say("done")]) }, ctx());
+
+    expect(out.exitCode).toBe(0);
   });
 });

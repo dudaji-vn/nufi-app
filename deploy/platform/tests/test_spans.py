@@ -16,27 +16,6 @@ def test_system_message_is_a_system_span():
     assert spans[0].source is SpanSource.SYSTEM
 
 
-def test_tool_message_is_untrusted():
-    spans = extract_spans([{"role": "tool", "content": "search result body"}])
-
-    assert spans[0].source is SpanSource.UNTRUSTED
-
-
-def test_function_message_is_untrusted():
-    """`function` is the pre-`tool` spelling of the same thing.
-
-    Pinned separately from `tool` because the two are one dict entry apart and
-    the split of 2026-07-30 moved the row between them: `assistant` left this
-    group, `function` did not. A `function` result that drifted onto the
-    `assistant` path would start requiring corroboration, and four of six
-    measured indirect-injection payloads are invisible to the second detector --
-    so it would go quiet, not red.
-    """
-    spans = extract_spans([{"role": "function", "content": "search result body"}])
-
-    assert spans[0].source is SpanSource.UNTRUSTED
-
-
 def test_multimodal_content_keeps_only_text_parts():
     messages = [
         {
@@ -128,3 +107,40 @@ def test_developer_role_is_system_like():
     spans = extract_spans([{"role": "developer", "content": "you are a helpful bot"}])
 
     assert spans[0].source is SpanSource.SYSTEM
+
+
+def test_a_tool_result_is_its_own_source():
+    """A tool result is not "a role this code does not recognise".
+
+    Both mapped to `UNTRUSTED` until now, and that conflation is what forced
+    `nufi-agent` to be exempted from G1 entirely: `untrusted` blocks on one
+    detector, the classifier scores benign text near 1.0, and every agent turn
+    after the first carries a tool result. Measured 2026-09-03 on this gateway,
+    the smallest tool result that exists:
+
+        {"ok":true}  as role=tool  -> 400 LLM01_INJECTION
+        {"ok":true}  as role=user  -> 200
+
+    Splitting the source is what lets the policy say something specific about
+    tool results instead of exempting the model and losing the control.
+    """
+    spans = extract_spans(
+        [
+            {"role": "tool", "content": '{"ok":true}'},
+            {"role": "function", "content": "result"},
+        ]
+    )
+
+    assert [span.source for span in spans] == [SpanSource.TOOL, SpanSource.TOOL]
+
+
+def test_an_unrecognised_role_is_still_untrusted():
+    """`untrusted` keeps meaning what it says, and stays the strict default.
+
+    It must not fall back to TOOL either — `tool` now carries a corroboration
+    requirement, so a default of TOOL would hand that discount to anyone who
+    can invent a role string.
+    """
+    spans = extract_spans([{"role": "wizard", "content": "hello"}])
+
+    assert spans[0].source is SpanSource.UNTRUSTED

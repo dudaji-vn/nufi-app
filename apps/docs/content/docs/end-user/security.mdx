@@ -1,6 +1,6 @@
 ---
 title: How your data is protected
-description: What the NUFI app checks on every message, what it does when it finds something, and what it does not do.
+description: What the NuFi app checks on every message, what it does when it finds something, and what it does not do.
 ---
 
 Every message you send and every answer you get back passes through a set of
@@ -27,7 +27,11 @@ Four things, on every message:
 If a message is genuinely trying to hijack the assistant, it does not reach the
 model at all. You get a plain explanation and a short reference code.
 
-![A blocked message in the NUFI app, showing the reason and a reference code](/screenshots/security-blocked.png)
+![A blocked message in the NuFi app, showing the reason and a reference code](/screenshots/security-blocked.png)
+
+That card is how an agent shows a refusal. With a plain model the same
+refusal arrives as an error message, ending in the same *(reference: grd_…)*
+code.
 
 That code identifies this exact decision. If you believe the block was wrong,
 send it to your administrator — they can look up what fired without needing to
@@ -48,9 +52,12 @@ and it is answered normally.
 ![A benign message that resembles an attack, answered normally](/screenshots/security-benign-allowed.png)
 
 Both sentences look identical to an automated language check; it rates them
-equally suspicious. What separates them is that a block requires **two
-independent detectors to agree** — a machine-learning classifier and a separate
-rule-based one. One alone is never enough to stop your message.
+equally suspicious. What separates them is that, for something you wrote, a
+block requires **two independent detectors to agree** — a machine-learning
+classifier and a separate rule-based one. One alone is never enough to stop
+your own message. Text that arrives from a document, a web page or a tool is
+held to a stricter standard: there one detector is enough, because nobody is
+present to rephrase it.
 
 That threshold exists for a specific reason. A security filter that blocks
 ordinary phrasing gets switched off within a week, and then it protects nobody.

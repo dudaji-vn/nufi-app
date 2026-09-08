@@ -1,0 +1,719 @@
+/**
+ * The tools a NuFi agent can actually use.
+ *
+ * Paperclip hands its agents a REST API and a procedure, not a tool list — the
+ * vendor harnesses reach it with `bash` and `curl`. This adapter has no shell,
+ * so the same endpoints are exposed as typed tools.
+ *
+ * That is a deliberate translation, not a smaller product. What typed tools buy
+ * is truthfulness: measured on a real issue, a harness driving a mid-tier model
+ * announced "I'll create a task", "saved it to cloudflow_agreement_brief.md" and
+ * "I will mark the task as completed" — and the database held none of it. A tool
+ * that is not called leaves no record; a tool that is called leaves one. Narrated
+ * work stops being possible.
+ *
+ * Two rules the model is never asked to remember, because both were learned from
+ * a 422 in production and neither is discoverable from the API surface:
+ *   - moving to `in_review` must name a review path
+ *   - naming a person is a handover, since an issue can hold one assignee
+ */
+
+import type { ToolBox, ToolCall, ToolSchema } from "./loop.js";
+
+export interface ToolContext {
+  apiUrl: string;
+  runId: string;
+  agentId: string;
+  companyId: string;
+  issueId: string;
+  /** The person this run belongs to. The reviewer, when work goes back for review. */
+  responsibleUserId: string | null;
+  /** The goal this task hangs off, so subtasks stay on the same plan. */
+  goalId?: string | null;
+}
+
+export interface HttpCall {
+  method: string;
+  path: string;
+  headers: Record<string, string>;
+  body?: unknown;
+}
+
+export type HttpFn = (call: HttpCall) => Promise<{ status: number; body?: unknown }>;
+
+/**
+ * What the run did, as recorded by the tools rather than claimed by the model.
+ *
+ * `execute` needs to know whether the agent actually left the task somewhere
+ * final. Asking the model would reintroduce exactly the failure this design
+ * exists to prevent, so the answer comes from the tool that succeeded.
+ */
+export interface ToolState {
+  /** The last status a successful update_issue call set. */
+  finalStatus: string | null;
+  /** True once anything durable was written, so a settle knows not to duplicate. */
+  commented: boolean;
+  /**
+   * True once this run put a question, confirmation, or proposal in front of a
+   * person. That is a real waiting path — Paperclip names `in_review` for
+   * exactly these — so a settle must not read the silence that follows as a
+   * run that produced nothing.
+   */
+  asked: boolean;
+  /**
+   * Every child created this run, in order.
+   *
+   * An agent that splits its task and then blocks is blocked on the pieces —
+   * that is what the split was for. Recording them is what makes the parent
+   * wake when they land; a comment saying so wakes nothing.
+   */
+  children: string[];
+  /**
+   * Children created this run that the agent said block it.
+   *
+   * A settle reads this instead of the model's closing words: an agent that
+   * delegates its blocker and then stops is waiting on a dependency, not on a
+   * reviewer, and only the recorded blocker will ever wake it again.
+   */
+  blockers: string[];
+}
+
+export type NufiToolBox = ToolBox & {
+  state: ToolState;
+  /**
+   * The context these tools run against, exposed so `execute` can fill in what
+   * it only learns after the first read — the goal a subtask should inherit.
+   */
+  context: ToolContext;
+};
+
+type Args = Record<string, unknown>;
+
+function args(value: unknown): Args {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Args) : {};
+}
+
+function str(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+/** Statuses a heartbeat may legitimately claim. `in_progress` is entered by checkout. */
+const CLAIMABLE = ["todo", "backlog", "blocked", "in_review"] as const;
+
+const OBJECT = (properties: Record<string, unknown>, required: string[] = []) => ({
+  type: "object",
+  properties,
+  ...(required.length ? { required } : {}),
+});
+
+const S = { type: "string" } as const;
+
+/**
+ * What a mutation hands back to the model.
+ *
+ * A tool result returns as `role: "tool"`, which the gateway's G1 control
+ * classifies as `untrusted` — the one span class that blocks on a single
+ * detector rather than requiring two to agree. The server echoes the whole
+ * issue back from a checkout or a status update, so the task description made a
+ * round trip and came back through the strictest channel there is. Measured on
+ * HAN-4: `injection source=untrusted 0–2202 score=0.99997`, and the run died.
+ *
+ * The agent does not need the echo — it was handed the task in the wake. So a
+ * mutation confirms what changed and nothing more. Reads are untouched: their
+ * content is the answer the agent asked for.
+ */
+/**
+ * Give every proposed task an owner before it can become a real one.
+ *
+ * Accepting a `suggest_tasks` card turns each draft into an issue, and a draft
+ * naming nobody produces exactly the inert task that `create_child_issue` was
+ * fixed for: `todo`, no assignee, never picked up. Fixing one path and leaving
+ * its twin is how a bug survives being fixed — measured right after that fix
+ * shipped, when accepting three proposals produced three orphans.
+ *
+ * A draft already handed to a person is left alone; that is a person's job, not
+ * something to take back.
+ */
+export function withOwners(tasks: unknown, agentId: string): unknown[] {
+  if (!Array.isArray(tasks)) return [];
+  return tasks.map((task) => {
+    if (!task || typeof task !== "object" || Array.isArray(task)) return task;
+    const draft = task as Record<string, unknown>;
+    if (str(draft.assigneeAgentId) || str(draft.assigneeUserId)) return draft;
+    return { ...draft, assigneeAgentId: agentId };
+  });
+}
+
+/**
+ * Refuse to create work nobody can do.
+ *
+ * A task with a title and no description reaches its assignee as a guess. The
+ * agent that later picks it up does the right thing and blocks it — which is
+ * how the agent ended up blocking on its own output: measured on a real run,
+ * 7 of 16 blocked tasks were blocked for a description the same agent had
+ * failed to write when it created them. The other 9 were genuine waits on a
+ * person, which is the disposition we want to keep visible.
+ *
+ * Creation is the only point where the loop can be cut, because it is the only
+ * point where the meaning is still known. Delegating is saying what you want.
+ */
+function unworkable(what: string): { ok: boolean; result: unknown } {
+  return {
+    ok: false,
+    result:
+      `Refused: "${what}" has no description. A title alone is not a task — whoever picks it up, ` +
+      `including you on a later heartbeat, has to guess and will block it. Say what the work is, ` +
+      `what done looks like, and anything you already know that they would otherwise have to ask for.`,
+  };
+}
+
+function confirm(body: unknown): unknown {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return { ok: true };
+  const row = body as Record<string, unknown>;
+  const kept: Record<string, unknown> = { ok: true };
+  for (const key of ["id", "identifier", "status", "assigneeUserId", "assigneeAgentId"]) {
+    if (row[key] !== undefined) kept[key] = row[key];
+  }
+  return kept;
+}
+
+/**
+ * What a question card actually is.
+ *
+ * The server validates this strictly, and the model has to build it blind — so
+ * an empty `payload: { type: "object" }` left it guessing, and a wrong guess
+ * made it give up on asking and write a comment instead. Measured on the live
+ * board: "Không thể thu thập thông tin dạng văn bản tự do bằng công cụ
+ * ask_user_questions."
+ *
+ * It was half right. Every question carries options — at least one, enforced by
+ * the server: `too_small, minimum: 1, path: payload.questions.0.options`. Free
+ * text is not the absence of options; the card always renders an "Other" button
+ * (OTHER_ANSWER_ID) beside them, and what the person types comes back as
+ * `otherText`. So the answer to "I need free text" is: offer your best guesses
+ * and let them say something else.
+ */
+const QUESTIONS_PAYLOAD = OBJECT(
+  {
+    version: { type: "number", enum: [1] },
+    title: S,
+    submitLabel: S,
+    questions: {
+      type: "array",
+      description:
+        "One entry per thing you need to know. Keep it short — this is a form a person fills in.",
+      items: OBJECT(
+        {
+          id: { ...S, description: "Your own key for this question; the answer comes back under it." },
+          prompt: { ...S, description: "The question, as you would ask a colleague." },
+          helpText: S,
+          selectionMode: { type: "string", enum: ["single", "multi"] },
+          required: { type: "boolean" },
+          options: {
+            type: "array",
+            minItems: 1,
+            description:
+              "The choices — at least one, always. Name the answers you think are likely; the card also " +
+              "shows an \"Other\" button beside them, so a person can type something you did not list and " +
+              "it comes back as otherText. There is no free-text-only question: give options anyway.",
+            items: OBJECT({ id: S, label: S, description: S }, ["id", "label"]),
+          },
+        },
+        ["id", "prompt", "selectionMode", "options"],
+      ),
+    },
+  },
+  ["version", "questions"],
+);
+
+/** A single yes/no, bound to something concrete. */
+const CONFIRMATION_PAYLOAD = OBJECT(
+  {
+    version: { type: "number", enum: [1] },
+    prompt: { ...S, description: "The decision, in one sentence: what happens if they say yes." },
+    detailsMarkdown: { ...S, description: "What they need to know to decide. Keep it decision-ready." },
+    acceptLabel: S,
+    rejectLabel: S,
+    allowDeclineReason: { type: "boolean" },
+  },
+  ["version", "prompt"],
+);
+
+export function buildTools(ctx: ToolContext, http: HttpFn): NufiToolBox {
+  const state: ToolState = { finalStatus: null, commented: false, blockers: [], children: [], asked: false };
+  const headers = {
+    "content-type": "application/json",
+    "X-Paperclip-Run-Id": ctx.runId,
+  };
+
+  const send = async (method: string, path: string, body?: unknown) =>
+    http({ method, path, headers, body });
+
+  /** A non-2xx is information, not an exception — the contract expects the agent to read it. */
+  const result = (
+    res: { status: number; body?: unknown },
+    onError?: (status: number) => string | undefined,
+    shape: (body: unknown) => unknown = (body) => body ?? null,
+  ) => {
+    if (res.status >= 200 && res.status < 300) return { ok: true, result: shape(res.body) };
+    const custom = onError?.(res.status);
+    const detail = typeof res.body === "string" ? res.body : JSON.stringify(res.body ?? {});
+    return { ok: false, result: custom ? `${custom} (HTTP ${res.status}: ${detail})` : `HTTP ${res.status}: ${detail}` };
+  };
+
+  const interaction = async (kind: string, a: Args) => {
+    const res = await send("POST", `/api/issues/${ctx.issueId}/interactions`, {
+      kind,
+      title: str(a.title) ?? null,
+      summary: str(a.summary) ?? null,
+      // request_confirmation defaults to `none`, which never wakes anyone. Every
+      // interaction this adapter opens is one it means to come back to.
+      continuationPolicy: str(a.continuationPolicy) ?? "wake_assignee",
+      ...(str(a.idempotencyKey) ? { idempotencyKey: str(a.idempotencyKey) } : {}),
+      payload: a.payload ?? { version: 1 },
+    });
+    if (res.status < 400) state.asked = true;
+    return result(res, undefined, confirm);
+  };
+
+  const handlers: Record<string, { schema: ToolSchema; run: (a: Args) => Promise<{ ok: boolean; result: unknown }> }> = {
+    get_issue: {
+      schema: {
+        name: "get_issue",
+        description:
+          "Read the current task: title, description, status, the goal and project it belongs to, ancestors, and blockers. Call this before doing the work.",
+        parameters: OBJECT({}),
+      },
+      run: async () => result(await send("GET", `/api/issues/${ctx.issueId}/heartbeat-context`)),
+    },
+
+    get_comments: {
+      schema: {
+        name: "get_comments",
+        description:
+          "Read the task's comment thread, oldest first. Pass `after` with a comment id to fetch only what is new since then.",
+        parameters: OBJECT({ after: S }),
+      },
+      run: async (a) => {
+        const after = str(a.after);
+        const query = `?order=asc&limit=50${after ? `&after=${encodeURIComponent(after)}` : ""}`;
+        return result(await send("GET", `/api/issues/${ctx.issueId}/comments${query}`));
+      },
+    },
+
+    checkout_issue: {
+      schema: {
+        name: "checkout_issue",
+        description:
+          "Claim this task before working on it. This is how a task enters in_progress — never set that status by hand. If another agent holds it you get a conflict; pick different work rather than retrying.",
+        parameters: OBJECT({}),
+      },
+      run: async () =>
+        result(
+          await send("POST", `/api/issues/${ctx.issueId}/checkout`, {
+            agentId: ctx.agentId,
+            expectedStatuses: [...CLAIMABLE],
+          }),
+          (status) =>
+            status === 409
+              ? "This task is checked out by another agent. Do not retry; work on something else or report that it is taken."
+              : undefined,
+          confirm,
+        ),
+    },
+
+    add_comment: {
+      schema: {
+        name: "add_comment",
+        description:
+          "Post markdown progress on the task. Say what is done, what remains, and who owns the next step. Reference other tasks as links like [LEG-3](/LEG/issues/LEG-3).",
+        parameters: OBJECT({ body: S }, ["body"]),
+      },
+      run: async (a) => {
+        const out = result(await send("POST", `/api/issues/${ctx.issueId}/comments`, { body: str(a.body) ?? "" }), undefined, confirm);
+        if (out.ok) state.commented = true;
+        return out;
+      },
+    },
+
+    update_issue: {
+      schema: {
+        name: "update_issue",
+        description:
+          "Set the task's final state for this heartbeat, with an optional comment in the same call. Use 'done' when the work is finished, 'in_review' when a person must look at it, 'blocked' when you cannot continue — and when blocked, say in the comment who must act and what they must do.",
+        parameters: OBJECT(
+          {
+            status: { type: "string", enum: ["backlog", "todo", "in_progress", "in_review", "done", "blocked", "cancelled"] },
+            comment: S,
+            priority: { type: "string", enum: ["critical", "high", "medium", "low"] },
+            assigneeUserId: S,
+            blockedByIssueIds: { type: "array", items: S },
+          },
+          [],
+        ),
+      },
+      run: async (a) => {
+        const status = str(a.status);
+        const body: Args = {};
+        if (status) body.status = status;
+        if (str(a.comment)) body.comment = str(a.comment);
+        if (str(a.priority)) body.priority = str(a.priority);
+        if (Array.isArray(a.blockedByIssueIds)) body.blockedByIssueIds = a.blockedByIssueIds;
+        /**
+         * Blocked on what? An agent that split its task and then blocked is
+         * blocked on the pieces — but it writes that in prose, and prose wakes
+         * nothing. Only a recorded blocker fires `issue_blockers_resolved`.
+         *
+         * Measured on DAE-32 and DAE-33: both blocked, both with an empty
+         * blocker set, both saying "Nhiệm vụ này sẽ bị chặn cho đến khi các
+         * nhiệm vụ con hoàn thành". They would have waited forever.
+         *
+         * Only fills the gap: a blocker set the agent named itself is left
+         * exactly as given, including an explicit empty one.
+         */
+        else if (status === "blocked" && state.children.length > 0) {
+          body.blockedByIssueIds = [...state.children];
+        }
+
+        /**
+         * The handover. `in_review` needs someone owning the next action, and an
+         * issue holds one assignee — so the agent steps off as the person steps
+         * on. Skipped entirely when there is nobody to hand to, because an issue
+         * with no owner at all is worse than one still held by its agent.
+         */
+        const namedAssignee = str(a.assigneeUserId);
+        /**
+         * ...unless the agent is the one waiting. A pending interaction is
+         * itself a valid review path — routes/issues.ts returns early on
+         * `interactions.some(i => i.status === "pending")` — so handing the task
+         * over here buys nothing and costs the continuation: an issue holds one
+         * assignee, and `continuationPolicy: wake_assignee` then has nobody to
+         * wake. Measured on LEG-15, where a confirmation was accepted at
+         * 06:14:20 and no heartbeat ran: the agent had asked, stepped off its
+         * own task, and could not be called back to hear the answer.
+         *
+         * A person named explicitly still wins — that is a deliberate handover.
+         */
+        const waitingOnItsOwnQuestion = status === "in_review" && state.asked && !namedAssignee;
+        const reviewer = waitingOnItsOwnQuestion
+          ? undefined
+          : status === "in_review"
+            ? namedAssignee ?? ctx.responsibleUserId
+            : namedAssignee;
+        if (reviewer) {
+          body.assigneeUserId = reviewer;
+          body.assigneeAgentId = null;
+        }
+
+        const out = result(await send("PATCH", `/api/issues/${ctx.issueId}`, body), undefined, confirm);
+        if (out.ok) {
+          if (status) state.finalStatus = status;
+          if (body.comment) state.commented = true;
+        }
+        return out;
+      },
+    },
+
+    create_child_issue: {
+      schema: {
+        name: "create_child_issue",
+        description:
+          "Delegate work that does not fit this heartbeat by creating a subtask. Prefer this over waiting or polling. " +
+          "Name assigneeAgentId to hand it to another agent — call list_agents to see who there is. " +
+          "Leave it out and the subtask comes back to you: an unassigned task is never picked up by anyone. " +
+          "The description is required: say what the work is, what done looks like, and what you already know. " +
+          "Whoever picks it up cannot see this heartbeat, and a title alone just gets blocked back to you.",
+        parameters: OBJECT(
+          {
+            title: S,
+            description: S,
+            priority: { type: "string", enum: ["critical", "high", "medium", "low"] },
+            assigneeAgentId: S,
+            blocksThisTask: { type: "boolean" },
+          },
+          ["title", "description"],
+        ),
+      },
+      run: async (a) => {
+        if (!str(a.description)) return unworkable(str(a.title) ?? "(untitled)");
+        const created = result(
+          await send("POST", `/api/companies/${ctx.companyId}/issues`, {
+            title: str(a.title) ?? "",
+            description: str(a.description) ?? null,
+            status: "todo",
+            priority: str(a.priority) ?? "medium",
+            parentId: ctx.issueId,
+            /**
+             * Never unassigned. "Never look for unassigned work. No assignments
+             * = exit" is Paperclip's contract, so a subtask with nobody on it
+             * is inert — it sits at `todo` and no agent will ever claim it.
+             * Measured on a real onboarding run: a team lead split its task into
+             * six correct subtasks, all unassigned, and the board looked like
+             * progress while nothing could move.
+             *
+             * An unnamed assignee means "I will do it", which is also the
+             * honest reading of an agent breaking its own work into steps.
+             */
+            assigneeAgentId: str(a.assigneeAgentId) ?? ctx.agentId,
+            // "Always set parentId and goalId" — a subtask off the goal is off
+            // the plan, and drops out of every goal-scoped view.
+            ...(ctx.goalId ? { goalId: ctx.goalId } : {}),
+          }),
+          undefined,
+          confirm,
+        );
+        /**
+         * `blocksThisTask` was accepted and dropped, so an agent could delegate
+         * its blocker, say so in the thread, and leave a board that disagreed.
+         * Recording it as a first-class blocker is what makes the parent wake
+         * when the child lands — a comment saying "blocked on X" wakes nothing.
+         */
+        const childId = created.ok ? str((created.result as Record<string, unknown> | undefined)?.id) : undefined;
+        if (childId) state.children.push(childId);
+        if (a.blocksThisTask === true && created.ok) {
+          if (childId) {
+            state.blockers.push(childId);
+            await send("PATCH", `/api/issues/${ctx.issueId}`, { blockedByIssueIds: [...state.blockers] });
+          }
+        }
+        return created;
+      },
+    },
+
+    /**
+     * The answer is usually already on the board.
+     *
+     * Rule one is "never ask a person to do what an agent could do", and the
+     * agent broke it because it had no way not to: it could read its own task
+     * and nothing else. Measured on HAN-2, whose description said "based on the
+     * offer document from the previous task" — `tools used: checkout_issue,
+     * get_issue, ask_user_questions`. Three facts already written down, one API
+     * call away, asked of a person instead.
+     *
+     * `paperclip_api` could always have fetched both of these. Nobody reached
+     * for it. A capability that is only reachable through a generic escape
+     * hatch is one the model does not know it has.
+     */
+    list_issues: {
+      schema: {
+        name: "list_issues",
+        description:
+          "List the other tasks in this company — identifier, title, status, who holds them. Use it to find " +
+          "work related to yours before you ask anyone anything: the task that came before, the one that " +
+          "produced the document you were told to build on, the sibling that already answered the question.",
+        parameters: OBJECT({
+          query: { ...S, description: "Optional words to match against the title." },
+          status: { ...S, description: "Optional status filter, e.g. done." },
+        }),
+      },
+      run: async (a) => {
+        const res = await send("GET", `/api/companies/${ctx.companyId}/issues`);
+        if (res.status >= 400) return result(res);
+        const rows = Array.isArray(res.body)
+          ? res.body
+          : ((res.body as { issues?: unknown[] } | null)?.issues ?? []);
+        const wanted = str(a.query)?.toLowerCase();
+        const status = str(a.status);
+        const summary = (Array.isArray(rows) ? rows : [])
+          .map((row) => args(row))
+          .filter((row) => !status || row.status === status)
+          .filter((row) => !wanted || String(row.title ?? "").toLowerCase().includes(wanted))
+          .map((row) => ({
+            id: row.id,
+            identifier: row.identifier,
+            title: row.title,
+            status: row.status,
+            assigneeAgentId: row.assigneeAgentId ?? null,
+            assigneeUserId: row.assigneeUserId ?? null,
+          }));
+        return { ok: true, result: summary };
+      },
+    },
+
+    read_plan: {
+      schema: {
+        name: "read_plan",
+        description:
+          "Read the plan document of a task — yours by default, or another one by id, which is where an " +
+          "earlier task's findings usually live. Call list_issues first to find the id.",
+        parameters: OBJECT({ issueId: S }),
+      },
+      run: async (a) => {
+        const target = str(a.issueId) ?? ctx.issueId;
+        const res = await send("GET", `/api/issues/${target}/documents/plan`);
+        /**
+         * A 404 here reads like an answer, and the measured consequence was the
+         * worst output this agent has produced. On HAN-6 it called read_plan
+         * with no id — its own task, which had no plan — got
+         * `HTTP 404: Document not found`, took that for "there is nothing to
+         * find", and wrote the deliverable from invention: delivery hours of
+         * "6am to 8pm" against a real profile of 5-7am and 1-3pm.
+         *
+         * The document existed. It belonged to the neighbouring task, whose id
+         * was in the wake. So an empty read says where to look next.
+         */
+        if (res.status === 404) {
+          return {
+            ok: false,
+            result:
+              `No plan document on ${target === ctx.issueId ? "this task" : `task ${target}`}. ` +
+              `If you were told to build on earlier work, that document belongs to ANOTHER task — ` +
+              `take its id from the board in your wake, or call list_issues, and read_plan that id. ` +
+              `Do not write the deliverable from memory: inventing the facts is worse than asking for them.`,
+          };
+        }
+        return result(res);
+      },
+    },
+
+    list_agents: {
+      schema: {
+        name: "list_agents",
+        description:
+          "List the agents in this company, with their names and what they do. Use it before delegating, so a subtask goes to the desk that owns the work rather than back to you.",
+        parameters: OBJECT({}),
+      },
+      run: async () => result(await send("GET", `/api/companies/${ctx.companyId}/agents`)),
+    },
+
+    put_plan: {
+      schema: {
+        name: "put_plan",
+        description:
+          "Write or revise this task's plan document. Plans live here, never in the task description and never as a repo file. Mention in a comment that you updated it.",
+        parameters: OBJECT({ body: S, baseRevisionId: S }, ["body"]),
+      },
+      run: async (a) =>
+        result(
+          await send("PUT", `/api/issues/${ctx.issueId}/documents/plan`, {
+            title: "Plan",
+            format: "markdown",
+            body: str(a.body) ?? "",
+            baseRevisionId: str(a.baseRevisionId) ?? null,
+          }),
+        ),
+    },
+
+    suggest_tasks: {
+      schema: {
+        name: "suggest_tasks",
+        description:
+          "Propose concrete follow-up tasks for a person to accept. Accepted ones become real subtasks and wake you to work them. " +
+          "Each task needs a unique clientKey, a title, and a description saying what the work is — a title-only task is blocked the moment anyone picks it up.",
+        parameters: OBJECT(
+          {
+            title: S,
+            summary: S,
+            tasks: {
+              type: "array",
+              items: OBJECT({ clientKey: S, title: S, description: S }, [
+                "clientKey",
+                "title",
+                "description",
+              ]),
+            },
+          },
+          ["tasks"],
+        ),
+      },
+      run: async (a) => {
+        const drafts = Array.isArray(a.tasks) ? a.tasks : [];
+        for (const draft of drafts) {
+          const row = args(draft);
+          if (!str(row.description)) return unworkable(str(row.title) ?? "(untitled)");
+        }
+        return interaction("suggest_tasks", {
+          ...a,
+          payload: { version: 1, tasks: withOwners(a.tasks, ctx.agentId) },
+        });
+      },
+    },
+
+    ask_user_questions: {
+      schema: {
+        name: "ask_user_questions",
+        description:
+          "Ask a person a short set of structured questions when information is genuinely missing and NOT already " +
+          "on the board. Check first: list_issues finds the related task, read_plan reads what it wrote down. " +
+          "Asking for something a tool would have told you is the one rule this agent must not break. " +
+          "Never invent an answer you could have asked for. " +
+          "Every question needs at least one option; the card also offers \"Other\" so a person can type " +
+          "something you did not list.",
+        parameters: OBJECT({ title: S, summary: S, payload: QUESTIONS_PAYLOAD }, ["payload"]),
+      },
+      run: async (a) => {
+        /**
+         * The server answers an empty options array with a bare 400, and the
+         * measured response to that was to stop asking and block with a
+         * comment. A tool error the model can act on gets a retry in the same
+         * heartbeat; a 400 it cannot read does not.
+         */
+        const payload = args(a.payload);
+        const questions = Array.isArray(payload.questions) ? payload.questions : [];
+        for (const q of questions) {
+          const row = args(q);
+          const options = Array.isArray(row.options) ? row.options : [];
+          if (options.length === 0) {
+            return {
+              ok: false,
+              result:
+                `Question "${str(row.prompt) ?? str(row.id) ?? "(unnamed)"}" has no options, and the server ` +
+                `requires at least one. There is no free-text-only question here: name the answers you think ` +
+                `are likely, and the card's "Other" button lets the person type anything else. Send it again ` +
+                `with options.`,
+            };
+          }
+        }
+        return interaction("ask_user_questions", a);
+      },
+    },
+
+    request_confirmation: {
+      schema: {
+        name: "request_confirmation",
+        description:
+          "Ask a person for a single yes/no decision before doing something consequential. Use for one decision; use suggest_tasks to propose work and ask_user_questions to gather facts.",
+        parameters: OBJECT({ title: S, summary: S, payload: CONFIRMATION_PAYLOAD }, ["payload"]),
+      },
+      run: async (a) => interaction("request_confirmation", a),
+    },
+
+    paperclip_api: {
+      schema: {
+        name: "paperclip_api",
+        description:
+          "Call any other Paperclip API endpoint directly when no tool above fits. Paths must start with /api/.",
+        parameters: OBJECT({ method: S, path: S, body: { type: "object" } }, ["method", "path"]),
+      },
+      run: async (a) => {
+        const path = str(a.path) ?? "";
+        /**
+         * The run token is a bearer credential. Left unchecked, this tool would
+         * happily send it to any host the model names — which turns one confused
+         * turn into credential exfiltration.
+         */
+        if (!path.startsWith("/api/")) {
+          return { ok: false, result: `Refused: path must start with /api/ and stay on this server. Got "${path}".` };
+        }
+        return result(await send(str(a.method)?.toUpperCase() ?? "GET", path, a.body));
+      },
+    },
+  };
+
+  return {
+    state,
+    context: ctx,
+    schemas: Object.values(handlers).map((h) => h.schema),
+    async run(call: ToolCall) {
+      const handler = handlers[call.name];
+      if (!handler) {
+        return { ok: false, result: `Unknown tool "${call.name}". Use one of: ${Object.keys(handlers).join(", ")}.` };
+      }
+      try {
+        return await handler.run(args(call.arguments));
+      } catch (err) {
+        return { ok: false, result: `Tool "${call.name}" failed: ${err instanceof Error ? err.message : String(err)}` };
+      }
+    },
+  };
+}

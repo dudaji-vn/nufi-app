@@ -1,24 +1,17 @@
 {
   "title": "Develop",
-  "description": "Run the stack locally and ship to it",
-  "root": true,
   "icon": "Code",
   "pages": [
-    "index",
-    "---Get started---",
-    "prerequisites",
-    "quick-start",
-    "verify-install",
-    "---Run locally---",
-    "local-stack",
-    "---Codebases---",
-    "nufi-chat",
-    "librechat-fork",
-    "agent-forks",
-    "admin-panel-dev",
-    "console-dev",
-    "---Extend & ship---",
-    "adding-models",
-    "release-flow"
+    "run-locally",
+    "---Work on one app---",
+    "work-on-chat",
+    "work-on-console",
+    "work-on-admin-panel",
+    "work-on-agents",
+    "---Ship---",
+    "models",
+    "release",
+    "---Design notes---",
+    "rag-integration"
   ]
 }

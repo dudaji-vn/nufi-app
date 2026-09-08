@@ -6,7 +6,7 @@
 Top WRONG issues:
 1. **FR-2 Composing (Enter-when-submitting)** — spec says Enter is short-circuited by `if (e.key === 'Enter' && isSubmitting) return;`, but that check fires _before_ `preventDefault`, so only non-Shift Enter events that enter the submission branch are blocked; the actual guard is the check at line 147 in `useTextarea.ts`.
 2. **FR-1 Continue** — spec says `continueSupported` requires `!isSubmitting`, but the hook does NOT include that check; Continue can appear while another request is in flight.
-3. **Landing FR-3** — spec says "if the selected endpoint/agent has a `name`, that name is shown _instead of_ the greeting". The actual condition is `((isAgent || isAssistant) && name) || name`, meaning ANY entity with a `name` shows it, not just agents/assistants; but for the plain "Nufi" endpoint `entity` will be `undefined` so `name` is `''`, which falls through to the greeting — NuFi-specific behaviour is CONFIRMED.
+3. **Landing FR-3** — spec says "if the selected endpoint/agent has a `name`, that name is shown _instead of_ the greeting". The actual condition is `((isAgent || isAssistant) && name) || name`, meaning ANY entity with a `name` shows it, not just agents/assistants; but for the plain "NuFi" endpoint `entity` will be `undefined` so `name` is `''`, which falls through to the greeting — NuFi-specific behaviour is CONFIRMED.
 4. **Stop button icon class** — spec says `className="icon-lg text-surface-primary"` but SVG uses `className="icon-lg text-surface-primary"` — actually CONFIRMED on the SVG element, but the spec says the icon rect is `10×10` inside `24×24` viewbox; the actual rect is `x=7 y=7 width=10 height=10 rx=1.25` which matches the area but the spec omits `rx=1.25` (rounded corners).
 5. **Auto-Scroll scroll function** — spec says `scrollToBottom()` is debounced via lodash; it is actually **throttled** (not debounced) at 145 ms via `lodash/throttle`.
 6. **Feedback — "Delete" button label** — spec says label `"Delete"` via `variant="destructive"` and key `com_ui_delete`. Translation is indeed `"Delete"` — CONFIRMED.
@@ -26,7 +26,7 @@ Top WRONG issues:
       ? getGreeting()
       : getGreeting() + (user?.name ? ', ' + user.name : '');
   ```
-  `getGreeting()` (lines 68-102) checks `if (user?.name && customWelcome.includes('{{user.name}}'))` and substitutes `{{user.name}}`. So if the `customWelcome` string contains the literal `{{user.name}}` placeholder, the name IS injected. The spec says "no user name appended" for `customWelcome`, which is only true when the string does not contain the placeholder — for NuFi's value `"Welcome to Nufi Chat."` this is CONFIRMED (no placeholder), but the general claim that user name is never appended when `customWelcome` is a string is WRONG.
+  `getGreeting()` (lines 68-102) checks `if (user?.name && customWelcome.includes('{{user.name}}'))` and substitutes `{{user.name}}`. So if the `customWelcome` string contains the literal `{{user.name}}` placeholder, the name IS injected. The spec says "no user name appended" for `customWelcome`, which is only true when the string does not contain the placeholder — for NuFi's value `"Welcome to NuFi Chat."` this is CONFIRMED (no placeholder), but the general claim that user name is never appended when `customWelcome` is a string is WRONG.
 - **Suggested correction:** Add: "If `customWelcome` contains the `{{user.name}}` template token, the user's name is substituted at that position."
 
 ---
@@ -151,7 +151,7 @@ Top WRONG issues:
 
 ### [NEEDS-FIX] Streaming — FR-1 `useAdaptiveSSE` description (useAdaptiveSSE.ts)
 
-- **Spec says:** "For all non-Assistants endpoints (including 'Nufi'), the **resumable SSE** path (`useResumableSSE`) is used. For Assistants endpoints, the standard `useSSE` is used."
+- **Spec says:** "For all non-Assistants endpoints (including 'NuFi'), the **resumable SSE** path (`useResumableSSE`) is used. For Assistants endpoints, the standard `useSSE` is used."
 - **Reality:** Both `useSSE` and `useResumableSSE` are **always called** in `useAdaptiveSSE`; only the submission argument is `null` for the inactive one (to satisfy React Rules of Hooks). The spec's functional description is correct, but "only one is called" is inaccurate.
 - **Evidence:** `useAdaptiveSSE.ts:36-43` comment: "Both hooks are always called to comply with React's Rules of Hooks."
 - **Suggested correction:** Add: "Both hooks are always mounted; the inactive one receives a `null` submission to be inert."

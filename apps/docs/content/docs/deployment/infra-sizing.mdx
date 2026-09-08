@@ -1,110 +1,96 @@
 ---
 title: Infra sizing
-description: Reference VM for a single-server pilot, growth signals, license-debt risks.
+description: The reference host for a single-server pilot, what grows, and when to split.
 ---
 
-## Reference VM (single-server alpha)
+## Reference host
 
-The platform fits in one VM for the pilot phase:
+The whole compose stack on one machine, sized for a pilot of ten to fifty
+people:
 
-| Resource     | Sizing                        | Notes                                                  |
-|--------------|-------------------------------|--------------------------------------------------------|
-| vCPU         | 12 cores                      | Burst usage during e2e tests                           |
-| RAM          | 32 GB                         | Trace store + gateway + databases     |
-| Disk         | 256 GB SSD                    | Growth alert at 60 % (150 GB)                          |
-| OS           | Ubuntu 22.04 LTS              | Anything with modern Docker works                      |
+| Resource | Sizing | Why |
+|---|---|---|
+| CPU | 12 vCPU | ClickHouse, the injection scanner and the two Presidio sidecars are the busy ones |
+| RAM | 32 GB | ClickHouse and the guardrail models dominate |
+| Disk | 256 GB SSD | traces grow fastest; alert at 60 % |
+| OS | Ubuntu 22.04 LTS | anything with a current Docker works |
 
-This carries roughly **50 active users at 100 prompts each per day**
-without strain. Past that, split.
+This carries roughly fifty active users at a hundred prompts a day each.
+The internal record for NuFi's own host is
+`deploy/platform/docs/deployment-infra.md`.
 
 ## Per-service caps
 
-Recommended CPU and memory caps, so one runaway service does not starve the
-rest. These are **guidance, not configuration** — `docker-compose.yml`
-declares no `deploy:` limits today, so nothing enforces them. Apply them
-explicitly if you need the isolation:
+Guidance, not configuration: the compose file declares no `deploy.resources`
+limits, so nothing enforces these until you add them.
 
-| Service            | CPU cap   | RAM cap   |
-|--------------------|-----------|-----------|
-| ClickHouse         | 2 vCPU    | 4 GB      |
-| Injection scanner  | 1 vCPU    | 2 GB      |
-| Presidio Analyzer  | 1 vCPU    | 1.5 GB    |
-| Gateway            | 2 vCPU    | 2 GB      |
-| Chat               | 2 vCPU    | 2 GB      |
-| Langfuse worker    | 2 vCPU    | 2 GB      |
-| Langfuse web       | 1 vCPU    | 1 GB      |
-| Postgres           | 1 vCPU    | 1 GB      |
-| MongoDB            | 1 vCPU    | 1 GB      |
+| Service | CPU | Memory |
+|---|---|---|
+| ClickHouse | 2 | 4 GB |
+| `nufi-scanner` | 1 | 2 GB |
+| Presidio (each) | 0.5 | 1 GB |
+| the gateway | 1 | 2 GB |
+| the NuFi app | 1 | 2 GB |
+| Langfuse web and worker | 1 each | 2 GB each |
+| Postgres, MongoDB | 1 each | 2 GB each |
+| the console | 0.5 | 512 MB |
+| Prometheus | 1 | 2 GB |
 
-Tune in `docker-compose.yml` under each service's `deploy.resources`.
+Add them under a service's `deploy.resources.limits` when one process must
+not be allowed to take the host down. If you cap ClickHouse, lower its
+`max_memory_usage` to match.
 
-## Disk allocation (per service)
+## Disk
 
-| Volume             | Initial allocation | Notes                                              |
-|--------------------|--------------------|----------------------------------------------------|
-| `postgres-data`    | 10 GB              | Gateway keys + trace metadata                   |
-| `mongodb-data`     | 20 GB              | Conversations grow linearly with usage             |
-| `clickhouse-data`  | 50 GB              | **Fastest grower** — ~50 MB / 1000 traces          |
-| `minio-data`       | 30 GB              | Langfuse blob payloads                             |
-| `prometheus-data`  | 20 GB              | 15-day retention                                   |
-| `grafana-data`     | 5 GB               | State + user-uploaded JSON                         |
+| Volume | Start | Growth |
+|---|---|---|
+| `npuops_postgres-data` | 10 GB | slow |
+| `npuops_mongodb-data` | 20 GB | with conversations |
+| `npuops_clickhouse-data` | 50 GB | fastest: about 50 MB per thousand traces |
+| `npuops_minio-data` | 30 GB | with ClickHouse |
+| `npuops_prometheus-data` | 20 GB | bounded by the 15-day retention |
+| images, logs, headroom | 50 GB | |
 
-Alert at 60 % disk. Expand to 500 GB when ClickHouse + MinIO together
-cross 100 GB.
+Alert at 60 %. Expand to 500 GB when ClickHouse and MinIO together pass
+100 GB; to 1 TB past about a hundred users or a million traces a month.
 
-## When to split off
+## When to split
 
-You have one VM. When do you start adding more?
+- **ClickHouse and MinIO past 100 GB:** move both to a host with a bigger
+  disk; they only talk to Langfuse.
+- **More than a hundred concurrent users:** a second app instance behind a
+  load balancer, with the app's Redis-backed resumable streams turned on.
+- **Gateway CPU saturated:** more gateway containers behind a load
+  balancer, not more workers in one. The gateway runs with
+  `--num_workers 1` on purpose: its guardrail metrics live in one process,
+  and a second worker would report a second, disagreeing set. Postgres and
+  Redis are shared; the guardrail sidecars scale with the gateway.
+- **Trace ingestion lagging:** more Langfuse workers.
 
-- **ClickHouse + MinIO crossing 100 GB** — move them to their own
-  data VM with a larger disk.
-- **More than 100 concurrent active users** — split the chat behind
-  a load balancer; The chat has resumable-streams support for
-  multi-instance setups (`REDIS_*` env vars enable it).
-- **Gateway CPU saturated** — add more gateway replicas. Postgres +
-  Redis are shared.
-- **Trace latency lag** — split Langfuse worker into N replicas.
+## Network
 
-## License debt
+Outbound to the model providers you use; inbound only 80 and 443 for the
+reverse proxy, or nothing at all with a
+[Cloudflare tunnel](/docs/deployment/cloudflare-tunnel). Everything else
+stays on the `npuops` Docker network.
 
-A handful of dependencies have non-permissive licences that limit
-commercial re-distribution:
+## Licences to know about
 
-| Component   | License          | Risk                                                 |
-|-------------|------------------|------------------------------------------------------|
-| MongoDB     | SSPL             | Cannot resell hosted MongoDB-as-a-service             |
-| MinIO       | AGPLv3           | AGPL viral if you redistribute MinIO + extensions    |
-| Redis       | RSALv2           | Cannot resell Redis-as-a-service                     |
+Three components carry licences that constrain redistribution, not
+internal use:
 
-For an internal run on your own infrastructureed deployment, all three are fine. If the
-platform is ever distributed externally, swap in:
+| Component | Licence | Constraint |
+|---|---|---|
+| MongoDB | SSPL | cannot be offered as a hosted database service |
+| MinIO | AGPLv3 | copyleft if you redistribute it modified |
+| Redis 7.4 | RSALv2 / SSPL | cannot be offered as a hosted service |
 
-- **FerretDB** for MongoDB (compatible wire protocol).
-- **SeaweedFS** for MinIO (S3-compatible).
-- **Valkey** for Redis (Apache-2.0 fork).
+Running the stack for your own organisation is fine under all three.
+Distributing NuFi to others would mean swapping in FerretDB, SeaweedFS and
+Valkey, which speak the same protocols.
 
-W9 of the roadmap tracks this swap as the license-debt resolution
-milestone.
+## Cost
 
-## Networking
-
-- Outbound — model providers (OpenAI, Anthropic, …), Langfuse self-
-  hosted obviously not outbound.
-- Inbound — only the reverse proxy's 80/443.
-- East-west — entirely within the `npuops` Docker network.
-
-If you front everything through Cloudflare tunnel, there is **no
-inbound** at all. See [Cloudflare tunnel](/docs/deployment/cloudflare-tunnel).
-
-## Cost benchmark
-
-The reference VM at AWS-style prices is approximately:
-
-- VM (12 vCPU / 32 GB / 256 GB SSD) — ~$120-180/month
-- Outbound bandwidth — ~$10/month at pilot scale
-- Cloudflare tunnel + Access — free up to 50 users
-- Backups (S3 or B2) — ~$5/month for daily snapshots, 30-day
-  retention
-
-So **under $200/month** to host the platform; the LLM inference cost
-sits on top and varies wildly by backend.
+The reference host at cloud prices is about $120 to $180 a month, plus a
+few dollars of egress and backups. The tunnel and Access are free at this
+size. Model inference is on top and depends entirely on the backend.
