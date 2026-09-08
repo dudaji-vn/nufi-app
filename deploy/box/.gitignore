@@ -1,0 +1,4 @@
+.env
+litellm/config.yaml
+data/
+secrets/
