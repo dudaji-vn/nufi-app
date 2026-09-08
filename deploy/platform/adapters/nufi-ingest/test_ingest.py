@@ -341,6 +341,26 @@ def main():
         I.Ingester(cfg3).scan()
         assert not [s for s in FakeApp.seen[mark:] if s[0] == "PATCH"], \
             "an already-pinned agent must not be PATCHed again on every scan"
+
+        # --- the real upgrade shape: state KEPT, agents unpinned ------------
+        # An upgraded box does not lose /state, so every long-lived department
+        # takes ensure_department's cached path and never reaches
+        # find_or_create_agent. Reconciling only there would leave exactly the
+        # agents that need pinning unpinned, forever.
+        FakeApp.agents[legal_agent_id].pop("model_parameters", None)
+        upgraded = I.Ingester(cfg2)          # state2 already lists both departments
+        assert upgraded.state["departments"], "this case is only meaningful with state present"
+        mark = len(FakeApp.seen)
+        upgraded.scan()
+        patches = [s for s in FakeApp.seen[mark:] if s[0] == "PATCH"]
+        assert len(patches) == 1, [(p[1], p[3]) for p in patches]
+        assert patches[0][1] == f"/api/agents/{legal_agent_id}", patches[0][1]
+        assert json.loads(patches[0][3]) == {"model_parameters": {"temperature": 0, "seed": 7}}
+        # ...and still only once per process, not once per 20-second scan
+        mark = len(FakeApp.seen)
+        upgraded.scan(); upgraded.scan()
+        assert not [s for s in FakeApp.seen[mark:] if s[0] == "PATCH"], \
+            "the reconcile must be memoised per process, not repeated every scan"
     print("PASS")
 
 

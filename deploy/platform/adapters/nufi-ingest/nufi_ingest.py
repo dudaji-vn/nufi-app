@@ -161,6 +161,11 @@ class App:
         self.user_id = None
         self._token = None
         self._token_exp = 0
+        # Agents this process has already checked against MODEL_PARAMETERS.
+        # Once per process, not once per scan: a scan runs every 20 seconds and
+        # the settings cannot change behind our back, but an upgraded image
+        # restarts the container, which is exactly when a reconcile is due.
+        self._pinned = set()
 
     def _request(self, method, path, body=None, headers=None, browser=False, auth=True):
         url = self.cfg.app_url + path
@@ -243,6 +248,9 @@ class App:
         be read from the agent itself; otherwise "is it already pinned?" is
         unanswerable and the reconcile would PATCH on every scan.
         """
+        if agent_id in self._pinned:
+            return
+        self._pinned.add(agent_id)
         try:
             _, agent = self._request("GET", f"/api/agents/{agent_id}", browser=True)
         except AppError as e:
@@ -329,6 +337,13 @@ class Ingester:
     def ensure_department(self, dept):
         d = self.state["departments"].get(dept)
         if d:
+            # An upgraded box keeps /state, so this cached path is the ONLY one
+            # a long-lived department ever takes -- reconciling solely inside
+            # find_or_create_agent would mean the agents that most need pinning
+            # (the ones created before it existed) never get it. Memoised per
+            # process, so this costs one GET per department per restart.
+            if d.get("agent_id"):
+                self.app.pin_model_parameters(d["agent_id"])
             return d
         name = display_name(dept)
         team_id = self.app.find_or_create_team(name) if self.cfg.share == "team" else None
