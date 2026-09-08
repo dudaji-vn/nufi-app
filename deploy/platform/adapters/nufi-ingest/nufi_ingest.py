@@ -82,6 +82,40 @@ def display_name(dept):
     return dept.replace("_", " ").replace("-", " ").strip().capitalize()
 
 
+def agent_instructions(name):
+    """The system prompt for a department assistant.
+
+    The two rules after the first one are not style preferences; each one is a
+    failure observed on a live box running the default on-box model
+    (qwen2.5:7b behind the local gateway), where the whole corpus and every
+    question are Korean:
+
+    * Language. With an English-only instruction the model answered Korean
+      questions in Chinese and Vietnamese -- not a translation of the right
+      answer, but a different answer that no Korean reader can check against
+      the source. It has no way to know which language to use unless it is
+      told, so the rule ties the answer to the question rather than naming a
+      language, which also keeps a non-Korean drive working.
+
+    * Tool narration. The model leaked its own function-calling scaffolding
+      into the answer -- '让我使用file_search工具', a bare
+      '{"name": "file_search", ...}', a stray '</tool_call>'. Every one of
+      those reached the user as the beginning of the answer.
+
+    Written in English deliberately: the corpus language is whatever the drive
+    holds, and pinning the instruction to Korean would break a box whose
+    documents are not.
+    """
+    return (
+        f"You are the {name} department's assistant. Answer only from the documents in the "
+        f"{name} drive, cite the file you used, and say plainly when the documents do not "
+        "cover a question.\n"
+        "Always write your answer in the same language the question was asked in.\n"
+        "Never describe the tools you are about to use and never show tool-call syntax; "
+        "search first, then reply with the answer alone."
+    )
+
+
 class AppError(RuntimeError):
     pass
 
@@ -236,9 +270,7 @@ class Ingester:
         name = display_name(dept)
         team_id = self.app.find_or_create_team(name) if self.cfg.share == "team" else None
         agent_id, agent_oid = self.app.find_or_create_agent(
-            f"{name} assistant",
-            f"You are the {name} department's assistant. Answer only from the documents in the "
-            f"{name} drive, cite the file you used, and say plainly when the documents do not cover a question.")
+            f"{name} assistant", agent_instructions(name))
         self.app.share_agent(team_id, agent_id, agent_oid)
         d = {"team_id": team_id, "agent_id": agent_id, "agent_oid": agent_oid}
         self.state["departments"][dept] = d
