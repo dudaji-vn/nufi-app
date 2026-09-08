@@ -26,3 +26,100 @@ def test_drive_add_with_no_departments_yet(tmp_path):
 
 def test_unknown_verb_fails():
     assert cli("frobnicate").returncode != 0
+
+
+# --- fix round: defect 1 — hyphenated department name must not corrupt .env ---
+
+def test_drive_add_hyphenated_department_env_key(tmp_path):
+    envf = tmp_path / ".env"; envf.write_text("NUFI_DATA_DIR=%s\nBOX_NAME=nufi\n" % tmp_path)
+    r = cli("drive", "add", "back-office", NUFI_BOX_ENV=str(envf))
+    assert r.returncode == 0, r.stderr
+    assert 'SAMBA_VOLUME_CONFIG_back_office="[back-office]; path=/shares/back-office;' in r.stdout
+
+
+# --- fix round: defect 2 — relative one-level symlink invocation ---
+
+def test_help_works_through_relative_symlink(tmp_path):
+    real_dir = tmp_path / "real"; real_dir.mkdir()
+    bin_dir = tmp_path / "bin"; bin_dir.mkdir()
+    script = real_dir / "nufi-box"
+    script.write_text((BOX / "nufi-box").read_text())
+    script.chmod(0o755)
+    link = bin_dir / "nufi-box"
+    link.symlink_to(pathlib.Path("..") / "real" / "nufi-box")
+    e = dict(os.environ, NUFI_BOX_DRY_RUN="1")
+    r = subprocess.run(["/bin/bash", str(link), "--help"], cwd=str(tmp_path), env=e, capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+
+
+# --- fix round: defect 3 — friendly guard when .env is missing / incomplete ---
+
+def test_drive_add_with_missing_env_file(tmp_path):
+    missing = tmp_path / "does-not-exist.env"
+    r = cli("drive", "add", "x", NUFI_BOX_ENV=str(missing))
+    assert r.returncode == 2
+    assert "no .env next to nufi-box" in r.stderr
+
+def test_drive_add_without_nufi_data_dir(tmp_path):
+    envf = tmp_path / ".env"; envf.write_text("BOX_NAME=nufi\n")
+    r = cli("drive", "add", "x", NUFI_BOX_ENV=str(envf))
+    assert r.returncode == 2
+    assert "NUFI_DATA_DIR is not set in .env" in r.stderr
+
+
+# --- minor: clearer messages before usage ---
+
+def test_drive_add_missing_name_message(tmp_path):
+    envf = tmp_path / ".env"; envf.write_text("NUFI_DATA_DIR=%s\n" % tmp_path)
+    r = cli("drive", "add", NUFI_BOX_ENV=str(envf))
+    assert r.returncode == 2
+    assert "drive add: a name is required" in r.stderr
+
+def test_unknown_verb_message(tmp_path):
+    envf = tmp_path / ".env"; envf.write_text("NUFI_DATA_DIR=%s\n" % tmp_path)
+    r = cli("frobnicate", NUFI_BOX_ENV=str(envf))
+    assert r.returncode != 0
+    assert "unknown command: frobnicate" in r.stderr
+
+
+# --- fix round: defect 4 — envfile.sh helper, tested directly ---
+
+def test_envfile_set_replaces_appends_and_preserves_other_keys(tmp_path):
+    f = tmp_path / ".env"
+    f.write_text("FOO=bar\nDEPARTMENTS=legal\nBAZ=qux\n")
+    lib = str(BOX / "lib" / "envfile.sh")
+    r = subprocess.run(
+        ["/bin/bash", "-c", 'source "$0"; envfile_set "$1" DEPARTMENTS legal,hr', lib, str(f)],
+        capture_output=True, text=True,
+    )
+    assert r.returncode == 0, r.stderr
+    content = f.read_text()
+    assert "FOO=bar" in content
+    assert "BAZ=qux" in content
+    assert content.count("DEPARTMENTS=") == 1
+    assert "DEPARTMENTS=legal,hr" in content
+
+    r2 = subprocess.run(
+        ["/bin/bash", "-c", 'source "$0"; envfile_set "$1" NEWKEY hello', lib, str(f)],
+        capture_output=True, text=True,
+    )
+    assert r2.returncode == 0, r2.stderr
+    assert "NEWKEY=hello" in f.read_text()
+
+    leftovers = [p.name for p in tmp_path.iterdir() if p.name != ".env"]
+    assert leftovers == [], leftovers
+
+def test_envfile_has(tmp_path):
+    f = tmp_path / ".env"
+    f.write_text("FOO=bar\n")
+    lib = str(BOX / "lib" / "envfile.sh")
+    r = subprocess.run(
+        ["/bin/bash", "-c", 'source "$0"; envfile_has "$1" FOO && echo yes || echo no', lib, str(f)],
+        capture_output=True, text=True,
+    )
+    assert r.stdout.strip() == "yes"
+    r2 = subprocess.run(
+        ["/bin/bash", "-c", 'source "$0"; envfile_has "$1" MISSING && echo yes || echo no', lib, str(f)],
+        capture_output=True, text=True,
+    )
+    assert r2.stdout.strip() == "no"

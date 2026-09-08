@@ -1,7 +1,12 @@
 #!/bin/bash
 # nufi-box — operate the box without knowing Docker. bash 3.2 compatible.
 set -euo pipefail
-HERE="$(cd "$(dirname "$(readlink "$0" 2>/dev/null || echo "$0")")" && pwd)"
+SELF="$0"
+if [ -L "$SELF" ]; then
+  T="$(readlink "$SELF")"
+  case "$T" in /*) SELF="$T" ;; *) SELF="$(dirname "$SELF")/$T" ;; esac
+fi
+HERE="$(cd "$(dirname "$SELF")" && pwd)"
 ENVF="${NUFI_BOX_ENV:-$HERE/.env}"
 DRY="${NUFI_BOX_DRY_RUN:-0}"
 run() { if [ "$DRY" = 1 ]; then printf '  $ %s\n' "$*"; else "$@"; fi; }
@@ -23,27 +28,35 @@ nufi-box <verb>
 EOF
 }
 case "${1:-}" in
+  -h|--help|"") ;;
+  *) [ -f "$ENVF" ] || { echo "no .env next to nufi-box — run install-box.sh first" >&2; exit 2; } ;;
+esac
+case "${1:-}" in
   status)
     run $COMPOSE ps --format 'table {{.Name}}\t{{.Status}}'
     echo; echo "Model: ${NUFI_MODEL:-?} via ${INFERENCE_PROFILE:-?}   Drives: ${NUFI_DATA_DIR:-?}/drives   Host: https://${BOX_HOST:-?}:3080"
     run df -h "${NUFI_DATA_DIR:-.}" ;;
   logs) shift; run $COMPOSE logs -f --tail=200 "$@" ;;
   drive)
-    [ "${2:-}" = "add" ] && [ -n "${3:-}" ] || { usage; exit 2; }
+    if [ "${2:-}" != "add" ]; then usage; exit 2; fi
+    if [ -z "${3:-}" ]; then echo "drive add: a name is required" >&2; usage; exit 2; fi
     name="$3"
     case "$name" in *[!a-z0-9_-]*) echo "use lowercase letters, digits, - or _" >&2; exit 2 ;; esac
+    [ -n "${NUFI_DATA_DIR:-}" ] || { echo "NUFI_DATA_DIR is not set in .env" >&2; exit 2; }
+    key="$(printf '%s' "$name" | tr -c 'a-z0-9_\n' '_')"
     run mkdir -p "$NUFI_DATA_DIR/drives/$name"
     case ",${DEPARTMENTS:-}," in
       *",$name,"*) new_depts="${DEPARTMENTS:-}" ;;
       *) new_depts="${DEPARTMENTS:+$DEPARTMENTS,}$name" ;;
     esac
+    samba_line="\"[${name}]; path=/shares/${name}; valid users = nufi; guest ok = no; read only = no; browseable = yes\""
     if [ "$DRY" = 1 ]; then
       echo "DEPARTMENTS=$new_depts"
-      printf 'SAMBA_VOLUME_CONFIG_%s="[%s]; path=/shares/%s; valid users = nufi; guest ok = no; read only = no; browseable = yes"\n' "$name" "$name" "$name"
+      printf 'SAMBA_VOLUME_CONFIG_%s=%s\n' "$key" "$samba_line"
     else
-      tmp="$(mktemp)"; grep -v '^DEPARTMENTS=' "$ENVF" > "$tmp"; echo "DEPARTMENTS=$new_depts" >> "$tmp"
-      grep -q "^SAMBA_VOLUME_CONFIG_$name=" "$tmp" || printf 'SAMBA_VOLUME_CONFIG_%s="[%s]; path=/shares/%s; valid users = nufi; guest ok = no; read only = no; browseable = yes"\n' "$name" "$name" "$name" >> "$tmp"
-      mv "$tmp" "$ENVF"
+      . "$HERE/lib/envfile.sh"
+      envfile_set "$ENVF" DEPARTMENTS "$new_depts"
+      envfile_has "$ENVF" "SAMBA_VOLUME_CONFIG_$key" || envfile_set "$ENVF" "SAMBA_VOLUME_CONFIG_$key" "$samba_line"
     fi
     [ "$OS" = "Darwin" ] && run sudo sharing -a "$NUFI_DATA_DIR/drives/$name" -S "$name" -s 001
     [ "$OS" = "Linux" ] && run $COMPOSE up -d samba
@@ -65,5 +78,5 @@ case "${1:-}" in
   restart) run $COMPOSE restart ;;
   invite|update|backup|support) echo "$1: coming in the next phase"; exit 3 ;;
   -h|--help|"") usage ;;
-  *) usage; exit 2 ;;
+  *) echo "unknown command: $1" >&2; usage; exit 2 ;;
 esac
