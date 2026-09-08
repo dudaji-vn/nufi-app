@@ -212,11 +212,134 @@ class _FakeApp(BaseHTTPRequestHandler):
         })
 
 
-def _serve():
+def _serve(handler=_FakeApp):
     port = _free_port()
-    httpd = ThreadingHTTPServer(("127.0.0.1", port), _FakeApp)
+    httpd = ThreadingHTTPServer(("127.0.0.1", port), handler)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     return httpd, port
+
+
+_STOP_HANG = threading.Event()
+
+
+class _HalfStreamApp(BaseHTTPRequestHandler):
+    """Answers the chat POST normally, opens the SSE stream, sends one partial
+    chunk -- and then never sends the rest.
+
+    That is what a generation that dies halfway looks like from the client
+    side (the app restarted, the model host dropped, the job wedged), and it
+    happens *after* the 200 and after the body has started, so Chat.call's
+    HTTPError/URLError handling is already behind us. Without the guard inside
+    Chat.ask the resulting socket error escapes and takes the whole run down
+    on one bad question.
+
+    A hang rather than a hard close, because that is deterministic: a close
+    mid-body is read as a clean end of stream by readline(), so it produces a
+    truncated answer rather than an error, whereas a stall reliably trips the
+    read timeout no matter how the OS schedules the two ends.
+    """
+
+    def log_message(self, *a):
+        pass
+
+    def do_POST(self):
+        n = int(self.headers.get("Content-Length", 0) or 0)
+        self.rfile.read(n)
+        raw = json.dumps({"streamId": "s1", "conversationId": "s1", "status": "started"}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.end_headers()
+        self.wfile.write(b'event: message\ndata: {"text": "\xea\xb3\x84\xec\x95\xbd"}\n\n')
+        self.wfile.flush()
+        _STOP_HANG.wait(30)  # never sends the `final` event
+
+
+def test_a_broken_stream_becomes_a_recorded_failure():
+    _STOP_HANG.clear()
+    httpd, port = _serve(_HalfStreamApp)
+    old = run_box.STREAM_TIMEOUT
+    run_box.STREAM_TIMEOUT = 1.0
+    chat = run_box.Chat(f"http://127.0.0.1:{port}")
+    try:
+        try:
+            answer, sources = chat.ask("agent_x", "질문")
+        except run_box.BoxError as exc:
+            assert "stream broke" in str(exc), exc
+            # names the facts someone debugging this needs: which stream, and
+            # how much of the answer had arrived before it stopped.
+            assert "/api/agents/chat/stream/s1" in str(exc), exc
+            assert "chars" in str(exc), exc
+            print("PASS: a stream that dies mid-answer raises BoxError, not a "
+                  "socket traceback that kills the run")
+            return
+        except Exception as exc:  # noqa: BLE001 - this is the regression
+            raise AssertionError(
+                f"stream break escaped as {type(exc).__name__}: {exc} — "
+                "main() would have aborted the whole run on one question") from exc
+        raise AssertionError(f"expected a BoxError, got a clean answer: {answer!r} {sources}")
+    finally:
+        run_box.STREAM_TIMEOUT = old
+        _STOP_HANG.set()
+        httpd.shutdown()
+
+
+class _HostEchoApp(BaseHTTPRequestHandler):
+    """Records the Host header of every request it receives."""
+
+    seen = []
+
+    def log_message(self, *a):
+        pass
+
+    def do_GET(self):
+        _HostEchoApp.seen.append(self.headers.get("Host"))
+        raw = b'{"ok": true}'
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+
+
+def test_connect_to_moves_the_socket_and_leaves_the_url_alone():
+    """The whole point of --connect-to over rewriting --base: the box is
+    reached on another host port, but the request must still *be* a request to
+    nufi.local:3080 as far as the Host header (and, over TLS, SNI and
+    certificate verification) are concerned."""
+    rules = run_box.parse_connect_to(["nufi.local:3080:127.0.0.1:19999"])
+    assert rules == {("nufi.local", 3080): ("127.0.0.1", 19999)}, rules
+    short = run_box.parse_connect_to(["nufi.local:3080:19999"])
+    assert short == {("nufi.local", 3080): ("127.0.0.1", 19999)}, short
+    for bad in ("nufi.local:3080", "a:b:c:d"):
+        try:
+            run_box.parse_connect_to([bad])
+        except SystemExit:
+            pass
+        else:
+            raise AssertionError(f"{bad!r} should have been rejected")
+
+    _HostEchoApp.seen = []
+    httpd, port = _serve(_HostEchoApp)
+    try:
+        chat = run_box.Chat("http://nufi.local:3080",
+                            connect_to={("nufi.local", 3080): ("127.0.0.1", port)})
+        with chat.call("GET", "/health") as r:
+            assert json.load(r) == {"ok": True}
+    finally:
+        httpd.shutdown()
+    # It reached a server on 127.0.0.1:<port> ...
+    assert len(_HostEchoApp.seen) == 1, _HostEchoApp.seen
+    # ... but the request still says it is for nufi.local:3080.
+    assert _HostEchoApp.seen[0] == "nufi.local:3080", _HostEchoApp.seen
+    print("PASS: --connect-to dials the mapped address while Host stays on the "
+          "URL's own host:port")
 
 
 def main():
@@ -291,6 +414,17 @@ def main():
     assert "legal" in md
     assert "PASS" in md and "FAIL" in md
 
+    # 5b) the md leads with the score, so the file answers "how did it go?"
+    #     without anyone counting PASS lines.
+    assert "2/4 checks passed" in md, md.splitlines()[:4]
+
+    # 5c) the failed question shows WHY it failed, not just an empty bullet:
+    #     the HTTP-error one shows its error text, the wrong-answer one shows
+    #     the judge's verdict. Without this, evidence/box.md rendered a failed
+    #     question as a blank line and the reader had to open box.json.
+    assert "error: " in md and "400" in md and "moderation" in md, md
+    assert "verdict: " in md and "does not state '3'" in md, md
+
     shutil.rmtree(drives, ignore_errors=True)
     shutil.rmtree(out, ignore_errors=True)
     print("PASS: run_box.py writes documents, polls for ingest, drives the real "
@@ -298,5 +432,64 @@ def main():
           "error into a recorded failure instead of a crash")
 
 
+class _NeverIngestsApp(_FakeApp):
+    """The agent exists, but its file list stays empty forever.
+
+    This is the live failure that produced the worst evidence file: with no
+    document behind it the agent answers every question with a polite "the
+    document does not mention that", so the md filled up with identical
+    extract failures and one accidental refuse PASS, and nothing on the page
+    said the daemon had never embedded anything.
+    """
+
+    def do_GET(self):
+        if self.path.startswith("/api/files/agent/"):
+            if not (self._require_chrome_ua() and self._require_bearer()):
+                return
+            return self._json(200, [])
+        return super().do_GET()
+
+
+def test_the_markdown_names_an_ingest_gap():
+    _NeverIngestsApp.jobs = {}
+    httpd, port = _serve(_NeverIngestsApp)
+    drives = Path(tempfile.mkdtemp(prefix="run_box_test_gap_drives_"))
+    out = Path(tempfile.mkdtemp(prefix="run_box_test_gap_"))
+    old_poll, old_argv = run_box.POLL_INTERVAL, sys.argv
+    run_box.POLL_INTERVAL = 0.05
+    sys.argv = ["run_box.py", "--base", f"http://127.0.0.1:{port}",
+                "--email", "sun@dudaji.com", "--password", "x",
+                "--drives", str(drives), "--out", str(out),
+                "--only", "legal", "--timeout", "0.5"]
+    try:
+        try:
+            run_box.main()
+        except SystemExit:
+            pass
+    finally:
+        sys.argv, run_box.POLL_INTERVAL = old_argv, old_poll
+        httpd.shutdown()
+
+    data = json.loads((out / "box.json").read_text())
+    dept = data["departments"][0]
+    assert dept["ingest_complete"] is False, dept
+    assert dept["missing"] == [DOC_NAME], dept
+
+    md = (out / "box.md").read_text()
+    # The reason has to be on the page, once, above the questions -- otherwise
+    # the reader debugs the model instead of the daemon.
+    assert "ingest_complete: false" in md, md
+    assert DOC_NAME in md, md
+    assert md.index("ingest_complete: false") < md.index("- **" + LEGAL["questions"][0]["ask"]), md
+
+    shutil.rmtree(drives, ignore_errors=True)
+    shutil.rmtree(out, ignore_errors=True)
+    print("PASS: evidence/box.md names the ingest gap and the missing document "
+          "above the department's questions, not only in box.json")
+
+
 if __name__ == "__main__":
     main()
+    test_a_broken_stream_becomes_a_recorded_failure()
+    test_connect_to_moves_the_socket_and_leaves_the_url_alone()
+    test_the_markdown_names_an_ingest_gap()

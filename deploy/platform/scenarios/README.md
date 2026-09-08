@@ -151,17 +151,31 @@ is no way to accidentally send one without it.
 - `--cacert PATH` — trust a specific PEM CA file instead (the box's own CA,
   say) rather than disabling verification outright.
 - `--timeout SECONDS` — how long to wait for nufi-ingest per department
-  (default 180s). Each question itself has a fixed 600s read timeout,
-  regardless of this flag.
+  (default 180s). Each question itself has a fixed 600s read timeout
+  (`STREAM_TIMEOUT`), regardless of this flag; a generation that stalls past
+  it fails that one question rather than the run.
+- `--connect-to HOST:PORT:TOHOST:TOPORT` — curl's flag, same meaning: dial a
+  different socket address while the URL stays exactly as given, so SNI, the
+  `Host` header, cookie scope and every redirect `Location` still name the box
+  as it was installed. Needed on a machine where something else already holds
+  3080 and the box therefore publishes Caddy on another host port — rewriting
+  `--base` to `https://127.0.0.1:13080` instead would break certificate
+  verification and the box's hostname routing at once. `TOHOST` may be omitted
+  for `127.0.0.1`. Repeatable.
 - `--out DIR` — where to write the evidence files (default `evidence/`).
 
 **Evidence:** `evidence/box.json` is the machine-readable run — per
-department, the agent id found, how long ingest took, and per question the
-answer, its sources, the pass/fail verdict, the reason `judge()` gave, and
-whether the answer drifted out of Korean — plus a top-level `failures` count.
-`evidence/box.md` is the same run as a transcript. Both are written only on a
-real run against a live box; nothing under `evidence/box.*` in this repo came
-from a test.
+department, the agent id found, how long ingest took, whether ingest completed
+and what is still missing if not, and per question the answer, its sources,
+the pass/fail verdict, the reason `judge()` gave, and whether the answer
+drifted out of Korean — plus a top-level `failures` count. `evidence/box.md`
+is the same run as a transcript: it opens with the score, names an ingest gap
+(`ingest_complete: false` and the documents that never embedded) above that
+department's questions rather than leaving four identical "does not mention
+that" failures to be explained, and prints a failed question's `error` text or
+the judge's verdict instead of a blank line. Both are written only on a real
+run against a live box; nothing under `evidence/box.*` in this repo came from
+a test.
 
 **Test:** `test_run_box.py` stands up a fake copy of the app's own API
 (`ThreadingHTTPServer`, stdlib only) and drives `run_box.py`'s real `main()`
