@@ -213,6 +213,14 @@ class Ingester:
         tmp.write_text(json.dumps(self.state, indent=1, ensure_ascii=False))
         tmp.replace(self.state_path)
 
+    def _heartbeat(self):
+        # touched at the end of every scan(), successful or not, so the
+        # container healthcheck can tell "the daemon is alive" apart from
+        # "the /state mount exists" (which is always true).
+        path = pathlib.Path(self.cfg.state_dir) / "heartbeat"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch(exist_ok=True)
+
     # --- departments -------------------------------------------------------
     def ensure_department(self, dept):
         d = self.state["departments"].get(dept)
@@ -320,6 +328,7 @@ class Ingester:
             self.save()
             LOG.info("%s %s → %s (embedded=%s)", "updated" if rec else "added", rel, file_id, embedded)
             self._pending.pop(rel, None)
+        self._heartbeat()
 
     def run(self):
         LOG.info("watching %s every %.0fs", self.cfg.drives_dir, self.cfg.interval)

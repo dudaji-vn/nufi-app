@@ -139,7 +139,13 @@ def main():
                        model="qwen2.5-7b", provider="NuFi", interval=0, share="team", settle_scans=1)
         d = I.Ingester(cfg)
         d.scan()   # first pass: only records sizes (settle)
+        heartbeat = state / "heartbeat"
+        assert heartbeat.exists(), "scan() must touch a heartbeat file in the state dir"
+        heartbeat_mtime_1 = heartbeat.stat().st_mtime
+        time.sleep(0.01)
         d.scan()   # second pass: file is stable → uploads
+        heartbeat_mtime_2 = heartbeat.stat().st_mtime
+        assert heartbeat_mtime_2 > heartbeat_mtime_1, "heartbeat mtime must advance between scans"
         uploads = [s for s in FakeApp.seen if s[0] == "POST" and s[1] == "/api/files"]
         assert len(uploads) == 1, uploads
         assert b'name="tool_resource"\r\n\r\nfile_search' in uploads[0][3]

@@ -317,8 +317,9 @@ services:
       - ${NUFI_DATA_DIR}/drives:/drives:ro
       - ingest-state:/state
     healthcheck:
-      test: ["CMD-SHELL", "test -d /state"]
+      test: ["CMD-SHELL", "test -n \"$(find /state/heartbeat -mmin -3 2>/dev/null)\""]
       interval: 30s
       timeout: 5s
       retries: 3
+      start_period: 60s
     networks: [box]
