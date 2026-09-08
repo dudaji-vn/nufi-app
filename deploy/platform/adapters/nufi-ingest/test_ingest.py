@@ -12,13 +12,11 @@ import hashlib
 import hmac
 import json
 import logging
-import os
 import pathlib
 import socket
 import tempfile
 import threading
 import time
-import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import nufi_ingest as I
@@ -33,7 +31,11 @@ USER_ID = "64b000000000000000000001"
 
 
 def _free_port():
-    s = socket.socket(); s.bind(("127.0.0.1", 0)); p = s.getsockname()[1]; s.close(); return p
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    p = s.getsockname()[1]
+    s.close()
+    return p
 
 
 def _b64url_decode(s):
@@ -53,8 +55,11 @@ class FakeApp(BaseHTTPRequestHandler):
 
     def _json(self, code, obj):
         raw = json.dumps(obj).encode()
-        self.send_response(code); self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(raw))); self.end_headers(); self.wfile.write(raw)
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
 
     def _body(self):
         n = int(self.headers.get("Content-Length") or 0)
@@ -65,7 +70,8 @@ class FakeApp(BaseHTTPRequestHandler):
         try:
             h, p, s = tok.split(".")
             expect = hmac.new(SECRET.encode(), f"{h}.{p}".encode(), hashlib.sha256).digest()
-            return hmac.compare_digest(_b64url_decode(s), expect) and json.loads(_b64url_decode(p))["id"] == USER_ID
+            return (hmac.compare_digest(_b64url_decode(s), expect)
+                    and json.loads(_b64url_decode(p))["id"] == USER_ID)
         except Exception:
             return False
 
@@ -73,18 +79,23 @@ class FakeApp(BaseHTTPRequestHandler):
         body = self._body()
         FakeApp.seen.append(("POST", self.path, dict(self.headers), body))
         if self.path == "/api/auth/login":
-            return self._json(200, {"token": "login-token", "user": {"id": USER_ID, "role": "ADMIN"}})
+            return self._json(200, {"token": "login-token",
+                                    "user": {"id": USER_ID, "role": "ADMIN"}})
         if not self._auth_ok():
             return self._json(401, {"error": "unauthorized"})
-        if self.path in ("/api/files", "/api/agents") and "Chrome/" not in self.headers.get("User-Agent", ""):
+        gated = self.path in ("/api/files", "/api/agents")
+        if gated and "Chrome/" not in self.headers.get("User-Agent", ""):
             return self._json(403, {"message": "Illegal request"})
         if self.path == "/api/teams":
-            FakeApp.counter += 1; tid = f"t{FakeApp.counter}"
+            FakeApp.counter += 1
+            tid = f"t{FakeApp.counter}"
             FakeApp.teams[tid] = {"_id": tid, "name": json.loads(body)["name"]}
             return self._json(201, {"team": FakeApp.teams[tid]})
         if self.path == "/api/agents":
-            FakeApp.counter += 1; aid = f"agent_{FakeApp.counter}"
-            doc = {"id": aid, "_id": f"oid{FakeApp.counter}", "tool_resources": {}, **json.loads(body)}
+            FakeApp.counter += 1
+            aid = f"agent_{FakeApp.counter}"
+            doc = {"id": aid, "_id": f"oid{FakeApp.counter}", "tool_resources": {},
+                   **json.loads(body)}
             FakeApp.agents[aid] = doc
             return self._json(201, doc)
         if self.path.startswith("/api/teams/") and "/agents/" in self.path:
@@ -92,13 +103,20 @@ class FakeApp(BaseHTTPRequestHandler):
         if self.path == "/api/files":
             raw = body
             def field(name):
-                m = raw.find(b'name="' + name.encode() + b'"'); j = raw.find(b"\r\n\r\n", m); k = raw.find(b"\r\n--", j)
+                m = raw.find(b'name="' + name.encode() + b'"')
+                j = raw.find(b"\r\n\r\n", m)
+                k = raw.find(b"\r\n--", j)
                 return raw[j + 4:k].decode() if m >= 0 else None
-            FakeApp.counter += 1; fid = f"srv-{FakeApp.counter}"
-            FakeApp.files[fid] = {"file_id": fid, "filepath": "vectordb", "agent_id": field("agent_id"),
-                                  "tool_resource": field("tool_resource"), "endpoint": field("endpoint")}
-            FakeApp.agents[field("agent_id")]["tool_resources"].setdefault("file_search", {}).setdefault("file_ids", []).append(fid)
-            return self._json(200, {"message": "ok", "file_id": fid, "filepath": "vectordb", "embedded": True})
+            FakeApp.counter += 1
+            fid = f"srv-{FakeApp.counter}"
+            FakeApp.files[fid] = {"file_id": fid, "filepath": "vectordb",
+                                  "agent_id": field("agent_id"),
+                                  "tool_resource": field("tool_resource"),
+                                  "endpoint": field("endpoint")}
+            attached = FakeApp.agents[field("agent_id")]["tool_resources"]
+            attached.setdefault("file_search", {}).setdefault("file_ids", []).append(fid)
+            return self._json(200, {"message": "ok", "file_id": fid,
+                                    "filepath": "vectordb", "embedded": True})
         self._json(404, {"error": self.path})
 
     def do_GET(self):
@@ -155,14 +173,17 @@ def main():
     httpd = ThreadingHTTPServer(("127.0.0.1", port), FakeApp)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     with tempfile.TemporaryDirectory() as tmp:
-        drives = pathlib.Path(tmp) / "drives"; state = pathlib.Path(tmp) / "state"
-        (drives / "legal").mkdir(parents=True); (drives / "hr").mkdir()
+        drives = pathlib.Path(tmp) / "drives"
+        state = pathlib.Path(tmp) / "state"
+        (drives / "legal").mkdir(parents=True)
+        (drives / "hr").mkdir()
         (drives / "legal" / "policy.txt").write_text("자동연장 60일")
         (drives / "legal" / ".DS_Store").write_bytes(b"junk")
         (drives / "hr" / "~$draft.docx").write_bytes(b"lock")
         cfg = I.Config(app_url=f"http://127.0.0.1:{port}", email="ingest@box", password="pw",
                        jwt_secret=SECRET, drives_dir=str(drives), state_dir=str(state),
-                       model="qwen2.5-7b", provider="NuFi", interval=0, share="team", settle_scans=1)
+                       model="qwen2.5-7b", provider="NuFi", interval=0, share="team",
+                       settle_scans=1)
         d = I.Ingester(cfg)
         d.scan()   # first pass: only records sizes (settle)
         heartbeat = state / "heartbeat"
@@ -214,13 +235,16 @@ def main():
         # daemon's size+mtime fast path only re-hashes on a detectable diff,
         # and mtime is second-granularity, so a same-length rewrite within
         # the same wall-clock second would be invisible to it)
-        time.sleep(0.01); (drives / "legal" / "policy.txt").write_text("자동연장 90일로 변경")
-        d.scan(); d.scan()
+        time.sleep(0.01)
+        (drives / "legal" / "policy.txt").write_text("자동연장 90일로 변경")
+        d.scan()
+        d.scan()
         deletes = [s for s in FakeApp.seen if s[0] == "DELETE"]
         assert len(deletes) == 1 and json.loads(deletes[0][3])["agent_id"].startswith("agent_")
         assert len([s for s in FakeApp.seen if s[0] == "POST" and s[1] == "/api/files"]) == 2
         # removed file → delete
-        (drives / "legal" / "policy.txt").unlink(); d.scan()
+        (drives / "legal" / "policy.txt").unlink()
+        d.scan()
         assert len([s for s in FakeApp.seen if s[0] == "DELETE"]) == 2
         assert "legal/policy.txt" not in json.loads((state / "state.json").read_text())["files"]
 
@@ -228,15 +252,18 @@ def main():
         # the record stays so the next scan retries instead of abandoning the
         # server-side file/embedding.
         (drives / "legal" / "note.txt").write_text("note v1")
-        d.scan(); d.scan()
-        note_id = json.loads((state / "state.json").read_text())["files"]["legal/note.txt"]["file_id"]
+        d.scan()
+        d.scan()
+        st = json.loads((state / "state.json").read_text())
+        note_id = st["files"]["legal/note.txt"]["file_id"]
         assert note_id in FakeApp.files
 
         (drives / "legal" / "note.txt").unlink()
         FakeApp.fail_next_delete = True
         d.scan()
         st = json.loads((state / "state.json").read_text())
-        assert st["files"]["legal/note.txt"]["file_id"] == note_id, "state must survive a failed delete"
+        assert st["files"]["legal/note.txt"]["file_id"] == note_id, \
+            "state must survive a failed delete"
         assert note_id in FakeApp.files, "server-side file must not be orphaned"
         assert FakeApp.fail_next_delete is False, "the failing attempt must have consumed the flag"
 
@@ -248,14 +275,18 @@ def main():
         # a failed DELETE on the changed-file (delete-before-reupload) path
         # must not upload a fresh copy while the old one still lives server-side
         (drives / "legal" / "note2.txt").write_text("note2 v1")
-        d.scan(); d.scan()
-        note2_id = json.loads((state / "state.json").read_text())["files"]["legal/note2.txt"]["file_id"]
+        d.scan()
+        d.scan()
+        st = json.loads((state / "state.json").read_text())
+        note2_id = st["files"]["legal/note2.txt"]["file_id"]
         uploads_before = len([s for s in FakeApp.seen if s[0] == "POST" and s[1] == "/api/files"])
 
-        time.sleep(0.01); (drives / "legal" / "note2.txt").write_text("note2 v2 changed")
+        time.sleep(0.01)
+        (drives / "legal" / "note2.txt").write_text("note2 v2 changed")
         FakeApp.fail_next_delete = True
         d.scan()
-        assert len([s for s in FakeApp.seen if s[0] == "POST" and s[1] == "/api/files"]) == uploads_before, \
+        posted = [s for s in FakeApp.seen if s[0] == "POST" and s[1] == "/api/files"]
+        assert len(posted) == uploads_before, \
             "must not upload while the old copy's delete failed"
         st = json.loads((state / "state.json").read_text())
         assert st["files"]["legal/note2.txt"]["file_id"] == note2_id, "old file_id must be kept"
@@ -265,7 +296,8 @@ def main():
         st = json.loads((state / "state.json").read_text())
         assert st["files"]["legal/note2.txt"]["file_id"] != note2_id
         assert note2_id not in FakeApp.files
-        assert len([s for s in FakeApp.seen if s[0] == "POST" and s[1] == "/api/files"]) == uploads_before + 1
+        posted = [s for s in FakeApp.seen if s[0] == "POST" and s[1] == "/api/files"]
+        assert len(posted) == uploads_before + 1
 
         # a non-ASCII filename must reach the app percent-encoded: the app
         # decodeURIComponent()s the multipart filename (its own web client sends
@@ -274,11 +306,13 @@ def main():
         # citation as mojibake.
         korean = drives / "legal" / "계약검토_표준조항.txt"
         korean.write_text("자동연장 60일")
-        d.scan(); d.scan()
+        d.scan()
+        d.scan()
         body = [s for s in FakeApp.seen if s[0] == "POST" and s[1] == "/api/files"][-1][3]
-        disposition = [l for l in body.split(b"\r\n") if b'name="file"' in l][0]
-        assert b'filename="%EA%B3%84%EC%95%BD%EA%B2%80%ED%86%A0_%ED%91%9C%EC%A4%80%EC%A1%B0%ED%95%AD.txt"' \
-            in disposition, disposition
+        disposition = [ln for ln in body.split(b"\r\n") if b'name="file"' in ln][0]
+        encoded = (b'filename="%EA%B3%84%EC%95%BD%EA%B2%80%ED%86%A0'
+                   b'_%ED%91%9C%EC%A4%80%EC%A1%B0%ED%95%AD.txt"')
+        assert encoded in disposition, disposition
         assert korean.name.encode() not in disposition, disposition
 
         # login exactly once; everything else self-minted
@@ -358,7 +392,8 @@ def main():
         assert json.loads(patches[0][3]) == {"model_parameters": {"temperature": 0, "seed": 7}}
         # ...and still only once per process, not once per 20-second scan
         mark = len(FakeApp.seen)
-        upgraded.scan(); upgraded.scan()
+        upgraded.scan()
+        upgraded.scan()
         assert not [s for s in FakeApp.seen[mark:] if s[0] == "PATCH"], \
             "the reconcile must be memoised per process, not repeated every scan"
     print("PASS")

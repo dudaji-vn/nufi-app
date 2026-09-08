@@ -148,8 +148,8 @@ def parse_connect_to(specs):
             raise SystemExit(f"--connect-to wants HOST:PORT:TOHOST:TOPORT, got {spec!r}")
         try:
             rules[(host, int(port))] = (to_host, int(to_port))
-        except ValueError:
-            raise SystemExit(f"--connect-to ports must be numbers: {spec!r}")
+        except ValueError as exc:
+            raise SystemExit(f"--connect-to ports must be numbers: {spec!r}") from exc
     return rules
 
 
@@ -360,7 +360,8 @@ def main():
     a = ap.parse_args()
     connect_to = parse_connect_to(a.connect_to)
 
-    depts = json.load(open(HERE / "departments.json"))["departments"]
+    with open(HERE / "departments.json") as fh:
+        depts = json.load(fh)["departments"]
     if a.only:
         depts = [d for d in depts if d["id"] == a.only]
         if not depts:
@@ -409,16 +410,18 @@ def main():
             try:
                 answer, sources = chat.ask(agent, q["ask"])
             except BoxError as exc:
-                rec["questions"].append({"ask": q["ask"], "kind": q["kind"], "expect": q["expect"],
-                                         "answer": "", "sources": [], "seconds": round(time.time() - t1, 1),
-                                         "pass": False, "why": None, "drifted": False, "error": str(exc)})
+                rec["questions"].append({
+                    "ask": q["ask"], "kind": q["kind"], "expect": q["expect"],
+                    "answer": "", "sources": [], "seconds": round(time.time() - t1, 1),
+                    "pass": False, "why": None, "drifted": False, "error": str(exc)})
                 failures += 1
                 print(f"[FAIL] {d['id']}: {q['ask']} → ERROR {exc}")
                 continue
             ok, why = judge(q["kind"], answer, q["expect"])
-            rec["questions"].append({"ask": q["ask"], "kind": q["kind"], "expect": q["expect"], "answer": answer,
-                                     "sources": sources, "seconds": round(time.time() - t1, 1),
-                                     "pass": ok, "why": why, "drifted": drifted(answer)})
+            rec["questions"].append({
+                "ask": q["ask"], "kind": q["kind"], "expect": q["expect"], "answer": answer,
+                "sources": sources, "seconds": round(time.time() - t1, 1),
+                "pass": ok, "why": why, "drifted": drifted(answer)})
             failures += 0 if ok else 1
             print(f"[{'ok' if ok else 'FAIL'}] {d['id']}: {q['ask']} → {answer[:80]!r} {sources}")
         out["departments"].append(rec)

@@ -60,9 +60,11 @@ class Config:
         e = os.environ
         return cls(app_url=e["NUFI_APP_URL"].rstrip("/"), email=e["NUFI_INGEST_EMAIL"],
                    password=e["NUFI_INGEST_PASSWORD"], jwt_secret=e["JWT_SECRET"],
-                   drives_dir=e.get("NUFI_DRIVES_DIR", "/drives"), state_dir=e.get("NUFI_STATE_DIR", "/state"),
+                   drives_dir=e.get("NUFI_DRIVES_DIR", "/drives"),
+                   state_dir=e.get("NUFI_STATE_DIR", "/state"),
                    model=e["NUFI_MODEL"], provider=e.get("NUFI_PROVIDER", "NuFi"),
-                   interval=float(e.get("NUFI_INGEST_INTERVAL", "20")), share=e.get("NUFI_INGEST_SHARE", "team"))
+                   interval=float(e.get("NUFI_INGEST_INTERVAL", "20")),
+                   share=e.get("NUFI_INGEST_SHARE", "team"))
 
 
 def _b64url(b):
@@ -73,7 +75,8 @@ def mint_jwt(user_id, secret, ttl=3600):
     """HS256 {id} — all the app's JWT strategy reads."""
     header = _b64url(json.dumps({"alg": "HS256", "typ": "JWT"}, separators=(",", ":")).encode())
     now = int(time.time())
-    payload = _b64url(json.dumps({"id": user_id, "iat": now, "exp": now + ttl}, separators=(",", ":")).encode())
+    claims = {"id": user_id, "iat": now, "exp": now + ttl}
+    payload = _b64url(json.dumps(claims, separators=(",", ":")).encode())
     sig = hmac.new(secret.encode(), f"{header}.{payload}".encode(), hashlib.sha256).digest()
     return f"{header}.{payload}.{_b64url(sig)}"
 
@@ -173,7 +176,7 @@ class App:
         h = {"Accept": "application/json"}
         if browser:
             h["User-Agent"] = UA
-        if isinstance(body, (dict, list)):
+        if isinstance(body, dict | list):
             data = json.dumps(body).encode()
             h["Content-Type"] = "application/json"
         if auth:
@@ -193,8 +196,8 @@ class App:
             raise AppError(f"{method} {path} -> {e}") from e
 
     def login(self):
-        status, body = self._request("POST", "/api/auth/login",
-                                     {"email": self.cfg.email, "password": self.cfg.password}, auth=False)
+        creds = {"email": self.cfg.email, "password": self.cfg.password}
+        status, body = self._request("POST", "/api/auth/login", creds, auth=False)
         user = body.get("user") or {}
         self.user_id = user.get("id") or user.get("_id")
         if not self.user_id:
@@ -215,7 +218,8 @@ class App:
         for t in body.get("teams", []):
             if t.get("name") == name:
                 return t["_id"]
-        _, body = self._request("POST", "/api/teams", {"name": name, "description": f"{name} department"})
+        _, body = self._request("POST", "/api/teams",
+                                {"name": name, "description": f"{name} department"})
         return body["team"]["_id"]
 
     # --- agents ------------------------------------------------------------
@@ -283,19 +287,21 @@ class App:
                   "tool_resource": "file_search", "agent_id": agent_id}
         buf = io.BytesIO()
         for k, v in fields.items():
-            buf.write(f"--{boundary}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n".encode())
+            buf.write((f"--{boundary}\r\n"
+                       f"Content-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n").encode())
         # The app percent-decodes the multipart filename (its own web client
         # sends encodeURIComponent(file.name)), and the multipart parser reads
         # header parameters as latin-1. A raw UTF-8 name therefore arrives as
         # mojibake — "계약검토_표준조항.txt" became "ê³ì½ê²í _íì¤ì¡°í­.txt" —
         # in the file list and in every citation.
         filename = urllib.parse.quote(path.name)
-        buf.write(f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\n"
-                  f"Content-Type: {ctype}\r\n\r\n".encode())
+        buf.write((f"--{boundary}\r\n"
+                   f"Content-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\n"
+                   f"Content-Type: {ctype}\r\n\r\n").encode())
         buf.write(path.read_bytes())
         buf.write(f"\r\n--{boundary}--\r\n".encode())
-        _, body = self._request("POST", "/api/files", buf.getvalue(), browser=True,
-                                headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
+        hdr = {"Content-Type": f"multipart/form-data; boundary={boundary}"}
+        _, body = self._request("POST", "/api/files", buf.getvalue(), browser=True, headers=hdr)
         if not body.get("file_id"):
             raise AppError(f"upload of {path.name} returned no file_id: {body}")
         return body["file_id"], body.get("filepath", "vectordb"), bool(body.get("embedded"))
@@ -373,7 +379,8 @@ class Ingester:
                 if any(part.startswith(IGNORED_PREFIXES) for part in p.relative_to(root).parts):
                     continue
                 st = p.stat()
-                out[p.relative_to(root).as_posix()] = (p, dept_dir.name, st.st_size, int(st.st_mtime))
+                rel = p.relative_to(root).as_posix()
+                out[rel] = (p, dept_dir.name, st.st_size, int(st.st_mtime))
         return out
 
     def _stable(self, rel, size, mtime):
@@ -425,7 +432,9 @@ class Ingester:
             d = self.ensure_department(dept)
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
             if rec and rec.get("sha256") == digest:
-                rec.update({"size": size, "mtime": mtime}); self.save(); continue
+                rec.update({"size": size, "mtime": mtime})
+                self.save()
+                continue
             if rec:
                 try:
                     self.app.delete(rec["file_id"], rec["filepath"], d["agent_id"])
@@ -443,7 +452,8 @@ class Ingester:
             self.state["files"][rel] = {"file_id": file_id, "filepath": filepath, "size": size,
                                         "mtime": mtime, "sha256": digest, "embedded": embedded}
             self.save()
-            LOG.info("%s %s → %s (embedded=%s)", "updated" if rec else "added", rel, file_id, embedded)
+            LOG.info("%s %s → %s (embedded=%s)",
+                     "updated" if rec else "added", rel, file_id, embedded)
             self._pending.pop(rel, None)
         self._heartbeat()
 
@@ -458,7 +468,8 @@ class Ingester:
 
 
 def main():
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", stream=sys.stdout)
+    logging.basicConfig(level=logging.INFO, stream=sys.stdout,
+                        format="%(asctime)s %(levelname)s %(message)s")
     Ingester(Config.from_env()).run()
 
 

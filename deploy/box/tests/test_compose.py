@@ -14,7 +14,6 @@ import pytest
 BOX = pathlib.Path(__file__).resolve().parents[1]
 CORE = {"caddy", "postgres", "mongodb", "litellm-proxy", "librechat", "rag_api"}
 SSO = {"console", "admin-panel", "studio"}
-INGEST = {"nufi-ingest"}
 LINUX = {"ollama", "samba"}
 
 

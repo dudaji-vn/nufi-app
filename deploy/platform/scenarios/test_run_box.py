@@ -24,13 +24,13 @@ moving on. Assert failures == 2 (one wrong answer, one HTTP error), not 0.
 
 Run:  python3 test_run_box.py     (exit 0 = PASS)
 """
+import contextlib
 import json
 import shutil
 import socket
 import sys
 import tempfile
 import threading
-import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -213,8 +213,9 @@ class _FakeApp(BaseHTTPRequestHandler):
         half = text[: len(text) // 2]
         write({"event": "on_message_delta",
                "data": {"id": "step_1", "delta": {"content": [{"type": "text", "text": half}]}}})
+        rest = text[len(half):]
         write({"event": "on_message_delta",
-               "data": {"id": "step_1", "delta": {"content": [{"type": "text", "text": text[len(half):]}]}}})
+               "data": {"id": "step_1", "delta": {"content": [{"type": "text", "text": rest}]}}})
         write({
             "final": True,
             "responseMessage": {
@@ -487,10 +488,8 @@ def test_the_markdown_names_an_ingest_gap():
                 "--drives", str(drives), "--out", str(out),
                 "--only", "legal", "--timeout", "0.5"]
     try:
-        try:
+        with contextlib.suppress(SystemExit):
             run_box.main()
-        except SystemExit:
-            pass
     finally:
         sys.argv, run_box.POLL_INTERVAL = old_argv, old_poll
         httpd.shutdown()
