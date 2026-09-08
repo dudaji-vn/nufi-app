@@ -9,10 +9,18 @@ BASH = "/bin/bash"   # macOS ships 3.2 here; the script must run under it
 
 
 def install(*flags, **env):
-    """Run the installer in dry-run mode and hand back the completed process."""
-    e = dict(os.environ, NUFI_BOX_DRY_RUN="1", **env)
-    return subprocess.run([BASH, str(BOX / "install-box.sh"), "--dry-run", "--yes", *flags],
-                          cwd=BOX, env=e, capture_output=True, text=True)
+    """Run the installer in dry-run mode and hand back the completed process.
+
+    NUFI_BOX_ENV points at a path that does not exist unless the caller says
+    otherwise: on a machine where the box is actually installed, deploy/box/.env
+    is right there, and the installer would reuse its answers and secrets — the
+    plan under test would be that box's, not the one the test described.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        env.setdefault("NUFI_BOX_ENV", str(pathlib.Path(tmp) / "absent.env"))
+        e = dict(os.environ, NUFI_BOX_DRY_RUN="1", **env)
+        return subprocess.run([BASH, str(BOX / "install-box.sh"), "--dry-run", "--yes", *flags],
+                              cwd=BOX, env=e, capture_output=True, text=True)
 
 
 def dry(*flags, **env):
@@ -66,10 +74,12 @@ def test_secrets_are_generated_not_placeholders():
 
 def test_dry_run_creates_nothing():
     before = set(p.name for p in BOX.iterdir())
-    dry(NUFI_BOX_FAKE_OS="Linux")
+    with tempfile.TemporaryDirectory() as tmp:
+        envfile = pathlib.Path(tmp) / "would-be.env"
+        dry(NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_ENV=str(envfile))
+        assert not envfile.exists()
     after = set(p.name for p in BOX.iterdir())
     assert before == after
-    assert not (BOX / ".env").exists()
 
 
 def test_department_names_with_dashes_get_sanitized_env_keys():
