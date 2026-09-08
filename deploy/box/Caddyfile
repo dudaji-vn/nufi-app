@@ -7,6 +7,12 @@
 	# and sends it to https://<box>:3001 — which is exactly the URL a laptop
 	# opens to fetch the CA it does not trust yet.
 	auto_https disable_redirects
+	# A browser opened at https://<BOX_IP>:3080 sends no SNI — SNI carries names,
+	# not addresses — and Docker's NAT hides the LAN address from Caddy too, so
+	# without this Caddy has nothing to pick a certificate by and aborts the
+	# handshake. Naming the IP as the default SNI makes the no-SNI case serve
+	# the certificate whose SAN is that IP, which is what such a browser wants.
+	default_sni {$BOX_IP}
 }
 
 (box_tls) {
