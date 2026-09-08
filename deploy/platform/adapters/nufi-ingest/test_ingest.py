@@ -105,8 +105,23 @@ class FakeApp(BaseHTTPRequestHandler):
         FakeApp.seen.append(("GET", self.path, dict(self.headers), b""))
         if self.path == "/api/teams":
             return self._json(200, {"teams": list(FakeApp.teams.values())})
+        if self.path.startswith("/api/agents/"):
+            # One agent, the full document. This is where model_parameters can
+            # actually be read (see the listing below).
+            aid = self.path.split("?")[0].rsplit("/", 1)[-1]
+            doc = FakeApp.agents.get(aid)
+            return self._json(200, doc) if doc else self._json(404, {})
         if self.path.startswith("/api/agents"):
-            return self._json(200, {"data": list(FakeApp.agents.values())})
+            # The real listing is a projection -- id, name, author, category,
+            # is_promoted, updatedAt -- and does NOT carry model_parameters.
+            # Reproduced here on purpose: a reconcile that reads the pinned
+            # settings off the listing would see None for every agent and PATCH
+            # on every single scan, and a fake that returned the whole document
+            # would let that bug through.
+            listed = [{k: v for k, v in a.items()
+                       if k in ("id", "_id", "name", "author", "category", "is_promoted")}
+                      for a in FakeApp.agents.values()]
+            return self._json(200, {"data": listed})
         self._json(404, {})
 
     def do_DELETE(self):
@@ -120,8 +135,19 @@ class FakeApp(BaseHTTPRequestHandler):
         return self._json(200, {"message": "Files deleted successfully"})
 
     def do_PATCH(self):
-        FakeApp.seen.append(("PATCH", self.path, dict(self.headers), self._body()))
-        return self._json(200, {})
+        body = self._body()
+        FakeApp.seen.append(("PATCH", self.path, dict(self.headers), body))
+        if "Chrome/" not in self.headers.get("User-Agent", ""):
+            return self._json(403, {"message": "Illegal request"})
+        aid = self.path.split("?")[0].rsplit("/", 1)[-1]
+        doc = FakeApp.agents.get(aid)
+        if doc is None:
+            return self._json(404, {})
+        # A PATCH $sets the keys it is given -- which is exactly why sending
+        # tool_resources would replace the whole object and drop the uploaded
+        # file_ids. Merging at the top level here reproduces that.
+        doc.update(json.loads(body))
+        return self._json(200, doc)
 
 
 def main():
@@ -172,6 +198,14 @@ def main():
         # emit the tool call", and acceptance citations fell 8/32 -> 1/32 when
         # it did. This assertion is the guard against re-adding it.
         assert "tool-call syntax" not in instructions, instructions
+        # Generation is pinned at creation, so an acceptance score is evidence
+        # rather than a throw of the dice: temperature fixes the fact, the seed
+        # fixes the wording.
+        created = [json.loads(s[3]) for s in FakeApp.seen
+                   if s[0] == "POST" and s[1] == "/api/agents"]
+        assert len(created) == 2, created
+        for payload in created:
+            assert payload["model_parameters"] == {"temperature": 0, "seed": 7}, payload
         shares = [s for s in FakeApp.seen if s[0] == "POST" and "/agents/" in s[1]]
         assert len(shares) == 2
         st = json.loads((state / "state.json").read_text())
@@ -249,7 +283,64 @@ def main():
 
         # login exactly once; everything else self-minted
         assert len([s for s in FakeApp.seen if s[1] == "/api/auth/login"]) == 1
-        assert not [s for s in FakeApp.seen if s[0] == "PATCH"]
+        # Agents created by this daemon are already pinned, so nothing above
+        # this line has any reason to PATCH.
+        assert not [s for s in FakeApp.seen if s[0] == "PATCH"], \
+            "a freshly created agent is pinned at creation; no PATCH should be needed"
+
+        # --- reconcile: an agent that predates MODEL_PARAMETERS -------------
+        # A box upgraded in place keeps the agents it already has -- the daemon
+        # finds them by name and never re-creates them -- so without a
+        # reconcile step every existing department would go on sampling at the
+        # default temperature and the evidence would still not reproduce.
+        legal_agent_id = next(a["id"] for a in FakeApp.agents.values()
+                              if a["name"] == "Legal assistant")
+        FakeApp.agents[legal_agent_id].pop("model_parameters", None)
+        file_ids_before = set(FakeApp.agents[legal_agent_id]
+                              ["tool_resources"]["file_search"]["file_ids"])
+        assert file_ids_before, "the agent must already own uploaded files"
+
+        # A fresh state dir makes the daemon walk ensure_department again; the
+        # agents already exist server-side, which is exactly the upgrade case.
+        state2 = pathlib.Path(tmp) / "state2"
+        cfg2 = I.Config(app_url=cfg.app_url, email=cfg.email, password=cfg.password,
+                        jwt_secret=SECRET, drives_dir=str(drives), state_dir=str(state2),
+                        model="qwen2.5-7b", provider="NuFi", interval=0, share="team",
+                        settle_scans=1)
+        mark = len(FakeApp.seen)
+        I.Ingester(cfg2).scan()
+        patches = [s for s in FakeApp.seen[mark:] if s[0] == "PATCH"]
+
+        # exactly one PATCH, and it is for the agent that lost its parameters
+        assert len(patches) == 1, [(p[0], p[1], p[3]) for p in patches]
+        assert patches[0][1] == f"/api/agents/{legal_agent_id}", patches[0][1]
+        # the gated routes ban an account for hours on a bare User-Agent
+        assert "Chrome/" in patches[0][2].get("User-Agent", ""), patches[0][2]
+
+        # carrying model_parameters and NOTHING else. tool_resources in a PATCH
+        # would $set the whole object and silently detach every uploaded
+        # document, leaving an agent that looks configured and retrieves
+        # nothing -- so assert the key is absent, not merely that files
+        # survived by luck.
+        sent = json.loads(patches[0][3])
+        assert sent == {"model_parameters": {"temperature": 0, "seed": 7}}, sent
+        assert "tool_resources" not in sent, sent
+        # (a fresh state dir also makes the daemon re-upload, so file_ids grows;
+        # what must never happen is one of the originals disappearing)
+        file_ids_after = set(FakeApp.agents[legal_agent_id]
+                             ["tool_resources"]["file_search"]["file_ids"])
+        assert file_ids_before <= file_ids_after, \
+            f"the reconcile PATCH dropped files: {file_ids_before - file_ids_after}"
+
+        # ...and it is idempotent: a second walk over an already-pinned agent
+        # sends no PATCH at all. This is what fails if the reconcile reads
+        # model_parameters off the listing projection, which never carries it.
+        state3 = pathlib.Path(tmp) / "state3"
+        cfg3 = I.Config(**{**cfg2.__dict__, "state_dir": str(state3)})
+        mark = len(FakeApp.seen)
+        I.Ingester(cfg3).scan()
+        assert not [s for s in FakeApp.seen[mark:] if s[0] == "PATCH"], \
+            "an already-pinned agent must not be PATCHed again on every scan"
     print("PASS")
 
 

@@ -78,6 +78,28 @@ def mint_jwt(user_id, secret, ttl=3600):
     return f"{header}.{payload}.{_b64url(sig)}"
 
 
+# Pinned generation settings for every department agent.
+#
+# An acceptance score is only evidence if it reproduces; at the default
+# sampling temperature it is a throw of the dice. The same Legal department,
+# on an unchanged box with unchanged documents, scored 3/4, 1/4 and 1/4 on
+# three consecutive runs -- which makes any claim about the box unfalsifiable,
+# because the next run disagrees.
+#
+# Two settings, pinning two different things, exactly as the MeshBox RAG
+# adapter on this repo already does (scenarios/README.md, "Why the evidence
+# reproduces"): `temperature: 0` fixes the *fact* the model states, a fixed
+# `seed` fixes the *wording* it states it in. Temperature alone still let the
+# same answer come back phrased two ways, which is enough to break a quoted
+# block in a published use story.
+#
+# `model_parameters` is `z.record(z.unknown())` in the app's agent schema
+# (packages/api/src/agents/validation.ts:99), so these pass through untouched;
+# LiteLLM forwards both to the OpenAI-compatible Ollama endpoint, which
+# honours them.
+MODEL_PARAMETERS = {"temperature": 0, "seed": 7}
+
+
 def display_name(dept):
     return dept.replace("_", " ").replace("-", " ").strip().capitalize()
 
@@ -196,12 +218,42 @@ class App:
         _, body = self._request("GET", "/api/agents?limit=200", browser=True)
         for a in body.get("data", []):
             if a.get("name") == name:
+                self.pin_model_parameters(a["id"])
                 return a["id"], a.get("_id")
         _, body = self._request("POST", "/api/agents", {
             "provider": self.cfg.provider, "model": self.cfg.model, "name": name,
             "instructions": instructions, "tools": ["file_search"],
+            "model_parameters": dict(MODEL_PARAMETERS),
         }, browser=True)
         return body["id"], body.get("_id")
+
+    def pin_model_parameters(self, agent_id):
+        """Bring an agent created before MODEL_PARAMETERS existed up to date.
+
+        Deliberately a PATCH carrying `model_parameters` and nothing else. A
+        PATCH `$set`s whatever keys it is given, so sending `tool_resources`
+        would replace the whole object -- including
+        `tool_resources.file_search.file_ids`, which the app only ever grows
+        through its own `$addToSet` upload path. That would silently detach
+        every document this daemon has uploaded and leave an agent that looks
+        configured and retrieves nothing.
+
+        The listing projection does not return model_parameters (it carries
+        id/name/author/category and little else), so the current value has to
+        be read from the agent itself; otherwise "is it already pinned?" is
+        unanswerable and the reconcile would PATCH on every scan.
+        """
+        try:
+            _, agent = self._request("GET", f"/api/agents/{agent_id}", browser=True)
+        except AppError as e:
+            LOG.warning("could not read %s to check model parameters: %s", agent_id, e)
+            return
+        have = agent.get("model_parameters") or {}
+        if all(have.get(k) == v for k, v in MODEL_PARAMETERS.items()):
+            return
+        self._request("PATCH", f"/api/agents/{agent_id}",
+                      {"model_parameters": dict(MODEL_PARAMETERS)}, browser=True)
+        LOG.info("agent %s → pinned %s", agent_id, MODEL_PARAMETERS)
 
     def share_agent(self, team_id, agent_id, agent_oid):
         if self.cfg.share == "team":
