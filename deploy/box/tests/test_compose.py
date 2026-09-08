@@ -147,3 +147,16 @@ def test_emulate_layer_only_marks_the_images_published_amd64_only():
     assert svcs["admin-panel"]["platform"] == "linux/amd64"
     for name in set(svcs) - {"librechat", "admin-panel"}:
         assert "platform" not in svcs[name], name
+
+
+def test_studio_may_reach_the_box_model_host():
+    """Langflow refuses any hostname that resolves to a private address, and
+    every model host a box has is one: host.docker.internal on macOS (native
+    Ollama behind the Docker gateway), the `ollama` container on Linux.
+    Without this allowlist, running any flow on a default macOS box dies with
+    "SSRF Protection: Hostname host.docker.internal resolves to blocked IP
+    address(es)" — Studio cannot reach the box's own model."""
+    allowed = render()["services"]["studio"]["environment"]["LANGFLOW_SSRF_ALLOWED_HOSTS"]
+    hosts = [h.strip() for h in allowed.split(",")]
+    assert "host.docker.internal" in hosts, allowed
+    assert "ollama" in hosts, allowed

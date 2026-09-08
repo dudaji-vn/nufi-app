@@ -279,6 +279,15 @@ services:
       # at the merged system bundle, not at root.crt alone).
       SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt
       REQUESTS_CA_BUNDLE: /etc/ssl/certs/ca-certificates.crt
+      # Langflow's SSRF guard blocks any hostname resolving to a private
+      # address, which is every model host a box has: on macOS the model runs
+      # natively and is reached at host.docker.internal (a link-local gateway
+      # address), on Linux it is the `ollama` container on this network. Without
+      # this, running ANY flow on the default macOS box fails with
+      # "SSRF Protection: Hostname host.docker.internal resolves to blocked IP
+      # address(es)" — the box's own Studio cannot reach the box's own model.
+      # These two names are the box's, not user input; nothing else is allowed.
+      LANGFLOW_SSRF_ALLOWED_HOSTS: host.docker.internal,ollama
     volumes:
       - caddy-data:/caddy:ro
       - studio-data:/app/langflow
