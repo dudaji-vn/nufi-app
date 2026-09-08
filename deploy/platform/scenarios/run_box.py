@@ -153,6 +153,84 @@ def parse_connect_to(specs):
     return rules
 
 
+def add_transport_args(ap):
+    """The three flags any script needs to reach a box: how to trust its TLS,
+    and where to actually dial. Shared so run_box.py and the Studio scripts
+    take the same flags with the same meanings."""
+    tls = ap.add_mutually_exclusive_group()
+    tls.add_argument("--insecure", action="store_true",
+                     help="skip TLS verification (box CA not in the trust store)")
+    tls.add_argument("--cacert", default=None,
+                     help="trust this PEM CA file instead of skipping verification")
+    ap.add_argument("--connect-to", action="append", default=[], metavar="HOST:PORT:TOHOST:TOPORT",
+                    help="dial a different socket address while leaving the URL (and so SNI, "
+                         "Host and cookie scope) on HOST:PORT — curl's --connect-to. "
+                         "TOHOST may be omitted for 127.0.0.1. Repeatable.")
+
+
+def transport_from_args(a):
+    """(ssl context, opener-or-None) for the parsed --insecure/--cacert/--connect-to."""
+    if a.insecure:
+        ctx = ssl._create_unverified_context()
+    elif a.cacert:
+        ctx = ssl.create_default_context(cafile=a.cacert)
+    else:
+        ctx = ssl.create_default_context()
+    rules = parse_connect_to(a.connect_to)
+    return ctx, (connect_to_opener(rules, ctx) if rules else None)
+
+
+def _answer_of(msg):
+    """The answer text of a responseMessage.
+
+    An agent run leaves `text` EMPTY and puts the answer in `content`, a list
+    of typed parts -- the shape the client renders from
+    (`Message.content: TMessageContentParts[]`, data-provider/types.ts). The
+    brief's first draft read `text` only, so every live answer came back as ''
+    and every question failed with "empty answer" while the box was in fact
+    answering fine. Read the parts first, keep `text` as the fallback for a
+    non-agent endpoint that does fill it.
+    """
+    if not isinstance(msg, dict):
+        return ""
+    parts = []
+    for part in msg.get("content") or []:
+        if not isinstance(part, dict):
+            continue
+        if isinstance(part.get("text"), str):
+            parts.append(part["text"])
+        elif isinstance(part.get("text"), dict) and isinstance(part["text"].get("value"), str):
+            parts.append(part["text"]["value"])  # assistants-style {text: {value}}
+    return "".join(parts).strip() or (msg.get("text") or "").strip()
+
+
+def _sources_of(msg):
+    """The cited filenames of a responseMessage.
+
+    A file_search citation is attached as
+        {type: "file_search", file_search: {sources: [{fileName, relevance, ...}]}}
+    -- see Files/Citations/index.js:75-79 building `fileSearchAttachment`, and
+    :147 setting `fileName`. The nesting matters: an earlier draft iterated
+    `att["file_search"]` directly, which yields the dict's KEYS ("sources"),
+    so every citation was silently dropped and a passing answer looked
+    uncited.
+    """
+    out = []
+    for att in (msg.get("attachments") if isinstance(msg, dict) else None) or []:
+        if not isinstance(att, dict):
+            continue
+        holder = att.get(att.get("type") or "") or att
+        found = holder.get("sources") if isinstance(holder, dict) else None
+        if not isinstance(found, list):
+            found = att.get("sources") if isinstance(att.get("sources"), list) else []
+        for s in found:
+            if isinstance(s, dict):
+                name = s.get("fileName") or s.get("filename") or s.get("source")
+                if name:
+                    out.append(name)
+    return sorted(set(out))
+
+
 class Chat:
     """The app's own /api surface, driven exactly as the browser client
     drives it -- every call carries the same User-Agent, so a bare-UA request
@@ -222,7 +300,7 @@ class Chat:
         # Hop 2: the real SSE stream, keyed by that streamId. This is the one
         # that can legitimately take a while (a long generation), hence
         # STREAM_TIMEOUT here rather than hop 1's short cap.
-        answer, sources, final = "", [], {}
+        answer, sources, final, deltas = "", [], {}, []
         with self.call("GET", f"/api/agents/chat/stream/{stream_id}", stream=True,
                        timeout=STREAM_TIMEOUT) as r:
             # Everything above has succeeded by now -- the connection is open
@@ -246,18 +324,25 @@ class Chat:
                         final = ev
                     if isinstance(ev.get("text"), str):
                         answer = ev["text"]
+                    # Agent runs stream their answer as on_message_delta events
+                    # carrying content parts, not as a top-level `text`. Keep
+                    # them: if the run dies before the final event, this is the
+                    # only record of how far it got.
+                    delta = ev.get("data", {})
+                    if isinstance(delta, dict):
+                        for part in (delta.get("delta") or {}).get("content") or []:
+                            if isinstance(part, dict) and isinstance(part.get("text"), str):
+                                deltas.append(part["text"])
             except (OSError, http.client.HTTPException, ssl.SSLError, TimeoutError) as exc:
-                got = (final.get("responseMessage", {}).get("text") or answer or "").strip()
+                got = (_answer_of(final.get("responseMessage", {})) or answer
+                       or "".join(deltas)).strip()
                 raise BoxError(
                     f"GET /api/agents/chat/stream/{stream_id} -> stream broke after "
                     f"{len(got)} chars: {type(exc).__name__}: {exc}") from exc
         msg = final.get("responseMessage", {})
-        answer = msg.get("text") or answer
-        for att in msg.get("attachments", []) or []:
-            for s in (att.get("sources") or att.get("file_search") or []):
-                if isinstance(s, dict):
-                    sources.append(s.get("fileName") or s.get("filename") or s.get("source") or "")
-        return answer, sorted(set(s for s in sources if s))
+        answer = _answer_of(msg) or answer or "".join(deltas)
+        sources = _sources_of(msg)
+        return answer, sources
 
 
 def main():
@@ -267,15 +352,7 @@ def main():
     ap.add_argument("--password", required=True)
     ap.add_argument("--drives", required=True)
     ap.add_argument("--only", default="")
-    tls = ap.add_mutually_exclusive_group()
-    tls.add_argument("--insecure", action="store_true",
-                      help="skip TLS verification (box CA not in the trust store)")
-    tls.add_argument("--cacert", default=None,
-                      help="trust this PEM CA file instead of skipping verification")
-    ap.add_argument("--connect-to", action="append", default=[], metavar="HOST:PORT:TOHOST:TOPORT",
-                     help="dial a different socket address while leaving the URL (and so SNI, "
-                          "Host and cookie scope) on HOST:PORT — curl's --connect-to. "
-                          "TOHOST may be omitted for 127.0.0.1. Repeatable.")
+    add_transport_args(ap)
     ap.add_argument("--timeout", type=float, default=180,
                      help="seconds to wait for nufi-ingest to list each department's files")
     ap.add_argument("--out", default=str(HERE / "evidence"),

@@ -200,14 +200,30 @@ class _FakeApp(BaseHTTPRequestHandler):
             self.wfile.write(f"event: message\ndata: {json.dumps(event)}\n\n".encode())
             self.wfile.flush()
 
-        # Two incremental chunks, as the brief's fake app must produce.
-        write({"text": text[: len(text) // 2]})
-        write({"text": text})
+        # The real agent shapes, taken from a live box (see run_box._answer_of
+        # / _sources_of for the file:line citations):
+        #  - the answer streams as on_message_delta content parts, and the
+        #    final responseMessage leaves `text` EMPTY, carrying the answer in
+        #    `content` instead;
+        #  - a file_search citation nests one level deeper than it looks:
+        #    attachment.file_search.sources[].fileName.
+        # Reproducing both exactly is the point: a fake that fills `text` and
+        # flattens `sources` passes a runner that cannot read a real box, which
+        # is precisely what happened on the first live run.
+        half = text[: len(text) // 2]
+        write({"event": "on_message_delta",
+               "data": {"id": "step_1", "delta": {"content": [{"type": "text", "text": half}]}}})
+        write({"event": "on_message_delta",
+               "data": {"id": "step_1", "delta": {"content": [{"type": "text", "text": text[len(half):]}]}}})
         write({
             "final": True,
             "responseMessage": {
-                "text": text,
-                "attachments": [{"sources": [{"fileName": s} for s in sources]}] if sources else [],
+                "text": "",
+                "content": [{"type": "text", "text": text}],
+                "attachments": ([{"type": "file_search",
+                                  "file_search": {"sources": [{"fileName": s, "relevance": 0.7}
+                                                              for s in sources]}}]
+                                if sources else []),
             },
         })
 
@@ -256,7 +272,9 @@ class _HalfStreamApp(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.end_headers()
-        self.wfile.write(b'event: message\ndata: {"text": "\xea\xb3\x84\xec\x95\xbd"}\n\n')
+        frame = {"event": "on_message_delta",
+                 "data": {"id": "step_1", "delta": {"content": [{"type": "text", "text": "계약"}]}}}
+        self.wfile.write(f"event: message\ndata: {json.dumps(frame)}\n\n".encode())
         self.wfile.flush()
         _STOP_HANG.wait(30)  # never sends the `final` event
 
@@ -275,7 +293,9 @@ def test_a_broken_stream_becomes_a_recorded_failure():
             # names the facts someone debugging this needs: which stream, and
             # how much of the answer had arrived before it stopped.
             assert "/api/agents/chat/stream/s1" in str(exc), exc
-            assert "chars" in str(exc), exc
+            # "after 2 chars": the deltas that did arrive are counted, so the
+            # message says how far the answer got before it stopped.
+            assert "after 2 chars" in str(exc), exc
             print("PASS: a stream that dies mid-answer raises BoxError, not a "
                   "socket traceback that kills the run")
             return
@@ -396,7 +416,12 @@ def main():
     for i, q in enumerate(questions):
         expect_pass = i not in (WRONG_ANSWER_INDEX, ERROR_INDEX)
         assert q["pass"] is expect_pass, (i, q)
+    # The answer was read out of responseMessage.content (its `text` is "") and
+    # the citation out of attachment.file_search.sources[].fileName. Both were
+    # wrong in the first draft and both made a working box look broken: every
+    # answer came back "" and every citation was dropped.
     assert questions[0]["pass"] is True and DOC_NAME in questions[0]["sources"]
+    assert questions[0]["answer"] == ANSWERS[0]["text"], questions[0]["answer"]
     assert questions[WRONG_ANSWER_INDEX]["pass"] is False
     assert questions[3]["kind"] == "refuse" and questions[3]["pass"] is True
 
