@@ -146,3 +146,27 @@ def test_extra_compose_files_are_layered_last_and_must_exist(tmp_path):
     r = install(NUFI_BOX_FAKE_OS="Darwin", NUFI_BOX_COMPOSE_EXTRA="/nope/missing.yml")
     assert r.returncode == 1
     assert "no such file: /nope/missing.yml" in r.stderr
+
+
+def test_ingest_runs_as_the_admin_by_default():
+    """Whoever creates a department team owns it, and only the daemon ever
+    creates one — so a daemon on its own bot account leaves the admin with no
+    teams and no agents on a fresh box, and no way in (membership is
+    invite-and-accept only). The default must be the admin."""
+    out = dry(NUFI_BOX_FAKE_OS="Darwin", ADMIN_EMAIL="sun@dudaji.com")
+    assert "INGEST_EMAIL=sun@dudaji.com" in out
+    # same account => same password, and no second user created for it
+    admin_pw = next(l.split("=", 1)[1] for l in out.splitlines() if l.startswith("ADMIN_PASSWORD="))
+    assert f"INGEST_PASSWORD={admin_pw}" in out
+    assert "Ingest bot" not in out
+    assert "no separate bot account" in out
+
+
+def test_an_explicit_ingest_email_still_gets_its_own_bot_account():
+    out = dry(NUFI_BOX_FAKE_OS="Darwin", ADMIN_EMAIL="sun@dudaji.com",
+              INGEST_EMAIL="bot@x")
+    assert "INGEST_EMAIL=bot@x" in out
+    admin_pw = next(l.split("=", 1)[1] for l in out.splitlines() if l.startswith("ADMIN_PASSWORD="))
+    ingest_pw = next(l.split("=", 1)[1] for l in out.splitlines() if l.startswith("INGEST_PASSWORD="))
+    assert ingest_pw and ingest_pw != admin_pw
+    assert "create-user -- bot@x Ingest bot ingest" in out

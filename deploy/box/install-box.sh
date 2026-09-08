@@ -171,10 +171,20 @@ sec() { # sec VAR generator — keep an existing non-placeholder value
 sec JWT_SECRET "gen_hex 32"; sec JWT_REFRESH_SECRET "gen_hex 32"; sec CREDS_KEY "gen_hex 32"; sec CREDS_IV "gen_hex 16"
 sec LITELLM_MASTER_KEY "printf sk-%s \$(gen_hex 32)"; sec LITELLM_SALT_KEY "gen_hex 32"
 sec POSTGRES_PASSWORD "gen_hex 16"; sec MONGO_PASSWORD "gen_hex 16"
-sec ADMIN_PASSWORD "gen_hex 8"; sec INGEST_PASSWORD "gen_hex 16"
+sec ADMIN_PASSWORD "gen_hex 8"
 sec LANGFLOW_SECRET_KEY "gen_fernet"; sec STUDIO_SUPERUSER_PASSWORD "gen_hex 12"
 sec ADMIN_SESSION_SECRET "gen_hex 32"; sec SAMBA_PASSWORD "gen_hex 8"
-INGEST_EMAIL="${INGEST_EMAIL:-ingest@$BOX_NAME.local}"
+# The ingest daemon runs as the admin by default. Whoever creates a department
+# team owns it, and the daemon is the only thing that ever creates one — so if
+# it runs as its own bot account, the admin logs into a fresh box and sees no
+# teams and no agents at all, with no way to join them (team membership only
+# goes through an invite the invitee accepts). Running it as the admin makes
+# the admin the author of every department team and agent, free to invite
+# colleagues from the app's Teams UI. Set BOTH INGEST_EMAIL and INGEST_PASSWORD
+# to run it as a separate service account instead.
+INGEST_EMAIL="${INGEST_EMAIL:-$ADMIN_EMAIL}"
+if [ "$INGEST_EMAIL" = "$ADMIN_EMAIL" ]; then INGEST_PASSWORD="$ADMIN_PASSWORD"
+else sec INGEST_PASSWORD "gen_hex 16"; fi
 if [ -z "${OIDC_PRIVATE_KEY_PEM:-}" ] || [ "$OIDC_PRIVATE_KEY_PEM" = "replace-me" ]; then
   OIDC_PRIVATE_KEY_PEM="$(openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 2>/dev/null | awk 'BEGIN{ORS="\\n"}{print}')"
 fi
@@ -281,7 +291,11 @@ mkuser() { # mkuser email name username password
     --eval "db.users.updateOne({email:'$1'},{\$set:{role:'ADMIN'}})"
 }
 mkuser "$ADMIN_EMAIL" "Admin" "admin" "$ADMIN_PASSWORD"
-mkuser "$INGEST_EMAIL" "Ingest bot" "ingest" "$INGEST_PASSWORD"
+if [ "$INGEST_EMAIL" != "$ADMIN_EMAIL" ]; then
+  mkuser "$INGEST_EMAIL" "Ingest bot" "ingest" "$INGEST_PASSWORD"
+else
+  ok "the ingest daemon runs as $ADMIN_EMAIL; no separate bot account"
+fi
 run $COMPOSE restart nufi-ingest
 
 # ---------- name, CA, drives ------------------------------------------------------
