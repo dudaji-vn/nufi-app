@@ -92,3 +92,30 @@ def test_rag_api_uses_local_embeddings():
     assert env["EMBEDDINGS_PROVIDER"] == "ollama"
     assert env["EMBEDDINGS_MODEL"] == "bge-m3"
     assert "RAG_GOOGLE_API_KEY" not in env
+
+
+def test_sso_services_share_one_hostname():
+    svcs = render()["services"]
+    assert SSO <= set(svcs)
+    console = svcs["console"]["environment"]
+    assert console["CHAT_BASE_URL"] == "http://librechat:3080"
+    assert console["CHAT_PUBLIC_URL"] == "https://nufi.local:3080"
+    assert console["OIDC_ISSUER"] == "https://nufi.local:3001"
+    assert console["STUDIO_URL"] == "https://nufi.local:7860"
+    assert console["IDENTITY_COOKIE_DOMAIN"] == ""
+    assert "AGENT_ENTITLEMENTS" not in console
+    studio = svcs["studio"]["environment"]
+    assert studio["LANGFLOW_EXTERNAL_AUTH_JWKS_URL"] == "https://nufi.local:3001/.well-known/jwks.json"
+    assert studio["LANGFLOW_EXTERNAL_AUTH_ISSUER"] == console["OIDC_ISSUER"]
+    assert studio["LANGFLOW_EXTERNAL_AUTH_AUDIENCE"] == "nufi-studio"
+    assert studio["LANGFLOW_EXTERNAL_AUTH_TOKEN_COOKIE"] == "nufi_id"
+    assert studio["SSL_CERT_FILE"] == "/etc/ssl/certs/ca-certificates.crt"
+    admin = svcs["admin-panel"]["environment"]
+    assert admin["API_SERVER_URL"] == "http://librechat:3080"
+    assert admin["VITE_API_BASE_URL"] == "https://nufi.local:3080"
+
+
+def test_ingest_watches_the_drives_read_only():
+    svc = render()["services"]["nufi-ingest"]
+    mount = [v for v in svc["volumes"] if v["target"] == "/drives"][0]
+    assert mount["read_only"] is True
