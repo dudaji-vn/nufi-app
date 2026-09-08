@@ -1,10 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router';
+import { publicConfig } from '@/lib/public-config';
 
 export const Route = createFileRoute('/unauthorized')({
   component: UnauthorizedPage,
 });
 
-const CHAT_URL = import.meta.env.VITE_LIBRECHAT_URL ?? 'http://localhost:3080';
+const CHAT_URL = publicConfig().chatUrl;
 
 function UnauthorizedPage() {
   return (

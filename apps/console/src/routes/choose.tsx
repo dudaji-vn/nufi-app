@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
+import { publicConfig } from '@/lib/public-config';
 
 /**
  * The door at agents.nufi.me.
@@ -15,26 +16,38 @@ export const Route = createFileRoute('/choose')({
 
 type Entitlements = { studio: boolean; works: boolean };
 
-const PRODUCTS = [
-  {
-    key: 'studio' as const,
-    name: 'NuFi Studio',
-    blurb: 'Build a flow on a canvas. Connect a model, a knowledge base and a tool, then run it.',
-    href: '/enter/studio',
-    external: false,
-  },
-  {
-    key: 'works' as const,
-    name: 'NuFi Works',
-    blurb: 'Put agents to work. Give a team a goal, approve what matters, and watch the spend.',
-    // `?sso=1` makes Works start the console handoff on arrival. Without it a
-    // visitor who has already chosen a product here meets a login page and has
-    // to choose again -- Studio needs no such step because it reads the
-    // identity cookie server-side, and the two should feel the same.
-    href: `${import.meta.env.VITE_WORKS_URL ?? 'https://works.nufi.me'}/auth?sso=1`,
-    external: true,
-  },
-];
+// `worksUrl` is `null` when a box operator has not stood up NuFi Works
+// (`PUBLIC_WORKS_URL=""`), and the card is dropped rather than shown disabled
+// -- there is nothing to be granted access to.
+function getProducts() {
+  const { worksUrl } = publicConfig();
+  return [
+    {
+      key: 'studio' as const,
+      name: 'NuFi Studio',
+      blurb: 'Build a flow on a canvas. Connect a model, a knowledge base and a tool, then run it.',
+      href: '/enter/studio',
+      external: false,
+    },
+    ...(worksUrl
+      ? [
+          {
+            key: 'works' as const,
+            name: 'NuFi Works',
+            blurb:
+              'Put agents to work. Give a team a goal, approve what matters, and watch the spend.',
+            // `?sso=1` makes Works start the console handoff on arrival.
+            // Without it a visitor who has already chosen a product here
+            // meets a login page and has to choose again -- Studio needs no
+            // such step because it reads the identity cookie server-side,
+            // and the two should feel the same.
+            href: `${worksUrl}/auth?sso=1`,
+            external: true,
+          },
+        ]
+      : []),
+  ];
+}
 
 function Choose() {
   // index.html carries the console's title, and this page is served on a
@@ -55,6 +68,7 @@ function Choose() {
   // window, so a click that races the in-flight request would carry the token
   // this fetch just consumed and land on a 401.
   const [allowed, setAllowed] = useState<Entitlements | null>(null);
+  const products = getProducts();
 
   useEffect(() => {
     // Same origin: the chooser is this console served on another hostname.
@@ -84,7 +98,7 @@ function Choose() {
       </p>
 
       <div className="mt-10 grid gap-4 sm:grid-cols-2">
-        {PRODUCTS.map((p) => {
+        {products.map((p) => {
           // Not resolved yet: same shape as the disabled card below, so the
           // page does not jump once the lookup settles, but not clickable --
           // clicking here would race the in-flight token rotation.
