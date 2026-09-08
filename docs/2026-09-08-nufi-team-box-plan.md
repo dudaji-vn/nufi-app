@@ -26,8 +26,7 @@
    │  tailscale (node "nufi")   avahi nufi.local   caddy (box CA)             │
    │  smbd on the mesh IP  →  \\nufi\legal  \\nufi\hr  \\nufi\strategy …      │
    │                                                                          │
-   │  chat.nufi.mesh   studio.nufi.mesh   console.nufi.mesh   admin.nufi.mesh │
-   │  NuFi app :3080   NUFI Studio :7860  console :3001       admin :3002     │
+   │  https://nufi:3080 :3001 :3002 :7860 (one hostname, one CA, ports)       │
    │      │                 │                                                 │
    │  litellm :4000 ────────┘        rag_api :8000 ── pgvector                │
    │      │                               ▲                                   │
@@ -96,14 +95,14 @@ Every image is published for `linux/amd64` and `linux/arm64`, so an ARM host is 
 | B | GHCR images are private; a customer box has no GitHub login | Dogfood: a read-only `read:packages` token in the installer. Product: the installer downloads a signed offline bundle from `updates.nufi.me`, the same bundle `nufi-box update` uses; no registry login on a customer box, ever | P1 / P4 |
 | C | No inference profile for a PC | `INFERENCE_PROFILE=ollama` (default: `qwen2.5:7b-instruct` chat, `bge-m3` embeddings, both Apache/MIT) · `remote` (vLLM or RNGD on the LAN) · `cloud` (dev only, breaks the air gap, egress guard stays in `audit`) | P1 |
 | D | rag_api and Studio are not in the on-prem compose | `deploy/box/docker-compose.yml`: the `box` tier = app, litellm, pgvector, mongodb, rag_api, ollama, studio, console, admin-panel, samba, nufi-ingest, caddy, tailscale (13). `standard` adds Langfuse; `full` adds the detectors and monitoring, layered with `-f` as today | P1 |
-| E | RAG has no scope: every question competes with every document | The app already isolates agent Knowledge per team; the drive watcher ingests with `entity_id = drive id`, and the app maps a department team to its drive. No portal contract to change any more | P1 |
+| E | RAG has no scope: every question competes with every document | The app already isolates agent Knowledge per team; the drive watcher ingests with `entity_id = drive id`, and the app maps a department team to its drive. The daemon runs as the admin and shares each agent to its department team, so the admin owns and can invite members into every department. No portal contract to change any more | P1 |
 | F | A file dropped in `\\nufi\legal` is not knowledge | `nufi-ingest`: stdlib watcher over `/srv/drives/<id>/`, read-only mount; new or changed file → rag_api `POST /embed` with `file_id` and `entity_id`; deleted → `DELETE /documents`. rag_api parses PDF, DOCX, XLSX, text | P1 |
 | G | Routines have no input | A Studio flow takes `input_value` and a drive path; the app's agent run passes both. Scheduled routines are a small `nufi-cron` sidecar (crontab in a config file, calls Studio's run API), no new UI beyond a schedule field on the flow | P2 / P3 |
 | H | No mesh in nufi-app | `deploy/coordinator/`: headscale with embedded DERP behind Caddy, on one VPS as `mesh.nufi.me`. On the box: `tailscale` as a service, joined by the installer with a key it requests from the coordinator | P2 |
 | I | No drive in nufi-app | `samba` service bound to the mesh IP only (`interfaces`, `bind interfaces only`), shares rendered from the admin panel's drive list; `avahi` announces `nufi.local` on the LAN, MagicDNS answers `nufi` on the mesh | P2 |
 | J | No laptop or drive management UI | Two pages in the admin panel, "Network" (nodes, invite, revoke; calls the headscale API) and "Drives" (create, quota, who may read); writing `smb.conf` and reloading is a small privileged helper on the box | P2 |
-| K | `.mesh` cannot carry an SSO cookie | Aliases under one name: `chat.nufi.mesh`, `studio.nufi.mesh`, `console.nufi.mesh`, `admin.nufi.mesh`, `COOKIE_DOMAIN=.nufi.mesh`. A cookie scoped to a bare TLD is rejected by browsers | P2 |
-| L | Box CA must be trusted on laptops | The join file installs the box root cert; the invite page also offers it alone. Plain HTTP inside the tunnel was considered and rejected: the app sets `Secure` cookies in production | P2 |
+| K | `.mesh` cannot carry an SSO cookie | one hostname, four ports; cookies ignore ports; `IDENTITY_COOKIE_DOMAIN=` empty; TLS from P1 because both apps set Secure cookies and Studio requires https for JWKS | P2 |
+| L | Box CA must be trusted on laptops | The join file installs the box root cert; the invite page also offers it alone. Plain HTTP inside the tunnel was considered and rejected: the app sets `Secure` cookies in production | P1 |
 | M | No installer | `install-box.sh` served as `get.nufi.me/box`: prerequisites, pull, four questions, secrets, up, URL; idempotent | P1 |
 | N | No day-two command | `nufi-box` (§2): status, invite, drive add, update, backup, restore, support, doctor | P2 / P4 |
 | O | No update path | `nufi-box update`: signed bundle from `updates.nufi.me`, health-checked apply, rollback; optional nightly timer; a USB path for offline sites | P4 |
@@ -127,7 +126,7 @@ Dates start today. Each phase ends with a weekly demo video in the established f
 Goal: a colleague on the office LAN, with no engineer present, does the Legal week in a browser.
 
 - Images published (A); `deploy/box/` compose with rag_api, Studio, ollama, samba, `nufi-ingest` (C, D, F); `install-box.sh` (M); team ↔ drive scoping (E).
-- Acceptance, scripted as `scenarios/run.py --box`: first on Sun's Mac (the demo), then a developer outside the team installs from a blank Ubuntu with only the guide, in under 30 minutes on the office network; drops three Legal PDFs into the share; within a minute a question in chat returns an answer with sources from those files only; a Studio flow runs from the app.
+- Acceptance, scripted as `scenarios/run.py --box`: first on Sun's Mac (the demo), then a developer outside the team installs from a blank Ubuntu with only the guide, in under 30 minutes on the office network; drops three Legal PDFs into the share; within a minute a question in chat returns an answer with sources from those files only; a Studio flow runs from the app. Measured on Sun's Mac 2026-09-08: install 75 s, ingest 32–97 s cold, 14/32 on qwen2.5:7b — the mechanism holds, the score is the model's.
 
 ### P2 · From home · Sep 25–Oct 15
 
