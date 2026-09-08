@@ -130,6 +130,27 @@ function ApiInterceptor() {
         const isAuthenticationError =
           error?.response?.status === 403 || error?.response?.status === 401;
 
+        // NuFi: this sits ABOVE upstream's retry policy on purpose.
+        //
+        // A cold load with no identity fails exactly once -- 403 on
+        // /auto_login -- and at that instant `shouldRetryRefresh` below is
+        // false: IS_AUTO_LOGIN defaults to true when the env var is unset, and
+        // the store's `autoLogin` is still undefined. So every branch under it,
+        // including the one that renews a session, is skipped, and the app
+        // routes itself to a password form NuFi members cannot use.
+        //
+        // Renewing here does not need upstream's policy: the identity comes
+        // from the console, not from a local refresh token. The only questions
+        // are whether the session is genuinely gone and whether the member
+        // asked to leave.
+        if (
+          isAuthenticationError &&
+          isSessionDiscoveryPath(error?.config?.url) &&
+          Date.now() - lastLogoutAt > LOGOUT_GRACE_MS
+        ) {
+          redirectToNufiEntry();
+        }
+
         const shouldRetryRefresh =
           (isAuthenticationError && !IS_AUTO_LOGIN) ||
           (isAuthenticationError && !autoLogin && autoLogin !== undefined);
@@ -149,18 +170,6 @@ function ApiInterceptor() {
           // (typically the refresh mutation's catch block) drive logout.
           if (isAuthMaintenanceURL(error?.config?.url)) {
             await clearBuildVerticesState(error);
-            // NuFi: this branch is where a lapsed session actually surfaces.
-            // /auto_login answering 403 IS the discovery that there is no
-            // session, and upstream can do nothing with it -- it has a password
-            // form to fall back on and NuFi does not. So this is the moment to
-            // go and get a new identity from the console, unless the member
-            // just chose to leave.
-            if (
-              isSessionDiscoveryPath(error?.config?.url) &&
-              Date.now() - lastLogoutAt > LOGOUT_GRACE_MS
-            ) {
-              redirectToNufiEntry();
-            }
             return Promise.reject(error);
           }
           const stillRefresh = checkErrorCount();
