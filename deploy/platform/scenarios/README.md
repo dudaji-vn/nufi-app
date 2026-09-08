@@ -177,6 +177,17 @@ the judge's verdict instead of a blank line. Both are written only on a real
 run against a live box; nothing under `evidence/box.*` in this repo came from
 a test.
 
+**The box evidence reproduces too, for the same reason and by the same means.**
+`nufi-ingest` creates every department agent with
+`model_parameters {"temperature": 0, "seed": 7}` and patches the setting onto
+agents that predate it, so two consecutive eight-department runs differ in **0
+of 32** answers — identical text, not merely identical verdicts. Before that
+pinning, the same Legal department scored 3/4, 1/4 and 1/4 on three runs of an
+unchanged box, which made any figure quoted from a single run unfalsifiable.
+Note that the reproducible score (10/32) is *lower* than the best sampled run
+(14/32): pinning did not make the box worse, it replaced a lucky draw with the
+number that is actually true of it.
+
 **Test:** `test_run_box.py` stands up a fake copy of the app's own API
 (`ThreadingHTTPServer`, stdlib only) and drives `run_box.py`'s real `main()`
 against it — no live box involved. It uses the actual `legal` department from
