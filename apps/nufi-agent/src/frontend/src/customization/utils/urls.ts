@@ -84,6 +84,31 @@ export function isLoginPath(pathname: string): boolean {
 }
 
 /**
+ * Does this request exist to find out whether a session is still there?
+ *
+ * Measured, not guessed: a cold load of a deep Studio route with no identity
+ * produces exactly one failure -- `403 GET /api/v1/auto_login` -- and then the
+ * app routes itself to /login. That endpoint is in the interceptor's
+ * auth-maintenance list, so it is rejected without any renewal attempt, which
+ * is correct for upstream (it would recurse) and is why the NuFi handoff never
+ * fired from it.
+ *
+ * `/refresh` and `/auto_login` are the two that answer "is there a session";
+ * `/login` and `/logout` are deliberately NOT here. A member who just signed
+ * out must be allowed to stay signed out.
+ */
+export function isSessionDiscoveryPath(url: string | undefined): boolean {
+  if (!url) return false;
+  return /(^|\/)(refresh|auto_login)(\/|\?|#|$)/.test(url);
+}
+
+/** A logout request, which must never be answered by signing the member in. */
+export function isLogoutPath(url: string | undefined): boolean {
+  if (!url) return false;
+  return /(^|\/)logout(\/|\?|#|$)/.test(url);
+}
+
+/**
  * Send the browser back through the console. Returns false when the cooldown
  * says not to, so the caller can fall through to the normal failure path.
  */

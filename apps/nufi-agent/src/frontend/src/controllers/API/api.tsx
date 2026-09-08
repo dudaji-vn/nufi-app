@@ -12,7 +12,12 @@ import {
   getAxiosWithCredentials,
   getFetchCredentials,
 } from "@/customization/utils/get-fetch-credentials";
-import { isLoginPath, redirectToNufiEntry } from "@/customization/utils/urls";
+import {
+  isLoginPath,
+  isLogoutPath,
+  isSessionDiscoveryPath,
+  redirectToNufiEntry,
+} from "@/customization/utils/urls";
 import useAuthStore from "@/stores/authStore";
 import { useUtilityStore } from "@/stores/utilityStore";
 import { BuildStatus, type EventDeliveryType } from "../../constants/enums";
@@ -37,6 +42,15 @@ export const AUTH_MAINTENANCE_PATHS = [
   "/logout",
   "/auto_login",
 ];
+
+// NuFi: when the member signed out, in milliseconds since the epoch.
+//
+// Signing out ends with the app asking /auto_login whether a session exists,
+// and being told no -- the same 403 an expired identity produces. Without this
+// the handoff below would read a deliberate sign-out as a lapsed session and
+// put the member straight back in, making Log out impossible.
+let lastLogoutAt = 0;
+const LOGOUT_GRACE_MS = 15_000;
 
 export function isAuthMaintenanceURL(url: string | undefined): boolean {
   if (!url) return false;
@@ -135,6 +149,18 @@ function ApiInterceptor() {
           // (typically the refresh mutation's catch block) drive logout.
           if (isAuthMaintenanceURL(error?.config?.url)) {
             await clearBuildVerticesState(error);
+            // NuFi: this branch is where a lapsed session actually surfaces.
+            // /auto_login answering 403 IS the discovery that there is no
+            // session, and upstream can do nothing with it -- it has a password
+            // form to fall back on and NuFi does not. So this is the moment to
+            // go and get a new identity from the console, unless the member
+            // just chose to leave.
+            if (
+              isSessionDiscoveryPath(error?.config?.url) &&
+              Date.now() - lastLogoutAt > LOGOUT_GRACE_MS
+            ) {
+              redirectToNufiEntry();
+            }
             return Promise.reject(error);
           }
           const stillRefresh = checkErrorCount();
@@ -243,6 +269,10 @@ function ApiInterceptor() {
 
         const currentOrigin = window.location.origin;
         const requestUrl = new URL(config?.url as string, currentOrigin);
+
+        // NuFi: remember a sign-out so the handoff below can tell it apart
+        // from a session that simply ran out.
+        if (isLogoutPath(config?.url)) lastLogoutAt = Date.now();
 
         const urlIsFromCurrentOrigin = requestUrl.origin === currentOrigin;
         if (urlIsFromCurrentOrigin) {
