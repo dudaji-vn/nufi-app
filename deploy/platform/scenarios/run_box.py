@@ -53,10 +53,11 @@ import pathlib
 import ssl
 import sys
 import time
+import urllib.error
 import urllib.request
 import uuid
 
-from run import REFUSAL_MARKERS, drifted, judge  # same judge, same markers
+from run import drifted, judge  # same judge, same markers
 
 HERE = pathlib.Path(__file__).resolve().parent
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
@@ -67,6 +68,16 @@ NIL = "00000000-0000-0000-0000-000000000000"
 # (rather than a literal inside the loop) so a test can shrink it instead of
 # waiting out a real --timeout.
 POLL_INTERVAL = 5.0
+
+
+class BoxError(Exception):
+    """The app API returned an HTTP error, or was unreachable.
+
+    Mirrors run.py's Box.call (run.py:63-87): the message always carries the
+    method, path, status (or "unreachable"), and the response body -- the
+    thing someone debugging the first live run actually needs to see,
+    instead of a bare urllib.error.HTTPError traceback with no context.
+    """
 
 
 class Chat:
@@ -95,7 +106,14 @@ class Chat:
             req.add_header("Content-Type", "application/json")
         if self.token:
             req.add_header("Authorization", "Bearer " + self.token)
-        return urllib.request.urlopen(req, timeout=timeout, context=self.ctx)
+        try:
+            return urllib.request.urlopen(req, timeout=timeout, context=self.ctx)
+        except urllib.error.HTTPError as exc:
+            raw = exc.read().decode("utf-8", "replace")
+            raise BoxError(f"{method} {path} -> {exc.code}: {raw[:300]}") from exc
+        except (urllib.error.URLError, TimeoutError) as exc:
+            reason = getattr(exc, "reason", exc)
+            raise BoxError(f"{method} {path} -> unreachable: {reason}") from exc
 
     def login(self, email, password):
         with self.call("POST", "/api/auth/login", {"email": email, "password": password}) as r:
@@ -158,10 +176,11 @@ def main():
     ap.add_argument("--password", required=True)
     ap.add_argument("--drives", required=True)
     ap.add_argument("--only", default="")
-    ap.add_argument("--insecure", action="store_true",
-                     help="skip TLS verification (box CA not in the trust store)")
-    ap.add_argument("--cacert", default=None,
-                     help="trust this PEM CA file instead of skipping verification")
+    tls = ap.add_mutually_exclusive_group()
+    tls.add_argument("--insecure", action="store_true",
+                      help="skip TLS verification (box CA not in the trust store)")
+    tls.add_argument("--cacert", default=None,
+                      help="trust this PEM CA file instead of skipping verification")
     ap.add_argument("--timeout", type=float, default=180,
                      help="seconds to wait for nufi-ingest to list each department's files")
     ap.add_argument("--out", default=str(HERE / "evidence"),
@@ -175,7 +194,12 @@ def main():
             raise SystemExit(f"no such department: {a.only}")
 
     chat = Chat(a.base, insecure=a.insecure, cacert=a.cacert)
-    chat.login(a.email, a.password)
+    try:
+        chat.login(a.email, a.password)
+    except BoxError as exc:
+        print(f"login failed: {exc}", file=sys.stderr)
+        sys.exit(2)
+
     drives = pathlib.Path(a.drives)
     out = {"base": a.base, "started": time.strftime("%Y-%m-%dT%H:%M:%S"), "departments": []}
     failures = 0
@@ -184,22 +208,39 @@ def main():
         for doc in d["documents"]:
             (drives / d["drive"] / doc["name"]).write_text(doc["text"])
         name = f"{d['drive'].capitalize()} assistant"
+        want = set(x["name"] for x in d["documents"])
         t0 = time.time()
-        agent = None
+        agent, ingest_complete, missing = None, False, sorted(want)
         while time.time() - t0 < a.timeout:
             agent = chat.agent_named(name)
-            if agent and set(x["name"] for x in d["documents"]) <= set(chat.files_of(agent)):
-                break
+            if agent:
+                missing = sorted(want - set(chat.files_of(agent)))
+                if not missing:
+                    ingest_complete = True
+                    break
             time.sleep(POLL_INTERVAL)
-        rec = {"id": d["id"], "agent": agent, "ingest_seconds": round(time.time() - t0, 1), "questions": []}
+        rec = {"id": d["id"], "agent": agent, "ingest_seconds": round(time.time() - t0, 1),
+               "ingest_complete": ingest_complete, "questions": []}
         if not agent:
             rec["error"] = "agent never appeared"
             failures += 1
             out["departments"].append(rec)
             continue
+        if not ingest_complete:
+            print(f"[FAIL] {d['id']}: ingest incomplete after {a.timeout}s, "
+                  f"still missing: {', '.join(missing)}")
+            failures += 1
         for q in d["questions"]:
             t1 = time.time()
-            answer, sources = chat.ask(agent, q["ask"])
+            try:
+                answer, sources = chat.ask(agent, q["ask"])
+            except BoxError as exc:
+                rec["questions"].append({"ask": q["ask"], "kind": q["kind"], "expect": q["expect"],
+                                         "answer": "", "sources": [], "seconds": round(time.time() - t1, 1),
+                                         "pass": False, "why": None, "drifted": False, "error": str(exc)})
+                failures += 1
+                print(f"[FAIL] {d['id']}: {q['ask']} → ERROR {exc}")
+                continue
             ok, why = judge(q["kind"], answer, q["expect"])
             rec["questions"].append({"ask": q["ask"], "kind": q["kind"], "expect": q["expect"], "answer": answer,
                                      "sources": sources, "seconds": round(time.time() - t1, 1),

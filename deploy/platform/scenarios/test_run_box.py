@@ -14,7 +14,13 @@ One of the three extract questions is answered wrong on purpose. That is the
 regression this test exists to catch: an earlier draft of run_box.py did
 `verdict = judge(...)` and treated the returned (ok, why) tuple itself as the
 pass/fail flag -- a 2-tuple is always truthy, so every question "passed" no
-matter what judge() actually decided. Assert failures == 1, not 0.
+matter what judge() actually decided.
+
+A second question gets a 400 from the fake's chat POST instead of a normal
+answer, catching a second regression: an earlier draft of Chat.call let
+urllib.error.HTTPError propagate as a bare traceback (no status, no body),
+which would kill the whole run instead of recording one failed question and
+moving on. Assert failures == 2 (one wrong answer, one HTTP error), not 0.
 
 Run:  python3 test_run_box.py     (exit 0 = PASS)
 """
@@ -45,8 +51,15 @@ TOKEN = "fake-jwt-token"
 # so one check must FAIL -- see module docstring.
 WRONG_ANSWER_INDEX = 1
 
+# This one gets HTTP 400 from the chat POST instead of ever reaching the SSE
+# stream -- see module docstring and do_POST below.
+ERROR_INDEX = 2
+ERROR_BODY = {"error": "Bad Request", "message": "text failed moderation"}
+
 ANSWERS = []
 for i, q in enumerate(LEGAL["questions"]):
+    if i == ERROR_INDEX:
+        continue  # do_POST returns 400 before this question ever streams
     if q["kind"] == "refuse":
         text = f"죄송합니다, 문의하신 내용은 문서에 {REFUSAL_MARKERS[2]}."
         sources = []
@@ -150,6 +163,12 @@ class _FakeApp(BaseHTTPRequestHandler):
             assert body["isContinued"] is False, body
             assert body["error"] is False, body
             assert "messageId" in body and "text" in body, body
+            if body["text"] == LEGAL["questions"][ERROR_INDEX]["ask"]:
+                # Real shape of a rejected request: a JSON error body with no
+                # streamId at all. Chat.call must turn this into a BoxError
+                # carrying the status and this body, not an unhandled
+                # urllib.error.HTTPError.
+                return self._json(400, ERROR_BODY)
             stream_id = str(uuid.uuid4())
             _FakeApp.jobs[stream_id] = body
             # Real controller: res.json({streamId, conversationId, status})
@@ -229,8 +248,9 @@ def main():
         run_box.POLL_INTERVAL = old_poll
         httpd.shutdown()
 
-    # 1) exit code reflects the one deliberately-wrong answer, not a false PASS.
-    assert code == 1, f"expected exit 1 (1 failure), got {code}"
+    # 1) exit code reflects the two deliberate failures (wrong answer + HTTP
+    #    error), not a false PASS.
+    assert code == 1, f"expected exit 1 (failures present), got {code}"
 
     # 2) the department document was actually written to the drives dir.
     doc_path = drives / LEGAL["drive"] / DOC_NAME
@@ -243,18 +263,28 @@ def main():
 
     # 4) evidence/box.json has the right shape and the right verdicts.
     data = json.loads((out / "box.json").read_text())
-    assert data["failures"] == 1, data
+    assert data["failures"] == 2, data
     dept = data["departments"][0]
     assert dept["id"] == "legal"
     assert dept["agent"] == AGENT_ID
+    assert dept["ingest_complete"] is True, dept
     questions = dept["questions"]
     assert len(questions) == 4, questions
     for i, q in enumerate(questions):
-        expect_pass = not (i == WRONG_ANSWER_INDEX)
+        expect_pass = i not in (WRONG_ANSWER_INDEX, ERROR_INDEX)
         assert q["pass"] is expect_pass, (i, q)
     assert questions[0]["pass"] is True and DOC_NAME in questions[0]["sources"]
     assert questions[WRONG_ANSWER_INDEX]["pass"] is False
     assert questions[3]["kind"] == "refuse" and questions[3]["pass"] is True
+
+    # 4b) the HTTP-error question is recorded with the status and body excerpt,
+    #     not a bare traceback -- and the run kept going past it.
+    error_q = questions[ERROR_INDEX]
+    assert error_q["answer"] == "", error_q
+    assert error_q["pass"] is False, error_q
+    assert "error" in error_q, error_q
+    assert "400" in error_q["error"], error_q
+    assert "moderation" in error_q["error"], error_q  # body excerpt
 
     # 5) evidence/box.md was written and names both a PASS and the FAIL.
     md = (out / "box.md").read_text()
@@ -264,7 +294,8 @@ def main():
     shutil.rmtree(drives, ignore_errors=True)
     shutil.rmtree(out, ignore_errors=True)
     print("PASS: run_box.py writes documents, polls for ingest, drives the real "
-          "two-hop SSE chat, and judges extract/refuse questions correctly")
+          "two-hop SSE chat, judges extract/refuse questions, and turns an HTTP "
+          "error into a recorded failure instead of a crash")
 
 
 if __name__ == "__main__":
