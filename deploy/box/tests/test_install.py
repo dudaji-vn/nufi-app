@@ -125,3 +125,14 @@ def test_bare_src_says_what_is_missing_instead_of_exiting_silently():
     r = install("--src=")
     assert r.returncode == 1, r.stdout
     assert "--src needs a directory" in r.stderr
+
+
+def test_extra_compose_files_are_layered_last_and_must_exist(tmp_path):
+    extra = tmp_path / "local-ports.yml"
+    extra.write_text("services: {}\n")
+    out = dry("--emulate-amd64", NUFI_BOX_FAKE_OS="Darwin",
+              NUFI_BOX_COMPOSE_EXTRA=str(extra))
+    assert f"-f docker-compose.emulate.yml -f {extra} up -d" in out
+    r = install(NUFI_BOX_FAKE_OS="Darwin", NUFI_BOX_COMPOSE_EXTRA="/nope/missing.yml")
+    assert r.returncode == 1
+    assert "no such file: /nope/missing.yml" in r.stderr

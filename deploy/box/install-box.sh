@@ -13,6 +13,10 @@
 #   --no-pull        do not `docker compose pull`; use what is already local
 #   --emulate-amd64  run the amd64-only images under emulation (Apple Silicon)
 #   --no-trust       do not touch the login keychain; print the trust step
+#
+# NUFI_BOX_COMPOSE_EXTRA — space-separated extra compose files to layer last,
+# for a machine that needs a site-local tweak (a port map when something else
+# already holds 3080, a mount, a resource cap) without editing what ships.
 set -euo pipefail
 
 # ---------- tiny helpers -----------------------------------------------------
@@ -242,6 +246,10 @@ if [ "$OS" = "Linux" ]; then
   COMPOSE="$COMPOSE -f docker-compose.linux.yml --profile linux"
   has_nvidia && COMPOSE="$COMPOSE -f docker-compose.gpu.yml --profile gpu"
 fi
+for f in ${NUFI_BOX_COMPOSE_EXTRA:-}; do
+  [ -f "$f" ] || die "NUFI_BOX_COMPOSE_EXTRA: no such file: $f"
+  COMPOSE="$COMPOSE -f $f"
+done
 if [ "$NO_PULL" = 1 ]; then
   say "Starting the stack (--no-pull: using the images already on this machine)"
 else

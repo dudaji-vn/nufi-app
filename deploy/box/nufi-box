@@ -15,6 +15,7 @@ OS="$(uname -s)"
 COMPOSE="docker compose -f $HERE/docker-compose.yml"
 [ "${NUFI_EMULATE_AMD64:-0}" = "1" ] && COMPOSE="$COMPOSE -f $HERE/docker-compose.emulate.yml"
 [ "$OS" = "Linux" ] && COMPOSE="$COMPOSE -f $HERE/docker-compose.linux.yml --profile linux"
+for f in ${NUFI_BOX_COMPOSE_EXTRA:-}; do COMPOSE="$COMPOSE -f $f"; done
 usage() {
   cat <<EOF
 nufi-box <verb>
