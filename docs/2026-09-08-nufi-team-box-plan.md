@@ -101,7 +101,7 @@ Every image is published for `linux/amd64` and `linux/arm64`, so an ARM host is 
 | H | No mesh in nufi-app | `deploy/coordinator/`: headscale with embedded DERP behind Caddy, on one VPS as `mesh.nufi.me`. On the box: `tailscale` as a service, joined by the installer with a key it requests from the coordinator | P2 |
 | I | No drive in nufi-app | `samba` service bound to the mesh IP only (`interfaces`, `bind interfaces only`), shares rendered from the admin panel's drive list; `avahi` announces `nufi.local` on the LAN, MagicDNS answers `nufi` on the mesh | P2 |
 | J | No laptop or drive management UI | Two pages in the admin panel, "Network" (nodes, invite, revoke; calls the headscale API) and "Drives" (create, quota, who may read); writing `smb.conf` and reloading is a small privileged helper on the box | P2 |
-| K | `.mesh` cannot carry an SSO cookie | one hostname, four ports; cookies ignore ports; `IDENTITY_COOKIE_DOMAIN=` empty; TLS from P1 because both apps set Secure cookies and Studio requires https for JWKS | P2 |
+| K | `.mesh` cannot carry an SSO cookie | one hostname, four ports; cookies ignore ports; `IDENTITY_COOKIE_DOMAIN=` empty; TLS from P1 because both apps set Secure cookies and Studio requires https for JWKS | P1 |
 | L | Box CA must be trusted on laptops | The join file installs the box root cert; the invite page also offers it alone. Plain HTTP inside the tunnel was considered and rejected: the app sets `Secure` cookies in production | P1 |
 | M | No installer | `install-box.sh` served as `get.nufi.me/box`: prerequisites, pull, four questions, secrets, up, URL; idempotent | P1 |
 | N | No day-two command | `nufi-box` (§2): status, invite, drive add, update, backup, restore, support, doctor | P2 / P4 |
@@ -126,7 +126,7 @@ Dates start today. Each phase ends with a weekly demo video in the established f
 Goal: a colleague on the office LAN, with no engineer present, does the Legal week in a browser.
 
 - Images published (A); `deploy/box/` compose with rag_api, Studio, ollama, samba, `nufi-ingest` (C, D, F); `install-box.sh` (M); team ↔ drive scoping (E).
-- Acceptance, scripted as `scenarios/run.py --box`: first on Sun's Mac (the demo), then a developer outside the team installs from a blank Ubuntu with only the guide, in under 30 minutes on the office network; drops three Legal PDFs into the share; within a minute a question in chat returns an answer with sources from those files only; a Studio flow runs from the app. Measured on Sun's Mac 2026-09-08: install 75 s, ingest 32–97 s cold, 14/32 on qwen2.5:7b — the mechanism holds, the score is the model's.
+- Acceptance, scripted as `scenarios/run.py --box`: first on Sun's Mac (the demo), then a developer outside the team installs from a blank Ubuntu with only the guide, in under 30 minutes on the office network; drops three Legal PDFs into the share; within a minute a question in chat returns an answer with sources from those files only; a Studio flow runs from the app. Measured on Sun's Mac 2026-09-08: install 75 s, ingest 32–97 s cold, 10/32 on qwen2.5:7b at temperature 0 with 0/32 answers differing across two runs — the mechanism holds and reproduces; the score is the model's.
 
 ### P2 · From home · Sep 25–Oct 15
 

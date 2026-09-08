@@ -12,8 +12,8 @@ the same login:
 | Product | URL | What it is for |
 |---|---|---|
 | Chat | `https://<box>:3080` | The NuFi app: chat, agents, file search |
-| Console | `https://<box>:3001` | Identity and single sign-on between the other three |
-| Admin panel | `https://<box>:3002` | User and model administration |
+| NuFi Console | `https://<box>:3001` | Identity and single sign-on between the other three |
+| NuFi Admin Panel | `https://<box>:3002` | User and model administration |
 | Studio | `https://<box>:7860` | NUFI Studio, reached from Chat via Account → Agents → NUFI Studio |
 
 `<box>` is the box name you choose at install, followed by `.local`
@@ -104,9 +104,9 @@ admin login, and send a message.
 
 The box signs its own certificate — nothing calls out to a public
 certificate authority — so a browser sees it as untrusted until it trusts
-the box's own CA. This is not optional: both Chat and Console set `Secure`
-session cookies, and Studio needs `https` to reach Console's JWKS endpoint
-for single sign-on, so plain HTTP does not work for logging in.
+the box's own CA. This is not optional: both Chat and NuFi Console set
+`Secure` session cookies, and Studio needs `https` to reach Console's JWKS
+endpoint for single sign-on, so plain HTTP does not work for logging in.
 
 The install script trusts the CA in your own login keychain automatically
 on macOS. On any other machine — the box itself on Linux, or a colleague's
@@ -169,22 +169,28 @@ does not add anyone else automatically.
 
 | Profile | Where the model runs | Trade-off |
 |---|---|---|
-| `ollama` | Ollama on the host machine (macOS default; also works on Linux if Ollama is installed there) | Fastest to set up on a Mac — no extra container, uses Metal — but ties the model to this one host |
-| `ollama-docker` | An Ollama container started by the box compose (Linux default) | Self-contained inside the box's own stack, but adds a container and its own model pulls |
+| `ollama` | Ollama on the host machine (macOS default; Linux default too, but only when Ollama is already installed on the host) | Fastest to set up on a Mac — no extra container, uses Metal — but ties the model to this one host |
+| `ollama-docker` | An Ollama container started by the box compose (Linux default otherwise) | Self-contained inside the box's own stack, but adds a container and its own model pulls |
 | `remote` | Any OpenAI-compatible server on the LAN (vLLM, RNGD, TGI) | Offloads inference to real hardware elsewhere; the box stays light, but now depends on that server already running |
 | `cloud` | An external API provider | Needs no local model at all, but prompts leave this machine — the box is no longer air-gapped |
+
+A GPU on a Linux box only changes which compose layer is applied
+(`docker-compose.gpu.yml`, for the NVIDIA container toolkit) — it does not
+change which of `ollama` or `ollama-docker` gets picked.
 
 ### What to expect from a 7B model
 
 The default profile ships with `qwen2.5:7b`. In a live acceptance run across
-32 questions over eight departments, it answered **14 of 32** correctly. The
-plumbing was not the problem: every department ingested, retrieval found the
-right passage, and the citation was correct whenever one appeared. What
-failed was the model itself — stating a number the retrieved passage did not
-contain, occasionally answering in Chinese mid-sentence for a Korean
-question, or not calling file search at all. If accuracy matters more than
-running fully on CPU, use a larger `INFERENCE_MODEL` on a box with a GPU;
-that is the lever that moves this score, not more prompt tuning.
+32 questions over eight departments, at temperature 0 with a fixed seed, it
+answered **10 of 32** correctly — identical across two back-to-back runs
+(0/32 answers differed). The plumbing was not the problem: every department
+ingested, retrieval found the right passage, and the citation was correct
+whenever one appeared. What failed was the model itself — stating a number
+the retrieved passage did not contain, occasionally answering in Chinese
+mid-sentence for a Korean question, or not calling file search at all. If
+accuracy matters more than running fully on CPU, use a larger
+`INFERENCE_MODEL` on a box with a GPU; that is the lever that moves this
+score, not more prompt tuning.
 
 ## 7. Day two
 
@@ -211,7 +217,7 @@ to `install-box.sh` and is also symlinked onto your `PATH`.
 | A department's agent is not in the app | You are not the admin and were not invited to that department's team. Ask the admin to invite you from Teams in the app — see [Departments and drives](#5-departments-and-drives). |
 | A file with a Korean name shows garbled ("mojibake") characters in citations | Fixed in the shipped `nufi-ingest` image (the filename is now percent-encoded on upload, matching what the app's own web client sends). If you still see it, you are running an older image — pull the latest one. |
 | A Studio flow fails with `SSRF Protection: Hostname … resolves to blocked IP address(es)` | Studio's model node reaches the model through `host.docker.internal` (macOS) or `ollama` (Linux) — both private addresses, which Langflow blocks by default. The box's shipped compose file already allow-lists exactly those two hostnames (`LANGFLOW_SSRF_ALLOWED_HOSTS`). If you see this, you are running a compose override that dropped that setting — go back to the shipped `docker-compose.yml`. |
-| A container is killed, or `nufi-box doctor` warns about memory | Give Docker Desktop / OrbStack more memory: Settings → Resources → Memory, at least 12 GB on macOS. Studio alone is more than a third of the box's own footprint; running something else heavy on the same VM is the usual cause. |
+| The installer warned the Docker VM is too small, or the box is slow and `nufi-box doctor` shows failing health checks | `doctor` has no memory probe of its own — the installer's prerequisite check is what reports the Docker VM's size, at install time. A box that is swapping heavily shows up indirectly instead: answers get slow, and `doctor`'s `curl` health checks start failing. Give Docker Desktop / OrbStack more memory: Settings → Resources → Memory, at least 12 GB on macOS. Studio alone is more than a third of the box's own footprint; running something else heavy on the same VM is the usual cause. |
 
 ### Installing next to something else that already holds 3080 / 3001 / 4000
 
@@ -262,6 +268,6 @@ yet:
   does not yet take a per-run input from the app, and nothing runs it on a
   schedule.
 - **The acceptance score is a measurement of the model, not the box.** The
-  14/32 figure above says how good `qwen2.5:7b` is at these questions. It
+  10/32 figure above says how good `qwen2.5:7b` is at these questions. It
   does not say whether ingestion, retrieval, or citation work — those
   passed in full.
