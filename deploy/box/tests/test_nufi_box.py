@@ -123,3 +123,55 @@ def test_envfile_has(tmp_path):
         capture_output=True, text=True,
     )
     assert r2.stdout.strip() == "no"
+
+
+# --- fix round 2: trailing-newline guard ---
+
+def test_envfile_set_appends_when_file_lacks_trailing_newline(tmp_path):
+    f = tmp_path / ".env"
+    f.write_bytes(b"FOO=1\nBAZ=2")  # no trailing newline
+    lib = str(BOX / "lib" / "envfile.sh")
+    r = subprocess.run(
+        ["/bin/bash", "-c", 'source "$0"; envfile_set "$1" NEWKEY v', lib, str(f)],
+        capture_output=True, text=True,
+    )
+    assert r.returncode == 0, r.stderr
+    assert f.read_text() == "FOO=1\nBAZ=2\nNEWKEY=v\n"
+
+def test_envfile_set_replace_when_file_lacks_trailing_newline(tmp_path):
+    f = tmp_path / ".env"
+    f.write_bytes(b"FOO=1\nBAZ=2")  # no trailing newline, BAZ is the last line
+    lib = str(BOX / "lib" / "envfile.sh")
+    r = subprocess.run(
+        ["/bin/bash", "-c", 'source "$0"; envfile_set "$1" BAZ 9', lib, str(f)],
+        capture_output=True, text=True,
+    )
+    assert r.returncode == 0, r.stderr
+    assert f.read_text() == "FOO=1\nBAZ=9\n"
+
+
+# --- fix round 2: literal (non-regex) key matching ---
+
+def test_envfile_set_key_matching_is_literal_not_regex(tmp_path):
+    f = tmp_path / ".env"
+    f.write_text("A.B=1\nAXB=1\n")
+    lib = str(BOX / "lib" / "envfile.sh")
+    r = subprocess.run(
+        ["/bin/bash", "-c", 'source "$0"; envfile_set "$1" A.B 2', lib, str(f)],
+        capture_output=True, text=True,
+    )
+    assert r.returncode == 0, r.stderr
+    content = f.read_text()
+    assert "A.B=2" in content
+    assert "AXB=1" in content
+    assert content.count("A.B=") == 1
+
+def test_envfile_has_key_matching_is_literal_not_regex(tmp_path):
+    f = tmp_path / ".env"
+    f.write_text("AXB=1\n")
+    lib = str(BOX / "lib" / "envfile.sh")
+    r = subprocess.run(
+        ["/bin/bash", "-c", 'source "$0"; envfile_has "$1" A.B && echo yes || echo no', lib, str(f)],
+        capture_output=True, text=True,
+    )
+    assert r.stdout.strip() == "no"
