@@ -1,0 +1,27 @@
+name: verify-agents
+
+# Both agent products are public surfaces held up by properties nothing else
+# checks: the white-label build, and three endpoints that must refuse an
+# anonymous caller. A refactor can turn any of those 401s into a 200 without
+# failing a single unit test, so this runs on a clock rather than on a diff.
+on:
+  schedule:
+    # Every six hours, off the hour: GitHub queues scheduled jobs and a job on
+    # the hour waits behind everyone else's.
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: verify-agents
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Public surface
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check the script parses
+        run: bash -n deploy/railway/verify-agents.sh
+      - name: Verify both products
+        run: bash deploy/railway/verify-agents.sh

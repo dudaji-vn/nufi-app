@@ -43,14 +43,29 @@ most of a hosting bill.
 ```bash
 OIDC_ISSUER=https://console.nufi.me
 OIDC_PRIVATE_KEY_PEM=           # openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048
-OIDC_CLIENTS=[{"clientId":"nufi-works","clientSecret":"…","redirectUris":["https://works.nufi.me/api/auth/oauth2/callback/nufi"]}]
+OIDC_CLIENTS=[{"clientId":"nufi-works","clientSecret":"…","redirectUris":["https://works.nufi.me/api/auth/oauth2/callback/nufi"],"product":"works"}]
+AGENT_ENTITLEMENTS={"studio":["@dudaji.vn"],"works":["@dudaji.vn"]}   # optional
 CHOOSER_HOST=agents.nufi.me
 STUDIO_URL=https://studio.nufi.me
 VITE_WORKS_URL=https://works.nufi.me
 IDENTITY_TTL_SECONDS=28800      # 8 hours
 IDENTITY_COOKIE_DOMAIN=.nufi.me
 CHAT_BASE_URL=https://chat.nufi.me
+CHAT_PUBLIC_URL=https://chat.nufi.me   # optional; defaults to CHAT_BASE_URL
 ```
+
+This is the whole configuration surface of the console's half. Every
+variable, what it decides, and what happens if you leave it out:
+
+| Variable | What it decides | Left unset |
+|---|---|---|
+| `OIDC_CLIENTS` | Which OAuth clients exist, and — through `"product"` — which product each one is the front door to. **A client with no `"product"` is admitted without an entitlement check**, which is correct for a federation client and silently disables the gate for a member-facing one. The console logs a warning at boot naming any client in that state. | No client can sign in; NuFi Works keeps its own login. |
+| `AGENT_ENTITLEMENTS` | Who may enter each product, as JSON: `{"studio":["@dudaji.vn"],"works":["a@b.c"]}`. An entry is a full address or an `@domain` suffix; `*` is everyone. A product with no list of its own stays open. A NuFi administrator is always entitled. | **Both products open to every member.** Deliberate: deploying the gate must not lock out the people already using it. A *malformed* value closes both to everyone but an administrator. |
+| `CHAT_BASE_URL` | Where the console asks chat who the member is. Needs to be reachable **from the console** — a private-network host is fine. | `https://chat.nufi.me`. |
+| `CHAT_PUBLIC_URL` | Where the console sends a member's **browser** to sign back in. Needs to be resolvable by that browser. | Falls back to `CHAT_BASE_URL`. |
+| `CHOOSER_HOST` | The hostname that serves the two-product chooser, and where a member who is refused a product is sent to read why. | `agents.nufi.me`. |
+| `STUDIO_URL` | Where `/enter/studio` redirects once it has minted the cookie. | `https://studio.nufi.me`. |
+| `VITE_WORKS_URL` | The NuFi Works link on the chooser. Build-time, not runtime: it is baked into the SPA by Vite, so changing it needs a rebuild. | `https://works.nufi.me`. |
 
 <Callout type="warn">
 **`CHAT_BASE_URL` has to be reachable from the console.** The chat session
@@ -62,6 +77,17 @@ the failure is not obvious: NuFi Works refuses the sign-in with
 NuFi Studio accepts it and provisions an account called
 `external-<hash>` for a real person, and everyone arrives as an editor
 because the role is missing too.
+
+**`CHAT_PUBLIC_URL` has to be resolvable by the member's browser** — a
+separate requirement from the one above. An expired Studio session now
+bounces the member's own browser to `${CHAT_PUBLIC_URL}/login` so they can
+sign back in without hunting down `agents.nufi.me` from memory. On a deploy
+that reaches chat over private networking (say,
+`CHAT_BASE_URL=http://chat.railway.internal:3080`), that address satisfies
+the requirement above but is not something a browser can resolve.
+`CHAT_PUBLIC_URL` defaults to `CHAT_BASE_URL`, so a deployment with a single
+public chat host has nothing new to set — only a private-networking one
+needs to set it separately.
 </Callout>
 
 `VITE_WORKS_URL` is inlined into the browser bundle when the image is
@@ -163,12 +189,38 @@ editor. That mapping is fixed in the console.
 Studio treats it as a ceiling rather than an assignment, so a local
 account cannot be promoted past what the console vouched for.
 
-## What this does not do
+## Who may enter
 
-**It does not decide who may use which product.** Every NuFi account
-can open both. There is no invite list and no per-product entitlement.
-If you need one, it belongs in the console, because that is where the
-decision is made — and it does not exist yet.
+`AGENT_ENTITLEMENTS` decides. The console enforces it at both doors a
+member can walk through — `GET /enter/studio` and `GET /oidc/authorize`
+— and reports it, without enforcing anything, at `GET /enter/products`,
+which the chooser asks before it renders so a member sees a card they
+cannot click with a reason on it rather than discovering the refusal by
+clicking into it.
+
+Unset, both products are open to every member — the same behaviour as
+before there was a gate, so turning this on is a decision you make
+rather than one a deploy makes for you. A malformed value closes both
+products to everyone except a NuFi administrator; an administrator is
+always entitled, so a typo in one Railway variable cannot lock out the
+person who has to fix it.
+
+A refusal is shaped by who asked. A browser navigation is sent to the
+chooser, which explains itself; a scripted caller gets `403` and JSON.
+A member with no NuFi session at all is sent to chat's login page, and
+gets `401` if it was a script that asked — which is what the standing
+check in `deploy/railway/verify-agents.sh` asserts.
+
+<Callout type="info">
+**`/oidc/federated-token` deliberately carries no entitlement check.** It
+is not a third door into either product: a trusted federation client
+authenticates as itself and asserts a subject for a different audience —
+typically a member of an on-premises deployment who has no NuFi account
+at all — so a product entitlement list has nothing to say about it. The
+gate covers the two endpoints a member can navigate to, and only those.
+</Callout>
+
+## What this does not do
 
 **It does not sign people out.** Signing out of NuFi does not revoke a
 session already issued to Studio or Works; those expire on their own

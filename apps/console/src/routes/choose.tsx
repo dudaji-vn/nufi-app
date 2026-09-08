@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 /**
  * The door at agents.nufi.me.
@@ -13,14 +13,18 @@ export const Route = createFileRoute('/choose')({
   component: Choose,
 });
 
+type Entitlements = { studio: boolean; works: boolean };
+
 const PRODUCTS = [
   {
+    key: 'studio' as const,
     name: 'NuFi Studio',
     blurb: 'Build a flow on a canvas. Connect a model, a knowledge base and a tool, then run it.',
     href: '/enter/studio',
     external: false,
   },
   {
+    key: 'works' as const,
     name: 'NuFi Works',
     blurb: 'Put agents to work. Give a team a goal, approve what matters, and watch the spend.',
     // `?sso=1` makes Works start the console handoff on arrival. Without it a
@@ -44,6 +48,33 @@ function Choose() {
     };
   }, []);
 
+  // `null` means the lookup has not resolved yet -- distinct from a known
+  // result, because a member must not be able to click into a door while this
+  // fetch is in flight. `/enter/products` rotates the chat refresh token the
+  // same way `/enter/studio` and `/authorize` do; chat has no reuse grace
+  // window, so a click that races the in-flight request would carry the token
+  // this fetch just consumed and land on a 401.
+  const [allowed, setAllowed] = useState<Entitlements | null>(null);
+
+  useEffect(() => {
+    // Same origin: the chooser is this console served on another hostname.
+    // A failed lookup falls open -- the server refuses anyway, and a network
+    // blip must not tell a member they have lost access.
+    //
+    // The timeout is what makes that fail-open reachable. Both cards stay
+    // unclickable until this resolves, so a chat that hangs rather than fails
+    // leaves the page reading "Checking access…" for as long as the member is
+    // willing to look at it, with a manual reload the only way out. An abort
+    // rejects the promise, which is the path the catch below already handles.
+    fetch('/enter/products', {
+      credentials: 'same-origin',
+      signal: AbortSignal.timeout(5000),
+    })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('lookup failed'))))
+      .then((data: Entitlements) => setAllowed(data))
+      .catch(() => setAllowed({ studio: true, works: true }));
+  }, []);
+
   return (
     <section className="mx-auto max-w-3xl px-4 py-16 sm:py-24">
       <img src="/nufi-logo.svg" alt="NuFi" className="h-6 w-auto" />
@@ -53,20 +84,45 @@ function Choose() {
       </p>
 
       <div className="mt-10 grid gap-4 sm:grid-cols-2">
-        {PRODUCTS.map((p) => (
-          <a
-            key={p.name}
-            href={p.href}
-            {...(p.external ? {} : { rel: 'noreferrer' })}
-            className="group rounded-xl border p-6 transition-colors hover:border-foreground/40 hover:bg-accent/40"
-          >
-            <h2 className="font-medium text-lg">{p.name}</h2>
-            <p className="mt-2 text-muted-foreground text-sm leading-relaxed">{p.blurb}</p>
-            <span className="mt-4 inline-block text-sm transition-colors group-hover:text-foreground text-muted-foreground">
-              Open →
-            </span>
-          </a>
-        ))}
+        {PRODUCTS.map((p) => {
+          // Not resolved yet: same shape as the disabled card below, so the
+          // page does not jump once the lookup settles, but not clickable --
+          // clicking here would race the in-flight token rotation.
+          if (allowed === null) {
+            return (
+              <div key={p.name} className="rounded-xl border p-6 opacity-60">
+                <h2 className="font-medium text-lg">{p.name}</h2>
+                <p className="mt-2 text-muted-foreground text-sm leading-relaxed">{p.blurb}</p>
+                <span className="mt-4 inline-block text-sm text-muted-foreground">
+                  Checking access…
+                </span>
+              </div>
+            );
+          }
+
+          return allowed[p.key] ? (
+            <a
+              key={p.name}
+              href={p.href}
+              {...(p.external ? {} : { rel: 'noreferrer' })}
+              className="group rounded-xl border p-6 transition-colors hover:border-foreground/40 hover:bg-accent/40"
+            >
+              <h2 className="font-medium text-lg">{p.name}</h2>
+              <p className="mt-2 text-muted-foreground text-sm leading-relaxed">{p.blurb}</p>
+              <span className="mt-4 inline-block text-sm transition-colors group-hover:text-foreground text-muted-foreground">
+                Open →
+              </span>
+            </a>
+          ) : (
+            <div key={p.name} className="rounded-xl border p-6 opacity-60">
+              <h2 className="font-medium text-lg">{p.name}</h2>
+              <p className="mt-2 text-muted-foreground text-sm leading-relaxed">{p.blurb}</p>
+              <span className="mt-4 inline-block text-sm text-muted-foreground">
+                Ask an admin for access
+              </span>
+            </div>
+          );
+        })}
       </div>
     </section>
   );

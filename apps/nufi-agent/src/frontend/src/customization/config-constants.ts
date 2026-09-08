@@ -14,6 +14,26 @@ export const HEALTH_CHECK_URL = "/health_check";
 // nufi/README.md "Third-party brand/link sweep".
 export const DOCS_LINK = "https://docs.app.nufi.me";
 
+// NuFi: Studio does not own a login of its own -- the console mints the
+// identity cookie Studio reads, and it lasts eight hours. When it expires the
+// upstream frontend falls through to a local login form with a password field
+// no NUFI member has. This is the door back. Baked at build time because the
+// console's hostname is stable; override with VITE_NUFI_ENTER_URL for a
+// deployment that is not nufi.me.
+//
+// `||`, not `??`: a build that declares VITE_NUFI_ENTER_URL and leaves it
+// empty -- the ordinary shape of an unset variable in a Docker build arg or a
+// .env line with nothing after the `=` -- passes `??` as a real value, and
+// Studio would then navigate to itself to renew a session it cannot renew.
+//
+// `import.meta.env?.` because this module is not only client code:
+// vite.config.mts imports it for PORT and PROXY_TARGET, and Vite bundles that
+// config for Node, where `import.meta.env` does not exist. Reading a property
+// straight off it threw during config load and took the whole `vite build`
+// down with it -- which is check-brand-css.sh, and so the brand-css CI job.
+export const NUFI_ENTER_URL =
+  import.meta.env?.VITE_NUFI_ENTER_URL || "https://console.nufi.me/enter/studio";
+
 export default {
   DOCS_LINK,
   BASENAME,

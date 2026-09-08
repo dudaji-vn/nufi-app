@@ -3,7 +3,9 @@ import { Hono } from 'hono';
 import { getCookie } from 'hono/cookie';
 import { createLocalJWKSet, jwtVerify } from 'jose';
 import { resolveChatIdentity } from './lib/chat-identity.ts';
+import { isEntitled, PRODUCT_NAMES, PRODUCTS, type Product } from './lib/entitlements.ts';
 import { getJwks, ISSUER, signIdentity } from './lib/oidc-keys.ts';
+import { CHOOSER_URL, noSession, refuse } from './lib/refuse.ts';
 import type { AuthedUser } from './middleware/auth.ts';
 
 type Env = { Variables: { user: AuthedUser } };
@@ -20,6 +22,12 @@ type Client = {
   // meshbox-chat adapter) so it cannot be replayed at the console itself.
   federation?: boolean;
   audience?: string;
+  /**
+   * The product this client is the front door to. Present ⇒ the member must be
+   * entitled to it before a code is issued. Absent ⇒ no entitlement check,
+   * which is what a federation client (a server, not a member) needs.
+   */
+  product?: Product;
 };
 type Code = { user: AuthedUser; clientId: string; redirectUri: string; expires: number };
 
@@ -50,6 +58,33 @@ function clients(): Client[] {
     return [];
   }
 }
+
+/**
+ * Say so, once, when a member-facing client has no entitlement gate.
+ *
+ * `OIDC_CLIENTS` is parsed, not validated: a client with no `product` is
+ * admitted without a check, and a typo (`"product":"work"`) resolves to
+ * `undefined` and does the same. Both are the correct behaviour for a
+ * federation client and a silently inert gate for everything else. Nothing
+ * else in the system can tell the difference, so this line at boot is the
+ * only place the first Railway deploy after a config change can show it.
+ */
+export function warnAboutUngatedClients(list: Client[] = clients()): void {
+  for (const client of list) {
+    if (!client || typeof client !== 'object') continue;
+    if (client.federation) continue;
+    if (client.product && PRODUCTS.includes(client.product)) continue;
+    console.warn(
+      `[oidc] client "${String(client.clientId)}" declares no known product ` +
+        `(product=${JSON.stringify(client.product)}); every member reaching /oidc/authorize ` +
+        'with it is admitted WITHOUT an entitlement check. Add "product":"studio" or ' +
+        '"product":"works" to it in OIDC_CLIENTS, or "federation":true if it is not a door ' +
+        'into a product.',
+    );
+  }
+}
+
+warnAboutUngatedClients();
 
 function findClient(id: string | undefined | null): Client | undefined {
   if (!id) return undefined;
@@ -90,10 +125,24 @@ oidc.get('/authorize', async (c) => {
   const refreshToken = getCookie(c, 'refreshToken');
   const identity = refreshToken ? await resolveChatIdentity(refreshToken) : null;
   if (!identity) {
-    return c.json({ error: 'unauthorized', detail: 'could not resolve NuFi identity' }, 401);
+    return noSession(c);
   }
 
   for (const cookie of identity.setCookies) c.header('set-cookie', cookie, { append: true });
+
+  // Reached by a top-level browser navigation from the Works `?sso=1` handoff,
+  // so the refusal is shaped the same way /enter/studio shapes its own: the
+  // browser lands on the chooser, which explains itself, and only a scripted
+  // caller reads the JSON. The member-visible name comes from PRODUCT_NAMES --
+  // `works` is an internal key, and one door must not call the product
+  // something the other door doesn't. The fallback is for a product key that
+  // is neither of the two -- unreachable through the type system, reachable
+  // through a hand-edited Railway variable, and "not entitled to undefined" is
+  // not a sentence to show anyone.
+  if (client.product && !isEntitled(identity, client.product)) {
+    const name = PRODUCT_NAMES[client.product] ?? 'this product';
+    return refuse(c, CHOOSER_URL, { error: 'forbidden', detail: `not entitled to ${name}` }, 403);
+  }
 
   const code = randomBytes(32).toString('base64url');
   codes.set(code, {
@@ -164,6 +213,12 @@ oidc.post('/token', async (c) => {
  * deliberately privileged, which is why it is gated on the `federation` flag --
  * a client that can name any subject can impersonate anyone, so only a
  * first-party upstream may hold it.
+ *
+ * Deliberately carries no entitlement check. `AGENT_ENTITLEMENTS` answers "may
+ * this member open NuFi Studio / NuFi Works"; this endpoint mints a subject
+ * asserted by a trusted server, for an audience that is neither product, and
+ * the member it names may not have a NuFi account at all. Gating it on a
+ * product list would refuse a token that was never a door into a product.
  */
 oidc.post('/federated-token', async (c) => {
   const form = await c.req.parseBody();

@@ -63,6 +63,7 @@ ALLOWLIST=(
   "src/frontend/src/customization/components/custom-get-started-progress.tsx"
   "src/frontend/src/customization/components/custom-empty-page.tsx"
   "src/frontend/src/customization/utils/urls.ts"
+  "src/frontend/src/customization/utils/__tests__/nufi-reentry.test.ts"
   "src/frontend/src/customization/components/custom-AccountMenu.tsx"
   "src/frontend/src/components/core/canvasControlsComponent/HelpDropdown.tsx"
   "src/frontend/src/components/core/canvasControlsComponent/HelpDropdownView.tsx"

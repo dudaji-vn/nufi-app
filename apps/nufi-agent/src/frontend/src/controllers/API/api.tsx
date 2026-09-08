@@ -12,6 +12,7 @@ import {
   getAxiosWithCredentials,
   getFetchCredentials,
 } from "@/customization/utils/get-fetch-credentials";
+import { redirectToNufiEntry } from "@/customization/utils/urls";
 import useAuthStore from "@/stores/authStore";
 import { useUtilityStore } from "@/stores/utilityStore";
 import { BuildStatus, type EventDeliveryType } from "../../constants/enums";
@@ -126,9 +127,19 @@ function ApiInterceptor() {
           try {
             await tryToRenewAccessToken(error);
           } catch {
-            // Refresh failed (already logged + logout dispatched in the
-            // helper). Reject with the original error so callers see a
-            // clean failure instead of a swallowed undefined response.
+            // NuFi: the local refresh is not the only credential here. Studio's
+            // session is minted by the console from the member's chat session,
+            // so an expired one is renewable without a password -- send the
+            // browser back through the door it came in by. The cooldown inside
+            // guards against a console that keeps handing back a token Studio
+            // rejects -- but the cooldown only narrows that loop, it does not
+            // end it. What ends it is upstream's checkErrorCount() above:
+            // after four authentication errors it logs out and returns false,
+            // so this catch is never reached again. Named here because it is a
+            // dependency on upstream code, which a resync can move or rename.
+            if (redirectToNufiEntry()) {
+              return Promise.reject(error);
+            }
             await clearBuildVerticesState(error);
             return Promise.reject(error);
           }

@@ -1,7 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import { Hono } from 'hono';
-import type { AuthedUser } from './middleware/auth.ts';
-import { oidc } from './oidc.ts';
+import { type AuthedUser, auth } from './middleware/auth.ts';
+import { oidc, warnAboutUngatedClients } from './oidc.ts';
+
+// auth() answers 500 without these.
+process.env.JWT_SECRET ??= 'test-access-secret';
+process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret';
 
 /**
  * The authorization-code half of the identity issuer, used by NuFi Works.
@@ -48,6 +52,9 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = realFetch;
+  // The two /authorize entitlement tests set this directly; without cleanup it
+  // would leak into every other test in this file.
+  delete process.env.AGENT_ENTITLEMENTS;
 });
 
 function as(user: AuthedUser) {
@@ -184,6 +191,100 @@ describe('authorize', () => {
     expect(res.status).toBe(302);
     expect(res.headers.get('set-cookie') ?? '').toContain('rotated');
   });
+
+  it('refuses to issue a code to a member not entitled to the product', async () => {
+    process.env.OIDC_CLIENTS = JSON.stringify([
+      {
+        clientId: 'nufi-works',
+        clientSecret: 's3cret',
+        redirectUris: [CALLBACK],
+        product: 'works',
+      },
+    ]);
+    process.env.AGENT_ENTITLEMENTS = JSON.stringify({ works: ['someone@else.com'] });
+
+    const res = await as(member).request(
+      `/authorize?client_id=nufi-works&redirect_uri=${encodeURIComponent(CALLBACK)}&state=x`,
+      { headers: { cookie: 'refreshToken=rt-test' } },
+    );
+
+    expect(res.status).toBe(403);
+    // The refusal must not travel as a redirect: a code must never reach the
+    // client, not even one that would be rejected later.
+    expect(res.headers.get('location')).toBeNull();
+    // `works` is an internal key. This endpoint is reached by a top-level
+    // browser navigation from the Works `?sso=1` handoff, so a member could
+    // read it -- and /enter/studio says "NuFi Studio" for the same refusal.
+    expect(await res.json()).toEqual({
+      error: 'forbidden',
+      detail: 'not entitled to NuFi Works',
+    });
+  });
+
+  it('sends a refused browser navigation to the chooser, not to raw JSON', async () => {
+    process.env.OIDC_CLIENTS = JSON.stringify([
+      {
+        clientId: 'nufi-works',
+        clientSecret: 's3cret',
+        redirectUris: [CALLBACK],
+        product: 'works',
+      },
+    ]);
+    process.env.AGENT_ENTITLEMENTS = JSON.stringify({ works: ['someone@else.com'] });
+
+    const res = await as(member).request(
+      `/authorize?client_id=nufi-works&redirect_uri=${encodeURIComponent(CALLBACK)}&state=x`,
+      { headers: { cookie: 'refreshToken=rt-test', accept: 'text/html,application/xhtml+xml' } },
+    );
+
+    expect(res.status).toBe(302);
+    // The chooser, which explains itself -- never the OAuth callback, which
+    // would mean a redirect back to the client without a code.
+    expect(res.headers.get('location')).toBe('https://agents.nufi.me/choose');
+    expect(res.headers.get('location')).not.toContain('code=');
+  });
+
+  it('bounces a browser with no session to chat instead of answering JSON', async () => {
+    const app = as(member);
+    stubChat(null); // after as(), which re-stubs a valid member
+    const res = await app.request(
+      `/authorize?client_id=nufi-works&redirect_uri=${encodeURIComponent(CALLBACK)}&state=x`,
+      { headers: { cookie: 'refreshToken=rt-test', accept: 'text/html' } },
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('https://chat.nufi.me/login');
+  });
+
+  it('still answers 401 to an anonymous script with no session', async () => {
+    // deploy/railway/verify-agents.sh asserts this against production; curl
+    // sends Accept: */*.
+    const app = as(member);
+    stubChat(null); // after as(), which re-stubs a valid member
+    const res = await app.request(
+      `/authorize?client_id=nufi-works&redirect_uri=${encodeURIComponent(CALLBACK)}&state=x`,
+      { headers: { cookie: 'refreshToken=rt-test', accept: '*/*' } },
+    );
+    expect(res.status).toBe(401);
+    expect(res.headers.get('location')).toBeNull();
+  });
+
+  it('issues a code when the client declares no product', async () => {
+    process.env.OIDC_CLIENTS = JSON.stringify([
+      {
+        clientId: 'nufi-works',
+        clientSecret: 's3cret',
+        redirectUris: [CALLBACK],
+      },
+    ]);
+    process.env.AGENT_ENTITLEMENTS = JSON.stringify({ works: [] });
+
+    const res = await as(member).request(
+      `/authorize?client_id=nufi-works&redirect_uri=${encodeURIComponent(CALLBACK)}&state=x`,
+      { headers: { cookie: 'refreshToken=rt-test' } },
+    );
+
+    expect(res.status).toBe(302);
+  });
 });
 
 describe('token', () => {
@@ -313,5 +414,85 @@ describe('userinfo', () => {
     expect(
       (await oidc.request('/userinfo', { headers: { authorization: 'Bearer not.a.jwt' } })).status,
     ).toBe(401);
+  });
+});
+
+/**
+ * A member-facing client with no `product` is admitted without an entitlement
+ * check, and a typo -- `"product":"work"` -- resolves to undefined and does
+ * exactly the same. Nothing downstream can tell that apart from a client that
+ * is meant to be ungated, so the only signal is this line at boot.
+ */
+describe('warning about an inert gate', () => {
+  it('names a member-facing client that declares no product', () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => {});
+    warnAboutUngatedClients([
+      { clientId: 'nufi-works', clientSecret: 's', redirectUris: [CALLBACK] },
+    ]);
+    const said = warn.mock.calls.flat().join(' ');
+    warn.mockRestore();
+    expect(said).toContain('nufi-works');
+    expect(said).toContain('WITHOUT an entitlement check');
+  });
+
+  it('names a client whose product is a typo', () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => {});
+    warnAboutUngatedClients([
+      {
+        clientId: 'nufi-works',
+        clientSecret: 's',
+        redirectUris: [CALLBACK],
+        // The whole point: this parses, casts cleanly, and silently disables
+        // the gate. Cast because the type system is what a typo defeats.
+        product: 'work' as unknown as 'works',
+      },
+    ]);
+    const said = warn.mock.calls.flat().join(' ');
+    warn.mockRestore();
+    expect(said).toContain('nufi-works');
+  });
+
+  it('says nothing about a correctly gated client or a federation client', () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => {});
+    warnAboutUngatedClients([
+      { clientId: 'nufi-works', clientSecret: 's', redirectUris: [CALLBACK], product: 'works' },
+      { clientId: 'meshbox-portal', clientSecret: 's', redirectUris: [], federation: true },
+    ]);
+    const calls = warn.mock.calls.length;
+    warn.mockRestore();
+    expect(calls).toBe(0);
+  });
+});
+
+/**
+ * The stack as `index.ts` mounts it. Every test above stubs auth() out, so
+ * without this nothing covers what an anonymous caller actually meets at this
+ * endpoint -- which is the second of the two assertions
+ * deploy/railway/verify-agents.sh makes against production.
+ */
+describe('the real middleware stack', () => {
+  function realStack() {
+    const app = new Hono<{ Variables: { user: AuthedUser } }>();
+    app.use('/oidc/authorize', auth({ bounceHtml: true }));
+    app.route('/oidc', oidc);
+    return app;
+  }
+
+  const AUTHORIZE = `/oidc/authorize?client_id=nufi-works&redirect_uri=${encodeURIComponent(
+    CALLBACK,
+  )}&state=x`;
+
+  it('answers 401 to an anonymous script', async () => {
+    const res = await realStack().request(AUTHORIZE, { headers: { accept: '*/*' } });
+    expect(res.status).toBe(401);
+    expect(res.headers.get('location')).toBeNull();
+  });
+
+  it('bounces an anonymous browser to chat', async () => {
+    const res = await realStack().request(AUTHORIZE, {
+      headers: { accept: 'text/html,application/xhtml+xml' },
+    });
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('https://chat.nufi.me/login');
   });
 });

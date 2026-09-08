@@ -64,6 +64,17 @@ jobs:
       - name: Install frontend dependencies
         working-directory: apps/nufi-agent/src/frontend
         run: npm ci
+      # The NuFi-owned frontend tests, run here because this is the only job
+      # that installs src/frontend's node_modules and jest needs them. Without
+      # this step nothing after merge runs nufi-reentry.test.ts -- the suite
+      # covering the redirect that Studio uses to renew an expired session, and
+      # the one place a redirect loop would be caught before a member finds it.
+      # Scoped to src/customization: that is where the fork's own code lives,
+      # and running upstream's whole suite here would make this job an
+      # unrelated maintenance burden on every resync.
+      - name: Run the NuFi customization tests
+        working-directory: apps/nufi-agent/src/frontend
+        run: npx jest src/customization
       - name: Build and verify nufi/brand.css survived the build
         run: ./apps/nufi-agent/nufi/check-brand-css.sh
 
