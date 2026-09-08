@@ -187,3 +187,62 @@ def test_doctor_asks_the_box_about_ollama_not_this_shell(tmp_path):
     # from the host cries wolf on every healthy macOS box.
     for line in probe:
         assert "exec -T rag_api" in line, line
+
+
+# --- day two must layer the same compose files the installer did ---
+
+def test_up_layers_the_gpu_file_when_the_env_says_the_box_has_a_gpu(tmp_path):
+    """install-box.sh adds docker-compose.gpu.yml + --profile gpu from
+    has_nvidia() and records the answer as NVIDIA_VISIBLE_DEVICES in .env.
+    nufi-box has to read it back, or `nufi-box restart` re-creates ollama from
+    the base file alone: no device reservation, no gpu profile, and a box that
+    silently answers on the CPU."""
+    envf = tmp_path / ".env"
+    envf.write_text("NUFI_DATA_DIR=%s\nNVIDIA_VISIBLE_DEVICES=all\n" % tmp_path)
+    r = cli("up", NUFI_BOX_ENV=str(envf))
+    assert r.returncode == 0, r.stderr
+    assert "docker-compose.gpu.yml" in r.stdout
+    assert "--profile gpu" in r.stdout
+
+
+def test_up_leaves_the_gpu_file_out_on_a_box_without_one(tmp_path):
+    envf = tmp_path / ".env"
+    envf.write_text("NUFI_DATA_DIR=%s\nNVIDIA_VISIBLE_DEVICES=\n" % tmp_path)
+    r = cli("up", NUFI_BOX_ENV=str(envf))
+    assert r.returncode == 0, r.stderr
+    assert "docker-compose.gpu.yml" not in r.stdout
+    assert "--profile gpu" not in r.stdout
+
+
+def test_a_missing_extra_compose_file_stops_the_command(tmp_path):
+    """docker compose treats a missing -f as an empty override, so a typo in
+    NUFI_BOX_COMPOSE_EXTRA would start the box without the site-local port map
+    or mount it exists to apply. install-box.sh refuses; so must this."""
+    envf = tmp_path / ".env"
+    envf.write_text("NUFI_DATA_DIR=%s\n" % tmp_path)
+    r = cli("up", NUFI_BOX_ENV=str(envf), NUFI_BOX_COMPOSE_EXTRA="/nope/missing.yml")
+    assert r.returncode == 2, r.stdout
+    assert "NUFI_BOX_COMPOSE_EXTRA: no such file: /nope/missing.yml" in r.stderr
+
+
+def test_an_extra_compose_file_that_exists_is_layered_last(tmp_path):
+    envf = tmp_path / ".env"
+    envf.write_text("NUFI_DATA_DIR=%s\n" % tmp_path)
+    extra = tmp_path / "local-ports.yml"
+    extra.write_text("services: {}\n")
+    r = cli("up", NUFI_BOX_ENV=str(envf), NUFI_BOX_COMPOSE_EXTRA=str(extra))
+    assert r.returncode == 0, r.stderr
+    assert f"-f {extra} up -d" in r.stdout
+
+
+def test_doctor_probes_the_admin_panel_and_the_gateway(tmp_path):
+    """Both are published on the box and both are things people report as
+    "the box is broken": the admin panel on 3002 and the LiteLLM gateway on
+    4000, whose /health/liveliness is the only check that does not need a
+    master key."""
+    envf = tmp_path / ".env"
+    envf.write_text("NUFI_DATA_DIR=%s\n" % tmp_path)
+    r = cli("doctor", NUFI_BOX_ENV=str(envf))
+    assert r.returncode == 0, r.stderr
+    assert "https://localhost:3002/" in r.stdout
+    assert "https://localhost:4000/health/liveliness" in r.stdout

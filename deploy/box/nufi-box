@@ -10,12 +10,25 @@ HERE="$(cd "$(dirname "$SELF")" && pwd)"
 ENVF="${NUFI_BOX_ENV:-$HERE/.env}"
 DRY="${NUFI_BOX_DRY_RUN:-0}"
 run() { if [ "$DRY" = 1 ]; then printf '  $ %s\n' "$*"; else "$@"; fi; }
+die() { echo "$*" >&2; exit 2; }
 [ -f "$ENVF" ] && { set -a; . "$ENVF"; set +a; }
 OS="$(uname -s)"
 COMPOSE="docker compose -f $HERE/docker-compose.yml"
 [ "${NUFI_EMULATE_AMD64:-0}" = "1" ] && COMPOSE="$COMPOSE -f $HERE/docker-compose.emulate.yml"
 [ "$OS" = "Linux" ] && COMPOSE="$COMPOSE -f $HERE/docker-compose.linux.yml --profile linux"
-for f in ${NUFI_BOX_COMPOSE_EXTRA:-}; do COMPOSE="$COMPOSE -f $f"; done
+# The installer decides the GPU layer from has_nvidia and records the answer as
+# NVIDIA_VISIBLE_DEVICES in .env. Day two has to read it back: without this,
+# `nufi-box restart` on a GPU box re-created the ollama container from the
+# base file alone -- no device reservation, no `gpu` profile -- and the box
+# quietly went back to answering on the CPU with nothing in the logs to say so.
+[ -n "${NVIDIA_VISIBLE_DEVICES:-}" ] && COMPOSE="$COMPOSE -f $HERE/docker-compose.gpu.yml --profile gpu"
+# Same check the installer makes (install-box.sh): docker compose treats a
+# missing -f as an empty override and starts a stack without whatever the
+# site-local file was there to change -- a port map, a mount, a memory cap.
+for f in ${NUFI_BOX_COMPOSE_EXTRA:-}; do
+  [ -f "$f" ] || die "NUFI_BOX_COMPOSE_EXTRA: no such file: $f"
+  COMPOSE="$COMPOSE -f $f"
+done
 usage() {
   cat <<EOF
 nufi-box <verb>
@@ -74,7 +87,9 @@ case "${1:-}" in
     chk curl -fsk "https://localhost:3080/health"
     chk curl -fsk "https://localhost:3001/_health"
     chk curl -fsk "https://localhost:3001/.well-known/jwks.json"
+    chk curl -fsk "https://localhost:3002/"
     chk curl -fsk "https://localhost:7860/health_check"
+    chk curl -fsk "https://localhost:4000/health/liveliness"
     # From inside the box, not from this shell: OLLAMA_BASE_URL is written for
     # containers, and host.docker.internal is a name only they have.
     chk $COMPOSE exec -T rag_api python -c \
