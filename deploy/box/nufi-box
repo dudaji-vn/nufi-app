@@ -1,0 +1,69 @@
+#!/bin/bash
+# nufi-box — operate the box without knowing Docker. bash 3.2 compatible.
+set -euo pipefail
+HERE="$(cd "$(dirname "$(readlink "$0" 2>/dev/null || echo "$0")")" && pwd)"
+ENVF="${NUFI_BOX_ENV:-$HERE/.env}"
+DRY="${NUFI_BOX_DRY_RUN:-0}"
+run() { if [ "$DRY" = 1 ]; then printf '  $ %s\n' "$*"; else "$@"; fi; }
+[ -f "$ENVF" ] && { set -a; . "$ENVF"; set +a; }
+OS="$(uname -s)"
+COMPOSE="docker compose -f $HERE/docker-compose.yml"
+[ "$OS" = "Linux" ] && COMPOSE="$COMPOSE -f $HERE/docker-compose.linux.yml --profile linux"
+usage() {
+  cat <<EOF
+nufi-box <verb>
+
+  status              every service, the model loaded, disk, drives
+  logs [service]      follow logs (all, or one service)
+  drive add <name>    create a department drive: folder, share, team and agent
+  ca-cert             print the path of the certificate laptops must trust
+  doctor              check the things that usually break, in plain words
+  up | down | restart start, stop, or restart the whole box
+  invite | update | backup | support   (coming in P2 / P4)
+EOF
+}
+case "${1:-}" in
+  status)
+    run $COMPOSE ps --format 'table {{.Name}}\t{{.Status}}'
+    echo; echo "Model: ${NUFI_MODEL:-?} via ${INFERENCE_PROFILE:-?}   Drives: ${NUFI_DATA_DIR:-?}/drives   Host: https://${BOX_HOST:-?}:3080"
+    run df -h "${NUFI_DATA_DIR:-.}" ;;
+  logs) shift; run $COMPOSE logs -f --tail=200 "$@" ;;
+  drive)
+    [ "${2:-}" = "add" ] && [ -n "${3:-}" ] || { usage; exit 2; }
+    name="$3"
+    case "$name" in *[!a-z0-9_-]*) echo "use lowercase letters, digits, - or _" >&2; exit 2 ;; esac
+    run mkdir -p "$NUFI_DATA_DIR/drives/$name"
+    case ",${DEPARTMENTS:-}," in
+      *",$name,"*) new_depts="${DEPARTMENTS:-}" ;;
+      *) new_depts="${DEPARTMENTS:+$DEPARTMENTS,}$name" ;;
+    esac
+    if [ "$DRY" = 1 ]; then
+      echo "DEPARTMENTS=$new_depts"
+      printf 'SAMBA_VOLUME_CONFIG_%s="[%s]; path=/shares/%s; valid users = nufi; guest ok = no; read only = no; browseable = yes"\n' "$name" "$name" "$name"
+    else
+      tmp="$(mktemp)"; grep -v '^DEPARTMENTS=' "$ENVF" > "$tmp"; echo "DEPARTMENTS=$new_depts" >> "$tmp"
+      grep -q "^SAMBA_VOLUME_CONFIG_$name=" "$tmp" || printf 'SAMBA_VOLUME_CONFIG_%s="[%s]; path=/shares/%s; valid users = nufi; guest ok = no; read only = no; browseable = yes"\n' "$name" "$name" "$name" >> "$tmp"
+      mv "$tmp" "$ENVF"
+    fi
+    [ "$OS" = "Darwin" ] && run sudo sharing -a "$NUFI_DATA_DIR/drives/$name" -S "$name" -s 001
+    [ "$OS" = "Linux" ] && run $COMPOSE up -d samba
+    echo "The ingest daemon creates the '$name' team and agent on its next scan (about 20 s)." ;;
+  ca-cert) echo "${NUFI_DATA_DIR:-$HERE/data}/nufi-box-ca.crt"; echo "Laptops: http://${BOX_HOST:-nufi.local}/" ;;
+  doctor)
+    fail=0
+    chk() { if "$@" >/dev/null 2>&1; then echo " ok  $*"; else echo " !!  $*"; fail=1; fi; }
+    chk docker info
+    chk curl -fsk "https://localhost:3080/health"
+    chk curl -fsk "https://localhost:3001/_health"
+    chk curl -fsk "https://localhost:3001/.well-known/jwks.json"
+    chk curl -fsk "https://localhost:7860/health_check"
+    chk curl -fs "${OLLAMA_BASE_URL:-http://localhost:11434}/api/tags"
+    chk test -d "${NUFI_DATA_DIR:-$HERE/data}/drives"
+    [ "$fail" = 0 ] && echo "All good." || { echo "Something is off; run: nufi-box logs <service>"; exit 1; } ;;
+  up) run $COMPOSE up -d ;;
+  down) run $COMPOSE down ;;
+  restart) run $COMPOSE restart ;;
+  invite|update|backup|support) echo "$1: coming in the next phase"; exit 3 ;;
+  -h|--help|"") usage ;;
+  *) usage; exit 2 ;;
+esac
