@@ -12,7 +12,7 @@ import {
   getAxiosWithCredentials,
   getFetchCredentials,
 } from "@/customization/utils/get-fetch-credentials";
-import { redirectToNufiEntry } from "@/customization/utils/urls";
+import { isLoginPath, redirectToNufiEntry } from "@/customization/utils/urls";
 import useAuthStore from "@/stores/authStore";
 import { useUtilityStore } from "@/stores/utilityStore";
 import { BuildStatus, type EventDeliveryType } from "../../constants/enums";
@@ -68,6 +68,24 @@ function ApiInterceptor() {
   const { mutateAsync: mutationRenewAccessToken } = useRefreshAccessToken();
   const isLoginPage = location.pathname.includes("login");
   const customHeaders = useCustomApiHeaders();
+
+  // NuFi: the interceptor below cannot rescue a session on this route --
+  // `checkErrorCount` and `tryToRenewAccessToken` both bail on `isLoginPage`
+  // before the renewal path runs, so the redirect they guard never fires. That
+  // is fine for upstream, which has a password here; NuFi members do not. So a
+  // browser that BOOTS on the login route is sent back through the console door
+  // instead of being shown a form nobody can fill in.
+  //
+  // Deliberately mount-only, with no dependencies: signing out is an in-app
+  // navigation that never remounts this component, so Log out still reaches the
+  // login screen and stays there. Only a cold load gets the handoff, and
+  // `redirectToNufiEntry`'s cooldown means a second arrival within thirty
+  // seconds falls through -- which is also the escape hatch for anyone who
+  // genuinely needs the upstream form.
+  useEffect(() => {
+    if (isLoginPath(window.location.pathname)) redirectToNufiEntry();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const setHealthCheckTimeout = useUtilityStore(
     (state) => state.setHealthCheckTimeout,

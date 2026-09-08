@@ -71,6 +71,19 @@ export function shouldReenter(now: number, stamp: string | null): boolean {
 }
 
 /**
+ * Is this the upstream login route?
+ *
+ * NuFi Studio has no password of its own, so arriving here means the identity
+ * the console minted is gone. Kept pure and exported so the rule is testable
+ * without a browser: the interceptor cannot help on this route (it short-
+ * circuits on `isLoginPage` before it reaches the renewal path), which is
+ * exactly why the boot check below exists.
+ */
+export function isLoginPath(pathname: string): boolean {
+  return /(^|\/)login\/?$/.test(pathname);
+}
+
+/**
  * Send the browser back through the console. Returns false when the cooldown
  * says not to, so the caller can fall through to the normal failure path.
  */

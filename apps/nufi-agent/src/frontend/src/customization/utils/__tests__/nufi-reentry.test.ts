@@ -1,4 +1,4 @@
-import { getNufiEnterUrl, shouldReenter } from "../urls";
+import { getNufiEnterUrl, isLoginPath, shouldReenter } from "../urls";
 
 describe("getNufiEnterUrl", () => {
   it("carries the current location back as ?next=", () => {
@@ -31,5 +31,27 @@ describe("shouldReenter", () => {
 
   it("allows one when the stamp is garbage", () => {
     expect(shouldReenter(1_000_000, "not-a-number")).toBe(true);
+  });
+});
+
+describe("isLoginPath", () => {
+  it("matches the upstream login route", () => {
+    expect(isLoginPath("/login")).toBe(true);
+    expect(isLoginPath("/login/")).toBe(true);
+  });
+
+  it("does not match a page that merely mentions login", () => {
+    // The interceptor's own `isLoginPage` uses includes("login"), which is
+    // true for these. The boot handoff must be stricter: bouncing a member
+    // off a settings page because of its name would be worse than the form.
+    expect(isLoginPath("/settings/login-history")).toBe(false);
+    expect(isLoginPath("/flows/login-flow")).toBe(false);
+    expect(isLoginPath("/auto_login")).toBe(false);
+  });
+
+  it("does not match the routes a signed-in member actually uses", () => {
+    expect(isLoginPath("/")).toBe(false);
+    expect(isLoginPath("/flows")).toBe(false);
+    expect(isLoginPath("/flow/abc")).toBe(false);
   });
 });
