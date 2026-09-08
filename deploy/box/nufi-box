@@ -66,13 +66,19 @@ case "${1:-}" in
   ca-cert) echo "${NUFI_DATA_DIR:-$HERE/data}/nufi-box-ca.crt"; echo "Laptops: http://${BOX_HOST:-nufi.local}/" ;;
   doctor)
     fail=0
-    chk() { if "$@" >/dev/null 2>&1; then echo " ok  $*"; else echo " !!  $*"; fail=1; fi; }
+    chk() {
+      if [ "$DRY" = 1 ]; then printf '  $ %s\n' "$*"; return 0; fi
+      if "$@" >/dev/null 2>&1; then echo " ok  $*"; else echo " !!  $*"; fail=1; fi
+    }
     chk docker info
     chk curl -fsk "https://localhost:3080/health"
     chk curl -fsk "https://localhost:3001/_health"
     chk curl -fsk "https://localhost:3001/.well-known/jwks.json"
     chk curl -fsk "https://localhost:7860/health_check"
-    chk curl -fs "${OLLAMA_BASE_URL:-http://localhost:11434}/api/tags"
+    # From inside the box, not from this shell: OLLAMA_BASE_URL is written for
+    # containers, and host.docker.internal is a name only they have.
+    chk $COMPOSE exec -T rag_api python -c \
+      "import os,urllib.request;urllib.request.urlopen(os.environ['OLLAMA_BASE_URL'].rstrip('/')+'/api/tags').read()"
     chk test -d "${NUFI_DATA_DIR:-$HERE/data}/drives"
     [ "$fail" = 0 ] && echo "All good." || { echo "Something is off; run: nufi-box logs <service>"; exit 1; } ;;
   up) run $COMPOSE up -d ;;

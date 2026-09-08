@@ -175,3 +175,15 @@ def test_envfile_has_key_matching_is_literal_not_regex(tmp_path):
         capture_output=True, text=True,
     )
     assert r.stdout.strip() == "no"
+
+def test_doctor_asks_the_box_about_ollama_not_this_shell(tmp_path):
+    envf = tmp_path / ".env"
+    envf.write_text("NUFI_DATA_DIR=%s\nOLLAMA_BASE_URL=http://host.docker.internal:11434\n" % tmp_path)
+    r = cli("doctor", NUFI_BOX_ENV=str(envf))
+    assert r.returncode == 0, r.stderr
+    probe = [l for l in r.stdout.splitlines() if "OLLAMA_BASE_URL" in l or "api/tags" in l]
+    assert probe, r.stdout
+    # host.docker.internal resolves in a container and nowhere else, so a probe
+    # from the host cries wolf on every healthy macOS box.
+    for line in probe:
+        assert "exec -T rag_api" in line, line
