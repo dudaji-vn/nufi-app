@@ -114,6 +114,10 @@ class App:
         except urllib.error.HTTPError as e:
             raw = e.read().decode("utf-8", "replace")
             raise AppError(f"{method} {path} -> {e.code}: {raw[:300]}") from e
+        except (urllib.error.URLError, TimeoutError) as e:
+            # connection refused, DNS failure, read timeout, etc. — a blip,
+            # not an HTTP error; callers already handle AppError per item.
+            raise AppError(f"{method} {path} -> {e}") from e
 
     def login(self):
         status, body = self._request("POST", "/api/auth/login",
@@ -280,7 +284,10 @@ class Ingester:
                     self.app.delete(rec["file_id"], rec["filepath"], agent)
                     LOG.info("removed %s (%s)", rel, rec["file_id"])
                 except AppError as e:
+                    # keep the state record so the next scan retries the delete
+                    # instead of orphaning the server-side file/embedding
                     LOG.error("delete %s failed: %s", rel, e)
+                    continue
                 del self.state["files"][rel]
                 self.save()
         # additions and changes
@@ -298,7 +305,10 @@ class Ingester:
                 try:
                     self.app.delete(rec["file_id"], rec["filepath"], d["agent_id"])
                 except AppError as e:
+                    # do not upload a fresh copy while the old one still lives
+                    # server-side; keep the old record and retry next scan
                     LOG.error("delete before re-upload %s failed: %s", rel, e)
+                    continue
             try:
                 self._throttle()
                 file_id, filepath, embedded = self.app.upload(path, d["agent_id"])

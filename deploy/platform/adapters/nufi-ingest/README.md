@@ -54,6 +54,9 @@ bare UA bans the account for two hours. `file_ids` are never managed through
 `departments` maps a drive subfolder name to the team/agent it was provisioned
 into. `files` maps a `dept/relative/path` to the last-uploaded file's server
 id and the size/mtime/sha256 used to detect a change on the next scan.
+`embedded` echoes the app's `POST /api/files` response (`true` once rag_api
+has confirmed the embedding); it is informational only and not read back by
+the daemon.
 
 ## Run / verify
 

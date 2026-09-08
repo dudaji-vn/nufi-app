@@ -11,6 +11,7 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import os
 import pathlib
 import socket
@@ -21,6 +22,11 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import nufi_ingest as I
+
+# the delete-retry scenarios below deliberately trigger LOG.error() inside the
+# daemon; keep that off stderr so the only thing this script prints is PASS.
+logging.getLogger("nufi-ingest").addHandler(logging.NullHandler())
+logging.getLogger("nufi-ingest").propagate = False
 
 SECRET = "test-secret"
 USER_ID = "64b000000000000000000001"
@@ -40,6 +46,7 @@ class FakeApp(BaseHTTPRequestHandler):
     teams = {}         # _id -> doc
     files = {}         # file_id -> doc
     counter = 0
+    fail_next_delete = False   # set True to make the next DELETE return 500 once
 
     def log_message(self, *a):
         pass
@@ -105,6 +112,9 @@ class FakeApp(BaseHTTPRequestHandler):
     def do_DELETE(self):
         body = self._body()
         FakeApp.seen.append(("DELETE", self.path, dict(self.headers), body))
+        if FakeApp.fail_next_delete:
+            FakeApp.fail_next_delete = False
+            return self._json(500, {"error": "boom"})
         for f in json.loads(body)["files"]:
             FakeApp.files.pop(f["file_id"], None)
         return self._json(200, {"message": "Files deleted successfully"})
@@ -155,6 +165,50 @@ def main():
         (drives / "legal" / "policy.txt").unlink(); d.scan()
         assert len([s for s in FakeApp.seen if s[0] == "DELETE"]) == 2
         assert "legal/policy.txt" not in json.loads((state / "state.json").read_text())["files"]
+
+        # a failed DELETE on the removal path must not drop state (no orphan):
+        # the record stays so the next scan retries instead of abandoning the
+        # server-side file/embedding.
+        (drives / "legal" / "note.txt").write_text("note v1")
+        d.scan(); d.scan()
+        note_id = json.loads((state / "state.json").read_text())["files"]["legal/note.txt"]["file_id"]
+        assert note_id in FakeApp.files
+
+        (drives / "legal" / "note.txt").unlink()
+        FakeApp.fail_next_delete = True
+        d.scan()
+        st = json.loads((state / "state.json").read_text())
+        assert st["files"]["legal/note.txt"]["file_id"] == note_id, "state must survive a failed delete"
+        assert note_id in FakeApp.files, "server-side file must not be orphaned"
+        assert FakeApp.fail_next_delete is False, "the failing attempt must have consumed the flag"
+
+        d.scan()   # retry succeeds now that the flag is clear
+        st = json.loads((state / "state.json").read_text())
+        assert "legal/note.txt" not in st["files"]
+        assert note_id not in FakeApp.files
+
+        # a failed DELETE on the changed-file (delete-before-reupload) path
+        # must not upload a fresh copy while the old one still lives server-side
+        (drives / "legal" / "note2.txt").write_text("note2 v1")
+        d.scan(); d.scan()
+        note2_id = json.loads((state / "state.json").read_text())["files"]["legal/note2.txt"]["file_id"]
+        uploads_before = len([s for s in FakeApp.seen if s[0] == "POST" and s[1] == "/api/files"])
+
+        time.sleep(0.01); (drives / "legal" / "note2.txt").write_text("note2 v2 changed")
+        FakeApp.fail_next_delete = True
+        d.scan()
+        assert len([s for s in FakeApp.seen if s[0] == "POST" and s[1] == "/api/files"]) == uploads_before, \
+            "must not upload while the old copy's delete failed"
+        st = json.loads((state / "state.json").read_text())
+        assert st["files"]["legal/note2.txt"]["file_id"] == note2_id, "old file_id must be kept"
+        assert note2_id in FakeApp.files, "old server-side copy must still exist"
+
+        d.scan()   # delete succeeds now; re-upload proceeds
+        st = json.loads((state / "state.json").read_text())
+        assert st["files"]["legal/note2.txt"]["file_id"] != note2_id
+        assert note2_id not in FakeApp.files
+        assert len([s for s in FakeApp.seen if s[0] == "POST" and s[1] == "/api/files"]) == uploads_before + 1
+
         # login exactly once; everything else self-minted
         assert len([s for s in FakeApp.seen if s[1] == "/api/auth/login"]) == 1
         assert not [s for s in FakeApp.seen if s[0] == "PATCH"]
