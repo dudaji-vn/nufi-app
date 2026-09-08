@@ -2,6 +2,11 @@
 	# Internal CA: laptops trust /data/caddy/pki/authorities/local/root.crt once.
 	local_certs
 	skip_install_trust
+	# Every product sits on its own high port, so nothing here belongs on 443.
+	# Left on, Caddy's automatic redirect claims http://<box>/ for the hostname
+	# and sends it to https://<box>:3001 — which is exactly the URL a laptop
+	# opens to fetch the CA it does not trust yet.
+	auto_https disable_redirects
 }
 
 (box_tls) {
