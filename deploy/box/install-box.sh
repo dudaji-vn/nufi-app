@@ -3,25 +3,17 @@
 #
 #   curl -fsSL https://get.nufi.me/box | bash            # later: hosted
 #   ./install-box.sh [--yes] [--dry-run] [--src DIR]      # from a checkout
+#              [--no-pull] [--emulate-amd64] [--no-trust]
 #
 # Asks four questions (box name, admin email, departments, inference profile),
 # generates every secret here, renders the LiteLLM config, starts the stack,
 # pulls the models, creates the admin and the ingest service account, and prints
 # the URLs. Re-running keeps .env and the answers. bash 3.2 compatible.
+#
+#   --no-pull        do not `docker compose pull`; use what is already local
+#   --emulate-amd64  run the amd64-only images under emulation (Apple Silicon)
+#   --no-trust       do not touch the login keychain; print the trust step
 set -euo pipefail
-
-YES=0; DRY=0; SRC=""
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --yes) YES=1 ;;
-    --dry-run) DRY=1 ;;
-    --src) SRC="${2:-}"; shift ;;
-    --src=*) SRC="${1#--src=}" ;;
-    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
-  esac
-  shift
-done
-[ "${NUFI_BOX_DRY_RUN:-0}" = "1" ] && DRY=1
 
 # ---------- tiny helpers -----------------------------------------------------
 say()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
@@ -29,6 +21,24 @@ ok()   { printf '\033[1;32m ok\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m !!\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31m xx\033[0m %s\n' "$*" >&2; exit 1; }
 run()  { if [ "$DRY" = 1 ]; then printf '  $ %s\n' "$*"; else "$@"; fi; }
+
+YES=0; DRY=0; SRC=""; NO_PULL=0; NO_TRUST=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --yes) YES=1 ;;
+    --dry-run) DRY=1 ;;
+    --no-pull) NO_PULL=1 ;;
+    --no-trust) NO_TRUST=1 ;;
+    --emulate-amd64) NUFI_EMULATE_AMD64=1 ;;
+    # `shift` on a bare --src would fail under `set -e` and exit 1 with no word
+    # of explanation, so check for the value before consuming it.
+    --src) [ $# -ge 2 ] || die "--src needs a directory"; SRC="$2"; shift ;;
+    --src=*) SRC="${1#--src=}"; [ -n "$SRC" ] || die "--src needs a directory" ;;
+    -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
+  esac
+  shift
+done
+[ "${NUFI_BOX_DRY_RUN:-0}" = "1" ] && DRY=1
 ask()  { # ask VAR "prompt" default
   local var="$1" prompt="$2" def="$3" cur
   eval "cur=\${$var:-}"
@@ -94,7 +104,7 @@ fi
 # caller did NOT set falls back to what the file has, which is what makes a
 # bare re-run keep the previous answers instead of silently reverting them.
 NUFI_BOX_ENV="${NUFI_BOX_ENV:-$BOX_HOME/.env}"
-REUSE_VARS="BOX_NAME ADMIN_EMAIL DEPARTMENTS INFERENCE_PROFILE INFERENCE_MODEL INFERENCE_BASE_URL INFERENCE_API_KEY OLLAMA_BASE_URL EMBEDDINGS_MODEL NUFI_DATA_DIR"
+REUSE_VARS="BOX_NAME ADMIN_EMAIL DEPARTMENTS INFERENCE_PROFILE INFERENCE_MODEL INFERENCE_BASE_URL INFERENCE_API_KEY OLLAMA_BASE_URL EMBEDDINGS_MODEL NUFI_DATA_DIR NUFI_EMULATE_AMD64"
 for v in $REUSE_VARS; do eval "_caller_$v=\${$v:-}"; done
 if [ -f "$NUFI_BOX_ENV" ]; then
   ok ".env exists; keeping its answers and secrets"
@@ -105,6 +115,7 @@ for v in $REUSE_VARS; do
   eval "_cv=\${_caller_$v}"
   [ -n "$_cv" ] && eval "$v=\"\$_cv\""
 done
+NUFI_EMULATE_AMD64="${NUFI_EMULATE_AMD64:-0}"
 
 # ---------- the four questions ------------------------------------------------
 say "Four questions"
@@ -178,6 +189,7 @@ NUFI_ADMIN_TAG=${NUFI_ADMIN_TAG:-main}
 NUFI_STUDIO_TAG=${NUFI_STUDIO_TAG:-box-main}
 NUFI_LITELLM_TAG=${NUFI_LITELLM_TAG:-main}
 NUFI_INGEST_TAG=${NUFI_INGEST_TAG:-main}
+NUFI_EMULATE_AMD64=$NUFI_EMULATE_AMD64
 NUFI_RAG_IMAGE=${NUFI_RAG_IMAGE:-ghcr.io/danny-avila/librechat-rag-api-dev-lite@sha256:f9f34c8ed6884b0ff9b17387e6174fed737dba29f21622ecb75604d82bc47bf8}
 INFERENCE_PROFILE=$INFERENCE_PROFILE
 INFERENCE_BASE_URL=$INFERENCE_BASE_URL
@@ -225,12 +237,17 @@ for d in $(printf '%s' "$DEPARTMENTS" | tr ',' ' '); do run mkdir -p "$NUFI_DATA
 
 # ---------- start -----------------------------------------------------------------
 COMPOSE="docker compose -f docker-compose.yml"
+if [ "$NUFI_EMULATE_AMD64" = "1" ]; then COMPOSE="$COMPOSE -f docker-compose.emulate.yml"; fi
 if [ "$OS" = "Linux" ]; then
   COMPOSE="$COMPOSE -f docker-compose.linux.yml --profile linux"
   has_nvidia && COMPOSE="$COMPOSE -f docker-compose.gpu.yml --profile gpu"
 fi
-say "Pulling images and starting the stack"
-run $COMPOSE pull
+if [ "$NO_PULL" = 1 ]; then
+  say "Starting the stack (--no-pull: using the images already on this machine)"
+else
+  say "Pulling images and starting the stack"
+  run $COMPOSE pull
+fi
 run $COMPOSE up -d
 if [ "$DRY" = 0 ]; then
   say "Waiting for the app (up to 5 minutes)"
@@ -275,9 +292,18 @@ case "$OS" in
   Linux)  have avahi-publish && run sh -c "nohup avahi-publish -a -R $BOX_HOST $BOX_IP >/dev/null 2>&1 &" || warn "install avahi-utils to announce $BOX_HOST" ;;
 esac
 run sh -c "docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt '$NUFI_DATA_DIR/nufi-box-ca.crt'"
-if [ "$OS" = "Darwin" ] && [ "$DRY" = 0 ]; then
-  security add-trusted-cert -r trustRoot -k "$HOME/Library/Keychains/login.keychain-db" "$NUFI_DATA_DIR/nufi-box-ca.crt" 2>/dev/null \
-    && ok "box certificate trusted in your login keychain" || warn "trust $NUFI_DATA_DIR/nufi-box-ca.crt by hand (Keychain Access → Always Trust)"
+if [ "$OS" = "Darwin" ]; then
+  if [ "$NO_TRUST" = 1 ]; then
+    say "Not touching the login keychain (--no-trust). Trust the box CA by hand:"
+    printf '    security add-trusted-cert -r trustRoot -k ~/Library/Keychains/login.keychain-db %s\n' \
+      "$NUFI_DATA_DIR/nufi-box-ca.crt"
+  elif [ "$DRY" = 1 ]; then
+    printf '  $ security add-trusted-cert -r trustRoot -k ~/Library/Keychains/login.keychain-db %s\n' \
+      "$NUFI_DATA_DIR/nufi-box-ca.crt"
+  else
+    security add-trusted-cert -r trustRoot -k "$HOME/Library/Keychains/login.keychain-db" "$NUFI_DATA_DIR/nufi-box-ca.crt" 2>/dev/null \
+      && ok "box certificate trusted in your login keychain" || warn "trust $NUFI_DATA_DIR/nufi-box-ca.crt by hand (Keychain Access → Always Trust)"
+  fi
 fi
 run ln -sf "$BOX_HOME/nufi-box" "$( [ -d /opt/homebrew/bin ] && echo /opt/homebrew/bin || echo /usr/local/bin )/nufi-box"
 

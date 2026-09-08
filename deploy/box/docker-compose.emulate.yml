@@ -1,0 +1,11 @@
+# Emulation layer — `install-box.sh --emulate-amd64`, or NUFI_EMULATE_AMD64=1 in
+# .env (nufi-box reads it, so `nufi-box up` keeps the platform).
+#
+# Only the images that are published amd64-only need it. Everything else has a
+# native arm64 build, and forcing linux/amd64 on those would cost a QEMU
+# translation for no reason — so this file stays deliberately short.
+services:
+  librechat:
+    platform: linux/amd64
+  admin-panel:
+    platform: linux/amd64

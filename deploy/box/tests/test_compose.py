@@ -139,3 +139,11 @@ def test_gpu_profile_adds_the_device_reservation_to_ollama():
                  profiles=("linux", "gpu"))
     devices = cfg["services"]["ollama"]["deploy"]["resources"]["reservations"]["devices"]
     assert any(d.get("driver") == "nvidia" for d in devices)
+
+
+def test_emulate_layer_only_marks_the_images_published_amd64_only():
+    svcs = render("docker-compose.yml", "docker-compose.emulate.yml")["services"]
+    assert svcs["librechat"]["platform"] == "linux/amd64"
+    assert svcs["admin-panel"]["platform"] == "linux/amd64"
+    for name in set(svcs) - {"librechat", "admin-panel"}:
+        assert "platform" not in svcs[name], name

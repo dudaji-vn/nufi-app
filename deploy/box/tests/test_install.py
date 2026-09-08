@@ -8,10 +8,15 @@ BOX = pathlib.Path(__file__).resolve().parents[1]
 BASH = "/bin/bash"   # macOS ships 3.2 here; the script must run under it
 
 
-def dry(**env):
+def install(*flags, **env):
+    """Run the installer in dry-run mode and hand back the completed process."""
     e = dict(os.environ, NUFI_BOX_DRY_RUN="1", **env)
-    r = subprocess.run([BASH, str(BOX / "install-box.sh"), "--dry-run", "--yes"],
-                       cwd=BOX, env=e, capture_output=True, text=True)
+    return subprocess.run([BASH, str(BOX / "install-box.sh"), "--dry-run", "--yes", *flags],
+                          cwd=BOX, env=e, capture_output=True, text=True)
+
+
+def dry(*flags, **env):
+    r = install(*flags, **env)
     assert r.returncode == 0, r.stderr
     return r.stdout
 
@@ -87,3 +92,36 @@ def test_rerun_keeps_previous_answers_but_explicit_overrides_win():
         assert 'SAMBA_VOLUME_CONFIG_sales="[sales]; path=/shares/sales;' in out
         # dry-run must not touch the env file it read
         assert envfile.read_text() == original
+
+
+def test_no_pull_skips_the_pull_but_still_starts_the_stack():
+    out = dry("--no-pull", NUFI_BOX_FAKE_OS="Darwin")
+    assert "compose -f docker-compose.yml pull" not in out
+    assert "--no-pull: using the images already on this machine" in out
+    assert "compose -f docker-compose.yml up -d" in out
+
+
+def test_emulate_amd64_layers_the_platform_file_and_records_it_in_env():
+    out = dry("--emulate-amd64", NUFI_BOX_FAKE_OS="Darwin")
+    assert "-f docker-compose.yml -f docker-compose.emulate.yml up -d" in out
+    # written to .env so `nufi-box up` keeps the platform on day two
+    assert "NUFI_EMULATE_AMD64=1" in out
+    # without the flag the layer stays out of the way
+    plain = dry(NUFI_BOX_FAKE_OS="Darwin")
+    assert "docker-compose.emulate.yml" not in plain
+    assert "NUFI_EMULATE_AMD64=0" in plain
+
+
+def test_no_trust_prints_the_manual_step_instead_of_touching_the_keychain():
+    out = dry("--no-trust", NUFI_BOX_FAKE_OS="Darwin")
+    assert "Not touching the login keychain" in out
+    assert "security add-trusted-cert -r trustRoot" in out
+
+
+def test_bare_src_says_what_is_missing_instead_of_exiting_silently():
+    r = install("--src")
+    assert r.returncode == 1, r.stdout
+    assert "--src needs a directory" in r.stderr
+    r = install("--src=")
+    assert r.returncode == 1, r.stdout
+    assert "--src needs a directory" in r.stderr
