@@ -52,7 +52,8 @@ def test_core_services_present_and_named():
 
 
 def test_every_service_follows_the_house_rules():
-    cfg = render()
+    cfg = render("docker-compose.yml", "docker-compose.linux.yml", "docker-compose.gpu.yml",
+                 profiles=("linux", "gpu"))
     for name, svc in cfg["services"].items():
         assert svc.get("restart") == "unless-stopped", name
         assert "healthcheck" in svc, name
@@ -72,7 +73,8 @@ def test_only_caddy_publishes_web_ports():
 
 
 def test_env_example_covers_every_variable():
-    text = "\n".join((BOX / f).read_text() for f in ("docker-compose.yml", "docker-compose.linux.yml")
+    text = "\n".join((BOX / f).read_text()
+                     for f in ("docker-compose.yml", "docker-compose.linux.yml", "docker-compose.gpu.yml")
                      if (BOX / f).exists())
     used = set(re.findall(r"\$\{([A-Z0-9_]+)(?::-[^}]*)?\}", text))
     declared = set(re.findall(r"^([A-Z0-9_]+)=", (BOX / ".env.example").read_text(), re.M))
@@ -126,3 +128,14 @@ def test_linux_profile_adds_ollama_and_samba():
     assert LINUX <= set(cfg["services"])
     assert cfg["services"]["samba"]["ports"][0]["published"] == "445"
     assert "11434" not in json.dumps(cfg["services"]["ollama"].get("ports", []))
+    # Without docker-compose.gpu.yml, a CPU-only Linux host never sees the nvidia
+    # device reservation — it would make `docker compose up` fail without the
+    # NVIDIA Container Toolkit installed.
+    assert "deploy" not in cfg["services"]["ollama"]
+
+
+def test_gpu_profile_adds_the_device_reservation_to_ollama():
+    cfg = render("docker-compose.yml", "docker-compose.linux.yml", "docker-compose.gpu.yml",
+                 profiles=("linux", "gpu"))
+    devices = cfg["services"]["ollama"]["deploy"]["resources"]["reservations"]["devices"]
+    assert any(d.get("driver") == "nvidia" for d in devices)

@@ -146,8 +146,8 @@ INGEST_EMAIL="${INGEST_EMAIL:-ingest@$BOX_NAME.local}"
 if [ -z "${OIDC_PRIVATE_KEY_PEM:-}" ] || [ "$OIDC_PRIVATE_KEY_PEM" = "replace-me" ]; then
   OIDC_PRIVATE_KEY_PEM="$(openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 2>/dev/null | awk 'BEGIN{ORS="\\n"}{print}')"
 fi
-NVIDIA_VISIBLE_DEVICES=""; OLLAMA_GPU_COUNT=0
-if [ "$OS" = "Linux" ] && has_nvidia; then NVIDIA_VISIBLE_DEVICES=all; OLLAMA_GPU_COUNT=1; fi
+NVIDIA_VISIBLE_DEVICES=""
+if [ "$OS" = "Linux" ] && has_nvidia; then NVIDIA_VISIBLE_DEVICES=all; fi
 
 render_env() {
   cat <<EOF
@@ -170,7 +170,6 @@ NUFI_MODEL=$NUFI_MODEL
 EMBEDDINGS_MODEL=$EMBEDDINGS_MODEL
 OLLAMA_BASE_URL=$OLLAMA_BASE_URL
 NVIDIA_VISIBLE_DEVICES=$NVIDIA_VISIBLE_DEVICES
-OLLAMA_GPU_COUNT=$OLLAMA_GPU_COUNT
 ADMIN_EMAIL=$ADMIN_EMAIL
 ADMIN_PASSWORD=$ADMIN_PASSWORD
 INGEST_EMAIL=$INGEST_EMAIL
@@ -209,7 +208,10 @@ for d in $(printf '%s' "$DEPARTMENTS" | tr ',' ' '); do run mkdir -p "$NUFI_DATA
 
 # ---------- start -----------------------------------------------------------------
 COMPOSE="docker compose -f docker-compose.yml"
-[ "$OS" = "Linux" ] && COMPOSE="$COMPOSE -f docker-compose.linux.yml --profile linux"
+if [ "$OS" = "Linux" ]; then
+  COMPOSE="$COMPOSE -f docker-compose.linux.yml --profile linux"
+  has_nvidia && COMPOSE="$COMPOSE -f docker-compose.gpu.yml --profile gpu"
+fi
 say "Pulling images and starting the stack"
 run $COMPOSE pull
 run $COMPOSE up -d

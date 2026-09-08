@@ -1,0 +1,18 @@
+# GPU reservation for the `ollama` container, kept out of docker-compose.linux.yml on
+# purpose: a `deploy.resources.reservations.devices` entry with `driver: nvidia` makes
+# `docker compose up` fail on a Linux host that lacks the NVIDIA Container Toolkit —
+# "could not select device driver nvidia" — even with the reservation's count at 0.
+# The installer only appends `-f docker-compose.gpu.yml --profile gpu` when nvidia-smi
+# is present, so a CPU-only Linux box never sees this file at all.
+services:
+  ollama:
+    profiles: [gpu]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            # count: all claims every GPU nvidia-smi can see (Compose renders this as -1);
+            # a fixed positive count would arbitrarily cap usable GPUs on multi-GPU boxes.
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

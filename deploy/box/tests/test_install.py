@@ -31,6 +31,21 @@ def test_linux_gpu_plan_uses_ollama_container_and_samba():
     assert "--profile linux" in out
     assert "NVIDIA_VISIBLE_DEVICES=all" in out
     assert 'SAMBA_VOLUME_CONFIG_legal="[legal]; path=/shares/legal;' in out
+    assert "--profile gpu" in out
+    assert "docker-compose.gpu.yml" in out
+
+
+def test_linux_cpu_plan_has_no_gpu_layer():
+    # No NUFI_BOX_FAKE_NVIDIA: has_nvidia() is false (unless a real nvidia-smi is on PATH,
+    # which a CPU host doesn't have). Deliberately doesn't assert on INFERENCE_PROFILE — that
+    # choice also depends on whether `ollama` happens to be on the test runner's PATH, which
+    # isn't what this test is about.
+    out = dry(NUFI_BOX_FAKE_OS="Linux", DEPARTMENTS="legal")
+    assert "--profile linux" in out
+    assert "NVIDIA_VISIBLE_DEVICES=" in out
+    assert "NVIDIA_VISIBLE_DEVICES=all" not in out
+    assert "--profile gpu" not in out
+    assert "docker-compose.gpu.yml" not in out
 
 
 def test_secrets_are_generated_not_placeholders():

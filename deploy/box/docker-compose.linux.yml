@@ -11,13 +11,8 @@ services:
       NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-}
     volumes:
       - ollama-models:/root/.ollama
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: ${OLLAMA_GPU_COUNT:-0}
-              capabilities: [gpu]
+    # GPU reservation lives in docker-compose.gpu.yml (profile `gpu`), layered in only on
+    # hosts with the NVIDIA Container Toolkit — see that file for why.
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 20s
