@@ -11,16 +11,30 @@ question and no policy text leaves the machine.
 
     python3 build_flows.py --base http://localhost:7860 --key sk-... \
         --model qwen2.5:7b --ollama http://host.docker.internal:11434
+
+On a NuFi box, Studio is behind the box's own TLS with a private CA, so add
+--cacert (and, where the box publishes Caddy on a non-default host port,
+--connect-to) exactly as run_box.py takes them.
 """
 import argparse
 import copy
 import gzip
 import json
+import pathlib
+import sys
 import urllib.error
 import urllib.parse
 import urllib.request
 
+# The box-facing HTTP bits (private-CA verification, and curl's --connect-to
+# for a box published on a different host port) already exist in the sibling
+# acceptance runner; sharing them keeps one implementation of "how to reach a
+# box" rather than a second copy that drifts.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+from run_box import add_transport_args, transport_from_args  # noqa: E402
+
 OLLAMA = "ext:ollama:ChatOllamaComponent@official"
+OPEN = urllib.request.urlopen  # replaced by main() when the box needs a CA
 
 
 def api(base, path, payload=None, key="", method=None):
@@ -35,7 +49,7 @@ def api(base, path, payload=None, key="", method=None):
     if key:
         req.add_header("x-api-key", key)
     try:
-        with urllib.request.urlopen(req, timeout=120) as r:
+        with OPEN(req, timeout=120) as r:
             body = r.read()
             # Studio gzips large catalogue responses regardless of the
             # Accept-Encoding we ask for, so decompress on the marker rather
@@ -340,7 +354,13 @@ def main():
     ap.add_argument("--model", default="qwen2.5:7b")
     ap.add_argument("--ollama", default="http://host.docker.internal:11434")
     ap.add_argument("--out", default="flows.json")
+    add_transport_args(ap)
     a = ap.parse_args()
+
+    ctx, opener = transport_from_args(a)
+    global OPEN
+    OPEN = ((lambda req, timeout=120: opener.open(req, timeout=timeout)) if opener else
+            (lambda req, timeout=120: urllib.request.urlopen(req, timeout=timeout, context=ctx)))
 
     catalog = api(a.base, "/api/v1/all", key=a.key)
     # The listing comes back as a bare list on some builds and paginated on
