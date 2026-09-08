@@ -27,6 +27,7 @@ import pathlib
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from dataclasses import dataclass
@@ -178,7 +179,13 @@ class App:
         buf = io.BytesIO()
         for k, v in fields.items():
             buf.write(f"--{boundary}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n".encode())
-        buf.write(f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{path.name}\"\r\n"
+        # The app percent-decodes the multipart filename (its own web client
+        # sends encodeURIComponent(file.name)), and the multipart parser reads
+        # header parameters as latin-1. A raw UTF-8 name therefore arrives as
+        # mojibake — "계약검토_표준조항.txt" became "ê³ì½ê²í _íì¤ì¡°í­.txt" —
+        # in the file list and in every citation.
+        filename = urllib.parse.quote(path.name)
+        buf.write(f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\n"
                   f"Content-Type: {ctype}\r\n\r\n".encode())
         buf.write(path.read_bytes())
         buf.write(f"\r\n--{boundary}--\r\n".encode())

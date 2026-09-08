@@ -149,6 +149,9 @@ def main():
         uploads = [s for s in FakeApp.seen if s[0] == "POST" and s[1] == "/api/files"]
         assert len(uploads) == 1, uploads
         assert b'name="tool_resource"\r\n\r\nfile_search' in uploads[0][3]
+        # The app percent-decodes the multipart filename and its parser reads
+        # header parameters as latin-1, so a raw UTF-8 name lands as mojibake.
+        assert b'filename="policy.txt"' in uploads[0][3]
         assert b'name="endpoint"\r\n\r\nagents' in uploads[0][3]
         assert "Chrome/" in uploads[0][2]["User-Agent"]
         assert len(FakeApp.teams) == 2 and len(FakeApp.agents) == 2
@@ -214,6 +217,20 @@ def main():
         assert st["files"]["legal/note2.txt"]["file_id"] != note2_id
         assert note2_id not in FakeApp.files
         assert len([s for s in FakeApp.seen if s[0] == "POST" and s[1] == "/api/files"]) == uploads_before + 1
+
+        # a non-ASCII filename must reach the app percent-encoded: the app
+        # decodeURIComponent()s the multipart filename (its own web client sends
+        # encodeURIComponent(file.name)) and its parser reads header parameters
+        # as latin-1, so a raw UTF-8 name lands in the file list and in every
+        # citation as mojibake.
+        korean = drives / "legal" / "계약검토_표준조항.txt"
+        korean.write_text("자동연장 60일")
+        d.scan(); d.scan()
+        body = [s for s in FakeApp.seen if s[0] == "POST" and s[1] == "/api/files"][-1][3]
+        disposition = [l for l in body.split(b"\r\n") if b'name="file"' in l][0]
+        assert b'filename="%EA%B3%84%EC%95%BD%EA%B2%80%ED%86%A0_%ED%91%9C%EC%A4%80%EC%A1%B0%ED%95%AD.txt"' \
+            in disposition, disposition
+        assert korean.name.encode() not in disposition, disposition
 
         # login exactly once; everything else self-minted
         assert len([s for s in FakeApp.seen if s[1] == "/api/auth/login"]) == 1
