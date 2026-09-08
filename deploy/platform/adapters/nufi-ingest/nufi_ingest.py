@@ -85,10 +85,16 @@ def display_name(dept):
 def agent_instructions(name):
     """The system prompt for a department assistant.
 
-    The two rules after the first one are not style preferences; each one is a
-    failure observed on a live box running the default on-box model
-    (qwen2.5:7b behind the local gateway), where the whole corpus and every
-    question are Korean:
+    Every rule here is a failure measured on a live box running the default
+    on-box model (qwen2.5:7b behind the local gateway), against a corpus and
+    questions that are entirely Korean.
+
+    * Search before answering. The model's strongest failure mode is not
+      refusing -- it is answering confidently from nothing while writing
+      "계약검토_표준조항.txt 파일에 따르면" in front of it. A fabricated number
+      under a real filename is worse than a refusal, because it reads exactly
+      like a sourced answer. So the instruction makes the search mandatory and
+      names the tool, and forbids stating a fact the results do not contain.
 
     * Language. With an English-only instruction the model answered Korean
       questions in Chinese and Vietnamese -- not a translation of the right
@@ -97,22 +103,27 @@ def agent_instructions(name):
       told, so the rule ties the answer to the question rather than naming a
       language, which also keeps a non-Korean drive working.
 
-    * Tool narration. The model leaked its own function-calling scaffolding
-      into the answer -- '让我使用file_search工具', a bare
-      '{"name": "file_search", ...}', a stray '</tool_call>'. Every one of
-      those reached the user as the beginning of the answer.
+    Deliberately NOT here: a rule against narrating tool use. An earlier
+    version said "never show tool-call syntax", aimed at the '让我使用
+    file_search工具' and bare '{"name": "file_search", ...}' preambles that
+    leak into answers. A 7B model reads that as an instruction not to emit the
+    tool call at all: acceptance citations fell from 8 of 32 to 1 of 32 and the
+    score from 14/32 to 8/32, because it stopped searching and started
+    inventing. Leaking scaffolding is cosmetic; not searching is not. If the
+    preambles are worth removing they must be removed somewhere that cannot
+    also suppress the call.
 
     Written in English deliberately: the corpus language is whatever the drive
     holds, and pinning the instruction to Korean would break a box whose
     documents are not.
     """
     return (
-        f"You are the {name} department's assistant. Answer only from the documents in the "
-        f"{name} drive, cite the file you used, and say plainly when the documents do not "
-        "cover a question.\n"
-        "Always write your answer in the same language the question was asked in.\n"
-        "Never describe the tools you are about to use and never show tool-call syntax; "
-        "search first, then reply with the answer alone."
+        f"You are the {name} department's assistant.\n"
+        f"Always use the file_search tool on the {name} drive's documents before you answer. "
+        "Never answer from your own knowledge, and never state a number, a period or a rule "
+        "that the search results do not actually contain.\n"
+        "Cite the file you used, and say plainly when the documents do not cover a question.\n"
+        "Always write your answer in the same language the question was asked in."
     )
 
 

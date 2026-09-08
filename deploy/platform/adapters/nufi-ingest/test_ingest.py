@@ -157,16 +157,21 @@ def main():
         assert len(FakeApp.teams) == 2 and len(FakeApp.agents) == 2
         names = sorted(a["name"] for a in FakeApp.agents.values())
         assert names == ["Hr assistant", "Legal assistant"], names
-        # The instruction carries the two rules a live box needs. Without the
-        # language rule the on-box 7B model answered Korean questions in
-        # Chinese; without the tool rule it printed its own function-call
-        # syntax as the opening of the answer. Both were measured, not
-        # imagined -- see agent_instructions().
+        # The instruction carries the two rules a live box needs, both measured
+        # rather than imagined -- see agent_instructions(). Without the search
+        # rule the on-box 7B model answered from nothing while citing a real
+        # filename; without the language rule it answered Korean questions in
+        # Chinese.
         legal_agent = next(a for a in FakeApp.agents.values() if a["name"] == "Legal assistant")
         instructions = legal_agent["instructions"]
         assert "Legal drive" in instructions, instructions
+        assert "Always use the file_search tool" in instructions, instructions
+        assert "Never answer from your own knowledge" in instructions, instructions
         assert "same language the question was asked in" in instructions, instructions
-        assert "never show tool-call syntax" in instructions, instructions
+        # Must NOT forbid tool-call syntax: a 7B model reads that as "do not
+        # emit the tool call", and acceptance citations fell 8/32 -> 1/32 when
+        # it did. This assertion is the guard against re-adding it.
+        assert "tool-call syntax" not in instructions, instructions
         shares = [s for s in FakeApp.seen if s[0] == "POST" and "/agents/" in s[1]]
         assert len(shares) == 2
         st = json.loads((state / "state.json").read_text())
