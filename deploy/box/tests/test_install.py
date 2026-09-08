@@ -1,6 +1,7 @@
 """install-box.sh --dry-run must plan the right steps for each OS without touching anything."""
 import os
 import pathlib
+import re
 import subprocess
 import tempfile
 
@@ -170,3 +171,67 @@ def test_an_explicit_ingest_email_still_gets_its_own_bot_account():
     ingest_pw = next(l.split("=", 1)[1] for l in out.splitlines() if l.startswith("INGEST_PASSWORD="))
     assert ingest_pw and ingest_pw != admin_pw
     assert "create-user -- bot@x Ingest bot ingest" in out
+
+
+def _installer_source():
+    """install-box.sh with backslash-continuations joined, so a guard written on
+    the next line still reads as one command."""
+    return re.sub(r"\\\n\s*", " ", (BOX / "install-box.sh").read_text())
+
+
+def test_the_steps_that_fail_on_a_re_run_or_a_locked_down_host_only_warn():
+    """Three calls in this installer fail on machines it is documented to
+    support, and `set -e` turned each of them into a half-finished install:
+
+      * `npm run create-user` exits 1 when the address already exists
+        (apps/chat/config/create-user.js -> silentExit(1)), which is every
+        re-run;
+      * `ln -sf ... /usr/local/bin` fails for a non-root user on Ubuntu;
+      * `ollama pull` fails on a slow or offline network.
+
+    A dry run cannot show this — `run` only echoes the command, so the `||`
+    never executes — so the shape is pinned in the source instead. Crude, but
+    it is the behaviour, and it is the behaviour that regressed.
+    """
+    src = _installer_source()
+    assert re.search(r"npm run create-user\b[^\n]*\|\|\s*warn", src), \
+        "create-user must not abort the installer when the account exists"
+    assert re.search(r"run ln -sf\b[^\n]*\|\|\s*warn", src), \
+        "the /usr/local/bin symlink must not abort the installer"
+    pulls = [ln for ln in src.splitlines()
+             if "ollama pull" in ln and not ln.lstrip().startswith("#")]
+    assert len(pulls) >= 3, pulls          # native, in-container, and the fallback arm
+    for ln in pulls:
+        assert re.search(r"\|\|\s*warn[^\n]*\$(INFERENCE_MODEL|EMBEDDINGS_MODEL)", ln), \
+            f"a failed pull must warn and name the model: {ln}"
+
+
+def test_a_second_run_plans_exactly_what_the_first_one_did():
+    """Re-running install-box.sh on an installed box is documented as safe, and
+    that only means anything if the second run plans the same box: same
+    secrets, same compose invocation, same accounts, same banner.
+
+    A dry run prints the .env it would write instead of writing it, so the
+    first run's own rendering is handed back as the file an installed box would
+    already have — which is exactly the state a re-run starts from.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        envfile = pathlib.Path(tmp) / "box.env"
+        first = dry(NUFI_BOX_FAKE_OS="Darwin", NUFI_BOX_ENV=str(envfile),
+                    BOX_NAME="demo", DEPARTMENTS="legal,hr")
+        envfile.write_text("".join(f"{ln}\n" for ln in first.splitlines()
+                                   if re.match(r"^[A-Z][A-Z0-9_]*=", ln)))
+
+        second = dry(NUFI_BOX_FAKE_OS="Darwin", NUFI_BOX_ENV=str(envfile),
+                     BOX_NAME="demo", DEPARTMENTS="legal,hr")
+        third = dry(NUFI_BOX_FAKE_OS="Darwin", NUFI_BOX_ENV=str(envfile),
+                    BOX_NAME="demo", DEPARTMENTS="legal,hr")
+        assert second == third
+
+        # not vacuous: the run really does reach the steps that used to abort,
+        # and it kept the secrets rather than minting new ones
+        assert "create-user -- admin@demo.local" in second
+        assert 'NuFi box "demo" is up.' in second
+        assert "restart nufi-ingest" in second
+        jwt = next(ln for ln in first.splitlines() if ln.startswith("JWT_SECRET="))
+        assert jwt in second

@@ -277,16 +277,33 @@ fi
 
 # ---------- models ------------------------------------------------------------------
 say "Pulling models ($INFERENCE_MODEL, $EMBEDDINGS_MODEL)"
+# A model pull is a multi-gigabyte download over someone else's network. Under
+# `set -e` one failed pull ends the installer here — before the accounts, the
+# CA export, the symlink and the banner — leaving a box that is actually up and
+# an operator with no idea what to do next. Warn with the exact command to
+# repeat instead, and carry on.
 case "$INFERENCE_PROFILE" in
-  ollama)        run ollama pull "$INFERENCE_MODEL"; run ollama pull "$EMBEDDINGS_MODEL" ;;
-  ollama-docker) run $COMPOSE exec ollama ollama pull "$INFERENCE_MODEL"; run $COMPOSE exec ollama ollama pull "$EMBEDDINGS_MODEL" ;;
-  *)             run ollama pull "$EMBEDDINGS_MODEL" ;;
+  ollama)
+    run ollama pull "$INFERENCE_MODEL" || warn "could not pull $INFERENCE_MODEL; retry with: ollama pull $INFERENCE_MODEL"
+    run ollama pull "$EMBEDDINGS_MODEL" || warn "could not pull $EMBEDDINGS_MODEL; retry with: ollama pull $EMBEDDINGS_MODEL" ;;
+  ollama-docker)
+    run $COMPOSE exec ollama ollama pull "$INFERENCE_MODEL" || warn "could not pull $INFERENCE_MODEL; retry with: $COMPOSE exec ollama ollama pull $INFERENCE_MODEL"
+    run $COMPOSE exec ollama ollama pull "$EMBEDDINGS_MODEL" || warn "could not pull $EMBEDDINGS_MODEL; retry with: $COMPOSE exec ollama ollama pull $EMBEDDINGS_MODEL" ;;
+  *)
+    run ollama pull "$EMBEDDINGS_MODEL" || warn "could not pull $EMBEDDINGS_MODEL; retry with: ollama pull $EMBEDDINGS_MODEL" ;;
 esac
 
 # ---------- people ----------------------------------------------------------------
 say "Creating the admin and the ingest service account"
 mkuser() { # mkuser email name username password
-  run $COMPOSE exec -T librechat npm run create-user -- "$1" "$2" "$3" "$4" --email-verified=true
+  # create-user exits 1 when the address is already registered
+  # (apps/chat/config/create-user.js → silentExit(1)), so on every re-run of
+  # this installer `set -e` killed the script right here: no CA export, no
+  # symlink, no `restart nufi-ingest`, no banner — the second run of a command
+  # documented as safe to repeat did strictly less than the first. The role
+  # update below is an idempotent updateOne and runs either way.
+  run $COMPOSE exec -T librechat npm run create-user -- "$1" "$2" "$3" "$4" --email-verified=true \
+    || warn "$1 already exists; keeping it"
   run $COMPOSE exec -T mongodb mongo --quiet -u nufi -p "$MONGO_PASSWORD" --authenticationDatabase admin LibreChat \
     --eval "db.users.updateOne({email:'$1'},{\$set:{role:'ADMIN'}})"
 }
@@ -327,7 +344,13 @@ if [ "$OS" = "Darwin" ]; then
       && ok "box certificate trusted in your login keychain" || warn "trust $NUFI_DATA_DIR/nufi-box-ca.crt by hand (Keychain Access → Always Trust)"
   fi
 fi
-run ln -sf "$BOX_HOME/nufi-box" "$( [ -d /opt/homebrew/bin ] && echo /opt/homebrew/bin || echo /usr/local/bin )/nufi-box"
+# Homebrew's bin is the user's own on macOS, but /usr/local/bin on Ubuntu is
+# root-owned: for the non-root user this installer otherwise supports all the
+# way through, `ln -sf` fails and `set -e` swallows the banner that says the
+# box is up. The link is a convenience; the box works without it.
+LINK_DIR="$( [ -d /opt/homebrew/bin ] && echo /opt/homebrew/bin || echo /usr/local/bin )"
+run ln -sf "$BOX_HOME/nufi-box" "$LINK_DIR/nufi-box" \
+  || warn "could not link nufi-box into $LINK_DIR; add $BOX_HOME to your PATH or run: sudo ln -sf $BOX_HOME/nufi-box $LINK_DIR/nufi-box"
 
 # ---------- done ---------------------------------------------------------------------
 cat <<EOF
