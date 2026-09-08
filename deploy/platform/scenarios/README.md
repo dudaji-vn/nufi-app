@@ -106,3 +106,72 @@ decides whether the box can answer is at least visible:
    routine finishes in 5–8s. Cold, the first run after the box has been idle
    exceeds it and the member is told *AI 백엔드에 연결하지 못했습니다* — a
    connection error, for a model that is working.
+
+## Box
+
+`run.py` drives the MeshBox appliance's own `/api/v1` surface. `run_box.py`
+walks the same `departments.json` triad against a different target: a
+self-contained NuFi box running the app itself (login → agent → drive →
+question), not the MeshBox portal in front of it.
+
+```bash
+cd deploy/platform/scenarios
+python3 run_box.py --base https://nufi.local:3080 \
+    --email admin@nufi.local --password '...' \
+    --drives ../../box/data/drives [--only legal]
+```
+
+What it does, per department: write the department's documents into
+`<drives>/<dept>/`, poll `GET /api/files/agent/<id>` until nufi-ingest has
+listed all of them (or `--timeout` seconds elapse, default 180), then ask each
+question over the app's own agents chat endpoint and grade the answer with the
+same `judge()` and `drifted()` `run.py` uses (imported from `run.py`, not
+copied). Exit `0` = every extract question contains its expected fact and
+every refuse question was declined.
+
+The chat call is two HTTP round-trips, not one, matching how the app's own
+`ResumableAgentController` actually works (see the comments at the top of
+`run_box.py` for the exact file:line citations): `POST
+/api/agents/chat/agents` starts the generation job and returns
+`{streamId, ...}` immediately; the answer itself streams from the follow-up
+`GET /api/agents/chat/stream/<streamId>`, ending in the `final` event that
+carries `responseMessage.text` and, for file-search agents, the source
+filenames.
+
+`/api/agents` and `/api/files` ban an account for two hours on a single
+bare-User-Agent request, so every call `run_box.py` makes — including login,
+though that one isn't gated — carries a full desktop Chrome `User-Agent`.
+There is exactly one code path that builds a request (`Chat.call`), so there
+is no way to accidentally send one without it.
+
+**Flags:**
+- `--only <dept-id>` — run one department instead of all eight.
+- `--insecure` — skip TLS verification, for a box whose CA isn't in the
+  local trust store.
+- `--cacert PATH` — trust a specific PEM CA file instead (the box's own CA,
+  say) rather than disabling verification outright.
+- `--timeout SECONDS` — how long to wait for nufi-ingest per department
+  (default 180s). Each question itself has a fixed 600s read timeout,
+  regardless of this flag.
+- `--out DIR` — where to write the evidence files (default `evidence/`).
+
+**Evidence:** `evidence/box.json` is the machine-readable run — per
+department, the agent id found, how long ingest took, and per question the
+answer, its sources, the pass/fail verdict, the reason `judge()` gave, and
+whether the answer drifted out of Korean — plus a top-level `failures` count.
+`evidence/box.md` is the same run as a transcript. Both are written only on a
+real run against a live box; nothing under `evidence/box.*` in this repo came
+from a test.
+
+**Test:** `test_run_box.py` stands up a fake copy of the app's own API
+(`ThreadingHTTPServer`, stdlib only) and drives `run_box.py`'s real `main()`
+against it — no live box involved. It uses the actual `legal` department from
+`departments.json` and deliberately answers one of its three extract
+questions wrong, so the test fails loudly if a future change makes every
+question look like a pass regardless of what `judge()` says (an earlier draft
+of this script had exactly that bug: it kept the `(ok, why)` tuple `judge()`
+returns as the verdict itself, and a non-empty tuple is always truthy).
+
+```bash
+python3 test_run_box.py   # exit 0 = PASS
+```
