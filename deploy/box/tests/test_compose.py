@@ -119,3 +119,10 @@ def test_ingest_watches_the_drives_read_only():
     svc = render()["services"]["nufi-ingest"]
     mount = [v for v in svc["volumes"] if v["target"] == "/drives"][0]
     assert mount["read_only"] is True
+
+
+def test_linux_profile_adds_ollama_and_samba():
+    cfg = render("docker-compose.yml", "docker-compose.linux.yml", profiles=("linux",))
+    assert LINUX <= set(cfg["services"])
+    assert cfg["services"]["samba"]["ports"][0]["published"] == "445"
+    assert "11434" not in json.dumps(cfg["services"]["ollama"].get("ports", []))
