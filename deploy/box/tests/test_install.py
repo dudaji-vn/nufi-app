@@ -2,6 +2,7 @@
 import os
 import pathlib
 import subprocess
+import tempfile
 
 BOX = pathlib.Path(__file__).resolve().parents[1]
 BASH = "/bin/bash"   # macOS ships 3.2 here; the script must run under it
@@ -69,3 +70,20 @@ def test_dry_run_creates_nothing():
 def test_department_names_with_dashes_get_sanitized_env_keys():
     out = dry(NUFI_BOX_FAKE_OS="Linux", DEPARTMENTS="legal,back-office")
     assert 'SAMBA_VOLUME_CONFIG_back_office="[back-office]; path=/shares/back-office;' in out
+
+
+def test_rerun_keeps_previous_answers_but_explicit_overrides_win():
+    with tempfile.TemporaryDirectory() as tmp:
+        envfile = pathlib.Path(tmp) / "existing.env"
+        original = "BOX_NAME=oldbox\nDEPARTMENTS=legal\nJWT_SECRET=keepme-keepme\n"
+        envfile.write_text(original)
+        out = dry(NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_ENV=str(envfile), DEPARTMENTS="legal,sales")
+        # explicit override wins over what is already on disk
+        assert "DEPARTMENTS=legal,sales" in out
+        # not overridden by the caller: kept from the existing file
+        assert "BOX_NAME=oldbox" in out
+        assert "JWT_SECRET=keepme-keepme" in out
+        # the newly-added department still gets rendered
+        assert 'SAMBA_VOLUME_CONFIG_sales="[sales]; path=/shares/sales;' in out
+        # dry-run must not touch the env file it read
+        assert envfile.read_text() == original

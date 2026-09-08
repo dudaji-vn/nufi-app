@@ -11,13 +11,15 @@
 set -euo pipefail
 
 YES=0; DRY=0; SRC=""
-for a in "$@"; do
-  case "$a" in
+while [ $# -gt 0 ]; do
+  case "$1" in
     --yes) YES=1 ;;
     --dry-run) DRY=1 ;;
-    --src=*) SRC="${a#--src=}" ;;
+    --src) SRC="${2:-}"; shift ;;
+    --src=*) SRC="${1#--src=}" ;;
     -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
   esac
+  shift
 done
 [ "${NUFI_BOX_DRY_RUN:-0}" = "1" ] && DRY=1
 
@@ -49,8 +51,8 @@ has_nvidia() { [ "${NUFI_BOX_FAKE_NVIDIA:-}" = "1" ] || have nvidia-smi; }
 
 # ---------- prerequisites ------------------------------------------------------
 say "Checking prerequisites on $OS/$ARCH"
+have openssl || die "openssl is required"
 if [ "$DRY" = 0 ]; then
-  have openssl || die "openssl is required"
   have curl || die "curl is required"
   case "$OS" in
     Darwin)
@@ -83,6 +85,26 @@ if [ "$DRY" = 0 ]; then
     [ "$mem" -lt 11000000000 ] && warn "Docker VM has $((mem/1073741824)) GB; give it 12 GB (Docker Desktop → Settings → Resources) or use OrbStack"
   fi
 fi
+
+# ---------- keep previous answers on a re-run; explicit overrides always win --
+# NUFI_BOX_ENV can point .env somewhere else (tests use this to avoid touching
+# the checkout). Caller-provided values for these are captured before sourcing
+# the existing file and re-applied after, so `DEPARTMENTS=... ./install-box.sh`
+# on an existing box always wins over what is already on disk; anything the
+# caller did NOT set falls back to what the file has, which is what makes a
+# bare re-run keep the previous answers instead of silently reverting them.
+NUFI_BOX_ENV="${NUFI_BOX_ENV:-$BOX_HOME/.env}"
+REUSE_VARS="BOX_NAME ADMIN_EMAIL DEPARTMENTS INFERENCE_PROFILE INFERENCE_MODEL INFERENCE_BASE_URL INFERENCE_API_KEY OLLAMA_BASE_URL EMBEDDINGS_MODEL NUFI_DATA_DIR"
+for v in $REUSE_VARS; do eval "_caller_$v=\${$v:-}"; done
+if [ -f "$NUFI_BOX_ENV" ]; then
+  ok ".env exists; keeping its answers and secrets"
+  # shellcheck disable=SC1090
+  set -a; . "$NUFI_BOX_ENV"; set +a
+fi
+for v in $REUSE_VARS; do
+  eval "_cv=\${_caller_$v}"
+  [ -n "$_cv" ] && eval "$v=\"\$_cv\""
+done
 
 # ---------- the four questions ------------------------------------------------
 say "Four questions"
@@ -127,11 +149,6 @@ NUFI_DATA_DIR="${NUFI_DATA_DIR:-$BOX_HOME/data}"
 
 # ---------- .env ----------------------------------------------------------------
 say "Writing .env"
-if [ -f .env ] && [ "$DRY" = 0 ]; then
-  ok ".env exists; keeping its secrets (delete it to start over)"
-  # shellcheck disable=SC1091
-  set -a; . ./.env; set +a
-fi
 sec() { # sec VAR generator — keep an existing non-placeholder value
   local var="$1" gen="$2" cur; eval "cur=\${$var:-}"
   case "$cur" in ""|*replace-me*) eval "$var=\"\$($gen)\"" ;; esac
@@ -195,12 +212,12 @@ EOF
     printf 'SAMBA_VOLUME_CONFIG_%s="[%s]; path=/shares/%s; valid users = nufi; guest ok = no; read only = no; browseable = yes"\n' "$key" "$d" "$d"
   done
 }
-if [ "$DRY" = 1 ]; then render_env; else render_env > .env; ok ".env written"; fi
+if [ "$DRY" = 1 ]; then render_env; else render_env > "$NUFI_BOX_ENV"; ok ".env written"; fi
 
 # ---------- rendered files -----------------------------------------------------
 say "Rendering litellm/config.yaml and the drive folders"
 if [ "$DRY" = 1 ]; then
-  printf '  $ sed -e s/@NUFI_MODEL@/%s/ -e s/@INFERENCE_MODEL@/%s/ litellm/config.yaml.tmpl > litellm/config.yaml\n' "$NUFI_MODEL" "$INFERENCE_MODEL"
+  printf '  $ sed -e s|@NUFI_MODEL@|%s| -e s|@INFERENCE_MODEL@|%s| litellm/config.yaml.tmpl > litellm/config.yaml\n' "$NUFI_MODEL" "$INFERENCE_MODEL"
 else
   sed -e "s|@NUFI_MODEL@|$NUFI_MODEL|" -e "s|@INFERENCE_MODEL@|$INFERENCE_MODEL|" litellm/config.yaml.tmpl > litellm/config.yaml
 fi
