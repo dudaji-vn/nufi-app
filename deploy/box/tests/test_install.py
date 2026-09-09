@@ -515,6 +515,17 @@ def test_mesh_flags_write_the_coordinator_into_env():
     assert "MESH_API_KEY=hskey-api-xyz" in out
 
 
+def test_the_missing_auth_key_hint_is_a_command_that_works():
+    """headscale v0.29.3's `preauthkeys create --user` takes the numeric user
+    id, not the name, so the hint this used to print failed as written. The
+    lookup that finds the id has to be part of it."""
+    r = install("--mesh", "https://mesh.nufi.me", NUFI_BOX_FAKE_OS="Linux")
+    assert r.returncode == 1
+    assert "--auth-key" in r.stderr
+    assert "--user box" not in r.stderr
+    assert "users list -o json" in r.stderr
+
+
 def test_without_the_mesh_flags_the_box_stays_lan_only():
     out = dry(NUFI_BOX_FAKE_OS="Linux")
     assert re.search(r"^MESH_SERVER_URL=$", out, re.M), out

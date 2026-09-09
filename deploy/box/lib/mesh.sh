@@ -542,7 +542,7 @@ mesh_up_native() {
 mesh_up() {
   local ip host
   [ -n "${MESH_SERVER_URL:-}" ] || die "mesh up: MESH_SERVER_URL is not set in $ENVF — install-box.sh --mesh <coordinator-url> --auth-key <key> writes it"
-  [ -n "${MESH_AUTH_KEY:-}" ] || die "mesh up: MESH_AUTH_KEY is not set in $ENVF — ask the coordinator for a pre-auth key (headscale preauthkeys create --user box --tags tag:box)"
+  [ -n "${MESH_AUTH_KEY:-}" ] || die "mesh up: MESH_AUTH_KEY is not set in $ENVF — ask the coordinator for a pre-auth key. On the coordinator: headscale users list -o json for the box user's numeric id (v0.29.3's --user does not take a name), then headscale preauthkeys create --user <id> --tags tag:box — deploy/coordinator/README.md \"Hand it to a box\""
   if [ "$OS" = "Darwin" ]; then
     mesh_up_native || exit 1
   else

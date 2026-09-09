@@ -196,7 +196,7 @@ BOX_MESH_HOST="${BOX_MESH_HOST:-}"
 # the container comes up, tailscaled has nothing to log in with, and the box
 # looks joined until somebody tries to reach it from home.
 if [ -n "$MESH_SERVER_URL" ] && [ -z "$MESH_AUTH_KEY" ]; then
-  die "--mesh needs --auth-key: ask the coordinator for this box's pre-auth key (headscale preauthkeys create --user box --tags tag:box)"
+  die "--mesh needs --auth-key: ask the coordinator for this box's pre-auth key. On the coordinator: headscale users list -o json for the box user's numeric id (v0.29.3's --user does not take a name), then headscale preauthkeys create --user <id> --tags tag:box — deploy/coordinator/README.md \"Hand it to a box\""
 fi
 if [ -z "$MESH_SERVER_URL" ] && [ -n "$MESH_AUTH_KEY" ]; then
   die "--auth-key without --mesh: name the coordinator too, e.g. --mesh https://mesh.nufi.me"

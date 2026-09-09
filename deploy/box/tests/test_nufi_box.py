@@ -292,6 +292,10 @@ def test_mesh_up_refuses_without_an_auth_key_on_linux(tmp_path):
     r = cli("mesh", "up", NUFI_BOX_ENV=envf, NUFI_BOX_FAKE_OS="Linux")
     assert r.returncode == 2
     assert "MESH_AUTH_KEY" in r.stderr
+    # And the command it hands the operator has to work: headscale v0.29.3's
+    # `--user` takes the numeric user id, so `--user box` fails as printed.
+    assert "--user box" not in r.stderr
+    assert "users list -o json" in r.stderr
 
 
 def test_mesh_up_on_macos_prints_the_native_tailscale_commands(tmp_path):
