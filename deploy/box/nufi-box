@@ -39,7 +39,11 @@ nufi-box <verb>
   ca-cert             print the path of the certificate laptops must trust
   doctor              check the things that usually break, in plain words
   up | down | restart start, stop, or restart the whole box
-  invite | update | backup | support   (coming in P2 / P4)
+  invite NAME [--os windows|macos|linux] [--drives a,b]
+                      write a one-file join for a new laptop, from home
+  members             list the laptops currently joined to the mesh
+  revoke NAME         remove a laptop's access to the mesh
+  update | backup | support   (coming in P4)
 EOF
 }
 case "${1:-}" in
@@ -99,7 +103,39 @@ case "${1:-}" in
   up) run $COMPOSE up -d ;;
   down) run $COMPOSE down ;;
   restart) run $COMPOSE restart ;;
-  invite|update|backup|support) echo "$1: coming in the next phase"; exit 3 ;;
+  # --- mesh invites (Task 7) ---
+  invite)
+    shift
+    [ -n "${1:-}" ] || { echo "invite: a name is required" >&2; usage; exit 2; }
+    MESH_NAME="$1"; shift
+    MESH_OS="macos"; MESH_DRIVES="${DEPARTMENTS:-}"
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --os) MESH_OS="${2:-}"; shift 2 ;;
+        --drives) MESH_DRIVES="${2:-}"; shift 2 ;;
+        *) echo "invite: unknown option: $1" >&2; exit 2 ;;
+      esac
+    done
+    case "$MESH_OS" in
+      windows|macos|linux) ;;
+      *) echo "invite: --os must be windows, macos, or linux" >&2; exit 2 ;;
+    esac
+    case "$MESH_NAME" in
+      *[!A-Za-z0-9_-]*) echo "invite: use letters, digits, - or _ for the name" >&2; exit 2 ;;
+    esac
+    [ -n "${BOX_MESH_HOST:-}" ] || { echo "invite: BOX_MESH_HOST is not set — run nufi-box mesh up first" >&2; exit 2; }
+    . "$HERE/lib/mesh.sh"
+    mesh_invite "$MESH_NAME" "$MESH_OS" "$MESH_DRIVES" ;;
+  members)
+    . "$HERE/lib/mesh.sh"
+    mesh_nodes ;;
+  revoke)
+    shift
+    [ -n "${1:-}" ] || { echo "revoke: a name is required" >&2; usage; exit 2; }
+    . "$HERE/lib/mesh.sh"
+    mesh_delete "$1" ;;
+  # --- end mesh invites (Task 7) ---
+  update|backup|support) echo "$1: coming in the next phase"; exit 3 ;;
   -h|--help|"") usage ;;
   *) echo "unknown command: $1" >&2; usage; exit 2 ;;
 esac

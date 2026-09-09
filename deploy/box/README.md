@@ -282,9 +282,60 @@ to `install-box.sh` and is also symlinked onto your `PATH`.
 | `ca-cert` | Print the path to the box's certificate and where to fetch it |
 | `doctor` | Check the things that usually break, in plain words |
 | `up` / `down` / `restart` | Start, stop, or restart the whole box |
-| `invite` / `update` / `backup` / `support` | Not built yet — see [What is not in P1](#9-what-is-not-in-p1) |
+| `invite <name> [--os win\|mac\|linux] [--drives a,b]` | Write a one-file join for a new laptop — see [From home](#8-from-home) |
+| `members` | List the laptops currently joined to the mesh |
+| `revoke <name>` | Remove a laptop's access to the mesh |
+| `update` / `backup` / `support` | Not built yet — see [What is not in P1](#10-what-is-not-in-p1) |
 
-## 8. Troubleshooting
+## 8. From home
+
+A laptop on an LTE hotspot, at a hotel, or anywhere off the office LAN can
+still reach the box — once it has joined the mesh coordinator (`nufi-box
+mesh up` gives the box a stable mesh address and sets `BOX_MESH_HOST` in
+`.env`; `invite` refuses with a clear message if that has not happened
+yet).
+
+### For the admin: inviting a laptop
+
+```bash
+./nufi-box invite alice --os macos --drives legal,hr
+```
+
+- `NAME` is anything short and legible — it becomes the join file's name and
+  the row you will see in `nufi-box members`.
+- `--os windows|macos|linux` picks the join file's format (default `macos`).
+- `--drives a,b` picks which department drives the file maps (default:
+  every department in `DEPARTMENTS`).
+
+This mints a single-use, one-hour pre-auth key from the mesh coordinator and
+writes `data/invites/nufi-join-alice.<ext>` (mode `0600` — readable only by
+whoever runs the box). The command prints the path and a sentence to send:
+
+> Send it to alice (email or chat — not a public link): "Run this file, then
+> open https://nufi.\<mesh\>:3080 — the key inside works once."
+
+`nufi-box members` lists everyone currently joined — name, mesh IP, online,
+last seen, and the headscale user. `nufi-box revoke alice` removes her
+node; her laptop can no longer reach the box until invited again.
+
+### For the member: joining from a laptop
+
+1. Install the official Tailscale app first — the join file checks for it
+   and prints the download link (`https://tailscale.com/download`) if it is
+   missing.
+2. Run the file the admin sent you: double-click the `.command` file on a
+   Mac, the `.sh` file on Linux, or the `.cmd` file on Windows. It trusts
+   the box's certificate, connects to the mesh, maps the drives you were
+   given, and opens chat.
+3. The key inside the file is single-use — if it does not work, ask the
+   admin to run `nufi-box invite` again for you.
+
+**If your laptop is already enrolled in a corporate Tailscale tailnet**, the
+join file will not work: Tailscale logs into one control server at a time,
+and a corporate MDM profile usually locks that choice. Ask your IT team, or
+join from a personal device instead.
+
+## 9. Troubleshooting
 
 | Symptom | Fix |
 |---|---|
@@ -335,15 +386,15 @@ Nothing inside the box changes — the app still talks to itself on
 Drop `NUFI_BOX_COMPOSE_EXTRA` and run `nufi-box up` again once the other
 service is stopped, to get back onto the real ports.
 
-## 9. What is not in P1
+## 10. What is not in P1
 
 This install gives you a box on your own LAN. The following are not built
 yet:
 
-- **Remote access.** There is no way to reach the box from outside the LAN
-  (no mesh, no tunnel) yet.
-- **`nufi-box invite`.** There is no laptop join file yet; anyone on the LAN
-  who trusts the CA can reach the box directly.
+- **Remote access.** `nufi-box invite`/`members`/`revoke` (see
+  [From home](#8-from-home)) are the admin side of joining a laptop to the
+  box's mesh; bringing the box itself onto a mesh coordinator (`nufi-box
+  mesh up`) is a separate piece landing alongside this one.
 - **`nufi-box update`.** There is no signed update bundle or rollback yet;
   upgrading means pulling new images and running the installer again.
 - **`nufi-box backup`.** There is no scheduled backup yet.
