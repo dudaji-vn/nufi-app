@@ -20,9 +20,10 @@
 }
 
 # Plain HTTP landing page: links, the root certificate, per-OS trust steps.
-# A snippet, not just a site, because caddy/mesh.caddy serves the same thing
-# on the box's mesh address — a member joining from home fetches the CA here.
-(landing) {
+# No host matcher and every interface, so this one site also answers on the
+# box's mesh name and mesh address once it has joined — which is why
+# caddy/mesh.caddy carries the five TLS ports and nothing for :80.
+:80 {
 	root * /srv/landing
 	file_server
 	handle /healthz {
@@ -34,10 +35,6 @@
 		file_server
 		header Content-Type "application/x-x509-ca-cert"
 	}
-}
-
-:80 {
-	import landing
 }
 
 # The NuFi app
@@ -81,7 +78,7 @@
 	reverse_proxy litellm-proxy:4000
 }
 
-# The same six sites again on the box's mesh address and MagicDNS name, once
+# The same five TLS sites again on the box's mesh address and MagicDNS name, once
 # it has joined a coordinator. `nufi-box mesh up` generates caddy/mesh.caddy
 # with the literal addresses and reloads Caddy; `mesh down` empties it again.
 #

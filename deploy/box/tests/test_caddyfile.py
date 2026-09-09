@@ -39,7 +39,7 @@ def test_the_certificate_is_downloadable_by_its_public_name():
 
 # --- Task 6: the mesh sites --------------------------------------------------
 
-import os
+import json
 import shutil
 import subprocess
 
@@ -68,20 +68,45 @@ def test_the_caddyfile_imports_the_generated_mesh_sites():
     assert "import caddy/mesh*.caddy" in CADDYFILE
 
 
-def test_the_landing_page_is_a_snippet_so_the_mesh_can_serve_it_too():
-    assert "(landing) {" in CADDYFILE
-    assert "import landing" in CADDYFILE
-
-
-def test_mesh_caddy_serves_all_six_sites_on_both_mesh_addresses(tmp_path):
+def test_mesh_caddy_serves_the_five_product_ports_on_both_mesh_addresses(tmp_path):
     text = render_mesh_caddy(tmp_path / "mesh.caddy")
-    for port in (80, 3080, 3001, 3002, 7860, 4000):
+    for port in (3080, 3001, 3002, 7860, 4000):
         line = re.search(rf"^{re.escape(MESH_HOST)}:{port}, {re.escape(MESH_IP)}:{port} \{{$",
                          text, re.M)
         assert line, f"no site block for port {port} in:\n{text}"
-    # Six blocks and no more; the LAN names stay in the Caddyfile itself.
-    assert len(re.findall(r"^\S.*\{$", text, re.M)) == 6, text
+    # Five blocks and no more. In particular no :80 block: the Caddyfile's own
+    # plain-HTTP site already answers on the mesh name (see the test below), so
+    # a sixth block here would be a second copy of the landing page that could
+    # drift from the first.
+    assert len(re.findall(r"^\S.*\{$", text, re.M)) == 5, text
+    assert f"{MESH_HOST}:80" not in text, text
     assert "{$BOX_HOST}" not in text and "{$BOX_MESH_HOST}" not in text
+
+
+def test_the_plain_http_site_answers_for_every_host_including_the_mesh_name():
+    """Why caddy/mesh.caddy has no :80 block. The landing page carries the CA
+    a member downloads before anything else works, so it must answer on the
+    mesh name — and it does, because this site is matched by port alone.
+    Adapting the Caddyfile is what proves it: a `host` matcher anywhere in the
+    :80 server would silently make the mesh name a 404 for the one page a new
+    laptop needs. Needs Docker; the source assertion below always runs."""
+    assert re.search(r"^:80 \{$", CADDYFILE, re.M), CADDYFILE
+    if not shutil.which("docker") or subprocess.run(
+            ["docker", "info"], capture_output=True).returncode != 0:
+        pytest.skip("no docker daemon")
+    r = subprocess.run(
+        ["docker", "run", "--rm", "-v", f"{BOX / 'Caddyfile'}:/etc/caddy/Caddyfile:ro",
+         "-e", "BOX_HOST=nufi.local", "-e", "BOX_IP=192.168.1.10",
+         "caddy:2.10.0-alpine", "caddy", "adapt",
+         "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"],
+        capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    servers = json.loads(r.stdout)["apps"]["http"]["servers"]
+    on_80 = [s for s in servers.values() if any(l.endswith(":80") for l in s["listen"])]
+    assert len(on_80) == 1, [s["listen"] for s in servers.values()]
+    for route in on_80[0]["routes"]:
+        for match in route.get("match", []):
+            assert "host" not in match, match
 
 
 def test_caddy_accepts_the_caddyfile_with_the_mesh_sites_imported(tmp_path):
@@ -102,7 +127,7 @@ def test_caddy_accepts_the_caddyfile_with_the_mesh_sites_imported(tmp_path):
         capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
     assert "Valid configuration" in r.stdout + r.stderr, r.stderr
-    # Six site blocks in the Caddyfile plus six in caddy/mesh.caddy; Caddy
-    # groups them by listener, so what proves the mesh sites arrived is that
-    # `import caddy/mesh*.caddy` produced no warning about matching nothing.
+    # Caddy groups sites by listener, so what proves the mesh ones arrived is
+    # that `import caddy/mesh*.caddy` produced no warning about matching
+    # nothing.
     assert "No files matching import glob pattern" not in r.stderr, r.stderr

@@ -317,8 +317,10 @@ running `nufi-box mesh up`. Either way the box:
   network on Linux; the native Tailscale app on macOS, whose two commands
   `mesh up` prints for you),
 - writes `BOX_MESH_IP` and `BOX_MESH_HOST` into `.env`,
-- generates `caddy/mesh.caddy` so all six sites answer on the mesh name with
-  the same certificate laptops already trust, and reloads Caddy.
+- generates `caddy/mesh.caddy` so all five product ports answer on the mesh
+  name with the same certificate laptops already trust, and reloads Caddy
+  (the plain-HTTP landing page and the CA download need no entry there — that
+  site has no host matcher, so it already answers on the mesh name).
 
 ```
 $ nufi-box mesh status
