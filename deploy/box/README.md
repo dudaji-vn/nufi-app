@@ -458,6 +458,12 @@ that address nor the LAN one, and it would stop answering on both.)
 from Caddy; the box keeps its registration, so `mesh up` rejoins at the same
 address without a new key. To remove a *laptop* for good, use `revoke`.
 
+Once `MESH_SERVER_URL` is in `.env`, the mesh node is part of the stack every
+other verb operates on: `nufi-box status` lists it, `nufi-box logs tailscale`
+follows it, `nufi-box down` stops it along with the front door rather than
+leaving it advertising a box that is no longer answering, and `nufi-box up`
+brings it back.
+
 A coordinator with a **public** certificate (the field configuration) needs
 nothing else. A development coordinator running on its own internal CA does:
 copy that coordinator's `data/coordinator-ca.crt` onto the box and point

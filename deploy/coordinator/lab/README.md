@@ -196,7 +196,11 @@ or disclosed:
   relay forced | lab up 8s | box up + joined 5s | agent 513s | routine 10s | total 548s
 ```
 
-**Eight of eight**, and the script exits 0 only when every row passes. The mesh
+**Eight of eight**, and the script exits 0 only when every row passes — but
+that is what the harness asserted, not eight independent measurements. Six of
+the rows are trustworthy; the two caveats below say why `drive-write` and
+`drive-ingested` are not, and both have since been fixed in the harness rather
+than in the record. The mesh
 half is unambiguous: `tailscale ping` says `via DERP` on every packet,
 `https://nufi.box.lab:3080/health` is 200 through MagicDNS with a certificate
 the box's own CA signs, the chat app takes the member's credentials, a member's
@@ -211,23 +215,41 @@ weekly routine returns text over the mesh on `qwen2.5:0.5b`. The uncapped
 generation this box is known to have does not bite `weekly` at this size. It is
 still uncapped — see the paragraph below.
 
-Two numbers in that timing line are the harness's doing rather than the box's,
-and neither should be quoted as a measurement:
+One number and two rows in that table are the harness's doing rather than the
+box's, and none of the three should be quoted as a measurement:
 
 - **`box up + joined 5s`** is `mesh up` alone. The VM was already running when
   this run started (the box needed `nufi-box flows install` first, to replace
   the Studio key an earlier re-install had dropped), so nothing in those five
   seconds is a boot. The cold number is the previous run's **38 s**.
+- **`drive-write`** could not have said otherwise. The probe was a fixed
+  `contract.txt` that nothing removes — `cleanup()` deleted only `keys/*` and
+  this script deliberately does not `down -v` — and the only gate was `test -s`
+  at that path, with `smbclient`'s exit status printed and discarded. On a box
+  already holding the file, a `put` refused with `NT_STATUS_ACCESS_DENIED`
+  still left the row PASS. That a member really can write is proven, twice
+  over: by the second run, whose probe was that file's first arrival, and by
+  the live `smbclient put` that closed D1 on the VM box. It is this row of
+  *this* run that carries no information.
 - **`drive-ingested (0s)`** matched a line the *previous* run wrote.
-  `nufi-ingest`'s container log survives a restart and the check greps the whole
-  of it (`day-at-home.sh:473`), so on a box that has already ingested
-  `contract.txt` this row cannot fail. The honest ingest figure is the previous
-  run's **31 s**, which was that file's first embedding. Filtering the log by
-  time would not fix it — the daemon deduplicates by SHA-256 and correctly
-  writes no new line for an unchanged file, so the row would start failing
-  spuriously on exactly the box it is meant to fix. The probe has to be unique
-  per run: `PROBE` and its heredoc (`day-at-home.sh:86`, `:444`) are both
-  fixed today.
+  `nufi-ingest`'s container log survives a restart and the check grepped the
+  whole of it, so on a box that had already ingested `contract.txt` this row
+  could not fail either. The honest ingest figure is the previous run's
+  **31 s**, which was that file's first embedding. Filtering the log by time
+  would not have fixed it — the daemon deduplicates by SHA-256 and correctly
+  writes no new line for an unchanged file, so the row would have started
+  failing spuriously on exactly the box it is meant to fix.
+
+Both rows are fixed in the harness now, in the one way that answers both: the
+probe is a new file with new contents every run (and is removed from the drive
+afterwards), `drive-write` additionally gates on `smbclient`'s exit status and
+on the `NT_STATUS` line it prints, and `INGEST_CMD` / `SMB_FAILED_RE` join
+`CITED_CMD` and `ROUTINE_LINE_RE` as predicates `../tests/test_lab.py` extracts
+from the script and runs against fixtures. The same sweep tightened
+`box-on-mesh`, which gated on headscale *listing* the node — a registration
+that survives between runs — and now gates on `online`. **None of this has run
+end to end yet**: run 4 is the first run under the fixed harness, and it is the
+first table that will mean eight independent measurements.
 
 The agent's 513 s is a cold `qwen2.5:0.5b` on a VM whose model had not been
 loaded since its last restart; 1 of the 4 judge verdicts passed, which is the
