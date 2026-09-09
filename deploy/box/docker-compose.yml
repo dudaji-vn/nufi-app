@@ -86,7 +86,7 @@ services:
     networks: [box]
 
   litellm-proxy:
-    image: ghcr.io/dudaji-vn/nufi-litellm:${NUFI_LITELLM_TAG}
+    image: ${NUFI_REGISTRY:-ghcr.io/dudaji-vn}/nufi-litellm:${NUFI_LITELLM_TAG}
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -115,7 +115,7 @@ services:
     networks: [box]
 
   librechat:
-    image: ghcr.io/dudaji-vn/nufichat:${NUFI_CHAT_TAG}
+    image: ${NUFI_REGISTRY:-ghcr.io/dudaji-vn}/nufichat:${NUFI_CHAT_TAG}
     restart: unless-stopped
     depends_on:
       mongodb:
@@ -188,7 +188,7 @@ services:
   # it verifies the chat cookie server-side and mints the Studio identity JWT.
   # ---------------------------------------------------------------------------
   console:
-    image: ghcr.io/dudaji-vn/nufi-console:${NUFI_CONSOLE_TAG}
+    image: ${NUFI_REGISTRY:-ghcr.io/dudaji-vn}/nufi-console:${NUFI_CONSOLE_TAG}
     restart: unless-stopped
     depends_on:
       litellm-proxy:
@@ -226,7 +226,7 @@ services:
     networks: [box]
 
   admin-panel:
-    image: ghcr.io/dudaji-vn/nufichat-admin-panel:${NUFI_ADMIN_TAG}
+    image: ${NUFI_REGISTRY:-ghcr.io/dudaji-vn}/nufichat-admin-panel:${NUFI_ADMIN_TAG}
     restart: unless-stopped
     depends_on:
       librechat:
@@ -246,7 +246,7 @@ services:
     networks: [box]
 
   studio:
-    image: ghcr.io/dudaji-vn/nufi-studio:${NUFI_STUDIO_TAG}
+    image: ${NUFI_REGISTRY:-ghcr.io/dudaji-vn}/nufi-studio:${NUFI_STUDIO_TAG}
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -306,7 +306,7 @@ services:
   # RAG store, acting as the ingest service account created by the installer.
   # ---------------------------------------------------------------------------
   nufi-ingest:
-    image: ghcr.io/dudaji-vn/nufi-ingest:${NUFI_INGEST_TAG}
+    image: ${NUFI_REGISTRY:-ghcr.io/dudaji-vn}/nufi-ingest:${NUFI_INGEST_TAG}
     restart: unless-stopped
     depends_on:
       librechat:

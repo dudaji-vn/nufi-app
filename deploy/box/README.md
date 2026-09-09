@@ -100,6 +100,36 @@ Once the banner prints, open the Chat URL in a browser, trust the
 certificate if the browser warns about it (next section), log in with the
 admin login, and send a message.
 
+### Boxes without GitHub access
+
+Every NuFi image (`nufichat`, the admin panel, console, litellm, ingest,
+studio) normally comes from `ghcr.io/dudaji-vn`. A customer box, or any
+machine that cannot `docker login ghcr.io`, cannot pull those. Instead, run
+a small registry on a machine that already has the images — a Mac that
+built them — and point the box at it.
+
+On the Mac with the images:
+
+```bash
+make -C deploy/box registry-up
+make -C deploy/box registry-push REGISTRY=<mac-ip>:5000
+```
+
+On the box:
+
+```bash
+./install-box.sh --yes --registry <mac-ip>:5000
+```
+
+`<mac-ip>:5000` has no certificate, so Docker refuses to pull from it until
+it is marked insecure. On Linux the installer does this for you: it writes
+(or merges into) `/etc/docker/daemon.json` —
+`{"insecure-registries": ["<mac-ip>:5000"]}` — and restarts Docker;
+`--dry-run` prints the plan instead of touching the machine. On macOS
+(Docker Desktop), the installer only prints the step — add the registry
+yourself under Settings → Docker Engine → `insecure-registries`, then
+Apply & Restart.
+
 ## 4. Trust the certificate
 
 The box signs its own certificate — nothing calls out to a public

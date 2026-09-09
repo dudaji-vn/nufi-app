@@ -4,6 +4,7 @@
 #   curl -fsSL https://get.nufi.me/box | bash            # later: hosted
 #   ./install-box.sh [--yes] [--dry-run] [--src DIR]      # from a checkout
 #              [--no-pull] [--emulate-amd64] [--no-trust]
+#              [--registry HOST[:PORT][/path]]
 #
 # Asks four questions (box name, admin email, departments, inference profile),
 # generates every secret here, renders the LiteLLM config, starts the stack,
@@ -13,6 +14,12 @@
 #   --no-pull        do not `docker compose pull`; use what is already local
 #   --emulate-amd64  run the amd64-only images under emulation (Apple Silicon)
 #   --no-trust       do not touch the login keychain; print the trust step
+#   --registry HOST[:PORT][/path]
+#                    pull NuFi images from here instead of ghcr.io/dudaji-vn —
+#                    a LAN registry for a box without GitHub access. Marked
+#                    insecure automatically when it looks like host:port or a
+#                    bare IP (Linux: /etc/docker/daemon.json; macOS: prints
+#                    the Docker Desktop step).
 #
 # NUFI_BOX_COMPOSE_EXTRA — space-separated extra compose files to layer last,
 # for a machine that needs a site-local tweak (a port map when something else
@@ -38,7 +45,9 @@ while [ $# -gt 0 ]; do
     # of explanation, so check for the value before consuming it.
     --src) [ $# -ge 2 ] || die "--src needs a directory"; SRC="$2"; shift ;;
     --src=*) SRC="${1#--src=}"; [ -n "$SRC" ] || die "--src needs a directory" ;;
-    -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
+    --registry) [ $# -ge 2 ] || die "--registry needs a value"; NUFI_REGISTRY="$2"; shift ;;
+    --registry=*) NUFI_REGISTRY="${1#--registry=}"; [ -n "$NUFI_REGISTRY" ] || die "--registry needs a value" ;;
+    -h|--help) sed -n '2,23p' "$0"; exit 0 ;;
   esac
   shift
 done
@@ -108,7 +117,7 @@ fi
 # caller did NOT set falls back to what the file has, which is what makes a
 # bare re-run keep the previous answers instead of silently reverting them.
 NUFI_BOX_ENV="${NUFI_BOX_ENV:-$BOX_HOME/.env}"
-REUSE_VARS="BOX_NAME ADMIN_EMAIL DEPARTMENTS INFERENCE_PROFILE INFERENCE_MODEL INFERENCE_BASE_URL INFERENCE_API_KEY OLLAMA_BASE_URL EMBEDDINGS_MODEL NUFI_DATA_DIR NUFI_EMULATE_AMD64"
+REUSE_VARS="BOX_NAME ADMIN_EMAIL DEPARTMENTS INFERENCE_PROFILE INFERENCE_MODEL INFERENCE_BASE_URL INFERENCE_API_KEY OLLAMA_BASE_URL EMBEDDINGS_MODEL NUFI_DATA_DIR NUFI_EMULATE_AMD64 NUFI_REGISTRY"
 for v in $REUSE_VARS; do eval "_caller_$v=\${$v:-}"; done
 if [ -f "$NUFI_BOX_ENV" ]; then
   ok ".env exists; keeping its answers and secrets"
@@ -120,6 +129,7 @@ for v in $REUSE_VARS; do
   [ -n "$_cv" ] && eval "$v=\"\$_cv\""
 done
 NUFI_EMULATE_AMD64="${NUFI_EMULATE_AMD64:-0}"
+NUFI_REGISTRY="${NUFI_REGISTRY:-ghcr.io/dudaji-vn}"
 
 # ---------- the four questions ------------------------------------------------
 say "Four questions"
@@ -197,6 +207,7 @@ BOX_NAME=$BOX_NAME
 BOX_HOST=$BOX_HOST
 BOX_IP=$BOX_IP
 NUFI_DATA_DIR=$NUFI_DATA_DIR
+NUFI_REGISTRY=$NUFI_REGISTRY
 NUFI_CHAT_TAG=${NUFI_CHAT_TAG:-main}
 NUFI_CONSOLE_TAG=${NUFI_CONSOLE_TAG:-main}
 NUFI_ADMIN_TAG=${NUFI_ADMIN_TAG:-main}
@@ -239,6 +250,61 @@ EOF
   done
 }
 if [ "$DRY" = 1 ]; then render_env; else render_env > "$NUFI_BOX_ENV"; ok ".env written"; fi
+
+# ---------- registry trust ---------------------------------------------------
+# A LAN registry (`--registry 192.168.1.26:5000`) has no TLS certificate, so
+# Docker refuses to pull from it until it is explicitly marked insecure. A
+# registry reached over HTTPS (the default ghcr.io/dudaji-vn, or a private
+# registry that does have a certificate) never needs this.
+looks_like_insecure_registry() {
+  case "$1" in
+    https://*) return 1 ;;
+  esac
+  case "$1" in
+    *:[0-9]*) return 0 ;;
+  esac
+  case "$1" in
+    [0-9]*.[0-9]*.[0-9]*.[0-9]*) return 0 ;;
+  esac
+  return 1
+}
+if looks_like_insecure_registry "$NUFI_REGISTRY"; then
+  case "$OS" in
+    Darwin)
+      say "Docker Desktop must trust $NUFI_REGISTRY as an insecure registry"
+      printf '  Docker Desktop -> Settings -> Docker Engine -> add "%s" to "insecure-registries", then Apply & Restart.\n' "$NUFI_REGISTRY"
+      ;;
+    Linux)
+      DAEMON_JSON=/etc/docker/daemon.json
+      if [ "$DRY" = 1 ]; then
+        say "Would allow the insecure registry $NUFI_REGISTRY"
+        printf '  $ python3 - <<PY   # write or merge into %s\n{"insecure-registries": ["%s"]}\nPY\n' "$DAEMON_JSON" "$NUFI_REGISTRY"
+        printf '  $ sudo systemctl restart docker\n'
+      else
+        say "Allowing the insecure registry $NUFI_REGISTRY in $DAEMON_JSON"
+        sudo python3 - "$NUFI_REGISTRY" "$DAEMON_JSON" <<'PYEOF'
+import json
+import sys
+
+registry, path = sys.argv[1], sys.argv[2]
+try:
+    with open(path) as f:
+        cfg = json.load(f)
+except (FileNotFoundError, ValueError):
+    cfg = {}
+regs = cfg.setdefault("insecure-registries", [])
+if registry not in regs:
+    regs.append(registry)
+with open(path, "w") as f:
+    json.dump(cfg, f, indent=2)
+    f.write("\n")
+PYEOF
+        sudo systemctl restart docker || warn "could not restart docker; restart it by hand to pick up $DAEMON_JSON"
+        ok "insecure registry $NUFI_REGISTRY written to $DAEMON_JSON"
+      fi
+      ;;
+  esac
+fi
 
 # ---------- rendered files -----------------------------------------------------
 say "Rendering litellm/config.yaml and the drive folders"

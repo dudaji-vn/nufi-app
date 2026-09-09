@@ -15,10 +15,20 @@ BOX = pathlib.Path(__file__).resolve().parents[1]
 CORE = {"caddy", "postgres", "mongodb", "litellm-proxy", "librechat", "rag_api"}
 SSO = {"console", "admin-panel", "studio"}
 LINUX = {"ollama", "samba"}
+# Every service whose image is a NuFi-built one, i.e. must follow
+# ${NUFI_REGISTRY:-ghcr.io/dudaji-vn}/<name>:<tag>. Everything else (caddy,
+# postgres, mongodb, rag_api, and the linux-profile ollama/samba, plus any
+# future tailscale sidecar) is a third-party image and must be untouched.
+NUFI_SERVICES = {"litellm-proxy", "librechat", "console", "admin-panel", "studio", "nufi-ingest"}
 
 
-def render(*files, profiles=()):
+def render(*files, profiles=(), **extra_env):
     env = dict(os.environ)
+    # Deterministic default: a real shell might export NUFI_REGISTRY (e.g. a
+    # developer testing against their own LAN registry); the "default render"
+    # tests must see the compose file's own ${NUFI_REGISTRY:-ghcr.io/dudaji-vn}
+    # fallback, not whatever happens to be in the ambient environment.
+    env.pop("NUFI_REGISTRY", None)
     env.update({
         "BOX_HOST": "nufi.local", "BOX_IP": "192.168.1.10", "BOX_NAME": "nufi",
         "NUFI_DATA_DIR": "./data", "NUFI_MODEL": "qwen2.5-7b",
@@ -34,6 +44,7 @@ def render(*files, profiles=()):
         "NUFI_CHAT_TAG": "main", "NUFI_CONSOLE_TAG": "main", "NUFI_ADMIN_TAG": "main",
         "NUFI_STUDIO_TAG": "box-main", "NUFI_LITELLM_TAG": "main", "NUFI_INGEST_TAG": "main",
     })
+    env.update(extra_env)
     cmd = ["docker", "compose", "--project-directory", str(BOX)]
     for f in files or ("docker-compose.yml",):
         cmd += ["-f", str(BOX / f)]
@@ -42,6 +53,30 @@ def render(*files, profiles=()):
     cmd += ["config", "--format", "json"]
     out = subprocess.run(cmd, env=env, capture_output=True, text=True, check=True)
     return json.loads(out.stdout)
+
+
+def test_images_come_from_the_configured_registry():
+    """A customer box (and the Ubuntu VM test that follows) cannot log in to
+    GHCR, so every NuFi-built image must be pullable from any registry."""
+    cfg = render("docker-compose.yml", "docker-compose.linux.yml", "docker-compose.gpu.yml",
+                 profiles=("linux", "gpu"), NUFI_REGISTRY="10.0.0.5:5000")
+    for name in NUFI_SERVICES:
+        image = cfg["services"][name]["image"]
+        assert image.startswith("10.0.0.5:5000/"), (name, image)
+    for name, svc in cfg["services"].items():
+        if name in NUFI_SERVICES:
+            continue
+        image = svc.get("image", "")
+        assert not image.startswith("10.0.0.5:5000/"), (name, image)
+
+    # Unset (the default on every box today): falls back to ghcr.io/dudaji-vn.
+    default_cfg = render()
+    for name in NUFI_SERVICES:
+        image = default_cfg["services"][name]["image"]
+        assert image.startswith("ghcr.io/dudaji-vn/"), (name, image)
+    for name in {"caddy", "postgres", "mongodb", "rag_api"}:
+        image = default_cfg["services"][name]["image"]
+        assert not image.startswith("ghcr.io/dudaji-vn/"), (name, image)
 
 
 def test_core_services_present_and_named():

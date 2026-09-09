@@ -129,6 +129,51 @@ def test_no_trust_prints_the_manual_step_instead_of_touching_the_keychain():
     assert "security add-trusted-cert -r trustRoot" in out
 
 
+def test_registry_flag_writes_nufi_registry_and_default_is_ghcr():
+    out = dry("--registry", "10.0.0.5:5000", NUFI_BOX_FAKE_OS="Linux")
+    assert "NUFI_REGISTRY=10.0.0.5:5000" in out
+    plain = dry(NUFI_BOX_FAKE_OS="Linux")
+    assert "NUFI_REGISTRY=ghcr.io/dudaji-vn" in plain
+
+
+def test_registry_override_wins_over_env_on_a_rerun():
+    with tempfile.TemporaryDirectory() as tmp:
+        envfile = pathlib.Path(tmp) / "box.env"
+        envfile.write_text("BOX_NAME=demo\nNUFI_REGISTRY=192.168.1.26:5000\n")
+        out = dry(NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_ENV=str(envfile),
+                   BOX_NAME="demo", NUFI_REGISTRY="10.0.0.5:5000")
+        assert "NUFI_REGISTRY=10.0.0.5:5000" in out
+        # not overridden: a re-run without --registry keeps the .env value
+        kept = dry(NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_ENV=str(envfile), BOX_NAME="demo")
+        assert "NUFI_REGISTRY=192.168.1.26:5000" in kept
+
+
+def test_registry_that_looks_like_host_port_gets_marked_insecure_on_linux():
+    out = dry("--registry", "10.0.0.5:5000", NUFI_BOX_FAKE_OS="Linux")
+    assert "/etc/docker/daemon.json" in out
+    assert "insecure-registries" in out
+    assert "10.0.0.5:5000" in out
+    assert "sudo systemctl restart docker" in out
+
+
+def test_registry_on_macos_only_prints_the_docker_desktop_instruction():
+    out = dry("--registry", "10.0.0.5:5000", NUFI_BOX_FAKE_OS="Darwin")
+    assert "Docker Desktop" in out
+    assert "insecure-registries" in out
+    assert "/etc/docker/daemon.json" not in out
+
+
+def test_default_registry_is_not_marked_insecure():
+    out = dry(NUFI_BOX_FAKE_OS="Linux")
+    assert "insecure-registries" not in out
+    assert "/etc/docker/daemon.json" not in out
+
+
+def test_registry_with_https_scheme_is_not_marked_insecure():
+    out = dry("--registry", "https://10.0.0.5:5000", NUFI_BOX_FAKE_OS="Linux")
+    assert "insecure-registries" not in out
+
+
 def test_bare_src_says_what_is_missing_instead_of_exiting_silently():
     r = install("--src")
     assert r.returncode == 1, r.stdout
