@@ -481,3 +481,25 @@ def test_a_user_who_is_not_in_the_docker_group_is_told_not_re_execed():
         assert r.returncode != 0
         assert not sg_args.exists()
         assert "cannot reach the Docker daemon" in r.stderr
+
+
+def test_a_registry_box_gets_the_ghcr_hosted_third_party_images_from_it_too():
+    # --registry is for a box that cannot reach ghcr.io. The RAG API and Samba
+    # images live on ghcr.io as well, so leaving them pointed at GitHub leaves
+    # an install that cannot finish — a blank-VM install died three times on
+    # the RAG image's blob store with every other image already local.
+    out = dry("--registry", "10.0.0.5:5000", NUFI_BOX_FAKE_OS="Linux")
+    assert "NUFI_RAG_IMAGE=10.0.0.5:5000/librechat-rag-api-dev-lite:main" in out
+    assert "NUFI_SAMBA_IMAGE=10.0.0.5:5000/samba:main" in out
+
+
+def test_without_a_registry_the_third_party_images_stay_pinned_upstream():
+    out = dry(NUFI_BOX_FAKE_OS="Linux")
+    assert "NUFI_RAG_IMAGE=ghcr.io/danny-avila/librechat-rag-api-dev-lite@sha256:" in out
+    assert "NUFI_SAMBA_IMAGE=ghcr.io/servercontainers/samba:a3.24.1-s4.23.8-r0" in out
+
+
+def test_an_explicit_third_party_image_wins_over_the_registry_rewrite():
+    out = dry("--registry", "10.0.0.5:5000", NUFI_BOX_FAKE_OS="Linux",
+              NUFI_RAG_IMAGE="my.registry/rag:2")
+    assert "NUFI_RAG_IMAGE=my.registry/rag:2" in out

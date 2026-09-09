@@ -22,8 +22,10 @@ services:
     networks: [box]
 
   samba:
-    # Pin to the current release listed at github.com/ServerContainers/samba/pkgs/container/samba
-    image: ghcr.io/servercontainers/samba:a3.24.1-s4.23.8-r0
+    # Pin to the current release listed at github.com/ServerContainers/samba/pkgs/container/samba.
+    # Behind a variable because this one lives on ghcr.io too: a box that cannot
+    # reach GitHub gets it from the LAN registry instead (see the README).
+    image: ${NUFI_SAMBA_IMAGE:-ghcr.io/servercontainers/samba:a3.24.1-s4.23.8-r0}
     profiles: [linux]
     restart: unless-stopped
     environment:

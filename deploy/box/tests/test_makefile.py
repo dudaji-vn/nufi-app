@@ -44,8 +44,9 @@ def test_registry_push_pushes_all_six_nufi_images_over_loopback():
     out = make_n("registry-push", REGISTRY="172.10.10.30:5001")
     for image in NUFI_IMAGES:
         assert f"docker push localhost:5001/{image}:" in out, image
-    assert out.count("docker push ") == len(NUFI_IMAGES)
-    assert "172.10.10.30:5001" not in out
+    # the six NuFi images plus the two ghcr-hosted third-party ones
+    assert out.count("docker push ") == len(NUFI_IMAGES) + 2
+    assert "docker push 172.10.10.30:5001" not in out
 
 
 def test_registry_push_can_be_pointed_at_a_registry_elsewhere():
@@ -77,3 +78,12 @@ def test_registry_push_publishes_the_tags_a_default_install_pulls():
     out = make_n("registry-push", REGISTRY="172.10.10.30:5001")
     for image, tag in _tags_a_default_install_pulls().items():
         assert f"docker push localhost:5001/{image}:{tag}" in out, f"{image}:{tag}"
+
+
+def test_registry_push_also_mirrors_the_ghcr_hosted_third_party_images():
+    out = make_n("registry-push", REGISTRY="172.10.10.30:5001")
+    assert "docker push localhost:5001/librechat-rag-api-dev-lite:main" in out
+    assert "docker push localhost:5001/samba:main" in out
+    # pinned upstream, tagged in the mirror
+    assert "librechat-rag-api-dev-lite@sha256:" in out
+    assert "ghcr.io/servercontainers/samba:a3.24.1-s4.23.8-r0" in out

@@ -157,6 +157,16 @@ for v in $REUSE_VARS; do
 done
 NUFI_EMULATE_AMD64="${NUFI_EMULATE_AMD64:-0}"
 NUFI_REGISTRY="${NUFI_REGISTRY:-ghcr.io/dudaji-vn}"
+# --registry exists for a box that cannot reach ghcr.io. Two of the third-party
+# images live on ghcr.io as well (the RAG API and Samba), so pointing only the
+# NuFi images at the mirror leaves an install that still cannot finish — this
+# is what a blank-VM install proved, dying three times on the RAG image's blob
+# store. `make registry-push` mirrors those two next to the NuFi six; name them
+# there unless the caller (or an existing .env) already named an image.
+if [ "$NUFI_REGISTRY" != "ghcr.io/dudaji-vn" ]; then
+  NUFI_RAG_IMAGE="${NUFI_RAG_IMAGE:-$NUFI_REGISTRY/librechat-rag-api-dev-lite:${NUFI_RAG_TAG:-main}}"
+  NUFI_SAMBA_IMAGE="${NUFI_SAMBA_IMAGE:-$NUFI_REGISTRY/samba:${NUFI_SAMBA_TAG:-main}}"
+fi
 
 # ---------- the four questions ------------------------------------------------
 say "Four questions"
@@ -255,6 +265,7 @@ NUFI_LITELLM_TAG=${NUFI_LITELLM_TAG:-main}
 NUFI_INGEST_TAG=${NUFI_INGEST_TAG:-main}
 NUFI_EMULATE_AMD64=$NUFI_EMULATE_AMD64
 NUFI_RAG_IMAGE=${NUFI_RAG_IMAGE:-ghcr.io/danny-avila/librechat-rag-api-dev-lite@sha256:f9f34c8ed6884b0ff9b17387e6174fed737dba29f21622ecb75604d82bc47bf8}
+NUFI_SAMBA_IMAGE=${NUFI_SAMBA_IMAGE:-ghcr.io/servercontainers/samba:a3.24.1-s4.23.8-r0}
 INFERENCE_PROFILE=$INFERENCE_PROFILE
 INFERENCE_BASE_URL=$INFERENCE_BASE_URL
 INFERENCE_API_KEY=$INFERENCE_API_KEY

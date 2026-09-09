@@ -24,6 +24,11 @@ REGISTRY_PORT ?= $(or $(word 2,$(subst :, ,$(REGISTRY))),5000)
 # container, the same stored images, no daemon change. Override PUSH_REGISTRY
 # to push to a registry that is somewhere else.
 PUSH_REGISTRY ?= localhost:$(REGISTRY_PORT)
+# Two third-party images live on ghcr.io as well, so a box that cannot reach
+# GitHub cannot pull them either — mirror them next to the NuFi six. Pinned by
+# digest / exact release here; served from the mirror under $(TAG).
+RAG_IMAGE ?= ghcr.io/danny-avila/librechat-rag-api-dev-lite@sha256:f9f34c8ed6884b0ff9b17387e6174fed737dba29f21622ecb75604d82bc47bf8
+SAMBA_IMAGE ?= ghcr.io/servercontainers/samba:a3.24.1-s4.23.8-r0
 CHAT_TAG ?= arm64-dev
 ADMIN_TAG ?= arm64-dev
 STUDIO_TAG ?= box-main
@@ -66,3 +71,5 @@ registry-push:
 	docker tag ghcr.io/$(OWNER)/nufi-litellm:$(TAG) $(PUSH_REGISTRY)/nufi-litellm:$(TAG) && docker push $(PUSH_REGISTRY)/nufi-litellm:$(TAG)
 	docker tag ghcr.io/$(OWNER)/nufi-ingest:$(TAG) $(PUSH_REGISTRY)/nufi-ingest:$(TAG) && docker push $(PUSH_REGISTRY)/nufi-ingest:$(TAG)
 	docker tag ghcr.io/$(OWNER)/nufi-studio:$(STUDIO_TAG) $(PUSH_REGISTRY)/nufi-studio:box-$(TAG) && docker push $(PUSH_REGISTRY)/nufi-studio:box-$(TAG)
+	docker pull -q $(RAG_IMAGE) && docker tag $(RAG_IMAGE) $(PUSH_REGISTRY)/librechat-rag-api-dev-lite:$(TAG) && docker push $(PUSH_REGISTRY)/librechat-rag-api-dev-lite:$(TAG)
+	docker pull -q $(SAMBA_IMAGE) && docker tag $(SAMBA_IMAGE) $(PUSH_REGISTRY)/samba:$(TAG) && docker push $(PUSH_REGISTRY)/samba:$(TAG)
