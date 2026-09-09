@@ -388,6 +388,26 @@ def test_day_at_home_dry_run_prints_the_plan_and_touches_nothing():
     assert sorted(p.name for p in LAB.iterdir()) == before
 
 
+def test_day_at_home_names_a_probe_that_is_new_every_run():
+    """The fixed `contract.txt` made two of the eight rows unable to fail.
+
+    `drive-write` gated on `test -s` at a path nothing ever removes, so a `put`
+    refused with NT_STATUS_ACCESS_DENIED still found the previous run's file
+    there; `drive-ingested` grepped a container log that survives a restart, so
+    it matched the line an earlier run earned (the third acceptance run's
+    `PASS (0s)`). Both are answered by the same thing: a probe belonging to
+    this run alone.
+    """
+    first = day_at_home("--dry-run").stdout
+    second = day_at_home("--dry-run").stdout
+    probes = []
+    for out in (first, second):
+        line = next(l for l in out.splitlines() if l.strip().startswith("the probe"))
+        probes.append(line.split()[2])   # "the probe   legal/contract-….txt  (…"
+    assert all(p.startswith("legal/contract-") and p.endswith(".txt") for p in probes), probes
+    assert probes[0] != probes[1], "two runs must not share a probe file"
+
+
 def test_day_at_home_reports_the_routine_it_will_run():
     assert "routine             weekly" in day_at_home("--dry-run").stdout
     assert "routine             meeting" in day_at_home("--dry-run", "--routine", "meeting").stdout
@@ -408,13 +428,14 @@ def test_day_at_home_help_lists_the_checks_it_gates_on():
 
 
 # ---------------------------------------------------------------------------
-# The two predicates day-at-home.sh's verdicts hang on
+# The predicates day-at-home.sh's verdicts hang on
 #
-# Both are single-line assignments in the script, extracted verbatim here and
+# Each is a single-line assignment in the script, extracted verbatim here and
 # run for real, so what these tests pin is the string the harness uses and not
-# a copy of it. Both replaced substring tests that could not fail:
-# `grep -q 'sources: .*[^ ]'` matched run_box.py's literal `sources: none`, and
-# `*weekly*ok*` matched any output containing "broken".
+# a copy of it. Three of them replaced substring tests that could not fail:
+# `grep -q 'sources: .*[^ ]'` matched run_box.py's literal `sources: none`,
+# `*weekly*ok*` matched any output containing "broken", and the ingest check
+# grepped the whole container log for a probe name that never changed.
 # ---------------------------------------------------------------------------
 
 
@@ -469,6 +490,64 @@ def test_a_missing_evidence_file_is_not_a_citation(tmp_path):
     r = subprocess.run([BASH, "-c", script, "_", str(md)], capture_output=True, text=True)
     assert r.returncode != 0
     assert r.stdout.strip() == ""
+
+
+# nufi-ingest writes `added <dept>/<file> → <id> (embedded=True)`
+# (nufi_ingest.py:527), into a container log that survives a restart.
+OLD_RUN_LOG = (
+    "watching /drives every 20s\n"
+    "added legal/contract-20260908-101500-1-1.txt → f-1 (embedded=True)\n"
+    "added legal/계약검토_표준조항.txt → f-2 (embedded=True)\n"
+)
+
+
+def ingested(log, probe):
+    """Run the shipped INGEST_CMD over a container log fixture."""
+    script = assignment("INGEST_CMD") + '\nsh -c "$INGEST_CMD" _ "$1"\n'
+    return subprocess.run([BASH, "-c", script, "_", probe],
+                          input=log, capture_output=True, text=True).stdout.strip()
+
+
+def test_an_earlier_runs_ingest_line_does_not_answer_for_this_run():
+    # The Important this replaced. The row read PASS (0s) on the third
+    # acceptance run by matching a line the second run had written: same probe
+    # name, and nufi-ingest deduplicates by SHA-256 so it never writes another.
+    assert ingested(OLD_RUN_LOG, "contract-20260909-131200-9-9.txt") == ""
+
+
+def test_this_runs_ingest_line_is_found_in_the_whole_log():
+    # Grepping all of it stays correct — a time filter would be the wrong fix,
+    # since an unchanged file correctly produces no new line at all.
+    new = "added legal/contract-20260909-131200-9-9.txt → f-3 (embedded=True)\n"
+    line = ingested(OLD_RUN_LOG + new, "contract-20260909-131200-9-9.txt")
+    assert "contract-20260909-131200-9-9.txt" in line
+    assert "embedded=True" in line
+
+
+def test_an_upload_that_did_not_embed_is_not_an_ingest():
+    log = "added legal/contract-20260909-131200-9-9.txt → f-3 (embedded=False)\n"
+    assert ingested(log, "contract-20260909-131200-9-9.txt") == ""
+
+
+def smb_refused(output):
+    """Run the shipped SMB_FAILED_RE over smbclient output."""
+    script = assignment("SMB_FAILED_RE") + '\nprintf \'%s\\n\' "$1" | grep -qE "$SMB_FAILED_RE"\n'
+    return subprocess.run([BASH, "-c", script, "_", output],
+                          capture_output=True, text=True).returncode == 0
+
+
+def test_the_refusal_the_acceptance_actually_hit_is_read_as_a_failure():
+    # D1, verbatim from the first end-to-end run. smbclient's exit status was
+    # printed and discarded, and `test -s` found the previous run's file, so
+    # the row that proves the headline claim read PASS through this.
+    assert smb_refused("NT_STATUS_ACCESS_DENIED opening remote file \\contract.txt")
+    assert smb_refused("tree connect failed: NT_STATUS_BAD_NETWORK_NAME")
+
+
+def test_a_successful_put_is_not_read_as_a_failure():
+    assert not smb_refused(
+        "putting file /tmp/home/contract-20260909-131200-9-9.txt as "
+        "\\contract-20260909-131200-9-9.txt (12.3 kb/s) (average 12.3 kb/s)")
 
 
 def routine_matches(var, flow, line):

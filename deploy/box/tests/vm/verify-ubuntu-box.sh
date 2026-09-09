@@ -72,27 +72,40 @@ doc = next(d for d in depts if d["id"] == "legal")["documents"][0]
 (out / "text.b64").write_text(base64.b64encode(doc["text"].encode()).decode())
 print(f'  document: {doc["name"]} ({len(doc["text"])} chars)')
 PY
+DOC_NAME=$(printf %s "$(cat "$WORK/name.b64")" | base64 -d)
 
 say "Dropping it into data/drives/legal"
+# `|| die`, and then the file is checked on the drive. Without both, a write
+# that failed (the drive owned by another uid is exactly the acceptance's D1)
+# fell through to an ingest check that matched an EARLIER run's log line, and
+# the pair read as a pass on a re-used VM. This document cannot be made unique
+# per run the way day-at-home.sh's probe is — step 3 asks the agent about this
+# particular contract — so the write is gated instead, and the log match is
+# only ever confirmation that this named file is embedded, never a stand-in
+# for the write having happened.
 vm "set -e
     N=\$(printf %s '$(cat "$WORK/name.b64")' | base64 -d)
-    printf %s '$(cat "$WORK/text.b64")' | base64 -d > \"\$HOME/deploy/box/data/drives/legal/\$N\""
+    printf %s '$(cat "$WORK/text.b64")' | base64 -d > \"\$HOME/deploy/box/data/drives/legal/\$N\"" \
+  || die "could not write the document to data/drives/legal — is the drive owned by the Samba uid? (nufi-box doctor)"
+vm "test -s \"\$HOME/deploy/box/data/drives/legal/$DOC_NAME\"" \
+  || die "the document is not on the box's legal drive after the write"
 
 say "Waiting for nufi-ingest to embed it (up to 5 minutes)"
-# Matched on the whole log, not a recent window, so a second run of this script
-# passes on the line the first one earned: the daemon keys on the file's hash
-# and will not re-upload a document it already has. (Grepping the drive name
-# rather than the Korean filename keeps the encoding out of four shells.)
+# Matched on the whole log, not a recent window: the daemon keys on the file's
+# hash and correctly writes no new line for a document it already holds, so a
+# time filter would fail spuriously on the second run. Anchored to this file's
+# name rather than to `legal/`, so an unrelated document someone left on the
+# drive cannot answer for it.
 EMBEDDED=""
 for _ in $(seq 1 60); do
   EMBEDDED=$(box "logs --no-log-prefix nufi-ingest 2>&1" \
-             | grep -a 'embedded=True' | grep -a 'legal/' | tail -1)
+             | grep -a 'embedded=True' | grep -aF -e "legal/$DOC_NAME" | tail -1)
   [ -n "$EMBEDDED" ] && break
   sleep 5
 done
 [ -n "$EMBEDDED" ] || {
   box "logs --no-log-prefix --tail 30 nufi-ingest 2>&1"
-  die "nufi-ingest never logged embedded=True"
+  die "nufi-ingest never logged embedded=True for legal/$DOC_NAME"
 }
 say "$EMBEDDED"
 
@@ -112,8 +125,16 @@ mkdir -p "$WORK/drives"
   --cacert "$WORK/ca.crt" --connect-to "nufi.local:3080:$IP:3080" \
   --out "$WORK/evidence") || true
 
-grep -q 'sources: .*[^ ]' "$WORK/evidence/box.md" \
-  || die "not one answer carried a citation — the agent never read the drive"
+# The same predicate day-at-home.sh ships as CITED_CMD, and for the same
+# reason: run_box.py writes the literal `sources: none` for an answer that
+# cited nothing (`', '.join(q['sources']) or 'none'`), so `sources: .*[^ ]`
+# matched the exact case this check exists to catch. Drop the `none` lines
+# first and require something to be left.
+CITED=$(grep "sources:" "$WORK/evidence/box.md" 2>/dev/null | grep -v "sources: none$")
+[ -n "$CITED" ] \
+  || die "not one answer carried a citation — every 'sources:' line is 'none', so the agent never read the drive"
+say "Cited:"
+printf '%s\n' "$CITED" | sed 's/^ *- /    /'
 say "Answers (the model's, verbatim — judge verdicts included)"
 cat "$WORK/evidence/box.md"
 printf '\n  the box works: TLS from the Mac, drive → embedded=True, and a cited answer\n'

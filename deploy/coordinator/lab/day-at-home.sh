@@ -34,7 +34,9 @@
 #   health-over-mesh   https://nufi.box.lab:3080/health is 200 through MagicDNS,
 #                      with a certificate the box's own CA signs
 #   login-over-mesh    the chat app takes the admin's credentials
-#   drive-write        smbclient put onto //nufi.box.lab/legal
+#   drive-write        smbclient put onto //nufi.box.lab/legal — a probe whose
+#                      name and contents are new every run, so neither this row
+#                      nor the next can pass on a file an earlier run left
 #   drive-ingested     nufi-ingest logs embedded=True for that file
 #   agent-cites-drive  run_box.py --only legal gets an answer with a citation
 #   routine            run_flows.py --only weekly returns text (--routine names
@@ -83,10 +85,26 @@ MESH_BASE_DOMAIN=box.lab
 BOX_MESH_HOST="nufi.$MESH_BASE_DOMAIN"
 BOX_NODE=nufi
 SHARE=legal
-PROBE=contract.txt
 
-# Two one-line predicates that decide two of the eight checks. They live here,
-# each on a single line with a stable name, because ../tests/test_lab.py
+# The probe is new every run — its name and its contents both. A fixed
+# `contract.txt` made two of the eight rows unable to fail on a box that had
+# already seen it: `drive-write` gates on `test -s` at a path nothing removes,
+# so a `put` refused with NT_STATUS_ACCESS_DENIED still found the previous
+# run's file there, and `drive-ingested` greps a container log that survives a
+# restart, so it matched the line an earlier run earned. run.sh:373 answers the
+# same hazard by deleting the probe first ("so a stale file can never fake a
+# pass"); this script cannot copy that, because it deliberately does not
+# `down -v` and the drive belongs to a VM it does not own — so it makes the
+# document new instead, and deletes it again in cleanup(). The contents carry
+# the id too: nufi-ingest keys on a SHA-256 behind a size+mtime fast path
+# (nufi_ingest.py:505), so a byte-identical file is correctly not re-embedded
+# and would write no new log line at all.
+PROBE_ID="$(date -u +%Y%m%d-%H%M%S)-$$-$RANDOM"
+PROBE="contract-$PROBE_ID.txt"
+PROBE_ON_BOX=0
+
+# Four one-line predicates that decide three of the eight checks. They live
+# here, each on a single line with a stable name, because ../tests/test_lab.py
 # extracts them from this file and runs them against fixtures — so what CI
 # pins is the string this script really uses, not a copy of it that can drift.
 #
@@ -94,6 +112,18 @@ PROBE=contract.txt
 #              file; prints nothing (and exits non-zero) when every line is
 #              `sources: none`, which is what run_box.py writes for an answer
 #              with no citation.
+# INGEST_CMD   reads nufi-ingest's whole log on stdin and prints the line that
+#              says the probe named in $1 was embedded. Anchored to THIS run's
+#              probe name, which is why grepping the whole log is safe: the
+#              daemon writes `added <dept>/<file> → <id> (embedded=True)`
+#              (nufi_ingest.py:527) and no earlier run can have named this
+#              file. A time filter would be the wrong fix — an unchanged file
+#              correctly produces no new line at all.
+# SMB_FAILED_RE
+#              matches smbclient's refusal lines (`NT_STATUS_ACCESS_DENIED
+#              opening remote file \contract.txt`). smbclient prints these and
+#              its exit status is checked as well, because the D1 acceptance
+#              failure printed exactly this while the row still read PASS.
 # ROUTINE_LINE_RE / ROUTINE_DRIFT_RE
 #              match the line run_flows.py prints for a finished flow --
 #              `f"{name:9} {'DRIFT' if drift else 'ok   '} {secs:4.0f}s"` --
@@ -101,6 +131,8 @@ PROBE=contract.txt
 #              inside `broken`, so `weekly result: broken pipe, no output`
 #              would read as a pass. FLOW is replaced with the flow's id.
 CITED_CMD='grep "sources:" "$1" 2>/dev/null | grep -v "sources: none$"'
+INGEST_CMD='grep -a "embedded=True" | grep -aF -e "$1" | tail -1'
+SMB_FAILED_RE='NT_STATUS_[A-Z_]+'
 ROUTINE_LINE_RE='^FLOW +(ok|DRIFT) +[0-9]+s *$'
 ROUTINE_DRIFT_RE='^FLOW +DRIFT +[0-9]+s *$'
 
@@ -125,6 +157,9 @@ The day at home, in the lab
   host-port override  $RENDERED/host-ports.yml   (generated; gitignored)
   the member          node-a + tools-a, behind router-a with FORCE_RELAY=1
   the box             Lima VM '$VM', its own deploy/box, joined as $BOX_MESH_HOST
+  the probe           $SHARE/$PROBE  (a new name and new contents every run,
+                      removed from the drive at the end — a fixed one let
+                      drive-write and drive-ingested pass on an old file)
   keys / CAs          $KEYS  (gitignored; the credential files are deleted at the end)
   routine             $ROUTINE, given ${ROUTINE_BUDGET}s to answer
   disk floor          ${MIN_FREE_GB} GB free on / — the run stops rather than fill the disk
@@ -214,6 +249,15 @@ cleanup() {
   # The credentials are read out of the box's .env for the member to use; they
   # are the box's, not the lab's, and they do not outlive the run.
   rm -f "$KEYS/box-admin.env" "$KEYS/box-smb.auth" "$KEYS/studio-api.key"
+  # And neither does the probe. It is a different document every run, so
+  # leaving it behind would add one to the Legal drive each time and grow the
+  # corpus the agent has to read past; removing it is also what makes
+  # nufi-ingest delete its embedding on the next scan. Before `limactl stop`,
+  # while the VM can still be reached.
+  if [ "$PROBE_ON_BOX" = 1 ]; then
+    vm "rm -f \$HOME/deploy/box/data/drives/$SHARE/$PROBE" >/dev/null 2>&1 \
+      || warn "could not remove $SHARE/$PROBE from the box — delete it by hand"
+  fi
   if [ "$KEEP" = 1 ]; then
     warn "--keep: the lab is up and $VM is running. Tear down with:"
     warn "  LAB_FORCE_RELAY=1 docker compose -f $HERE/docker-compose.yml -f $RENDERED/host-ports.yml down && limactl stop $VM"
@@ -358,14 +402,29 @@ T_BOX=$(( $(date +%s) - t_box ))
 
 MESH_NAME="$(vm 'cd $HOME/deploy/box && grep "^BOX_MESH_HOST=" .env | cut -d= -f2' 2>/dev/null | tr -d '\r')"
 [ -n "$MESH_NAME" ] && BOX_MESH_HOST="$MESH_NAME"
-if hs nodes list -o json 2>/dev/null | python3 -c '
+# Being LISTED is not evidence of this run: the headscale volume is kept on
+# purpose (see step 3), so a box that joined a week ago is still in the list
+# whether or not `mesh up` did anything today. `online` is the coordinator's
+# view of a live connection, so that is what the row gates on; a registration
+# with nobody behind it is reported as its own failure rather than a pass.
+join_state="$(hs nodes list -o json 2>/dev/null | python3 -c '
 import json, sys
-names = [n.get("given_name") or n.get("name") for n in (json.load(sys.stdin) or [])]
-sys.exit(0 if "'"$BOX_NODE"'" in names else 1)' 2>/dev/null; then
-  R_JOIN=PASS; ok "headscale lists the box as '$BOX_NODE' ($BOX_MESH_HOST), joined in ${T_BOX}s"
-else
-  warn "headscale does not list a node called '$BOX_NODE'"
-fi
+want = sys.argv[1]
+state = "absent"
+for n in (json.load(sys.stdin) or []):
+    if (n.get("given_name") or n.get("name")) == want:
+        state = "online" if n.get("online") else "registered"
+        if state == "online":
+            break
+print(state)' "$BOX_NODE" 2>/dev/null)"
+case "$join_state" in
+  online)
+    R_JOIN=PASS; ok "headscale lists the box as '$BOX_NODE' ($BOX_MESH_HOST) and online, joined in ${T_BOX}s" ;;
+  registered)
+    warn "headscale knows '$BOX_NODE' from an earlier run but it is not online now — this run did not join" ;;
+  *)
+    warn "headscale does not list a node called '$BOX_NODE'" ;;
+esac
 
 # ---------- 7. what the member carries ----------------------------------------
 # In real life a member gets these from their join file and their own account.
@@ -441,7 +500,10 @@ esac
 
 # --- putting a document on the department drive -------------------------------
 say "Putting $PROBE on //$BOX_MESH_HOST/$SHARE with smbclient"
-DC exec -T tools-a sh -c "mkdir -p /tmp/home && cat > /tmp/home/$PROBE" <<'DOC'
+# The heredoc stays quoted so nothing in the Korean text is ever expanded; the
+# run's id is appended after it, which is what makes the CONTENTS new too.
+DC exec -T tools-a sh -c \
+  "mkdir -p /tmp/home && { cat; echo; echo '(이 초안의 실행 식별자: $PROBE_ID)'; } > /tmp/home/$PROBE" <<'DOC'
 용역계약서 부속 합의 (2026-09 개정, 집에서 올린 초안)
 
 제1조(하자보수) 납품 완료일로부터 하자보수 보증기간은 24개월로 한다.
@@ -451,11 +513,21 @@ DC exec -T tools-a sh -c "mkdir -p /tmp/home && cat > /tmp/home/$PROBE" <<'DOC'
 제4조(비밀유지) 본 부속 합의의 비밀유지 의무는 계약 종료 후 3년간 존속한다.
 DOC
 # -A reads username and password from a 0600 file, so neither reaches argv.
+PROBE_ON_BOX=1   # from here on, cleanup() has a file to remove
 smb_out="$(DC exec -T tools-a smbclient "//$BOX_MESH_HOST/$SHARE" \
     -A /lab/keys/box-smb.auth -m SMB3 \
     -c "put /tmp/home/$PROBE $PROBE" 2>&1)"
+smb_rc=$?
 printf '%s\n' "$smb_out" | sed 's/^/    /'
-if vm "test -s \$HOME/deploy/box/data/drives/$SHARE/$PROBE" >/dev/null 2>&1; then
+# Three gates, because the row that proves D1 used to have none that could
+# fail: smbclient's own exit status (printed and discarded before), the
+# NT_STATUS refusal it prints on the way out, and the file itself — at a path
+# no earlier run can have written, since the probe is new every run.
+if [ "$smb_rc" != 0 ]; then
+  warn "smbclient exited $smb_rc — the put was refused"
+elif printf '%s\n' "$smb_out" | grep -qE "$SMB_FAILED_RE"; then
+  warn "smbclient printed an NT_STATUS error — the put was refused"
+elif vm "test -s \$HOME/deploy/box/data/drives/$SHARE/$PROBE" >/dev/null 2>&1; then
   R_WRITE=PASS; ok "$PROBE is on the box's $SHARE drive"
 else
   warn "$PROBE never arrived on the box's $SHARE drive"
@@ -463,14 +535,18 @@ fi
 
 # --- and the box learning it --------------------------------------------------
 # 60 seconds, the brief's number: nufi-ingest watches /drives every 20s.
-# Matched against the whole log rather than a recent window, because the daemon
-# keys on a file's hash and will not re-upload a document it already has — so a
-# second run of this script passes on the line the first one earned.
+# `$INGEST_CMD` reads the whole container log, which survives a restart — safe
+# only because the probe's name belongs to this run alone. With a fixed probe
+# this row matched the line an earlier run had earned and could not fail; the
+# third acceptance run's `PASS (0s)` was exactly that. Filtering the log by
+# time instead would have been wrong in the other direction: the daemon
+# deduplicates by SHA-256 and correctly writes no new line for a file it
+# already holds, so an unchanged probe would start failing spuriously.
 if [ "$R_WRITE" = PASS ]; then
   say "Waiting up to 60s for nufi-ingest to embed it"
   t_ing=$(date +%s); i=0
   while [ "$i" -lt 12 ]; do
-    line="$(box 'logs --no-log-prefix nufi-ingest' 2>/dev/null | grep -a 'embedded=True' | grep -a "$PROBE" | tail -1)"
+    line="$(box 'logs --no-log-prefix nufi-ingest' 2>/dev/null | sh -c "$INGEST_CMD" _ "$PROBE")"
     [ -n "$line" ] && break
     i=$((i + 1)); sleep 5
   done
@@ -491,6 +567,10 @@ t_a=$(date +%s)
 DC exec -T tools-a sh -c '
 set -eu
 . /lab/keys/box-admin.env
+# The evidence directory goes first. tools-a survives a run that ended with
+# --keep or was killed before the trap, and a box.md left in it would be read
+# as this run in exactly the way a stale probe file was.
+rm -rf /tmp/home/evidence
 mkdir -p /tmp/home/drives /tmp/home/evidence
 python3 /lab/scenarios/run_box.py \
   --base "https://'"$BOX_MESH_HOST"':3080" \
