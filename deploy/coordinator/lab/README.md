@@ -197,17 +197,18 @@ or disclosed:
 ```
 
 **Eight of eight**, and the script exits 0 only when every row passes — but
-that is what the harness asserted, not eight independent measurements. Six of
-the rows are trustworthy; the two caveats below say why `drive-write` and
-`drive-ingested` are not, and both have since been fixed in the harness rather
-than in the record. The mesh
-half is unambiguous: `tailscale ping` says `via DERP` on every packet,
+that is what the harness asserted, not eight independent measurements. **Five**
+of the rows are trustworthy; the three caveats below say why `box-on-mesh`,
+`drive-write` and `drive-ingested` are not, and all three have since been fixed
+in the harness rather than in the record. What the five say is still the whole
+of the mesh half: `tailscale ping` says `via DERP` on every packet,
 `https://nufi.box.lab:3080/health` is 200 through MagicDNS with a certificate
-the box's own CA signs, the chat app takes the member's credentials, a member's
-`smbclient put` onto `//nufi.box.lab/legal` lands, and the Legal agent answers a
-question about that drive with a citation (`contract.txt`,
-`계약검토_표준조항.txt`) — all of it over the relay, from behind a NAT that
-forwards no UDP but STUN.
+the box's own CA signs, the chat app takes the member's credentials, and the
+Legal agent answers a question about a drive document with a citation
+(`contract.txt`, `계약검토_표준조항.txt`) — all of it over the relay, from
+behind a NAT that forwards no UDP but STUN. That a member's `smbclient put`
+lands is proven too, but by the second run and by the live `put` that closed
+D1, not by this table's `drive-write` row.
 
 **`routine-weekly` PASS — `weekly ok 7s`.** This is the row the run existed to
 settle, and it settles it in the direction that had never been measured: the
@@ -215,13 +216,22 @@ weekly routine returns text over the mesh on `qwen2.5:0.5b`. The uncapped
 generation this box is known to have does not bite `weekly` at this size. It is
 still uncapped — see the paragraph below.
 
-One number and two rows in that table are the harness's doing rather than the
-box's, and none of the three should be quoted as a measurement:
+One number and three rows in that table are the harness's doing rather than the
+box's, and none of the four should be quoted as a measurement:
 
 - **`box up + joined 5s`** is `mesh up` alone. The VM was already running when
   this run started (the box needed `nufi-box flows install` first, to replace
   the Studio key an earlier re-install had dropped), so nothing in those five
   seconds is a boot. The cold number is the previous run's **38 s**.
+- **`box-on-mesh`** asked headscale whether it *lists* a node called `nufi`.
+  The lab keeps its volumes on purpose — step 3 above says so, because the
+  registrations and the coordinator's CA have to survive — so that list holds
+  every box that has ever joined, and this run's PASS would have looked
+  identical had `mesh up` done nothing at all. The box demonstrably was online,
+  because `path`, `health-over-mesh` and `login-over-mesh` are live and all
+  three passed; but that is corroboration from other rows, which is exactly
+  what is refused for `drive-write` below, so it is this row that carries
+  nothing rather than the claim.
 - **`drive-write`** could not have said otherwise. The probe was a fixed
   `contract.txt` that nothing removes — `cleanup()` deleted only `keys/*` and
   this script deliberately does not `down -v` — and the only gate was `test -s`
@@ -240,16 +250,17 @@ box's, and none of the three should be quoted as a measurement:
   writes no new line for an unchanged file, so the row would have started
   failing spuriously on exactly the box it is meant to fix.
 
-Both rows are fixed in the harness now, in the one way that answers both: the
-probe is a new file with new contents every run (and is removed from the drive
-afterwards), `drive-write` additionally gates on `smbclient`'s exit status and
-on the `NT_STATUS` line it prints, and `INGEST_CMD` / `SMB_FAILED_RE` join
-`CITED_CMD` and `ROUTINE_LINE_RE` as predicates `../tests/test_lab.py` extracts
-from the script and runs against fixtures. The same sweep tightened
-`box-on-mesh`, which gated on headscale *listing* the node — a registration
-that survives between runs — and now gates on `online`. **None of this has run
-end to end yet**: run 4 is the first run under the fixed harness, and it is the
-first table that will mean eight independent measurements.
+All three rows are fixed in the harness now. The two drive rows are answered by
+one change: the probe is a new file with new contents every run (and is removed
+from the drive afterwards), `drive-write` additionally gates on `smbclient`'s
+exit status and on the `NT_STATUS` line it prints, and `INGEST_CMD` /
+`SMB_FAILED_RE` join `CITED_CMD` and `ROUTINE_LINE_RE` as predicates
+`../tests/test_lab.py` extracts from the script and runs against fixtures.
+`box-on-mesh` — which the sweep for that same shape turned up — now gates on
+the node being `online` rather than merely listed, and reports a registration
+with nobody behind it as its own distinct failure. **None of this has run end to
+end yet**: run 4 is the first run under the fixed harness, and it is the first
+table that will mean eight independent measurements.
 
 The agent's 513 s is a cold `qwen2.5:0.5b` on a VM whose model had not been
 loaded since its last restart; 1 of the 4 judge verdicts passed, which is the
