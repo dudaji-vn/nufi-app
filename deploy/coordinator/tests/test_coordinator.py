@@ -232,6 +232,17 @@ def test_caddyfile_template_has_both_placeholders():
 # ---------------------------------------------------------------------------
 
 
+def test_readme_health_check_uses_the_certificates_name_not_localhost():
+    # curl -sk https://localhost:8443/health fails the TLS/SNI match --
+    # confirmed live (curl exit 35): Caddy's site is bound to the literal
+    # hostname coordinator.lab, which is the only name on the internal-CA
+    # certificate, and there is no catch-all/on-demand TLS. --resolve keeps
+    # coordinator.lab as the SNI/Host while still connecting to 127.0.0.1.
+    text = (COORD / "README.md").read_text()
+    assert "https://localhost:8443/health" not in text
+    assert "--resolve coordinator.lab:8443" in text
+
+
 def test_policy_hujson_uses_the_at_suffix_user_reference():
     # Confirmed against headscale v0.29.3's own ACL docs
     # (docs/ref/policy.md, tag v0.29.3): a user acting as a tag owner or a

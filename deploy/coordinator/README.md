@@ -42,7 +42,12 @@ minted; rotate with `--rotate-key`" instead).
 
 What you hand the box operator when it finishes:
 
-- `MESH_SERVER_URL` — `https://<MESH_SERVER_HOST>`
+- `MESH_SERVER_URL` — `https://<MESH_SERVER_HOST>`. The coordinator's own env
+  variable is `MESH_SERVER_HOST` (just the hostname, since that's what both
+  `config/headscale.yaml` and the Caddyfile need); the box side names the
+  same coordinator as the full URL, `MESH_SERVER_URL` — this is the
+  intended split, not a typo, so the box tasks don't need to guess which
+  name means what.
 - `MESH_API_KEY` — the key printed at the end of the first `./bootstrap.sh` run
 
 Both go into the box's `.env` (see `deploy/box/README.md`, "From home").
@@ -75,14 +80,24 @@ TLS_MODE=internal MESH_SERVER_HOST=coordinator.lab MESH_BASE_DOMAIN=box.lab \
 ```
 
 This publishes `8443:443`, `8080:80`, `13478:3478/udp` instead of the
-standard ports. Add `coordinator.lab` to `/etc/hosts` (or a lab DNS sidecar)
-pointing at `127.0.0.1`, then:
+standard ports.
 
 ```sh
-curl -sk https://localhost:8443/health   # headscale's own /health, through Caddy
+curl -sk --resolve coordinator.lab:8443:127.0.0.1 https://coordinator.lab:8443/health
 docker compose exec headscale headscale users list
 docker compose exec headscale headscale apikeys list
 ```
+
+`--resolve` is not optional here: Caddy's site is bound to the literal
+hostname `coordinator.lab` (that's the only name on the internal-CA
+certificate, and there is no catch-all/on-demand TLS configured), so hitting
+this port through the plain `localhost` name fails the TLS handshake —
+`localhost` is not in the certificate and Caddy has no site to match it
+against. `--resolve` points the connection at `127.0.0.1` while still
+sending `coordinator.lab` as the SNI/Host, which is what the certificate and
+the Caddyfile actually expect. (An `/etc/hosts` entry for `coordinator.lab`
+→ `127.0.0.1` works the same way, if you'd rather not repeat `--resolve` on
+every command.)
 
 ## 5. Rotating the API key
 
