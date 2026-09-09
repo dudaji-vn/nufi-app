@@ -113,7 +113,9 @@ runs a one-department box on CPU with nothing to spare.
 
 `deploy/box/tests/vm/` holds that run as a recipe (`run-ubuntu-install.sh`,
 `lima-ubuntu.yaml`): it installs onto a blank machine, prints the wall time,
-and fails if the banner never appears.
+and fails if the banner never appears. `verify-ubuntu-box.sh` next to it does
+the other half from the Mac — `/health` over TLS, a document dropped in a
+drive reaching the agent, and that agent answering with a citation.
 
 Re-running `./install-box.sh` is safe: it keeps `.env` and every answer you
 already gave, and only asks again for anything you did not set.
