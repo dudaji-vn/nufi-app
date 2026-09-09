@@ -83,7 +83,8 @@ This publishes `8443:443`, `8080:80`, `13478:3478/udp` instead of the
 standard ports.
 
 ```sh
-curl -sk --resolve coordinator.lab:8443:127.0.0.1 https://coordinator.lab:8443/health
+curl -sk --resolve coordinator.lab:8443:127.0.0.1 \
+  https://coordinator.lab:8443/health     # headscale's own /health, through Caddy
 docker compose exec headscale headscale users list
 docker compose exec headscale headscale apikeys list
 ```
@@ -98,6 +99,12 @@ sending `coordinator.lab` as the SNI/Host, which is what the certificate and
 the Caddyfile actually expect. (An `/etc/hosts` entry for `coordinator.lab`
 → `127.0.0.1` works the same way, if you'd rather not repeat `--resolve` on
 every command.)
+
+For the full two-NAT proof — two nodes joining from behind separate NATs, the
+DERP relay forced, HTTPS and SMB over the mesh — see [`lab/`](lab/README.md).
+`lab/run.sh` brings up this same stack (via compose `include:`) plus the
+topology around it and prints a PASS/FAIL table; it writes nothing into this
+directory and uses its own compose project, `nufi-lab`.
 
 ## 5. Rotating the API key
 

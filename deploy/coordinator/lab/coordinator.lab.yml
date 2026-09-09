@@ -1,0 +1,65 @@
+# Lab-only override for the coordinator stack (../docker-compose.yml). Layered
+# by the `include:` block in ./docker-compose.yml; never used on a VPS.
+#
+# Why the two services share one network namespace here
+# -----------------------------------------------------
+# On a VPS the coordinator is ONE host: Caddy answers TCP 443 (control plane +
+# DERP-over-HTTPS) and headscale answers UDP 3478 (STUN) on the same public
+# address, because that is the only address headscale puts in the DERP map it
+# hands to clients (`derp.server` advertises server_url's hostname for both the
+# DERP port and the STUN port).
+#
+# Two containers on a bridge network have two addresses, so `coordinator.lab`
+# could only ever point at one of them, and whichever lost would be
+# unreachable. Proxying the loser is not an option either: a UDP proxy rewrites
+# the source address, so the reflexive address headscale's STUN server reports
+# back would be the proxy's, not the node's — the nodes would advertise a
+# useless endpoint and could never hole-punch. Sharing a namespace is the only
+# arrangement that reproduces the VPS's single-address shape, so this is the
+# lab being *more* faithful to production, not less: TLS still terminates in
+# Caddy and is still reverse-proxied to headscale:8080.
+services:
+  headscale:
+    # 172.30.0.10 is what every lab container's `extra_hosts` maps
+    # `coordinator.lab` to. Caddy joins this namespace below, so this one
+    # address carries 443/tcp and 3478/udp exactly as the VPS does.
+    networks:
+      coord: {}
+      wan:
+        ipv4_address: 172.30.0.10
+    # `ports:` lists concatenate across compose files, so `!override` replaces
+    # the base file's 3478/udp outright instead of adding a second binding.
+    # Host ports are for the operator's own debugging only — the nodes reach
+    # the coordinator over the `wan` network, not through the host. 8080 is
+    # deliberately not published: `deploy/box` and assorted dev servers own the
+    # low ports on a developer Mac.
+    ports: !override
+      - "13478:3478/udp"
+      - "8443:443"
+    # Read the rendered config from lab/rendered/ instead of
+    # deploy/coordinator/config/. Same file, same renderer (run.sh pipes
+    # ../bootstrap.sh --dry-run into it) — but a lab run must not overwrite the
+    # config of a real coordinator that happens to live on the same machine,
+    # and deploy/coordinator/tests asserts that nothing but bootstrap.sh ever
+    # writes there. Paths are relative to `project_directory: ..`, so this is
+    # deploy/coordinator/lab/rendered/headscale.yaml. The policy and the data
+    # volume are the base file's own, repeated because `!override` replaces the
+    # list outright; tests/test_lab.py asserts the mount targets still match
+    # the base file's, so a change there cannot silently drift from this.
+    volumes: !override
+      - ./lab/rendered/headscale.yaml:/etc/headscale/config.yaml:ro
+      - ./config/policy.hujson:/etc/headscale/policy.hujson:ro
+      - headscale-data:/var/lib/headscale
+
+  caddy:
+    network_mode: "service:headscale"
+    # `network_mode` and `networks` are mutually exclusive; `!reset` clears the
+    # base file's `networks: [coord]` rather than trying to merge with it.
+    networks: !reset null
+    # A service in another service's namespace cannot publish ports — the
+    # namespace owner (headscale, above) publishes 8443 on Caddy's behalf.
+    ports: !override []
+    volumes: !override
+      - ./lab/rendered/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config

@@ -1,0 +1,5 @@
+# Everything run.sh generates. keys/ holds the two pre-auth keys and the two
+# internal-CA roots; rendered/ holds the coordinator config run.sh renders from
+# ../bootstrap.sh --dry-run. Both are per-run artefacts, and keys/ is secret.
+keys/
+rendered/

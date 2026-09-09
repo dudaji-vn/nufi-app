@@ -1,0 +1,29 @@
+# The box's HTTPS front, reduced to the one thing the lab has to prove: a
+# member on the far side of two NATs can reach it *by its MagicDNS name*, over
+# the mesh, with TLS that validates.
+#
+# Same pattern as deploy/box/Caddyfile: an internal CA, the mesh name as the
+# site address (so it becomes a SAN on the certificate), port 3080. It runs in
+# node-b's network namespace, so binding all interfaces means binding the mesh
+# address.
+{
+	auto_https disable_redirects
+	skip_install_trust
+}
+
+# Two names, one site. The mesh name is the one that matters — it is what the
+# member's browser and the lab's curl use, and it is the SAN on the
+# certificate. `localhost` is here only so the container's own healthcheck has
+# a name it can send as SNI: Caddy matches sites by SNI and refuses the
+# handshake for a name it does not serve, so probing https://127.0.0.1:3080
+# would fail the TLS handshake no matter how many --no-check-certificate flags
+# it carried.
+{$BOX_MESH_HOST}:3080, localhost:3080 {
+	tls internal
+
+	handle /health {
+		respond "ok" 200
+	}
+
+	respond "nufi box stand-in" 200
+}
