@@ -94,19 +94,6 @@ if [ "$DRY" = 0 ]; then
         say "Installing Docker Engine"
         curl -fsSL https://get.docker.com | sh
         sudo usermod -aG docker "$USER" || true
-        # A group added with usermod only applies to new logins, so this shell
-        # still cannot open /var/run/docker.sock. `docker compose version`
-        # never touches the daemon and passes anyway, so the install used to
-        # get all the way to `docker compose pull` before dying with
-        # "permission denied while trying to connect to the docker API" — on a
-        # blank machine, i.e. on every first install. Re-exec once inside the
-        # new group instead; `sg` keeps the environment, so every answer the
-        # caller passed on the command line survives.
-        if ! docker info >/dev/null 2>&1 && [ "${NUFI_BOX_REEXEC:-0}" != "1" ] && have sg; then
-          say "Re-running inside the new docker group"
-          export NUFI_BOX_REEXEC=1
-          exec sg docker -c "$(printf '%q' "$HERE/${0##*/}")$NUFI_BOX_FLAGS"
-        fi
       fi
       if has_nvidia && ! dpkg -s nvidia-container-toolkit >/dev/null 2>&1; then
         say "Installing the NVIDIA container toolkit"
@@ -120,6 +107,24 @@ if [ "$DRY" = 0 ]; then
       ;;
     *) die "unsupported OS: $OS (Windows: run this inside WSL2 Ubuntu)" ;;
   esac
+  # A group added with usermod only applies to new logins, so a shell older
+  # than the membership cannot open /var/run/docker.sock even though the user
+  # is a member: the shell that just installed Docker here, or any session
+  # that was already open when someone ran usermod. `docker compose version`
+  # never touches the daemon and passes anyway, so the install used to run on
+  # and die minutes later at `docker compose pull` with Docker's own
+  # "permission denied while trying to connect to the docker API". `id -nG
+  # <user>` reads the group database rather than this process's credentials,
+  # so it sees the membership the session is missing; `sg` starts a shell that
+  # has it, and keeps the environment, so every answer the caller passed on
+  # the command line survives. Once only, then say what to do.
+  if [ "$OS" = "Linux" ] && ! docker info >/dev/null 2>&1 \
+     && [ "${NUFI_BOX_REEXEC:-0}" != "1" ] && have sg \
+     && id -nG "$USER" 2>/dev/null | tr ' ' '\n' | grep -qx docker; then
+    say "Re-running inside the new docker group"
+    export NUFI_BOX_REEXEC=1
+    exec sg docker -c "$(printf '%q' "$HERE/${0##*/}")$NUFI_BOX_FLAGS"
+  fi
   docker compose version >/dev/null 2>&1 || die "docker compose v2 is required"
   # Neither `docker compose version` nor `docker --version` opens the socket,
   # so without this the first thing to notice an unreachable daemon is the

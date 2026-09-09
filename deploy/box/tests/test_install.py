@@ -343,7 +343,7 @@ def test_jwks_check_is_in_the_plan():
 # They stop inside the prerequisites block, before anything is written, because
 # a stub PATH stands in for curl / sudo / sg / docker.
 
-def _blank_linux_box(tmp, daemon="denied"):
+def _blank_linux_box(tmp, daemon="denied", groups="sun docker"):
     """A PATH where docker is absent until `curl … get.docker.com | sh` runs,
     and the docker it then installs cannot reach the daemon — the state a real
     `usermod -aG docker` leaves this shell in."""
@@ -368,11 +368,15 @@ def _blank_linux_box(tmp, daemon="denied"):
     stub("curl", f'case "$*" in *get.docker.com*) cat {bin_}/docker.installer ;; esac\nexit 0\n')
     stub("sudo", 'exit 0\n')
     stub("sg", f'echo "$@" > {bin_.parent}/sg.args\nexit 0\n')
+    # `id -nG <user>` reads the group database, which usermod has just updated —
+    # the whole point is that the running session's own groups have not.
+    stub("id", f'echo "{groups}"\n')
     return bin_
 
 
 def _install_on_blank_linux(tmp, **env):
-    bin_ = _blank_linux_box(tmp, daemon=env.pop("daemon", "denied"))
+    bin_ = _blank_linux_box(tmp, daemon=env.pop("daemon", "denied"),
+                            groups=env.pop("groups", "sun docker"))
     e = dict(os.environ,
              PATH=f"{bin_}:/usr/bin:/bin",
              NUFI_BOX_FAKE_OS="Linux",
@@ -444,3 +448,36 @@ def test_a_failing_image_pull_is_retried_three_times_then_explained():
         assert r.returncode != 0
         assert tries.read_text().count("x") == 3, "the pull must be tried three times"
         assert "could not pull the images after 3 attempts" in r.stderr
+
+
+def test_a_session_older_than_the_group_is_rescued_on_a_re_run_too():
+    # Docker is already installed (no install branch runs), but the shell
+    # predates the docker group — a re-run over an SSH session that was open
+    # when the box was installed. Lima's shared connection does exactly this,
+    # and the re-run died on the spot until the rescue moved out of the
+    # "we just installed Docker" branch.
+    with tempfile.TemporaryDirectory() as tmp:
+        bin_ = _blank_linux_box(tmp)
+        (bin_ / "docker").write_text(
+            "#!/bin/sh\n"
+            'case "$1 $2" in\n'
+            '  "compose version") exit 0 ;;\n'
+            '  *) echo "permission denied" >&2; exit 1 ;;\n'
+            "esac\n")
+        (bin_ / "docker").chmod(0o755)
+        e = dict(os.environ, PATH=f"{bin_}:/usr/bin:/bin", NUFI_BOX_FAKE_OS="Linux",
+                 NUFI_BOX_ENV=str(pathlib.Path(tmp) / "absent.env"))
+        r = subprocess.run([BASH, str(BOX / "install-box.sh"), "--yes"],
+                           cwd=BOX, env=e, capture_output=True, text=True)
+        assert r.returncode == 0, r.stderr
+        assert "Re-running inside the new docker group" in r.stdout
+        assert (pathlib.Path(tmp) / "sg.args").exists()
+
+
+def test_a_user_who_is_not_in_the_docker_group_is_told_not_re_execed():
+    # sg would just fail; say what to do instead.
+    with tempfile.TemporaryDirectory() as tmp:
+        r, sg_args = _install_on_blank_linux(tmp, groups="sun")
+        assert r.returncode != 0
+        assert not sg_args.exists()
+        assert "cannot reach the Docker daemon" in r.stderr
