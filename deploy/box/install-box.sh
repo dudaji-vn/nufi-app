@@ -195,9 +195,21 @@ sec ADMIN_SESSION_SECRET "gen_hex 32"; sec SAMBA_PASSWORD "gen_hex 8"
 INGEST_EMAIL="${INGEST_EMAIL:-$ADMIN_EMAIL}"
 if [ "$INGEST_EMAIL" = "$ADMIN_EMAIL" ]; then INGEST_PASSWORD="$ADMIN_PASSWORD"
 else sec INGEST_PASSWORD "gen_hex 16"; fi
-if [ -z "${OIDC_PRIVATE_KEY_PEM:-}" ] || [ "$OIDC_PRIVATE_KEY_PEM" = "replace-me" ]; then
-  OIDC_PRIVATE_KEY_PEM="$(openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 2>/dev/null | awk 'BEGIN{ORS="\\n"}{print}')"
-fi
+# Compose does NOT expand \n inside a double-quoted .env value (verified with
+# `docker compose config` on 2.39.2): X="a\nb" renders as the four characters
+# a\nb, while a real multi-line double-quoted value renders with a real
+# newline. So the PEM has to be stored with real newlines — bash writes them
+# verbatim inside the double quotes in render_env below, and `set -a; . .env`
+# on a re-run reads them back intact. A box installed with the old installer
+# has the broken one-line form on disk (a literal backslash-n, not a real
+# newline); heal it by regenerating rather than leaving it broken forever.
+case "${OIDC_PRIVATE_KEY_PEM:-}" in
+  ""|replace-me)
+    OIDC_PRIVATE_KEY_PEM="$(openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 2>/dev/null)" ;;
+  *'\n'*)
+    warn "regenerated the console signing key (the old one was stored on one line); Studio sessions will need a fresh sign-in"
+    OIDC_PRIVATE_KEY_PEM="$(openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 2>/dev/null)" ;;
+esac
 NVIDIA_VISIBLE_DEVICES=""
 if [ "$OS" = "Linux" ] && has_nvidia; then NVIDIA_VISIBLE_DEVICES=all; fi
 
@@ -339,6 +351,26 @@ if [ "$DRY" = 0 ]; then
     if docker compose ps --format '{{.Name}} {{.Health}}' | grep -q 'librechat.*healthy'; then break; fi
     sleep 5
   done
+fi
+
+# ---------- console signing key -----------------------------------------------------
+# The console's OIDC signing key is only usable once it renders as real PEM
+# (see the OIDC_PRIVATE_KEY_PEM handling above) — probe the endpoint that
+# breaks first when it isn't: Studio's SSO handoff verifies tokens against it.
+say "Checking the console's JWKS endpoint"
+if [ "$DRY" = 1 ]; then
+  printf '  $ %s\n' "curl -fsk https://localhost:3001/.well-known/jwks.json"
+else
+  jwks_ok=0
+  for i in $(seq 1 12); do
+    curl -fsk "https://localhost:3001/.well-known/jwks.json" >/dev/null 2>&1 && { jwks_ok=1; break; }
+    sleep 5
+  done
+  if [ "$jwks_ok" = 1 ]; then
+    ok "console JWKS is serving"
+  else
+    warn "console JWKS (https://localhost:3001/.well-known/jwks.json) never came up; check: nufi-box logs console"
+  fi
 fi
 
 # ---------- models ------------------------------------------------------------------

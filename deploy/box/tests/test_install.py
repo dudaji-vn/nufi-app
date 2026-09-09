@@ -264,8 +264,15 @@ def test_a_second_run_plans_exactly_what_the_first_one_did():
         envfile = pathlib.Path(tmp) / "box.env"
         first = dry(NUFI_BOX_FAKE_OS="Darwin", NUFI_BOX_ENV=str(envfile),
                     BOX_NAME="demo", DEPARTMENTS="legal,hr")
-        envfile.write_text("".join(f"{ln}\n" for ln in first.splitlines()
-                                   if re.match(r"^[A-Z][A-Z0-9_]*=", ln)))
+        # render_env's output (what DRY=1 prints instead of writing to disk) is
+        # exactly the .env content, verbatim — including the OIDC key's real
+        # embedded newlines. It sits between the "Writing .env" and "Rendering
+        # litellm" banners, so slice it out rather than filtering line-by-line
+        # (a per-line KEY=VALUE filter would truncate a multi-line PEM).
+        start = first.index("Writing .env\n") + len("Writing .env\n")
+        end = first.index("==>\x1b[0m Rendering litellm", start)
+        end = first.rindex("\n", start, end)
+        envfile.write_text(first[start:end] + "\n")
 
         second = dry(NUFI_BOX_FAKE_OS="Darwin", NUFI_BOX_ENV=str(envfile),
                      BOX_NAME="demo", DEPARTMENTS="legal,hr")
@@ -280,3 +287,52 @@ def test_a_second_run_plans_exactly_what_the_first_one_did():
         assert "restart nufi-ingest" in second
         jwt = next(ln for ln in first.splitlines() if ln.startswith("JWT_SECRET="))
         assert jwt in second
+
+
+def _oidc_pem_block(out):
+    """Pull the (possibly multi-line) value of OIDC_PRIVATE_KEY_PEM="..." out of
+    a rendered .env. The PEM itself never contains a double quote, so the first
+    one after the opening quote is always the closing one."""
+    m = re.search(r'OIDC_PRIVATE_KEY_PEM="([\s\S]*?)"', out)
+    assert m, "OIDC_PRIVATE_KEY_PEM not found in rendered .env"
+    return m.group(1)
+
+
+def test_oidc_key_is_stored_as_real_multiline_pem_not_literal_backslash_n():
+    # Compose does not expand \n inside a double-quoted .env value — verified
+    # with `docker compose config` on 2.39.2: X="a\nb" renders as the four
+    # characters a\nb, while a real multi-line double-quoted value renders
+    # with a real newline. The installer must write the second form.
+    out = dry(NUFI_BOX_FAKE_OS="Darwin")
+    pem = _oidc_pem_block(out)
+    lines = pem.splitlines()
+    assert len(lines) > 1, "PEM must span multiple real lines"
+    assert lines[0] == "-----BEGIN PRIVATE KEY-----"
+    assert "\\n" not in pem, "no literal backslash-n allowed in the PEM"
+
+
+def test_old_one_line_oidc_key_is_healed_on_rerun_other_secrets_kept():
+    with tempfile.TemporaryDirectory() as tmp:
+        envfile = pathlib.Path(tmp) / "existing.env"
+        old_pem = "-----BEGIN PRIVATE KEY-----\\nAAAA\\n-----END PRIVATE KEY-----\\n"
+        envfile.write_text(
+            "JWT_SECRET=keepme-keepme\n"
+            f'OIDC_PRIVATE_KEY_PEM="{old_pem}"\n'
+        )
+        r = install(NUFI_BOX_FAKE_OS="Darwin", NUFI_BOX_ENV=str(envfile))
+        assert r.returncode == 0, r.stderr
+        assert "regenerated the console signing key" in r.stderr
+        assert "old one was stored on one line" in r.stderr
+
+        out = r.stdout
+        assert "JWT_SECRET=keepme-keepme" in out  # untouched secret survives
+
+        new_pem = _oidc_pem_block(out)
+        assert new_pem != old_pem
+        assert len(new_pem.splitlines()) > 1
+        assert "\\n" not in new_pem
+
+
+def test_jwks_check_is_in_the_plan():
+    out = dry(NUFI_BOX_FAKE_OS="Darwin")
+    assert "curl -fsk https://localhost:3001/.well-known/jwks.json" in out
