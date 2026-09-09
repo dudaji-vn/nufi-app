@@ -52,10 +52,17 @@ registry-up:
 # Retag+push each of the six NuFi images the box needs, from the ghcr.io/dudaji-vn
 # tag already on this machine to $(PUSH_REGISTRY). Explicit per-image lines (not
 # a shell loop) so `make -n registry-push` shows all six tag/push pairs.
+#
+# The tag changes on the way in: what a box pulls is ${NUFI_*_TAG} from its own
+# .env, which install-box.sh writes as `main` (and `box-main` for studio). The
+# copy on this machine may be tagged anything — a native arm64 build is
+# `arm64-dev` — so the source tag is a variable and the destination is the tag
+# the box will ask for. Pushing the source tag instead is what made the first
+# blank-VM install die with `nufichat-admin-panel:main: not found`.
 registry-push:
-	docker tag ghcr.io/$(OWNER)/nufichat:$(CHAT_TAG) $(PUSH_REGISTRY)/nufichat:$(CHAT_TAG) && docker push $(PUSH_REGISTRY)/nufichat:$(CHAT_TAG)
-	docker tag ghcr.io/$(OWNER)/nufichat-admin-panel:$(ADMIN_TAG) $(PUSH_REGISTRY)/nufichat-admin-panel:$(ADMIN_TAG) && docker push $(PUSH_REGISTRY)/nufichat-admin-panel:$(ADMIN_TAG)
+	docker tag ghcr.io/$(OWNER)/nufichat:$(CHAT_TAG) $(PUSH_REGISTRY)/nufichat:$(TAG) && docker push $(PUSH_REGISTRY)/nufichat:$(TAG)
+	docker tag ghcr.io/$(OWNER)/nufichat-admin-panel:$(ADMIN_TAG) $(PUSH_REGISTRY)/nufichat-admin-panel:$(TAG) && docker push $(PUSH_REGISTRY)/nufichat-admin-panel:$(TAG)
 	docker tag ghcr.io/$(OWNER)/nufi-console:$(TAG) $(PUSH_REGISTRY)/nufi-console:$(TAG) && docker push $(PUSH_REGISTRY)/nufi-console:$(TAG)
 	docker tag ghcr.io/$(OWNER)/nufi-litellm:$(TAG) $(PUSH_REGISTRY)/nufi-litellm:$(TAG) && docker push $(PUSH_REGISTRY)/nufi-litellm:$(TAG)
 	docker tag ghcr.io/$(OWNER)/nufi-ingest:$(TAG) $(PUSH_REGISTRY)/nufi-ingest:$(TAG) && docker push $(PUSH_REGISTRY)/nufi-ingest:$(TAG)
-	docker tag ghcr.io/$(OWNER)/nufi-studio:$(STUDIO_TAG) $(PUSH_REGISTRY)/nufi-studio:$(STUDIO_TAG) && docker push $(PUSH_REGISTRY)/nufi-studio:$(STUDIO_TAG)
+	docker tag ghcr.io/$(OWNER)/nufi-studio:$(STUDIO_TAG) $(PUSH_REGISTRY)/nufi-studio:box-$(TAG) && docker push $(PUSH_REGISTRY)/nufi-studio:box-$(TAG)
