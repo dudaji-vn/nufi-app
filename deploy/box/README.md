@@ -93,14 +93,27 @@ install takes about **75 seconds**. On a first install that has to download
 everything, budget about 15 minutes on an office network — most of that time
 is the download, not the install itself.
 
-On a blank Ubuntu 24.04 (4 vCPU, 8 GB), measured in a VM with the images on a
-LAN registry: Docker Engine is installed, the box re-runs itself inside the
-new `docker` group and the first image starts coming down inside the first
-**two minutes**; everything after that is the download. Budget **about 18 GB
-of free disk** for the images, the two models and the databases — that is what
-the same VM used with one department. `deploy/box/tests/vm/` holds that run as
-a recipe (`run-ubuntu-install.sh`, `lima-ubuntu.yaml`): it installs onto a
-blank machine, prints the wall time, and fails if the banner never appears.
+On a blank Ubuntu 24.04 (4 vCPU, 8 GB) — no Docker, no checkout, nothing
+mounted — the whole install was measured end to end, with the NuFi images on a
+LAN registry and everything else off the internet: **25 min 40 s from the
+first command to the banner**, one department, the `ollama-docker` profile.
+Docker Engine is installed, the box re-runs itself inside the new `docker`
+group, and the first image starts coming down inside the first **two
+minutes**; nearly all of the rest is download. A LAN mirror does not make that
+much shorter — the NuFi images come off it in a couple of minutes, while the
+third-party ones (Studio, ollama, the RAG API) still come from Docker Hub and
+ghcr.io at whatever the office network gives you.
+
+Budget **about 30 GB of free disk**. At the banner that VM had 29 GB of its
+38 GB root filesystem in use — 25 GB of images, 2 GB of volumes, the rest
+Ubuntu itself — and that is with a *single* department; the default four
+share the same images but add their own drives and collections. Memory
+settled at 5.7 GB of 8 GB while the box was answering, with no swap: 8 GB
+runs a one-department box on CPU with nothing to spare.
+
+`deploy/box/tests/vm/` holds that run as a recipe (`run-ubuntu-install.sh`,
+`lima-ubuntu.yaml`): it installs onto a blank machine, prints the wall time,
+and fails if the banner never appears.
 
 Re-running `./install-box.sh` is safe: it keeps `.env` and every answer you
 already gave, and only asks again for anything you did not set.
@@ -286,6 +299,7 @@ to `install-box.sh` and is also symlinked onto your `PATH`.
 | The banner's `https://<box-ip>:3080` is not the address other people on the LAN use | The certificate's IP is the first address `hostname -I` prints, which on a machine with two networks (two NICs, a VPN, a VM) need not be the one colleagues reach. Use `https://<box>.local:3080` — the same certificate covers the name — or give the box a single LAN address and re-run the installer. |
 | The install stops with `could not pull the images after 3 attempts` | Every image comes over the network, and the installer already retried the whole pull three times. Check the machine still has a route out (and, on a `--registry` box, that the registry machine is awake), then re-run `./install-box.sh --yes` — it keeps every answer and picks up where the download left off. |
 | You changed the admin password and wonder whether the drives will still ingest | They will. The ingest daemon learns the account's id at its first login and keeps it in its own state volume, so it never presents the password again — a password change is invisible to it. The password is read again only if that state volume is reset (`docker volume rm nufi-box_ingest-state`), so if you change it, change `ADMIN_PASSWORD` / `INGEST_PASSWORD` in `.env` too. |
+| `nufi-box logs nufi-ingest` is full of `scan failed: POST /api/auth/login -> 404: Email does not exist` | Normal during an install, and only during one. The ingest daemon starts with the rest of the stack, several minutes before the installer creates the account it logs in with, so every scan until then fails and says so. It backs off while it waits and starts ingesting on its own once the account exists — the last line will be `logged in as …`. If those errors are still arriving well after the banner, the password in `.env` and the account no longer match: see the row about changing the admin password. |
 | `nufi-box doctor` shows `!!` on `jwks.json` | The console's OIDC signing key is malformed. Re-run the installer (`./install-box.sh --yes`) — it regenerates the key and keeps every other answer and secret. |
 
 ### Installing next to something else that already holds 3080 / 3001 / 4000
