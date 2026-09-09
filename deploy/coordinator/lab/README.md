@@ -136,8 +136,8 @@ blocked DNS) but every check still passes.
 `run.sh` proves the *mesh*: two containers, both stand-ins. `day-at-home.sh`
 proves the *product*: the member is still node-a behind router-a with every
 direct path blocked, but the other end is the real box — the Lima VM
-`nufi-ubuntu` with its twelve containers, its own CA, its department drives and
-its four routines.
+`nufi-ubuntu` with its thirteen containers (twelve, plus `tailscale` once it is
+on the mesh), its own CA, its department drives and its four routines.
 
 ```
 ./day-at-home.sh              run it, then put the machine back
@@ -178,6 +178,9 @@ about the mesh.
 
 ### Observed 2026-09-09, relay forced, against the VM box
 
+The second end-to-end run, after the three defects the first one found were
+fixed or disclosed:
+
 ```
   check              result
   ------------------ ------
@@ -185,35 +188,45 @@ about the mesh.
   path               PASS (DERP)
   health-over-mesh   PASS
   login-over-mesh    PASS
-  drive-write        FAIL
-  drive-ingested     FAIL
+  drive-write        PASS
+  drive-ingested     PASS (31s)
   agent-cites-drive  PASS
   routine-weekly     FAIL
 
-  relay forced | lab up 7s | box up + joined 43s | agent 17s | routine 300s | total 465s
+  relay forced | lab up 7s | box up + joined 38s | agent 493s | routine 5s | total 586s
 ```
 
 The mesh half is unambiguous: `tailscale ping` says `via DERP` on every packet,
 `https://nufi.box.lab:3080/health` is 200 through MagicDNS with a certificate
-the box's own CA signs, the chat app takes the member's credentials, and the
-Legal agent answers a question about a file on its drive with a citation — all
-of it over the relay, from behind a NAT that forwards no UDP but STUN.
+the box's own CA signs, the chat app takes the member's credentials, a member's
+`smbclient put` onto `//nufi.box.lab/legal` lands and `nufi-ingest` embeds it in
+31 s, and the Legal agent answers a question about that drive with a citation
+(`contract.txt`, `계약검토_표준조항.txt`) — all of it over the relay, from
+behind a NAT that forwards no UDP but STUN.
 
-Two product failures the run found, neither of them the mesh's:
+The agent's 493 s is a cold `qwen2.5:0.5b` on a VM that had just booted, loading
+the model for the first question; 1 of the 4 judge verdicts passed, which is the
+model's score and not the box's. The gate here is that an answer carried a
+citation at all, and the check now prints what was cited so a PASS shows its
+evidence.
 
-- **`drive-write`** — `smbclient put` onto `//nufi.box.lab/legal` is
-  `NT_STATUS_ACCESS_DENIED`. `docker-compose.linux.yml` pins the Samba account
-  to `UID_nufi: "1000"` while `install-box.sh` creates `$NUFI_DATA_DIR/drives`
-  as whoever ran it; when those two differ the share is `read only = no` and the
-  filesystem says otherwise. The drives are readable and not writable, so
-  nothing a member does from home can reach them.
-- **`routine-weekly`** — the routine returns nothing within its budget, and the
-  box keeps generating after its client has been killed (`n_gen` climbed
-  32,019 → 32,988 in the ten seconds the script sampled it, with nothing
-  listening; hand-run earlier it passed 39,000). The script's own control
-  settles what that is not: `meeting`, the same Studio over the same mesh with
-  the same key, comes back — in 74 s here, and in 2 s on an idle box, which is
-  the abandoned run starving everything queued behind it.
+The one failure, and it is not the mesh's:
+
+- **`routine-weekly`** — `no Studio API key: pass --key or set $STUDIO_API_KEY`,
+  in 5 s. The box's `.env` had no `STUDIO_API_KEY`: `install-box.sh` rewrites
+  `.env` without it (the key is minted afterwards by `nufi-box flows install`,
+  not asked for as an answer), and on this box the routines step had not put a
+  new one back. So the run never reached the model, and it says nothing either
+  way about the limitation this check usually finds — that nothing caps how much
+  a routine generates, or stops a run whose caller has gone. `nufi-box flows
+  install` mints a fresh key and repairs it; the box README's troubleshooting
+  table carries the row.
+
+For what the first run measured, and the two defects it found that are now
+fixed (`drive-write`'s `NT_STATUS_ACCESS_DENIED` from the Samba uid mismatch,
+and an upgraded mesh box crash-looping Caddy on a stale generated
+`caddy/mesh.caddy`), see the P2 phase notes in
+`docs/2026-09-08-nufi-team-box-plan.md` §4.
 
 ## Requirements and collisions
 

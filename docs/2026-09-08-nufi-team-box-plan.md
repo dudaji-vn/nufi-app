@@ -133,13 +133,36 @@ Goal: a colleague on the office LAN, with no engineer present, does the Legal we
 Goal: from an LTE hotspot, a laptop joins, opens `chat.nufi.mesh`, asks about a file it just dropped, and runs a routine with an input.
 
 - Coordinator on the VPS (H); box as a mesh node; samba on the mesh IP and `nufi.local` (I); admin-panel Network and Drives pages (J); aliases, cookie domain, CA (K, L); routine input (G); the first four recipe flows shipped as JSON (team document Q&A, meeting summary from a pasted transcript, internal helpdesk, weekly report from a department drive).
-- Acceptance: the four-step "day at home" from §6 recorded end to end, including the case where NAT forces the DERP relay. Scripted as `deploy/coordinator/lab/day-at-home.sh`: the member is a container behind a NAT that forwards no UDP but STUN, the box is a real install in a Lima VM. Measured 2026-09-09, relay forced, **5 of 8 checks pass** — the box joins the mesh in 1 s and every packet goes `via DERP`; `https://nufi.box.lab:3080/health` is 200 through MagicDNS on a certificate the box's own CA signs; the chat app takes the member's login; and the Legal agent answers about a file on its drive with a citation in 11 s (2 of 4 judge verdicts, both failures the box's `qwen2.5:0.5b`, same as P1's).
-  Three fail, and two are defects: **a member cannot write to a department drive** (`smbclient put` → `NT_STATUS_ACCESS_DENIED`; `docker-compose.linux.yml` pins the Samba account to uid 1000 while the installer creates the drives as whoever ran it — read yes, write no on any box whose admin is not uid 1000), and **the `weekly` routine never returns** (39,000 tokens still generating after the client was killed; the same Studio over the same mesh answers `meeting` in 2 s). A third, found on the first boot: a box that joined the mesh on older code has a generated `caddy/mesh.caddy` its own Caddyfile can no longer read, and the whole front door crash-loops until `nufi-box mesh up` re-renders it. So P2's mesh half is proven and its drive-and-routine half is not; details in `.superpowers/sdd/2026-09-09-nufi-box-p2/task-9-report.md`.
+- Acceptance: the four-step "day at home" from §6 recorded end to end, including the case where NAT forces the DERP relay. Scripted as `deploy/coordinator/lab/day-at-home.sh`: the member is a container behind a NAT that forwards no UDP but STUN, the box is a real install in a Lima VM. Measured 2026-09-09, relay forced, **7 of 8 checks pass**:
+
+  | check | result |
+  |---|---|
+  | box-on-mesh | PASS — joined as `nufi` in 38 s |
+  | path | PASS (DERP) — every packet relayed |
+  | health-over-mesh | PASS — `https://nufi.box.lab:3080/health` 200 through MagicDNS, on the box's own CA |
+  | login-over-mesh | PASS — the chat app took the member's credentials |
+  | drive-write | PASS — `smbclient put` onto `//nufi.box.lab/legal` landed |
+  | drive-ingested | PASS — `nufi-ingest` embedded it in 31 s |
+  | agent-cites-drive | PASS — the Legal agent cited `contract.txt` and `계약검토_표준조항.txt` |
+  | routine-weekly | FAIL |
+
+  `relay forced | lab up 7 s | box up + joined 38 s | agent 493 s | routine 5 s | total 586 s`. The agent's 493 s is a cold `qwen2.5:0.5b` on a just-booted 8 GB VM loading the model for the first question; 1 of 4 judge verdicts passed, which is the model's score and not the box's — the check's gate is that an answer carried a citation at all, and two did.
+
+  This is the second end-to-end run. The first, before the fixes, passed 5 of 8 and found three defects. Two are fixed and are now proved on the real box through the whole harness: **a member could not write to a department drive** (`NT_STATUS_ACCESS_DENIED`; `docker-compose.linux.yml` pinned the Samba account to uid 1000 while the installer created the drives as whoever ran it) and **an upgraded mesh box lost its whole front door** (a generated `caddy/mesh.caddy` its new Caddyfile could no longer read, crash-looping Caddy on every port). The third is disclosed rather than fixed: **nothing caps how much a routine generates, or stops a run whose caller has gone** — the cap belongs on the routine's model node and this Studio build's Ollama component does not expose it, so the fix is in `apps/nufi-agent`, not here. It is P3 work, and the box's README says so where a person meets the routines.
+
+  The one FAIL in this run is not that limitation, and the distinction matters: `routine-weekly` failed in 5 s on `no Studio API key`, never reaching the model. That is a fourth defect the re-run found — `install-box.sh` rewrites `.env` without `STUDIO_API_KEY` (it is minted afterwards, not asked for), so a re-install whose Studio was not answering at the routines step leaves the box unable to call its own routines until `nufi-box flows install` is run again. Recoverable in one command, documented in the box README's troubleshooting table, unfixed on this branch.
+
+  So P2's promise — a member at home, behind a NAT that forwards no UDP, writing to a department drive and getting a cited answer out of it — is proven. Details in `.superpowers/sdd/2026-09-09-nufi-box-p2/task-9-report.md` and `task-10-report.md`.
+- Not done in P2, and deferred deliberately: the field test on a real VPS with a public DNS name and a Let's Encrypt certificate. The coordinator has only ever run against Caddy's internal CA in the Docker lab. That is **P3 Task 1**.
 
 ### P3 · A department for a week · Oct 16–29
 
 Goal: one real internal department uses the box for its actual work for five working days.
 
+- **Task 1 — the coordinator in the field.** Stand one up on the VPS asked for in P0, with a public DNS name and a Let's Encrypt certificate, and re-run the day-at-home acceptance against it from a real laptop on a real hotspot. Everything below it is proven in a Docker lab and nothing else. Runbook: `deploy/coordinator/README.md`.
+- **Two fixes that belong in `apps/nufi-agent`, not in the box.** P2 pushed both into the Studio image and neither can be closed from `deploy/box`:
+  - **Members signing in over SSO see zero routines.** Proven live: the supported path (`/enter/studio`) makes even the box admin a JIT non-superuser Studio account that lists 0 flows, while the superuser holds all four — `create_flow` hard-codes the owner and the shared folder has `user_id=NULL`. Cheapest fix: seed the flows in `_initialize_jit_user_defaults` the way variables already are. Until it lands, the department routines are an admin-only feature.
+  - **Nothing can cap a routine's generation from the flow.** The Studio Ollama component exposes no `num_predict` and its `Timeout` input is a dead knob (langchain-ollama 0.3.10's `ChatOllama` has no such field, so pydantic drops it), so `weekly` on a small model never returns and outlives its client. Two lines in `apps/nufi-agent`, plus run cancellation.
 - Scheduler (G); backup (P); the remaining recipes that do not need email.
 - Run the Legal, HR, General Affairs and Strategy weeks with real documents; write each up with its evidence, the way the eight existing scenario posts are written.
 - Acceptance: five days without an engineer touching the box; every problem in an issue; the department's own verdict recorded.

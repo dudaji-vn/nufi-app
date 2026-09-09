@@ -377,7 +377,7 @@ to `install-box.sh` and is also symlinked onto your `PATH`.
 | `revoke <name>` / `revoke --id <id>` | Remove a laptop's access to the mesh |
 | `flows install` | Put the department routines into Studio — safe to repeat |
 | `flows list` | Every flow in the box's Studio, with its id |
-| `update` / `backup` / `support` | Not built yet — see [What is not in P1](#10-what-is-not-in-p1) |
+| `update` / `backup` / `support` | Not built yet — see [What is not built yet](#10-what-is-not-built-yet) |
 
 ## 8. From home
 
@@ -387,12 +387,30 @@ mesh up` gives the box a stable mesh address and sets `BOX_MESH_HOST` in
 `.env`; `invite` refuses with a clear message if that has not happened
 yet).
 
+Nothing about the box changes when it goes on the mesh: the same URLs, the
+same certificate, the same drives, the same login. What changes is that the
+box's name now resolves from anywhere its members are, instead of only on the
+office LAN.
+
 ### Putting the box on the mesh
 
 The coordinator (`deploy/coordinator`) is a small VPS running headscale. It
 hands out one pre-auth key per machine and relays traffic when two machines
-cannot reach each other directly. Give the box its coordinator once, at
-install time:
+cannot reach each other directly. One coordinator serves every box and every
+member; it holds no documents and no models, only the list of machines allowed
+onto the mesh, which is why 1 GB of RAM is enough for it. Standing one up is
+[its own runbook](../coordinator/README.md).
+
+**Three values come off the coordinator**, and the box needs all three to be
+fully useful:
+
+| Value | Where it comes from | Without it |
+|---|---|---|
+| `MESH_SERVER_URL` | `https://<the coordinator's hostname>` | the box cannot join at all |
+| `MESH_AUTH_KEY` | minted per box on the coordinator: `headscale preauthkeys create --user <id> --tags tag:box` — single use | the box cannot join at all |
+| `MESH_API_KEY` | printed once by the coordinator's `./bootstrap.sh` | the box joins, but `invite` / `members` / `revoke` cannot call the coordinator |
+
+Give the box its coordinator once, at install time:
 
 ```bash
 ./install-box.sh --yes \
@@ -435,6 +453,13 @@ that address nor the LAN one, and it would stop answering on both.)
 `nufi-box mesh down` takes the box off the mesh and removes the mesh sites
 from Caddy; the box keeps its registration, so `mesh up` rejoins at the same
 address without a new key. To remove a *laptop* for good, use `revoke`.
+
+A coordinator with a **public** certificate (the field configuration) needs
+nothing else. A development coordinator running on its own internal CA does:
+copy that coordinator's `data/coordinator-ca.crt` onto the box and point
+`MESH_CA_FILE` in `.env` at it, or the box's `tailscale` container will not
+trust the control server and `invite` will fail on
+`unable to get local issuer certificate`.
 
 ### For the admin: inviting a laptop
 
@@ -499,6 +524,7 @@ join from a personal device instead.
 | You changed the admin password and wonder whether the drives will still ingest | They will. The ingest daemon learns the account's id at its first login and keeps it in its own state volume, so it never presents the password again — a password change is invisible to it. The password is read again only if that state volume is reset (`docker volume rm nufi-box_ingest-state`), so if you change it, change `ADMIN_PASSWORD` / `INGEST_PASSWORD` in `.env` too. |
 | `nufi-box logs nufi-ingest` is full of `scan failed: POST /api/auth/login -> 404: Email does not exist` | Normal during an install, and only during one. The ingest daemon starts with the rest of the stack, several minutes before the installer creates the account it logs in with, so every scan until then fails and says so. It backs off while it waits and starts ingesting on its own once the account exists — the last line will be `logged in as …`. If those errors are still arriving well after the banner, the password in `.env` and the account no longer match: see the row about changing the admin password. |
 | `nufi-box doctor` shows `!!` on `jwks.json` | The console's OIDC signing key is malformed. Re-run the installer (`./install-box.sh --yes`) — it regenerates the key and keeps every other answer and secret. |
+| `nufi-box flows list` (or `run_flows.py`) says `no STUDIO_API_KEY in .env — run: nufi-box flows install` | Do exactly that: `nufi-box flows install`. It mints a fresh key, writes it back to `.env` and leaves the routines that are already in Studio alone. This state is reached by re-running `./install-box.sh` on a box whose Studio was not answering when the installer got to the routines: the installer rewrites `.env` without the old key (it is minted afterwards, not asked for), and the step that would put a new one back is a warning rather than a stop. The routines in Studio are untouched throughout — only the box's own key to call them is missing. |
 | After upgrading a box that is on a mesh, nothing answers on any port and `nufi-box logs caddy` repeats `Could not import … at /etc/caddy/caddy/mesh.caddy` | `caddy/mesh.caddy` is generated by `nufi-box mesh up` and is not part of the checkout, so an upgrade that changes the Caddyfile can leave a render behind that the new Caddyfile cannot read — and Caddy then refuses *every* site, LAN and mesh. `install-box.sh`, `nufi-box up` and `nufi-box restart` now put the file back in step before starting Caddy, so upgrading through them is enough; `nufi-box doctor` names it, and `nufi-box mesh up` fixes it on its own. |
 
 ### Installing next to something else that already holds 3080 / 3001 / 4000
@@ -532,15 +558,17 @@ Nothing inside the box changes — the app still talks to itself on
 Drop `NUFI_BOX_COMPOSE_EXTRA` and run `nufi-box up` again once the other
 service is stopped, to get back onto the real ports.
 
-## 10. What is not in P1
+## 10. What is not built yet
 
-This install gives you a box on your own LAN. The following are not built
-yet:
+This install gives you a box on your own LAN, and — once it is on a
+coordinator — reachable from anywhere its members are. The following are not
+built yet:
 
-- **Remote access.** `nufi-box invite`/`members`/`revoke` (see
-  [From home](#8-from-home)) are the admin side of joining a laptop to the
-  box's mesh; bringing the box itself onto a mesh coordinator (`nufi-box
-  mesh up`) is a separate piece landing alongside this one.
+- **A coordinator proved in the field.** The mesh half of this box has been
+  run end to end against a coordinator in a Docker lab, with the relay forced
+  and both ends behind NAT. It has not been run against a coordinator on a
+  real VPS with a public DNS name and a Let's Encrypt certificate. Nothing is
+  known to be missing; it simply has not been done.
 - **`nufi-box update`.** There is no signed update bundle or rollback yet;
   upgrading means pulling new images and running the installer again.
 - **`nufi-box backup`.** There is no scheduled backup yet.
@@ -554,6 +582,12 @@ yet:
 - **A weekly report that knows which files are this week's.** `weekly` reads
   the whole drive and asks the model to respect the period; nothing filters
   the files by their modification date. See [Departments and
+  drives](#5-departments-and-drives).
+- **A cap on how much a routine generates.** Nothing bounds a routine's
+  output, and nothing stops a run whose caller has gone — on a small model
+  that means one abandoned routine can hold the model and slow the whole box.
+  The setting belongs on the routine's model node and this Studio build does
+  not expose it. The workaround, and how to spot it, are in [Departments and
   drives](#5-departments-and-drives).
 - **Routines for members.** The routines belong to the Studio superuser
   account. A member signing in through the app gets their own empty Studio;
