@@ -1,0 +1,17 @@
+{
+  // The box is a tagged node (tag:box); members' laptops are tagged
+  // tag:member by the pre-auth key `nufi-box invite` mints. "box@" is the
+  // headscale/Tailscale user-reference syntax (a bare username is a node
+  // name, "name@" is the owning user) — confirmed against v0.29.3's own
+  // ACL examples (docs/ref/policy.md), which use exactly this form
+  // ("alice@", "boss@") for a user acting as a tag owner or a policy
+  // source/destination.
+  "tagOwners": {
+    "tag:box": ["box@"],
+    "tag:member": ["box@"]
+  },
+  "acls": [
+    { "action": "accept", "src": ["tag:member"], "dst": ["tag:box:*"] },
+    { "action": "accept", "src": ["tag:box"], "dst": ["tag:member:*"] }
+  ]
+}

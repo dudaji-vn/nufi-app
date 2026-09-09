@@ -1,0 +1,68 @@
+name: nufi-coordinator
+
+networks:
+  coord:
+    driver: bridge
+
+volumes:
+  headscale-data:
+  caddy-data:
+  caddy-config:
+
+services:
+  # ---------------------------------------------------------------------------
+  # headscale: the control server. Its own HTTPS/API port (8080) is never
+  # published to the host — Caddy is the only thing that terminates TLS and
+  # reverse-proxies to it over the "coord" network. Only STUN (UDP) needs a
+  # host port, since NAT'd clients hit it directly, not through Caddy.
+  # ---------------------------------------------------------------------------
+  headscale:
+    image: ghcr.io/juanfont/headscale:v0.29.3
+    restart: unless-stopped
+    command: serve
+    volumes:
+      - ./config/headscale.yaml:/etc/headscale/config.yaml:ro
+      - ./config/policy.hujson:/etc/headscale/policy.hujson:ro
+      - headscale-data:/var/lib/headscale
+    ports:
+      - "3478:3478/udp"
+    healthcheck:
+      # The image is a "ko"-built binary with no shell, so a shell-based probe
+      # (wget/curl) cannot run here at all; `headscale health` is the Go
+      # binary's own healthcheck subcommand — confirmed present in v0.29.3
+      # (`headscale --help` lists it) and exec-form CMD does not need a shell.
+      test: ["CMD", "headscale", "health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks: [coord]
+
+  # ---------------------------------------------------------------------------
+  # TLS front. One hostname, one port; either a public Let's Encrypt
+  # certificate (TLS_MODE=acme) or Caddy's own internal CA (TLS_MODE=internal,
+  # exported to data/coordinator-ca.crt by bootstrap.sh for the lab/VM to
+  # trust). DERP-over-HTTPS shares this reverse proxy with the control API —
+  # Caddy forwards the Upgrade header like any other proxied hop.
+  # ---------------------------------------------------------------------------
+  caddy:
+    image: caddy:2.10.0-alpine
+    restart: unless-stopped
+    environment:
+      MESH_SERVER_HOST: "${MESH_SERVER_HOST}"
+      TLS_MODE: "${TLS_MODE:-acme}"
+      ACME_EMAIL: "${ACME_EMAIL:-}"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile.rendered:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:80/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks: [coord]

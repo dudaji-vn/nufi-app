@@ -1,0 +1,27 @@
+# Template for Caddy's front door to the coordinator. bootstrap.sh renders
+# this with `sed` into Caddyfile.rendered (gitignored) — the two `@...@`
+# placeholders are the only lines that differ between TLS_MODE=acme and
+# TLS_MODE=internal; {$MESH_SERVER_HOST} and {$ACME_EMAIL} are left as Caddy
+# env-var placeholders and resolved by Caddy itself at container start from
+# the `caddy` service's `environment:` block.
+{
+	auto_https disable_redirects
+	@GLOBAL_TLS_OPT@
+}
+
+# The lab/CI health probe and (TLS_MODE=acme) Let's Encrypt's HTTP-01
+# challenge, which Caddy's ACME machinery answers on :80 automatically before
+# any user-defined route is reached — this block never sees it.
+:80 {
+	handle /healthz {
+		respond "ok" 200
+	}
+}
+
+# headscale's control-plane API and the embedded DERP-over-HTTPS upgrade
+# share this one reverse proxy; Caddy forwards the Upgrade/Connection headers
+# to a proxied backend by default, so DERP's upgrade needs no extra config.
+{$MESH_SERVER_HOST} {
+	@SITE_TLS@
+	reverse_proxy headscale:8080
+}
