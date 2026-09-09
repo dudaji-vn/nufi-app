@@ -428,3 +428,74 @@ def test_a_mesh_ca_file_that_is_not_there_is_ignored_not_fatal(tmp_path, fake_he
     r = cli("members", env={"NUFI_BOX_ENV": str(envf)})
     assert r.returncode == 0, r.stderr
     assert "bob" in r.stdout
+
+
+# --- secrets never reach argv ------------------------------------------------
+#
+# lib/flows.sh:12-15 states the rule and cites THIS file as its precedent, and
+# `test_flows_install_never_puts_the_key_in_an_argument` pins the flows half.
+# These two are the mesh half, and they are not hypothetical: both keys used to
+# be handed to python3 as arguments — the coordinator API key to build curl's
+# config file, the freshly minted pre-auth key to render the join file. On
+# Linux /proc/<pid>/cmdline is world-readable, so any local user polling `ps`
+# during `nufi-box invite` or `members` read a credential that lists and
+# deletes every node on the coordinator.
+
+
+def argv_recorder(tmp_path):
+    """A `python3` on PATH that records the argv it is handed, then execs the
+    real one — what lands in argv is exactly what `ps` shows another user."""
+    import sys
+    bin_ = tmp_path / "bin"
+    bin_.mkdir()
+    log = tmp_path / "python3.argv"
+    shim = bin_ / "python3"
+    shim.write_text('#!/bin/sh\nprintf \'%s\\n\' "$@" >> "{log}"\nexec {py} "$@"\n'
+                    .format(log=log, py=sys.executable))
+    shim.chmod(0o755)
+    return bin_, log
+
+
+def test_the_coordinator_api_key_never_reaches_argv(tmp_path, fake_headscale):
+    secret = "hs-api-key-that-must-not-reach-ps"
+    fake_headscale.valid_key = secret
+    bin_, log = argv_recorder(tmp_path)
+    envf, _ = make_env(tmp_path, fake_headscale, MESH_API_KEY=secret)
+    r = cli("members", env={"NUFI_BOX_ENV": str(envf),
+                            "PATH": "%s:%s" % (bin_, os.environ["PATH"])})
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "bob" in r.stdout, "the call still has to work with the key in the environment"
+    assert log.exists(), "the recording shim was never used — check PATH"
+    assert secret not in log.read_text()
+
+
+def test_the_minted_preauth_key_never_reaches_argv(tmp_path, fake_headscale):
+    secret = "tskey-auth-that-must-not-reach-ps"
+    fake_headscale.preauth_key = secret
+    bin_, log = argv_recorder(tmp_path)
+    envf, data_dir = make_env(tmp_path, fake_headscale)
+    r = cli("invite", "alice", "--os", "macos",
+            env={"NUFI_BOX_ENV": str(envf), "PATH": "%s:%s" % (bin_, os.environ["PATH"])})
+    assert r.returncode == 0, r.stdout + r.stderr
+    # It reached the join file, which is the only place it belongs...
+    assert secret in (data_dir / "invites" / "nufi-join-alice.command").read_text()
+    # ...and no argument on the way there.
+    assert log.exists(), "the recording shim was never used — check PATH"
+    assert secret not in log.read_text()
+
+
+def test_a_join_file_is_never_rendered_without_a_key(tmp_path):
+    """The renderer takes @AUTH_KEY@ from the environment, so an unset one has
+    to be fatal: a join file with an empty key is a file that cannot work and
+    does not say why."""
+    script = (
+        'set -e\nHERE=%s\n. "$HERE/lib/mesh.sh"\n'
+        'mesh_render_template "$HERE/lib/join-templates/linux.sh" %s MEMBER=x\n'
+        % (BOX, tmp_path / "join.sh")
+    )
+    e = dict(os.environ)
+    e.pop("MESH_JOIN_AUTH_KEY", None)
+    r = subprocess.run(["/bin/bash", "-c", script], capture_output=True, text=True, env=e)
+    assert r.returncode != 0
+    assert "MESH_JOIN_AUTH_KEY" in r.stderr
+    assert not (tmp_path / "join.sh").exists()

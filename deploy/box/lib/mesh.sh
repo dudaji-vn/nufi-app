@@ -25,6 +25,15 @@ MESH_HS_USER="${MESH_HS_USER:-box}"
 # mode 0600, owner-only) is not. `-K` on the file path achieves the same
 # thing the review's suggested `-K -` (stdin) would, without depending on
 # how the caller's stdin happens to be wired.
+#
+# The same rule has to hold for the python3 that WRITES that config file, and
+# for a while it did not: the key was its `sys.argv[3]`, so on Linux, where
+# /proc/<pid>/cmdline is world-readable, any local user polling `ps` during
+# `nufi-box invite` or `members` saw a credential that can list and delete
+# every node on the coordinator. It travels in the environment instead —
+# /proc/<pid>/environ is readable only by the process's own owner — assigned
+# on the command itself rather than trusted to have been exported, so this
+# function is correct however it was sourced.
 mesh_api() {
   local method="$1" path="$2" data="${3:-}" tmp cfg code ca=""
   [ -n "${MESH_SERVER_URL:-}" ] || { echo "MESH_SERVER_URL is not set in .env" >&2; exit 2; }
@@ -39,13 +48,14 @@ mesh_api() {
   [ -n "${MESH_CA_FILE:-}" ] && [ -f "${MESH_CA_FILE}" ] && ca="$MESH_CA_FILE"
   tmp="$(mktemp)"
   cfg="$(mktemp)"
-  python3 -c '
-import sys
+  MESH_API_KEY="$MESH_API_KEY" python3 -c '
+import os, sys
 
 def q(s):
     return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
-method, url, key, data, out, ca = sys.argv[1:7]
+method, url, data, out, ca = sys.argv[1:6]
+key = os.environ["MESH_API_KEY"]   # never argv: /proc/<pid>/cmdline is world-readable
 lines = [
     "silent", "show-error",
     "max-time = 20",
@@ -61,7 +71,7 @@ if data:
     lines.append("header = " + q("Content-Type: application/json"))
     lines.append("data = " + q(data))
 sys.stdout.write("\n".join(lines) + "\n")
-' "$method" "${MESH_SERVER_URL}${path}" "$MESH_API_KEY" "$data" "$tmp" "$ca" > "$cfg"
+' "$method" "${MESH_SERVER_URL}${path}" "$data" "$tmp" "$ca" > "$cfg"
   code="$(curl -K "$cfg")"
   rm -f "$cfg"
   case "$code" in
@@ -273,15 +283,27 @@ mesh_ca_b64() {
 # removing any stale file at that path) rather than written with the
 # process's default umask and `chmod`ed afterward — the latter leaves a
 # window, however short, where the file exists at a wider mode.
+#
+# @AUTH_KEY@ is the one substitution that is NOT a KEY=VALUE argument. It is
+# the pre-auth key just minted for this invite, and argv is world-readable on
+# Linux through /proc/<pid>/cmdline, so it comes from MESH_JOIN_AUTH_KEY in
+# the environment (which is not) — the same rule mesh_api follows for the
+# coordinator's API key and lib/flows.sh for the Studio one. Unset is fatal:
+# a join file rendered with an empty key is a file that cannot work and does
+# not say why.
 mesh_render_template() {
   local template="$1" out="$2"
   shift 2
   python3 -c '
 import os, sys
 template, out = sys.argv[1], sys.argv[2]
-subs = {}
+if "MESH_JOIN_AUTH_KEY" not in os.environ:
+    sys.exit("mesh: MESH_JOIN_AUTH_KEY is not in the environment — the join file would have no key")
+subs = {"AUTH_KEY": os.environ["MESH_JOIN_AUTH_KEY"]}
 for kv in sys.argv[3:]:
     k, v = kv.split("=", 1)
+    if k == "AUTH_KEY":
+        sys.exit("mesh: the auth key must not be passed as an argument — it is readable through ps")
     subs[k] = v
 with open(template) as f:
     content = f.read()
@@ -312,8 +334,8 @@ mesh_invite() {
   drives_block="$(mesh_drives_block "$os" "$BOX_MESH_HOST" "$drives")"
   mkdir -p "$data_dir/invites"
   out="$data_dir/invites/nufi-join-$name.$ext"
-  mesh_render_template "$template" "$out" \
-    "MEMBER=$name" "MESH_SERVER_URL=$MESH_SERVER_URL" "AUTH_KEY=$key" \
+  MESH_JOIN_AUTH_KEY="$key" mesh_render_template "$template" "$out" \
+    "MEMBER=$name" "MESH_SERVER_URL=$MESH_SERVER_URL" \
     "BOX_MESH_HOST=$BOX_MESH_HOST" "CA_B64=$ca_b64" "DRIVES=$drives_block"
   echo "Wrote $out"
   echo "Send it to $name (email or chat — not a public link): \"Run this file, then open https://${BOX_MESH_HOST}:3080 — the key inside works once.\""
