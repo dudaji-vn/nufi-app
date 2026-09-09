@@ -222,8 +222,12 @@ and neither should be quoted as a measurement:
   `nufi-ingest`'s container log survives a restart and the check greps the whole
   of it (`day-at-home.sh:473`), so on a box that has already ingested
   `contract.txt` this row cannot fail. The honest ingest figure is the previous
-  run's **31 s**, which was that file's first embedding. The check wants
-  tightening: it should consider only lines written after the `put`.
+  run's **31 s**, which was that file's first embedding. Filtering the log by
+  time would not fix it — the daemon deduplicates by SHA-256 and correctly
+  writes no new line for an unchanged file, so the row would start failing
+  spuriously on exactly the box it is meant to fix. The probe has to be unique
+  per run: `PROBE` and its heredoc (`day-at-home.sh:86`, `:444`) are both
+  fixed today.
 
 The agent's 513 s is a cold `qwen2.5:0.5b` on a VM whose model had not been
 loaded since its last restart; 1 of the 4 judge verdicts passed, which is the
@@ -234,8 +238,12 @@ shows `n_gen` climbing past **40,000 tokens** with
 `slot context shift, n_keep = 4, n_discard = 2045`. That is the uncapped
 generation, watched live in the agent path, where — unlike the routine check —
 nothing in the harness bounds it (`run_box.py`'s `STREAM_TIMEOUT` is a read
-timeout, and a stream that keeps arriving never trips it). It stopped on its
-own this time and the run carried on.
+timeout, and a stream that keeps arriving never trips it). The box does bound
+it, though, one layer down: chat and agents reach the model through LiteLLM,
+whose `request_timeout: 600` would have cut this generation, which finished at
+roughly 490 s. The path with no backstop is the routines' — they talk to Ollama
+directly and bypass the gateway. It stopped on its own this time and the run
+carried on.
 
 For what the earlier runs measured — the first passed 5 of 8 and the second 7
 of 8 — and the four defects between them (`drive-write`'s
