@@ -70,7 +70,11 @@ Choosing an inference profile asks one or two follow-up questions (the model
 name, and for `remote`/`cloud` a base URL and API key).
 
 The installer then writes `.env`, starts the stack, pulls the model, creates
-the admin login, and prints a banner:
+the admin login, and prints a banner. `.env` is created mode **0600** before a
+byte of it exists and is kept there by every later write: it holds the admin
+password, the database passwords, the JWT secrets, the console's signing key,
+the Samba password, the box's Studio key, and — on a mesh box — the
+coordinator API key, which is a credential for every box on that coordinator.
 
 ```
   NuFi box "nufi" is up.

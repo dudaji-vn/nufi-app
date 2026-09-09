@@ -719,3 +719,77 @@ def test_the_banner_says_where_the_routines_are():
     # the installed routines are not in it. Say so on the banner rather than
     # letting the first member discover an empty workspace.
     assert "own empty Studio" in out
+
+
+# --- .env's mode is decided, not inherited from the umask --------------------
+
+
+def _install_far_enough_to_write_env(tmp, umask="022", seed_mode=None):
+    """Run the installer for real until it dies at the image pull.
+
+    .env is rendered before the pull, so this is the cheapest way to get the
+    file an installed box would have — the same trick
+    test_a_failing_image_pull_is_retried_three_times_then_explained uses.
+    """
+    import shutil
+    box = pathlib.Path(tmp) / "box"
+    shutil.copytree(BOX, box, ignore=shutil.ignore_patterns("data", ".env", "tests"))
+    envfile = box / ".env"
+    if seed_mode is not None:
+        envfile.write_text("JWT_SECRET=from-an-older-release\n")
+        envfile.chmod(seed_mode)
+    bin_ = pathlib.Path(tmp) / "bin"
+    bin_.mkdir()
+    for name, body in (("docker", 'case "$*" in\n  *" pull") exit 1 ;;\n  *) exit 0 ;;\nesac\n'),
+                       ("sudo", "exit 0\n"), ("curl", "exit 0\n")):
+        p = bin_ / name
+        p.write_text("#!/bin/sh\n" + body)
+        p.chmod(0o755)
+    e = dict(os.environ, PATH=f"{bin_}:/usr/bin:/bin", NUFI_BOX_FAKE_OS="Linux",
+             NUFI_DATA_DIR=str(pathlib.Path(tmp) / "data"), NUFI_BOX_ENV=str(envfile))
+    r = subprocess.run(
+        [BASH, "-c", 'umask %s; exec "$@"' % umask, "_",
+         BASH, str(box / "install-box.sh"), "--yes"],
+        cwd=box, env=e, capture_output=True, text=True)
+    assert envfile.exists(), r.stdout + r.stderr
+    return envfile, r
+
+
+def test_env_is_owner_only_from_the_first_write():
+    """It holds ADMIN_PASSWORD, MONGO_PASSWORD, the JWT secrets, the OIDC
+    signing key, SAMBA_PASSWORD, STUDIO_API_KEY — and MESH_API_KEY, which
+    controls every box on the coordinator. `render_env > .env` neither chmod'd
+    nor umask'd, so at a normal 022 the file was 0644. The mode it ended up
+    with was accidental rather than absent: envfile_set writes through mktemp +
+    mv, so the first `mesh up` or `flows install` tightened it silently and a
+    box where `flows install` warned and no mesh was joined kept 0644.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        envfile, _ = _install_far_enough_to_write_env(tmp, umask="022")
+        assert "ADMIN_PASSWORD=" in envfile.read_text()
+        assert oct(envfile.stat().st_mode)[-3:] == "600"
+
+
+def test_a_re_install_tightens_an_env_an_older_release_left_readable():
+    with tempfile.TemporaryDirectory() as tmp:
+        envfile, _ = _install_far_enough_to_write_env(tmp, umask="022", seed_mode=0o644)
+        assert oct(envfile.stat().st_mode)[-3:] == "600"
+        assert "JWT_SECRET=from-an-older-release" in envfile.read_text(), \
+            "tightening the mode must not cost the box its secrets"
+
+
+def test_envfile_set_leaves_the_file_owner_only_too():
+    """The other writer of .env. It gets there through mktemp + mv rather than
+    a chmod, so a change to an in-place rewrite would widen the file back
+    without anything saying so."""
+    with tempfile.TemporaryDirectory() as tmp:
+        envf = pathlib.Path(tmp) / ".env"
+        envf.write_text("A=1\n")
+        envf.chmod(0o644)
+        r = subprocess.run(
+            [BASH, "-c", 'umask 022; . "$1"; envfile_set "$2" STUDIO_API_KEY sk-x',
+             "_", str(BOX / "lib" / "envfile.sh"), str(envf)],
+            capture_output=True, text=True)
+        assert r.returncode == 0, r.stderr
+        assert "STUDIO_API_KEY=sk-x" in envf.read_text()
+        assert oct(envf.stat().st_mode)[-3:] == "600"

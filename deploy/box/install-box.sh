@@ -395,7 +395,26 @@ EOF
     printf 'SAMBA_VOLUME_CONFIG_%s="[%s]; path=/shares/%s; valid users = nufi; guest ok = no; read only = no; browseable = yes"\n' "$key" "$d" "$d"
   done
 }
-if [ "$DRY" = 1 ]; then render_env; else render_env > "$NUFI_BOX_ENV"; ok ".env written"; fi
+# .env holds every secret this box has: ADMIN_PASSWORD, MONGO_PASSWORD, the
+# JWT secrets, the OIDC signing key, SAMBA_PASSWORD, STUDIO_API_KEY, and
+# MESH_API_KEY — which is a credential for the coordinator, i.e. for every box
+# on it. A plain `render_env > "$NUFI_BOX_ENV"` gave the file whatever the
+# umask allowed, 0644 at the usual 022. The mode it ended up with was
+# accidental rather than absent: envfile_set writes through mktemp + mv, so the
+# first `mesh up` or `flows install` silently tightened it to 0600 and a box
+# where `flows install` warned and no mesh was joined kept 0644 forever.
+# Create it empty at 0600 first (and chmod, for the file a previous release
+# left at 0644), so no byte of it ever exists at a wider mode. Everything else
+# on this branch already works this way: join files 0600 from the first byte,
+# curl config files 0600, the lab's key files under umask 077.
+if [ "$DRY" = 1 ]; then
+  render_env
+else
+  ( umask 077; : > "$NUFI_BOX_ENV" ) || die "cannot write $NUFI_BOX_ENV"
+  chmod 600 "$NUFI_BOX_ENV" || warn "could not set $NUFI_BOX_ENV to 0600; it holds every secret this box has"
+  render_env > "$NUFI_BOX_ENV"
+  ok ".env written (0600 — it holds every secret this box has)"
+fi
 
 # ---------- registry trust ---------------------------------------------------
 # A LAN registry (`--registry 192.168.1.26:5000`) has no TLS certificate, so
