@@ -336,3 +336,75 @@ def test_old_one_line_oidc_key_is_healed_on_rerun_other_secrets_kept():
 def test_jwks_check_is_in_the_plan():
     out = dry(NUFI_BOX_FAKE_OS="Darwin")
     assert "curl -fsk https://localhost:3001/.well-known/jwks.json" in out
+
+
+# --- a blank machine: Docker installed by us, group not active yet ------------
+# These two are the only tests that run the installer for real (not --dry-run).
+# They stop inside the prerequisites block, before anything is written, because
+# a stub PATH stands in for curl / sudo / sg / docker.
+
+def _blank_linux_box(tmp, daemon="denied"):
+    """A PATH where docker is absent until `curl … get.docker.com | sh` runs,
+    and the docker it then installs cannot reach the daemon — the state a real
+    `usermod -aG docker` leaves this shell in."""
+    bin_ = pathlib.Path(tmp) / "bin"
+    bin_.mkdir()
+
+    def stub(name, body):
+        p = bin_ / name
+        p.write_text("#!/bin/sh\n" + body)
+        p.chmod(0o755)
+        return p
+
+    # What get.docker.com's script does, in miniature: put `docker` on PATH.
+    (bin_ / "docker.installer").write_text(f"cp {bin_}/docker.new {bin_}/docker\n")
+    stub("docker.new",
+         'case "$1 $2" in\n'
+         '  "compose version") exit 0 ;;\n'          # never opens the socket
+         + ('  *) echo "permission denied while trying to connect to the docker API '
+            'at unix:///var/run/docker.sock" >&2; exit 1 ;;\n'
+            if daemon == "denied" else '  *) exit 0 ;;\n')
+         + "esac\n")
+    stub("curl", f'case "$*" in *get.docker.com*) cat {bin_}/docker.installer ;; esac\nexit 0\n')
+    stub("sudo", 'exit 0\n')
+    stub("sg", f'echo "$@" > {bin_.parent}/sg.args\nexit 0\n')
+    return bin_
+
+
+def _install_on_blank_linux(tmp, **env):
+    bin_ = _blank_linux_box(tmp, daemon=env.pop("daemon", "denied"))
+    e = dict(os.environ,
+             PATH=f"{bin_}:/usr/bin:/bin",
+             NUFI_BOX_FAKE_OS="Linux",
+             NUFI_BOX_ENV=str(pathlib.Path(tmp) / "absent.env"),
+             **env)
+    r = subprocess.run([BASH, str(BOX / "install-box.sh"), "--yes", "--registry", "10.0.0.5:5000"],
+                       cwd=BOX, env=e, capture_output=True, text=True)
+    return r, pathlib.Path(tmp) / "sg.args"
+
+
+def test_fresh_docker_install_re_execs_inside_the_docker_group():
+    # usermod -aG docker only applies to the next login, so the shell that just
+    # installed Docker cannot reach the socket. Without the re-exec the install
+    # ran on for minutes and then died at `docker compose pull`.
+    with tempfile.TemporaryDirectory() as tmp:
+        r, sg_args = _install_on_blank_linux(tmp)
+        assert r.returncode == 0, r.stderr
+        assert "Re-running inside the new docker group" in r.stdout
+        assert sg_args.exists(), "the installer never re-execed"
+        args = sg_args.read_text()
+        assert args.startswith("docker -c ")
+        assert "install-box.sh" in args
+        assert "--yes" in args and "--registry 10.0.0.5:5000" in args
+        assert "Writing .env" not in r.stdout, "re-exec must replace this run, not continue it"
+
+
+def test_the_re_exec_happens_once_then_says_what_to_do():
+    # Second time round (NUFI_BOX_REEXEC=1) the group really should be active.
+    # If it still is not, say so here rather than at the image pull.
+    with tempfile.TemporaryDirectory() as tmp:
+        r, sg_args = _install_on_blank_linux(tmp, NUFI_BOX_REEXEC="1")
+        assert r.returncode != 0
+        assert not sg_args.exists(), "must not re-exec twice"
+        assert "cannot reach the Docker daemon" in r.stderr
+        assert "newgrp docker" in r.stderr

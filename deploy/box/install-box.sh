@@ -34,6 +34,11 @@ die()  { printf '\033[1;31m xx\033[0m %s\n' "$*" >&2; exit 1; }
 run()  { if [ "$DRY" = 1 ]; then printf '  $ %s\n' "$*"; else "$@"; fi; }
 
 YES=0; DRY=0; SRC=""; NO_PULL=0; NO_TRUST=0
+# The flags this run was given, requoted, so the docker-group re-exec in the
+# Linux prerequisites below can repeat this command exactly. Captured here
+# because the loop that follows consumes "$@".
+NUFI_BOX_FLAGS=""
+for _a in "$@"; do NUFI_BOX_FLAGS="$NUFI_BOX_FLAGS $(printf '%q' "$_a")"; done
 while [ $# -gt 0 ]; do
   case "$1" in
     --yes) YES=1 ;;
@@ -89,6 +94,19 @@ if [ "$DRY" = 0 ]; then
         say "Installing Docker Engine"
         curl -fsSL https://get.docker.com | sh
         sudo usermod -aG docker "$USER" || true
+        # A group added with usermod only applies to new logins, so this shell
+        # still cannot open /var/run/docker.sock. `docker compose version`
+        # never touches the daemon and passes anyway, so the install used to
+        # get all the way to `docker compose pull` before dying with
+        # "permission denied while trying to connect to the docker API" — on a
+        # blank machine, i.e. on every first install. Re-exec once inside the
+        # new group instead; `sg` keeps the environment, so every answer the
+        # caller passed on the command line survives.
+        if ! docker info >/dev/null 2>&1 && [ "${NUFI_BOX_REEXEC:-0}" != "1" ] && have sg; then
+          say "Re-running inside the new docker group"
+          export NUFI_BOX_REEXEC=1
+          exec sg docker -c "$(printf '%q' "$HERE/${0##*/}")$NUFI_BOX_FLAGS"
+        fi
       fi
       if has_nvidia && ! dpkg -s nvidia-container-toolkit >/dev/null 2>&1; then
         say "Installing the NVIDIA container toolkit"
@@ -103,6 +121,10 @@ if [ "$DRY" = 0 ]; then
     *) die "unsupported OS: $OS (Windows: run this inside WSL2 Ubuntu)" ;;
   esac
   docker compose version >/dev/null 2>&1 || die "docker compose v2 is required"
+  # Neither `docker compose version` nor `docker --version` opens the socket,
+  # so without this the first thing to notice an unreachable daemon is the
+  # image pull, minutes in, in Docker's own words.
+  docker info >/dev/null 2>&1 || die "cannot reach the Docker daemon as $USER: start it (sudo systemctl start docker), or join the docker group and open a new shell (sudo usermod -aG docker $USER; newgrp docker)"
   if [ "$OS" = "Darwin" ]; then
     mem=$(docker info --format '{{.MemTotal}}' 2>/dev/null || echo 0)
     [ "$mem" -lt 11000000000 ] && warn "Docker VM has $((mem/1073741824)) GB; give it 12 GB (Docker Desktop → Settings → Resources) or use OrbStack"
