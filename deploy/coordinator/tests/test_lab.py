@@ -408,6 +408,105 @@ def test_day_at_home_help_lists_the_checks_it_gates_on():
 
 
 # ---------------------------------------------------------------------------
+# The two predicates day-at-home.sh's verdicts hang on
+#
+# Both are single-line assignments in the script, extracted verbatim here and
+# run for real, so what these tests pin is the string the harness uses and not
+# a copy of it. Both replaced substring tests that could not fail:
+# `grep -q 'sources: .*[^ ]'` matched run_box.py's literal `sources: none`, and
+# `*weekly*ok*` matched any output containing "broken".
+# ---------------------------------------------------------------------------
+
+
+def assignment(name):
+    """The `name=...` line as day-at-home.sh really writes it."""
+    for line in (LAB / "day-at-home.sh").read_text().splitlines():
+        if line.startswith(f"{name}="):
+            return line
+    raise AssertionError(f"day-at-home.sh no longer defines {name} on one line")
+
+
+def cited(tmp_path, body):
+    """Run the shipped CITED_CMD against a box.md fixture."""
+    md = tmp_path / "box.md"
+    md.write_text(body)
+    script = assignment("CITED_CMD") + '\nsh -c "$CITED_CMD" _ "$1"\n'
+    return subprocess.run([BASH, "-c", script, "_", str(md)], capture_output=True, text=True)
+
+
+# run_box.py renders `  - sources: {', '.join(q['sources']) or 'none'}`, so
+# these are the two shapes it can produce.
+CITED = "- **Q** → PASS (2.0 s)\n  - answer\n  - sources: 계약검토_표준조항.txt\n"
+UNCITED = "- **Q** → PASS (2.0 s)\n  - answer\n  - sources: none\n"
+
+
+def test_an_answer_that_names_a_file_counts_as_a_citation(tmp_path):
+    r = cited(tmp_path, CITED)
+    assert r.returncode == 0
+    assert "계약검토_표준조항.txt" in r.stdout
+
+
+def test_sources_none_is_not_a_citation(tmp_path):
+    # The Critical this replaced: `grep -q 'sources: .*[^ ]'` matches this file,
+    # so the one check that proves a drive document reached the agent used to
+    # pass on an answer that cited nothing at all.
+    r = cited(tmp_path, UNCITED)
+    assert r.returncode != 0, "an answer whose only sources line is 'none' must not count"
+    assert r.stdout.strip() == ""
+
+
+def test_one_real_citation_among_uncited_answers_is_enough(tmp_path):
+    # The recorded run's shape: four questions, two of which cited the file.
+    r = cited(tmp_path, UNCITED + CITED + CITED + UNCITED)
+    assert r.returncode == 0
+    assert r.stdout.count("계약검토_표준조항.txt") == 2
+    assert "none" not in r.stdout
+
+
+def test_a_missing_evidence_file_is_not_a_citation(tmp_path):
+    md = tmp_path / "box.md"
+    script = assignment("CITED_CMD") + '\nsh -c "$CITED_CMD" _ "$1"\n'
+    r = subprocess.run([BASH, "-c", script, "_", str(md)], capture_output=True, text=True)
+    assert r.returncode != 0
+    assert r.stdout.strip() == ""
+
+
+def routine_matches(var, flow, line):
+    """Run the shipped ROUTINE_*_RE against one line of run_flows.py output."""
+    script = (
+        assignment(var)
+        + f'\nprintf \'%s\\n\' "$1" | grep -qE "${{{var}/FLOW/{flow}}}"\n'
+    )
+    return subprocess.run([BASH, "-c", script, "_", line], capture_output=True, text=True).returncode == 0
+
+
+# run_flows.py prints f"{name:9} {'DRIFT' if drift else 'ok   '} {secs:4.0f}s".
+def test_a_finished_flow_reads_as_a_pass():
+    assert routine_matches("ROUTINE_LINE_RE", "weekly", "weekly    ok      74s")
+    assert routine_matches("ROUTINE_LINE_RE", "meeting", "meeting   ok       7s")
+
+
+def test_a_drifted_flow_is_still_an_answer_and_is_flagged():
+    assert routine_matches("ROUTINE_LINE_RE", "weekly", "weekly    DRIFT    12s")
+    assert routine_matches("ROUTINE_DRIFT_RE", "weekly", "weekly    DRIFT    12s")
+    assert not routine_matches("ROUTINE_DRIFT_RE", "weekly", "weekly    ok      74s")
+
+
+def test_error_text_containing_ok_is_not_a_pass():
+    # The Important this replaced: `*weekly*ok*` matches, because "broken"
+    # contains "ok".
+    assert not routine_matches("ROUTINE_LINE_RE", "weekly", "weekly result: broken pipe, no output")
+    assert not routine_matches("ROUTINE_LINE_RE", "weekly", "weekly    FAIL HTTP 500  {'detail': 'broken'}")
+    assert not routine_matches("ROUTINE_LINE_RE", "weekly", "NO ANSWER within 300s")
+    assert not routine_matches("ROUTINE_LINE_RE", "weekly", "1/1 clean")
+
+
+def test_another_flows_line_is_not_this_flows_answer():
+    # The control runs `meeting`; its line must not mark `weekly` as answered.
+    assert not routine_matches("ROUTINE_LINE_RE", "weekly", "meeting   ok       7s")
+
+
+# ---------------------------------------------------------------------------
 # Secrets
 # ---------------------------------------------------------------------------
 

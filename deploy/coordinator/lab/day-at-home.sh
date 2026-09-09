@@ -85,6 +85,28 @@ BOX_NODE=nufi
 SHARE=legal
 PROBE=contract.txt
 
+# Two one-line predicates that decide two of the eight checks. They live here,
+# each on a single line with a stable name, because ../tests/test_lab.py
+# extracts them from this file and runs them against fixtures — so what CI
+# pins is the string this script really uses, not a copy of it that can drift.
+#
+# CITED_CMD    reads box.md ($1) and prints the citation lines that name a
+#              file; prints nothing (and exits non-zero) when every line is
+#              `sources: none`, which is what run_box.py writes for an answer
+#              with no citation.
+# ROUTINE_LINE_RE / ROUTINE_DRIFT_RE
+#              match the line run_flows.py prints for a finished flow --
+#              `f"{name:9} {'DRIFT' if drift else 'ok   '} {secs:4.0f}s"` --
+#              as a whole shape. A substring test cannot be used: `ok` occurs
+#              inside `broken`, so `weekly result: broken pipe, no output`
+#              would read as a pass. FLOW is replaced with the flow's id.
+CITED_CMD='grep "sources:" "$1" 2>/dev/null | grep -v "sources: none$"'
+ROUTINE_LINE_RE='^FLOW +(ok|DRIFT) +[0-9]+s *$'
+ROUTINE_DRIFT_RE='^FLOW +DRIFT +[0-9]+s *$'
+
+routine_said()    { printf '%s\n' "$2" | grep -qE "${ROUTINE_LINE_RE/FLOW/$1}"; }
+routine_drifted() { printf '%s\n' "$2" | grep -qE "${ROUTINE_DRIFT_RE/FLOW/$1}"; }
+
 R_JOIN=FAIL; R_PATH=FAIL; R_HTTP=FAIL; R_LOGIN=FAIL
 R_WRITE=FAIL; R_INGEST=FAIL; R_AGENT=FAIL; R_ROUTINE=FAIL
 OBSERVED_PATH="-"
@@ -477,10 +499,19 @@ python3 /lab/scenarios/run_box.py \
   --cacert /lab/keys/nufi-box-ca.crt --timeout 300 \
   --out /tmp/home/evidence' 2>&1 | sed 's/^/    /'
 T_AGENT=$(( $(date +%s) - t_a ))
-if DC exec -T tools-a sh -c "grep -q 'sources: .*[^ ]' /tmp/home/evidence/box.md" >/dev/null 2>&1; then
+# `$CITED_CMD` is the whole verdict, so it is worth being exact about. run_box.py
+# renders one `  - sources: ...` line per question and writes the literal
+# `sources: none` when an answer carried no citation at all
+# (deploy/platform/scenarios/run_box.py: `', '.join(q['sources']) or 'none'`).
+# A check that merely looks for a non-empty `sources:` line therefore passes on
+# the exact case it exists to catch. Drop the `none` lines first and require
+# something to be left.
+cited="$(DC exec -T tools-a sh -c "$CITED_CMD" _ /tmp/home/evidence/box.md 2>/dev/null)"
+if [ -n "$cited" ]; then
   R_AGENT=PASS; ok "an answer carried a citation — the drive reached the agent (${T_AGENT}s)"
+  printf '%s\n' "$cited" | sed 's/^ *- /    /'
 else
-  warn "not one answer carried a citation; the agent never read the drive"
+  warn "not one answer cited a file — every 'sources:' line is 'none', so the agent never read the drive"
 fi
 
 # --- and a routine ------------------------------------------------------------
@@ -518,40 +549,45 @@ T_ROUTINE=$(( $(date +%s) - t_w ))
 printf '%s\n' "$routine_out" | sed 's/^/    /'
 # `ok` or `DRIFT` both mean Studio ran the flow and gave back text over the
 # mesh; DRIFT is the model finishing a Korean sentence in Chinese, which is the
-# model's problem and is reported, not hidden.
-case "$routine_out" in
-  *"$ROUTINE"*ok*|*"$ROUTINE"*DRIFT*) R_ROUTINE=PASS; ok "the routine answered over the mesh (${T_ROUTINE}s)" ;;
-  *"NO ANSWER"*)
-    warn "$ROUTINE returned nothing in ${ROUTINE_BUDGET}s"
-    # Two very different reasons a routine can time out. Ask the box which one
-    # it is before running anything else: if ollama is still generating for the
-    # run whose client we just killed, that is a finding in itself -- the job
-    # outlived the client -- and it also explains why everything after it is
-    # slow, which would otherwise read as a mesh fault and is not one.
-    say "Is the box still generating for the run whose client was just killed?"
-    gen1="$(box 'logs --no-log-prefix --tail 40 ollama' 2>/dev/null | grep -a 'n_gen' | tail -1)"
-    sleep 10
-    gen2="$(box 'logs --no-log-prefix --tail 40 ollama' 2>/dev/null | grep -a 'n_gen' | tail -1)"
-    printf '    %s\n' "${gen1:-<no generation in the log>}" "${gen2:-<no generation in the log>}"
-    if [ -n "$gen2" ] && [ "$gen1" != "$gen2" ]; then
-      warn "yes — the token count is still climbing with nothing listening"
-      note "the abandoned $ROUTINE run outlived its client and still holds the model, so every other routine queues behind it (watch the control's time below against the seconds it takes on an idle box)"
-    fi
-    # Which half is broken? `meeting` is the cheapest routine the box has --
-    # one prompt, no drive -- so if it answers over the same connection, the
-    # mesh is not what is wrong. It is run whether or not the model is still
-    # busy, because how LONG it takes is itself the evidence for the line above.
-    say "Control: the same Studio, same key, same mesh, running 'meeting' instead"
-    ctl="$(run_routine meeting 180)"
-    printf '%s\n' "$ctl" | sed 's/^/    /'
-    case "$ctl" in
-      *meeting*ok*|*meeting*DRIFT*)
-        note "$ROUTINE did not finish in ${ROUTINE_BUDGET}s but 'meeting' answered over the same mesh — the mesh is fine and the routine is not" ;;
-      *)  note "neither $ROUTINE nor the 'meeting' control answered — if the model was still busy above, that is why; otherwise suspect Studio over the mesh" ;;
-    esac ;;
-  *) warn "the $ROUTINE routine did not return text over the mesh" ;;
-esac
-case "$routine_out" in *DRIFT*) note "the $ROUTINE answer drifted into Han characters — the box's model, not the mesh" ;; esac
+# model's problem and is reported, not hidden. Both are read off the whole
+# printed line (see ROUTINE_LINE_RE), never as a substring of the output.
+if routine_said "$ROUTINE" "$routine_out"; then
+  R_ROUTINE=PASS; ok "the routine answered over the mesh (${T_ROUTINE}s)"
+else
+  case "$routine_out" in
+    *"NO ANSWER"*)
+      warn "$ROUTINE returned nothing in ${ROUTINE_BUDGET}s"
+      # Two very different reasons a routine can time out. Ask the box which one
+      # it is before running anything else: if ollama is still generating for the
+      # run whose client we just killed, that is a finding in itself -- the job
+      # outlived the client -- and it also explains why everything after it is
+      # slow, which would otherwise read as a mesh fault and is not one.
+      say "Is the box still generating for the run whose client was just killed?"
+      gen1="$(box 'logs --no-log-prefix --tail 40 ollama' 2>/dev/null | grep -a 'n_gen' | tail -1)"
+      sleep 10
+      gen2="$(box 'logs --no-log-prefix --tail 40 ollama' 2>/dev/null | grep -a 'n_gen' | tail -1)"
+      printf '    %s\n' "${gen1:-<no generation in the log>}" "${gen2:-<no generation in the log>}"
+      if [ -n "$gen2" ] && [ "$gen1" != "$gen2" ]; then
+        warn "yes — the token count is still climbing with nothing listening"
+        note "the abandoned $ROUTINE run outlived its client and still holds the model, so every other routine queues behind it (watch the control's time below against the seconds it takes on an idle box)"
+      fi
+      # Which half is broken? `meeting` is the cheapest routine the box has --
+      # one prompt, no drive -- so if it answers over the same connection, the
+      # mesh is not what is wrong. It is run whether or not the model is still
+      # busy, because how LONG it takes is itself the evidence for the line above.
+      say "Control: the same Studio, same key, same mesh, running 'meeting' instead"
+      ctl="$(run_routine meeting 180)"
+      printf '%s\n' "$ctl" | sed 's/^/    /'
+      if routine_said meeting "$ctl"; then
+        note "$ROUTINE did not finish in ${ROUTINE_BUDGET}s but 'meeting' answered over the same mesh — the mesh is fine and the routine is not"
+      else
+        note "neither $ROUTINE nor the 'meeting' control answered — if the model was still busy above, that is why; otherwise suspect Studio over the mesh"
+      fi ;;
+    *) warn "the $ROUTINE routine did not return text over the mesh" ;;
+  esac
+fi
+routine_drifted "$ROUTINE" "$routine_out" \
+  && note "the $ROUTINE answer drifted into Han characters — the box's model, not the mesh"
 
 fi  # R_JOIN
 
