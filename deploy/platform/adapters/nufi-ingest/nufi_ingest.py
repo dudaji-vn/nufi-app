@@ -11,9 +11,11 @@ deleted and re-uploaded; a removed file is deleted. State lives in
 NUFI_STATE_DIR/state.json so a restart does not re-embed the world.
 
 Auth: one login to learn the service account's id, then self-minted HS256 JWTs
-signed with JWT_SECRET (the app's strategy checks only payload.id). Every call
-to /api/files and /api/agents carries a Chrome User-Agent; a single bare UA
-bans the account for two hours. stdlib only.
+signed with JWT_SECRET (the app's strategy checks only payload.id). The id is
+kept in state.json, so the password is needed exactly once in the life of the
+state volume; a 401 means the cached id is stale and triggers one fresh login.
+Every call to /api/files and /api/agents carries a Chrome User-Agent; a single
+bare UA bans the account for two hours. stdlib only.
 """
 import base64
 import hashlib
@@ -159,18 +161,22 @@ class AppError(RuntimeError):
 class App:
     """The slice of the NuFi app API the daemon uses."""
 
-    def __init__(self, cfg):
+    def __init__(self, cfg, user_id=None, on_identity=None):
         self.cfg = cfg
-        self.user_id = None
+        # A user id learned on an earlier run and handed back by the caller.
+        # With it, this process never needs the password at all.
+        self.user_id = user_id
+        self.on_identity = on_identity
         self._token = None
         self._token_exp = 0
-        # Agents this process has already checked against MODEL_PARAMETERS.
-        # Once per process, not once per scan: a scan runs every 20 seconds and
-        # the settings cannot change behind our back, but an upgraded image
-        # restarts the container, which is exactly when a reconcile is due.
+        # Agents this process has already reconciled. Once per process, not
+        # once per scan: a scan runs every 20 seconds and the settings cannot
+        # change behind our back, but an upgraded image restarts the container,
+        # which is exactly when a reconcile is due.
         self._pinned = set()
 
-    def _request(self, method, path, body=None, headers=None, browser=False, auth=True):
+    def _request(self, method, path, body=None, headers=None, browser=False, auth=True,
+                 retry_auth=True):
         url = self.cfg.app_url + path
         data = body
         h = {"Accept": "application/json"}
@@ -188,6 +194,15 @@ class App:
                 raw = r.read()
                 return r.status, (json.loads(raw) if raw else {})
         except urllib.error.HTTPError as e:
+            if e.code == 401 and auth and retry_auth:
+                # The cached id is no longer a user this app knows: the account
+                # was recreated, or the state volume outlived the database it
+                # was written against. Forget it, log in once, replay the call.
+                # retry_auth=False makes that exactly one retry, so a genuinely
+                # wrong password raises instead of looping on every request.
+                self.forget_identity()
+                return self._request(method, path, body, headers, browser, auth,
+                                     retry_auth=False)
             raw = e.read().decode("utf-8", "replace")
             raise AppError(f"{method} {path} -> {e.code}: {raw[:300]}") from e
         except (urllib.error.URLError, TimeoutError) as e:
@@ -202,7 +217,18 @@ class App:
         self.user_id = user.get("id") or user.get("_id")
         if not self.user_id:
             raise AppError(f"login returned no user id: {body}")
+        if self.on_identity:
+            self.on_identity(self.user_id)
         LOG.info("logged in as %s (%s)", self.cfg.email, user.get("role"))
+
+    def forget_identity(self):
+        """Drop the cached id (and the token minted from it) after a 401."""
+        LOG.warning("the app rejected the cached identity; logging in again")
+        self.user_id = None
+        self._token = None
+        self._token_exp = 0
+        if self.on_identity:
+            self.on_identity(None)
 
     def token(self):
         if self.user_id is None:
@@ -227,7 +253,7 @@ class App:
         _, body = self._request("GET", "/api/agents?limit=200", browser=True)
         for a in body.get("data", []):
             if a.get("name") == name:
-                self.pin_model_parameters(a["id"])
+                self.reconcile_agent(a["id"], instructions)
                 return a["id"], a.get("_id")
         _, body = self._request("POST", "/api/agents", {
             "provider": self.cfg.provider, "model": self.cfg.model, "name": name,
@@ -236,36 +262,52 @@ class App:
         }, browser=True)
         return body["id"], body.get("_id")
 
-    def pin_model_parameters(self, agent_id):
-        """Bring an agent created before MODEL_PARAMETERS existed up to date.
+    def reconcile_agent(self, agent_id, instructions):
+        """Bring an agent that already exists up to what this daemon would create.
 
-        Deliberately a PATCH carrying `model_parameters` and nothing else. A
-        PATCH `$set`s whatever keys it is given, so sending `tool_resources`
-        would replace the whole object -- including
+        Two things drift, and both of them are corrections this repo has
+        already had to make on a live box: MODEL_PARAMETERS (so an acceptance
+        score reproduces) and the system prompt (so the model searches before
+        it answers, and answers in the question's language). An upgraded box
+        keeps the agents it has -- they are found by name and never recreated
+        -- so without this, exactly the agents that need the fix never get it,
+        and the release notes describe a box nobody is running.
+
+        Whatever differs goes in ONE PATCH, carrying only the keys that differ
+        and never `tool_resources`. A PATCH `$set`s whatever keys it is given,
+        so sending `tool_resources` would replace the whole object -- including
         `tool_resources.file_search.file_ids`, which the app only ever grows
         through its own `$addToSet` upload path. That would silently detach
         every document this daemon has uploaded and leave an agent that looks
         configured and retrieves nothing.
 
-        The listing projection does not return model_parameters (it carries
-        id/name/author/category and little else), so the current value has to
-        be read from the agent itself; otherwise "is it already pinned?" is
-        unanswerable and the reconcile would PATCH on every scan.
+        The listing projection returns neither model_parameters nor
+        instructions (it carries id/name/author/category and little else), so
+        both have to be read from the agent itself; otherwise "is it already
+        up to date?" is unanswerable and the reconcile would PATCH every scan.
+
+        Marked done only after the GET and the PATCH have actually succeeded:
+        marking first meant one refused connection during a restart skipped
+        that agent until the next container restart, which on a box that is
+        never restarted is forever.
         """
         if agent_id in self._pinned:
             return
-        self._pinned.add(agent_id)
         try:
             _, agent = self._request("GET", f"/api/agents/{agent_id}", browser=True)
         except AppError as e:
-            LOG.warning("could not read %s to check model parameters: %s", agent_id, e)
+            LOG.warning("could not read %s to reconcile it: %s", agent_id, e)
             return
+        patch = {}
         have = agent.get("model_parameters") or {}
-        if all(have.get(k) == v for k, v in MODEL_PARAMETERS.items()):
-            return
-        self._request("PATCH", f"/api/agents/{agent_id}",
-                      {"model_parameters": dict(MODEL_PARAMETERS)}, browser=True)
-        LOG.info("agent %s → pinned %s", agent_id, MODEL_PARAMETERS)
+        if any(have.get(k) != v for k, v in MODEL_PARAMETERS.items()):
+            patch["model_parameters"] = dict(MODEL_PARAMETERS)
+        if instructions and (agent.get("instructions") or "") != instructions:
+            patch["instructions"] = instructions
+        if patch:
+            self._request("PATCH", f"/api/agents/{agent_id}", patch, browser=True)
+            LOG.info("agent %s → reconciled %s", agent_id, ", ".join(sorted(patch)))
+        self._pinned.add(agent_id)
 
     def share_agent(self, team_id, agent_id, agent_oid):
         if self.cfg.share == "team":
@@ -316,13 +358,26 @@ class App:
 class Ingester:
     def __init__(self, cfg, app=None):
         self.cfg = cfg
-        self.app = app or App(cfg)
         self.state_path = pathlib.Path(cfg.state_dir) / "state.json"
         self.state = {"departments": {}, "files": {}}
         if self.state_path.exists():
             self.state = json.loads(self.state_path.read_text())
+        # The service account's id survives in state.json, so the password is
+        # used exactly once in the life of the state volume rather than on
+        # every container start. It also means a box whose admin password has
+        # been changed keeps ingesting: nothing re-reads NUFI_INGEST_PASSWORD
+        # until the app rejects the cached id with a 401.
+        self.app = app or App(cfg, user_id=self.state.get("user_id"),
+                              on_identity=self._remember_identity)
         self._pending = {}       # rel -> (size, mtime, scans seen identical)
         self._upload_times = []
+
+    def _remember_identity(self, user_id):
+        if user_id:
+            self.state["user_id"] = user_id
+        else:
+            self.state.pop("user_id", None)
+        self.save()
 
     # --- persistence -------------------------------------------------------
     def save(self):
@@ -345,11 +400,12 @@ class Ingester:
         if d:
             # An upgraded box keeps /state, so this cached path is the ONLY one
             # a long-lived department ever takes -- reconciling solely inside
-            # find_or_create_agent would mean the agents that most need pinning
+            # find_or_create_agent would mean the agents that most need the fix
             # (the ones created before it existed) never get it. Memoised per
             # process, so this costs one GET per department per restart.
             if d.get("agent_id"):
-                self.app.pin_model_parameters(d["agent_id"])
+                self.app.reconcile_agent(d["agent_id"],
+                                         agent_instructions(display_name(dept)))
             return d
         name = display_name(dept)
         team_id = self.app.find_or_create_team(name) if self.cfg.share == "team" else None

@@ -49,6 +49,7 @@ class FakeApp(BaseHTTPRequestHandler):
     files = {}         # file_id -> doc
     counter = 0
     fail_next_delete = False   # set True to make the next DELETE return 500 once
+    fail_agent_get = None      # set to an agent id to make its next GET 500 once
 
     def log_message(self, *a):
         pass
@@ -121,12 +122,19 @@ class FakeApp(BaseHTTPRequestHandler):
 
     def do_GET(self):
         FakeApp.seen.append(("GET", self.path, dict(self.headers), b""))
+        # The real app authenticates every route, and a GET is the first call
+        # any scan makes -- which is where a stale cached identity surfaces.
+        if not self._auth_ok():
+            return self._json(401, {"error": "unauthorized"})
         if self.path == "/api/teams":
             return self._json(200, {"teams": list(FakeApp.teams.values())})
         if self.path.startswith("/api/agents/"):
             # One agent, the full document. This is where model_parameters can
             # actually be read (see the listing below).
             aid = self.path.split("?")[0].rsplit("/", 1)[-1]
+            if aid == FakeApp.fail_agent_get:
+                FakeApp.fail_agent_get = None
+                return self._json(500, {"error": "boom"})
             doc = FakeApp.agents.get(aid)
             return self._json(200, doc) if doc else self._json(404, {})
         if self.path.startswith("/api/agents"):
@@ -317,6 +325,15 @@ def main():
 
         # login exactly once; everything else self-minted
         assert len([s for s in FakeApp.seen if s[1] == "/api/auth/login"]) == 1
+
+        # ...and once for the life of the state dir, not once per container
+        # start: the id learned above is in state.json, so a restarted daemon
+        # (or one whose admin has since changed their password) carries on
+        # without ever presenting a password again.
+        assert json.loads((state / "state.json").read_text())["user_id"] == USER_ID
+        I.Ingester(cfg).scan()
+        assert len([s for s in FakeApp.seen if s[1] == "/api/auth/login"]) == 1, \
+            "a second daemon on the same state dir must reuse the stored id"
         # Agents created by this daemon are already pinned, so nothing above
         # this line has any reason to PATCH.
         assert not [s for s in FakeApp.seen if s[0] == "PATCH"], \
@@ -396,6 +413,69 @@ def main():
         upgraded.scan()
         assert not [s for s in FakeApp.seen[mark:] if s[0] == "PATCH"], \
             "the reconcile must be memoised per process, not repeated every scan"
+
+        # --- reconcile: the system prompt drifts too -------------------------
+        # Every rule in agent_instructions() is a failure measured on a live
+        # box, and each correction was shipped as a new image. An upgraded box
+        # keeps its agents, so an agent created by an older image goes on
+        # answering from nothing under the old prompt no matter how many times
+        # the instruction is fixed -- unless the reconcile carries it.
+        FakeApp.agents[legal_agent_id]["instructions"] = "You are helpful."
+        stale_prompt = I.Ingester(cfg2)
+        mark = len(FakeApp.seen)
+        stale_prompt.scan()
+        patches = [s for s in FakeApp.seen[mark:] if s[0] == "PATCH"]
+        assert len(patches) == 1, [(p[1], p[3]) for p in patches]
+        assert patches[0][1] == f"/api/agents/{legal_agent_id}", patches[0][1]
+        sent = json.loads(patches[0][3])
+        assert sent == {"instructions": I.agent_instructions("Legal")}, sent
+        # the same rule as the model_parameters PATCH: tool_resources in a
+        # PATCH $sets the whole object and detaches every uploaded document
+        assert "tool_resources" not in sent, sent
+        assert FakeApp.agents[legal_agent_id]["tool_resources"]["file_search"]["file_ids"]
+
+        # both stale → still ONE PATCH, carrying both keys
+        FakeApp.agents[legal_agent_id]["instructions"] = "You are helpful."
+        FakeApp.agents[legal_agent_id].pop("model_parameters", None)
+        mark = len(FakeApp.seen)
+        I.Ingester(cfg2).scan()
+        patches = [s for s in FakeApp.seen[mark:] if s[0] == "PATCH"]
+        assert len(patches) == 1, [(p[1], p[3]) for p in patches]
+        assert json.loads(patches[0][3]) == {
+            "model_parameters": {"temperature": 0, "seed": 7},
+            "instructions": I.agent_instructions("Legal"),
+        }, patches[0][3]
+
+        # --- a failed GET must not count as "reconciled" ---------------------
+        # Marking the agent done before the GET meant one refused connection --
+        # the app restarting, a slow boot -- skipped that agent until the next
+        # container restart, which on a box nobody restarts is forever.
+        FakeApp.agents[legal_agent_id].pop("model_parameters", None)
+        FakeApp.fail_agent_get = legal_agent_id
+        retrying = I.Ingester(cfg2)
+        mark = len(FakeApp.seen)
+        retrying.scan()
+        assert FakeApp.fail_agent_get is None, "the failing GET must have consumed the flag"
+        assert not [s for s in FakeApp.seen[mark:] if s[0] == "PATCH"], \
+            "nothing to PATCH with: the agent could not be read"
+        mark = len(FakeApp.seen)
+        retrying.scan()          # same process, no restart
+        patches = [s for s in FakeApp.seen[mark:] if s[0] == "PATCH"]
+        assert len(patches) == 1, "the next scan must retry the agent it could not read"
+        assert patches[0][1] == f"/api/agents/{legal_agent_id}", patches[0][1]
+
+        # --- a stale cached id costs one login, not a dead daemon ------------
+        # The state volume can outlive the database (a restore, a wiped Mongo),
+        # leaving an id the app has never heard of. Every call would 401
+        # forever if the daemon simply trusted what it had cached.
+        logins = len([s for s in FakeApp.seen if s[1] == "/api/auth/login"])
+        stale_id = I.Ingester(cfg)
+        stale_id.app.user_id = "64bffffffffffffffffffffff"
+        stale_id.scan()
+        assert len([s for s in FakeApp.seen if s[1] == "/api/auth/login"]) == logins + 1, \
+            "a 401 must trigger exactly one fresh login"
+        assert json.loads((state / "state.json").read_text())["user_id"] == USER_ID, \
+            "the id learned by that login must replace the stale one on disk"
     print("PASS")
 
 
