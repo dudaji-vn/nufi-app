@@ -541,6 +541,16 @@ def test_the_installer_seeds_an_empty_mesh_caddy_so_the_import_has_a_file():
     assert "caddy/mesh.caddy" in out
 
 
+def test_the_generated_mesh_caddy_is_checked_before_the_stack_is_started():
+    """Defect D3. An upgraded box's own `compose up` is what makes Caddy read
+    caddy/mesh.caddy again, so a render left by an older box has to be dealt
+    with before that, not after — otherwise the box comes up with all six
+    ports down and needs a human."""
+    out = dry(NUFI_BOX_FAKE_OS="Linux", BOX_NAME="demo")
+    assert "refresh" in out and "caddy/mesh.caddy" in out
+    assert out.index("caddy/mesh.caddy") < out.index("docker compose"), out
+
+
 # --- who the department drives belong to (defect D1, P2 acceptance) ---
 
 def test_the_samba_uid_is_the_installing_users_not_a_guess():

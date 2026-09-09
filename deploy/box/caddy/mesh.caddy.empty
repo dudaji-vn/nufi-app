@@ -1,3 +1,4 @@
+# nufi-box mesh.caddy rev 2
 # caddy/mesh.caddy — the box's sites on its mesh address.
 #
 # This is the empty template. install-box.sh copies it to caddy/mesh.caddy
@@ -7,3 +8,8 @@
 # down` puts this file back.
 #
 # Do not edit caddy/mesh.caddy by hand: mesh up rewrites it.
+#
+# The `rev` on the first line is the stamp lib/mesh.sh checks (MESH_CADDY_REV
+# there): a copy of this file on a box that predates a change to the Caddyfile
+# snippets the generated sites import gets re-rendered instead of taking the
+# whole front door down. Bump both together, or neither.

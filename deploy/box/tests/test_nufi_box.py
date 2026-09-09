@@ -412,3 +412,26 @@ def test_flows_install_says_what_is_missing_without_the_builder(tmp_path):
 def test_help_lists_the_flows_verbs():
     out = cli("--help").stdout
     assert "flows install" in out and "flows list" in out
+
+
+# --- Task 9b / defect D3: a generated caddy/mesh.caddy from an older box ---
+
+def test_up_and_restart_check_the_generated_mesh_caddy_first(tmp_path):
+    """Both start Caddy again, so both are where a render left by an older box
+    refuses the whole front door. The acceptance found the box crash-looping
+    after an upgrade; nothing but a human noticing had ever put it right."""
+    envf = tmp_path / ".env"; envf.write_text("NUFI_DATA_DIR=%s\nBOX_NAME=nufi\n" % tmp_path)
+    for verb, compose in (("up", "up -d"), ("restart", "restart")):
+        r = cli(verb, NUFI_BOX_ENV=str(envf))
+        assert r.returncode == 0, r.stderr
+        assert "caddy/mesh.caddy" in r.stdout, r.stdout
+        assert r.stdout.index("caddy/mesh.caddy") < r.stdout.index(compose), r.stdout
+
+
+def test_doctor_says_when_the_generated_mesh_caddy_is_from_an_older_box(tmp_path):
+    """It only bites at the next Caddy restart, so a box can be answering now
+    and be one reboot from six dead ports. doctor is where that gets said."""
+    envf = tmp_path / ".env"; envf.write_text("NUFI_DATA_DIR=%s\nBOX_NAME=nufi\n" % tmp_path)
+    r = cli("doctor", NUFI_BOX_ENV=str(envf))
+    assert r.returncode == 0, r.stderr
+    assert "caddy/mesh.caddy" in r.stdout and "Caddyfile" in r.stdout

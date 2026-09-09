@@ -108,10 +108,23 @@ case "${1:-}" in
     chk $COMPOSE exec -T rag_api python -c \
       "import os,urllib.request;urllib.request.urlopen(os.environ['OLLAMA_BASE_URL'].rstrip('/')+'/api/tags').read()"
     chk test -d "${NUFI_DATA_DIR:-$HERE/data}/drives"
+    # Not a curl: a caddy/mesh.caddy written by an older box only bites at the
+    # next Caddy restart, so a box can be answering perfectly right now and be
+    # one reboot away from six dead ports. Say it in words while it is cheap.
+    . "$HERE/lib/mesh.sh"
+    if [ "$DRY" = 1 ]; then
+      printf '  $ check %s against %s\n' "$HERE/caddy/mesh.caddy" "$HERE/Caddyfile"
+    elif mesh_caddy_stale "$HERE/caddy/mesh.caddy" "$HERE/Caddyfile"; then
+      echo " !!  caddy/mesh.caddy was written by an older box — run: nufi-box mesh up"; fail=1
+    else
+      echo " ok  caddy/mesh.caddy matches this Caddyfile"
+    fi
     [ "$fail" = 0 ] && echo "All good." || { echo "Something is off; run: nufi-box logs <service>"; exit 1; } ;;
-  up) run $COMPOSE up -d ;;
+  # Both start Caddy again, so both are places a caddy/mesh.caddy left behind by
+  # an older box would refuse the whole front door. Put it back in step first.
+  up) . "$HERE/lib/mesh.sh"; mesh_caddy_refresh "$HERE"; run $COMPOSE up -d ;;
   down) run $COMPOSE down ;;
-  restart) run $COMPOSE restart ;;
+  restart) . "$HERE/lib/mesh.sh"; mesh_caddy_refresh "$HERE"; run $COMPOSE restart ;;
   # --- the mesh (Tasks 6 and 7) ---
   mesh)
     shift

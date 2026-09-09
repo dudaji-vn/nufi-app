@@ -450,14 +450,14 @@ for d in $(printf '%s' "$DEPARTMENTS" | tr ',' ' '); do
       || warn "$_drive belongs to uid $_cur, not $NUFI_SMB_UID — members will get NT_STATUS_ACCESS_DENIED writing to it; run: sudo chown -R $NUFI_SMB_UID:$NUFI_SMB_GID $_drive"
   fi
 done
-# The Caddyfile imports caddy/mesh*.caddy. A box that never joins a mesh
-# still gets the empty template, so the import always has a file to read and
-# `nufi-box mesh up` only ever overwrites one.
-if [ "$DRY" = 1 ]; then
-  printf '  $ cp caddy/mesh.caddy.empty caddy/mesh.caddy   # unless it exists\n'
-elif [ ! -f caddy/mesh.caddy ]; then
-  cp caddy/mesh.caddy.empty caddy/mesh.caddy
-fi
+# The Caddyfile imports caddy/mesh*.caddy. A box that never joins a mesh still
+# gets the empty template, so the import always has a file to read and
+# `nufi-box mesh up` only ever overwrites one. A box that DID join gets its
+# generated file checked against this Caddyfile — before the stack starts,
+# because the upgrade's own `compose up` is what makes Caddy read it again, and
+# a render from an older box takes all six ports down (see mesh_caddy_refresh).
+. "$BOX_HOME/lib/mesh.sh"
+mesh_caddy_refresh "$BOX_HOME"
 
 # ---------- start -----------------------------------------------------------------
 COMPOSE="docker compose -f docker-compose.yml"
