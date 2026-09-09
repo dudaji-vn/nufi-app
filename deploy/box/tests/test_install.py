@@ -572,6 +572,53 @@ def test_a_root_install_does_not_hand_the_share_root():
     assert "chown -R 1000:1000" in out
 
 
+def _rendered_env(out):
+    """The .env a dry run would have written, sliced out of its own plan.
+
+    Same trick as test_a_second_run_plans_exactly_what_the_first_one_did: DRY=1
+    prints render_env's output verbatim between the "Writing .env" and
+    "Rendering litellm" banners, so the first run hands back exactly the file
+    an installed box would already have.
+    """
+    start = out.index("Writing .env\n") + len("Writing .env\n")
+    end = out.index("==>\x1b[0m Rendering litellm", start)
+    return out[start:out.rindex("\n", start, end)] + "\n"
+
+
+def test_a_second_admin_re_running_the_installer_does_not_take_the_drives():
+    """The recurring case, which the one-time transitions above do not cover.
+
+    Re-running install-box.sh is what the README tells an operator to do for
+    half a dozen repairs, and it is what the mesh-caddy upgrade path relies on.
+    If the Samba uid were recomputed from `id -u` every time, the second admin
+    to run it would silently take every drive and leave the first as `other` on
+    a 775 directory — the acceptance's own NT_STATUS_ACCESS_DENIED, a different
+    victim, and no warning, because the chown would have succeeded.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        envfile = pathlib.Path(tmp) / "box.env"
+        first = dry(NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_ENV=str(envfile),
+                    BOX_NAME="demo", DEPARTMENTS="legal",
+                    NUFI_BOX_FAKE_UID="1001", NUFI_BOX_FAKE_GID="1001")
+        assert "NUFI_SMB_UID=1001" in first
+        envfile.write_text(_rendered_env(first))
+
+        second = dry(NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_ENV=str(envfile),
+                     BOX_NAME="demo", DEPARTMENTS="legal",
+                     NUFI_BOX_FAKE_UID="1002", NUFI_BOX_FAKE_GID="1002")
+        assert "NUFI_SMB_UID=1001" in second and "NUFI_SMB_GID=1001" in second
+        assert "NUFI_SMB_UID=1002" not in second
+        assert "chown -R 1002" not in second, "the second admin took the drives"
+        assert "chown -R 1001:1001" in second
+
+        # Handing the box over is still possible, but only by saying so.
+        handover = dry(NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_ENV=str(envfile),
+                       BOX_NAME="demo", DEPARTMENTS="legal",
+                       NUFI_SMB_UID="1002", NUFI_SMB_GID="1002")
+        assert "NUFI_SMB_UID=1002" in handover
+        assert "chown -R 1002:1002" in handover
+
+
 def test_the_drives_are_given_to_that_uid_after_they_are_created():
     """A box installed as root, or upgraded from the release that pinned the
     account to 1000, has drive directories with the wrong owner already on

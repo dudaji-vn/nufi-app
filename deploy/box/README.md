@@ -248,6 +248,14 @@ drives back in step, or give them to that uid by hand:
 sudo chown -R "$NUFI_SMB_UID:$NUFI_SMB_GID" <data dir>/drives/<department>
 ```
 
+Re-running the installer keeps that answer rather than taking the drives for
+whoever ran it, so a colleague repairing the box does not lock the admin out.
+Handing the box to a new owner is a thing you say out loud:
+
+```bash
+NUFI_SMB_UID=$(id -u) NUFI_SMB_GID=$(id -g) ./install-box.sh --yes
+```
+
 By default the daemon that watches the drives runs **as the admin**, so the
 admin who installed the box already owns every department's team and agent
 and sees them immediately after logging in. Nobody else does. To let a

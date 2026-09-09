@@ -164,6 +164,16 @@ REUSE_VARS="BOX_NAME ADMIN_EMAIL DEPARTMENTS INFERENCE_PROFILE INFERENCE_MODEL I
 # operator's, and they are in the join files already handed to members —
 # a re-install must not blank them. They are reused but never asked for.
 REUSE_VARS="$REUSE_VARS BOX_MESH_IP BOX_MESH_HOST"
+# NUFI_SMB_UID/GID are a durable answer in the same sense: they say who the
+# department drives on disk belong to. Recomputing them from `id -u` on every
+# run would mean a second admin re-running the installer — which this README
+# recommends for half a dozen repairs, and which the mesh-caddy upgrade path
+# relies on — silently takes the drives, and the first admin becomes `other`
+# on a 775 directory: NT_STATUS_ACCESS_DENIED again, a different victim, no
+# warning (the chown succeeded). Kept unless the caller says otherwise:
+#   NUFI_SMB_UID=$(id -u) NUFI_SMB_GID=$(id -g) ./install-box.sh --yes
+# is how a box is deliberately handed to a new owner.
+REUSE_VARS="$REUSE_VARS NUFI_SMB_UID NUFI_SMB_GID"
 for v in $REUSE_VARS; do eval "_caller_$v=\${$v:-}"; done
 if [ -f "$NUFI_BOX_ENV" ]; then
   ok ".env exists; keeping its answers and secrets"
@@ -255,9 +265,11 @@ NUFI_DATA_DIR="${NUFI_DATA_DIR:-$BOX_HOME/data}"
 #
 # Rendered rather than assumed, and rendered from `id`, so a box installed by
 # the machine's second user (1001), by a service account, or by root works the
-# same as one installed by its first user.
-NUFI_SMB_UID="${NUFI_BOX_FAKE_UID:-$(id -u)}"
-NUFI_SMB_GID="${NUFI_BOX_FAKE_GID:-$(id -g)}"
+# same as one installed by its first user. Computed only when the box does not
+# already have an answer — see REUSE_VARS above for why a re-run must not move
+# the drives to whoever happens to be running it.
+NUFI_SMB_UID="${NUFI_SMB_UID:-${NUFI_BOX_FAKE_UID:-$(id -u)}}"
+NUFI_SMB_GID="${NUFI_SMB_GID:-${NUFI_BOX_FAKE_GID:-$(id -g)}}"
 if [ "$NUFI_SMB_UID" = "0" ]; then
   # A root install cannot hand the share root's uid: the Samba image only
   # honours `UID_nufi` when it is greater than zero (`[ "$ACCOUNT_UID" -gt 0 ]`
