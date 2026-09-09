@@ -404,7 +404,9 @@ RECIPES = [
         "id": "weekly",
         "name": "Routine · weekly report from the drive",
         "desc": "Drafts the department's weekly report from what is on its "
-                "drive, in the department's own tone, citing each file.",
+                "drive, in the department's own tone, citing each file. Reads "
+                "the WHOLE drive: the period you ask for is an instruction to "
+                "the model, not a filter on the files.",
         "kind": "drive_read",
         "drive": None,
         "system": (

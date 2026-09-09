@@ -252,7 +252,15 @@ can open, run and edit, that read the same drive folders:
 | `Routine · ask the department drive` | Answers a question from that department's documents and names the file it answered from |
 | `Routine · meeting transcript to decisions` | Paste a transcript, get the decisions with an owner and a deadline against each one |
 | `Routine · HR helpdesk from the policy` | Answers strictly from the HR drive, cites the policy file, refuses when the policy is silent |
-| `Routine · weekly report from the drive` | Drafts the department's weekly report from what is on its drive, citing each file |
+| `Routine · weekly report from the drive` | Drafts the department's weekly report from what is on its drive, citing each file — see the caveat below |
+
+**What `weekly` does not do.** It reads the **whole** department drive, not
+just this week's files. The period you ask for ("9월 첫째 주") is a line in the
+prompt, so it is the model that decides which of the drive's documents belong
+to that week — the flow does not filter by a file's modification date, and no
+component in this Studio build exposes one (the Directory node hands on a
+file's path and its text, nothing more). Read the dates in the draft before
+sending it, and keep a department's drive tidy if the reports matter.
 
 The drive is a field on the flow, not a copy of the flow: the same routine
 serves every department. In the canvas, change the **Drive** node's path
@@ -499,6 +507,10 @@ yet:
   drives](#5-departments-and-drives)), but only through the canvas or the
   Studio API — the app has no button that runs one, and nothing runs one on a
   schedule.
+- **A weekly report that knows which files are this week's.** `weekly` reads
+  the whole drive and asks the model to respect the period; nothing filters
+  the files by their modification date. See [Departments and
+  drives](#5-departments-and-drives).
 - **Routines for members.** The routines belong to the Studio superuser
   account. A member signing in through the app gets their own empty Studio;
   giving every member the four routines needs a change in the Studio image
