@@ -50,6 +50,8 @@ nufi-box <verb>
   revoke NAME | --id ID
                       remove a laptop's access to the mesh (use --id when
                       NAME matches more than one node)
+  flows install       put the department routines into Studio (safe to repeat)
+  flows list          every flow in the box's Studio, with its id
   update | backup | support   (coming in P4)
 EOF
 }
@@ -156,6 +158,17 @@ case "${1:-}" in
       mesh_delete "$1"
     fi ;;
   # --- end the mesh (Tasks 6 and 7) ---
+  # --- the department routines in Studio (Task 8) ---
+  flows)
+    shift
+    case "${1:-}" in
+      install|list) FLOWS_VERB="$1" ;;
+      "") echo "flows: say what to do — install or list" >&2; usage; exit 2 ;;
+      *) echo "flows: unknown subcommand: $1 (use install or list)" >&2; exit 2 ;;
+    esac
+    . "$HERE/lib/flows.sh"
+    "flows_$FLOWS_VERB" ;;
+  # --- end the department routines ---
   update|backup|support) echo "$1: coming in the next phase"; exit 3 ;;
   -h|--help|"") usage ;;
   *) echo "unknown command: $1" >&2; usage; exit 2 ;;

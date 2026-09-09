@@ -242,6 +242,44 @@ colleague use a department's agent, log in as the admin, open **Teams** in
 the app, and invite them to that department's team — installing the box
 does not add anyone else automatically.
 
+### The four routines that read them
+
+The installer also puts four **routines** into NUFI Studio — flows a person
+can open, run and edit, that read the same drive folders:
+
+| Routine | What it does |
+|---|---|
+| `Routine · ask the department drive` | Answers a question from that department's documents and names the file it answered from |
+| `Routine · meeting transcript to decisions` | Paste a transcript, get the decisions with an owner and a deadline against each one |
+| `Routine · HR helpdesk from the policy` | Answers strictly from the HR drive, cites the policy file, refuses when the policy is silent |
+| `Routine · weekly report from the drive` | Drafts the department's weekly report from what is on its drive, citing each file |
+
+The drive is a field on the flow, not a copy of the flow: the same routine
+serves every department. In the canvas, change the **Drive** node's path
+(`/drives/legal` → `/drives/finance`, and the index name with it); over the
+API, send it as a tweak:
+
+```bash
+cd ../platform/scenarios/studio
+STUDIO_API_KEY=… python3 run_flows.py --base https://localhost:7860 \
+  --cacert ../../../box/data/nufi-box-ca.crt \
+  --flows ../../../box/data/studio-flows.json \
+  --only docqa --department hr --input "연차휴가는 며칠인가요?"
+```
+
+Re-running `nufi-box flows install` is safe: a routine that is already there
+by name is kept, edits and all, and only what is missing is created.
+
+**Who can see them.** They are installed into the Studio account of the
+superuser the installer created (`ADMIN_EMAIL`, with the Studio password in
+`.env` as `STUDIO_SUPERUSER_PASSWORD`) — sign in at `https://<box>:7860`
+with those. A member who reaches Studio the usual way, through the app's
+Account → Agents → NUFI Studio, arrives as their own Studio account with
+their own empty workspace, and does **not** see these routines: Studio scopes
+flows to their owner and this build has no sharing between accounts. Copying
+a routine to a colleague today means exporting it from the canvas and
+importing it into theirs.
+
 ## 6. Inference profiles
 
 | Profile | Where the model runs | Trade-off |
@@ -286,6 +324,8 @@ to `install-box.sh` and is also symlinked onto your `PATH`.
 | `invite <name> [--os win\|mac\|linux] [--drives a,b]` | Write a one-file join for a new laptop — see [From home](#8-from-home) |
 | `members` | List the laptops currently joined to the mesh |
 | `revoke <name>` / `revoke --id <id>` | Remove a laptop's access to the mesh |
+| `flows install` | Put the department routines into Studio — safe to repeat |
+| `flows list` | Every flow in the box's Studio, with its id |
 | `update` / `backup` / `support` | Not built yet — see [What is not in P1](#10-what-is-not-in-p1) |
 
 ## 8. From home
@@ -454,9 +494,15 @@ yet:
 - **`nufi-box backup`.** There is no scheduled backup yet.
 - **NUFI Works.** Only NUFI Studio runs on the box; Works stays in the
   cloud — it needs infrastructure a box cannot provide.
-- **Scheduled routines and routine input.** A Studio flow runs as built; it
-  does not yet take a per-run input from the app, and nothing runs it on a
+- **Scheduled routines, and routines from the app.** The four routines take a
+  per-run question and a per-run department (see [Departments and
+  drives](#5-departments-and-drives)), but only through the canvas or the
+  Studio API — the app has no button that runs one, and nothing runs one on a
   schedule.
+- **Routines for members.** The routines belong to the Studio superuser
+  account. A member signing in through the app gets their own empty Studio;
+  giving every member the four routines needs a change in the Studio image
+  itself, not in this box.
 - **The acceptance score is a measurement of the model, not the box.** The
   10/32 figure above says how good `qwen2.5:7b` is at these questions. It
   does not say whether ingestion, retrieval, or citation work — those

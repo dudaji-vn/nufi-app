@@ -539,3 +539,39 @@ def test_mesh_on_macos_points_at_the_native_app_instead():
 def test_the_installer_seeds_an_empty_mesh_caddy_so_the_import_has_a_file():
     out = dry(NUFI_BOX_FAKE_OS="Linux")
     assert "caddy/mesh.caddy" in out
+
+
+# --- the department routines (Task 8) ---
+
+def test_the_installer_puts_the_routines_in_studio():
+    """The last thing a fresh box needs is the routines it is bought for, and
+    the installer must plan them from the answers it just wrote, not from a
+    second copy of the same logic: it delegates to `nufi-box flows install`."""
+    out = dry(NUFI_BOX_FAKE_OS="Darwin", BOX_NAME="demo", DEPARTMENTS="legal,hr",
+              ADMIN_EMAIL="boss@example.com")
+    assert "Installing the department routines into Studio" in out
+    assert "build_flows.py" in out
+    assert "--departments legal,hr" in out
+    assert "--drives-root /drives" in out
+    # It mints the box's own Studio key by logging in as the superuser it
+    # created above; the password travels in the environment, never in argv.
+    assert "--login boss@example.com" in out
+    assert "--key-out" in out
+    assert "STUDIO_SUPERUSER_PASSWORD=" not in out.split("Installing the department")[1]
+
+
+def test_the_routines_step_comes_after_the_certificate():
+    """The builder reaches Studio over the box's own TLS, so the CA has to have
+    been exported before the flows are installed."""
+    out = dry(NUFI_BOX_FAKE_OS="Linux", BOX_NAME="demo")
+    assert out.index("nufi-box-ca.crt") < out.index("Installing the department routines")
+
+
+def test_the_banner_says_where_the_routines_are():
+    out = dry(NUFI_BOX_FAKE_OS="Darwin", BOX_NAME="demo", ADMIN_EMAIL="boss@example.com")
+    assert "Routines:" in out and "https://demo.local:7860" in out
+    assert "nufi-box flows install | flows list" in out
+    # A member who signs in through the app gets their own Studio account, and
+    # the installed routines are not in it. Say so on the banner rather than
+    # letting the first member discover an empty workspace.
+    assert "own empty Studio" in out

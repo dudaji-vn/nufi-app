@@ -551,6 +551,26 @@ LINK_DIR="$( [ -d /opt/homebrew/bin ] && echo /opt/homebrew/bin || echo /usr/loc
 run ln -sf "$BOX_HOME/nufi-box" "$LINK_DIR/nufi-box" \
   || warn "could not link nufi-box into $LINK_DIR; add $BOX_HOME to your PATH or run: sudo ln -sf $BOX_HOME/nufi-box $LINK_DIR/nufi-box"
 
+# ---------- the department routines ---------------------------------------------------
+# The four routines the box is bought for, as flows a person can open and edit:
+# they read the department drives this installer just created, mounted
+# read-only into Studio. Delegated to `nufi-box flows install` for the same
+# reason as the mesh below — re-installing them is day-two work too, and two
+# copies of "mint a key, then build" would drift. It mints the box's own Studio
+# API key on the first run and writes it to .env as STUDIO_API_KEY.
+#
+# A warning, not a die: a box whose routines did not install is still a box
+# with chat, drives and Studio, and the operator can repeat the one command.
+say "Installing the department routines into Studio"
+if [ "$DRY" = 1 ]; then
+  _flows_env="$(mktemp)"
+  render_env > "$_flows_env"
+  NUFI_BOX_DRY_RUN=1 NUFI_BOX_FAKE_OS="$OS" NUFI_BOX_ENV="$_flows_env" "$BOX_HOME/nufi-box" flows install || true
+  rm -f "$_flows_env"
+else
+  "$BOX_HOME/nufi-box" flows install || warn "the routines are not in Studio yet; run: nufi-box flows install"
+fi
+
 # ---------- the mesh ------------------------------------------------------------------
 # Delegate to `nufi-box mesh up` rather than repeating it: waiting for the
 # address, writing BOX_MESH_*, rendering caddy/mesh.caddy and reloading Caddy
@@ -583,7 +603,13 @@ cat <<EOF
   Admin login: $ADMIN_EMAIL / $ADMIN_PASSWORD
   Drives:      $NUFI_DATA_DIR/drives/<department>  → become that department's knowledge
 
+  Routines:    https://$BOX_HOST:7860  → sign in as $ADMIN_EMAIL with the
+               Studio password in .env (STUDIO_SUPERUSER_PASSWORD). The four
+               department routines are there; members who arrive through the
+               app get their own empty Studio.
+
   Day two:     nufi-box status | logs | drive add <name> | ca-cert | doctor
+               nufi-box flows install | flows list
 EOF
 if [ -n "$MESH_SERVER_URL" ]; then
   cat <<EOF

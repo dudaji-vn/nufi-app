@@ -251,3 +251,34 @@ def test_caddy_can_read_the_generated_mesh_sites():
     to the config file — so ./caddy has to be inside /etc/caddy."""
     targets = {v["target"] for v in render()["services"]["caddy"]["volumes"]}
     assert "/etc/caddy/caddy" in targets, targets
+
+
+# --- the department routines read the drives (Task 8) ---
+
+def test_studio_mounts_the_department_drives_read_only():
+    """The routines answer from the same folders Samba shares. Read-only: a
+    flow is authored by a person, and a person editing a flow must not be able
+    to rewrite the department's documents through it."""
+    vols = {v["target"]: v for v in render()["services"]["studio"]["volumes"]}
+    assert "/drives" in vols, sorted(vols)
+    drives = vols["/drives"]
+    assert drives["source"].endswith("/drives"), drives["source"]
+    assert drives["read_only"] is True, drives
+
+
+def test_studio_is_allowed_to_read_the_drives_and_nothing_else():
+    """The mount alone is not enough. The Directory component confines itself
+    to its working directory plus this allow-list, so without it every routine
+    fails with "Directory path escapes the allowed root" — the failure a live
+    run on a box without this env var actually produced."""
+    env = render()["services"]["studio"]["environment"]
+    assert env["LANGFLOW_DIRECTORY_COMPONENT_ALLOWED_ROOTS"] == "/drives"
+
+
+def test_the_drives_reach_studio_and_ingest_from_the_same_place():
+    """One folder, two readers: what a person drops on the drive has to be the
+    same bytes the routine reads and the ingest daemon indexes."""
+    svcs = render()["services"]
+    studio = next(v["source"] for v in svcs["studio"]["volumes"] if v["target"] == "/drives")
+    ingest = next(v["source"] for v in svcs["nufi-ingest"]["volumes"] if v["target"] == "/drives")
+    assert studio == ingest, (studio, ingest)

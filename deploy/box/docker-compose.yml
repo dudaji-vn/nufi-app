@@ -293,9 +293,22 @@ services:
       # address(es)" — the box's own Studio cannot reach the box's own model.
       # These two names are the box's, not user input; nothing else is allowed.
       LANGFLOW_SSRF_ALLOWED_HOSTS: host.docker.internal,ollama
+      # The routines read the department drives below. The Directory component
+      # confines itself to its working directory plus this allow-list
+      # (lfx/components/files_and_knowledge/directory.py: _allowed_roots), so
+      # without this every drive-reading routine fails with "Directory path
+      # escapes the allowed root" while the mount sits there, correct and
+      # unreadable. Read-only, and only this one root: the flows may read the
+      # shared drives and nothing else on the box.
+      LANGFLOW_DIRECTORY_COMPONENT_ALLOWED_ROOTS: /drives
     volumes:
       - caddy-data:/caddy:ro
       - studio-data:/app/langflow
+      # The same folders Samba shares and the ingest daemon watches, so a
+      # routine answers from the file a person dropped on the drive minutes
+      # ago. Read-only: a flow is authored by a person and must not be able to
+      # rewrite the department's documents.
+      - ${NUFI_DATA_DIR}/drives:/drives:ro
       - ./scripts/studio-entrypoint.sh:/usr/local/bin/studio-entrypoint.sh:ro
     entrypoint: ["/usr/local/bin/studio-entrypoint.sh"]
     healthcheck:

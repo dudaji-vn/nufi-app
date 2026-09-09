@@ -14,13 +14,26 @@ question and no policy text leaves the machine.
 
 On a NuFi box, Studio is behind the box's own TLS with a private CA, so add
 --cacert (and, where the box publishes Caddy on a non-default host port,
---connect-to) exactly as run_box.py takes them.
+--connect-to) exactly as run_box.py takes them. `--box URL` is that case in one
+flag: it is the base URL, it defaults the drives root to /drives, and it makes
+the run idempotent (a flow whose name is already there is kept, not rebuilt),
+because the box installer runs this on every install and re-install.
+
+    python3 build_flows.py --box https://localhost:7860 \
+        --cacert data/nufi-box-ca.crt --drives-root /drives \
+        --departments legal,hr,ga,strategy      # key in STUDIO_API_KEY
+
+The four RECIPES are the routines the box is sold on: they read the department
+drive the box already shares over SMB, mounted read-only into Studio at
+/drives/<department>.
 """
 import argparse
 import copy
 import gzip
 import json
+import os
 import pathlib
+import re
 import sys
 import urllib.error
 import urllib.parse
@@ -34,6 +47,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 from run_box import add_transport_args, transport_from_args  # noqa: E402
 
 OLLAMA = "ext:ollama:ChatOllamaComponent@official"
+EMBEDDINGS = "ext:ollama:OllamaEmbeddingsComponent@official"
+LOCALDB = "ext:chroma:LocalDBComponent@official"
 OPEN = urllib.request.urlopen  # replaced by main() when the box needs a CA
 
 
@@ -89,17 +104,25 @@ class FlowBuilder:
         raise SystemExit(f"component not in this build: {type_name} (as {key!r})")
 
     def add(self, node_id, type_name, display, values=None, selected_output=None,
-            at=None):
+            at=None, shows=()):
         """Add one node; `at` places it, otherwise they flow left to right.
 
         Layout matters more than it looks. Left to the default spacing, the six
         nodes of the tool flow spanned 4,000px, so fitting them on screen shrank
         the labels to smears -- unreadable in a recording, and unreadable to
         anyone opening the flow for the first time.
+
+        `shows` un-hides fields the catalogue ships hidden. Local DB ships with
+        the Ingest half visible and the Retrieve half hidden (the canvas swaps
+        them when a person clicks the Mode tab); the recipe flows wire BOTH, so
+        without this the search query and the k are wired but invisible to
+        anyone opening the flow.
         """
         tmpl = self._template(type_name)
         for field, value in (values or {}).items():
             tmpl["template"].setdefault(field, {"type": "str"})["value"] = value
+        for field in shows:
+            tmpl["template"][field]["show"] = True
         if at is None:
             self._x += 340
             at = (self._x, 300)
@@ -113,6 +136,29 @@ class FlowBuilder:
                      "description": tmpl.get("description", ""),
                      "node": tmpl, "selected_output": selected_output},
         })
+        return node_id
+
+    # Langflow's own PromptComponent creates one of these per {variable} in the
+    # template (add_new_variables_to_template -> DefaultPromptField.to_dict),
+    # and that only happens when a person edits the template in the canvas. A
+    # template POSTed with {documents} in it and no matching field has nothing
+    # for the edge to land on, so the passages never reach the model.
+    PROMPT_VAR = {"type": "str", "required": False, "placeholder": "",
+                  "list": False, "show": True, "multiline": True, "value": "",
+                  "fileTypes": [], "file_path": "", "advanced": False,
+                  "api_editable": False, "input_types": ["Message"],
+                  "dynamic": False, "info": "", "load_from_db": False,
+                  "title_case": False}
+
+    def add_prompt(self, node_id, display, template, at=None):
+        """A Prompt node whose {variables} are wired-up input fields."""
+        self.add(node_id, "Prompt", display, {"template": template}, at=at)
+        names = list(dict.fromkeys(re.findall(r"\{([A-Za-z_][A-Za-z0-9_]*)\}", template)))
+        node = self.nodes[-1]["data"]["node"]
+        for name in names:
+            node["template"][name] = dict(self.PROMPT_VAR, name=name, display_name=name)
+        if names:
+            node["custom_fields"] = {"template": names}
         return node_id
 
     def link(self, src, out_name, out_types, dst, field, in_types, field_type="str"):
@@ -295,6 +341,162 @@ SCENARIOS = [
 ]
 
 
+# The four routines a box is bought for. Unlike the scenarios above, these read
+# the department drive: the same folder the box shares over SMB, mounted
+# read-only into Studio at /drives/<department>. `drive: None` means "whichever
+# department this box was installed with" -- the path is a tweak, so one flow
+# serves every department (`run_flows.py --only docqa --department hr`).
+RECIPES = [
+    {
+        "id": "docqa",
+        "name": "Routine · ask the department drive",
+        "desc": "Answers a question from the department's own documents, and "
+                "names the file it answered from.",
+        "kind": "drive_rag",
+        "drive": None,
+        "system": (
+            "당신은 부서 공유 드라이브의 문서를 근거로 답하는 도우미입니다.\n"
+            "아래 [문서]에 있는 내용만 근거로 답하세요. 문서에 없는 내용은 지어내지 말고 "
+            "'드라이브에서 근거를 찾지 못했습니다'라고만 쓰세요.\n"
+            "답변 마지막 줄에 사용한 파일 이름을 '근거: <파일명>' 형식으로 쓰세요. "
+            "한국어로만 쓰세요.\n\n"
+            "[문서]\n{documents}"),
+        "ask": "비밀유지 의무는 계약이 끝난 뒤 얼마나 유지되나요?",
+    },
+    {
+        "id": "meeting",
+        "name": "Routine · meeting transcript to decisions",
+        "desc": "Paste a transcript; get the decisions with an owner and a "
+                "deadline against each one.",
+        "kind": "prompt",
+        "system": (
+            "당신은 회의 전문을 정리하는 도우미입니다. 주어진 회의 전문에서 "
+            "결정사항만 뽑아 표로 정리하세요. 각 줄은 '결정사항 | 담당자 | 기한' "
+            "형식입니다.\n"
+            "전문에 담당자나 기한이 없으면 '(미지정)'이라고 쓰고 추측하지 마세요. "
+            "논의만 하고 결정하지 않은 것은 표에 넣지 말고 마지막에 "
+            "'보류: ...'로 한 줄 쓰세요. 한국어로만 쓰세요."),
+        "ask": ("회의 전문: 박팀장: 오늘 안건은 공유 드라이브 정리입니다. "
+                "김대리: 법무 폴더에 옛 계약서가 섞여 있습니다. "
+                "박팀장: 김대리가 9월 12일까지 정리해 주세요. "
+                "이과장: 보존 기간 기준이 없어서 판단이 어렵습니다. "
+                "박팀장: 기준표는 총무팀에 요청하고, 담당자는 다음 회의에서 정합시다. "
+                "김대리: 정리 결과는 9월 15일 회의에서 공유하겠습니다."),
+    },
+    {
+        "id": "helpdesk",
+        "name": "Routine · HR helpdesk from the policy",
+        "desc": "Answers an employee question strictly from the HR drive, cites "
+                "the policy file, and refuses when the policy is silent.",
+        "kind": "drive_rag",
+        "drive": "hr",
+        "system": (
+            "당신은 인사 규정 안내 도우미입니다. 아래 [규정]에 적힌 내용만 근거로 "
+            "답하세요.\n"
+            "규정에 없는 것은 추측하지 말고 '규정에 없는 내용이라 인사팀 확인이 "
+            "필요합니다'라고만 쓰세요. 규정을 해석해 새 규칙을 만들지 마세요.\n"
+            "답변 마지막 줄에 근거 파일 이름을 '근거: <파일명>' 형식으로 반드시 "
+            "쓰세요. 한국어로만 쓰세요.\n\n"
+            "[규정]\n{documents}"),
+        "ask": "배우자가 출산하면 휴가를 며칠 쓸 수 있나요?",
+    },
+    {
+        "id": "weekly",
+        "name": "Routine · weekly report from the drive",
+        "desc": "Drafts the department's weekly report from what is on its "
+                "drive, in the department's own tone, citing each file.",
+        "kind": "drive_read",
+        "drive": None,
+        "system": (
+            "당신은 부서 주간보고 작성 도우미입니다. 아래 [드라이브 문서]와 "
+            "요청받은 기간만 근거로 주간보고 초안을 쓰세요.\n"
+            "형식: '이번 주 한 일' / '다음 주 할 일' / '확인 필요' 세 항목이며, "
+            "각 항목은 한 줄씩 최대 3줄입니다.\n"
+            "부서가 쓰는 말투(문서에 나오는 용어와 조항 번호)를 그대로 쓰고, 각 줄 "
+            "끝에 근거 파일 이름을 '(근거: <파일명>)'으로 쓰세요. 문서에 없는 "
+            "내용은 지어내지 말고 '(근거 없음)'이라고 쓰세요. 한국어로만 쓰세요.\n\n"
+            "[드라이브 문서]\n{documents}"),
+        "ask": "9월 첫째 주 주간보고 초안을 써줘.",
+    },
+]
+
+# Which node a run-time tweak has to reach to point a recipe at another
+# department. Kept next to the builder that creates the ids so the two cannot
+# drift apart; written into flows.json for run_flows.py to use.
+DRIVE_NODE = "Directory-drive"
+INDEX_NODE = "LocalDB-index"
+
+
+def build_recipe(catalog, spec, opts):
+    """One routine: a question, the department drive, the on-box model."""
+    b = FlowBuilder(catalog)
+    dept = spec["drive"] or opts["department"]
+    path = f"{opts['drives_root'].rstrip('/')}/{dept}"
+    rag = spec["kind"] == "drive_rag"
+    place = ({"in": (40, 60), "dir": (40, 420), "split": (380, 420),
+              "embed": (380, 760), "db": (720, 560), "parse": (1060, 560),
+              "prompt": (1400, 440), "llm": (1740, 200), "out": (2080, 200)}
+             if rag else
+             {"in": (40, 60), "dir": (40, 420), "parse": (380, 420),
+              "prompt": (720, 420), "llm": (1060, 200), "out": (1400, 200)})
+
+    chat_in = b.add("ChatInput-in", "ChatInput", "Question", at=place["in"])
+    # recursive with depth 0 walks the whole drive (retrieve_file_paths: depth
+    # is only a cap when non-zero); silent_errors keeps one unreadable file in a
+    # real department folder from ending the routine.
+    drive = b.add(DRIVE_NODE, "Directory", f"Drive: {dept}",
+                  {"path": path, "recursive": True, "silent_errors": True},
+                  at=place["dir"])
+    if rag:
+        chunks = b.add("SplitText-chunks", "SplitText", "Chunks",
+                       {"chunk_size": 1000, "chunk_overlap": 200}, at=place["split"])
+        embed = b.add("OllamaEmbeddings-embed", EMBEDDINGS, "On-box embeddings",
+                      {"base_url": opts["ollama"], "model_name": opts["embeddings"]},
+                      at=place["embed"])
+        # One Local DB node, not two. It ingests what is wired into ingest_data
+        # and THEN searches (search_documents builds the store first), so a
+        # single node gets the order right; two nodes -- an Ingest one and a
+        # Retrieve one -- are two disconnected sub-graphs whose relative order
+        # nothing in the flow fixes. The collection is per department: sharing
+        # one would pool every department's documents in a box whose whole
+        # promise is that they stay apart. `limit` bounds the duplicate check
+        # (0 asks Chroma for nothing and re-adds the drive on every run).
+        index = b.add(INDEX_NODE, LOCALDB, "Department index",
+                      {"collection_name": f"nufi-{dept}", "number_of_results": 4,
+                       "limit": 10000},
+                      shows=("search_query", "number_of_results"), at=place["db"])
+        b.link(drive, "dataframe", ["Table"], chunks, "data_inputs",
+               ["Data", "JSON", "DataFrame", "Table", "Message"], "other")
+        b.link(chunks, "dataframe", ["Table"], index, "ingest_data",
+               ["Data", "JSON", "DataFrame", "Table"], "other")
+        b.link(embed, "embeddings", ["Embeddings"], index, "embedding",
+               ["Embeddings"], "other")
+        b.link(chat_in, "message", ["Message"], index, "search_query", ["Message"])
+        source = index
+    else:
+        source = drive
+    # The file name travels with the text: every recipe prompt asks for the file
+    # it answered from, and a passage without its path cannot be cited.
+    passages = b.add("ParseDataFrame-passages", "ParseDataFrame", "Passages",
+                     {"template": "[{file_path}]\n{text}", "sep": "\n\n"},
+                     at=place["parse"])
+    b.link(source, "dataframe", ["Table"], passages, "df",
+           ["DataFrame", "Table"], "other")
+    prompt = b.add_prompt("Prompt-sys", "Routine instructions", spec["system"],
+                          at=place["prompt"])
+    b.link(passages, "text", ["Message"], prompt, "documents", ["Message"])
+    llm = b.add("ChatOllama-llm", OLLAMA, "On-box model",
+                {"base_url": opts["ollama"], "model_name": opts["model"],
+                 "temperature": 0, "top_k": 1},
+                selected_output="text_output", at=place["llm"])
+    chat_out = b.add("ChatOutput-out", "ChatOutput", "Answer", at=place["out"])
+    b.link(chat_in, "message", ["Message"], llm, "input_value", ["Message"])
+    b.link(prompt, "prompt", ["Message"], llm, "system_message", ["Message"])
+    b.link(llm, "text_output", ["Message"], chat_out, "input_value",
+           ["Data", "JSON", "DataFrame", "Table", "Message"], "other")
+    return b.flow(spec["name"], spec["desc"]), dept, path
+
+
 def build(catalog, spec, model, ollama):
     b = FlowBuilder(catalog)
     tool = spec["kind"] == "tool"
@@ -347,25 +549,129 @@ def build(catalog, spec, model, ollama):
     return b.flow(spec["name"], spec["desc"])
 
 
+def plan(specs, opts):
+    """What each flow would be built from, without touching Studio.
+
+    The installer prints this in its dry run, and it is the one description of
+    a recipe that costs nothing to look at: the components in order, and the
+    drive path a wrong --drives-root would put there.
+    """
+    for spec in specs:
+        line = f"  {spec['id']:9} {spec['name']}"
+        if spec["kind"] == "drive_rag":
+            dept = spec["drive"] or opts["department"]
+            path = f"{opts['drives_root'].rstrip('/')}/{dept}"
+            line += (f"\n            ChatInput -> Directory({path}) -> SplitText"
+                     f" -> LocalDB(k=4, nufi-{dept}) -> Prompt -> Ollama -> ChatOutput")
+        elif spec["kind"] == "drive_read":
+            dept = spec["drive"] or opts["department"]
+            path = f"{opts['drives_root'].rstrip('/')}/{dept}"
+            line += (f"\n            ChatInput -> Directory({path}) -> ParseDataFrame"
+                     " -> Prompt -> Ollama -> ChatOutput")
+        elif spec["kind"] == "tool":
+            line += "\n            ChatInput -> Agent(Calculator) -> ChatOutput"
+        else:
+            line += "\n            ChatInput -> Prompt -> Ollama -> ChatOutput"
+        print(line)
+
+
+def mint_key(base, email, password, name):
+    """Log in as the Studio superuser and mint an API key for this box.
+
+    Studio's login is an OAuth2 password form, not JSON -- posting JSON here
+    answers 422 with a field list that says nothing about the content type.
+    """
+    body = urllib.parse.urlencode({"username": email, "password": password}).encode()
+    req = urllib.request.Request(base.rstrip("/") + "/api/v1/login", data=body,
+                                 method="POST")
+    req.add_header("Content-Type", "application/x-www-form-urlencoded")
+    try:
+        with OPEN(req, timeout=60) as r:
+            token = json.loads(r.read().decode())["access_token"]
+    except urllib.error.HTTPError as e:
+        raise SystemExit(f"studio login as {email} -> HTTP {e.code}: "
+                         f"{e.read().decode()[:200]}") from e
+    req = urllib.request.Request(base.rstrip("/") + "/api/v1/api_key/",
+                                 data=json.dumps({"name": name}).encode(), method="POST")
+    req.add_header("Content-Type", "application/json")
+    req.add_header("Authorization", "Bearer " + token)
+    try:
+        with OPEN(req, timeout=60) as r:
+            return json.loads(r.read().decode())["api_key"]
+    except urllib.error.HTTPError as e:
+        raise SystemExit(f"api_key -> HTTP {e.code}: {e.read().decode()[:200]}") from e
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", default="http://localhost:7860")
-    ap.add_argument("--key", required=True)
+    ap.add_argument("--box", default=None, metavar="URL",
+                    help="a NuFi box's Studio: the base URL, /drives, and keep "
+                         "flows that are already there (the installer re-runs this)")
+    ap.add_argument("--key", default=None,
+                    help="Studio API key; defaults to $STUDIO_API_KEY. Prefer the "
+                         "environment: an argument is visible to `ps`")
+    ap.add_argument("--login", default=None, metavar="EMAIL",
+                    help="no key yet: log in as this superuser (password in "
+                         "$STUDIO_SUPERUSER_PASSWORD) and mint one")
+    ap.add_argument("--key-name", default="box-install")
+    ap.add_argument("--key-out", default=None, metavar="FILE",
+                    help="write the minted key here, owner-readable only")
     ap.add_argument("--model", default="qwen2.5:7b")
+    ap.add_argument("--embeddings", default="bge-m3")
     ap.add_argument("--ollama", default="http://host.docker.internal:11434")
+    ap.add_argument("--drives-root", default="/drives",
+                    help="where the department drives are mounted INSIDE Studio")
+    ap.add_argument("--departments", default="legal",
+                    help="the box's drives; the first is what the recipes point at")
     ap.add_argument("--out", default="flows.json")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="print what would be built and stop")
     add_transport_args(ap)
     a = ap.parse_args()
+
+    if a.box:
+        a.base = a.box
+    departments = [d.strip() for d in a.departments.split(",") if d.strip()]
+    opts = {"model": a.model, "ollama": a.ollama, "embeddings": a.embeddings,
+            "drives_root": a.drives_root,
+            "department": departments[0] if departments else "legal"}
+    specs = SCENARIOS + RECIPES
+
+    if a.dry_run:
+        print(f"would build {len(specs)} flows on {a.base}"
+              f" (drives at {a.drives_root}, department {opts['department']})")
+        plan(specs, opts)
+        return
+
+    key = a.key or os.environ.get("STUDIO_API_KEY", "")
 
     ctx, opener = transport_from_args(a)
     global OPEN
     OPEN = ((lambda req, timeout=120: opener.open(req, timeout=timeout)) if opener else
             (lambda req, timeout=120: urllib.request.urlopen(req, timeout=timeout, context=ctx)))
 
-    catalog = api(a.base, "/api/v1/all", key=a.key)
+    if not key and a.login:
+        password = os.environ.get("STUDIO_SUPERUSER_PASSWORD", "")
+        if not password:
+            raise SystemExit("--login needs the superuser password in "
+                             "$STUDIO_SUPERUSER_PASSWORD")
+        key = mint_key(a.base, a.login, password, a.key_name)
+        if a.key_out:
+            # The key is a bearer credential for the whole Studio; create the
+            # file empty and owner-only BEFORE the secret goes into it.
+            fd = os.open(a.key_out, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w") as fh:
+                fh.write(key + "\n")
+        print(f"  minted Studio API key '{a.key_name}'")
+    if not key:
+        raise SystemExit("no Studio API key: pass --key, set $STUDIO_API_KEY, "
+                         "or pass --login EMAIL to mint one")
+
+    catalog = api(a.base, "/api/v1/all", key=key)
     # The listing comes back as a bare list on some builds and paginated on
     # others; accept either rather than depend on which one this box has.
-    listed = api(a.base, "/api/v1/flows/?page=1&size=100", key=a.key) or []
+    listed = api(a.base, "/api/v1/flows/?page=1&size=100", key=key) or []
     if isinstance(listed, dict):
         listed = listed.get("items", [])
     existing = {f["name"]: f["id"] for f in listed if f.get("name")}
@@ -373,22 +679,40 @@ def main():
     # Rebuilding creates new ids, so every earlier attempt is left behind. A
     # Studio holding thirty-seven near-identical drafts is not something to show
     # anyone, so clear ours out before making this round.
-    ours = {sp["name"] for sp in SCENARIOS}
-    stale = [(n, i) for n, i in existing.items()
-             if n in ours or n.startswith("Scenario ") or n.startswith("부서 업무 루틴")
-             or " · " in n]
-    for _name, fid in stale:
-        api(a.base, f"/api/v1/flows/{fid}", key=a.key, method="DELETE")
-    if stale:
-        print(f"  cleared {len(stale)} earlier flow(s)")
+    #
+    # Not on a box: there the installer runs this on every install, a person may
+    # have edited a routine since, and deleting their work to hand back a byte
+    # identical flow is not an upgrade. A flow already there by name is kept and
+    # its id recorded.
+    if not a.box:
+        ours = {sp["name"] for sp in specs}
+        stale = [(n, i) for n, i in existing.items()
+                 if n in ours or n.startswith("Scenario ") or n.startswith("부서 업무 루틴")
+                 or " · " in n]
+        for _name, fid in stale:
+            api(a.base, f"/api/v1/flows/{fid}", key=key, method="DELETE")
+        if stale:
+            print(f"  cleared {len(stale)} earlier flow(s)")
+        existing = {}
 
     built = {}
-    for spec in SCENARIOS:
-        flow = build(catalog, spec, a.model, a.ollama)
-        made = api(a.base, "/api/v1/flows/", flow, key=a.key)
-        built[spec["id"]] = {"id": made["id"], "name": spec["name"],
-                             "ask": spec["ask"], "kind": spec["kind"]}
-        print(f"  {spec['id']:9} {made['id']}  {spec['name']}")
+    for spec in specs:
+        entry = {"name": spec["name"], "ask": spec["ask"], "kind": spec["kind"]}
+        if spec["kind"] in ("drive_rag", "drive_read"):
+            flow, dept, path = build_recipe(catalog, spec, opts)
+            entry["drive"] = {"node": DRIVE_NODE, "root": a.drives_root,
+                              "department": dept, "path": path,
+                              "index_node": INDEX_NODE if spec["kind"] == "drive_rag" else None,
+                              "fixed": spec["drive"] is not None}
+        else:
+            flow = build(catalog, spec, a.model, a.ollama)
+        if spec["name"] in existing:
+            entry["id"] = existing[spec["name"]]
+            print(f"  {spec['id']:9} {entry['id']}  {spec['name']}  (already there)")
+        else:
+            entry["id"] = api(a.base, "/api/v1/flows/", flow, key=key)["id"]
+            print(f"  {spec['id']:9} {entry['id']}  {spec['name']}")
+        built[spec["id"]] = entry
 
     with open(a.out, "w") as fh:
         json.dump(built, fh, ensure_ascii=False, indent=2)

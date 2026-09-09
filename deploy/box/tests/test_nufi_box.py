@@ -331,3 +331,84 @@ def test_mesh_without_a_subcommand_is_an_error(tmp_path):
 def test_help_lists_the_mesh_lifecycle_verbs():
     out = cli("--help").stdout
     assert "mesh up" in out
+
+
+# --- the department routines in Studio (Task 8) ---
+
+def _flows_env(tmp_path, **extra):
+    envf = tmp_path / ".env"
+    lines = ["NUFI_DATA_DIR=%s" % tmp_path, "DEPARTMENTS=legal,hr", "BOX_HOST=nufi.local",
+             "ADMIN_EMAIL=admin@nufi.local", "INFERENCE_MODEL=qwen2.5:7b",
+             "EMBEDDINGS_MODEL=bge-m3",
+             "OLLAMA_BASE_URL=http://host.docker.internal:11434"]
+    lines += ["%s=%s" % kv for kv in extra.items()]
+    envf.write_text("\n".join(lines) + "\n")
+    return envf
+
+
+def test_flows_needs_a_subcommand(tmp_path):
+    envf = _flows_env(tmp_path)
+    r = cli("flows", NUFI_BOX_ENV=str(envf))
+    assert r.returncode == 2
+    assert "install or list" in r.stderr
+    assert cli("flows", "frobnicate", NUFI_BOX_ENV=str(envf)).returncode == 2
+
+
+def test_flows_install_plans_the_builder_call(tmp_path):
+    envf = _flows_env(tmp_path)
+    r = cli("flows", "install", NUFI_BOX_ENV=str(envf))
+    assert r.returncode == 0, r.stderr
+    assert "build_flows.py" in r.stdout
+    for arg in ("--box https://localhost:7860", "--drives-root /drives",
+                "--departments legal,hr", "--model qwen2.5:7b", "--embeddings bge-m3",
+                "--login admin@nufi.local"):
+        assert arg in r.stdout, (arg, r.stdout)
+    assert str(tmp_path / "studio-flows.json") in r.stdout
+
+
+def test_flows_install_never_puts_the_key_in_an_argument(tmp_path):
+    """An argument is readable by any other local user through `ps`. The key
+    travels in the environment (the builder reads $STUDIO_API_KEY) and the
+    minted one comes back through a mode-0600 file."""
+    envf = _flows_env(tmp_path, STUDIO_API_KEY="sk-secret-value")
+    r = cli("flows", "install", NUFI_BOX_ENV=str(envf))
+    assert r.returncode == 0, r.stderr
+    assert "sk-secret-value" not in r.stdout
+    assert "--key " not in r.stdout
+
+
+def test_flows_list_without_a_key_says_what_to_run(tmp_path):
+    """Not a dry run: this is the real path, and it must refuse before it
+    reaches the network rather than asking Studio with an empty key."""
+    envf = _flows_env(tmp_path)
+    e = dict(os.environ, NUFI_BOX_ENV=str(envf))
+    e.pop("NUFI_BOX_DRY_RUN", None)
+    e.pop("STUDIO_API_KEY", None)
+    r = subprocess.run(["/bin/bash", str(BOX / "nufi-box"), "flows", "list"],
+                       cwd=BOX, env=e, capture_output=True, text=True)
+    assert r.returncode == 2, r.stdout
+    assert "nufi-box flows install" in r.stderr
+
+
+def test_flows_install_says_what_is_missing_without_the_builder(tmp_path):
+    """deploy/box travels with deploy/platform/scenarios. When someone copies
+    only the box, say which directory is missing instead of failing inside
+    python3."""
+    box = tmp_path / "box"
+    (box / "lib").mkdir(parents=True)
+    for name in ("nufi-box", "docker-compose.yml"):
+        (box / name).write_text((BOX / name).read_text())
+    for name in ("flows.sh", "envfile.sh"):
+        (box / "lib" / name).write_text((BOX / "lib" / name).read_text())
+    (box / ".env").write_text("NUFI_DATA_DIR=%s\nDEPARTMENTS=legal\n" % tmp_path)
+    r = subprocess.run(["/bin/bash", str(box / "nufi-box"), "flows", "install"],
+                       cwd=box, env=dict(os.environ, NUFI_BOX_DRY_RUN="1"),
+                       capture_output=True, text=True)
+    assert r.returncode == 1
+    assert "the builder is missing" in r.stderr
+    assert "deploy/platform/scenarios" in r.stderr
+
+
+def test_help_lists_the_flows_verbs():
+    out = cli("--help").stdout
+    assert "flows install" in out and "flows list" in out
