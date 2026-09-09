@@ -177,6 +177,34 @@ def test_linux_profile_adds_ollama_and_samba():
     assert "deploy" not in cfg["services"]["ollama"]
 
 
+def test_the_samba_account_runs_as_the_uid_that_owns_the_drives():
+    """A member writing from a laptop and the admin dropping a file in by hand
+    have to be the same uid, or one of them gets NT_STATUS_ACCESS_DENIED.
+
+    install-box.sh creates ${NUFI_DATA_DIR}/drives as whoever runs it and
+    renders that uid as NUFI_SMB_UID; the share has to take it from there
+    rather than assume 1000, which is what the P2 acceptance failed on (the
+    VM box's admin is uid 501).
+    """
+    cfg = render("docker-compose.yml", "docker-compose.linux.yml",
+                 profiles=("linux",), NUFI_SMB_UID="501", NUFI_SMB_GID="988")
+    assert cfg["services"]["samba"]["environment"]["UID_nufi"] == "501"
+
+
+def test_the_samba_share_is_not_widened_to_reach_the_drives():
+    """The fix for the write must not be "let everyone in": each department is
+    still its own share, still `valid users`, still not guest-readable, and the
+    container still sees only the drives directory."""
+    cfg = render("docker-compose.yml", "docker-compose.linux.yml",
+                 profiles=("linux",), NUFI_SMB_UID="501", NUFI_SMB_GID="988")
+    svc = cfg["services"]["samba"]
+    env = json.dumps(svc["environment"])
+    assert "force user" not in env and "guest ok = yes" not in env
+    assert "0777" not in env and "create mask" not in env
+    mounts = {v["target"] for v in svc["volumes"]}
+    assert mounts == {"/shares"}
+
+
 def test_gpu_profile_adds_the_device_reservation_to_ollama():
     cfg = render("docker-compose.yml", "docker-compose.linux.yml", "docker-compose.gpu.yml",
                  profiles=("linux", "gpu"))

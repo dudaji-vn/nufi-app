@@ -235,6 +235,19 @@ Add another department later without reinstalling:
 This creates the folder and share; the watcher creates the team and agent
 on its next scan, about 20 seconds later.
 
+**Who owns the files.** On Linux the drives are shared by a Samba container,
+and it writes as the same uid that installed the box (`NUFI_SMB_UID` in
+`.env`, taken from `id -u`; a root install uses 1000 instead). So a file a
+member drops in from a laptop is owned by the box's admin, exactly like one
+the admin copies in by hand. If a member gets `NT_STATUS_ACCESS_DENIED`
+writing to a share — a box whose drives were created by a different user than
+the one running the installer — re-run `./install-box.sh`, which puts the
+drives back in step, or give them to that uid by hand:
+
+```bash
+sudo chown -R "$NUFI_SMB_UID:$NUFI_SMB_GID" <data dir>/drives/<department>
+```
+
 By default the daemon that watches the drives runs **as the admin**, so the
 admin who installed the box already owns every department's team and agent
 and sees them immediately after logging in. Nobody else does. To let a

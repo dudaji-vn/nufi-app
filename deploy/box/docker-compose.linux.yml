@@ -31,7 +31,14 @@ services:
     environment:
       SAMBA_CONF_LOG_LEVEL: "1"
       ACCOUNT_nufi: ${SAMBA_PASSWORD}
-      UID_nufi: "1000"
+      # The uid the share writes as. Rendered by the installer from `id -u`, so
+      # it is the same uid that owns ${NUFI_DATA_DIR}/drives. Pinned to 1000 it
+      # was neither the owner nor in the group of a 775 department directory on
+      # any box whose admin is not uid 1000: it fell through to `other` (r-x)
+      # and a member's `smbclient put` returned NT_STATUS_ACCESS_DENIED. The
+      # fallback keeps `docker compose config` working before .env exists; a
+      # real box always has the rendered value.
+      UID_nufi: "${NUFI_SMB_UID:-1000}"
       # One SAMBA_VOLUME_CONFIG_<dept> per department, rendered by the installer
       # into .env, e.g. SAMBA_VOLUME_CONFIG_legal="[legal]; path=/shares/legal; valid users = nufi; guest ok = no; read only = no; browseable = yes"
     env_file:

@@ -243,6 +243,31 @@ else BOX_IP="$(hostname -I 2>/dev/null | awk '{print $1}')" || true; BOX_IP="${B
 [ "$DRY" = 1 ] && BOX_IP="${BOX_IP:-192.168.1.10}"
 NUFI_DATA_DIR="${NUFI_DATA_DIR:-$BOX_HOME/data}"
 
+# ---------- who the department drives belong to ---------------------------------
+# The Samba account members log in as and the person who installed the box have
+# to be the same uid, or exactly one of them can write to a department drive.
+# This installer creates data/drives as whoever runs it; the container's `nufi`
+# account used to be pinned to uid 1000, so on any box whose admin is not
+# uid 1000 the account was neither the owner nor in the group of a 775
+# directory, fell through to `other` (r-x), and every `smbclient put` came back
+# NT_STATUS_ACCESS_DENIED. Read yes, write no — the half of the promise a
+# member actually uses from home.
+#
+# Rendered rather than assumed, and rendered from `id`, so a box installed by
+# the machine's second user (1001), by a service account, or by root works the
+# same as one installed by its first user.
+NUFI_SMB_UID="${NUFI_BOX_FAKE_UID:-$(id -u)}"
+NUFI_SMB_GID="${NUFI_BOX_FAKE_GID:-$(id -g)}"
+if [ "$NUFI_SMB_UID" = "0" ]; then
+  # A root install cannot hand the share root's uid: the Samba image only
+  # honours `UID_nufi` when it is greater than zero (`[ "$ACCOUNT_UID" -gt 0 ]`
+  # in its entrypoint), and an SMB account running as root would own every
+  # right on whatever directory it is given. Use the conventional first-user
+  # id and give the drives to it below instead.
+  NUFI_SMB_UID=1000
+  NUFI_SMB_GID=1000
+fi
+
 # ---------- .env ----------------------------------------------------------------
 say "Writing .env"
 sec() { # sec VAR generator — keep an existing non-placeholder value
@@ -290,6 +315,8 @@ BOX_NAME=$BOX_NAME
 BOX_HOST=$BOX_HOST
 BOX_IP=$BOX_IP
 NUFI_DATA_DIR=$NUFI_DATA_DIR
+NUFI_SMB_UID=$NUFI_SMB_UID
+NUFI_SMB_GID=$NUFI_SMB_GID
 NUFI_REGISTRY=$NUFI_REGISTRY
 NUFI_CHAT_TAG=${NUFI_CHAT_TAG:-main}
 NUFI_CONSOLE_TAG=${NUFI_CONSOLE_TAG:-main}
@@ -404,6 +431,25 @@ else
   sed -e "s|@NUFI_MODEL@|$NUFI_MODEL|" -e "s|@INFERENCE_MODEL@|$INFERENCE_MODEL|" litellm/config.yaml.tmpl > litellm/config.yaml
 fi
 for d in $(printf '%s' "$DEPARTMENTS" | tr ',' ' '); do run mkdir -p "$NUFI_DATA_DIR/drives/$d"; done
+# …and owned by the uid the Samba account runs as, or a member cannot write to
+# them (see NUFI_SMB_UID above). A drive this run just created already is; this
+# is for the two cases where it is not — a box installed as root, whose drives
+# are root's, and a box upgraded from the release that pinned the account to
+# 1000 while the drives belonged to someone else.
+dir_uid() { stat -c '%u' "$1" 2>/dev/null || stat -f '%u' "$1" 2>/dev/null || echo ""; }
+for d in $(printf '%s' "$DEPARTMENTS" | tr ',' ' '); do
+  _drive="$NUFI_DATA_DIR/drives/$d"
+  if [ "$DRY" = 1 ]; then
+    printf '  $ chown -R %s:%s %s   # unless it is already\n' "$NUFI_SMB_UID" "$NUFI_SMB_GID" "$_drive"
+    continue
+  fi
+  [ -d "$_drive" ] || continue
+  _cur="$(dir_uid "$_drive")"
+  if [ "$_cur" != "$NUFI_SMB_UID" ]; then
+    chown -R "$NUFI_SMB_UID:$NUFI_SMB_GID" "$_drive" 2>/dev/null \
+      || warn "$_drive belongs to uid $_cur, not $NUFI_SMB_UID — members will get NT_STATUS_ACCESS_DENIED writing to it; run: sudo chown -R $NUFI_SMB_UID:$NUFI_SMB_GID $_drive"
+  fi
+done
 # The Caddyfile imports caddy/mesh*.caddy. A box that never joins a mesh
 # still gets the empty template, so the import always has a file to read and
 # `nufi-box mesh up` only ever overwrites one.

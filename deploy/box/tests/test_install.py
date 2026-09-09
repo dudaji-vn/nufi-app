@@ -541,6 +541,38 @@ def test_the_installer_seeds_an_empty_mesh_caddy_so_the_import_has_a_file():
     assert "caddy/mesh.caddy" in out
 
 
+# --- who the department drives belong to (defect D1, P2 acceptance) ---
+
+def test_the_samba_uid_is_the_installing_users_not_a_guess():
+    """The share writes as NUFI_SMB_UID and the drives are created by whoever
+    runs the installer: the two must be the same number or a member's
+    `smbclient put` gets NT_STATUS_ACCESS_DENIED on a 775 directory."""
+    out = dry(NUFI_BOX_FAKE_OS="Linux", DEPARTMENTS="legal")
+    assert f"NUFI_SMB_UID={os.getuid()}" in out
+    assert f"NUFI_SMB_GID={os.getgid()}" in out
+
+
+def test_a_root_install_does_not_hand_the_share_root():
+    """The Samba image only honours UID_nufi when it is > 0, and an SMB account
+    running as root would own every right on the directory it is given. A root
+    install takes the conventional first-user id and gives the drives to it."""
+    out = dry(NUFI_BOX_FAKE_OS="Linux", DEPARTMENTS="legal",
+              NUFI_BOX_FAKE_UID="0", NUFI_BOX_FAKE_GID="0")
+    assert "NUFI_SMB_UID=1000" in out and "NUFI_SMB_GID=0" not in out
+    assert "chown -R 1000:1000" in out
+
+
+def test_the_drives_are_given_to_that_uid_after_they_are_created():
+    """A box installed as root, or upgraded from the release that pinned the
+    account to 1000, has drive directories with the wrong owner already on
+    disk; creating them is not enough."""
+    out = dry(NUFI_BOX_FAKE_OS="Linux", DEPARTMENTS="legal,hr",
+              NUFI_BOX_FAKE_UID="1001", NUFI_BOX_FAKE_GID="1001")
+    assert out.index("mkdir -p") < out.index("chown -R 1001:1001")
+    assert "drives/legal" in out and "drives/hr" in out
+    assert out.count("chown -R 1001:1001") == 2
+
+
 # --- the department routines (Task 8) ---
 
 def test_the_installer_puts_the_routines_in_studio():
