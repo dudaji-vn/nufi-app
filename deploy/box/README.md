@@ -93,6 +93,15 @@ install takes about **75 seconds**. On a first install that has to download
 everything, budget about 15 minutes on an office network — most of that time
 is the download, not the install itself.
 
+On a blank Ubuntu 24.04 (4 vCPU, 8 GB), measured in a VM with the images on a
+LAN registry: Docker Engine is installed, the box re-runs itself inside the
+new `docker` group and the first image starts coming down inside the first
+**two minutes**; everything after that is the download. Budget **about 18 GB
+of free disk** for the images, the two models and the databases — that is what
+the same VM used with one department. `deploy/box/tests/vm/` holds that run as
+a recipe (`run-ubuntu-install.sh`, `lima-ubuntu.yaml`): it installs onto a
+blank machine, prints the wall time, and fails if the banner never appears.
+
 Re-running `./install-box.sh` is safe: it keeps `.env` and every answer you
 already gave, and only asks again for anything you did not set.
 
@@ -108,23 +117,44 @@ machine that cannot `docker login ghcr.io`, cannot pull those. Instead, run
 a small registry on a machine that already has the images — a Mac that
 built them — and point the box at it.
 
+Such a box usually has no checkout either. Make one from a machine that has
+the repo and carry it over (scp, a USB stick — no GitHub involved):
+
+```bash
+git archive -o box.tar HEAD \
+  deploy/box deploy/platform/scenarios deploy/platform/adapters/nufi-ingest docs
+```
+
+and on the box, `tar xf box.tar && cd deploy/box`.
+
 On the Mac with the images:
 
 ```bash
-make -C deploy/box registry-up
-make -C deploy/box registry-push REGISTRY=<mac-ip>:5000
+make -C deploy/box registry-up   REGISTRY=<mac-ip>:5001
+make -C deploy/box registry-push REGISTRY=<mac-ip>:5001
 ```
+
+Port 5001, not 5000: macOS runs AirPlay Receiver on 5000 (System Settings →
+General → AirDrop & Handoff), and the registry would silently lose the port.
+`REGISTRY` is the address the *box* will use; the push itself goes over
+`localhost`, the one address Docker trusts without an insecure-registries
+entry, so Docker Desktop needs no change and no restart. The push also
+renames the images to the tags a default install asks for (`main`, and
+`box-main` for studio), whatever they are tagged locally, and it mirrors the
+two third-party images that live on ghcr.io as well (the RAG API and Samba) —
+without those a box that cannot reach GitHub gets most of the way through an
+install and then stops.
 
 On the box:
 
 ```bash
-./install-box.sh --yes --registry <mac-ip>:5000
+./install-box.sh --yes --registry <mac-ip>:5001
 ```
 
-`<mac-ip>:5000` has no certificate, so Docker refuses to pull from it until
+`<mac-ip>:5001` has no certificate, so Docker refuses to pull from it until
 it is marked insecure. On Linux the installer does this for you: it writes
 (or merges into) `/etc/docker/daemon.json` —
-`{"insecure-registries": ["<mac-ip>:5000"]}` — and restarts Docker;
+`{"insecure-registries": ["<mac-ip>:5001"]}` — and restarts Docker;
 `--dry-run` prints the plan instead of touching the machine. On macOS
 (Docker Desktop), the installer only prints the step — add the registry
 yourself under Settings → Docker Engine → `insecure-registries`, then
@@ -252,6 +282,9 @@ to `install-box.sh` and is also symlinked onto your `PATH`.
 | The installer warned the Docker VM is too small, or the box is slow and `nufi-box doctor` shows failing health checks | `doctor` has no memory probe of its own — the installer's prerequisite check is what reports the Docker VM's size, at install time. A box that is swapping heavily shows up indirectly instead: answers get slow, and `doctor`'s `curl` health checks start failing. Give Docker Desktop / OrbStack more memory: Settings → Resources → Memory, at least 12 GB on macOS. Studio alone is more than a third of the box's own footprint; running something else heavy on the same VM is the usual cause. |
 | After a reboot, `nufi.local` stops resolving | The installer announces the name on the LAN with a background `dns-sd` (macOS) or `avahi-publish` (Linux) process, and neither is installed as a service, so a reboot ends it. Re-run `./install-box.sh --yes` to announce it again — it keeps every answer and secret — or use `https://<box-ip>:3080`, which the certificate covers too. |
 | The box's IP changed and the browser now says the certificate does not cover this address | The certificate's IP entry is fixed at install time from the address the box had then, so a new DHCP lease invalidates it. Re-run `./install-box.sh --yes`: it re-reads the current address and re-issues the certificate, keeping every answer and secret. A DHCP reservation for the box stops it happening again. |
+| Right after the first install on Linux, `nufi-box` (or any `docker` command) says `permission denied while trying to connect to the docker API` | The installer put you in the `docker` group, but a group only reaches a shell at login. The install itself is fine — it re-ran inside the new group to finish — and your own shell catches up when you log out and back in, or immediately with `newgrp docker`. |
+| The banner's `https://<box-ip>:3080` is not the address other people on the LAN use | The certificate's IP is the first address `hostname -I` prints, which on a machine with two networks (two NICs, a VPN, a VM) need not be the one colleagues reach. Use `https://<box>.local:3080` — the same certificate covers the name — or give the box a single LAN address and re-run the installer. |
+| The install stops with `could not pull the images after 3 attempts` | Every image comes over the network, and the installer already retried the whole pull three times. Check the machine still has a route out (and, on a `--registry` box, that the registry machine is awake), then re-run `./install-box.sh --yes` — it keeps every answer and picks up where the download left off. |
 | You changed the admin password and wonder whether the drives will still ingest | They will. The ingest daemon learns the account's id at its first login and keeps it in its own state volume, so it never presents the password again — a password change is invisible to it. The password is read again only if that state volume is reset (`docker volume rm nufi-box_ingest-state`), so if you change it, change `ADMIN_PASSWORD` / `INGEST_PASSWORD` in `.env` too. |
 | `nufi-box doctor` shows `!!` on `jwks.json` | The console's OIDC signing key is malformed. Re-run the installer (`./install-box.sh --yes`) — it regenerates the key and keeps every other answer and secret. |
 
