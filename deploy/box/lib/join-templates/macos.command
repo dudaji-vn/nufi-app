@@ -19,6 +19,10 @@ echo "Trusting the box's certificate (you may be asked for your password)..."
 security add-trusted-cert -r trustRoot -k ~/Library/Keychains/login.keychain-db "$TMP_CA"
 
 echo "Connecting to the NuFi mesh..."
+# Do NOT add --advertise-tags here: headscale v0.29.3 rejects a pre-auth-key
+# registration that carries RequestTags, regardless of tagOwners. The
+# tag:member tag comes from the pre-auth key's own aclTags (set when
+# `nufi-box invite` minted it), not from a flag on this login command.
 "$TS" login --login-server=@MESH_SERVER_URL@ --auth-key=@AUTH_KEY@ --hostname=@MEMBER@ --accept-dns
 
 echo "Mapping your department drives..."

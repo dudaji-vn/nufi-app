@@ -18,6 +18,10 @@ certutil -decode "%TEMP%\nufi-box-ca.b64" "%TEMP%\nufi-box-ca.crt" >nul
 certutil -addstore -f Root "%TEMP%\nufi-box-ca.crt" >nul
 
 echo Connecting to the NuFi mesh...
+rem Do NOT add --advertise-tags here: headscale v0.29.3 rejects a pre-auth-key
+rem registration that carries RequestTags, regardless of tagOwners. The
+rem tag:member tag comes from the pre-auth key's own aclTags (set when
+rem `nufi-box invite` minted it), not from a flag on this login command.
 "%TS%" login --login-server=@MESH_SERVER_URL@ --auth-key=@AUTH_KEY@ --hostname=@MEMBER@ --accept-dns
 
 echo Mapping your department drives...

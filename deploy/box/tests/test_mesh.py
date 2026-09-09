@@ -176,6 +176,14 @@ def test_invite_macos_posts_preauthkey_and_writes_the_join_file(tmp_path, fake_h
     # the headscale node name must match NAME, or `nufi-box revoke alice`
     # has nothing to resolve — the laptop's OS hostname is not "alice".
     assert "--hostname=alice" in content
+    # headscale v0.29.3 rejects a pre-auth-key registration that carries
+    # RequestTags, regardless of tagOwners — tag:member must come only from
+    # the pre-auth key's own aclTags (asserted above), never a login flag.
+    # (Check the actual login invocation, not the whole file, so the
+    # explanatory comment next to it — which necessarily names the flag —
+    # can't make this assertion pass or fail on its own wording.)
+    login_line = next(l for l in content.splitlines() if "--hostname=" in l)
+    assert "--advertise-tags" not in login_line
 
 
 def test_invite_windows_uses_certutil_and_net_use(tmp_path, fake_headscale):
@@ -187,6 +195,8 @@ def test_invite_windows_uses_certutil_and_net_use(tmp_path, fake_headscale):
     assert "net use Z:" in content
     assert ca_b64(data_dir) in content
     assert "--hostname=bob2" in content
+    login_line = next(l for l in content.splitlines() if "--hostname=" in l)
+    assert "--advertise-tags" not in login_line  # see the macOS test for why
 
 
 def test_invite_linux_uses_update_ca_certificates(tmp_path, fake_headscale):
@@ -197,6 +207,8 @@ def test_invite_linux_uses_update_ca_certificates(tmp_path, fake_headscale):
     assert "update-ca-certificates" in content
     assert ca_b64(data_dir) in content
     assert "--hostname=carol" in content
+    login_line = next(l for l in content.splitlines() if "--hostname=" in l)
+    assert "--advertise-tags" not in login_line  # see the macOS test for why
 
 
 def test_invite_windows_drive_letters_do_not_run_off_the_alphabet(tmp_path, fake_headscale):
