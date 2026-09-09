@@ -31,8 +31,17 @@ def test_registry_up_survives_a_registry_without_a_port():
     assert "-p 5000:5000" in make_n("registry-up", REGISTRY="registry.lan")
 
 
-def test_registry_push_pushes_all_six_nufi_images_to_the_registry():
+def test_registry_push_pushes_all_six_nufi_images_over_loopback():
+    # The push goes to localhost, not to REGISTRY: Docker trusts loopback
+    # without an insecure-registries entry, so serving the images from a Mac
+    # needs no Docker Desktop change. Same container, same stored images.
     out = make_n("registry-push", REGISTRY="172.10.10.30:5001")
     for image in NUFI_IMAGES:
-        assert f"docker push 172.10.10.30:5001/{image}:" in out, image
+        assert f"docker push localhost:5001/{image}:" in out, image
     assert out.count("docker push ") == len(NUFI_IMAGES)
+    assert "172.10.10.30:5001" not in out
+
+
+def test_registry_push_can_be_pointed_at_a_registry_elsewhere():
+    out = make_n("registry-push", PUSH_REGISTRY="registry.example:5000")
+    assert "docker push registry.example:5000/nufichat:arm64-dev" in out

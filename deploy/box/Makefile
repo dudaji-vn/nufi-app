@@ -16,6 +16,14 @@ ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../..)
 # usually wants `REGISTRY=<mac-ip>:5001`.
 REGISTRY ?= localhost:5000
 REGISTRY_PORT ?= $(or $(word 2,$(subst :, ,$(REGISTRY))),5000)
+# REGISTRY is the address the *box* pulls from (`<mac-ip>:5001`), which has no
+# certificate. Docker refuses a plain-HTTP push unless the daemon is told the
+# registry is insecure — and on Docker Desktop that means editing Settings and
+# restarting the engine. Loopback is the exception every Docker trusts out of
+# the box, so this machine pushes to `localhost:<same port>`: the same registry
+# container, the same stored images, no daemon change. Override PUSH_REGISTRY
+# to push to a registry that is somewhere else.
+PUSH_REGISTRY ?= localhost:$(REGISTRY_PORT)
 CHAT_TAG ?= arm64-dev
 ADMIN_TAG ?= arm64-dev
 STUDIO_TAG ?= box-main
@@ -42,12 +50,12 @@ registry-up:
 	docker run -d --name nufi-registry -p $(REGISTRY_PORT):5000 -v nufi-registry:/var/lib/registry registry:2.8.3 || docker start nufi-registry
 
 # Retag+push each of the six NuFi images the box needs, from the ghcr.io/dudaji-vn
-# tag already on this machine to $(REGISTRY). Explicit per-image lines (not a
-# shell loop) so `make -n registry-push` shows all six tag/push pairs.
+# tag already on this machine to $(PUSH_REGISTRY). Explicit per-image lines (not
+# a shell loop) so `make -n registry-push` shows all six tag/push pairs.
 registry-push:
-	docker tag ghcr.io/$(OWNER)/nufichat:$(CHAT_TAG) $(REGISTRY)/nufichat:$(CHAT_TAG) && docker push $(REGISTRY)/nufichat:$(CHAT_TAG)
-	docker tag ghcr.io/$(OWNER)/nufichat-admin-panel:$(ADMIN_TAG) $(REGISTRY)/nufichat-admin-panel:$(ADMIN_TAG) && docker push $(REGISTRY)/nufichat-admin-panel:$(ADMIN_TAG)
-	docker tag ghcr.io/$(OWNER)/nufi-console:$(TAG) $(REGISTRY)/nufi-console:$(TAG) && docker push $(REGISTRY)/nufi-console:$(TAG)
-	docker tag ghcr.io/$(OWNER)/nufi-litellm:$(TAG) $(REGISTRY)/nufi-litellm:$(TAG) && docker push $(REGISTRY)/nufi-litellm:$(TAG)
-	docker tag ghcr.io/$(OWNER)/nufi-ingest:$(TAG) $(REGISTRY)/nufi-ingest:$(TAG) && docker push $(REGISTRY)/nufi-ingest:$(TAG)
-	docker tag ghcr.io/$(OWNER)/nufi-studio:$(STUDIO_TAG) $(REGISTRY)/nufi-studio:$(STUDIO_TAG) && docker push $(REGISTRY)/nufi-studio:$(STUDIO_TAG)
+	docker tag ghcr.io/$(OWNER)/nufichat:$(CHAT_TAG) $(PUSH_REGISTRY)/nufichat:$(CHAT_TAG) && docker push $(PUSH_REGISTRY)/nufichat:$(CHAT_TAG)
+	docker tag ghcr.io/$(OWNER)/nufichat-admin-panel:$(ADMIN_TAG) $(PUSH_REGISTRY)/nufichat-admin-panel:$(ADMIN_TAG) && docker push $(PUSH_REGISTRY)/nufichat-admin-panel:$(ADMIN_TAG)
+	docker tag ghcr.io/$(OWNER)/nufi-console:$(TAG) $(PUSH_REGISTRY)/nufi-console:$(TAG) && docker push $(PUSH_REGISTRY)/nufi-console:$(TAG)
+	docker tag ghcr.io/$(OWNER)/nufi-litellm:$(TAG) $(PUSH_REGISTRY)/nufi-litellm:$(TAG) && docker push $(PUSH_REGISTRY)/nufi-litellm:$(TAG)
+	docker tag ghcr.io/$(OWNER)/nufi-ingest:$(TAG) $(PUSH_REGISTRY)/nufi-ingest:$(TAG) && docker push $(PUSH_REGISTRY)/nufi-ingest:$(TAG)
+	docker tag ghcr.io/$(OWNER)/nufi-studio:$(STUDIO_TAG) $(PUSH_REGISTRY)/nufi-studio:$(STUDIO_TAG) && docker push $(PUSH_REGISTRY)/nufi-studio:$(STUDIO_TAG)
