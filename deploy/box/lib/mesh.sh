@@ -17,19 +17,43 @@ MESH_HS_USER="${MESH_HS_USER:-box}"
 # mesh_api METHOD PATH [JSON] — curl with the bearer token, --max-time 20;
 # prints the response body on success. Exits 3 (naming MESH_API_KEY) on HTTP
 # 401/403; exits 1 with the body on any other >=400 response.
+#
+# The request (including the bearer token) is built as a curl config file
+# and passed with `-K`, rather than `-H "Authorization: Bearer $KEY"` on the
+# command line — a command-line argument is visible to any other local user
+# via `ps` for the life of the process; a config file (created by `mktemp`,
+# mode 0600, owner-only) is not. `-K` on the file path achieves the same
+# thing the review's suggested `-K -` (stdin) would, without depending on
+# how the caller's stdin happens to be wired.
 mesh_api() {
-  local method="$1" path="$2" data="${3:-}" tmp code
+  local method="$1" path="$2" data="${3:-}" tmp cfg code
   [ -n "${MESH_SERVER_URL:-}" ] || { echo "MESH_SERVER_URL is not set in .env" >&2; exit 2; }
   [ -n "${MESH_API_KEY:-}" ] || { echo "MESH_API_KEY is not set in .env" >&2; exit 2; }
   tmp="$(mktemp)"
-  if [ -n "$data" ]; then
-    code="$(curl -sS --max-time 20 -o "$tmp" -w '%{http_code}' -X "$method" \
-      -H "Authorization: Bearer $MESH_API_KEY" -H 'Content-Type: application/json' \
-      -d "$data" "${MESH_SERVER_URL}${path}")"
-  else
-    code="$(curl -sS --max-time 20 -o "$tmp" -w '%{http_code}' -X "$method" \
-      -H "Authorization: Bearer $MESH_API_KEY" "${MESH_SERVER_URL}${path}")"
-  fi
+  cfg="$(mktemp)"
+  python3 -c '
+import sys
+
+def q(s):
+    return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+
+method, url, key, data, out = sys.argv[1:6]
+lines = [
+    "silent", "show-error",
+    "max-time = 20",
+    "request = " + q(method),
+    "url = " + q(url),
+    "header = " + q("Authorization: Bearer " + key),
+    "output = " + q(out),
+    "write-out = " + q("%{http_code}"),
+]
+if data:
+    lines.append("header = " + q("Content-Type: application/json"))
+    lines.append("data = " + q(data))
+sys.stdout.write("\n".join(lines) + "\n")
+' "$method" "${MESH_SERVER_URL}${path}" "$MESH_API_KEY" "$data" "$tmp" > "$cfg"
+  code="$(curl -K "$cfg")"
+  rm -f "$cfg"
   case "$code" in
     401|403)
       rm -f "$tmp"
@@ -131,20 +155,50 @@ for n in nodes:
 '
 }
 
-# mesh_delete NAME — resolve a node name to its id and DELETE it.
+# mesh_delete_by_id ID — DELETE a node directly, bypassing name resolution
+# (used both for the ambiguous-name case below and `revoke --id`).
+mesh_delete_by_id() {
+  local id="$1"
+  mesh_api DELETE "/api/v1/node/$id" >/dev/null
+  echo "Revoked node $id — that laptop can no longer reach the box until invited again."
+}
+
+# mesh_delete NAME — resolve a node name to its id and DELETE it. Two nodes
+# can legitimately share a `name` (headscale keeps `givenName` precisely
+# because raw hostnames collide — two laptops named the same thing is not
+# rare), so this refuses to guess: 0 matches is an error, 1 match deletes,
+# 2+ matches lists every id and tells the admin to disambiguate with
+# `nufi-box revoke --id <id>` instead of silently picking one and leaving
+# the other node connected.
 mesh_delete() {
-  local name="$1" body id
+  local name="$1" body result
   body="$(mesh_api GET /api/v1/node)" || exit $?
-  id="$(printf '%s' "$body" | python3 -c '
+  result="$(printf '%s' "$body" | python3 -c '
 import json, sys
 name = sys.argv[1]
 data = json.load(sys.stdin)
 matches = [n for n in (data.get("nodes") or []) if n.get("name") == name]
-print(matches[0]["id"] if matches else "")
+if not matches:
+    print("NONE")
+elif len(matches) == 1:
+    print("ONE " + matches[0]["id"])
+else:
+    print("MANY " + " ".join(m["id"] for m in matches))
 ' "$name")"
-  [ -n "$id" ] || { echo "revoke: no node named '$name' — run: nufi-box members" >&2; exit 2; }
-  mesh_api DELETE "/api/v1/node/$id" >/dev/null
-  echo "Revoked '$name' — that laptop can no longer reach the box until invited again."
+  case "$result" in
+    NONE)
+      echo "revoke: no node named '$name' — run: nufi-box members" >&2
+      exit 2 ;;
+    "ONE "*)
+      mesh_api DELETE "/api/v1/node/${result#ONE }" >/dev/null
+      echo "Revoked '$name' — that laptop can no longer reach the box until invited again." ;;
+    "MANY "*)
+      echo "revoke: '$name' matches more than one node (ids: ${result#MANY }) — run nufi-box revoke --id <id> to remove a specific one" >&2
+      exit 2 ;;
+    *)
+      echo "revoke: could not read the node list" >&2
+      exit 1 ;;
+  esac
 }
 
 # ---------- join files -------------------------------------------------
@@ -179,8 +233,12 @@ mesh_drives_block() {
     [ -n "$d" ] || continue
     case "$os" in
       windows)
-        letter="$(printf '%s' "$letters" | cut -c$((i + 1)))"
-        out="${out}net use ${letter}: \\\\${host}\\${d} /persistent:yes"$'\n' ;;
+        if [ "$i" -ge 26 ]; then
+          out="${out}echo \"Too many drives to letter automatically -- map \\\\${host}\\${d} by hand\""$'\n'
+        else
+          letter="$(printf '%s' "$letters" | cut -c$((i + 1)))"
+          out="${out}net use ${letter}: \\\\${host}\\${d} /persistent:yes"$'\n'
+        fi ;;
       macos)
         out="${out}open \"smb://${host}/${d}\""$'\n' ;;
       linux)
@@ -200,11 +258,16 @@ mesh_ca_b64() {
 
 # mesh_render_template TEMPLATE OUT KEY=VALUE... — replace @KEY@ placeholders
 # with python3 (values may hold backslashes/newlines that would break sed).
+# A join file holds a live auth key and the box's CA, so it is created with
+# mode 0600 from the very first byte (`os.open` with the mode, after
+# removing any stale file at that path) rather than written with the
+# process's default umask and `chmod`ed afterward — the latter leaves a
+# window, however short, where the file exists at a wider mode.
 mesh_render_template() {
   local template="$1" out="$2"
   shift 2
   python3 -c '
-import sys
+import os, sys
 template, out = sys.argv[1], sys.argv[2]
 subs = {}
 for kv in sys.argv[3:]:
@@ -214,7 +277,12 @@ with open(template) as f:
     content = f.read()
 for k, v in subs.items():
     content = content.replace("@" + k + "@", v)
-with open(out, "w") as f:
+try:
+    os.remove(out)
+except FileNotFoundError:
+    pass
+fd = os.open(out, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+with os.fdopen(fd, "w") as f:
     f.write(content)
 ' "$template" "$out" "$@"
 }
@@ -237,7 +305,6 @@ mesh_invite() {
   mesh_render_template "$template" "$out" \
     "MEMBER=$name" "MESH_SERVER_URL=$MESH_SERVER_URL" "AUTH_KEY=$key" \
     "BOX_MESH_HOST=$BOX_MESH_HOST" "CA_B64=$ca_b64" "DRIVES=$drives_block"
-  chmod 600 "$out"
   echo "Wrote $out"
   echo "Send it to $name (email or chat — not a public link): \"Run this file, then open https://${BOX_MESH_HOST}:3080 — the key inside works once.\""
 }

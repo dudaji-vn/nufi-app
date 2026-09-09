@@ -18,7 +18,7 @@ certutil -decode "%TEMP%\nufi-box-ca.b64" "%TEMP%\nufi-box-ca.crt" >nul
 certutil -addstore -f Root "%TEMP%\nufi-box-ca.crt" >nul
 
 echo Connecting to the NuFi mesh...
-"%TS%" login --login-server=@MESH_SERVER_URL@ --auth-key=@AUTH_KEY@ --accept-dns
+"%TS%" login --login-server=@MESH_SERVER_URL@ --auth-key=@AUTH_KEY@ --hostname=@MEMBER@ --accept-dns
 
 echo Mapping your department drives...
 @DRIVES@

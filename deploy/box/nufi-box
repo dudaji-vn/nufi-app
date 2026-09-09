@@ -42,7 +42,9 @@ nufi-box <verb>
   invite NAME [--os windows|macos|linux] [--drives a,b]
                       write a one-file join for a new laptop, from home
   members             list the laptops currently joined to the mesh
-  revoke NAME         remove a laptop's access to the mesh
+  revoke NAME | --id ID
+                      remove a laptop's access to the mesh (use --id when
+                      NAME matches more than one node)
   update | backup | support   (coming in P4)
 EOF
 }
@@ -131,9 +133,14 @@ case "${1:-}" in
     mesh_nodes ;;
   revoke)
     shift
-    [ -n "${1:-}" ] || { echo "revoke: a name is required" >&2; usage; exit 2; }
     . "$HERE/lib/mesh.sh"
-    mesh_delete "$1" ;;
+    if [ "${1:-}" = "--id" ]; then
+      [ -n "${2:-}" ] || { echo "revoke: --id requires a value" >&2; exit 2; }
+      mesh_delete_by_id "$2"
+    else
+      [ -n "${1:-}" ] || { echo "revoke: a name is required (or --id ID)" >&2; usage; exit 2; }
+      mesh_delete "$1"
+    fi ;;
   # --- end mesh invites (Task 7) ---
   update|backup|support) echo "$1: coming in the next phase"; exit 3 ;;
   -h|--help|"") usage ;;

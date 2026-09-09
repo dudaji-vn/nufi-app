@@ -19,7 +19,7 @@ sudo cp "$TMP_CA" /usr/local/share/ca-certificates/nufi-box.crt
 sudo update-ca-certificates
 
 echo "Connecting to the NuFi mesh..."
-sudo tailscale login --login-server=@MESH_SERVER_URL@ --auth-key=@AUTH_KEY@ --accept-dns
+sudo tailscale login --login-server=@MESH_SERVER_URL@ --auth-key=@AUTH_KEY@ --hostname=@MEMBER@ --accept-dns
 
 echo "Mapping your department drives (best effort)..."
 @DRIVES@

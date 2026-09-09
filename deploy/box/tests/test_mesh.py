@@ -173,6 +173,9 @@ def test_invite_macos_posts_preauthkey_and_writes_the_join_file(tmp_path, fake_h
     assert "smb://nufi.box.lab/hr" in content
     assert "https://nufi.box.lab:3080" in content
     assert "single-use" in content
+    # the headscale node name must match NAME, or `nufi-box revoke alice`
+    # has nothing to resolve — the laptop's OS hostname is not "alice".
+    assert "--hostname=alice" in content
 
 
 def test_invite_windows_uses_certutil_and_net_use(tmp_path, fake_headscale):
@@ -183,6 +186,7 @@ def test_invite_windows_uses_certutil_and_net_use(tmp_path, fake_headscale):
     assert "certutil" in content
     assert "net use Z:" in content
     assert ca_b64(data_dir) in content
+    assert "--hostname=bob2" in content
 
 
 def test_invite_linux_uses_update_ca_certificates(tmp_path, fake_headscale):
@@ -192,6 +196,20 @@ def test_invite_linux_uses_update_ca_certificates(tmp_path, fake_headscale):
     content = (data_dir / "invites" / "nufi-join-carol.sh").read_text()
     assert "update-ca-certificates" in content
     assert ca_b64(data_dir) in content
+    assert "--hostname=carol" in content
+
+
+def test_invite_windows_drive_letters_do_not_run_off_the_alphabet(tmp_path, fake_headscale):
+    depts = ",".join("dept%d" % i for i in range(28))  # more than 26 drives
+    envf, data_dir = make_env(tmp_path, fake_headscale, DEPARTMENTS=depts)
+    r = cli("invite", "hank", "--os", "windows", env={"NUFI_BOX_ENV": str(envf)})
+    assert r.returncode == 0, r.stdout + r.stderr
+    content = (data_dir / "invites" / "nufi-join-hank.cmd").read_text()
+    assert "net use Z:" in content
+    # the 27th and 28th drives can't get a unique letter; must not render a
+    # broken "net use : ..." line -- a clear fallback instead.
+    assert "net use : " not in content
+    assert "Too many drives" in content
 
 
 def test_invite_defaults_to_macos_and_all_departments(tmp_path, fake_headscale):
@@ -280,6 +298,43 @@ def test_revoke_unknown_name_fails_cleanly(tmp_path, fake_headscale):
 def test_revoke_requires_a_name(tmp_path, fake_headscale):
     envf, _ = make_env(tmp_path, fake_headscale)
     r = cli("revoke", env={"NUFI_BOX_ENV": str(envf)})
+    assert r.returncode == 2
+
+
+def test_revoke_with_an_ambiguous_name_refuses_and_names_both_ids(tmp_path, fake_headscale):
+    """Two laptops can legitimately report the same node name (headscale
+    keeps `givenName` precisely because raw hostnames collide) -- revoke
+    must never guess which one to delete."""
+    fake_headscale.nodes = [
+        {"id": "5", "name": "dup", "ipAddresses": ["100.64.0.9"], "online": True,
+         "lastSeen": "2026-09-08T00:00:00Z", "user": {"name": "box"}},
+        {"id": "6", "name": "dup", "ipAddresses": ["100.64.0.10"], "online": True,
+         "lastSeen": "2026-09-08T00:00:00Z", "user": {"name": "box"}},
+    ]
+    envf, _ = make_env(tmp_path, fake_headscale)
+    r = cli("revoke", "dup", env={"NUFI_BOX_ENV": str(envf)})
+    assert r.returncode != 0
+    assert "5" in r.stderr
+    assert "6" in r.stderr
+    assert "--id" in r.stderr
+    deletes = [req for req in fake_headscale.requests if req[0] == "DELETE"]
+    assert deletes == [], "an ambiguous name must not delete anything"
+
+
+def test_revoke_by_id_deletes_directly_without_resolving_a_name(tmp_path, fake_headscale):
+    envf, _ = make_env(tmp_path, fake_headscale)
+    r = cli("revoke", "--id", "2", env={"NUFI_BOX_ENV": str(envf)})
+    assert r.returncode == 0, r.stdout + r.stderr
+    deletes = [req for req in fake_headscale.requests if req[0] == "DELETE"]
+    assert deletes == [("DELETE", "/api/v1/node/2")]
+    # --id must not even fetch the node list to resolve a name
+    gets = [req for req in fake_headscale.requests if req[0] == "GET"]
+    assert gets == []
+
+
+def test_revoke_id_requires_a_value(tmp_path, fake_headscale):
+    envf, _ = make_env(tmp_path, fake_headscale)
+    r = cli("revoke", "--id", env={"NUFI_BOX_ENV": str(envf)})
     assert r.returncode == 2
 
 

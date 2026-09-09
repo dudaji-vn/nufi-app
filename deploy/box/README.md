@@ -284,7 +284,7 @@ to `install-box.sh` and is also symlinked onto your `PATH`.
 | `up` / `down` / `restart` | Start, stop, or restart the whole box |
 | `invite <name> [--os win\|mac\|linux] [--drives a,b]` | Write a one-file join for a new laptop — see [From home](#8-from-home) |
 | `members` | List the laptops currently joined to the mesh |
-| `revoke <name>` | Remove a laptop's access to the mesh |
+| `revoke <name>` / `revoke --id <id>` | Remove a laptop's access to the mesh |
 | `update` / `backup` / `support` | Not built yet — see [What is not in P1](#10-what-is-not-in-p1) |
 
 ## 8. From home
@@ -316,7 +316,11 @@ whoever runs the box). The command prints the path and a sentence to send:
 
 `nufi-box members` lists everyone currently joined — name, mesh IP, online,
 last seen, and the headscale user. `nufi-box revoke alice` removes her
-node; her laptop can no longer reach the box until invited again.
+node (the join file registers the laptop under `alice`, so the name really
+does match); her laptop can no longer reach the box until invited again.
+If two laptops ever share a name, `revoke` refuses to guess — it lists both
+node ids and asks you to run `nufi-box revoke --id <id>` for the one you
+mean.
 
 ### For the member: joining from a laptop
 

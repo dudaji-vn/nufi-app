@@ -19,7 +19,7 @@ echo "Trusting the box's certificate (you may be asked for your password)..."
 security add-trusted-cert -r trustRoot -k ~/Library/Keychains/login.keychain-db "$TMP_CA"
 
 echo "Connecting to the NuFi mesh..."
-"$TS" login --login-server=@MESH_SERVER_URL@ --auth-key=@AUTH_KEY@ --accept-dns
+"$TS" login --login-server=@MESH_SERVER_URL@ --auth-key=@AUTH_KEY@ --hostname=@MEMBER@ --accept-dns
 
 echo "Mapping your department drives..."
 @DRIVES@
