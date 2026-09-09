@@ -793,3 +793,28 @@ def test_envfile_set_leaves_the_file_owner_only_too():
         assert r.returncode == 0, r.stderr
         assert "STUDIO_API_KEY=sk-x" in envf.read_text()
         assert oct(envf.stat().st_mode)[-3:] == "600"
+
+
+def test_the_vm_acceptance_scripts_parse_under_macos_bash():
+    """deploy/box/tests/vm/ runs against a Lima VM, so CI can never execute it
+    — and it had no check at all, not even that it parses. These are the
+    scripts a person reaches for when a box is misbehaving."""
+    vm = BOX / "tests" / "vm"
+    scripts = sorted(vm.glob("*.sh"))
+    assert scripts, "no scripts in tests/vm"
+    for script in scripts:
+        r = subprocess.run([BASH, "-n", str(script)], capture_output=True, text=True)
+        assert r.returncode == 0, f"{script.name}: {r.stderr}"
+
+
+def test_the_vm_verifier_does_not_count_an_uncited_answer_as_a_citation():
+    """run_box.py writes the literal `sources: none` for an answer that cited
+    nothing, so `grep -q 'sources: .*[^ ]'` — which this script used, and which
+    Task 9's review caught in day-at-home.sh — passed on the exact case the
+    check exists to catch."""
+    # Code only: the comment next to the fix necessarily quotes the old
+    # pattern, and must not be able to make this pass or fail on its wording.
+    code = "\n".join(l for l in (BOX / "tests" / "vm" / "verify-ubuntu-box.sh")
+                     .read_text().splitlines() if not l.lstrip().startswith("#"))
+    assert "sources: .*[^ ]" not in code
+    assert 'grep -v "sources: none$"' in code
