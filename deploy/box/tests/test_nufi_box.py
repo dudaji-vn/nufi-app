@@ -459,3 +459,61 @@ def test_drive_add_on_a_box_that_predates_the_uid_still_works(tmp_path):
     r = cli("drive", "add", "finance", NUFI_BOX_ENV=str(envf))
     assert r.returncode == 0, r.stderr
     assert "chown" not in r.stdout
+
+
+# --- the mesh node is part of a mesh box's stack -----------------------------
+#
+# $COMPOSE knew about the emulate, linux, gpu and extra layers and not the mesh
+# one, which was layered exclusively inside mesh_compose_cmd. So `nufi-box logs
+# tailscale` -- the command lib/mesh.sh prints when a join fails -- exited "no
+# such service"; `status` did not show the node; and `down` stopped the box's
+# front door while leaving the node registered and advertising it. install-box.
+# sh:500 already assembles it this way for the same box.
+
+
+def test_a_mesh_box_knows_about_its_own_mesh_node(tmp_path):
+    envf = mesh_env(tmp_path, BOX_MESH_IP="100.64.0.7", BOX_MESH_HOST="nufi.box.lab")
+    for verb, tail in (("status", "ps --format"), ("down", "down"), ("up", "up -d")):
+        r = cli(verb, NUFI_BOX_ENV=envf, NUFI_BOX_FAKE_OS="Linux")
+        assert r.returncode == 0, r.stderr
+        line = next(l for l in r.stdout.splitlines() if tail in l and l.startswith("  $ docker compose"))
+        assert "docker-compose.mesh.yml" in line, (verb, line)
+        assert "--profile mesh" in line, (verb, line)
+
+
+def test_the_hint_printed_when_a_join_fails_names_a_service_nufi_box_has(tmp_path):
+    # lib/mesh.sh: "tailscaled never reported an address; look at: nufi-box
+    # logs tailscale" -- handed to the operator whose box has just failed to
+    # join, and it used to exit "no such service".
+    envf = mesh_env(tmp_path)
+    r = cli("logs", "tailscale", NUFI_BOX_ENV=envf, NUFI_BOX_FAKE_OS="Linux")
+    assert r.returncode == 0, r.stderr
+    assert "docker-compose.mesh.yml" in r.stdout
+    assert "logs -f --tail=200 tailscale" in r.stdout
+
+
+def test_a_lan_only_box_gets_no_mesh_layer(tmp_path):
+    envf = tmp_path / ".env"
+    envf.write_text("NUFI_DATA_DIR=%s\nBOX_NAME=nufi\n" % tmp_path)
+    r = cli("status", NUFI_BOX_ENV=str(envf), NUFI_BOX_FAKE_OS="Linux")
+    assert r.returncode == 0, r.stderr
+    assert "docker-compose.mesh.yml" not in r.stdout
+
+
+def test_a_macos_mesh_box_gets_no_mesh_container(tmp_path):
+    """Docker Desktop's host network is the Linux VM's, so a tailscale
+    container there could never give the Mac a mesh address -- a Mac box joins
+    with the native app (mesh_up_native)."""
+    r = cli("status", NUFI_BOX_ENV=mesh_env(tmp_path), NUFI_BOX_FAKE_OS="Darwin")
+    assert r.returncode == 0, r.stderr
+    assert "docker-compose.mesh.yml" not in r.stdout
+
+
+def test_mesh_up_does_not_pass_the_mesh_file_twice(tmp_path):
+    """Both nufi-box and mesh_compose_cmd want to add it; the same -f twice
+    asks compose to merge the file with itself."""
+    r = cli("mesh", "up", NUFI_BOX_ENV=mesh_env(tmp_path), NUFI_BOX_FAKE_OS="Linux")
+    assert r.returncode == 0, r.stderr
+    line = next(l for l in r.stdout.splitlines() if "up -d tailscale" in l)
+    assert line.count("docker-compose.mesh.yml") == 1, line
+    assert line.count("--profile mesh") == 1, line

@@ -24,6 +24,16 @@ COMPOSE="docker compose -f $HERE/docker-compose.yml"
 # base file alone -- no device reservation, no `gpu` profile -- and the box
 # quietly went back to answering on the CPU with nothing in the logs to say so.
 [ -n "${NVIDIA_VISIBLE_DEVICES:-}" ] && COMPOSE="$COMPOSE -f $HERE/docker-compose.gpu.yml --profile gpu"
+# The mesh node is part of a mesh box's stack, exactly as install-box.sh:500
+# assembles it. Without this line `nufi-box` knew about every layer except that
+# one, so `logs tailscale` -- which lib/mesh.sh prints as the thing to look at
+# when a join fails -- answered "no such service"; `status` did not show the
+# node; and `down` left it registered and advertising a box whose front door
+# had just been stopped. macOS gets no container: Docker Desktop's host network
+# is the Linux VM's, so it could never give the Mac a mesh address, and a Mac
+# box joins with the native app instead (see mesh_up_native).
+[ "$OS" = "Linux" ] && [ -n "${MESH_SERVER_URL:-}" ] \
+  && COMPOSE="$COMPOSE -f $HERE/docker-compose.mesh.yml --profile mesh"
 # Same check the installer makes (install-box.sh): docker compose treats a
 # missing -f as an empty override and starts a stack without whatever the
 # site-local file was there to change -- a port map, a mount, a memory cap.

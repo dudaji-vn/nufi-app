@@ -353,7 +353,18 @@ MESH_MACOS_TS="/Applications/Tailscale.app/Contents/MacOS/Tailscale"
 # mesh_compose_cmd — the base compose command plus the mesh layer. Not a
 # variable at source time: $COMPOSE is assembled by nufi-box from the OS, the
 # GPU answer and NUFI_BOX_COMPOSE_EXTRA, and the mesh layer goes on last.
-mesh_compose_cmd() { printf '%s -f %s --profile mesh' "$COMPOSE" "$HERE/docker-compose.mesh.yml"; }
+#
+# nufi-box already layers it for a box that has a coordinator, so this adds it
+# only for the box that does not yet — `mesh up` on a box whose MESH_SERVER_URL
+# was written by hand, and `mesh down | status` on one that has just cleared
+# it. Passing the same -f twice would ask compose to merge the file with
+# itself, which is not a no-op for every key it might one day hold.
+mesh_compose_cmd() {
+  case " $COMPOSE " in
+    *" -f $HERE/docker-compose.mesh.yml "*) printf '%s' "$COMPOSE" ;;
+    *) printf '%s -f %s --profile mesh' "$COMPOSE" "$HERE/docker-compose.mesh.yml" ;;
+  esac
+}
 
 # mesh_ts_cmd — how this box asks its own tailscaled a question.
 mesh_ts_cmd() {
