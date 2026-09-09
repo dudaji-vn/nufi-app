@@ -178,8 +178,8 @@ about the mesh.
 
 ### Observed 2026-09-09, relay forced, against the VM box
 
-The second end-to-end run, after the three defects the first one found were
-fixed or disclosed:
+The third end-to-end run, after the four defects the first two found were fixed
+or disclosed:
 
 ```
   check              result
@@ -189,43 +189,60 @@ fixed or disclosed:
   health-over-mesh   PASS
   login-over-mesh    PASS
   drive-write        PASS
-  drive-ingested     PASS (31s)
+  drive-ingested     PASS (0s)
   agent-cites-drive  PASS
-  routine-weekly     FAIL
+  routine-weekly     PASS
 
-  relay forced | lab up 7s | box up + joined 38s | agent 493s | routine 5s | total 586s
+  relay forced | lab up 8s | box up + joined 5s | agent 513s | routine 10s | total 548s
 ```
 
-The mesh half is unambiguous: `tailscale ping` says `via DERP` on every packet,
+**Eight of eight**, and the script exits 0 only when every row passes. The mesh
+half is unambiguous: `tailscale ping` says `via DERP` on every packet,
 `https://nufi.box.lab:3080/health` is 200 through MagicDNS with a certificate
 the box's own CA signs, the chat app takes the member's credentials, a member's
-`smbclient put` onto `//nufi.box.lab/legal` lands and `nufi-ingest` embeds it in
-31 s, and the Legal agent answers a question about that drive with a citation
-(`contract.txt`, `계약검토_표준조항.txt`) — all of it over the relay, from
-behind a NAT that forwards no UDP but STUN.
+`smbclient put` onto `//nufi.box.lab/legal` lands, and the Legal agent answers a
+question about that drive with a citation (`contract.txt`,
+`계약검토_표준조항.txt`) — all of it over the relay, from behind a NAT that
+forwards no UDP but STUN.
 
-The agent's 493 s is a cold `qwen2.5:0.5b` on a VM that had just booted, loading
-the model for the first question; 1 of the 4 judge verdicts passed, which is the
+**`routine-weekly` PASS — `weekly ok 7s`.** This is the row the run existed to
+settle, and it settles it in the direction that had never been measured: the
+weekly routine returns text over the mesh on `qwen2.5:0.5b`. The uncapped
+generation this box is known to have does not bite `weekly` at this size. It is
+still uncapped — see the paragraph below.
+
+Two numbers in that timing line are the harness's doing rather than the box's,
+and neither should be quoted as a measurement:
+
+- **`box up + joined 5s`** is `mesh up` alone. The VM was already running when
+  this run started (the box needed `nufi-box flows install` first, to replace
+  the Studio key an earlier re-install had dropped), so nothing in those five
+  seconds is a boot. The cold number is the previous run's **38 s**.
+- **`drive-ingested (0s)`** matched a line the *previous* run wrote.
+  `nufi-ingest`'s container log survives a restart and the check greps the whole
+  of it (`day-at-home.sh:473`), so on a box that has already ingested
+  `contract.txt` this row cannot fail. The honest ingest figure is the previous
+  run's **31 s**, which was that file's first embedding. The check wants
+  tightening: it should consider only lines written after the `put`.
+
+The agent's 513 s is a cold `qwen2.5:0.5b` on a VM whose model had not been
+loaded since its last restart; 1 of the 4 judge verdicts passed, which is the
 model's score and not the box's. The gate here is that an answer carried a
-citation at all, and the check now prints what was cited so a PASS shows its
-evidence.
+citation at all, and two did — the check prints them, so a PASS shows its
+evidence. One of those four questions also ran away in front of us: ollama's log
+shows `n_gen` climbing past **40,000 tokens** with
+`slot context shift, n_keep = 4, n_discard = 2045`. That is the uncapped
+generation, watched live in the agent path, where — unlike the routine check —
+nothing in the harness bounds it (`run_box.py`'s `STREAM_TIMEOUT` is a read
+timeout, and a stream that keeps arriving never trips it). It stopped on its
+own this time and the run carried on.
 
-The one failure, and it is not the mesh's:
-
-- **`routine-weekly`** — `no Studio API key: pass --key or set $STUDIO_API_KEY`,
-  in 5 s. The box's `.env` had no `STUDIO_API_KEY`: `install-box.sh` rewrites
-  `.env` without it (the key is minted afterwards by `nufi-box flows install`,
-  not asked for as an answer), and on this box the routines step had not put a
-  new one back. So the run never reached the model, and it says nothing either
-  way about the limitation this check usually finds — that nothing caps how much
-  a routine generates, or stops a run whose caller has gone. `nufi-box flows
-  install` mints a fresh key and repairs it; the box README's troubleshooting
-  table carries the row.
-
-For what the first run measured, and the two defects it found that are now
-fixed (`drive-write`'s `NT_STATUS_ACCESS_DENIED` from the Samba uid mismatch,
-and an upgraded mesh box crash-looping Caddy on a stale generated
-`caddy/mesh.caddy`), see the P2 phase notes in
+For what the earlier runs measured — the first passed 5 of 8 and the second 7
+of 8 — and the four defects between them (`drive-write`'s
+`NT_STATUS_ACCESS_DENIED` from the Samba uid mismatch, an upgraded mesh box
+crash-looping Caddy on a stale generated `caddy/mesh.caddy`, the uncapped
+routine generation, and `install-box.sh` dropping `STUDIO_API_KEY` on a
+re-install), see the P2 phase notes in
 `docs/2026-09-08-nufi-team-box-plan.md` §4.
 
 ## Requirements and collisions
