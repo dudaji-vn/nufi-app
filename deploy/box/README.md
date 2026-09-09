@@ -142,7 +142,9 @@ Every name you gave at the "Departments" question becomes a folder:
 ```
 
 Drop a file into that folder and it becomes searchable knowledge for that
-department's agent. Supported types are PDF, DOCX, XLSX, and plain text.
+department's agent. Supported types are PDF, DOCX, PPTX, XLSX, plain text
+(`.txt`), Markdown, CSV, JSON and HTML. Anything else in the folder is
+ignored, as are lock and metadata files (`~$…`, `.DS_Store`).
 Expect **32–97 seconds** from dropping a file into a department used for the
 first time to it being searchable (the daemon has to create the team and
 agent as well as embed the file); a file dropped into a department that is
@@ -218,6 +220,8 @@ to `install-box.sh` and is also symlinked onto your `PATH`.
 | A file with a Korean name shows garbled ("mojibake") characters in citations | Fixed in the shipped `nufi-ingest` image (the filename is now percent-encoded on upload, matching what the app's own web client sends). If you still see it, you are running an older image — pull the latest one. |
 | A Studio flow fails with `SSRF Protection: Hostname … resolves to blocked IP address(es)` | Studio's model node reaches the model through `host.docker.internal` (macOS) or `ollama` (Linux) — both private addresses, which Langflow blocks by default. The box's shipped compose file already allow-lists exactly those two hostnames (`LANGFLOW_SSRF_ALLOWED_HOSTS`). If you see this, you are running a compose override that dropped that setting — go back to the shipped `docker-compose.yml`. |
 | The installer warned the Docker VM is too small, or the box is slow and `nufi-box doctor` shows failing health checks | `doctor` has no memory probe of its own — the installer's prerequisite check is what reports the Docker VM's size, at install time. A box that is swapping heavily shows up indirectly instead: answers get slow, and `doctor`'s `curl` health checks start failing. Give Docker Desktop / OrbStack more memory: Settings → Resources → Memory, at least 12 GB on macOS. Studio alone is more than a third of the box's own footprint; running something else heavy on the same VM is the usual cause. |
+| After a reboot, `nufi.local` stops resolving | The installer announces the name on the LAN with a background `dns-sd` (macOS) or `avahi-publish` (Linux) process, and neither is installed as a service, so a reboot ends it. Re-run `./install-box.sh --yes` to announce it again — it keeps every answer and secret — or use `https://<box-ip>:3080`, which the certificate covers too. |
+| The box's IP changed and the browser now says the certificate does not cover this address | The certificate's IP entry is fixed at install time from the address the box had then, so a new DHCP lease invalidates it. Re-run `./install-box.sh --yes`: it re-reads the current address and re-issues the certificate, keeping every answer and secret. A DHCP reservation for the box stops it happening again. |
 | You changed the admin password and wonder whether the drives will still ingest | They will. The ingest daemon learns the account's id at its first login and keeps it in its own state volume, so it never presents the password again — a password change is invisible to it. The password is read again only if that state volume is reset (`docker volume rm nufi-box_ingest-state`), so if you change it, change `ADMIN_PASSWORD` / `INGEST_PASSWORD` in `.env` too. |
 
 ### Installing next to something else that already holds 3080 / 3001 / 4000

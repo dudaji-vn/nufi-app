@@ -153,6 +153,17 @@ def parse_connect_to(specs):
     return rules
 
 
+def display_name(drive):
+    """The daemon's own drive-folder -> agent-name mapping
+    (nufi_ingest.display_name): '-' and '_' become spaces, then capitalize.
+
+    A plain .capitalize() here agreed with it only for single-word drives. On
+    a `back-office` drive the daemon creates "Back office assistant" while this
+    runner polled for "Back-office assistant" until the timeout and reported an
+    agent that never appeared -- a runner bug written up as a box failure."""
+    return drive.replace("_", " ").replace("-", " ").strip().capitalize()
+
+
 def add_transport_args(ap):
     """The three flags any script needs to reach a box: how to trust its TLS,
     and where to actually dial. Shared so run_box.py and the Studio scripts
@@ -381,7 +392,7 @@ def main():
         (drives / d["drive"]).mkdir(parents=True, exist_ok=True)
         for doc in d["documents"]:
             (drives / d["drive"] / doc["name"]).write_text(doc["text"])
-        name = f"{d['drive'].capitalize()} assistant"
+        name = f"{display_name(d['drive'])} assistant"
         want = set(x["name"] for x in d["documents"])
         t0 = time.time()
         agent, ingest_complete, missing = None, False, sorted(want)

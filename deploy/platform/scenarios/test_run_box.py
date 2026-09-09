@@ -512,8 +512,19 @@ def test_the_markdown_names_an_ingest_gap():
           "above the department's questions, not only in box.json")
 
 
+def test_the_agent_name_matches_the_daemons_own_mapping():
+    # nufi_ingest.display_name(): "-"/"_" become spaces, then capitalize. A
+    # hyphenated drive is where a plain .capitalize() and the daemon disagree,
+    # and the runner then waits out the whole timeout for an agent that exists.
+    assert run_box.display_name("back-office") == "Back office"
+    assert run_box.display_name("back_office") == "Back office"
+    assert run_box.display_name("legal") == "Legal"
+    print("PASS: the agent name this runner polls for is the one the daemon creates")
+
+
 if __name__ == "__main__":
     main()
+    test_the_agent_name_matches_the_daemons_own_mapping()
     test_a_broken_stream_becomes_a_recorded_failure()
     test_connect_to_moves_the_socket_and_leaves_the_url_alone()
     test_the_markdown_names_an_ingest_gap()

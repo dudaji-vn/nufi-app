@@ -26,15 +26,25 @@ Trust the certificate once, then use the links below.</p>
 
 <h2>Then open</h2>
 <ul>
-  <li>Chat: <a id="chat">https://…:3080</a></li>
-  <li>Agents (NUFI Studio through the console): <a id="agents">https://…:3001/choose</a></li>
-  <li>Console (API keys and usage): <a id="console">https://…:3001</a></li>
-  <li>Admin panel: <a id="admin">https://…:3002</a></li>
+  <li>Chat: <a id="chat">https://…</a></li>
+  <li>Agents (NUFI Studio through the console): <a id="agents">https://…</a></li>
+  <li>Console (API keys and usage): <a id="console">https://…</a></li>
+  <li>NUFI Studio: <a id="studio">https://…</a></li>
+  <li>Admin panel: <a id="admin">https://…</a></li>
 </ul>
 <script>
+  // This page is served on port 80 inside the box. A box installed next to
+  // something that already holds 3080/3001/4000 publishes every port shifted
+  // by the same amount (README, "Installing next to something else"), so the
+  // port this page was actually fetched on is the offset for all the others.
+  // Hard-coding :3080 here sent everyone who did that to a dead link.
   const h = location.hostname;
-  for (const [id, port, path] of [["chat",3080,""],["agents",3001,"/choose"],["console",3001,""],["admin",3002,""]]) {
-    const a = document.getElementById(id); a.href = `https://${h}:${port}${path}`; a.textContent = a.href;
+  const offset = Number(location.port || 80) - 80;
+  for (const [id, port, path] of [["chat",3080,""],["agents",3001,"/choose"],
+                                  ["console",3001,""],["studio",7860,""],["admin",3002,""]]) {
+    const a = document.getElementById(id);
+    a.href = `https://${h}:${port + offset}${path}`;
+    a.textContent = a.href;
   }
 </script>
 </body>
