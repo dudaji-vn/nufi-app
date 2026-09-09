@@ -69,6 +69,22 @@ class Config:
                    share=e.get("NUFI_INGEST_SHARE", "team"))
 
 
+# This daemon comes up with the rest of the stack, minutes before the installer
+# creates the account it logs in with, so its first scans always fail. Retrying
+# those at the scan interval is what turns a normal wait into an outage: the app
+# rate-limits /api/auth/login, and a 20 s retry loop trips that limiter and then
+# keeps re-tripping it. Measured on a blank Ubuntu install — 30 failed logins,
+# and the drive stayed dead for ten minutes after the account existed.
+LOGIN_RETRY_CAP = 300.0     # the app's own login lockout window
+
+
+def backoff_delay(interval, failures, cap=LOGIN_RETRY_CAP):
+    """Seconds before the next scan, given `failures` consecutive failed ones."""
+    if failures <= 0:
+        return interval
+    return min(interval * 2 ** failures, cap)
+
+
 def _b64url(b):
     return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
 
@@ -515,11 +531,17 @@ class Ingester:
 
     def run(self):
         LOG.info("watching %s every %.0fs", self.cfg.drives_dir, self.cfg.interval)
+        failures = 0
         while True:
             try:
                 self.scan()
+                failures = 0
             except Exception as e:      # keep the loop alive; the next scan retries
-                LOG.error("scan failed: %s", e)
+                failures += 1
+                wait = backoff_delay(self.cfg.interval, failures)
+                LOG.error("scan failed (%d in a row, next try in %.0fs): %s", failures, wait, e)
+                time.sleep(wait)
+                continue
             time.sleep(self.cfg.interval)
 
 
