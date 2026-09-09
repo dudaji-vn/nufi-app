@@ -1,0 +1,44 @@
+# Rendered by install-box.sh from config.yaml.tmpl. One model, no cloud keys.
+model_list:
+  - model_name: @NUFI_MODEL@
+    litellm_params:
+      model: openai/@INFERENCE_MODEL@
+      api_base: os.environ/INFERENCE_BASE_URL
+      api_key: os.environ/INFERENCE_API_KEY
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+    model_info:
+      backend_type: gpu
+      hardware_id: box-local
+      supports_vision: false
+
+router_settings:
+  routing_strategy: simple-shuffle
+
+litellm_settings:
+  request_timeout: 600
+  drop_params: true
+  callbacks:
+    - callbacks.hardware_metadata.proxy_handler_instance
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/DATABASE_URL
+  store_model_in_db: true
+
+guardrails:
+  - guardrail_name: nufi-g1-injection
+    litellm_params:
+      guardrail: guardrails.entrypoints.G1Injection
+      mode: pre_call
+      default_on: true
+  - guardrail_name: nufi-g3-system-prompt-leak
+    litellm_params:
+      guardrail: guardrails.entrypoints.G3SystemPromptLeak
+      mode: post_call
+      default_on: true
+  - guardrail_name: nufi-g4-output-handling
+    litellm_params:
+      guardrail: guardrails.entrypoints.G4OutputHandling
+      mode: post_call
+      default_on: true

@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { Activity, KeyRound, Plus, Wallet } from 'lucide-react';
 import { api } from '@/lib/orpc';
+import { publicConfig } from '@/lib/public-config';
 import { Button } from './ui/button';
 
-const LITELLM_URL = import.meta.env.VITE_LITELLM_URL ?? 'http://localhost:4000';
+const LITELLM_URL = publicConfig().litellmUrl;
 const FALLBACK_MODEL = 'qwen2.5-3b';
 
 export function KeysEmptyState({ onGenerate }: { onGenerate: () => void }) {

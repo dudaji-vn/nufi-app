@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NuFi box</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  body{font:16px/1.5 system-ui,sans-serif;max-width:40rem;margin:3rem auto;padding:0 1rem;color:#1a1a1a}
+  code{background:#f3f3f3;padding:.1rem .3rem;border-radius:3px}
+  h1{font-weight:600}h2{font-size:1.1rem;margin-top:2rem}
+  ol li{margin:.4rem 0}
+</style>
+</head>
+<body>
+<h1>NuFi box</h1>
+<p>This box serves everything over HTTPS with its own certificate authority.
+Trust the certificate once, then use the links below.</p>
+<p><a href="/nufi-box-ca.crt" download="nufi-box-ca.crt">Download the certificate (nufi-box-ca.crt)</a></p>
+
+<h2>Trust it</h2>
+<ol>
+  <li><b>Windows:</b> double-click the file → Install Certificate → Local Machine → Place all certificates in the following store → <i>Trusted Root Certification Authorities</i>.</li>
+  <li><b>macOS:</b> double-click the file (opens Keychain Access) → find "NuFi box" or "Caddy Local Authority" under <i>login</i> → double-click → Trust → <i>Always Trust</i>.</li>
+  <li><b>Ubuntu:</b> <code>sudo cp nufi-box-ca.crt /usr/local/share/ca-certificates/ && sudo update-ca-certificates</code>; Chrome and Firefox also need it under Settings → Certificates → Authorities.</li>
+</ol>
+
+<h2>Then open</h2>
+<ul>
+  <li>Chat: <a id="chat">https://…</a></li>
+  <li>Agents (NUFI Studio through the console): <a id="agents">https://…</a></li>
+  <li>Console (API keys and usage): <a id="console">https://…</a></li>
+  <li>NUFI Studio: <a id="studio">https://…</a></li>
+  <li>Admin panel: <a id="admin">https://…</a></li>
+</ul>
+<script>
+  // This page is served on port 80 inside the box. A box installed next to
+  // something that already holds 3080/3001/4000 publishes every port shifted
+  // by the same amount (README, "Installing next to something else"), so the
+  // port this page was actually fetched on is the offset for all the others.
+  // Hard-coding :3080 here sent everyone who did that to a dead link.
+  const h = location.hostname;
+  const offset = Number(location.port || 80) - 80;
+  for (const [id, port, path] of [["chat",3080,""],["agents",3001,"/choose"],
+                                  ["console",3001,""],["studio",7860,""],["admin",3002,""]]) {
+    const a = document.getElementById(id);
+    a.href = `https://${h}:${port + offset}${path}`;
+    a.textContent = a.href;
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,53 @@
+# Linux-only additions, enabled with `--profile linux` (the installer does this).
+# macOS runs Ollama natively (Metal) and shares drives with File Sharing.
+services:
+  ollama:
+    image: ollama/ollama:0.33.3
+    profiles: [linux]
+    restart: unless-stopped
+    environment:
+      OLLAMA_KEEP_ALIVE: 30m
+      # Set by the installer to "all" when nvidia-smi is present; empty = CPU.
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-}
+    volumes:
+      - ollama-models:/root/.ollama
+    # GPU reservation lives in docker-compose.gpu.yml (profile `gpu`), layered in only on
+    # hosts with the NVIDIA Container Toolkit — see that file for why.
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks: [box]
+
+  samba:
+    # Pin to the current release listed at github.com/ServerContainers/samba/pkgs/container/samba
+    image: ghcr.io/servercontainers/samba:a3.24.1-s4.23.8-r0
+    profiles: [linux]
+    restart: unless-stopped
+    environment:
+      SAMBA_CONF_LOG_LEVEL: "1"
+      ACCOUNT_nufi: ${SAMBA_PASSWORD}
+      UID_nufi: "1000"
+      # One SAMBA_VOLUME_CONFIG_<dept> per department, rendered by the installer
+      # into .env, e.g. SAMBA_VOLUME_CONFIG_legal="[legal]; path=/shares/legal; valid users = nufi; guest ok = no; read only = no; browseable = yes"
+    env_file:
+      # The installer renders SAMBA_VOLUME_CONFIG_* into .env; not present yet
+      # when this file is only being validated (e.g. `docker compose config`).
+      - path: .env
+        required: false
+    ports:
+      - "445:445"
+    volumes:
+      - ${NUFI_DATA_DIR}/drives:/shares
+    healthcheck:
+      test: ["CMD-SHELL", "smbclient -L 127.0.0.1 -N >/dev/null 2>&1 || nc -z 127.0.0.1 445"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks: [box]
+
+volumes:
+  ollama-models:

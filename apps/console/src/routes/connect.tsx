@@ -4,6 +4,7 @@ import { AlertTriangle, Check, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { api, isUnauthorized } from '@/lib/orpc';
+import { publicConfig } from '@/lib/public-config';
 
 /**
  * Consent screen for handing a gateway key to another NuFi app.
@@ -28,7 +29,7 @@ export const Route = createFileRoute('/connect')({
   component: ConnectPage,
 });
 
-const CHAT_URL = import.meta.env.VITE_LIBRECHAT_URL ?? 'http://localhost:3080';
+const CHAT_URL = publicConfig().chatUrl;
 
 function ConnectPage() {
   const { origin, state, workspace } = Route.useSearch();

@@ -3,6 +3,7 @@ import { Check, Copy } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { api } from '@/lib/orpc';
+import { publicConfig } from '@/lib/public-config';
 import { useUi } from '@/stores/ui';
 import { Button } from './ui/button';
 import {
@@ -15,7 +16,7 @@ import {
 } from './ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 
-const LITELLM_URL = import.meta.env.VITE_LITELLM_URL ?? 'http://localhost:4000';
+const LITELLM_URL = publicConfig().litellmUrl;
 const FALLBACK_MODEL = 'qwen2.5-3b';
 
 const snippets = (key: string, model: string) => ({

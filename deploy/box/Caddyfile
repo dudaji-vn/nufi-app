@@ -1,0 +1,72 @@
+{
+	# Internal CA: laptops trust /data/caddy/pki/authorities/local/root.crt once.
+	local_certs
+	skip_install_trust
+	# Every product sits on its own high port, so nothing here belongs on 443.
+	# Left on, Caddy's automatic redirect claims http://<box>/ for the hostname
+	# and sends it to https://<box>:3001 — which is exactly the URL a laptop
+	# opens to fetch the CA it does not trust yet.
+	auto_https disable_redirects
+	# A browser opened at https://<BOX_IP>:3080 sends no SNI — SNI carries names,
+	# not addresses — and Docker's NAT hides the LAN address from Caddy too, so
+	# without this Caddy has nothing to pick a certificate by and aborts the
+	# handshake. Naming the IP as the default SNI makes the no-SNI case serve
+	# the certificate whose SAN is that IP, which is what such a browser wants.
+	default_sni {$BOX_IP}
+}
+
+(box_tls) {
+	tls internal
+}
+
+# Plain HTTP landing page: links, the root certificate, per-OS trust steps.
+:80 {
+	root * /srv/landing
+	file_server
+	handle /healthz {
+		respond "ok" 200
+	}
+	handle /nufi-box-ca.crt {
+		root * /data/caddy/pki/authorities/local
+		rewrite * /root.crt
+		file_server
+		header Content-Type "application/x-x509-ca-cert"
+	}
+}
+
+# The NuFi app
+{$BOX_HOST}:3080, {$BOX_IP}:3080, localhost:3080 {
+	import box_tls
+	reverse_proxy librechat:3080
+}
+
+# The console (identity authority; /choose is the products page)
+{$BOX_HOST}:3001, {$BOX_IP}:3001, localhost:3001 {
+	import box_tls
+	reverse_proxy console:3000
+}
+
+# The admin panel
+{$BOX_HOST}:3002, {$BOX_IP}:3002, localhost:3002 {
+	import box_tls
+	reverse_proxy admin-panel:3000
+}
+
+# NUFI Studio. /nufi/* is the console, so Studio's session-expiry bounce
+# (VITE_NUFI_ENTER_URL=/nufi/enter/studio in the box image) lands on the console
+# while staying on the Studio origin.
+{$BOX_HOST}:7860, {$BOX_IP}:7860, localhost:7860 {
+	import box_tls
+	handle_path /nufi/* {
+		reverse_proxy console:3000
+	}
+	handle {
+		reverse_proxy studio:7860
+	}
+}
+
+# The gateway, for API keys issued by the console
+{$BOX_HOST}:4000, {$BOX_IP}:4000, localhost:4000 {
+	import box_tls
+	reverse_proxy litellm-proxy:4000
+}

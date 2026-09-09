@@ -9,12 +9,18 @@ that is a defect worth seeing, not smoothing over.
 import argparse
 import gzip
 import json
+import pathlib
 import re
+import sys
 import time
 import urllib.error
 import urllib.request
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+from run_box import add_transport_args, transport_from_args  # noqa: E402
+
 HAN = re.compile(r"[一-鿿]")
+OPEN = urllib.request.urlopen  # replaced by main() when the box needs a CA
 
 
 def run(base, key, flow_id, text, timeout=400):
@@ -25,7 +31,7 @@ def run(base, key, flow_id, text, timeout=400):
     req.add_header("Content-Type", "application/json")
     req.add_header("x-api-key", key)
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        with OPEN(req, timeout=timeout) as r:
             body = r.read()
             if body[:2] == b"\x1f\x8b":
                 body = gzip.decompress(body)
@@ -46,10 +52,21 @@ def main():
     ap.add_argument("--base", default="http://localhost:7860")
     ap.add_argument("--key", required=True)
     ap.add_argument("--flows", default="flows.json")
+    ap.add_argument("--only", default="", help="run one flow by id instead of all")
+    add_transport_args(ap)
     a = ap.parse_args()
+
+    ctx, opener = transport_from_args(a)
+    global OPEN
+    OPEN = ((lambda req, timeout=400: opener.open(req, timeout=timeout)) if opener else
+            (lambda req, timeout=400: urllib.request.urlopen(req, timeout=timeout, context=ctx)))
 
     with open(a.flows) as fh:
         flows = json.load(fh)
+    if a.only:
+        flows = {k: v for k, v in flows.items() if k == a.only}
+        if not flows:
+            raise SystemExit(f"no such flow: {a.only}")
     bad = 0
     for name, f in flows.items():
         started = time.time()

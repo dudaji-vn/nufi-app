@@ -46,6 +46,12 @@ RUN npm ci
 COPY nufi/rebrand.ts nufi/brand.css /app/nufi/
 COPY nufi/fonts /app/nufi/fonts
 COPY src/frontend ./
+
+# Where an expired Studio session is sent to re-enter through the console.
+# Cloud builds pass the absolute console URL; the box build passes the relative
+# /nufi/enter/studio, which Caddy on the Studio port routes to the console.
+ARG VITE_NUFI_ENTER_URL=https://console.nufi.me/enter/studio
+ENV VITE_NUFI_ENTER_URL=$VITE_NUFI_ENTER_URL
 RUN npm run build
 
 # ---- Stage 2: python runtime ------------------------------------------------

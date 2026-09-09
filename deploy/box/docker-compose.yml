@@ -1,0 +1,334 @@
+name: nufi-box
+
+networks:
+  box:
+    driver: bridge
+
+volumes:
+  caddy-data:
+  caddy-config:
+  postgres-data:
+  mongodb-data:
+  app-uploads:
+  studio-data:
+  ingest-state:
+
+services:
+  # ---------------------------------------------------------------------------
+  # TLS front. One hostname, several ports; internal CA. Laptops trust the root
+  # once (served on http://<box>/ by the landing page). The network alias lets
+  # containers reach https://${BOX_HOST}:3001 through Caddy, which Studio needs
+  # for the console's JWKS.
+  # ---------------------------------------------------------------------------
+  caddy:
+    image: caddy:2.10.0-alpine
+    restart: unless-stopped
+    environment:
+      BOX_HOST: ${BOX_HOST}
+      BOX_IP: ${BOX_IP}
+    ports:
+      - "80:80"
+      - "3080:3080"
+      - "3001:3001"
+      - "3002:3002"
+      - "7860:7860"
+      - "4000:4000"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy/landing:/srv/landing:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:80/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      box:
+        aliases:
+          - "${BOX_HOST}"
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nufi
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: nufi
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/postgres-init.sh:/docker-entrypoint-initdb.d/10-box-dbs.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nufi -d nufi"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [box]
+
+  mongodb:
+    # 4.4 is the last release that runs on CPUs without AVX; ships the legacy
+    # `mongo` shell (no mongosh), which the healthcheck and installer use.
+    image: mongo:4.4
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: nufi
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+    volumes:
+      - mongodb-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongo", "--quiet", "--eval", "db.adminCommand({ping: 1}).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks: [box]
+
+  litellm-proxy:
+    image: ghcr.io/dudaji-vn/nufi-litellm:${NUFI_LITELLM_TAG}
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY}
+      DATABASE_URL: postgresql://nufi:${POSTGRES_PASSWORD}@postgres:5432/nufi
+      INFERENCE_BASE_URL: ${INFERENCE_BASE_URL}
+      INFERENCE_API_KEY: ${INFERENCE_API_KEY}
+      GUARDRAIL_POLICY_PATH: /app/guardrails/policy.yaml
+    volumes:
+      # Rendered by the installer from litellm/config.yaml.tmpl; the image bakes
+      # a config that needs GEMINI_API_KEY, so the box must override it.
+      - ./litellm/config.yaml:/app/config.yaml:ro
+      - ./litellm/policy.yaml:/app/guardrails/policy.yaml:ro
+    command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "1"]
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:4000/health/liveliness\")' || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks: [box]
+
+  librechat:
+    image: ghcr.io/dudaji-vn/nufichat:${NUFI_CHAT_TAG}
+    restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      litellm-proxy:
+        condition: service_healthy
+      rag_api:
+        condition: service_healthy
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3080
+      MONGO_URI: mongodb://nufi:${MONGO_PASSWORD}@mongodb:27017/LibreChat?authSource=admin
+      DOMAIN_CLIENT: https://${BOX_HOST}:3080
+      DOMAIN_SERVER: https://${BOX_HOST}:3080
+      TRUST_PROXY: "1"
+      APP_TITLE: NuFi
+      ALLOW_REGISTRATION: "false"
+      ALLOW_EMAIL_LOGIN: "true"
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      CREDS_KEY: ${CREDS_KEY}
+      CREDS_IV: ${CREDS_IV}
+      ENDPOINTS: custom,agents
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      RAG_API_URL: http://rag_api:8000
+      CONSOLE_URL: https://${BOX_HOST}:3001
+      AGENTS_URL: https://${BOX_HOST}:3001/choose
+      NUFI_MODEL: ${NUFI_MODEL}
+    volumes:
+      - ./librechat.yaml:/app/librechat.yaml:ro
+      - app-uploads:/app/uploads
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://127.0.0.1:3080/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    networks: [box]
+
+  rag_api:
+    image: ${NUFI_RAG_IMAGE}
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      RAG_PORT: "8000"
+      RAG_HOST: "0.0.0.0"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      POSTGRES_DB: nufi_rag
+      POSTGRES_USER: nufi
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      EMBEDDINGS_PROVIDER: ollama
+      EMBEDDINGS_MODEL: ${EMBEDDINGS_MODEL}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/health\")' || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    networks: [box]
+
+  # ---------------------------------------------------------------------------
+  # Products behind the one hostname. The console is the identity authority:
+  # it verifies the chat cookie server-side and mints the Studio identity JWT.
+  # ---------------------------------------------------------------------------
+  console:
+    image: ghcr.io/dudaji-vn/nufi-console:${NUFI_CONSOLE_TAG}
+    restart: unless-stopped
+    depends_on:
+      litellm-proxy:
+        condition: service_healthy
+      librechat:
+        condition: service_healthy
+    environment:
+      PORT: 3000
+      LITELLM_BASE_URL: http://litellm-proxy:4000
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      # Identity: verify the chat cookie server-side, send browsers to chat login.
+      CHAT_BASE_URL: http://librechat:3080
+      CHAT_PUBLIC_URL: https://${BOX_HOST}:3080
+      # Studio handoff. Empty cookie domain = host-only, shared across ports.
+      OIDC_ISSUER: https://${BOX_HOST}:3001
+      OIDC_PRIVATE_KEY_PEM: ${OIDC_PRIVATE_KEY_PEM}
+      STUDIO_URL: https://${BOX_HOST}:7860
+      IDENTITY_COOKIE_DOMAIN: ""
+      # Runtime public URLs (Task 2). No Works on the box.
+      PUBLIC_CHAT_URL: https://${BOX_HOST}:3080
+      PUBLIC_LITELLM_URL: https://${BOX_HOST}:4000
+      PUBLIC_WORKS_URL: ""
+      DEFAULT_USER_BUDGET: "1000000"
+      DEFAULT_BUDGET_DURATION: 30d
+      DEFAULT_TPM_LIMIT: "200000"
+      DEFAULT_RPM_LIMIT: "600"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://127.0.0.1:3000/_health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks: [box]
+
+  admin-panel:
+    image: ghcr.io/dudaji-vn/nufichat-admin-panel:${NUFI_ADMIN_TAG}
+    restart: unless-stopped
+    depends_on:
+      librechat:
+        condition: service_healthy
+    environment:
+      PORT: 3000
+      SESSION_SECRET: ${ADMIN_SESSION_SECRET}
+      API_SERVER_URL: http://librechat:3080
+      VITE_API_BASE_URL: https://${BOX_HOST}:3080
+      SESSION_COOKIE_SECURE: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "bun -e \"fetch('http://127.0.0.1:3000').then(r=>{if(!r.ok)throw 1}).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks: [box]
+
+  studio:
+    image: ghcr.io/dudaji-vn/nufi-studio:${NUFI_STUDIO_TAG}
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      caddy:
+        condition: service_healthy
+      console:
+        condition: service_healthy
+    environment:
+      PORT: 7860
+      LANGFLOW_DATABASE_URL: postgresql://nufi:${POSTGRES_PASSWORD}@postgres:5432/nufi_studio
+      LANGFLOW_SECRET_KEY: ${LANGFLOW_SECRET_KEY}
+      LANGFLOW_AUTO_LOGIN: "false"
+      LANGFLOW_SUPERUSER: ${ADMIN_EMAIL}
+      LANGFLOW_SUPERUSER_PASSWORD: ${STUDIO_SUPERUSER_PASSWORD}
+      LANGFLOW_EXTERNAL_AUTH_ENABLED: "true"
+      LANGFLOW_EXTERNAL_AUTH_TOKEN_COOKIE: nufi_id
+      LANGFLOW_EXTERNAL_AUTH_JWKS_URL: https://${BOX_HOST}:3001/.well-known/jwks.json
+      LANGFLOW_EXTERNAL_AUTH_ISSUER: https://${BOX_HOST}:3001
+      LANGFLOW_EXTERNAL_AUTH_AUDIENCE: nufi-studio
+      LANGFLOW_EXTERNAL_AUTH_SUBJECT_CLAIM: sub
+      LANGFLOW_EXTERNAL_AUTH_EMAIL_CLAIM: email
+      LANGFLOW_EXTERNAL_AUTH_ACCESS_CEILING_ENABLED: "true"
+      LANGFLOW_EXTERNAL_AUTH_ACCESS_CLAIM: access
+      LANGFLOW_EXTERNAL_AUTH_DEFAULT_ACCESS_LEVEL: editor
+      # The JWKS is fetched through Caddy's internal CA; trust it alongside the
+      # public roots (SSL_CERT_FILE replaces certifi's bundle, so it must point
+      # at the merged system bundle, not at root.crt alone).
+      SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt
+      REQUESTS_CA_BUNDLE: /etc/ssl/certs/ca-certificates.crt
+      # Langflow's SSRF guard blocks any hostname resolving to a private
+      # address, which is every model host a box has: on macOS the model runs
+      # natively and is reached at host.docker.internal (a link-local gateway
+      # address), on Linux it is the `ollama` container on this network. Without
+      # this, running ANY flow on the default macOS box fails with
+      # "SSRF Protection: Hostname host.docker.internal resolves to blocked IP
+      # address(es)" — the box's own Studio cannot reach the box's own model.
+      # These two names are the box's, not user input; nothing else is allowed.
+      LANGFLOW_SSRF_ALLOWED_HOSTS: host.docker.internal,ollama
+    volumes:
+      - caddy-data:/caddy:ro
+      - studio-data:/app/langflow
+      - ./scripts/studio-entrypoint.sh:/usr/local/bin/studio-entrypoint.sh:ro
+    entrypoint: ["/usr/local/bin/studio-entrypoint.sh"]
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:7860/health_check\")' || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 10
+      start_period: 90s
+    networks: [box]
+
+  # ---------------------------------------------------------------------------
+  # Watches the department drives and ingests documents into the chat app's
+  # RAG store, acting as the ingest service account created by the installer.
+  # ---------------------------------------------------------------------------
+  nufi-ingest:
+    image: ghcr.io/dudaji-vn/nufi-ingest:${NUFI_INGEST_TAG}
+    restart: unless-stopped
+    depends_on:
+      librechat:
+        condition: service_healthy
+    environment:
+      NUFI_APP_URL: http://librechat:3080
+      NUFI_INGEST_EMAIL: ${INGEST_EMAIL}
+      NUFI_INGEST_PASSWORD: ${INGEST_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      NUFI_DRIVES_DIR: /drives
+      NUFI_STATE_DIR: /state
+      NUFI_MODEL: ${NUFI_MODEL}
+      NUFI_PROVIDER: NuFi
+      NUFI_INGEST_INTERVAL: "20"
+      NUFI_INGEST_SHARE: team
+    volumes:
+      - ${NUFI_DATA_DIR}/drives:/drives:ro
+      - ingest-state:/state
+    healthcheck:
+      test: ["CMD-SHELL", "test -n \"$(find /state/heartbeat -mmin -3 2>/dev/null)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    networks: [box]

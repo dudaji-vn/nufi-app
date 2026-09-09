@@ -1,0 +1,52 @@
+name: box-ci
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/box/**'
+      - 'deploy/platform/scenarios/**'
+      - 'deploy/platform/adapters/nufi-ingest/**'
+      - '.github/workflows/box-ci.yml'
+  pull_request:
+    paths:
+      - 'deploy/box/**'
+      - 'deploy/platform/scenarios/**'
+      - 'deploy/platform/adapters/nufi-ingest/**'
+      - '.github/workflows/box-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Box suites
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install tooling
+        run: pip install pytest==8.3.4
+      # tests/test_compose.py shells out to `docker compose config`, which only
+      # parses files -- no daemon, no network. ubuntu-latest ships the Docker
+      # CLI with the compose v2 plugin; this step fails loudly if that ever
+      # stops being true, instead of every compose test erroring one by one.
+      - name: Check the compose CLI is present
+        run: docker compose version
+      # install-box.sh and nufi-box are bash 3.2 scripts driven in --dry-run;
+      # the compose and Caddyfile tests only read files. Nothing here starts a
+      # container, so the whole suite is a few seconds.
+      - name: Box suite
+        run: python3 -m pytest tests -q
+        working-directory: deploy/box
+      # Stdlib scripts in the deploy/platform/adapters house style: they spin up
+      # a ThreadingHTTPServer fake, assert, and exit 0 = PASS. pytest does not
+      # collect them (platform-ci's pyproject sets testpaths = ["tests"]), and
+      # the box is the only thing that runs them -- so they run here.
+      - name: nufi-ingest daemon
+        run: python3 deploy/platform/adapters/nufi-ingest/test_ingest.py
+      - name: Box acceptance runner
+        run: python3 deploy/platform/scenarios/test_run_box.py

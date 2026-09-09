@@ -1,0 +1,105 @@
+#!/bin/bash
+# nufi-box — operate the box without knowing Docker. bash 3.2 compatible.
+set -euo pipefail
+SELF="$0"
+if [ -L "$SELF" ]; then
+  T="$(readlink "$SELF")"
+  case "$T" in /*) SELF="$T" ;; *) SELF="$(dirname "$SELF")/$T" ;; esac
+fi
+HERE="$(cd "$(dirname "$SELF")" && pwd)"
+ENVF="${NUFI_BOX_ENV:-$HERE/.env}"
+DRY="${NUFI_BOX_DRY_RUN:-0}"
+run() { if [ "$DRY" = 1 ]; then printf '  $ %s\n' "$*"; else "$@"; fi; }
+die() { echo "$*" >&2; exit 2; }
+[ -f "$ENVF" ] && { set -a; . "$ENVF"; set +a; }
+OS="$(uname -s)"
+COMPOSE="docker compose -f $HERE/docker-compose.yml"
+[ "${NUFI_EMULATE_AMD64:-0}" = "1" ] && COMPOSE="$COMPOSE -f $HERE/docker-compose.emulate.yml"
+[ "$OS" = "Linux" ] && COMPOSE="$COMPOSE -f $HERE/docker-compose.linux.yml --profile linux"
+# The installer decides the GPU layer from has_nvidia and records the answer as
+# NVIDIA_VISIBLE_DEVICES in .env. Day two has to read it back: without this,
+# `nufi-box restart` on a GPU box re-created the ollama container from the
+# base file alone -- no device reservation, no `gpu` profile -- and the box
+# quietly went back to answering on the CPU with nothing in the logs to say so.
+[ -n "${NVIDIA_VISIBLE_DEVICES:-}" ] && COMPOSE="$COMPOSE -f $HERE/docker-compose.gpu.yml --profile gpu"
+# Same check the installer makes (install-box.sh): docker compose treats a
+# missing -f as an empty override and starts a stack without whatever the
+# site-local file was there to change -- a port map, a mount, a memory cap.
+for f in ${NUFI_BOX_COMPOSE_EXTRA:-}; do
+  [ -f "$f" ] || die "NUFI_BOX_COMPOSE_EXTRA: no such file: $f"
+  COMPOSE="$COMPOSE -f $f"
+done
+usage() {
+  cat <<EOF
+nufi-box <verb>
+
+  status              every service, the model loaded, disk, drives
+  logs [service]      follow logs (all, or one service)
+  drive add <name>    create a department drive: folder, share, team and agent
+  ca-cert             print the path of the certificate laptops must trust
+  doctor              check the things that usually break, in plain words
+  up | down | restart start, stop, or restart the whole box
+  invite | update | backup | support   (coming in P2 / P4)
+EOF
+}
+case "${1:-}" in
+  -h|--help|"") ;;
+  *) [ -f "$ENVF" ] || { echo "no .env next to nufi-box — run install-box.sh first" >&2; exit 2; } ;;
+esac
+case "${1:-}" in
+  status)
+    run $COMPOSE ps --format 'table {{.Name}}\t{{.Status}}'
+    echo; echo "Model: ${NUFI_MODEL:-?} via ${INFERENCE_PROFILE:-?}   Drives: ${NUFI_DATA_DIR:-?}/drives   Host: https://${BOX_HOST:-?}:3080"
+    run df -h "${NUFI_DATA_DIR:-.}" ;;
+  logs) shift; run $COMPOSE logs -f --tail=200 "$@" ;;
+  drive)
+    if [ "${2:-}" != "add" ]; then usage; exit 2; fi
+    if [ -z "${3:-}" ]; then echo "drive add: a name is required" >&2; usage; exit 2; fi
+    name="$3"
+    case "$name" in *[!a-z0-9_-]*) echo "use lowercase letters, digits, - or _" >&2; exit 2 ;; esac
+    [ -n "${NUFI_DATA_DIR:-}" ] || { echo "NUFI_DATA_DIR is not set in .env" >&2; exit 2; }
+    key="$(printf '%s' "$name" | tr -c 'a-z0-9_\n' '_')"
+    run mkdir -p "$NUFI_DATA_DIR/drives/$name"
+    case ",${DEPARTMENTS:-}," in
+      *",$name,"*) new_depts="${DEPARTMENTS:-}" ;;
+      *) new_depts="${DEPARTMENTS:+$DEPARTMENTS,}$name" ;;
+    esac
+    samba_line="\"[${name}]; path=/shares/${name}; valid users = nufi; guest ok = no; read only = no; browseable = yes\""
+    if [ "$DRY" = 1 ]; then
+      echo "DEPARTMENTS=$new_depts"
+      printf 'SAMBA_VOLUME_CONFIG_%s=%s\n' "$key" "$samba_line"
+    else
+      . "$HERE/lib/envfile.sh"
+      envfile_set "$ENVF" DEPARTMENTS "$new_depts"
+      envfile_has "$ENVF" "SAMBA_VOLUME_CONFIG_$key" || envfile_set "$ENVF" "SAMBA_VOLUME_CONFIG_$key" "$samba_line"
+    fi
+    [ "$OS" = "Darwin" ] && run sudo sharing -a "$NUFI_DATA_DIR/drives/$name" -S "$name" -s 001
+    [ "$OS" = "Linux" ] && run $COMPOSE up -d samba
+    echo "The ingest daemon creates the '$name' team and agent on its next scan (about 20 s)." ;;
+  ca-cert) echo "${NUFI_DATA_DIR:-$HERE/data}/nufi-box-ca.crt"; echo "Laptops: http://${BOX_HOST:-nufi.local}/" ;;
+  doctor)
+    fail=0
+    chk() {
+      if [ "$DRY" = 1 ]; then printf '  $ %s\n' "$*"; return 0; fi
+      if "$@" >/dev/null 2>&1; then echo " ok  $*"; else echo " !!  $*"; fail=1; fi
+    }
+    chk docker info
+    chk curl -fsk "https://localhost:3080/health"
+    chk curl -fsk "https://localhost:3001/_health"
+    chk curl -fsk "https://localhost:3001/.well-known/jwks.json"
+    chk curl -fsk "https://localhost:3002/"
+    chk curl -fsk "https://localhost:7860/health_check"
+    chk curl -fsk "https://localhost:4000/health/liveliness"
+    # From inside the box, not from this shell: OLLAMA_BASE_URL is written for
+    # containers, and host.docker.internal is a name only they have.
+    chk $COMPOSE exec -T rag_api python -c \
+      "import os,urllib.request;urllib.request.urlopen(os.environ['OLLAMA_BASE_URL'].rstrip('/')+'/api/tags').read()"
+    chk test -d "${NUFI_DATA_DIR:-$HERE/data}/drives"
+    [ "$fail" = 0 ] && echo "All good." || { echo "Something is off; run: nufi-box logs <service>"; exit 1; } ;;
+  up) run $COMPOSE up -d ;;
+  down) run $COMPOSE down ;;
+  restart) run $COMPOSE restart ;;
+  invite|update|backup|support) echo "$1: coming in the next phase"; exit 3 ;;
+  -h|--help|"") usage ;;
+  *) echo "unknown command: $1" >&2; usage; exit 2 ;;
+esac

@@ -1,0 +1,6 @@
+.env
+litellm/config.yaml
+data/
+secrets/
+__pycache__/
+.pytest_cache/
