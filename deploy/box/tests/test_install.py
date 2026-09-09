@@ -408,3 +408,39 @@ def test_the_re_exec_happens_once_then_says_what_to_do():
         assert not sg_args.exists(), "must not re-exec twice"
         assert "cannot reach the Docker daemon" in r.stderr
         assert "newgrp docker" in r.stderr
+
+
+def test_a_failing_image_pull_is_retried_three_times_then_explained():
+    # A blank-VM install died two minutes in when one third-party image hit a
+    # TLS handshake timeout at ghcr.io — every other image was already down.
+    # The whole box dir is copied so the run writes its .env, config.yaml and
+    # drive folders into the temp copy, not into the checkout.
+    import shutil
+    with tempfile.TemporaryDirectory() as tmp:
+        box = pathlib.Path(tmp) / "box"
+        shutil.copytree(BOX, box, ignore=shutil.ignore_patterns("data", ".env", "tests"))
+        bin_ = pathlib.Path(tmp) / "bin"
+        bin_.mkdir()
+        tries = pathlib.Path(tmp) / "pull.attempts"
+        docker = bin_ / "docker"
+        # `docker compose -f … --profile linux pull`: the verb is the LAST word,
+        # not $2.
+        docker.write_text(
+            "#!/bin/sh\n"
+            'case "$*" in\n'
+            f'  *" pull") echo x >> {tries}; exit 1 ;;\n'
+            '  *) exit 0 ;;\n'
+            "esac\n")
+        docker.chmod(0o755)
+        for name in ("sudo", "curl"):
+            p = bin_ / name
+            p.write_text("#!/bin/sh\nexit 0\n")
+            p.chmod(0o755)
+        e = dict(os.environ, PATH=f"{bin_}:/usr/bin:/bin", NUFI_BOX_FAKE_OS="Linux",
+                 NUFI_DATA_DIR=str(pathlib.Path(tmp) / "data"),
+                 NUFI_BOX_ENV=str(box / ".env"))
+        r = subprocess.run([BASH, str(box / "install-box.sh"), "--yes"],
+                           cwd=box, env=e, capture_output=True, text=True)
+        assert r.returncode != 0
+        assert tries.read_text().count("x") == 3, "the pull must be tried three times"
+        assert "could not pull the images after 3 attempts" in r.stderr

@@ -364,7 +364,18 @@ if [ "$NO_PULL" = 1 ]; then
   say "Starting the stack (--no-pull: using the images already on this machine)"
 else
   say "Pulling images and starting the stack"
-  run $COMPOSE pull
+  # A dozen images over someone else's network: one flaky blob ends the whole
+  # install under `set -e`. A TLS handshake timeout to ghcr.io killed a
+  # blank-VM install two minutes in, with every other image already down.
+  # A pull is resumable and idempotent, so try the whole thing three times
+  # before giving up on it.
+  pull_ok=0
+  for attempt in 1 2 3; do
+    if run $COMPOSE pull; then pull_ok=1; break; fi
+    warn "image pull attempt $attempt of 3 failed; retrying in 5s"
+    sleep 5
+  done
+  [ "$pull_ok" = 1 ] || die "could not pull the images after 3 attempts; check the network (and, for a --registry box, that the registry is up) and re-run"
 fi
 run $COMPOSE up -d
 if [ "$DRY" = 0 ]; then
