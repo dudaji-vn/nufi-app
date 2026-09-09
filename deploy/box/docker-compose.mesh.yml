@@ -1,0 +1,76 @@
+# The box as a mesh node (Linux only), enabled with `--profile mesh`:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.mesh.yml \
+#     --profile mesh up -d tailscale
+#
+# which is what `nufi-box mesh up` and `install-box.sh --mesh` run. One extra
+# container joins the coordinator (deploy/coordinator) and gives the HOST a
+# mesh address and a MagicDNS name, so every port the box already publishes on
+# the LAN — 80/3080/3001/3002/7860/4000 from Caddy and 445 from Samba —
+# answers on that address too, with no second copy of anything.
+#
+# macOS has no equivalent: Docker Desktop's "host" network is the Linux VM's,
+# not the Mac's, so a Mac box joins with the native Tailscale app instead
+# (`nufi-box mesh up` prints the two commands).
+services:
+  tailscale:
+    image: tailscale/tailscale:v1.102.3
+    profiles: [mesh]
+    restart: unless-stopped
+    # The whole point: tailscaled owns the host's network namespace, so the
+    # tailscale0 interface and its 100.64.x.y address belong to the host and
+    # every already-published port is reachable on them. No `networks:` — the
+    # two are mutually exclusive in compose, and `hostname:` is refused
+    # alongside host networking, so the node's name is set by --hostname below.
+    network_mode: host
+    # Kernel mode (TS_USERSPACE=false) needs both: without them tailscaled
+    # falls back to userspace networking, where packets only reach processes
+    # inside this container — which is precisely nothing.
+    cap_add: [NET_ADMIN, NET_RAW]
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      # The single-use pre-auth key the coordinator minted for this box
+      # (`headscale preauthkeys create --user <box> --tags tag:box`).
+      TS_AUTHKEY: ${MESH_AUTH_KEY:-}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+      # The box answers on its mesh address; it never needs to resolve other
+      # members by name, and accepting MagicDNS would rewrite the resolver of
+      # a machine that is also somebody's file server.
+      TS_ACCEPT_DNS: "false"
+      # No --advertise-tags. headscale v0.29.3 rejects RequestTags on ANY
+      # pre-auth-key registration — confirmed live against the lab
+      # coordinator: "handling register with auth key: creating new node:
+      # requested tags [tag:box] are invalid or not permitted", with
+      # tagOwners granting tag:box and the key itself carrying it. The tag
+      # comes from the key (`preauthkeys create --tags tag:box`), which is
+      # also where a member's tag:member comes from (`nufi-box invite`).
+      TS_EXTRA_ARGS: --login-server=${MESH_SERVER_URL:-} --hostname=${BOX_NAME:-nufi}
+      # A box is meant to run without reaching the internet; without this,
+      # every start spends a minute failing to talk to log.tailscale.com.
+      TS_TAILSCALED_EXTRA_ARGS: --no-logs-no-support
+      # Go's crypto/x509 reads SSL_CERT_FILE instead of the system bundle, so
+      # this is what lets tailscaled trust a coordinator whose certificate is
+      # not public — the Docker lab and any dev coordinator on TLS_MODE
+      # internal. The default mounts the host's own bundle, i.e. changes
+      # nothing, which is right for a coordinator with a Let's Encrypt cert.
+      SSL_CERT_FILE: /mesh-ca.crt
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+      - ${MESH_CA_FILE:-/etc/ssl/certs/ca-certificates.crt}:/mesh-ca.crt:ro
+    healthcheck:
+      # `tailscale status` talks to the local tailscaled socket and exits
+      # non-zero until the backend is Running; --peers=false keeps it from
+      # rendering every other node on the tailnet each time.
+      test: ["CMD-SHELL", "tailscale status --peers=false >/dev/null 2>&1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  # The node key and the machine identity. Keeping them means a restarted box
+  # rejoins as the same node, with the same mesh address and MagicDNS name —
+  # the addresses `nufi-box invite` already handed to members.
+  tailscale-state:

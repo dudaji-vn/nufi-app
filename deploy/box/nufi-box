@@ -12,7 +12,9 @@ DRY="${NUFI_BOX_DRY_RUN:-0}"
 run() { if [ "$DRY" = 1 ]; then printf '  $ %s\n' "$*"; else "$@"; fi; }
 die() { echo "$*" >&2; exit 2; }
 [ -f "$ENVF" ] && { set -a; . "$ENVF"; set +a; }
-OS="$(uname -s)"
+# NUFI_BOX_FAKE_OS lets the tests plan the other OS's run, exactly as
+# install-box.sh does; nothing but tests ever sets it.
+OS="${NUFI_BOX_FAKE_OS:-$(uname -s)}"
 COMPOSE="docker compose -f $HERE/docker-compose.yml"
 [ "${NUFI_EMULATE_AMD64:-0}" = "1" ] && COMPOSE="$COMPOSE -f $HERE/docker-compose.emulate.yml"
 [ "$OS" = "Linux" ] && COMPOSE="$COMPOSE -f $HERE/docker-compose.linux.yml --profile linux"
@@ -39,6 +41,9 @@ nufi-box <verb>
   ca-cert             print the path of the certificate laptops must trust
   doctor              check the things that usually break, in plain words
   up | down | restart start, stop, or restart the whole box
+  mesh up | status | down
+                      join this box to the coordinator so it can be reached
+                      from home, show where it is on the mesh, or leave
   invite NAME [--os windows|macos|linux] [--drives a,b]
                       write a one-file join for a new laptop, from home
   members             list the laptops currently joined to the mesh
@@ -105,7 +110,16 @@ case "${1:-}" in
   up) run $COMPOSE up -d ;;
   down) run $COMPOSE down ;;
   restart) run $COMPOSE restart ;;
-  # --- mesh invites (Task 7) ---
+  # --- the mesh (Tasks 6 and 7) ---
+  mesh)
+    shift
+    case "${1:-}" in
+      up|status|down) MESH_VERB="$1" ;;
+      "") echo "mesh: say what to do — up, status or down" >&2; usage; exit 2 ;;
+      *) echo "mesh: unknown subcommand: $1 (use up, status or down)" >&2; exit 2 ;;
+    esac
+    . "$HERE/lib/mesh.sh"
+    "mesh_$MESH_VERB" ;;
   invite)
     shift
     [ -n "${1:-}" ] || { echo "invite: a name is required" >&2; usage; exit 2; }
@@ -141,7 +155,7 @@ case "${1:-}" in
       [ -n "${1:-}" ] || { echo "revoke: a name is required (or --id ID)" >&2; usage; exit 2; }
       mesh_delete "$1"
     fi ;;
-  # --- end mesh invites (Task 7) ---
+  # --- end the mesh (Tasks 6 and 7) ---
   update|backup|support) echo "$1: coming in the next phase"; exit 3 ;;
   -h|--help|"") usage ;;
   *) echo "unknown command: $1" >&2; usage; exit 2 ;;

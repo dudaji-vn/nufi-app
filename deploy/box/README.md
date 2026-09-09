@@ -282,6 +282,7 @@ to `install-box.sh` and is also symlinked onto your `PATH`.
 | `ca-cert` | Print the path to the box's certificate and where to fetch it |
 | `doctor` | Check the things that usually break, in plain words |
 | `up` / `down` / `restart` | Start, stop, or restart the whole box |
+| `mesh up` / `mesh status` / `mesh down` | Join this box to the coordinator so it can be reached from home, show where it is on the mesh, or leave |
 | `invite <name> [--os win\|mac\|linux] [--drives a,b]` | Write a one-file join for a new laptop — see [From home](#8-from-home) |
 | `members` | List the laptops currently joined to the mesh |
 | `revoke <name>` / `revoke --id <id>` | Remove a laptop's access to the mesh |
@@ -294,6 +295,53 @@ still reach the box — once it has joined the mesh coordinator (`nufi-box
 mesh up` gives the box a stable mesh address and sets `BOX_MESH_HOST` in
 `.env`; `invite` refuses with a clear message if that has not happened
 yet).
+
+### Putting the box on the mesh
+
+The coordinator (`deploy/coordinator`) is a small VPS running headscale. It
+hands out one pre-auth key per machine and relays traffic when two machines
+cannot reach each other directly. Give the box its coordinator once, at
+install time:
+
+```bash
+./install-box.sh --yes \
+  --mesh https://mesh.nufi.me \
+  --auth-key tskey-auth-…            # the box's own key: tag:box, single use
+  --mesh-api-key hskey-api-…         # optional, but `invite` needs it
+```
+
+or afterwards, by putting `MESH_SERVER_URL` and `MESH_AUTH_KEY` in `.env` and
+running `nufi-box mesh up`. Either way the box:
+
+- joins as node `${BOX_NAME}` (a `tailscale` container with the host's own
+  network on Linux; the native Tailscale app on macOS, whose two commands
+  `mesh up` prints for you),
+- writes `BOX_MESH_IP` and `BOX_MESH_HOST` into `.env`,
+- generates `caddy/mesh.caddy` so all six sites answer on the mesh name with
+  the same certificate laptops already trust, and reloads Caddy.
+
+```
+$ nufi-box mesh status
+  coordinator    https://mesh.nufi.me
+  mesh address   100.64.0.2
+  MagicDNS name  nufi.box.nufi.me
+```
+
+From home, use the **name**, not the mesh address: `https://nufi.box.nufi.me:3080`.
+A browser that dials a bare IP sends no SNI, and the box has one certificate
+to fall back on — the LAN one — so the mesh address alone will not validate.
+The name always resolves for a joined laptop; that is what the mesh is for,
+and it is what every join file uses.
+
+The drives need nothing extra. Samba's port is published by Docker, which
+binds every address the machine has, so `\\nufi.box.nufi.me\legal` works the
+moment the box is on the mesh. (Do not "help" it by pinning smbd's
+`interfaces` to the mesh address: Samba runs in a container that has neither
+that address nor the LAN one, and it would stop answering on both.)
+
+`nufi-box mesh down` takes the box off the mesh and removes the mesh sites
+from Caddy; the box keeps its registration, so `mesh up` rejoins at the same
+address without a new key. To remove a *laptop* for good, use `revoke`.
 
 ### For the admin: inviting a laptop
 

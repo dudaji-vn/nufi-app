@@ -1,0 +1,9 @@
+# caddy/mesh.caddy — the box's sites on its mesh address.
+#
+# This is the empty template. install-box.sh copies it to caddy/mesh.caddy
+# (gitignored) so a fresh box imports nothing, and `nufi-box mesh up`
+# overwrites that copy with the six real site blocks once the box has joined
+# a coordinator and knows its BOX_MESH_HOST and BOX_MESH_IP. `nufi-box mesh
+# down` puts this file back.
+#
+# Do not edit caddy/mesh.caddy by hand: mesh up rewrites it.

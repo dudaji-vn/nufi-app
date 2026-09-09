@@ -87,11 +87,19 @@ def test_core_services_present_and_named():
 
 def test_every_service_follows_the_house_rules():
     cfg = render("docker-compose.yml", "docker-compose.linux.yml", "docker-compose.gpu.yml",
-                 profiles=("linux", "gpu"))
+                 "docker-compose.mesh.yml", profiles=("linux", "gpu", "mesh"))
     for name, svc in cfg["services"].items():
         assert svc.get("restart") == "unless-stopped", name
         assert "healthcheck" in svc, name
-        assert list(svc.get("networks", {}).keys()) == ["box"], name
+        # Every service sits on the `box` bridge, except the one that cannot:
+        # tailscaled has to own the host's namespace to give the host a mesh
+        # address at all. `network_mode` and `networks` are mutually exclusive
+        # in compose, so that is still an explicit, single answer per service.
+        if "network_mode" in svc:
+            assert svc["network_mode"] == "host", name
+            assert not svc.get("networks"), name
+        else:
+            assert list(svc.get("networks", {}).keys()) == ["box"], name
         image = svc.get("image", "")
         assert not image.endswith(":latest"), f"{name} pins :latest"
 
@@ -108,7 +116,8 @@ def test_only_caddy_publishes_web_ports():
 
 def test_env_example_covers_every_variable():
     text = "\n".join((BOX / f).read_text()
-                     for f in ("docker-compose.yml", "docker-compose.linux.yml", "docker-compose.gpu.yml")
+                     for f in ("docker-compose.yml", "docker-compose.linux.yml",
+                               "docker-compose.gpu.yml", "docker-compose.mesh.yml")
                      if (BOX / f).exists())
     used = set(re.findall(r"\$\{([A-Z0-9_]+)(?::-[^}]*)?\}", text))
     declared = set(re.findall(r"^([A-Z0-9_]+)=", (BOX / ".env.example").read_text(), re.M))
@@ -194,3 +203,51 @@ def test_studio_may_reach_the_box_model_host():
     hosts = [h.strip() for h in allowed.split(",")]
     assert "host.docker.internal" in hosts, allowed
     assert "ollama" in hosts, allowed
+
+
+# --- Task 6: the box as a mesh node ------------------------------------------
+
+def test_the_mesh_profile_adds_the_tailscale_node():
+    """`nufi-box mesh up` layers docker-compose.mesh.yml and starts one extra
+    container. It needs the host's own network namespace (so Caddy's published
+    ports answer on the mesh address and Samba's 445 with them), a TUN device
+    and NET_ADMIN for kernel-mode tailscaled, and a pinned image like every
+    other service."""
+    svc = render("docker-compose.yml", "docker-compose.mesh.yml",
+                 profiles=("mesh",))["services"]["tailscale"]
+    assert svc["network_mode"] == "host"
+    assert "NET_ADMIN" in svc["cap_add"]
+    assert any(d["source"] == "/dev/net/tun" for d in svc["devices"]), svc["devices"]
+    assert svc["image"].startswith("tailscale/tailscale:v"), svc["image"]
+    assert not svc["image"].endswith(":latest")
+    assert svc["restart"] == "unless-stopped"
+    # `tailscale status` talks to the local tailscaled socket and exits 0 only
+    # once the backend is up; --peers=false keeps it cheap on a busy tailnet.
+    assert "tailscale status --peers=false" in json.dumps(svc["healthcheck"]["test"])
+
+
+def test_the_tailscale_node_logs_in_with_the_preauth_key_and_the_box_name():
+    env = render("docker-compose.yml", "docker-compose.mesh.yml",
+                 profiles=("mesh",), MESH_AUTH_KEY="tskey-auth-test",
+                 MESH_SERVER_URL="https://mesh.example")["services"]["tailscale"]["environment"]
+    assert env["TS_AUTHKEY"] == "tskey-auth-test"
+    assert "--login-server=https://mesh.example" in env["TS_EXTRA_ARGS"]
+    assert "--hostname=nufi" in env["TS_EXTRA_ARGS"]
+    # headscale v0.29.3 rejects RequestTags on ANY pre-auth-key registration
+    # ("requested tags [tag:box] are invalid or not permitted", confirmed live
+    # against the lab coordinator) — tag:box comes from the key's own aclTags.
+    assert "--advertise-tags" not in env["TS_EXTRA_ARGS"], env["TS_EXTRA_ARGS"]
+
+
+def test_the_base_box_has_no_tailscale_container():
+    """A box that never joined a mesh must not gain a container, and even with
+    the file layered the `mesh` profile is what turns it on."""
+    assert "tailscale" not in render()["services"]
+    assert "tailscale" not in render("docker-compose.yml", "docker-compose.mesh.yml")["services"]
+
+
+def test_caddy_can_read_the_generated_mesh_sites():
+    """The Caddyfile imports caddy/mesh*.caddy, which Caddy resolves relative
+    to the config file — so ./caddy has to be inside /etc/caddy."""
+    targets = {v["target"] for v in render()["services"]["caddy"]["volumes"]}
+    assert "/etc/caddy/caddy" in targets, targets

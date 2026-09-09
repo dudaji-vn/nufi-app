@@ -357,3 +357,74 @@ def test_help_lists_the_mesh_verbs():
     assert r.returncode == 0
     for verb in ("invite", "members", "revoke"):
         assert verb in r.stdout
+
+
+# --- Task 6: a coordinator on its own CA (MESH_CA_FILE) ----------------------
+
+
+@pytest.fixture
+def fake_headscale_tls(tmp_path_factory):
+    """The same fake behind HTTPS with a self-signed certificate — the shape of
+    the Docker lab and of a dev coordinator on TLS_MODE=internal, where the
+    box has to be told which CA to trust."""
+    import ssl
+
+    d = tmp_path_factory.mktemp("hs-tls")
+    key, crt = d / "server.key", d / "server.crt"
+    gen = subprocess.run(
+        ["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
+         "-keyout", str(key), "-out", str(crt), "-subj", "/CN=localhost",
+         "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1"],
+        capture_output=True, text=True)
+    if gen.returncode != 0:
+        pytest.skip("openssl cannot make a self-signed certificate here")
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    server.valid_key = "k"
+    server.users = [{"id": "1", "name": "box"}]
+    server.nodes = [{"id": "1", "name": "bob", "ipAddresses": ["100.64.0.5"],
+                     "online": True, "lastSeen": "2026-09-08T00:00:00Z",
+                     "user": {"name": "box"}}]
+    server.preauth_key = "test-preauth-key-abc123"
+    server.requests = []
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.load_cert_chain(str(crt), str(key))
+    server.socket = ctx.wrap_socket(server.socket, server_side=True)
+    server.ca_file = crt
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield server
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_members_trusts_the_coordinators_own_ca_when_mesh_ca_file_names_it(tmp_path, fake_headscale_tls):
+    envf, _ = make_env(tmp_path, fake_headscale_tls,
+                       MESH_SERVER_URL="https://localhost:%d" % fake_headscale_tls.server_port,
+                       MESH_CA_FILE=str(fake_headscale_tls.ca_file))
+    r = cli("members", env={"NUFI_BOX_ENV": str(envf)})
+    assert r.returncode == 0, r.stderr
+    assert "bob" in r.stdout
+
+
+def test_members_against_an_untrusted_coordinator_fails_loudly(tmp_path, fake_headscale_tls):
+    """Without MESH_CA_FILE the same call must not quietly succeed: the box
+    would be talking to a coordinator it cannot authenticate."""
+    envf, _ = make_env(tmp_path, fake_headscale_tls,
+                       MESH_SERVER_URL="https://localhost:%d" % fake_headscale_tls.server_port)
+    r = cli("members", env={"NUFI_BOX_ENV": str(envf)})
+    assert r.returncode != 0
+    assert "bob" not in r.stdout
+
+
+def test_a_mesh_ca_file_that_is_not_there_is_ignored_not_fatal(tmp_path, fake_headscale):
+    """The default value names the host's system bundle, which does not exist
+    on macOS — that must not stop a plain HTTP or public-CA coordinator."""
+    envf, _ = make_env(tmp_path, fake_headscale,
+                       MESH_CA_FILE="/etc/ssl/certs/ca-certificates.crt")
+    r = cli("members", env={"NUFI_BOX_ENV": str(envf)})
+    assert r.returncode == 0, r.stderr
+    assert "bob" in r.stdout

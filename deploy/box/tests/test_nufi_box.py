@@ -246,3 +246,88 @@ def test_doctor_probes_the_admin_panel_and_the_gateway(tmp_path):
     assert r.returncode == 0, r.stderr
     assert "https://localhost:3002/" in r.stdout
     assert "https://localhost:4000/health/liveliness" in r.stdout
+
+
+# --- Task 6: nufi-box mesh up | status | down --------------------------------
+
+def mesh_env(tmp_path, **extra):
+    lines = {
+        "NUFI_DATA_DIR": str(tmp_path),
+        "BOX_NAME": "nufi",
+        "BOX_HOST": "nufi.local",
+        "BOX_IP": "192.168.1.10",
+        "MESH_SERVER_URL": "https://coordinator.lab",
+        "MESH_AUTH_KEY": "tskey-auth-test",
+    }
+    lines.update(extra)
+    envf = tmp_path / ".env"
+    envf.write_text("".join("%s=%s\n" % kv for kv in lines.items()))
+    return str(envf)
+
+
+def test_mesh_up_plans_the_join_the_env_write_and_the_caddy_reload(tmp_path):
+    r = cli("mesh", "up", NUFI_BOX_ENV=mesh_env(tmp_path), NUFI_BOX_FAKE_OS="Linux")
+    assert r.returncode == 0, r.stderr
+    out = r.stdout
+    assert "docker-compose.mesh.yml" in out
+    assert "--profile mesh" in out
+    assert "up -d tailscale" in out
+    assert "tailscale ip -4" in out
+    assert "BOX_MESH_IP=" in out
+    assert "BOX_MESH_HOST=" in out
+    assert "caddy/mesh.caddy" in out
+    assert "caddy reload --config /etc/caddy/Caddyfile" in out
+
+
+def test_mesh_up_refuses_without_a_coordinator(tmp_path):
+    envf = tmp_path / ".env"
+    envf.write_text("NUFI_DATA_DIR=%s\nBOX_NAME=nufi\n" % tmp_path)
+    r = cli("mesh", "up", NUFI_BOX_ENV=str(envf), NUFI_BOX_FAKE_OS="Linux")
+    assert r.returncode == 2
+    assert "MESH_SERVER_URL" in r.stderr
+
+
+def test_mesh_up_refuses_without_an_auth_key_on_linux(tmp_path):
+    envf = mesh_env(tmp_path, MESH_AUTH_KEY="")
+    r = cli("mesh", "up", NUFI_BOX_ENV=envf, NUFI_BOX_FAKE_OS="Linux")
+    assert r.returncode == 2
+    assert "MESH_AUTH_KEY" in r.stderr
+
+
+def test_mesh_up_on_macos_prints_the_native_tailscale_commands(tmp_path):
+    """Docker Desktop's `network_mode: host` is the Linux VM's network, not the
+    Mac's, so a macOS box joins with the real Tailscale app instead."""
+    r = cli("mesh", "up", NUFI_BOX_ENV=mesh_env(tmp_path), NUFI_BOX_FAKE_OS="Darwin")
+    assert "/Applications/Tailscale.app/Contents/MacOS/Tailscale" in r.stdout
+    assert "--login-server=https://coordinator.lab" in r.stdout
+    assert "--auth-key=" in r.stdout
+    assert "docker-compose.mesh.yml" not in r.stdout
+
+
+def test_mesh_status_plans_tailscale_status(tmp_path):
+    envf = mesh_env(tmp_path, BOX_MESH_IP="100.64.0.7", BOX_MESH_HOST="nufi.box.lab")
+    r = cli("mesh", "status", NUFI_BOX_ENV=envf, NUFI_BOX_FAKE_OS="Linux")
+    assert r.returncode == 0, r.stderr
+    assert "100.64.0.7" in r.stdout
+    assert "nufi.box.lab" in r.stdout
+    assert "tailscale status" in r.stdout
+
+
+def test_mesh_down_stops_the_node_and_clears_the_addresses(tmp_path):
+    envf = mesh_env(tmp_path, BOX_MESH_IP="100.64.0.7", BOX_MESH_HOST="nufi.box.lab")
+    r = cli("mesh", "down", NUFI_BOX_ENV=envf, NUFI_BOX_FAKE_OS="Linux")
+    assert r.returncode == 0, r.stderr
+    assert "stop tailscale" in r.stdout
+    assert "BOX_MESH_IP=" in r.stdout
+    assert "caddy reload" in r.stdout
+
+
+def test_mesh_without_a_subcommand_is_an_error(tmp_path):
+    r = cli("mesh", NUFI_BOX_ENV=mesh_env(tmp_path))
+    assert r.returncode == 2
+    assert "mesh" in r.stderr
+
+
+def test_help_lists_the_mesh_lifecycle_verbs():
+    out = cli("--help").stdout
+    assert "mesh up" in out

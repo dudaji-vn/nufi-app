@@ -26,9 +26,17 @@ MESH_HS_USER="${MESH_HS_USER:-box}"
 # thing the review's suggested `-K -` (stdin) would, without depending on
 # how the caller's stdin happens to be wired.
 mesh_api() {
-  local method="$1" path="$2" data="${3:-}" tmp cfg code
+  local method="$1" path="$2" data="${3:-}" tmp cfg code ca=""
   [ -n "${MESH_SERVER_URL:-}" ] || { echo "MESH_SERVER_URL is not set in .env" >&2; exit 2; }
   [ -n "${MESH_API_KEY:-}" ] || { echo "MESH_API_KEY is not set in .env" >&2; exit 2; }
+  # A coordinator on its own internal CA (the Docker lab, a dev VPS before it
+  # has a public name) is exactly the case MESH_CA_FILE exists for, and the
+  # tailscale container already trusts it through SSL_CERT_FILE. Without the
+  # same file here, the box joins the mesh and then `nufi-box members` dies on
+  # "unable to get local issuer certificate" — half-trusted, which is worse
+  # than either answer. Naming the host's own bundle (the default) changes
+  # nothing; a path that is not there is ignored rather than fatal.
+  [ -n "${MESH_CA_FILE:-}" ] && [ -f "${MESH_CA_FILE}" ] && ca="$MESH_CA_FILE"
   tmp="$(mktemp)"
   cfg="$(mktemp)"
   python3 -c '
@@ -37,7 +45,7 @@ import sys
 def q(s):
     return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
-method, url, key, data, out = sys.argv[1:6]
+method, url, key, data, out, ca = sys.argv[1:7]
 lines = [
     "silent", "show-error",
     "max-time = 20",
@@ -47,11 +55,13 @@ lines = [
     "output = " + q(out),
     "write-out = " + q("%{http_code}"),
 ]
+if ca:
+    lines.append("cacert = " + q(ca))
 if data:
     lines.append("header = " + q("Content-Type: application/json"))
     lines.append("data = " + q(data))
 sys.stdout.write("\n".join(lines) + "\n")
-' "$method" "${MESH_SERVER_URL}${path}" "$MESH_API_KEY" "$data" "$tmp" > "$cfg"
+' "$method" "${MESH_SERVER_URL}${path}" "$MESH_API_KEY" "$data" "$tmp" "$ca" > "$cfg"
   code="$(curl -K "$cfg")"
   rm -f "$cfg"
   case "$code" in
@@ -307,4 +317,220 @@ mesh_invite() {
     "BOX_MESH_HOST=$BOX_MESH_HOST" "CA_B64=$ca_b64" "DRIVES=$drives_block"
   echo "Wrote $out"
   echo "Send it to $name (email or chat — not a public link): \"Run this file, then open https://${BOX_MESH_HOST}:3080 — the key inside works once.\""
+}
+
+# ---------- the box as a mesh node (Task 6) --------------------------------
+#
+# `nufi-box mesh up | status | down`. Everything below is sourced by nufi-box
+# and uses its $HERE, $ENVF, $OS, $DRY, $COMPOSE and its run()/die().
+
+# The Tailscale CLI inside the app bundle; a macOS box joins with the native
+# app because Docker Desktop's "host" network is the Linux VM's, not the Mac's.
+MESH_MACOS_TS="/Applications/Tailscale.app/Contents/MacOS/Tailscale"
+
+# mesh_compose_cmd — the base compose command plus the mesh layer. Not a
+# variable at source time: $COMPOSE is assembled by nufi-box from the OS, the
+# GPU answer and NUFI_BOX_COMPOSE_EXTRA, and the mesh layer goes on last.
+mesh_compose_cmd() { printf '%s -f %s --profile mesh' "$COMPOSE" "$HERE/docker-compose.mesh.yml"; }
+
+# mesh_ts_cmd — how this box asks its own tailscaled a question.
+mesh_ts_cmd() {
+  if [ "$OS" = "Darwin" ]; then printf '%s' "$MESH_MACOS_TS"
+  else printf '%s exec -T tailscale tailscale' "$(mesh_compose_cmd)"; fi
+}
+
+# mesh_ts ARGS… — run that command for real.
+mesh_ts() {
+  if [ "$OS" = "Darwin" ]; then "$MESH_MACOS_TS" "$@"
+  else $(mesh_compose_cmd) exec -T tailscale tailscale "$@"; fi
+}
+
+# mesh_current_ip — the box's 100.64.x.y, or empty if it is not joined yet.
+mesh_current_ip() {
+  local ip
+  ip="$(mesh_ts ip -4 2>/dev/null | head -1 | tr -d '[:space:]')" || true
+  case "$ip" in 100.*) printf '%s' "$ip" ;; esac
+}
+
+# mesh_wait_ip SECONDS — poll until tailscaled reports an address. No
+# timeout(1) on macOS, so this is a bounded loop like everything else here.
+mesh_wait_ip() {
+  local budget="$1" i=0 ip
+  while [ "$i" -lt "$budget" ]; do
+    ip="$(mesh_current_ip)"
+    [ -n "$ip" ] && { printf '%s' "$ip"; return 0; }
+    i=$((i + 2)); sleep 2
+  done
+  return 1
+}
+
+# mesh_dns_name — the MagicDNS name the coordinator gave this node, read from
+# tailscaled itself (Self.DNSName, e.g. "nufi.box.lab."). Deliberately NOT
+# ${BOX_NAME}.${MESH_BASE_DOMAIN}: the base domain is the coordinator's
+# setting, and a box that recomputed it locally would be a second source of
+# truth that silently disagrees the day the coordinator changes it. Falls
+# back to that composition only if tailscaled has no name for us.
+mesh_dns_name() {
+  local name
+  name="$(mesh_ts status --json 2>/dev/null | python3 -c '
+import json, sys
+try:
+    print(((json.load(sys.stdin).get("Self") or {}).get("DNSName") or "").rstrip("."))
+except Exception:
+    print("")
+' 2>/dev/null)" || true
+  if [ -z "$name" ] && [ -n "${MESH_BASE_DOMAIN:-}" ]; then
+    name="${BOX_NAME:-nufi}.${MESH_BASE_DOMAIN}"
+  fi
+  printf '%s' "$name"
+}
+
+# mesh_render_caddy HOST IP OUT — the box's six sites again, on the mesh name
+# and the mesh address. Literal values, not {$BOX_MESH_HOST} placeholders:
+# Caddy resolves an env placeholder to the empty string when it is unset,
+# which would turn every site address into ":3080" and hand the whole box to
+# whoever asks. The bodies are the Caddyfile's own snippets, so the LAN and
+# the mesh can never serve different things.
+mesh_render_caddy() {
+  local host="$1" ip="$2" out="$3"
+  cat > "$out" <<EOF
+# caddy/mesh.caddy — GENERATED by \`nufi-box mesh up\`; do not edit.
+# The box's sites on the mesh: $host and $ip.
+# \`nufi-box mesh down\` replaces this with caddy/mesh.caddy.empty.
+
+$host:80, $ip:80 {
+	import landing
+}
+
+$host:3080, $ip:3080 {
+	import box_tls
+	reverse_proxy librechat:3080
+}
+
+$host:3001, $ip:3001 {
+	import box_tls
+	reverse_proxy console:3000
+}
+
+$host:3002, $ip:3002 {
+	import box_tls
+	reverse_proxy admin-panel:3000
+}
+
+$host:7860, $ip:7860 {
+	import studio_routes
+}
+
+$host:4000, $ip:4000 {
+	import box_tls
+	reverse_proxy litellm-proxy:4000
+}
+EOF
+}
+
+# mesh_write_addresses IP HOST — record where the box now answers, so
+# `nufi-box invite` can put it in a join file and `mesh status` can show it.
+mesh_write_addresses() {
+  if [ "$DRY" = 1 ]; then
+    echo "BOX_MESH_IP=$1"
+    echo "BOX_MESH_HOST=$2"
+  else
+    . "$HERE/lib/envfile.sh"
+    envfile_set "$ENVF" BOX_MESH_IP "$1"
+    envfile_set "$ENVF" BOX_MESH_HOST "$2"
+  fi
+}
+
+# mesh_reload_caddy — pick up caddy/mesh.caddy without dropping a connection.
+# The Caddyfile is mounted read-only and ./caddy with it, so there is nothing
+# to copy into the container first.
+mesh_reload_caddy() { run $COMPOSE exec caddy caddy reload --config /etc/caddy/Caddyfile; }
+
+# mesh_up_native — macOS. Prints the two commands (the app cannot be driven
+# headlessly, and `login` wants the operator's own authorisation), then waits
+# for tailscaled to answer before going on with the .env and Caddy steps.
+mesh_up_native() {
+  echo "This is a Mac: the box joins with the native Tailscale app, not a container."
+  echo "Install it from https://tailscale.com/download/mac, then run these two:"
+  echo
+  printf '  %s login --login-server=%s --auth-key=%s --hostname=%s\n' \
+    "$MESH_MACOS_TS" "$MESH_SERVER_URL" "$MESH_AUTH_KEY" "${BOX_NAME:-nufi}"
+  printf '  %s up --accept-dns=false\n' "$MESH_MACOS_TS"
+  echo
+  [ "$DRY" = 1 ] && return 0
+  echo "Waiting up to 120 s for this Mac to come up on the mesh…"
+  mesh_wait_ip 120 >/dev/null && return 0
+  echo "Not on the mesh yet. Run the two commands above, then: nufi-box mesh up" >&2
+  return 1
+}
+
+# mesh_up — join the coordinator and serve everything on the mesh address too.
+mesh_up() {
+  local ip host
+  [ -n "${MESH_SERVER_URL:-}" ] || die "mesh up: MESH_SERVER_URL is not set in $ENVF — install-box.sh --mesh <coordinator-url> --auth-key <key> writes it"
+  [ -n "${MESH_AUTH_KEY:-}" ] || die "mesh up: MESH_AUTH_KEY is not set in $ENVF — ask the coordinator for a pre-auth key (headscale preauthkeys create --user box --tags tag:box)"
+  if [ "$OS" = "Darwin" ]; then
+    mesh_up_native || exit 1
+  else
+    echo "Joining $MESH_SERVER_URL as ${BOX_NAME:-nufi}…"
+    run $(mesh_compose_cmd) up -d tailscale
+  fi
+  if [ "$DRY" = 1 ]; then
+    printf '  $ %s ip -4\n' "$(mesh_ts_cmd)"
+    printf '  $ %s status --json    # .Self.DNSName\n' "$(mesh_ts_cmd)"
+    ip="<the address tailscaled reports>"
+    host="<the MagicDNS name the coordinator gave this box>"
+  else
+    ip="$(mesh_wait_ip 120)" || die "mesh up: tailscaled never reported an address; look at: nufi-box logs tailscale"
+    host="$(mesh_dns_name)"
+    [ -n "$host" ] || die "mesh up: the coordinator gave this box no MagicDNS name — is magic_dns enabled on it?"
+  fi
+  mesh_write_addresses "$ip" "$host"
+  if [ "$DRY" = 1 ]; then
+    printf '  $ render %s for %s / %s\n' "$HERE/caddy/mesh.caddy" "$host" "$ip"
+  else
+    mesh_render_caddy "$host" "$ip" "$HERE/caddy/mesh.caddy"
+  fi
+  mesh_reload_caddy
+  # Samba needs nothing: it publishes 445 through Docker, which binds every
+  # address the host has, the mesh one included (verified in the Ubuntu VM —
+  # see the Task 6 report). Pinning smbd's `interfaces` to the mesh address
+  # instead would break it outright: the container has neither the LAN nor
+  # the mesh address on any of its own interfaces.
+  cat <<EOF
+
+  The box is on the mesh.
+
+    address       $ip
+    name          $host
+    chat          https://$host:3080
+    drives        \\\\$host\\<department>
+
+  Invite a laptop:  nufi-box invite <name> --os macos|windows|linux
+EOF
+}
+
+# mesh_status — where the box is on the mesh, and what tailscaled thinks.
+mesh_status() {
+  echo "  coordinator    ${MESH_SERVER_URL:-(none — this box is LAN-only)}"
+  echo "  mesh address   ${BOX_MESH_IP:-(not joined)}"
+  echo "  MagicDNS name  ${BOX_MESH_HOST:-(not joined)}"
+  echo
+  run $(mesh_ts_cmd) status
+}
+
+# mesh_down — leave the mesh: stop the node, forget the addresses, and take
+# the mesh sites off Caddy. The node stays registered on the coordinator on
+# purpose, so `mesh up` rejoins with the same address and the invites already
+# sent keep working; `nufi-box revoke` is what removes a node for good.
+mesh_down() {
+  if [ "$OS" = "Darwin" ]; then
+    printf '  %s logout\n' "$MESH_MACOS_TS"
+  else
+    run $(mesh_compose_cmd) stop tailscale
+  fi
+  mesh_write_addresses "" ""
+  run cp "$HERE/caddy/mesh.caddy.empty" "$HERE/caddy/mesh.caddy"
+  mesh_reload_caddy
+  echo "The box is off the mesh; it still answers on the LAN."
 }

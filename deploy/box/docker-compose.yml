@@ -36,6 +36,11 @@ services:
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./caddy/landing:/srv/landing:ro
+      # The Caddyfile's `import caddy/mesh*.caddy` is resolved relative to the
+      # config file, so ./caddy has to appear inside /etc/caddy. A directory
+      # mount, not a file one: `nufi-box mesh up` rewrites caddy/mesh.caddy on
+      # the host, and a bind-mounted *file* would keep the old inode.
+      - ./caddy:/etc/caddy/caddy:ro
       - caddy-data:/data
       - caddy-config:/config
     healthcheck:

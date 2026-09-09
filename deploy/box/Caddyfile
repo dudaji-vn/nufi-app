@@ -20,7 +20,9 @@
 }
 
 # Plain HTTP landing page: links, the root certificate, per-OS trust steps.
-:80 {
+# A snippet, not just a site, because caddy/mesh.caddy serves the same thing
+# on the box's mesh address — a member joining from home fetches the CA here.
+(landing) {
 	root * /srv/landing
 	file_server
 	handle /healthz {
@@ -32,6 +34,10 @@
 		file_server
 		header Content-Type "application/x-x509-ca-cert"
 	}
+}
+
+:80 {
+	import landing
 }
 
 # The NuFi app
@@ -55,7 +61,7 @@
 # NUFI Studio. /nufi/* is the console, so Studio's session-expiry bounce
 # (VITE_NUFI_ENTER_URL=/nufi/enter/studio in the box image) lands on the console
 # while staying on the Studio origin.
-{$BOX_HOST}:7860, {$BOX_IP}:7860, localhost:7860 {
+(studio_routes) {
 	import box_tls
 	handle_path /nufi/* {
 		reverse_proxy console:3000
@@ -65,8 +71,22 @@
 	}
 }
 
+{$BOX_HOST}:7860, {$BOX_IP}:7860, localhost:7860 {
+	import studio_routes
+}
+
 # The gateway, for API keys issued by the console
 {$BOX_HOST}:4000, {$BOX_IP}:4000, localhost:4000 {
 	import box_tls
 	reverse_proxy litellm-proxy:4000
 }
+
+# The same six sites again on the box's mesh address and MagicDNS name, once
+# it has joined a coordinator. `nufi-box mesh up` generates caddy/mesh.caddy
+# with the literal addresses and reloads Caddy; `mesh down` empties it again.
+#
+# A glob, not the bare path: Caddy treats a missing literal import as a fatal
+# config error ("File to import not found") and the entire front door then
+# refuses to start, while a glob matching nothing is only a warning. A box
+# that never joined a mesh has no caddy/mesh.caddy at all.
+import caddy/mesh*.caddy

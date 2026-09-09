@@ -5,6 +5,7 @@
 #   ./install-box.sh [--yes] [--dry-run] [--src DIR]      # from a checkout
 #              [--no-pull] [--emulate-amd64] [--no-trust]
 #              [--registry HOST[:PORT][/path]]
+#              [--mesh URL --auth-key KEY [--mesh-api-key KEY]]
 #
 # Asks four questions (box name, admin email, departments, inference profile),
 # generates every secret here, renders the LiteLLM config, starts the stack,
@@ -20,6 +21,14 @@
 #                    insecure automatically when it looks like host:port or a
 #                    bare IP (Linux: /etc/docker/daemon.json; macOS: prints
 #                    the Docker Desktop step).
+#   --mesh URL       join the mesh coordinator at URL so this box can be
+#                    reached from outside the office (deploy/coordinator).
+#   --auth-key KEY   the single-use pre-auth key (tag:box) that coordinator
+#                    minted for this box; required with --mesh.
+#   --mesh-api-key KEY
+#                    the coordinator's headscale API key, so `nufi-box
+#                    invite | members | revoke` can talk to it. Optional:
+#                    without it the box joins but cannot invite anyone.
 #
 # NUFI_BOX_COMPOSE_EXTRA — space-separated extra compose files to layer last,
 # for a machine that needs a site-local tweak (a port map when something else
@@ -52,7 +61,13 @@ while [ $# -gt 0 ]; do
     --src=*) SRC="${1#--src=}"; [ -n "$SRC" ] || die "--src needs a directory" ;;
     --registry) [ $# -ge 2 ] || die "--registry needs a value"; NUFI_REGISTRY="$2"; shift ;;
     --registry=*) NUFI_REGISTRY="${1#--registry=}"; [ -n "$NUFI_REGISTRY" ] || die "--registry needs a value" ;;
-    -h|--help) sed -n '2,23p' "$0"; exit 0 ;;
+    --mesh) [ $# -ge 2 ] || die "--mesh needs a coordinator URL"; MESH_SERVER_URL="$2"; shift ;;
+    --mesh=*) MESH_SERVER_URL="${1#--mesh=}"; [ -n "$MESH_SERVER_URL" ] || die "--mesh needs a coordinator URL" ;;
+    --auth-key) [ $# -ge 2 ] || die "--auth-key needs a value"; MESH_AUTH_KEY="$2"; shift ;;
+    --auth-key=*) MESH_AUTH_KEY="${1#--auth-key=}"; [ -n "$MESH_AUTH_KEY" ] || die "--auth-key needs a value" ;;
+    --mesh-api-key) [ $# -ge 2 ] || die "--mesh-api-key needs a value"; MESH_API_KEY="$2"; shift ;;
+    --mesh-api-key=*) MESH_API_KEY="${1#--mesh-api-key=}"; [ -n "$MESH_API_KEY" ] || die "--mesh-api-key needs a value" ;;
+    -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
   esac
   shift
 done
@@ -144,7 +159,11 @@ fi
 # caller did NOT set falls back to what the file has, which is what makes a
 # bare re-run keep the previous answers instead of silently reverting them.
 NUFI_BOX_ENV="${NUFI_BOX_ENV:-$BOX_HOME/.env}"
-REUSE_VARS="BOX_NAME ADMIN_EMAIL DEPARTMENTS INFERENCE_PROFILE INFERENCE_MODEL INFERENCE_BASE_URL INFERENCE_API_KEY OLLAMA_BASE_URL EMBEDDINGS_MODEL NUFI_DATA_DIR NUFI_EMULATE_AMD64 NUFI_REGISTRY"
+REUSE_VARS="BOX_NAME ADMIN_EMAIL DEPARTMENTS INFERENCE_PROFILE INFERENCE_MODEL INFERENCE_BASE_URL INFERENCE_API_KEY OLLAMA_BASE_URL EMBEDDINGS_MODEL NUFI_DATA_DIR NUFI_EMULATE_AMD64 NUFI_REGISTRY MESH_SERVER_URL MESH_AUTH_KEY MESH_API_KEY MESH_CA_FILE"
+# BOX_MESH_IP/BOX_MESH_HOST are `nufi-box mesh up`'s answers, not the
+# operator's, and they are in the join files already handed to members —
+# a re-install must not blank them. They are reused but never asked for.
+REUSE_VARS="$REUSE_VARS BOX_MESH_IP BOX_MESH_HOST"
 for v in $REUSE_VARS; do eval "_caller_$v=\${$v:-}"; done
 if [ -f "$NUFI_BOX_ENV" ]; then
   ok ".env exists; keeping its answers and secrets"
@@ -157,6 +176,21 @@ for v in $REUSE_VARS; do
 done
 NUFI_EMULATE_AMD64="${NUFI_EMULATE_AMD64:-0}"
 NUFI_REGISTRY="${NUFI_REGISTRY:-ghcr.io/dudaji-vn}"
+MESH_SERVER_URL="${MESH_SERVER_URL:-}"
+MESH_AUTH_KEY="${MESH_AUTH_KEY:-}"
+MESH_API_KEY="${MESH_API_KEY:-}"
+MESH_CA_FILE="${MESH_CA_FILE:-/etc/ssl/certs/ca-certificates.crt}"
+BOX_MESH_IP="${BOX_MESH_IP:-}"
+BOX_MESH_HOST="${BOX_MESH_HOST:-}"
+# One without the other is always a mistake, and the failure it causes is slow:
+# the container comes up, tailscaled has nothing to log in with, and the box
+# looks joined until somebody tries to reach it from home.
+if [ -n "$MESH_SERVER_URL" ] && [ -z "$MESH_AUTH_KEY" ]; then
+  die "--mesh needs --auth-key: ask the coordinator for this box's pre-auth key (headscale preauthkeys create --user box --tags tag:box)"
+fi
+if [ -z "$MESH_SERVER_URL" ] && [ -n "$MESH_AUTH_KEY" ]; then
+  die "--auth-key without --mesh: name the coordinator too, e.g. --mesh https://mesh.nufi.me"
+fi
 # --registry exists for a box that cannot reach ghcr.io. Two of the third-party
 # images live on ghcr.io as well (the RAG API and Samba), so pointing only the
 # NuFi images at the mirror leaves an install that still cannot finish — this
@@ -292,6 +326,12 @@ LANGFLOW_SECRET_KEY=$LANGFLOW_SECRET_KEY
 STUDIO_SUPERUSER_PASSWORD=$STUDIO_SUPERUSER_PASSWORD
 ADMIN_SESSION_SECRET=$ADMIN_SESSION_SECRET
 SAMBA_PASSWORD=$SAMBA_PASSWORD
+MESH_SERVER_URL=$MESH_SERVER_URL
+MESH_AUTH_KEY=$MESH_AUTH_KEY
+MESH_API_KEY=$MESH_API_KEY
+MESH_CA_FILE=$MESH_CA_FILE
+BOX_MESH_IP=$BOX_MESH_IP
+BOX_MESH_HOST=$BOX_MESH_HOST
 EOF
   local d key
   for d in $(printf '%s' "$DEPARTMENTS" | tr ',' ' '); do
@@ -364,6 +404,14 @@ else
   sed -e "s|@NUFI_MODEL@|$NUFI_MODEL|" -e "s|@INFERENCE_MODEL@|$INFERENCE_MODEL|" litellm/config.yaml.tmpl > litellm/config.yaml
 fi
 for d in $(printf '%s' "$DEPARTMENTS" | tr ',' ' '); do run mkdir -p "$NUFI_DATA_DIR/drives/$d"; done
+# The Caddyfile imports caddy/mesh*.caddy. A box that never joins a mesh
+# still gets the empty template, so the import always has a file to read and
+# `nufi-box mesh up` only ever overwrites one.
+if [ "$DRY" = 1 ]; then
+  printf '  $ cp caddy/mesh.caddy.empty caddy/mesh.caddy   # unless it exists\n'
+elif [ ! -f caddy/mesh.caddy ]; then
+  cp caddy/mesh.caddy.empty caddy/mesh.caddy
+fi
 
 # ---------- start -----------------------------------------------------------------
 COMPOSE="docker compose -f docker-compose.yml"
@@ -371,6 +419,10 @@ if [ "$NUFI_EMULATE_AMD64" = "1" ]; then COMPOSE="$COMPOSE -f docker-compose.emu
 if [ "$OS" = "Linux" ]; then
   COMPOSE="$COMPOSE -f docker-compose.linux.yml --profile linux"
   has_nvidia && COMPOSE="$COMPOSE -f docker-compose.gpu.yml --profile gpu"
+  # The mesh node comes up with the rest of the stack, so one `pull` fetches
+  # its image too. macOS gets no container: Docker Desktop's host network is
+  # the Linux VM's, so it could never give the Mac a mesh address.
+  [ -n "$MESH_SERVER_URL" ] && COMPOSE="$COMPOSE -f docker-compose.mesh.yml --profile mesh"
 fi
 for f in ${NUFI_BOX_COMPOSE_EXTRA:-}; do
   [ -f "$f" ] || die "NUFI_BOX_COMPOSE_EXTRA: no such file: $f"
@@ -499,6 +551,24 @@ LINK_DIR="$( [ -d /opt/homebrew/bin ] && echo /opt/homebrew/bin || echo /usr/loc
 run ln -sf "$BOX_HOME/nufi-box" "$LINK_DIR/nufi-box" \
   || warn "could not link nufi-box into $LINK_DIR; add $BOX_HOME to your PATH or run: sudo ln -sf $BOX_HOME/nufi-box $LINK_DIR/nufi-box"
 
+# ---------- the mesh ------------------------------------------------------------------
+# Delegate to `nufi-box mesh up` rather than repeating it: waiting for the
+# address, writing BOX_MESH_*, rendering caddy/mesh.caddy and reloading Caddy
+# is day-two work too, and two copies of it would drift. The dry run points
+# nufi-box at a throwaway .env rendered from these same answers, so the plan
+# it prints is the one the real run executes.
+if [ -n "$MESH_SERVER_URL" ]; then
+  say "Joining the mesh at $MESH_SERVER_URL"
+  if [ "$DRY" = 1 ]; then
+    _mesh_env="$(mktemp)"
+    render_env > "$_mesh_env"
+    NUFI_BOX_DRY_RUN=1 NUFI_BOX_FAKE_OS="$OS" NUFI_BOX_ENV="$_mesh_env" "$BOX_HOME/nufi-box" mesh up || true
+    rm -f "$_mesh_env"
+  else
+    "$BOX_HOME/nufi-box" mesh up || warn "the box is up but not on the mesh yet; run: nufi-box mesh up"
+  fi
+fi
+
 # ---------- done ---------------------------------------------------------------------
 cat <<EOF
 
@@ -515,3 +585,9 @@ cat <<EOF
 
   Day two:     nufi-box status | logs | drive add <name> | ca-cert | doctor
 EOF
+if [ -n "$MESH_SERVER_URL" ]; then
+  cat <<EOF
+  From home:   nufi-box mesh status         (this box on the mesh)
+               nufi-box invite <name>       (a join file for one laptop)
+EOF
+fi

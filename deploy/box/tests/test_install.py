@@ -503,3 +503,39 @@ def test_an_explicit_third_party_image_wins_over_the_registry_rewrite():
     out = dry("--registry", "10.0.0.5:5000", NUFI_BOX_FAKE_OS="Linux",
               NUFI_RAG_IMAGE="my.registry/rag:2")
     assert "NUFI_RAG_IMAGE=my.registry/rag:2" in out
+
+
+# --- Task 6: --mesh / --auth-key ----------------------------------------------
+
+def test_mesh_flags_write_the_coordinator_into_env():
+    out = dry("--mesh", "https://mesh.nufi.me", "--auth-key", "tskey-auth-abc",
+              "--mesh-api-key", "hskey-api-xyz", NUFI_BOX_FAKE_OS="Linux")
+    assert "MESH_SERVER_URL=https://mesh.nufi.me" in out
+    assert "MESH_AUTH_KEY=tskey-auth-abc" in out
+    assert "MESH_API_KEY=hskey-api-xyz" in out
+
+
+def test_without_the_mesh_flags_the_box_stays_lan_only():
+    out = dry(NUFI_BOX_FAKE_OS="Linux")
+    assert re.search(r"^MESH_SERVER_URL=$", out, re.M), out
+    assert re.search(r"^MESH_AUTH_KEY=$", out, re.M), out
+    assert "docker-compose.mesh.yml" not in out
+
+
+def test_mesh_on_linux_plans_the_tailscale_container():
+    out = dry("--mesh", "https://mesh.nufi.me", "--auth-key", "tskey-auth-abc",
+              NUFI_BOX_FAKE_OS="Linux")
+    assert "docker-compose.mesh.yml" in out
+    assert "--profile mesh" in out
+
+
+def test_mesh_on_macos_points_at_the_native_app_instead():
+    out = dry("--mesh", "https://mesh.nufi.me", "--auth-key", "tskey-auth-abc",
+              NUFI_BOX_FAKE_OS="Darwin")
+    assert "/Applications/Tailscale.app/Contents/MacOS/Tailscale" in out
+    assert "docker-compose.mesh.yml" not in out
+
+
+def test_the_installer_seeds_an_empty_mesh_caddy_so_the_import_has_a_file():
+    out = dry(NUFI_BOX_FAKE_OS="Linux")
+    assert "caddy/mesh.caddy" in out
