@@ -619,6 +619,50 @@ def test_a_second_admin_re_running_the_installer_does_not_take_the_drives():
         assert "chown -R 1002:1002" in handover
 
 
+def test_a_re_install_keeps_the_box_s_key_to_its_own_routines():
+    """STUDIO_API_KEY is minted by `nufi-box flows install`, never asked for.
+
+    render_env used to leave it out of the file it rewrites wholesale, so every
+    re-run dropped it. Invisible when the mint that follows succeeds, permanent
+    when it does not — and that step is a warn rather than a die on purpose, so
+    a box whose Studio was slow to answer finished installing with its four
+    routines in Studio and no key to call them. `run_flows.py` then dies in
+    five seconds with `no Studio API key`, which is how the acceptance found
+    this.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        envfile = pathlib.Path(tmp) / "box.env"
+        first = dry(NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_ENV=str(envfile),
+                    BOX_NAME="demo", DEPARTMENTS="legal")
+        # An installed box: the file the first run would have written, plus the
+        # key `flows install` wrote back into it. Appended, because that is what
+        # envfile_set does when the line is absent — the state of every box the
+        # current release installed.
+        envfile.write_text(_rendered_env(first) + "STUDIO_API_KEY=sk-keep-me\n")
+
+        second = dry(NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_ENV=str(envfile),
+                     BOX_NAME="demo", DEPARTMENTS="legal")
+        assert "STUDIO_API_KEY=sk-keep-me" in second, "the re-install dropped the key"
+        # It is a bearer token for the whole of Studio: it lives in .env and
+        # nowhere else, so no command the run plans may carry it.
+        for line in second.splitlines():
+            if line.startswith("  $ "):
+                assert "sk-keep-me" not in line, line
+
+        # Not an operator answer and not in REUSE_VARS: a stale export in the
+        # shell that happens to run the installer must not replace the box's
+        # own key with another box's.
+        third = dry(NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_ENV=str(envfile),
+                    BOX_NAME="demo", DEPARTMENTS="legal",
+                    STUDIO_API_KEY="sk-from-another-box")
+        assert "STUDIO_API_KEY=sk-keep-me" in third
+        assert "sk-from-another-box" not in third
+
+        # A box that has never installed its routines gets the line anyway,
+        # with the empty value .env.example documents.
+        assert "STUDIO_API_KEY=\n" in first
+
+
 def test_the_drives_are_given_to_that_uid_after_they_are_created():
     """A box installed as root, or upgraded from the release that pinned the
     account to 1000, has drive directories with the wrong owner already on

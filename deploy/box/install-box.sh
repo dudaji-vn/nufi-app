@@ -318,6 +318,22 @@ case "${OIDC_PRIVATE_KEY_PEM:-}" in
     warn "regenerated the console signing key (the old one was stored on one line); Studio sessions will need a fresh sign-in"
     OIDC_PRIVATE_KEY_PEM="$(openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 2>/dev/null)" ;;
 esac
+# The box's own key to its own routines. `nufi-box flows install` mints it
+# later in this same run and writes it back with envfile_set, so it is never an
+# operator answer: not asked for, and deliberately NOT in REUSE_VARS. A bearer
+# token for the whole of Studio must not be passed on a command line, where
+# `ps` and shell history can read it — lib/flows.sh keeps it out of the
+# builder's argv for exactly that reason, and REUSE_VARS' contract is "an
+# explicit override on the command line wins", which is the one thing this
+# value must not invite. All it needs is to survive the rewrite the way every
+# other secret above does: sourced from .env, rendered back below. Without the
+# render line a re-run dropped it, and dropped it silently precisely when it
+# hurts — the mint that follows is a warn and not a die, so a box whose Studio
+# was slow to answer finished the install with its four routines in place and
+# no key to call them. Replacing one stays a command that never types it:
+# `nufi-box flows install` mints a fresh key, and drops a stored key that
+# answers 401 on its own.
+STUDIO_API_KEY="${STUDIO_API_KEY:-}"
 NVIDIA_VISIBLE_DEVICES=""
 if [ "$OS" = "Linux" ] && has_nvidia; then NVIDIA_VISIBLE_DEVICES=all; fi
 
@@ -363,6 +379,7 @@ MONGO_PASSWORD=$MONGO_PASSWORD
 OIDC_PRIVATE_KEY_PEM="$OIDC_PRIVATE_KEY_PEM"
 LANGFLOW_SECRET_KEY=$LANGFLOW_SECRET_KEY
 STUDIO_SUPERUSER_PASSWORD=$STUDIO_SUPERUSER_PASSWORD
+STUDIO_API_KEY=$STUDIO_API_KEY
 ADMIN_SESSION_SECRET=$ADMIN_SESSION_SECRET
 SAMBA_PASSWORD=$SAMBA_PASSWORD
 MESH_SERVER_URL=$MESH_SERVER_URL
