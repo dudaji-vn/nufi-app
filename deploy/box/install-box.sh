@@ -652,7 +652,9 @@ cat <<EOF
   Routines:    https://$BOX_HOST:7860  → sign in as $ADMIN_EMAIL with the
                Studio password in .env (STUDIO_SUPERUSER_PASSWORD). The four
                department routines are there; members who arrive through the
-               app get their own empty Studio.
+               app get their own empty Studio. Nothing caps how long a routine
+               generates: run them on qwen2.5:1.5b or larger, and if one does
+               not come back, unloading the model is what ends it (README §5).
 
   Day two:     nufi-box status | logs | drive add <name> | ca-cert | doctor
                nufi-box flows install | flows list

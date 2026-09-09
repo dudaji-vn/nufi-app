@@ -58,3 +58,9 @@ jobs:
         run: python3 deploy/platform/adapters/nufi-ingest/test_ingest.py
       - name: Box acceptance runner
         run: python3 deploy/platform/scenarios/test_run_box.py
+      # Same house style, same paths filter -- and it had never run anywhere.
+      # The four routines the box is bought for are built here, and the P2
+      # acceptance's defect D2 (nothing bounds a routine's generation) is
+      # pinned here, so an unrun suite is a pin that holds nothing.
+      - name: Studio routines
+        run: python3 deploy/platform/scenarios/studio/test_flows.py

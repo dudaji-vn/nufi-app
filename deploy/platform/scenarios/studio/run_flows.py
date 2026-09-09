@@ -63,6 +63,18 @@ def run(base, key, flow_id, text, timeout=400, tweaks=None):
             return 200, json.loads(body)
     except urllib.error.HTTPError as exc:
         return exc.code, exc.read().decode("utf-8", "replace")[:300]
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        # Giving up here does NOT stop the run on the box, and the difference
+        # matters: Studio applies no per-run deadline and the Ollama component
+        # the recipes use exposes no output cap, so a routine that is still
+        # generating goes on generating with nobody listening — holding the
+        # model against every other question until something unloads it. The
+        # P2 acceptance watched `weekly` climb past 39,000 tokens after its
+        # client had been killed. Say that in words rather than let a socket
+        # timeout arrive as a traceback.
+        return 0, (f"no answer in {timeout}s ({exc}). The box is probably still "
+                   "generating for this run: check `nufi-box logs ollama`, and "
+                   "`ollama stop <model>` is what ends it.")
 
 
 def text_of(out):
@@ -106,6 +118,11 @@ def main():
         started = time.time()
         code, out = run(a.base, a.key, f["id"], a.input or f["ask"],
                         tweaks=tweaks_for(f, a.department))
+        if code == 0:
+            print(f"{name:9} TIMEOUT {time.time() - started:4.0f}s")
+            print(f"    {out}")
+            bad += 1
+            continue
         if code != 200:
             print(f"{name:9} FAIL HTTP {code}  {out}")
             bad += 1

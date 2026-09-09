@@ -120,6 +120,59 @@ def test_weekly_reads_without_a_vector_store():
           edges.get(("Directory-drive", "df")) == "ParseDataFrame-passages")
 
 
+def test_nothing_in_a_recipe_can_bound_the_generation():
+    """Defect D2 of the P2 acceptance, pinned where it is decided.
+
+    `weekly` never came back: 39,000 tokens on a 4,096-token context, still
+    climbing after its client had been killed, starving every other question
+    on the box. The cap belongs at this node — the recipe knows a weekly report
+    is a few hundred tokens — and it cannot be set here:
+
+      * the Ollama component the recipes use has no `num_predict` input, and
+        its build_model() never passes one, although langchain-ollama's
+        ChatOllama has the field (verified against the pinned 0.3.10);
+      * the one input that looks like a deadline, `timeout`, is dropped on the
+        floor: the component sets it in llm_params, and ChatOllama has no such
+        field, so pydantic ignores it and nothing reaches Ollama;
+      * and the recipes talk to Ollama directly, so LiteLLM's own
+        `request_timeout: 600` — the box's other bound — is not in this path.
+
+    So the fix is a change to the Studio image (apps/nufi-agent), outside the
+    box branch. When that component grows an output cap, this check fails and
+    build_recipe should start setting it.
+    """
+    template = CATALOG["ollama"][bf.OLLAMA]["template"]
+    caps = [k for k in template
+            if k in ("num_predict", "max_tokens", "max_output_tokens", "max_completion_tokens")]
+    check("the recipes' model component still exposes no output cap "
+          "(set one in build_recipe when it does)", not caps, caps)
+    _flow, nodes, _e, _d, _p = graph("weekly")
+    check("weekly's model node is the Ollama one, decoding greedily",
+          nodes["ChatOllama-llm"]["data"]["type"] == bf.OLLAMA
+          and field(nodes, "ChatOllama-llm", "temperature") == 0
+          and field(nodes, "ChatOllama-llm", "top_k") == 1)
+
+
+def test_a_routine_that_does_not_come_back_says_so():
+    """The runner used to let a socket timeout out as a traceback, which reads
+    like the tool broke. It did not: the box is still generating, and giving up
+    here does not stop it."""
+    saved = json.loads((HERE / "flows.json").read_text())
+    original = rf.OPEN
+
+    def never_answers(_req, timeout=400):
+        raise TimeoutError("timed out")
+
+    rf.OPEN = never_answers
+    try:
+        code, out = rf.run("https://box:7860", "sk-x", saved["weekly"]["id"], "hi", timeout=3)
+    finally:
+        rf.OPEN = original
+    check("a timeout is a result, not an exception", code == 0, code)
+    check("it says the box is probably still generating",
+          "still generating" in out and "ollama stop" in out, out)
+
+
 def test_meeting_is_a_transcript_flow():
     s = spec("meeting")
     check("meeting takes the transcript as chat input", s["kind"] == "prompt")

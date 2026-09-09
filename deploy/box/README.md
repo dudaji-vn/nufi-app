@@ -275,6 +275,28 @@ component in this Studio build exposes one (the Directory node hands on a
 file's path and its text, nothing more). Read the dates in the draft before
 sending it, and keep a department's drive tidy if the reports matter.
 
+**A routine's length is not bounded — known limitation.** Nothing in the box
+caps how much a routine generates, and nothing stops a run whose client has
+gone. On a small model that is not theoretical: with `qwen2.5:0.5b`, `weekly`
+has been seen generating past **39,000 tokens** — long after the caller had
+given up — holding the model and slowing every other question on the box
+until it was unloaded. The reason is that the cap belongs on the routine's
+model node and cannot be set there: this Studio build's Ollama component
+exposes no output limit, and the one field that looks like a deadline
+(`Timeout`) is dropped before it reaches Ollama. Chat is not affected — it
+goes through the gateway, which has its own 600-second request timeout — but
+the routines talk to Ollama directly and bypass it.
+
+Until the Studio image grows the setting:
+
+* run the routines on **`qwen2.5:1.5b` or larger**. `weekly` answers in about
+  five seconds on 1.5b; 0.5b is the size that rambles;
+* if a routine does not come back, `nufi-box logs ollama` shows whether the
+  box is still generating (`n_gen` climbing with nobody listening), and
+  unloading the model is what ends it:
+  `docker compose exec ollama ollama stop <model>` on Linux, `ollama stop
+  <model>` on macOS.
+
 The drive is a field on the flow, not a copy of the flow: the same routine
 serves every department. In the canvas, change the **Drive** node's path
 (`/drives/legal` → `/drives/finance`, and the index name with it); over the
