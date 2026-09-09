@@ -345,6 +345,69 @@ def test_help_describes_the_table_it_prints():
 
 
 # ---------------------------------------------------------------------------
+# day-at-home.sh
+#
+# The end-to-end harness needs a real box in a Lima VM, so CI can only guard
+# the same two contracts it guards for run.sh: it parses under macOS bash 3.2,
+# and --dry-run prints its plan without touching anything.
+# ---------------------------------------------------------------------------
+
+
+def day_at_home(*args):
+    return subprocess.run(
+        [BASH, str(LAB / "day-at-home.sh"), *args],
+        cwd=str(LAB),
+        env=dict(os.environ),
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_day_at_home_is_bash_3_2_clean():
+    r = subprocess.run([BASH, "-n", str(LAB / "day-at-home.sh")], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+
+
+def test_day_at_home_dry_run_prints_the_plan_and_touches_nothing():
+    before = sorted(p.name for p in LAB.iterdir())
+    r = day_at_home("--dry-run")
+    assert r.returncode == 0, r.stderr
+    out = r.stdout
+    for fragment in (
+        "nufi-lab",
+        "nufi-ubuntu",          # the box is the VM, not a stand-in
+        "FORCE_RELAY=1",        # the relay is not optional in this run
+        "host-ports.yml",       # 443 + 3478 come from a generated override
+        "NOT down -v",          # the node registrations have to survive
+        "nufi-box mesh up",
+        "disk floor",
+    ):
+        assert fragment in out, fragment
+    # The generated override, the rendered config and the keys all come later:
+    # --dry-run must not have created any of them.
+    assert sorted(p.name for p in LAB.iterdir()) == before
+
+
+def test_day_at_home_reports_the_routine_it_will_run():
+    assert "routine             weekly" in day_at_home("--dry-run").stdout
+    assert "routine             meeting" in day_at_home("--dry-run", "--routine", "meeting").stdout
+
+
+def test_day_at_home_refuses_an_unknown_argument():
+    r = day_at_home("--nope")
+    assert r.returncode != 0
+    assert "unknown argument" in r.stderr
+
+
+def test_day_at_home_help_lists_the_checks_it_gates_on():
+    r = day_at_home("--help")
+    assert r.returncode == 0
+    for check in ("box-on-mesh", "path", "health-over-mesh", "login-over-mesh",
+                  "drive-write", "drive-ingested", "agent-cites-drive", "routine"):
+        assert check in r.stdout, check
+
+
+# ---------------------------------------------------------------------------
 # Secrets
 # ---------------------------------------------------------------------------
 

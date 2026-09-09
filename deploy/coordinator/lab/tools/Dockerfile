@@ -9,7 +9,12 @@
 # blocks.
 FROM alpine:3.22.1
 
-RUN apk add --no-cache curl samba-client bind-tools
+# python3 is here for the same reason curl is: the acceptance a member runs from
+# home is deploy/platform/scenarios/run_box.py and studio/run_flows.py, both
+# stdlib-only, and they have to run on THIS side of the NAT — resolving
+# nufi.box.lab through MagicDNS and routing over node-a's tailscale0. Running
+# them on the Mac instead would prove nothing about the mesh.
+RUN apk add --no-cache curl samba-client bind-tools python3
 
 COPY entrypoint.sh /tools-entrypoint.sh
 

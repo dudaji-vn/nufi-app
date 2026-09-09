@@ -273,6 +273,10 @@ services:
       LAB_SEARCH_DOMAIN: box.lab
     volumes:
       - ./keys:/lab/keys:ro
+      # The P2 acceptance scripts, so day-at-home.sh can run them from the
+      # member's side of the NAT instead of from the Mac (read-only: the
+      # member's laptop reads the repo, it does not write to it).
+      - ../../platform/scenarios:/lab/scenarios:ro
     healthcheck:
       test: ["CMD", "test", "-f", "/run/tools-ready"]
       interval: 5s
