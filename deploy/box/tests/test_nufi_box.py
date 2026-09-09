@@ -435,3 +435,23 @@ def test_doctor_says_when_the_generated_mesh_caddy_is_from_an_older_box(tmp_path
     r = cli("doctor", NUFI_BOX_ENV=str(envf))
     assert r.returncode == 0, r.stderr
     assert "caddy/mesh.caddy" in r.stdout and "Caddyfile" in r.stdout
+
+
+def test_drive_add_gives_the_new_drive_to_the_samba_uid(tmp_path):
+    """Defect D1's other half: `nufi-box drive add` creates a department drive
+    too, and a drive the Samba account cannot write to is the same failure the
+    P2 acceptance hit — `sudo nufi-box drive add` is all it takes."""
+    envf = tmp_path / ".env"
+    envf.write_text("NUFI_DATA_DIR=%s\nBOX_NAME=nufi\nNUFI_SMB_UID=501\nNUFI_SMB_GID=988\n" % tmp_path)
+    r = cli("drive", "add", "finance", NUFI_BOX_ENV=str(envf))
+    assert r.returncode == 0, r.stderr
+    assert "chown -R 501:988" in r.stdout and "drives/finance" in r.stdout
+    assert r.stdout.index("mkdir -p") < r.stdout.index("chown -R"), r.stdout
+
+
+def test_drive_add_on_a_box_that_predates_the_uid_still_works(tmp_path):
+    """An .env written before NUFI_SMB_UID existed must not make the verb fail."""
+    envf = tmp_path / ".env"; envf.write_text("NUFI_DATA_DIR=%s\nBOX_NAME=nufi\n" % tmp_path)
+    r = cli("drive", "add", "finance", NUFI_BOX_ENV=str(envf))
+    assert r.returncode == 0, r.stderr
+    assert "chown" not in r.stdout

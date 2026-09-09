@@ -73,6 +73,16 @@ case "${1:-}" in
     [ -n "${NUFI_DATA_DIR:-}" ] || { echo "NUFI_DATA_DIR is not set in .env" >&2; exit 2; }
     key="$(printf '%s' "$name" | tr -c 'a-z0-9_\n' '_')"
     run mkdir -p "$NUFI_DATA_DIR/drives/$name"
+    # Same rule the installer applies: a drive has to belong to the uid the
+    # Samba account runs as, or a member's write to it comes back
+    # NT_STATUS_ACCESS_DENIED. Usually a no-op — the admin adding a department
+    # is the admin who installed the box — but `sudo nufi-box drive add` is an
+    # easy reflex, and that one leaves a drive nobody can write to.
+    if [ -n "${NUFI_SMB_UID:-}" ]; then
+      _smb_gid="${NUFI_SMB_GID:-$NUFI_SMB_UID}"
+      run chown -R "$NUFI_SMB_UID:$_smb_gid" "$NUFI_DATA_DIR/drives/$name" \
+        || echo "could not give $NUFI_DATA_DIR/drives/$name to uid $NUFI_SMB_UID; members will not be able to write to it — run: sudo chown -R $NUFI_SMB_UID:$_smb_gid $NUFI_DATA_DIR/drives/$name" >&2
+    fi
     case ",${DEPARTMENTS:-}," in
       *",$name,"*) new_depts="${DEPARTMENTS:-}" ;;
       *) new_depts="${DEPARTMENTS:+$DEPARTMENTS,}$name" ;;
