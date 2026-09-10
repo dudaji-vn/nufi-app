@@ -8,10 +8,34 @@ feature the box is sold on lists zero flows for everyone but the admin.
 
 from uuid import uuid4
 
-from langflow.initial_setup.nufi_routines import ROUTINE_TAG, seed_member_routines
+import pytest
 from langflow.services.database.models.flow.model import Flow
 from langflow.services.database.models.user.model import User
-from sqlmodel import select
+from nufi.member_routines import ROUTINE_TAG, seed_member_routines
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.pool import StaticPool
+from sqlmodel import SQLModel, select
+from sqlmodel.ext.asyncio.session import AsyncSession
+
+
+# This file lives in nufi/, outside the vendored tree, so it cannot use
+# src/backend/tests/conftest.py. The fixture below is that conftest's
+# async_session, kept here deliberately: the alternative is a test inside
+# upstream's tree, which is the divergence this whole arrangement avoids.
+@pytest.fixture
+async def async_session():
+    engine = create_async_engine(
+        "sqlite+aiosqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(SQLModel.metadata.create_all)
+        async with AsyncSession(engine, expire_on_commit=False) as session:
+            yield session
+        async with engine.begin() as conn:
+            await conn.run_sync(SQLModel.metadata.drop_all)
+    finally:
+        await engine.dispose()
 
 NAMES = ("docqa", "meeting", "helpdesk", "weekly")
 
@@ -134,7 +158,7 @@ async def test_the_jit_sign_in_path_seeds_the_routines(async_session, monkeypatc
     # in this file tests the seeder in isolation; this pins the wiring. The auth
     # service imports its helpers inside the function body, as the surrounding
     # code does, so the patch goes on the defining module.
-    from langflow.initial_setup import nufi_routines
+    import nufi.member_routines as member_routines
     from langflow.services.auth.service import AuthService
 
     called: list = []
@@ -143,7 +167,7 @@ async def test_the_jit_sign_in_path_seeds_the_routines(async_session, monkeypatc
         called.append(user_id)
         return 0
 
-    monkeypatch.setattr(nufi_routines, "seed_member_routines", _spy)
+    monkeypatch.setattr(member_routines, "seed_member_routines", _spy)
 
     member = await _user(async_session, "alice")
     await AuthService._initialize_jit_user_defaults(member, async_session)

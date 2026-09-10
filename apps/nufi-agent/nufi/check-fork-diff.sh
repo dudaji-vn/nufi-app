@@ -38,6 +38,13 @@ TAG=$(node -p "require('./$PIN').tag")
 # upstream.
 ALLOWLIST=(
   "nufi/"
+  # Three added lines, no deletions: the JIT sign-in path calls
+  # nufi/member_routines.py so a member arriving over SSO is seeded with the
+  # box's department routines. Upstream owns the sign-in hook and there is no
+  # service-plugin seam to hang this on, so the touchpoint is unavoidable --
+  # kept to an import, a call and one comment, with the reasoning in
+  # nufi/README.md rather than here.
+  "src/backend/base/langflow/services/auth/service.py"
   # One line moved: Korean sits directly after English in the language
   # picker, at the Korean team's request. A leaf constants file, so a resync
   # conflict here is a two-line merge rather than a rebase problem.
