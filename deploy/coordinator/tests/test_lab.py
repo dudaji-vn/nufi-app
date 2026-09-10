@@ -603,3 +603,25 @@ def test_no_key_material_is_committed():
     for path in LAB.rglob("*"):
         if path.is_file() and "keys" not in path.parts:
             assert path.suffix != ".key", path
+
+
+def test_the_join_check_waits_the_way_every_other_wait_in_the_script_does():
+    """The `online` gate replaced a check that could not fail — being LISTED
+    survives between runs, because the lab keeps its headscale volume on
+    purpose. It is right, and it is the one wait in this script that reads
+    once: a second's lag between tailscaled holding an address and headscale's
+    CLI reporting `online` turns a real join into a red row, and re-running
+    costs a VM boot. Every other wait here is a bounded loop; so is this one.
+    """
+    code = "\n".join(
+        line for line in (LAB / "day-at-home.sh").read_text().splitlines()
+        if not line.lstrip().startswith("#")
+    )
+    assert "JOIN_TRIES=" in code and "JOIN_WAIT=" in code, (
+        "the retry has to be named, so it can be read and changed without "
+        "hunting through the block"
+    )
+    region = code[code.index("join_state="):code.index('case "$join_state"')]
+    assert "JOIN_TRIES" in region and "sleep" in region, (
+        "the state read must sit inside the bounded loop, not beside it"
+    )

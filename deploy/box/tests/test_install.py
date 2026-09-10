@@ -846,3 +846,25 @@ def test_the_vm_verifier_does_not_count_an_uncited_answer_as_a_citation():
                      .read_text().splitlines() if not l.lstrip().startswith("#"))
     assert "sources: .*[^ ]" not in code
     assert 'grep -v "sources: none$"' in code
+
+
+def test_the_vm_verifier_cannot_read_a_failed_install_as_a_reached_banner():
+    """`sed -n RANGE p` exits 0 when the range matches nothing, so `|| die`
+    fired only on a *missing* install.log: an install that died before the
+    banner read as one that reached it. The output is the check, not the
+    status. The fifth gate of this shape found on this work, and the last."""
+    # Code only, for the reason the citation test above gives.
+    code = "\n".join(l for l in (BOX / "tests" / "vm" / "verify-ubuntu-box.sh")
+                     .read_text().splitlines() if not l.lstrip().startswith("#"))
+    offenders = [l for l in code.splitlines() if "sed -n" in l and "|| die" in l]
+    assert not offenders, f"the banner gate still rides on sed's exit status: {offenders}"
+
+    # The mechanism, proved rather than asserted: sed says OK either way, so
+    # only the emptiness tells a finished install from a dead one.
+    reached = "==> …\n  NuFi box is up.\n  Admin login: a@b / x\nDay two\n"
+    died = "==> Checking prerequisites\n xx could not pull the images\n"
+    for text, has_banner in ((reached, True), (died, False)):
+        r = subprocess.run([BASH, "-c", 'sed -n "/is up\\./,/Day two/p"'],
+                           input=text, capture_output=True, text=True)
+        assert r.returncode == 0, "sed -n exits 0 on a range that matches nothing"
+        assert bool(r.stdout.strip()) is has_banner

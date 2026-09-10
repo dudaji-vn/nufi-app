@@ -37,7 +37,12 @@ box() { vm "cd \$HOME/deploy/box && sg docker -c 'docker compose $1'"; }
 # ---------- 1. reach the box from the Mac ------------------------------------
 say "The addresses the box has, and the one it put in the banner"
 vm "ip -4 -o addr show scope global | awk '{print \$2, \$4}'"
-vm 'sed -n "/is up\./,/Day two/p" $HOME/install.log' || die "no banner in ~/install.log"
+# `sed -n RANGE p` exits 0 when the range matches nothing, so the exit status
+# said "fine" for an install that died long before the banner — only a missing
+# install.log ever tripped it. The output is the check.
+banner="$(vm 'sed -n "/is up\./,/Day two/p" $HOME/install.log')"
+[ -n "$banner" ] || die "no banner in ~/install.log — the install never finished"
+printf '%s\n' "$banner"
 
 # The banner's IP is the first `hostname -I` prints, which on a machine with
 # two networks need not be the one anybody can reach — see the README's
