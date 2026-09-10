@@ -327,6 +327,18 @@ async function main() {
     await page.click('button[type=submit]');
     await page.waitForURL(/\/c\//, { timeout: 90000, waitUntil: 'domcontentloaded' });
     await beat(page, 3500);
+    // The account lands in Basic, and Basic's header carries no model badge --
+    // the shot below reads one, and the take that tried it read the "Basic
+    // interface enabled" banner instead and failed the whole cut. Same two keys
+    // record-chat.mjs and the docs screenshots use, then a reload so the app
+    // picks them up.
+    await page.evaluate(() => {
+      localStorage.setItem('uiMode', JSON.stringify('advanced'));
+      localStorage.setItem('uiModeIntroSeen', 'true');
+    });
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await beat(page, 2600);
+    await page.locator('#ui-mode-intro-dismiss').click({ timeout: 3000 }).catch(() => {});
     // Collapse the conversation list. Every take of this recording leaves four
     // more conversations in it, and a sidebar of the recorder's own leftovers
     // is noise in front of the thing being shown.
