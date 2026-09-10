@@ -4,6 +4,8 @@
 #   curl -fsSL https://get.nufi.me/box | bash            # later: hosted
 #   ./install-box.sh [--yes] [--dry-run] [--src DIR]      # from a checkout
 #              [--no-pull] [--emulate-amd64] [--no-trust]
+#              [--registry HOST[:PORT][/path]]
+#              [--mesh URL --auth-key KEY [--mesh-api-key KEY]]
 #
 # Asks four questions (box name, admin email, departments, inference profile),
 # generates every secret here, renders the LiteLLM config, starts the stack,
@@ -13,6 +15,20 @@
 #   --no-pull        do not `docker compose pull`; use what is already local
 #   --emulate-amd64  run the amd64-only images under emulation (Apple Silicon)
 #   --no-trust       do not touch the login keychain; print the trust step
+#   --registry HOST[:PORT][/path]
+#                    pull NuFi images from here instead of ghcr.io/dudaji-vn —
+#                    a LAN registry for a box without GitHub access. Marked
+#                    insecure automatically when it looks like host:port or a
+#                    bare IP (Linux: /etc/docker/daemon.json; macOS: prints
+#                    the Docker Desktop step).
+#   --mesh URL       join the mesh coordinator at URL so this box can be
+#                    reached from outside the office (deploy/coordinator).
+#   --auth-key KEY   the single-use pre-auth key (tag:box) that coordinator
+#                    minted for this box; required with --mesh.
+#   --mesh-api-key KEY
+#                    the coordinator's headscale API key, so `nufi-box
+#                    invite | members | revoke` can talk to it. Optional:
+#                    without it the box joins but cannot invite anyone.
 #
 # NUFI_BOX_COMPOSE_EXTRA — space-separated extra compose files to layer last,
 # for a machine that needs a site-local tweak (a port map when something else
@@ -27,6 +43,11 @@ die()  { printf '\033[1;31m xx\033[0m %s\n' "$*" >&2; exit 1; }
 run()  { if [ "$DRY" = 1 ]; then printf '  $ %s\n' "$*"; else "$@"; fi; }
 
 YES=0; DRY=0; SRC=""; NO_PULL=0; NO_TRUST=0
+# The flags this run was given, requoted, so the docker-group re-exec in the
+# Linux prerequisites below can repeat this command exactly. Captured here
+# because the loop that follows consumes "$@".
+NUFI_BOX_FLAGS=""
+for _a in "$@"; do NUFI_BOX_FLAGS="$NUFI_BOX_FLAGS $(printf '%q' "$_a")"; done
 while [ $# -gt 0 ]; do
   case "$1" in
     --yes) YES=1 ;;
@@ -38,7 +59,15 @@ while [ $# -gt 0 ]; do
     # of explanation, so check for the value before consuming it.
     --src) [ $# -ge 2 ] || die "--src needs a directory"; SRC="$2"; shift ;;
     --src=*) SRC="${1#--src=}"; [ -n "$SRC" ] || die "--src needs a directory" ;;
-    -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
+    --registry) [ $# -ge 2 ] || die "--registry needs a value"; NUFI_REGISTRY="$2"; shift ;;
+    --registry=*) NUFI_REGISTRY="${1#--registry=}"; [ -n "$NUFI_REGISTRY" ] || die "--registry needs a value" ;;
+    --mesh) [ $# -ge 2 ] || die "--mesh needs a coordinator URL"; MESH_SERVER_URL="$2"; shift ;;
+    --mesh=*) MESH_SERVER_URL="${1#--mesh=}"; [ -n "$MESH_SERVER_URL" ] || die "--mesh needs a coordinator URL" ;;
+    --auth-key) [ $# -ge 2 ] || die "--auth-key needs a value"; MESH_AUTH_KEY="$2"; shift ;;
+    --auth-key=*) MESH_AUTH_KEY="${1#--auth-key=}"; [ -n "$MESH_AUTH_KEY" ] || die "--auth-key needs a value" ;;
+    --mesh-api-key) [ $# -ge 2 ] || die "--mesh-api-key needs a value"; MESH_API_KEY="$2"; shift ;;
+    --mesh-api-key=*) MESH_API_KEY="${1#--mesh-api-key=}"; [ -n "$MESH_API_KEY" ] || die "--mesh-api-key needs a value" ;;
+    -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
   esac
   shift
 done
@@ -93,7 +122,29 @@ if [ "$DRY" = 0 ]; then
       ;;
     *) die "unsupported OS: $OS (Windows: run this inside WSL2 Ubuntu)" ;;
   esac
+  # A group added with usermod only applies to new logins, so a shell older
+  # than the membership cannot open /var/run/docker.sock even though the user
+  # is a member: the shell that just installed Docker here, or any session
+  # that was already open when someone ran usermod. `docker compose version`
+  # never touches the daemon and passes anyway, so the install used to run on
+  # and die minutes later at `docker compose pull` with Docker's own
+  # "permission denied while trying to connect to the docker API". `id -nG
+  # <user>` reads the group database rather than this process's credentials,
+  # so it sees the membership the session is missing; `sg` starts a shell that
+  # has it, and keeps the environment, so every answer the caller passed on
+  # the command line survives. Once only, then say what to do.
+  if [ "$OS" = "Linux" ] && ! docker info >/dev/null 2>&1 \
+     && [ "${NUFI_BOX_REEXEC:-0}" != "1" ] && have sg \
+     && id -nG "$USER" 2>/dev/null | tr ' ' '\n' | grep -qx docker; then
+    say "Re-running inside the new docker group"
+    export NUFI_BOX_REEXEC=1
+    exec sg docker -c "$(printf '%q' "$HERE/${0##*/}")$NUFI_BOX_FLAGS"
+  fi
   docker compose version >/dev/null 2>&1 || die "docker compose v2 is required"
+  # Neither `docker compose version` nor `docker --version` opens the socket,
+  # so without this the first thing to notice an unreachable daemon is the
+  # image pull, minutes in, in Docker's own words.
+  docker info >/dev/null 2>&1 || die "cannot reach the Docker daemon as $USER: start it (sudo systemctl start docker), or join the docker group and open a new shell (sudo usermod -aG docker $USER; newgrp docker)"
   if [ "$OS" = "Darwin" ]; then
     mem=$(docker info --format '{{.MemTotal}}' 2>/dev/null || echo 0)
     [ "$mem" -lt 11000000000 ] && warn "Docker VM has $((mem/1073741824)) GB; give it 12 GB (Docker Desktop → Settings → Resources) or use OrbStack"
@@ -108,7 +159,21 @@ fi
 # caller did NOT set falls back to what the file has, which is what makes a
 # bare re-run keep the previous answers instead of silently reverting them.
 NUFI_BOX_ENV="${NUFI_BOX_ENV:-$BOX_HOME/.env}"
-REUSE_VARS="BOX_NAME ADMIN_EMAIL DEPARTMENTS INFERENCE_PROFILE INFERENCE_MODEL INFERENCE_BASE_URL INFERENCE_API_KEY OLLAMA_BASE_URL EMBEDDINGS_MODEL NUFI_DATA_DIR NUFI_EMULATE_AMD64"
+REUSE_VARS="BOX_NAME ADMIN_EMAIL DEPARTMENTS INFERENCE_PROFILE INFERENCE_MODEL INFERENCE_BASE_URL INFERENCE_API_KEY OLLAMA_BASE_URL EMBEDDINGS_MODEL NUFI_DATA_DIR NUFI_EMULATE_AMD64 NUFI_REGISTRY MESH_SERVER_URL MESH_AUTH_KEY MESH_API_KEY MESH_CA_FILE"
+# BOX_MESH_IP/BOX_MESH_HOST are `nufi-box mesh up`'s answers, not the
+# operator's, and they are in the join files already handed to members —
+# a re-install must not blank them. They are reused but never asked for.
+REUSE_VARS="$REUSE_VARS BOX_MESH_IP BOX_MESH_HOST"
+# NUFI_SMB_UID/GID are a durable answer in the same sense: they say who the
+# department drives on disk belong to. Recomputing them from `id -u` on every
+# run would mean a second admin re-running the installer — which this README
+# recommends for half a dozen repairs, and which the mesh-caddy upgrade path
+# relies on — silently takes the drives, and the first admin becomes `other`
+# on a 775 directory: NT_STATUS_ACCESS_DENIED again, a different victim, no
+# warning (the chown succeeded). Kept unless the caller says otherwise:
+#   NUFI_SMB_UID=$(id -u) NUFI_SMB_GID=$(id -g) ./install-box.sh --yes
+# is how a box is deliberately handed to a new owner.
+REUSE_VARS="$REUSE_VARS NUFI_SMB_UID NUFI_SMB_GID"
 for v in $REUSE_VARS; do eval "_caller_$v=\${$v:-}"; done
 if [ -f "$NUFI_BOX_ENV" ]; then
   ok ".env exists; keeping its answers and secrets"
@@ -120,6 +185,32 @@ for v in $REUSE_VARS; do
   [ -n "$_cv" ] && eval "$v=\"\$_cv\""
 done
 NUFI_EMULATE_AMD64="${NUFI_EMULATE_AMD64:-0}"
+NUFI_REGISTRY="${NUFI_REGISTRY:-ghcr.io/dudaji-vn}"
+MESH_SERVER_URL="${MESH_SERVER_URL:-}"
+MESH_AUTH_KEY="${MESH_AUTH_KEY:-}"
+MESH_API_KEY="${MESH_API_KEY:-}"
+MESH_CA_FILE="${MESH_CA_FILE:-/etc/ssl/certs/ca-certificates.crt}"
+BOX_MESH_IP="${BOX_MESH_IP:-}"
+BOX_MESH_HOST="${BOX_MESH_HOST:-}"
+# One without the other is always a mistake, and the failure it causes is slow:
+# the container comes up, tailscaled has nothing to log in with, and the box
+# looks joined until somebody tries to reach it from home.
+if [ -n "$MESH_SERVER_URL" ] && [ -z "$MESH_AUTH_KEY" ]; then
+  die "--mesh needs --auth-key: ask the coordinator for this box's pre-auth key. On the coordinator: headscale users list -o json for the box user's numeric id (v0.29.3's --user does not take a name), then headscale preauthkeys create --user <id> --tags tag:box — deploy/coordinator/README.md \"Hand it to a box\""
+fi
+if [ -z "$MESH_SERVER_URL" ] && [ -n "$MESH_AUTH_KEY" ]; then
+  die "--auth-key without --mesh: name the coordinator too, e.g. --mesh https://mesh.nufi.me"
+fi
+# --registry exists for a box that cannot reach ghcr.io. Two of the third-party
+# images live on ghcr.io as well (the RAG API and Samba), so pointing only the
+# NuFi images at the mirror leaves an install that still cannot finish — this
+# is what a blank-VM install proved, dying three times on the RAG image's blob
+# store. `make registry-push` mirrors those two next to the NuFi six; name them
+# there unless the caller (or an existing .env) already named an image.
+if [ "$NUFI_REGISTRY" != "ghcr.io/dudaji-vn" ]; then
+  NUFI_RAG_IMAGE="${NUFI_RAG_IMAGE:-$NUFI_REGISTRY/librechat-rag-api-dev-lite:${NUFI_RAG_TAG:-main}}"
+  NUFI_SAMBA_IMAGE="${NUFI_SAMBA_IMAGE:-$NUFI_REGISTRY/samba:${NUFI_SAMBA_TAG:-main}}"
+fi
 
 # ---------- the four questions ------------------------------------------------
 say "Four questions"
@@ -162,6 +253,33 @@ else BOX_IP="$(hostname -I 2>/dev/null | awk '{print $1}')" || true; BOX_IP="${B
 [ "$DRY" = 1 ] && BOX_IP="${BOX_IP:-192.168.1.10}"
 NUFI_DATA_DIR="${NUFI_DATA_DIR:-$BOX_HOME/data}"
 
+# ---------- who the department drives belong to ---------------------------------
+# The Samba account members log in as and the person who installed the box have
+# to be the same uid, or exactly one of them can write to a department drive.
+# This installer creates data/drives as whoever runs it; the container's `nufi`
+# account used to be pinned to uid 1000, so on any box whose admin is not
+# uid 1000 the account was neither the owner nor in the group of a 775
+# directory, fell through to `other` (r-x), and every `smbclient put` came back
+# NT_STATUS_ACCESS_DENIED. Read yes, write no — the half of the promise a
+# member actually uses from home.
+#
+# Rendered rather than assumed, and rendered from `id`, so a box installed by
+# the machine's second user (1001), by a service account, or by root works the
+# same as one installed by its first user. Computed only when the box does not
+# already have an answer — see REUSE_VARS above for why a re-run must not move
+# the drives to whoever happens to be running it.
+NUFI_SMB_UID="${NUFI_SMB_UID:-${NUFI_BOX_FAKE_UID:-$(id -u)}}"
+NUFI_SMB_GID="${NUFI_SMB_GID:-${NUFI_BOX_FAKE_GID:-$(id -g)}}"
+if [ "$NUFI_SMB_UID" = "0" ]; then
+  # A root install cannot hand the share root's uid: the Samba image only
+  # honours `UID_nufi` when it is greater than zero (`[ "$ACCOUNT_UID" -gt 0 ]`
+  # in its entrypoint), and an SMB account running as root would own every
+  # right on whatever directory it is given. Use the conventional first-user
+  # id and give the drives to it below instead.
+  NUFI_SMB_UID=1000
+  NUFI_SMB_GID=1000
+fi
+
 # ---------- .env ----------------------------------------------------------------
 say "Writing .env"
 sec() { # sec VAR generator — keep an existing non-placeholder value
@@ -200,6 +318,22 @@ case "${OIDC_PRIVATE_KEY_PEM:-}" in
     warn "regenerated the console signing key (the old one was stored on one line); Studio sessions will need a fresh sign-in"
     OIDC_PRIVATE_KEY_PEM="$(openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 2>/dev/null)" ;;
 esac
+# The box's own key to its own routines. `nufi-box flows install` mints it
+# later in this same run and writes it back with envfile_set, so it is never an
+# operator answer: not asked for, and deliberately NOT in REUSE_VARS. A bearer
+# token for the whole of Studio must not be passed on a command line, where
+# `ps` and shell history can read it — lib/flows.sh keeps it out of the
+# builder's argv for exactly that reason, and REUSE_VARS' contract is "an
+# explicit override on the command line wins", which is the one thing this
+# value must not invite. All it needs is to survive the rewrite the way every
+# other secret above does: sourced from .env, rendered back below. Without the
+# render line a re-run dropped it, and dropped it silently precisely when it
+# hurts — the mint that follows is a warn and not a die, so a box whose Studio
+# was slow to answer finished the install with its four routines in place and
+# no key to call them. Replacing one stays a command that never types it:
+# `nufi-box flows install` mints a fresh key, and drops a stored key that
+# answers 401 on its own.
+STUDIO_API_KEY="${STUDIO_API_KEY:-}"
 NVIDIA_VISIBLE_DEVICES=""
 if [ "$OS" = "Linux" ] && has_nvidia; then NVIDIA_VISIBLE_DEVICES=all; fi
 
@@ -209,6 +343,9 @@ BOX_NAME=$BOX_NAME
 BOX_HOST=$BOX_HOST
 BOX_IP=$BOX_IP
 NUFI_DATA_DIR=$NUFI_DATA_DIR
+NUFI_SMB_UID=$NUFI_SMB_UID
+NUFI_SMB_GID=$NUFI_SMB_GID
+NUFI_REGISTRY=$NUFI_REGISTRY
 NUFI_CHAT_TAG=${NUFI_CHAT_TAG:-main}
 NUFI_CONSOLE_TAG=${NUFI_CONSOLE_TAG:-main}
 NUFI_ADMIN_TAG=${NUFI_ADMIN_TAG:-main}
@@ -217,6 +354,7 @@ NUFI_LITELLM_TAG=${NUFI_LITELLM_TAG:-main}
 NUFI_INGEST_TAG=${NUFI_INGEST_TAG:-main}
 NUFI_EMULATE_AMD64=$NUFI_EMULATE_AMD64
 NUFI_RAG_IMAGE=${NUFI_RAG_IMAGE:-ghcr.io/danny-avila/librechat-rag-api-dev-lite@sha256:f9f34c8ed6884b0ff9b17387e6174fed737dba29f21622ecb75604d82bc47bf8}
+NUFI_SAMBA_IMAGE=${NUFI_SAMBA_IMAGE:-ghcr.io/servercontainers/samba:a3.24.1-s4.23.8-r0}
 INFERENCE_PROFILE=$INFERENCE_PROFILE
 INFERENCE_BASE_URL=$INFERENCE_BASE_URL
 INFERENCE_API_KEY=$INFERENCE_API_KEY
@@ -241,8 +379,15 @@ MONGO_PASSWORD=$MONGO_PASSWORD
 OIDC_PRIVATE_KEY_PEM="$OIDC_PRIVATE_KEY_PEM"
 LANGFLOW_SECRET_KEY=$LANGFLOW_SECRET_KEY
 STUDIO_SUPERUSER_PASSWORD=$STUDIO_SUPERUSER_PASSWORD
+STUDIO_API_KEY=$STUDIO_API_KEY
 ADMIN_SESSION_SECRET=$ADMIN_SESSION_SECRET
 SAMBA_PASSWORD=$SAMBA_PASSWORD
+MESH_SERVER_URL=$MESH_SERVER_URL
+MESH_AUTH_KEY=$MESH_AUTH_KEY
+MESH_API_KEY=$MESH_API_KEY
+MESH_CA_FILE=$MESH_CA_FILE
+BOX_MESH_IP=$BOX_MESH_IP
+BOX_MESH_HOST=$BOX_MESH_HOST
 EOF
   local d key
   for d in $(printf '%s' "$DEPARTMENTS" | tr ',' ' '); do
@@ -250,7 +395,81 @@ EOF
     printf 'SAMBA_VOLUME_CONFIG_%s="[%s]; path=/shares/%s; valid users = nufi; guest ok = no; read only = no; browseable = yes"\n' "$key" "$d" "$d"
   done
 }
-if [ "$DRY" = 1 ]; then render_env; else render_env > "$NUFI_BOX_ENV"; ok ".env written"; fi
+# .env holds every secret this box has: ADMIN_PASSWORD, MONGO_PASSWORD, the
+# JWT secrets, the OIDC signing key, SAMBA_PASSWORD, STUDIO_API_KEY, and
+# MESH_API_KEY — which is a credential for the coordinator, i.e. for every box
+# on it. A plain `render_env > "$NUFI_BOX_ENV"` gave the file whatever the
+# umask allowed, 0644 at the usual 022. The mode it ended up with was
+# accidental rather than absent: envfile_set writes through mktemp + mv, so the
+# first `mesh up` or `flows install` silently tightened it to 0600 and a box
+# where `flows install` warned and no mesh was joined kept 0644 forever.
+# Create it empty at 0600 first (and chmod, for the file a previous release
+# left at 0644), so no byte of it ever exists at a wider mode. Everything else
+# on this branch already works this way: join files 0600 from the first byte,
+# curl config files 0600, the lab's key files under umask 077.
+if [ "$DRY" = 1 ]; then
+  render_env
+else
+  ( umask 077; : > "$NUFI_BOX_ENV" ) || die "cannot write $NUFI_BOX_ENV"
+  chmod 600 "$NUFI_BOX_ENV" || warn "could not set $NUFI_BOX_ENV to 0600; it holds every secret this box has"
+  render_env > "$NUFI_BOX_ENV"
+  ok ".env written (0600 — it holds every secret this box has)"
+fi
+
+# ---------- registry trust ---------------------------------------------------
+# A LAN registry (`--registry 192.168.1.26:5000`) has no TLS certificate, so
+# Docker refuses to pull from it until it is explicitly marked insecure. A
+# registry reached over HTTPS (the default ghcr.io/dudaji-vn, or a private
+# registry that does have a certificate) never needs this.
+looks_like_insecure_registry() {
+  case "$1" in
+    https://*) return 1 ;;
+  esac
+  case "$1" in
+    *:[0-9]*) return 0 ;;
+  esac
+  case "$1" in
+    [0-9]*.[0-9]*.[0-9]*.[0-9]*) return 0 ;;
+  esac
+  return 1
+}
+if looks_like_insecure_registry "$NUFI_REGISTRY"; then
+  case "$OS" in
+    Darwin)
+      say "Docker Desktop must trust $NUFI_REGISTRY as an insecure registry"
+      printf '  Docker Desktop -> Settings -> Docker Engine -> add "%s" to "insecure-registries", then Apply & Restart.\n' "$NUFI_REGISTRY"
+      ;;
+    Linux)
+      DAEMON_JSON=/etc/docker/daemon.json
+      if [ "$DRY" = 1 ]; then
+        say "Would allow the insecure registry $NUFI_REGISTRY"
+        printf '  $ python3 - <<PY   # write or merge into %s\n{"insecure-registries": ["%s"]}\nPY\n' "$DAEMON_JSON" "$NUFI_REGISTRY"
+        printf '  $ sudo systemctl restart docker\n'
+      else
+        say "Allowing the insecure registry $NUFI_REGISTRY in $DAEMON_JSON"
+        sudo python3 - "$NUFI_REGISTRY" "$DAEMON_JSON" <<'PYEOF'
+import json
+import sys
+
+registry, path = sys.argv[1], sys.argv[2]
+try:
+    with open(path) as f:
+        cfg = json.load(f)
+except (FileNotFoundError, ValueError):
+    cfg = {}
+regs = cfg.setdefault("insecure-registries", [])
+if registry not in regs:
+    regs.append(registry)
+with open(path, "w") as f:
+    json.dump(cfg, f, indent=2)
+    f.write("\n")
+PYEOF
+        sudo systemctl restart docker || warn "could not restart docker; restart it by hand to pick up $DAEMON_JSON"
+        ok "insecure registry $NUFI_REGISTRY written to $DAEMON_JSON"
+      fi
+      ;;
+  esac
+fi
 
 # ---------- rendered files -----------------------------------------------------
 say "Rendering litellm/config.yaml and the drive folders"
@@ -260,6 +479,33 @@ else
   sed -e "s|@NUFI_MODEL@|$NUFI_MODEL|" -e "s|@INFERENCE_MODEL@|$INFERENCE_MODEL|" litellm/config.yaml.tmpl > litellm/config.yaml
 fi
 for d in $(printf '%s' "$DEPARTMENTS" | tr ',' ' '); do run mkdir -p "$NUFI_DATA_DIR/drives/$d"; done
+# …and owned by the uid the Samba account runs as, or a member cannot write to
+# them (see NUFI_SMB_UID above). A drive this run just created already is; this
+# is for the two cases where it is not — a box installed as root, whose drives
+# are root's, and a box upgraded from the release that pinned the account to
+# 1000 while the drives belonged to someone else.
+dir_uid() { stat -c '%u' "$1" 2>/dev/null || stat -f '%u' "$1" 2>/dev/null || echo ""; }
+for d in $(printf '%s' "$DEPARTMENTS" | tr ',' ' '); do
+  _drive="$NUFI_DATA_DIR/drives/$d"
+  if [ "$DRY" = 1 ]; then
+    printf '  $ chown -R %s:%s %s   # unless it is already\n' "$NUFI_SMB_UID" "$NUFI_SMB_GID" "$_drive"
+    continue
+  fi
+  [ -d "$_drive" ] || continue
+  _cur="$(dir_uid "$_drive")"
+  if [ "$_cur" != "$NUFI_SMB_UID" ]; then
+    chown -R "$NUFI_SMB_UID:$NUFI_SMB_GID" "$_drive" 2>/dev/null \
+      || warn "$_drive belongs to uid $_cur, not $NUFI_SMB_UID — members will get NT_STATUS_ACCESS_DENIED writing to it; run: sudo chown -R $NUFI_SMB_UID:$NUFI_SMB_GID $_drive"
+  fi
+done
+# The Caddyfile imports caddy/mesh*.caddy. A box that never joins a mesh still
+# gets the empty template, so the import always has a file to read and
+# `nufi-box mesh up` only ever overwrites one. A box that DID join gets its
+# generated file checked against this Caddyfile — before the stack starts,
+# because the upgrade's own `compose up` is what makes Caddy read it again, and
+# a render from an older box takes all six ports down (see mesh_caddy_refresh).
+. "$BOX_HOME/lib/mesh.sh"
+mesh_caddy_refresh "$BOX_HOME"
 
 # ---------- start -----------------------------------------------------------------
 COMPOSE="docker compose -f docker-compose.yml"
@@ -267,6 +513,10 @@ if [ "$NUFI_EMULATE_AMD64" = "1" ]; then COMPOSE="$COMPOSE -f docker-compose.emu
 if [ "$OS" = "Linux" ]; then
   COMPOSE="$COMPOSE -f docker-compose.linux.yml --profile linux"
   has_nvidia && COMPOSE="$COMPOSE -f docker-compose.gpu.yml --profile gpu"
+  # The mesh node comes up with the rest of the stack, so one `pull` fetches
+  # its image too. macOS gets no container: Docker Desktop's host network is
+  # the Linux VM's, so it could never give the Mac a mesh address.
+  [ -n "$MESH_SERVER_URL" ] && COMPOSE="$COMPOSE -f docker-compose.mesh.yml --profile mesh"
 fi
 for f in ${NUFI_BOX_COMPOSE_EXTRA:-}; do
   [ -f "$f" ] || die "NUFI_BOX_COMPOSE_EXTRA: no such file: $f"
@@ -276,7 +526,18 @@ if [ "$NO_PULL" = 1 ]; then
   say "Starting the stack (--no-pull: using the images already on this machine)"
 else
   say "Pulling images and starting the stack"
-  run $COMPOSE pull
+  # A dozen images over someone else's network: one flaky blob ends the whole
+  # install under `set -e`. A TLS handshake timeout to ghcr.io killed a
+  # blank-VM install two minutes in, with every other image already down.
+  # A pull is resumable and idempotent, so try the whole thing three times
+  # before giving up on it.
+  pull_ok=0
+  for attempt in 1 2 3; do
+    if run $COMPOSE pull; then pull_ok=1; break; fi
+    warn "image pull attempt $attempt of 3 failed; retrying in 5s"
+    sleep 5
+  done
+  [ "$pull_ok" = 1 ] || die "could not pull the images after 3 attempts; check the network (and, for a --registry box, that the registry is up) and re-run"
 fi
 run $COMPOSE up -d
 if [ "$DRY" = 0 ]; then
@@ -384,6 +645,44 @@ LINK_DIR="$( [ -d /opt/homebrew/bin ] && echo /opt/homebrew/bin || echo /usr/loc
 run ln -sf "$BOX_HOME/nufi-box" "$LINK_DIR/nufi-box" \
   || warn "could not link nufi-box into $LINK_DIR; add $BOX_HOME to your PATH or run: sudo ln -sf $BOX_HOME/nufi-box $LINK_DIR/nufi-box"
 
+# ---------- the department routines ---------------------------------------------------
+# The four routines the box is bought for, as flows a person can open and edit:
+# they read the department drives this installer just created, mounted
+# read-only into Studio. Delegated to `nufi-box flows install` for the same
+# reason as the mesh below — re-installing them is day-two work too, and two
+# copies of "mint a key, then build" would drift. It mints the box's own Studio
+# API key on the first run and writes it to .env as STUDIO_API_KEY.
+#
+# A warning, not a die: a box whose routines did not install is still a box
+# with chat, drives and Studio, and the operator can repeat the one command.
+say "Installing the department routines into Studio"
+if [ "$DRY" = 1 ]; then
+  _flows_env="$(mktemp)"
+  render_env > "$_flows_env"
+  NUFI_BOX_DRY_RUN=1 NUFI_BOX_FAKE_OS="$OS" NUFI_BOX_ENV="$_flows_env" "$BOX_HOME/nufi-box" flows install || true
+  rm -f "$_flows_env"
+else
+  "$BOX_HOME/nufi-box" flows install || warn "the routines are not in Studio yet; run: nufi-box flows install"
+fi
+
+# ---------- the mesh ------------------------------------------------------------------
+# Delegate to `nufi-box mesh up` rather than repeating it: waiting for the
+# address, writing BOX_MESH_*, rendering caddy/mesh.caddy and reloading Caddy
+# is day-two work too, and two copies of it would drift. The dry run points
+# nufi-box at a throwaway .env rendered from these same answers, so the plan
+# it prints is the one the real run executes.
+if [ -n "$MESH_SERVER_URL" ]; then
+  say "Joining the mesh at $MESH_SERVER_URL"
+  if [ "$DRY" = 1 ]; then
+    _mesh_env="$(mktemp)"
+    render_env > "$_mesh_env"
+    NUFI_BOX_DRY_RUN=1 NUFI_BOX_FAKE_OS="$OS" NUFI_BOX_ENV="$_mesh_env" "$BOX_HOME/nufi-box" mesh up || true
+    rm -f "$_mesh_env"
+  else
+    "$BOX_HOME/nufi-box" mesh up || warn "the box is up but not on the mesh yet; run: nufi-box mesh up"
+  fi
+fi
+
 # ---------- done ---------------------------------------------------------------------
 cat <<EOF
 
@@ -398,5 +697,19 @@ cat <<EOF
   Admin login: $ADMIN_EMAIL / $ADMIN_PASSWORD
   Drives:      $NUFI_DATA_DIR/drives/<department>  → become that department's knowledge
 
+  Routines:    https://$BOX_HOST:7860  → sign in as $ADMIN_EMAIL with the
+               Studio password in .env (STUDIO_SUPERUSER_PASSWORD). The four
+               department routines are there; members who arrive through the
+               app get their own empty Studio. Nothing caps how long a routine
+               generates: run them on qwen2.5:1.5b or larger, and if one does
+               not come back, unloading the model is what ends it (README §5).
+
   Day two:     nufi-box status | logs | drive add <name> | ca-cert | doctor
+               nufi-box flows install | flows list
 EOF
+if [ -n "$MESH_SERVER_URL" ]; then
+  cat <<EOF
+  From home:   nufi-box mesh status         (this box on the mesh)
+               nufi-box invite <name>       (a join file for one laptop)
+EOF
+fi

@@ -8,6 +8,7 @@ User-Agent, (4) deletes-then-reuploads a changed file, (5) deletes a removed
 file, (6) never PATCHes file_ids. Run: python3 test_ingest.py  (exit 0 = PASS)
 """
 import base64
+import dataclasses
 import hashlib
 import hmac
 import json
@@ -476,6 +477,44 @@ def main():
             "a 401 must trigger exactly one fresh login"
         assert json.loads((state / "state.json").read_text())["user_id"] == USER_ID, \
             "the id learned by that login must replace the stale one on disk"
+
+        # --- a failing scan backs off instead of hammering the login ---------
+        # This daemon starts with the rest of the stack, minutes before the
+        # installer creates the account it logs in with, so its first scans
+        # always fail. Measured on a blank Ubuntu install: retrying at the
+        # 20 s scan interval put 30 requests into /api/auth/login, tripped the
+        # app's login rate limiter, and kept the daemon locked out of the box
+        # for ten minutes after the account existed.
+        assert I.backoff_delay(20, 0) == 20, "a healthy scan waits the plain interval"
+        assert I.backoff_delay(20, 1) == 40
+        assert I.backoff_delay(20, 2) == 80
+        assert I.backoff_delay(20, 4) == I.LOGIN_RETRY_CAP, \
+            "the wait must cap at the app's own lockout window, not grow forever"
+        assert I.backoff_delay(0, 3) == 0, "a zero interval (tests) must not start sleeping"
+
+        # ...and the loop must actually use it, not just define it.
+        slept = []
+
+        class Stop(Exception):
+            pass
+
+        def fake_sleep(s):
+            slept.append(s)
+            if len(slept) == 4:
+                raise Stop
+
+        broken = I.Ingester(cfg)
+        broken.cfg = dataclasses.replace(cfg, interval=20)
+        broken.scan = lambda: (_ for _ in ()).throw(I.AppError("account does not exist yet"))
+        real_sleep, I.time.sleep = I.time.sleep, fake_sleep
+        try:
+            broken.run()
+        except Stop:
+            pass
+        finally:
+            I.time.sleep = real_sleep
+        assert slept == [40, 80, 160, 300], \
+            f"consecutive failures must back off and cap, got {slept}"
     print("PASS")
 
 

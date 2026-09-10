@@ -70,7 +70,11 @@ Choosing an inference profile asks one or two follow-up questions (the model
 name, and for `remote`/`cloud` a base URL and API key).
 
 The installer then writes `.env`, starts the stack, pulls the model, creates
-the admin login, and prints a banner:
+the admin login, and prints a banner. `.env` is created mode **0600** before a
+byte of it exists and is kept there by every later write: it holds the admin
+password, the database passwords, the JWT secrets, the console's signing key,
+the Samba password, the box's Studio key, and — on a mesh box — the
+coordinator API key, which is a credential for every box on that coordinator.
 
 ```
   NuFi box "nufi" is up.
@@ -93,12 +97,87 @@ install takes about **75 seconds**. On a first install that has to download
 everything, budget about 15 minutes on an office network — most of that time
 is the download, not the install itself.
 
+On a blank Ubuntu 24.04 (4 vCPU, 8 GB) — no Docker, no checkout, nothing
+mounted — the whole install was measured end to end, with the NuFi images on a
+LAN registry and everything else off the internet: **25 min 40 s from the
+first command to the banner**, one department, the `ollama-docker` profile.
+Docker Engine is installed, the box re-runs itself inside the new `docker`
+group, and the first image starts coming down inside the first **two
+minutes**; nearly all of the rest is download. A LAN mirror does not make that
+much shorter — the NuFi images come off it in a couple of minutes, while the
+third-party ones (Studio, ollama, the RAG API) still come from Docker Hub and
+ghcr.io at whatever the office network gives you.
+
+Budget **about 30 GB of free disk**. At the banner that VM had 29 GB of its
+38 GB root filesystem in use — 25 GB of images, 2 GB of volumes, the rest
+Ubuntu itself — and that is with a *single* department; the default four
+share the same images but add their own drives and collections. Memory
+settled at 5.7 GB of 8 GB while the box was answering, with no swap: 8 GB
+runs a one-department box on CPU with nothing to spare.
+
+`deploy/box/tests/vm/` holds that run as a recipe (`run-ubuntu-install.sh`,
+`lima-ubuntu.yaml`): it installs onto a blank machine, prints the wall time,
+and fails if the banner never appears. `verify-ubuntu-box.sh` next to it does
+the other half from the Mac — `/health` over TLS, a document dropped in a
+drive reaching the agent, and that agent answering with a citation.
+
 Re-running `./install-box.sh` is safe: it keeps `.env` and every answer you
 already gave, and only asks again for anything you did not set.
 
 Once the banner prints, open the Chat URL in a browser, trust the
 certificate if the browser warns about it (next section), log in with the
 admin login, and send a message.
+
+### Boxes without GitHub access
+
+Every NuFi image (`nufichat`, the admin panel, console, litellm, ingest,
+studio) normally comes from `ghcr.io/dudaji-vn`. A customer box, or any
+machine that cannot `docker login ghcr.io`, cannot pull those. Instead, run
+a small registry on a machine that already has the images — a Mac that
+built them — and point the box at it.
+
+Such a box usually has no checkout either. Make one from a machine that has
+the repo and carry it over (scp, a USB stick — no GitHub involved):
+
+```bash
+git archive -o box.tar HEAD \
+  deploy/box deploy/platform/scenarios deploy/platform/adapters/nufi-ingest docs
+```
+
+and on the box, `tar xf box.tar && cd deploy/box`.
+
+On the Mac with the images:
+
+```bash
+make -C deploy/box registry-up   REGISTRY=<mac-ip>:5001
+make -C deploy/box registry-push REGISTRY=<mac-ip>:5001
+```
+
+Port 5001, not 5000: macOS runs AirPlay Receiver on 5000 (System Settings →
+General → AirDrop & Handoff), and the registry would silently lose the port.
+`REGISTRY` is the address the *box* will use; the push itself goes over
+`localhost`, the one address Docker trusts without an insecure-registries
+entry, so Docker Desktop needs no change and no restart. The push also
+renames the images to the tags a default install asks for (`main`, and
+`box-main` for studio), whatever they are tagged locally, and it mirrors the
+two third-party images that live on ghcr.io as well (the RAG API and Samba) —
+without those a box that cannot reach GitHub gets most of the way through an
+install and then stops.
+
+On the box:
+
+```bash
+./install-box.sh --yes --registry <mac-ip>:5001
+```
+
+`<mac-ip>:5001` has no certificate, so Docker refuses to pull from it until
+it is marked insecure. On Linux the installer does this for you: it writes
+(or merges into) `/etc/docker/daemon.json` —
+`{"insecure-registries": ["<mac-ip>:5001"]}` — and restarts Docker;
+`--dry-run` prints the plan instead of touching the machine. On macOS
+(Docker Desktop), the installer only prints the step — add the registry
+yourself under Settings → Docker Engine → `insecure-registries`, then
+Apply & Restart.
 
 ## 4. Trust the certificate
 
@@ -160,12 +239,101 @@ Add another department later without reinstalling:
 This creates the folder and share; the watcher creates the team and agent
 on its next scan, about 20 seconds later.
 
+**Who owns the files.** On Linux the drives are shared by a Samba container,
+and it writes as the same uid that installed the box (`NUFI_SMB_UID` in
+`.env`, taken from `id -u`; a root install uses 1000 instead). So a file a
+member drops in from a laptop is owned by the box's admin, exactly like one
+the admin copies in by hand. If a member gets `NT_STATUS_ACCESS_DENIED`
+writing to a share — a box whose drives were created by a different user than
+the one running the installer — re-run `./install-box.sh`, which puts the
+drives back in step, or give them to that uid by hand:
+
+```bash
+sudo chown -R "$NUFI_SMB_UID:$NUFI_SMB_GID" <data dir>/drives/<department>
+```
+
+Re-running the installer keeps that answer rather than taking the drives for
+whoever ran it, so a colleague repairing the box does not lock the admin out.
+Handing the box to a new owner is a thing you say out loud:
+
+```bash
+NUFI_SMB_UID=$(id -u) NUFI_SMB_GID=$(id -g) ./install-box.sh --yes
+```
+
 By default the daemon that watches the drives runs **as the admin**, so the
 admin who installed the box already owns every department's team and agent
 and sees them immediately after logging in. Nobody else does. To let a
 colleague use a department's agent, log in as the admin, open **Teams** in
 the app, and invite them to that department's team — installing the box
 does not add anyone else automatically.
+
+### The four routines that read them
+
+The installer also puts four **routines** into NUFI Studio — flows a person
+can open, run and edit, that read the same drive folders:
+
+| Routine | What it does |
+|---|---|
+| `Routine · ask the department drive` | Answers a question from that department's documents and names the file it answered from |
+| `Routine · meeting transcript to decisions` | Paste a transcript, get the decisions with an owner and a deadline against each one |
+| `Routine · HR helpdesk from the policy` | Answers strictly from the HR drive, cites the policy file, refuses when the policy is silent |
+| `Routine · weekly report from the drive` | Drafts the department's weekly report from what is on its drive, citing each file — see the caveat below |
+
+**What `weekly` does not do.** It reads the **whole** department drive, not
+just this week's files. The period you ask for ("9월 첫째 주") is a line in the
+prompt, so it is the model that decides which of the drive's documents belong
+to that week — the flow does not filter by a file's modification date, and no
+component in this Studio build exposes one (the Directory node hands on a
+file's path and its text, nothing more). Read the dates in the draft before
+sending it, and keep a department's drive tidy if the reports matter.
+
+**A routine's length is not bounded — known limitation.** Nothing in the box
+caps how much a routine generates, and nothing stops a run whose client has
+gone. On a small model that is not theoretical: with `qwen2.5:0.5b`, `weekly`
+has been seen generating past **39,000 tokens** — long after the caller had
+given up — holding the model and slowing every other question on the box
+until it was unloaded. The reason is that the cap belongs on the routine's
+model node and cannot be set there: this Studio build's Ollama component
+exposes no output limit, and the one field that looks like a deadline
+(`Timeout`) is dropped before it reaches Ollama. Chat is not affected — it
+goes through the gateway, which has its own 600-second request timeout — but
+the routines talk to Ollama directly and bypass it.
+
+Until the Studio image grows the setting:
+
+* run the routines on **`qwen2.5:1.5b` or larger**. `weekly` answers in about
+  five seconds on 1.5b; 0.5b is the size that rambles;
+* if a routine does not come back, `nufi-box logs ollama` shows whether the
+  box is still generating (`n_gen` climbing with nobody listening), and
+  unloading the model is what ends it:
+  `docker compose exec ollama ollama stop <model>` on Linux, `ollama stop
+  <model>` on macOS.
+
+The drive is a field on the flow, not a copy of the flow: the same routine
+serves every department. In the canvas, change the **Drive** node's path
+(`/drives/legal` → `/drives/finance`, and the index name with it); over the
+API, send it as a tweak:
+
+```bash
+cd ../platform/scenarios/studio
+STUDIO_API_KEY=… python3 run_flows.py --base https://localhost:7860 \
+  --cacert ../../../box/data/nufi-box-ca.crt \
+  --flows ../../../box/data/studio-flows.json \
+  --only docqa --department hr --input "연차휴가는 며칠인가요?"
+```
+
+Re-running `nufi-box flows install` is safe: a routine that is already there
+by name is kept, edits and all, and only what is missing is created.
+
+**Who can see them.** They are installed into the Studio account of the
+superuser the installer created (`ADMIN_EMAIL`, with the Studio password in
+`.env` as `STUDIO_SUPERUSER_PASSWORD`) — sign in at `https://<box>:7860`
+with those. A member who reaches Studio the usual way, through the app's
+Account → Agents → NUFI Studio, arrives as their own Studio account with
+their own empty workspace, and does **not** see these routines: Studio scopes
+flows to their owner and this build has no sharing between accounts. Copying
+a routine to a colleague today means exporting it from the canvas and
+importing it into theirs.
 
 ## 6. Inference profiles
 
@@ -207,9 +375,147 @@ to `install-box.sh` and is also symlinked onto your `PATH`.
 | `ca-cert` | Print the path to the box's certificate and where to fetch it |
 | `doctor` | Check the things that usually break, in plain words |
 | `up` / `down` / `restart` | Start, stop, or restart the whole box |
-| `invite` / `update` / `backup` / `support` | Not built yet — see [What is not in P1](#9-what-is-not-in-p1) |
+| `mesh up` / `mesh status` / `mesh down` | Join this box to the coordinator so it can be reached from home, show where it is on the mesh, or leave |
+| `invite <name> [--os win\|mac\|linux] [--drives a,b]` | Write a one-file join for a new laptop — see [From home](#8-from-home) |
+| `members` | List the laptops currently joined to the mesh |
+| `revoke <name>` / `revoke --id <id>` | Remove a laptop's access to the mesh |
+| `flows install` | Put the department routines into Studio — safe to repeat |
+| `flows list` | Every flow in the box's Studio, with its id |
+| `update` / `backup` / `support` | Not built yet — see [What is not built yet](#10-what-is-not-built-yet) |
 
-## 8. Troubleshooting
+## 8. From home
+
+A laptop on an LTE hotspot, at a hotel, or anywhere off the office LAN can
+still reach the box — once it has joined the mesh coordinator (`nufi-box
+mesh up` gives the box a stable mesh address and sets `BOX_MESH_HOST` in
+`.env`; `invite` refuses with a clear message if that has not happened
+yet).
+
+Nothing about the box changes when it goes on the mesh: the same URLs, the
+same certificate, the same drives, the same login. What changes is that the
+box's name now resolves from anywhere its members are, instead of only on the
+office LAN.
+
+### Putting the box on the mesh
+
+The coordinator (`deploy/coordinator`) is a small VPS running headscale. It
+hands out one pre-auth key per machine and relays traffic when two machines
+cannot reach each other directly. One coordinator serves every box and every
+member; it holds no documents and no models, only the list of machines allowed
+onto the mesh, which is why 1 GB of RAM is enough for it. Standing one up is
+[its own runbook](../coordinator/README.md).
+
+**Three values come off the coordinator**, and the box needs all three to be
+fully useful:
+
+| Value | Where it comes from | Without it |
+|---|---|---|
+| `MESH_SERVER_URL` | `https://<the coordinator's hostname>` | the box cannot join at all |
+| `MESH_AUTH_KEY` | minted per box on the coordinator: `headscale preauthkeys create --user <id> --tags tag:box` — single use | the box cannot join at all |
+| `MESH_API_KEY` | printed once by the coordinator's `./bootstrap.sh` | the box joins, but `invite` / `members` / `revoke` cannot call the coordinator |
+
+Give the box its coordinator once, at install time:
+
+```bash
+./install-box.sh --yes \
+  --mesh https://mesh.nufi.me \
+  --auth-key tskey-auth-…            # the box's own key: tag:box, single use
+  --mesh-api-key hskey-api-…         # optional, but `invite` needs it
+```
+
+or afterwards, by putting `MESH_SERVER_URL` and `MESH_AUTH_KEY` in `.env` and
+running `nufi-box mesh up`. Either way the box:
+
+- joins as node `${BOX_NAME}` (a `tailscale` container with the host's own
+  network on Linux; the native Tailscale app on macOS, whose two commands
+  `mesh up` prints for you),
+- writes `BOX_MESH_IP` and `BOX_MESH_HOST` into `.env`,
+- generates `caddy/mesh.caddy` so all five product ports answer on the mesh
+  name with the same certificate laptops already trust, and reloads Caddy
+  (the plain-HTTP landing page and the CA download need no entry there — that
+  site has no host matcher, so it already answers on the mesh name).
+
+```
+$ nufi-box mesh status
+  coordinator    https://mesh.nufi.me
+  mesh address   100.64.0.2
+  MagicDNS name  nufi.box.nufi.me
+```
+
+From home, use the **name**, not the mesh address: `https://nufi.box.nufi.me:3080`.
+A browser that dials a bare IP sends no SNI, and the box has one certificate
+to fall back on — the LAN one — so the mesh address alone will not validate.
+The name always resolves for a joined laptop; that is what the mesh is for,
+and it is what every join file uses.
+
+The drives need nothing extra. Samba's port is published by Docker, which
+binds every address the machine has, so `\\nufi.box.nufi.me\legal` works the
+moment the box is on the mesh. (Do not "help" it by pinning smbd's
+`interfaces` to the mesh address: Samba runs in a container that has neither
+that address nor the LAN one, and it would stop answering on both.)
+
+`nufi-box mesh down` takes the box off the mesh and removes the mesh sites
+from Caddy; the box keeps its registration, so `mesh up` rejoins at the same
+address without a new key. To remove a *laptop* for good, use `revoke`.
+
+Once `MESH_SERVER_URL` is in `.env`, the mesh node is part of the stack every
+other verb operates on: `nufi-box status` lists it, `nufi-box logs tailscale`
+follows it, `nufi-box down` stops it along with the front door rather than
+leaving it advertising a box that is no longer answering, and `nufi-box up`
+brings it back.
+
+A coordinator with a **public** certificate (the field configuration) needs
+nothing else. A development coordinator running on its own internal CA does:
+copy that coordinator's `data/coordinator-ca.crt` onto the box and point
+`MESH_CA_FILE` in `.env` at it, or the box's `tailscale` container will not
+trust the control server and `invite` will fail on
+`unable to get local issuer certificate`.
+
+### For the admin: inviting a laptop
+
+```bash
+./nufi-box invite alice --os macos --drives legal,hr
+```
+
+- `NAME` is anything short and legible — it becomes the join file's name and
+  the row you will see in `nufi-box members`.
+- `--os windows|macos|linux` picks the join file's format (default `macos`).
+- `--drives a,b` picks which department drives the file maps (default:
+  every department in `DEPARTMENTS`).
+
+This mints a single-use, one-hour pre-auth key from the mesh coordinator and
+writes `data/invites/nufi-join-alice.<ext>` (mode `0600` — readable only by
+whoever runs the box). The command prints the path and a sentence to send:
+
+> Send it to alice (email or chat — not a public link): "Run this file, then
+> open https://nufi.\<mesh\>:3080 — the key inside works once."
+
+`nufi-box members` lists everyone currently joined — name, mesh IP, online,
+last seen, and the headscale user. `nufi-box revoke alice` removes her
+node (the join file registers the laptop under `alice`, so the name really
+does match); her laptop can no longer reach the box until invited again.
+If two laptops ever share a name, `revoke` refuses to guess — it lists both
+node ids and asks you to run `nufi-box revoke --id <id>` for the one you
+mean.
+
+### For the member: joining from a laptop
+
+1. Install the official Tailscale app first — the join file checks for it
+   and prints the download link (`https://tailscale.com/download`) if it is
+   missing.
+2. Run the file the admin sent you: double-click the `.command` file on a
+   Mac, the `.sh` file on Linux, or the `.cmd` file on Windows. It trusts
+   the box's certificate, connects to the mesh, maps the drives you were
+   given, and opens chat.
+3. The key inside the file is single-use — if it does not work, ask the
+   admin to run `nufi-box invite` again for you.
+
+**If your laptop is already enrolled in a corporate Tailscale tailnet**, the
+join file will not work: Tailscale logs into one control server at a time,
+and a corporate MDM profile usually locks that choice. Ask your IT team, or
+join from a personal device instead.
+
+## 9. Troubleshooting
 
 | Symptom | Fix |
 |---|---|
@@ -222,8 +528,14 @@ to `install-box.sh` and is also symlinked onto your `PATH`.
 | The installer warned the Docker VM is too small, or the box is slow and `nufi-box doctor` shows failing health checks | `doctor` has no memory probe of its own — the installer's prerequisite check is what reports the Docker VM's size, at install time. A box that is swapping heavily shows up indirectly instead: answers get slow, and `doctor`'s `curl` health checks start failing. Give Docker Desktop / OrbStack more memory: Settings → Resources → Memory, at least 12 GB on macOS. Studio alone is more than a third of the box's own footprint; running something else heavy on the same VM is the usual cause. |
 | After a reboot, `nufi.local` stops resolving | The installer announces the name on the LAN with a background `dns-sd` (macOS) or `avahi-publish` (Linux) process, and neither is installed as a service, so a reboot ends it. Re-run `./install-box.sh --yes` to announce it again — it keeps every answer and secret — or use `https://<box-ip>:3080`, which the certificate covers too. |
 | The box's IP changed and the browser now says the certificate does not cover this address | The certificate's IP entry is fixed at install time from the address the box had then, so a new DHCP lease invalidates it. Re-run `./install-box.sh --yes`: it re-reads the current address and re-issues the certificate, keeping every answer and secret. A DHCP reservation for the box stops it happening again. |
+| Right after the first install on Linux, `nufi-box` (or any `docker` command) says `permission denied while trying to connect to the docker API` | The installer put you in the `docker` group, but a group only reaches a shell at login. The install itself is fine — it re-ran inside the new group to finish — and your own shell catches up when you log out and back in, or immediately with `newgrp docker`. |
+| The banner's `https://<box-ip>:3080` is not the address other people on the LAN use | The certificate's IP is the first address `hostname -I` prints, which on a machine with two networks (two NICs, a VPN, a VM) need not be the one colleagues reach. Use `https://<box>.local:3080` — the same certificate covers the name — or give the box a single LAN address and re-run the installer. |
+| The install stops with `could not pull the images after 3 attempts` | Every image comes over the network, and the installer already retried the whole pull three times. Check the machine still has a route out (and, on a `--registry` box, that the registry machine is awake), then re-run `./install-box.sh --yes` — it keeps every answer and picks up where the download left off. |
 | You changed the admin password and wonder whether the drives will still ingest | They will. The ingest daemon learns the account's id at its first login and keeps it in its own state volume, so it never presents the password again — a password change is invisible to it. The password is read again only if that state volume is reset (`docker volume rm nufi-box_ingest-state`), so if you change it, change `ADMIN_PASSWORD` / `INGEST_PASSWORD` in `.env` too. |
+| `nufi-box logs nufi-ingest` is full of `scan failed: POST /api/auth/login -> 404: Email does not exist` | Normal during an install, and only during one. The ingest daemon starts with the rest of the stack, several minutes before the installer creates the account it logs in with, so every scan until then fails and says so. It backs off while it waits and starts ingesting on its own once the account exists — the last line will be `logged in as …`. If those errors are still arriving well after the banner, the password in `.env` and the account no longer match: see the row about changing the admin password. |
 | `nufi-box doctor` shows `!!` on `jwks.json` | The console's OIDC signing key is malformed. Re-run the installer (`./install-box.sh --yes`) — it regenerates the key and keeps every other answer and secret. |
+| `nufi-box flows list` says `flows: no STUDIO_API_KEY in .env — run: nufi-box flows install`, or `run_flows.py` says `no Studio API key: pass --key or set $STUDIO_API_KEY` | Do what the first one says: `nufi-box flows install`. It mints the box's key, writes it back to `.env`, and leaves the routines that are already in Studio alone. The box arrives here when the install could not reach Studio at the routines step — that step warns rather than stopping, so the install finishes and the key is simply not there yet. The routines themselves are untouched; only the box's own way to call them is missing. A box that once had a working key does not lose it by re-running `./install-box.sh`: `STUDIO_API_KEY` is kept across a re-install like every other secret in `.env`. |
+| After upgrading a box that is on a mesh, nothing answers on any port and `nufi-box logs caddy` repeats `Could not import … at /etc/caddy/caddy/mesh.caddy` | `caddy/mesh.caddy` is generated by `nufi-box mesh up` and is not part of the checkout, so an upgrade that changes the Caddyfile can leave a render behind that the new Caddyfile cannot read — and Caddy then refuses *every* site, LAN and mesh. `install-box.sh`, `nufi-box up` and `nufi-box restart` now put the file back in step before starting Caddy, so upgrading through them is enough; `nufi-box doctor` names it, and `nufi-box mesh up` fixes it on its own. |
 
 ### Installing next to something else that already holds 3080 / 3001 / 4000
 
@@ -256,23 +568,41 @@ Nothing inside the box changes — the app still talks to itself on
 Drop `NUFI_BOX_COMPOSE_EXTRA` and run `nufi-box up` again once the other
 service is stopped, to get back onto the real ports.
 
-## 9. What is not in P1
+## 10. What is not built yet
 
-This install gives you a box on your own LAN. The following are not built
-yet:
+This install gives you a box on your own LAN, and — once it is on a
+coordinator — reachable from anywhere its members are. The following are not
+built yet:
 
-- **Remote access.** There is no way to reach the box from outside the LAN
-  (no mesh, no tunnel) yet.
-- **`nufi-box invite`.** There is no laptop join file yet; anyone on the LAN
-  who trusts the CA can reach the box directly.
+- **A coordinator proved in the field.** The mesh half of this box has been
+  run end to end against a coordinator in a Docker lab, with the relay forced
+  and both ends behind NAT. It has not been run against a coordinator on a
+  real VPS with a public DNS name and a Let's Encrypt certificate. Nothing is
+  known to be missing; it simply has not been done.
 - **`nufi-box update`.** There is no signed update bundle or rollback yet;
   upgrading means pulling new images and running the installer again.
 - **`nufi-box backup`.** There is no scheduled backup yet.
 - **NUFI Works.** Only NUFI Studio runs on the box; Works stays in the
   cloud — it needs infrastructure a box cannot provide.
-- **Scheduled routines and routine input.** A Studio flow runs as built; it
-  does not yet take a per-run input from the app, and nothing runs it on a
+- **Scheduled routines, and routines from the app.** The four routines take a
+  per-run question and a per-run department (see [Departments and
+  drives](#5-departments-and-drives)), but only through the canvas or the
+  Studio API — the app has no button that runs one, and nothing runs one on a
   schedule.
+- **A weekly report that knows which files are this week's.** `weekly` reads
+  the whole drive and asks the model to respect the period; nothing filters
+  the files by their modification date. See [Departments and
+  drives](#5-departments-and-drives).
+- **A cap on how much a routine generates.** Nothing bounds a routine's
+  output, and nothing stops a run whose caller has gone — on a small model
+  that means one abandoned routine can hold the model and slow the whole box.
+  The setting belongs on the routine's model node and this Studio build does
+  not expose it. The workaround, and how to spot it, are in [Departments and
+  drives](#5-departments-and-drives).
+- **Routines for members.** The routines belong to the Studio superuser
+  account. A member signing in through the app gets their own empty Studio;
+  giving every member the four routines needs a change in the Studio image
+  itself, not in this box.
 - **The acceptance score is a measurement of the model, not the box.** The
   10/32 figure above says how good `qwen2.5:7b` is at these questions. It
   does not say whether ingestion, retrieval, or citation work — those

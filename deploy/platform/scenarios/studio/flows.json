@@ -1,62 +1,110 @@
 {
   "legal": {
-    "id": "90df716a-1659-4fe4-a6d1-7882cc0c5111",
     "name": "Legal · risky clause review",
     "ask": "다음 조항을 검토해줘: '본 계약의 손해배상 책임에는 상한을 두지 아니한다.' 그리고 '경업금지 기간은 5년으로 한다.'",
-    "kind": "prompt"
+    "kind": "prompt",
+    "id": "c7d45aef-fd4c-4bf0-b6db-0db65df4d5cb"
   },
   "hr": {
-    "id": "bdaeeb44-d596-4503-a63b-64d760bf5a16",
     "name": "HR · leave entitlement",
     "ask": "3년 근속한 직원의 연차휴가는 며칠인가요?",
-    "kind": "tool"
+    "kind": "tool",
+    "id": "df707577-0e2e-4bee-9dbf-645e1b99eedc"
   },
   "ga": {
-    "id": "5c87ff09-025a-41f1-a834-af59e5630d90",
     "name": "General Affairs · internal notice",
     "ask": "9월 정기 보안교육 안내 공지문을 써줘. 대상은 전 직원, 문의는 총무팀.",
-    "kind": "prompt"
+    "kind": "prompt",
+    "id": "9d10d998-9217-442f-8802-32681a4122d9"
   },
   "strategy": {
-    "id": "cb27da62-07f2-4686-88d6-41ad1e4a7228",
     "name": "Corporate Strategy · meeting notes to decisions",
     "ask": "회의 메모: 8월 30일 전략기획 회의. 김대리가 9월 5일까지 파일럿 후보 3곳 선정. 이과장이 9월 10일까지 제안서 초안. 예산 재검토는 논의만 하고 담당자를 정하지 못함.",
-    "kind": "prompt"
+    "kind": "prompt",
+    "id": "9ce5c214-7886-4af4-9932-561596e76ed6"
   },
   "finance": {
-    "id": "414eafac-0ef3-4f70-8d94-46e29f86949f",
     "name": "Finance · duplicate payment check",
     "ask": "지급 목록: 8/03 대한물산 120만원 / 8/19 대한물산 120만원 / 8/07 서울테크 80만원 / 9/28 서울테크 80만원 / 8/12 한빛디자인 45만원",
-    "kind": "prompt"
+    "kind": "prompt",
+    "id": "7a1ff092-e9e8-4e4b-8e5b-0b49d4d6210a"
   },
   "sales": {
-    "id": "eef93773-a80e-4e30-acc7-207e4fe43434",
     "name": "Sales · RFP to requirement checklist",
     "ask": "RFP 발췌: 사내망에서만 동작해야 하며 외부 인터넷 연결이 없어야 한다. 관리자는 사용자별 접근 이력을 조회할 수 있어야 한다. 문서 업로드 후 5초 이내에 검색 결과가 나와야 한다.",
-    "kind": "prompt"
+    "kind": "prompt",
+    "id": "ad25e4fd-4867-4dfd-a30a-d69ab78cb201"
   },
   "support": {
-    "id": "5b45003e-19fc-43d9-a10e-6d75dee59460",
     "name": "Customer Support · ticket triage",
     "ask": "티켓 1: 전 직원이 박스에 접속하지 못함. 티켓 2: 공유 드라이브만 안 보임. 티켓 3: 화면 글씨를 키워달라는 요청.",
-    "kind": "prompt"
+    "kind": "prompt",
+    "id": "3f23dfa9-3657-4dc9-91a2-3146ae4b6df7"
   },
   "engineering": {
-    "id": "5b5878c8-c28b-4d49-95b0-a435aaa31f93",
     "name": "Engineering · incident to root cause",
     "ask": "장애 로그: 02:14 배포 후 API 오류율 40%로 상승. 02:19 롤백 시작. 02:27 정상화. 배포 항목은 설정 변경 1건이며 스테이징에서는 재현되지 않았음.",
-    "kind": "prompt"
+    "kind": "prompt",
+    "id": "b859510e-436d-47b2-b597-deb91c6ffdf7"
   },
   "inbox": {
-    "id": "b6f7b1b0-ec54-484e-a399-1ae8d9efec04",
     "name": "Morning inbox summary",
     "ask": "메일 1: 대한물산 박부장 - 계약 갱신 견적을 9월 3일까지 회신 요청. 메일 2: 사내 공지 - 9월 정기 보안교육 일정 안내. 메일 3: 서울테크 - 지난달 정산서 사본 재발송 요청, 기한 언급 없음.",
-    "kind": "prompt"
+    "kind": "prompt",
+    "id": "1058d5dd-81ef-4eaa-b5e8-a0633ea5cf33"
   },
   "bulk": {
-    "id": "d43dee59-95b0-4ccf-84a4-3830f5fd9829",
     "name": "Document classification",
     "ask": "파일: 2026_임대차계약서.pdf, 신입사원_교육자료.pptx, 8월_법인카드_정산.xlsx, 고객사_장애보고_0830.md, RFP_공공기관.docx",
-    "kind": "prompt"
+    "kind": "prompt",
+    "id": "cdf46d3c-0f8f-4f27-bc2c-fd5db6987c4d"
+  },
+  "docqa": {
+    "name": "Routine · ask the department drive",
+    "ask": "비밀유지 의무는 계약이 끝난 뒤 얼마나 유지되나요?",
+    "kind": "drive_rag",
+    "drive": {
+      "node": "Directory-drive",
+      "root": "/drives",
+      "department": "legal",
+      "path": "/drives/legal",
+      "index_node": "LocalDB-index",
+      "fixed": false
+    },
+    "id": "344bef35-95af-453c-bdc2-0b5e379626fd"
+  },
+  "meeting": {
+    "name": "Routine · meeting transcript to decisions",
+    "ask": "회의 전문: 박팀장: 오늘 안건은 공유 드라이브 정리입니다. 김대리: 법무 폴더에 옛 계약서가 섞여 있습니다. 박팀장: 김대리가 9월 12일까지 정리해 주세요. 이과장: 보존 기간 기준이 없어서 판단이 어렵습니다. 박팀장: 기준표는 총무팀에 요청하고, 담당자는 다음 회의에서 정합시다. 김대리: 정리 결과는 9월 15일 회의에서 공유하겠습니다.",
+    "kind": "prompt",
+    "id": "86680b87-b01c-429e-9f97-b2b6f009ed10"
+  },
+  "helpdesk": {
+    "name": "Routine · HR helpdesk from the policy",
+    "ask": "배우자가 출산하면 휴가를 며칠 쓸 수 있나요?",
+    "kind": "drive_rag",
+    "drive": {
+      "node": "Directory-drive",
+      "root": "/drives",
+      "department": "hr",
+      "path": "/drives/hr",
+      "index_node": "LocalDB-index",
+      "fixed": true
+    },
+    "id": "92ab08d9-a8aa-4f51-83e9-f9e9c418dbb7"
+  },
+  "weekly": {
+    "name": "Routine · weekly report from the drive",
+    "ask": "9월 첫째 주 주간보고 초안을 써줘.",
+    "kind": "drive_read",
+    "drive": {
+      "node": "Directory-drive",
+      "root": "/drives",
+      "department": "legal",
+      "path": "/drives/legal",
+      "index_node": null,
+      "fixed": false
+    },
+    "id": "1ee3b5c3-c9df-4f42-98eb-c8621f377928"
   }
 }

@@ -1,0 +1,7 @@
+# Everything run.sh and day-at-home.sh generate. keys/ holds the pre-auth keys,
+# the internal-CA roots and (during a day-at-home run, until its exit trap
+# deletes them) the box's own credentials; rendered/ holds the coordinator
+# config rendered from ../bootstrap.sh --dry-run plus day-at-home.sh's
+# host-ports override. Both are per-run artefacts, and keys/ is secret.
+keys/
+rendered/

@@ -17,6 +17,12 @@ envfile_has() {
 # it. VALUE is written verbatim after "KEY=" — the caller is responsible for
 # any quoting it wants in the resulting line. Writes via a same-directory
 # mktemp + mv so the update is atomic and never crosses a filesystem/device.
+#
+# mktemp creates at 0600 and `mv` carries that mode over, so the file this
+# leaves behind is owner-only whatever it was before. That is deliberate and
+# tested, not incidental: .env is the only file this helper is used on and it
+# holds every secret the box has, so both writers of it — this one and
+# install-box.sh's render_env — have to agree on the mode.
 envfile_set() {
   local file="$1" key="$2" value="$3" tmp
   tmp="$(mktemp "$file.XXXXXX")"

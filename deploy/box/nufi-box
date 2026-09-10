@@ -12,7 +12,9 @@ DRY="${NUFI_BOX_DRY_RUN:-0}"
 run() { if [ "$DRY" = 1 ]; then printf '  $ %s\n' "$*"; else "$@"; fi; }
 die() { echo "$*" >&2; exit 2; }
 [ -f "$ENVF" ] && { set -a; . "$ENVF"; set +a; }
-OS="$(uname -s)"
+# NUFI_BOX_FAKE_OS lets the tests plan the other OS's run, exactly as
+# install-box.sh does; nothing but tests ever sets it.
+OS="${NUFI_BOX_FAKE_OS:-$(uname -s)}"
 COMPOSE="docker compose -f $HERE/docker-compose.yml"
 [ "${NUFI_EMULATE_AMD64:-0}" = "1" ] && COMPOSE="$COMPOSE -f $HERE/docker-compose.emulate.yml"
 [ "$OS" = "Linux" ] && COMPOSE="$COMPOSE -f $HERE/docker-compose.linux.yml --profile linux"
@@ -22,6 +24,16 @@ COMPOSE="docker compose -f $HERE/docker-compose.yml"
 # base file alone -- no device reservation, no `gpu` profile -- and the box
 # quietly went back to answering on the CPU with nothing in the logs to say so.
 [ -n "${NVIDIA_VISIBLE_DEVICES:-}" ] && COMPOSE="$COMPOSE -f $HERE/docker-compose.gpu.yml --profile gpu"
+# The mesh node is part of a mesh box's stack, exactly as install-box.sh:500
+# assembles it. Without this line `nufi-box` knew about every layer except that
+# one, so `logs tailscale` -- which lib/mesh.sh prints as the thing to look at
+# when a join fails -- answered "no such service"; `status` did not show the
+# node; and `down` left it registered and advertising a box whose front door
+# had just been stopped. macOS gets no container: Docker Desktop's host network
+# is the Linux VM's, so it could never give the Mac a mesh address, and a Mac
+# box joins with the native app instead (see mesh_up_native).
+[ "$OS" = "Linux" ] && [ -n "${MESH_SERVER_URL:-}" ] \
+  && COMPOSE="$COMPOSE -f $HERE/docker-compose.mesh.yml --profile mesh"
 # Same check the installer makes (install-box.sh): docker compose treats a
 # missing -f as an empty override and starts a stack without whatever the
 # site-local file was there to change -- a port map, a mount, a memory cap.
@@ -39,7 +51,18 @@ nufi-box <verb>
   ca-cert             print the path of the certificate laptops must trust
   doctor              check the things that usually break, in plain words
   up | down | restart start, stop, or restart the whole box
-  invite | update | backup | support   (coming in P2 / P4)
+  mesh up | status | down
+                      join this box to the coordinator so it can be reached
+                      from home, show where it is on the mesh, or leave
+  invite NAME [--os windows|macos|linux] [--drives a,b]
+                      write a one-file join for a new laptop, from home
+  members             list the laptops currently joined to the mesh
+  revoke NAME | --id ID
+                      remove a laptop's access to the mesh (use --id when
+                      NAME matches more than one node)
+  flows install       put the department routines into Studio (safe to repeat)
+  flows list          every flow in the box's Studio, with its id
+  update | backup | support   (coming in P4)
 EOF
 }
 case "${1:-}" in
@@ -60,6 +83,16 @@ case "${1:-}" in
     [ -n "${NUFI_DATA_DIR:-}" ] || { echo "NUFI_DATA_DIR is not set in .env" >&2; exit 2; }
     key="$(printf '%s' "$name" | tr -c 'a-z0-9_\n' '_')"
     run mkdir -p "$NUFI_DATA_DIR/drives/$name"
+    # Same rule the installer applies: a drive has to belong to the uid the
+    # Samba account runs as, or a member's write to it comes back
+    # NT_STATUS_ACCESS_DENIED. Usually a no-op — the admin adding a department
+    # is the admin who installed the box — but `sudo nufi-box drive add` is an
+    # easy reflex, and that one leaves a drive nobody can write to.
+    if [ -n "${NUFI_SMB_UID:-}" ]; then
+      _smb_gid="${NUFI_SMB_GID:-$NUFI_SMB_UID}"
+      run chown -R "$NUFI_SMB_UID:$_smb_gid" "$NUFI_DATA_DIR/drives/$name" \
+        || echo "could not give $NUFI_DATA_DIR/drives/$name to uid $NUFI_SMB_UID; members will not be able to write to it — run: sudo chown -R $NUFI_SMB_UID:$_smb_gid $NUFI_DATA_DIR/drives/$name" >&2
+    fi
     case ",${DEPARTMENTS:-}," in
       *",$name,"*) new_depts="${DEPARTMENTS:-}" ;;
       *) new_depts="${DEPARTMENTS:+$DEPARTMENTS,}$name" ;;
@@ -95,11 +128,81 @@ case "${1:-}" in
     chk $COMPOSE exec -T rag_api python -c \
       "import os,urllib.request;urllib.request.urlopen(os.environ['OLLAMA_BASE_URL'].rstrip('/')+'/api/tags').read()"
     chk test -d "${NUFI_DATA_DIR:-$HERE/data}/drives"
+    # Not a curl: a caddy/mesh.caddy written by an older box only bites at the
+    # next Caddy restart, so a box can be answering perfectly right now and be
+    # one reboot away from six dead ports. Say it in words while it is cheap.
+    . "$HERE/lib/mesh.sh"
+    if [ "$DRY" = 1 ]; then
+      printf '  $ check %s against %s\n' "$HERE/caddy/mesh.caddy" "$HERE/Caddyfile"
+    elif mesh_caddy_stale "$HERE/caddy/mesh.caddy" "$HERE/Caddyfile"; then
+      echo " !!  caddy/mesh.caddy was written by an older box — run: nufi-box mesh up"; fail=1
+    else
+      echo " ok  caddy/mesh.caddy matches this Caddyfile"
+    fi
     [ "$fail" = 0 ] && echo "All good." || { echo "Something is off; run: nufi-box logs <service>"; exit 1; } ;;
-  up) run $COMPOSE up -d ;;
+  # Both start Caddy again, so both are places a caddy/mesh.caddy left behind by
+  # an older box would refuse the whole front door. Put it back in step first.
+  up) . "$HERE/lib/mesh.sh"; mesh_caddy_refresh "$HERE"; run $COMPOSE up -d ;;
   down) run $COMPOSE down ;;
-  restart) run $COMPOSE restart ;;
-  invite|update|backup|support) echo "$1: coming in the next phase"; exit 3 ;;
+  restart) . "$HERE/lib/mesh.sh"; mesh_caddy_refresh "$HERE"; run $COMPOSE restart ;;
+  # --- the mesh (Tasks 6 and 7) ---
+  mesh)
+    shift
+    case "${1:-}" in
+      up|status|down) MESH_VERB="$1" ;;
+      "") echo "mesh: say what to do — up, status or down" >&2; usage; exit 2 ;;
+      *) echo "mesh: unknown subcommand: $1 (use up, status or down)" >&2; exit 2 ;;
+    esac
+    . "$HERE/lib/mesh.sh"
+    "mesh_$MESH_VERB" ;;
+  invite)
+    shift
+    [ -n "${1:-}" ] || { echo "invite: a name is required" >&2; usage; exit 2; }
+    MESH_NAME="$1"; shift
+    MESH_OS="macos"; MESH_DRIVES="${DEPARTMENTS:-}"
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --os) MESH_OS="${2:-}"; shift 2 ;;
+        --drives) MESH_DRIVES="${2:-}"; shift 2 ;;
+        *) echo "invite: unknown option: $1" >&2; exit 2 ;;
+      esac
+    done
+    case "$MESH_OS" in
+      windows|macos|linux) ;;
+      *) echo "invite: --os must be windows, macos, or linux" >&2; exit 2 ;;
+    esac
+    case "$MESH_NAME" in
+      *[!A-Za-z0-9_-]*) echo "invite: use letters, digits, - or _ for the name" >&2; exit 2 ;;
+    esac
+    [ -n "${BOX_MESH_HOST:-}" ] || { echo "invite: BOX_MESH_HOST is not set — run nufi-box mesh up first" >&2; exit 2; }
+    . "$HERE/lib/mesh.sh"
+    mesh_invite "$MESH_NAME" "$MESH_OS" "$MESH_DRIVES" ;;
+  members)
+    . "$HERE/lib/mesh.sh"
+    mesh_nodes ;;
+  revoke)
+    shift
+    . "$HERE/lib/mesh.sh"
+    if [ "${1:-}" = "--id" ]; then
+      [ -n "${2:-}" ] || { echo "revoke: --id requires a value" >&2; exit 2; }
+      mesh_delete_by_id "$2"
+    else
+      [ -n "${1:-}" ] || { echo "revoke: a name is required (or --id ID)" >&2; usage; exit 2; }
+      mesh_delete "$1"
+    fi ;;
+  # --- end the mesh (Tasks 6 and 7) ---
+  # --- the department routines in Studio (Task 8) ---
+  flows)
+    shift
+    case "${1:-}" in
+      install|list) FLOWS_VERB="$1" ;;
+      "") echo "flows: say what to do — install or list" >&2; usage; exit 2 ;;
+      *) echo "flows: unknown subcommand: $1 (use install or list)" >&2; exit 2 ;;
+    esac
+    . "$HERE/lib/flows.sh"
+    "flows_$FLOWS_VERB" ;;
+  # --- end the department routines ---
+  update|backup|support) echo "$1: coming in the next phase"; exit 3 ;;
   -h|--help|"") usage ;;
   *) echo "unknown command: $1" >&2; usage; exit 2 ;;
 esac

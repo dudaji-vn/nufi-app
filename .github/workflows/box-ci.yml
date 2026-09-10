@@ -5,12 +5,14 @@ on:
     branches: [main]
     paths:
       - 'deploy/box/**'
+      - 'deploy/coordinator/**'
       - 'deploy/platform/scenarios/**'
       - 'deploy/platform/adapters/nufi-ingest/**'
       - '.github/workflows/box-ci.yml'
   pull_request:
     paths:
       - 'deploy/box/**'
+      - 'deploy/coordinator/**'
       - 'deploy/platform/scenarios/**'
       - 'deploy/platform/adapters/nufi-ingest/**'
       - '.github/workflows/box-ci.yml'
@@ -42,6 +44,12 @@ jobs:
       - name: Box suite
         run: python3 -m pytest tests -q
         working-directory: deploy/box
+      # Two tests here actually run the pinned headscale image (`configtest`,
+      # `policy check`) -- ghcr.io/juanfont/headscale is a public image, so
+      # the runner pulls it without auth, same as any other `docker run`.
+      - name: Coordinator suite
+        run: python3 -m pytest tests -q
+        working-directory: deploy/coordinator
       # Stdlib scripts in the deploy/platform/adapters house style: they spin up
       # a ThreadingHTTPServer fake, assert, and exit 0 = PASS. pytest does not
       # collect them (platform-ci's pyproject sets testpaths = ["tests"]), and
@@ -50,3 +58,9 @@ jobs:
         run: python3 deploy/platform/adapters/nufi-ingest/test_ingest.py
       - name: Box acceptance runner
         run: python3 deploy/platform/scenarios/test_run_box.py
+      # Same house style, same paths filter -- and it had never run anywhere.
+      # The four routines the box is bought for are built here, and the P2
+      # acceptance's defect D2 (nothing bounds a routine's generation) is
+      # pinned here, so an unrun suite is a pin that holds nothing.
+      - name: Studio routines
+        run: python3 deploy/platform/scenarios/studio/test_flows.py

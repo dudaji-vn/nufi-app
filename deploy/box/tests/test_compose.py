@@ -15,10 +15,20 @@ BOX = pathlib.Path(__file__).resolve().parents[1]
 CORE = {"caddy", "postgres", "mongodb", "litellm-proxy", "librechat", "rag_api"}
 SSO = {"console", "admin-panel", "studio"}
 LINUX = {"ollama", "samba"}
+# Every service whose image is a NuFi-built one, i.e. must follow
+# ${NUFI_REGISTRY:-ghcr.io/dudaji-vn}/<name>:<tag>. Everything else (caddy,
+# postgres, mongodb, rag_api, and the linux-profile ollama/samba, plus any
+# future tailscale sidecar) is a third-party image and must be untouched.
+NUFI_SERVICES = {"litellm-proxy", "librechat", "console", "admin-panel", "studio", "nufi-ingest"}
 
 
-def render(*files, profiles=()):
+def render(*files, profiles=(), **extra_env):
     env = dict(os.environ)
+    # Deterministic default: a real shell might export NUFI_REGISTRY (e.g. a
+    # developer testing against their own LAN registry); the "default render"
+    # tests must see the compose file's own ${NUFI_REGISTRY:-ghcr.io/dudaji-vn}
+    # fallback, not whatever happens to be in the ambient environment.
+    env.pop("NUFI_REGISTRY", None)
     env.update({
         "BOX_HOST": "nufi.local", "BOX_IP": "192.168.1.10", "BOX_NAME": "nufi",
         "NUFI_DATA_DIR": "./data", "NUFI_MODEL": "qwen2.5-7b",
@@ -34,6 +44,7 @@ def render(*files, profiles=()):
         "NUFI_CHAT_TAG": "main", "NUFI_CONSOLE_TAG": "main", "NUFI_ADMIN_TAG": "main",
         "NUFI_STUDIO_TAG": "box-main", "NUFI_LITELLM_TAG": "main", "NUFI_INGEST_TAG": "main",
     })
+    env.update(extra_env)
     cmd = ["docker", "compose", "--project-directory", str(BOX)]
     for f in files or ("docker-compose.yml",):
         cmd += ["-f", str(BOX / f)]
@@ -44,6 +55,30 @@ def render(*files, profiles=()):
     return json.loads(out.stdout)
 
 
+def test_images_come_from_the_configured_registry():
+    """A customer box (and the Ubuntu VM test that follows) cannot log in to
+    GHCR, so every NuFi-built image must be pullable from any registry."""
+    cfg = render("docker-compose.yml", "docker-compose.linux.yml", "docker-compose.gpu.yml",
+                 profiles=("linux", "gpu"), NUFI_REGISTRY="10.0.0.5:5000")
+    for name in NUFI_SERVICES:
+        image = cfg["services"][name]["image"]
+        assert image.startswith("10.0.0.5:5000/"), (name, image)
+    for name, svc in cfg["services"].items():
+        if name in NUFI_SERVICES:
+            continue
+        image = svc.get("image", "")
+        assert not image.startswith("10.0.0.5:5000/"), (name, image)
+
+    # Unset (the default on every box today): falls back to ghcr.io/dudaji-vn.
+    default_cfg = render()
+    for name in NUFI_SERVICES:
+        image = default_cfg["services"][name]["image"]
+        assert image.startswith("ghcr.io/dudaji-vn/"), (name, image)
+    for name in {"caddy", "postgres", "mongodb", "rag_api"}:
+        image = default_cfg["services"][name]["image"]
+        assert not image.startswith("ghcr.io/dudaji-vn/"), (name, image)
+
+
 def test_core_services_present_and_named():
     cfg = render()
     assert cfg["name"] == "nufi-box"
@@ -52,11 +87,19 @@ def test_core_services_present_and_named():
 
 def test_every_service_follows_the_house_rules():
     cfg = render("docker-compose.yml", "docker-compose.linux.yml", "docker-compose.gpu.yml",
-                 profiles=("linux", "gpu"))
+                 "docker-compose.mesh.yml", profiles=("linux", "gpu", "mesh"))
     for name, svc in cfg["services"].items():
         assert svc.get("restart") == "unless-stopped", name
         assert "healthcheck" in svc, name
-        assert list(svc.get("networks", {}).keys()) == ["box"], name
+        # Every service sits on the `box` bridge, except the one that cannot:
+        # tailscaled has to own the host's namespace to give the host a mesh
+        # address at all. `network_mode` and `networks` are mutually exclusive
+        # in compose, so that is still an explicit, single answer per service.
+        if "network_mode" in svc:
+            assert svc["network_mode"] == "host", name
+            assert not svc.get("networks"), name
+        else:
+            assert list(svc.get("networks", {}).keys()) == ["box"], name
         image = svc.get("image", "")
         assert not image.endswith(":latest"), f"{name} pins :latest"
 
@@ -73,7 +116,8 @@ def test_only_caddy_publishes_web_ports():
 
 def test_env_example_covers_every_variable():
     text = "\n".join((BOX / f).read_text()
-                     for f in ("docker-compose.yml", "docker-compose.linux.yml", "docker-compose.gpu.yml")
+                     for f in ("docker-compose.yml", "docker-compose.linux.yml",
+                               "docker-compose.gpu.yml", "docker-compose.mesh.yml")
                      if (BOX / f).exists())
     used = set(re.findall(r"\$\{([A-Z0-9_]+)(?::-[^}]*)?\}", text))
     declared = set(re.findall(r"^([A-Z0-9_]+)=", (BOX / ".env.example").read_text(), re.M))
@@ -133,6 +177,34 @@ def test_linux_profile_adds_ollama_and_samba():
     assert "deploy" not in cfg["services"]["ollama"]
 
 
+def test_the_samba_account_runs_as_the_uid_that_owns_the_drives():
+    """A member writing from a laptop and the admin dropping a file in by hand
+    have to be the same uid, or one of them gets NT_STATUS_ACCESS_DENIED.
+
+    install-box.sh creates ${NUFI_DATA_DIR}/drives as whoever runs it and
+    renders that uid as NUFI_SMB_UID; the share has to take it from there
+    rather than assume 1000, which is what the P2 acceptance failed on (the
+    VM box's admin is uid 501).
+    """
+    cfg = render("docker-compose.yml", "docker-compose.linux.yml",
+                 profiles=("linux",), NUFI_SMB_UID="501", NUFI_SMB_GID="988")
+    assert cfg["services"]["samba"]["environment"]["UID_nufi"] == "501"
+
+
+def test_the_samba_share_is_not_widened_to_reach_the_drives():
+    """The fix for the write must not be "let everyone in": each department is
+    still its own share, still `valid users`, still not guest-readable, and the
+    container still sees only the drives directory."""
+    cfg = render("docker-compose.yml", "docker-compose.linux.yml",
+                 profiles=("linux",), NUFI_SMB_UID="501", NUFI_SMB_GID="988")
+    svc = cfg["services"]["samba"]
+    env = json.dumps(svc["environment"])
+    assert "force user" not in env and "guest ok = yes" not in env
+    assert "0777" not in env and "create mask" not in env
+    mounts = {v["target"] for v in svc["volumes"]}
+    assert mounts == {"/shares"}
+
+
 def test_gpu_profile_adds_the_device_reservation_to_ollama():
     cfg = render("docker-compose.yml", "docker-compose.linux.yml", "docker-compose.gpu.yml",
                  profiles=("linux", "gpu"))
@@ -159,3 +231,82 @@ def test_studio_may_reach_the_box_model_host():
     hosts = [h.strip() for h in allowed.split(",")]
     assert "host.docker.internal" in hosts, allowed
     assert "ollama" in hosts, allowed
+
+
+# --- Task 6: the box as a mesh node ------------------------------------------
+
+def test_the_mesh_profile_adds_the_tailscale_node():
+    """`nufi-box mesh up` layers docker-compose.mesh.yml and starts one extra
+    container. It needs the host's own network namespace (so Caddy's published
+    ports answer on the mesh address and Samba's 445 with them), a TUN device
+    and NET_ADMIN for kernel-mode tailscaled, and a pinned image like every
+    other service."""
+    svc = render("docker-compose.yml", "docker-compose.mesh.yml",
+                 profiles=("mesh",))["services"]["tailscale"]
+    assert svc["network_mode"] == "host"
+    assert "NET_ADMIN" in svc["cap_add"]
+    assert any(d["source"] == "/dev/net/tun" for d in svc["devices"]), svc["devices"]
+    assert svc["image"].startswith("tailscale/tailscale:v"), svc["image"]
+    assert not svc["image"].endswith(":latest")
+    assert svc["restart"] == "unless-stopped"
+    # `tailscale status` talks to the local tailscaled socket and exits 0 only
+    # once the backend is up; --peers=false keeps it cheap on a busy tailnet.
+    assert "tailscale status --peers=false" in json.dumps(svc["healthcheck"]["test"])
+
+
+def test_the_tailscale_node_logs_in_with_the_preauth_key_and_the_box_name():
+    env = render("docker-compose.yml", "docker-compose.mesh.yml",
+                 profiles=("mesh",), MESH_AUTH_KEY="tskey-auth-test",
+                 MESH_SERVER_URL="https://mesh.example")["services"]["tailscale"]["environment"]
+    assert env["TS_AUTHKEY"] == "tskey-auth-test"
+    assert "--login-server=https://mesh.example" in env["TS_EXTRA_ARGS"]
+    assert "--hostname=nufi" in env["TS_EXTRA_ARGS"]
+    # headscale v0.29.3 rejects RequestTags on ANY pre-auth-key registration
+    # ("requested tags [tag:box] are invalid or not permitted", confirmed live
+    # against the lab coordinator) — tag:box comes from the key's own aclTags.
+    assert "--advertise-tags" not in env["TS_EXTRA_ARGS"], env["TS_EXTRA_ARGS"]
+
+
+def test_the_base_box_has_no_tailscale_container():
+    """A box that never joined a mesh must not gain a container, and even with
+    the file layered the `mesh` profile is what turns it on."""
+    assert "tailscale" not in render()["services"]
+    assert "tailscale" not in render("docker-compose.yml", "docker-compose.mesh.yml")["services"]
+
+
+def test_caddy_can_read_the_generated_mesh_sites():
+    """The Caddyfile imports caddy/mesh*.caddy, which Caddy resolves relative
+    to the config file — so ./caddy has to be inside /etc/caddy."""
+    targets = {v["target"] for v in render()["services"]["caddy"]["volumes"]}
+    assert "/etc/caddy/caddy" in targets, targets
+
+
+# --- the department routines read the drives (Task 8) ---
+
+def test_studio_mounts_the_department_drives_read_only():
+    """The routines answer from the same folders Samba shares. Read-only: a
+    flow is authored by a person, and a person editing a flow must not be able
+    to rewrite the department's documents through it."""
+    vols = {v["target"]: v for v in render()["services"]["studio"]["volumes"]}
+    assert "/drives" in vols, sorted(vols)
+    drives = vols["/drives"]
+    assert drives["source"].endswith("/drives"), drives["source"]
+    assert drives["read_only"] is True, drives
+
+
+def test_studio_is_allowed_to_read_the_drives_and_nothing_else():
+    """The mount alone is not enough. The Directory component confines itself
+    to its working directory plus this allow-list, so without it every routine
+    fails with "Directory path escapes the allowed root" — the failure a live
+    run on a box without this env var actually produced."""
+    env = render()["services"]["studio"]["environment"]
+    assert env["LANGFLOW_DIRECTORY_COMPONENT_ALLOWED_ROOTS"] == "/drives"
+
+
+def test_the_drives_reach_studio_and_ingest_from_the_same_place():
+    """One folder, two readers: what a person drops on the drive has to be the
+    same bytes the routine reads and the ingest daemon indexes."""
+    svcs = render()["services"]
+    studio = next(v["source"] for v in svcs["studio"]["volumes"] if v["target"] == "/drives")
+    ingest = next(v["source"] for v in svcs["nufi-ingest"]["volumes"] if v["target"] == "/drives")
+    assert studio == ingest, (studio, ingest)

@@ -1,0 +1,6 @@
+.env
+config/headscale.yaml
+Caddyfile.rendered
+data/
+__pycache__/
+.pytest_cache/

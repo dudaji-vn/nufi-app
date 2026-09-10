@@ -1,0 +1,30 @@
+# A blank Ubuntu 24.04 machine to install a NuFi box on, blank the way a
+# customer's spare PC is blank: no Docker, no repo checkout, nothing mounted
+# from the Mac. It is the acceptance the README claims ("Ubuntu 24.04 needs
+# curl and openssl; the installer brings Docker"), and this file is how that
+# claim is re-run.
+#
+#   limactl start --name nufi-ubuntu deploy/box/tests/vm/lima-ubuntu.yaml --tty=false
+#   limactl shell nufi-ubuntu
+#
+# Sized like the smallest machine the box is offered for, not like the Mac:
+# 4 vCPU, 8 GiB, 40 GiB sparse disk (about 19 GiB of it is actually used once
+# the box is up with the ollama-docker profile and two models).
+base: template://ubuntu-24.04
+
+vmType: vz
+cpus: 4
+memory: 8GiB
+disk: 40GiB
+
+# vzNAT puts the guest on the Virtualization.framework NAT (192.168.64.0/24),
+# which the Mac can reach directly — the box's certificate covers that address,
+# so a laptop on the "LAN" (the Mac) reaches https://<vm-ip>:3080 exactly as a
+# colleague would. It also lets the guest reach a registry on the Mac's LAN IP.
+networks:
+  - vzNAT: true
+
+# Nothing from the host. The repo arrives as a tarball (`limactl copy`), the
+# images from a registry — the same two channels a box without GitHub access
+# has. A host mount would quietly make this test easier than the real thing.
+mounts: []

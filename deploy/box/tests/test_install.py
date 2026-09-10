@@ -129,6 +129,51 @@ def test_no_trust_prints_the_manual_step_instead_of_touching_the_keychain():
     assert "security add-trusted-cert -r trustRoot" in out
 
 
+def test_registry_flag_writes_nufi_registry_and_default_is_ghcr():
+    out = dry("--registry", "10.0.0.5:5000", NUFI_BOX_FAKE_OS="Linux")
+    assert "NUFI_REGISTRY=10.0.0.5:5000" in out
+    plain = dry(NUFI_BOX_FAKE_OS="Linux")
+    assert "NUFI_REGISTRY=ghcr.io/dudaji-vn" in plain
+
+
+def test_registry_override_wins_over_env_on_a_rerun():
+    with tempfile.TemporaryDirectory() as tmp:
+        envfile = pathlib.Path(tmp) / "box.env"
+        envfile.write_text("BOX_NAME=demo\nNUFI_REGISTRY=192.168.1.26:5000\n")
+        out = dry(NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_ENV=str(envfile),
+                   BOX_NAME="demo", NUFI_REGISTRY="10.0.0.5:5000")
+        assert "NUFI_REGISTRY=10.0.0.5:5000" in out
+        # not overridden: a re-run without --registry keeps the .env value
+        kept = dry(NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_ENV=str(envfile), BOX_NAME="demo")
+        assert "NUFI_REGISTRY=192.168.1.26:5000" in kept
+
+
+def test_registry_that_looks_like_host_port_gets_marked_insecure_on_linux():
+    out = dry("--registry", "10.0.0.5:5000", NUFI_BOX_FAKE_OS="Linux")
+    assert "/etc/docker/daemon.json" in out
+    assert "insecure-registries" in out
+    assert "10.0.0.5:5000" in out
+    assert "sudo systemctl restart docker" in out
+
+
+def test_registry_on_macos_only_prints_the_docker_desktop_instruction():
+    out = dry("--registry", "10.0.0.5:5000", NUFI_BOX_FAKE_OS="Darwin")
+    assert "Docker Desktop" in out
+    assert "insecure-registries" in out
+    assert "/etc/docker/daemon.json" not in out
+
+
+def test_default_registry_is_not_marked_insecure():
+    out = dry(NUFI_BOX_FAKE_OS="Linux")
+    assert "insecure-registries" not in out
+    assert "/etc/docker/daemon.json" not in out
+
+
+def test_registry_with_https_scheme_is_not_marked_insecure():
+    out = dry("--registry", "https://10.0.0.5:5000", NUFI_BOX_FAKE_OS="Linux")
+    assert "insecure-registries" not in out
+
+
 def test_bare_src_says_what_is_missing_instead_of_exiting_silently():
     r = install("--src")
     assert r.returncode == 1, r.stdout
@@ -291,3 +336,485 @@ def test_old_one_line_oidc_key_is_healed_on_rerun_other_secrets_kept():
 def test_jwks_check_is_in_the_plan():
     out = dry(NUFI_BOX_FAKE_OS="Darwin")
     assert "curl -fsk https://localhost:3001/.well-known/jwks.json" in out
+
+
+# --- a blank machine: Docker installed by us, group not active yet ------------
+# These two are the only tests that run the installer for real (not --dry-run).
+# They stop inside the prerequisites block, before anything is written, because
+# a stub PATH stands in for curl / sudo / sg / docker.
+
+def _blank_linux_box(tmp, daemon="denied", groups="sun docker"):
+    """A PATH where docker is absent until `curl … get.docker.com | sh` runs,
+    and the docker it then installs cannot reach the daemon — the state a real
+    `usermod -aG docker` leaves this shell in."""
+    bin_ = pathlib.Path(tmp) / "bin"
+    bin_.mkdir()
+
+    def stub(name, body):
+        p = bin_ / name
+        p.write_text("#!/bin/sh\n" + body)
+        p.chmod(0o755)
+        return p
+
+    # What get.docker.com's script does, in miniature: put `docker` on PATH.
+    (bin_ / "docker.installer").write_text(f"cp {bin_}/docker.new {bin_}/docker\n")
+    stub("docker.new",
+         'case "$1 $2" in\n'
+         '  "compose version") exit 0 ;;\n'          # never opens the socket
+         + ('  *) echo "permission denied while trying to connect to the docker API '
+            'at unix:///var/run/docker.sock" >&2; exit 1 ;;\n'
+            if daemon == "denied" else '  *) exit 0 ;;\n')
+         + "esac\n")
+    stub("curl", f'case "$*" in *get.docker.com*) cat {bin_}/docker.installer ;; esac\nexit 0\n')
+    stub("sudo", 'exit 0\n')
+    stub("sg", f'echo "$@" > {bin_.parent}/sg.args\nexit 0\n')
+    # `id -nG <user>` reads the group database, which usermod has just updated —
+    # the whole point is that the running session's own groups have not.
+    stub("id", f'echo "{groups}"\n')
+    return bin_
+
+
+def _install_on_blank_linux(tmp, **env):
+    bin_ = _blank_linux_box(tmp, daemon=env.pop("daemon", "denied"),
+                            groups=env.pop("groups", "sun docker"))
+    e = dict(os.environ,
+             PATH=f"{bin_}:/usr/bin:/bin",
+             NUFI_BOX_FAKE_OS="Linux",
+             NUFI_BOX_ENV=str(pathlib.Path(tmp) / "absent.env"),
+             **env)
+    r = subprocess.run([BASH, str(BOX / "install-box.sh"), "--yes", "--registry", "10.0.0.5:5000"],
+                       cwd=BOX, env=e, capture_output=True, text=True)
+    return r, pathlib.Path(tmp) / "sg.args"
+
+
+def test_fresh_docker_install_re_execs_inside_the_docker_group():
+    # usermod -aG docker only applies to the next login, so the shell that just
+    # installed Docker cannot reach the socket. Without the re-exec the install
+    # ran on for minutes and then died at `docker compose pull`.
+    with tempfile.TemporaryDirectory() as tmp:
+        r, sg_args = _install_on_blank_linux(tmp)
+        assert r.returncode == 0, r.stderr
+        assert "Re-running inside the new docker group" in r.stdout
+        assert sg_args.exists(), "the installer never re-execed"
+        args = sg_args.read_text()
+        assert args.startswith("docker -c ")
+        assert "install-box.sh" in args
+        assert "--yes" in args and "--registry 10.0.0.5:5000" in args
+        assert "Writing .env" not in r.stdout, "re-exec must replace this run, not continue it"
+
+
+def test_the_re_exec_happens_once_then_says_what_to_do():
+    # Second time round (NUFI_BOX_REEXEC=1) the group really should be active.
+    # If it still is not, say so here rather than at the image pull.
+    with tempfile.TemporaryDirectory() as tmp:
+        r, sg_args = _install_on_blank_linux(tmp, NUFI_BOX_REEXEC="1")
+        assert r.returncode != 0
+        assert not sg_args.exists(), "must not re-exec twice"
+        assert "cannot reach the Docker daemon" in r.stderr
+        assert "newgrp docker" in r.stderr
+
+
+def test_a_failing_image_pull_is_retried_three_times_then_explained():
+    # A blank-VM install died two minutes in when one third-party image hit a
+    # TLS handshake timeout at ghcr.io — every other image was already down.
+    # The whole box dir is copied so the run writes its .env, config.yaml and
+    # drive folders into the temp copy, not into the checkout.
+    import shutil
+    with tempfile.TemporaryDirectory() as tmp:
+        box = pathlib.Path(tmp) / "box"
+        shutil.copytree(BOX, box, ignore=shutil.ignore_patterns("data", ".env", "tests"))
+        bin_ = pathlib.Path(tmp) / "bin"
+        bin_.mkdir()
+        tries = pathlib.Path(tmp) / "pull.attempts"
+        docker = bin_ / "docker"
+        # `docker compose -f … --profile linux pull`: the verb is the LAST word,
+        # not $2.
+        docker.write_text(
+            "#!/bin/sh\n"
+            'case "$*" in\n'
+            f'  *" pull") echo x >> {tries}; exit 1 ;;\n'
+            '  *) exit 0 ;;\n'
+            "esac\n")
+        docker.chmod(0o755)
+        for name in ("sudo", "curl"):
+            p = bin_ / name
+            p.write_text("#!/bin/sh\nexit 0\n")
+            p.chmod(0o755)
+        e = dict(os.environ, PATH=f"{bin_}:/usr/bin:/bin", NUFI_BOX_FAKE_OS="Linux",
+                 NUFI_DATA_DIR=str(pathlib.Path(tmp) / "data"),
+                 NUFI_BOX_ENV=str(box / ".env"))
+        r = subprocess.run([BASH, str(box / "install-box.sh"), "--yes"],
+                           cwd=box, env=e, capture_output=True, text=True)
+        assert r.returncode != 0
+        assert tries.read_text().count("x") == 3, "the pull must be tried three times"
+        assert "could not pull the images after 3 attempts" in r.stderr
+
+
+def test_a_session_older_than_the_group_is_rescued_on_a_re_run_too():
+    # Docker is already installed (no install branch runs), but the shell
+    # predates the docker group — a re-run over an SSH session that was open
+    # when the box was installed. Lima's shared connection does exactly this,
+    # and the re-run died on the spot until the rescue moved out of the
+    # "we just installed Docker" branch.
+    with tempfile.TemporaryDirectory() as tmp:
+        bin_ = _blank_linux_box(tmp)
+        (bin_ / "docker").write_text(
+            "#!/bin/sh\n"
+            'case "$1 $2" in\n'
+            '  "compose version") exit 0 ;;\n'
+            '  *) echo "permission denied" >&2; exit 1 ;;\n'
+            "esac\n")
+        (bin_ / "docker").chmod(0o755)
+        e = dict(os.environ, PATH=f"{bin_}:/usr/bin:/bin", NUFI_BOX_FAKE_OS="Linux",
+                 NUFI_BOX_ENV=str(pathlib.Path(tmp) / "absent.env"))
+        r = subprocess.run([BASH, str(BOX / "install-box.sh"), "--yes"],
+                           cwd=BOX, env=e, capture_output=True, text=True)
+        assert r.returncode == 0, r.stderr
+        assert "Re-running inside the new docker group" in r.stdout
+        assert (pathlib.Path(tmp) / "sg.args").exists()
+
+
+def test_a_user_who_is_not_in_the_docker_group_is_told_not_re_execed():
+    # sg would just fail; say what to do instead.
+    with tempfile.TemporaryDirectory() as tmp:
+        r, sg_args = _install_on_blank_linux(tmp, groups="sun")
+        assert r.returncode != 0
+        assert not sg_args.exists()
+        assert "cannot reach the Docker daemon" in r.stderr
+
+
+def test_a_registry_box_gets_the_ghcr_hosted_third_party_images_from_it_too():
+    # --registry is for a box that cannot reach ghcr.io. The RAG API and Samba
+    # images live on ghcr.io as well, so leaving them pointed at GitHub leaves
+    # an install that cannot finish — a blank-VM install died three times on
+    # the RAG image's blob store with every other image already local.
+    out = dry("--registry", "10.0.0.5:5000", NUFI_BOX_FAKE_OS="Linux")
+    assert "NUFI_RAG_IMAGE=10.0.0.5:5000/librechat-rag-api-dev-lite:main" in out
+    assert "NUFI_SAMBA_IMAGE=10.0.0.5:5000/samba:main" in out
+
+
+def test_without_a_registry_the_third_party_images_stay_pinned_upstream():
+    out = dry(NUFI_BOX_FAKE_OS="Linux")
+    assert "NUFI_RAG_IMAGE=ghcr.io/danny-avila/librechat-rag-api-dev-lite@sha256:" in out
+    assert "NUFI_SAMBA_IMAGE=ghcr.io/servercontainers/samba:a3.24.1-s4.23.8-r0" in out
+
+
+def test_an_explicit_third_party_image_wins_over_the_registry_rewrite():
+    out = dry("--registry", "10.0.0.5:5000", NUFI_BOX_FAKE_OS="Linux",
+              NUFI_RAG_IMAGE="my.registry/rag:2")
+    assert "NUFI_RAG_IMAGE=my.registry/rag:2" in out
+
+
+# --- Task 6: --mesh / --auth-key ----------------------------------------------
+
+def test_mesh_flags_write_the_coordinator_into_env():
+    out = dry("--mesh", "https://mesh.nufi.me", "--auth-key", "tskey-auth-abc",
+              "--mesh-api-key", "hskey-api-xyz", NUFI_BOX_FAKE_OS="Linux")
+    assert "MESH_SERVER_URL=https://mesh.nufi.me" in out
+    assert "MESH_AUTH_KEY=tskey-auth-abc" in out
+    assert "MESH_API_KEY=hskey-api-xyz" in out
+
+
+def test_the_missing_auth_key_hint_is_a_command_that_works():
+    """headscale v0.29.3's `preauthkeys create --user` takes the numeric user
+    id, not the name, so the hint this used to print failed as written. The
+    lookup that finds the id has to be part of it."""
+    r = install("--mesh", "https://mesh.nufi.me", NUFI_BOX_FAKE_OS="Linux")
+    assert r.returncode == 1
+    assert "--auth-key" in r.stderr
+    assert "--user box" not in r.stderr
+    assert "users list -o json" in r.stderr
+
+
+def test_without_the_mesh_flags_the_box_stays_lan_only():
+    out = dry(NUFI_BOX_FAKE_OS="Linux")
+    assert re.search(r"^MESH_SERVER_URL=$", out, re.M), out
+    assert re.search(r"^MESH_AUTH_KEY=$", out, re.M), out
+    assert "docker-compose.mesh.yml" not in out
+
+
+def test_mesh_on_linux_plans_the_tailscale_container():
+    out = dry("--mesh", "https://mesh.nufi.me", "--auth-key", "tskey-auth-abc",
+              NUFI_BOX_FAKE_OS="Linux")
+    assert "docker-compose.mesh.yml" in out
+    assert "--profile mesh" in out
+
+
+def test_mesh_on_macos_points_at_the_native_app_instead():
+    out = dry("--mesh", "https://mesh.nufi.me", "--auth-key", "tskey-auth-abc",
+              NUFI_BOX_FAKE_OS="Darwin")
+    assert "/Applications/Tailscale.app/Contents/MacOS/Tailscale" in out
+    assert "docker-compose.mesh.yml" not in out
+
+
+def test_the_installer_seeds_an_empty_mesh_caddy_so_the_import_has_a_file():
+    out = dry(NUFI_BOX_FAKE_OS="Linux")
+    assert "caddy/mesh.caddy" in out
+
+
+def test_the_generated_mesh_caddy_is_checked_before_the_stack_is_started():
+    """Defect D3. An upgraded box's own `compose up` is what makes Caddy read
+    caddy/mesh.caddy again, so a render left by an older box has to be dealt
+    with before that, not after — otherwise the box comes up with all six
+    ports down and needs a human."""
+    out = dry(NUFI_BOX_FAKE_OS="Linux", BOX_NAME="demo")
+    assert "refresh" in out and "caddy/mesh.caddy" in out
+    assert out.index("caddy/mesh.caddy") < out.index("docker compose"), out
+
+
+# --- who the department drives belong to (defect D1, P2 acceptance) ---
+
+def test_the_samba_uid_is_the_installing_users_not_a_guess():
+    """The share writes as NUFI_SMB_UID and the drives are created by whoever
+    runs the installer: the two must be the same number or a member's
+    `smbclient put` gets NT_STATUS_ACCESS_DENIED on a 775 directory."""
+    out = dry(NUFI_BOX_FAKE_OS="Linux", DEPARTMENTS="legal")
+    assert f"NUFI_SMB_UID={os.getuid()}" in out
+    assert f"NUFI_SMB_GID={os.getgid()}" in out
+
+
+def test_a_root_install_does_not_hand_the_share_root():
+    """The Samba image only honours UID_nufi when it is > 0, and an SMB account
+    running as root would own every right on the directory it is given. A root
+    install takes the conventional first-user id and gives the drives to it."""
+    out = dry(NUFI_BOX_FAKE_OS="Linux", DEPARTMENTS="legal",
+              NUFI_BOX_FAKE_UID="0", NUFI_BOX_FAKE_GID="0")
+    assert "NUFI_SMB_UID=1000" in out and "NUFI_SMB_GID=0" not in out
+    assert "chown -R 1000:1000" in out
+
+
+def _rendered_env(out):
+    """The .env a dry run would have written, sliced out of its own plan.
+
+    Same trick as test_a_second_run_plans_exactly_what_the_first_one_did: DRY=1
+    prints render_env's output verbatim between the "Writing .env" and
+    "Rendering litellm" banners, so the first run hands back exactly the file
+    an installed box would already have.
+    """
+    start = out.index("Writing .env\n") + len("Writing .env\n")
+    end = out.index("==>\x1b[0m Rendering litellm", start)
+    return out[start:out.rindex("\n", start, end)] + "\n"
+
+
+def test_a_second_admin_re_running_the_installer_does_not_take_the_drives():
+    """The recurring case, which the one-time transitions above do not cover.
+
+    Re-running install-box.sh is what the README tells an operator to do for
+    half a dozen repairs, and it is what the mesh-caddy upgrade path relies on.
+    If the Samba uid were recomputed from `id -u` every time, the second admin
+    to run it would silently take every drive and leave the first as `other` on
+    a 775 directory — the acceptance's own NT_STATUS_ACCESS_DENIED, a different
+    victim, and no warning, because the chown would have succeeded.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        envfile = pathlib.Path(tmp) / "box.env"
+        first = dry(NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_ENV=str(envfile),
+                    BOX_NAME="demo", DEPARTMENTS="legal",
+                    NUFI_BOX_FAKE_UID="1001", NUFI_BOX_FAKE_GID="1001")
+        assert "NUFI_SMB_UID=1001" in first
+        envfile.write_text(_rendered_env(first))
+
+        second = dry(NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_ENV=str(envfile),
+                     BOX_NAME="demo", DEPARTMENTS="legal",
+                     NUFI_BOX_FAKE_UID="1002", NUFI_BOX_FAKE_GID="1002")
+        assert "NUFI_SMB_UID=1001" in second and "NUFI_SMB_GID=1001" in second
+        assert "NUFI_SMB_UID=1002" not in second
+        assert "chown -R 1002" not in second, "the second admin took the drives"
+        assert "chown -R 1001:1001" in second
+
+        # Handing the box over is still possible, but only by saying so.
+        handover = dry(NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_ENV=str(envfile),
+                       BOX_NAME="demo", DEPARTMENTS="legal",
+                       NUFI_SMB_UID="1002", NUFI_SMB_GID="1002")
+        assert "NUFI_SMB_UID=1002" in handover
+        assert "chown -R 1002:1002" in handover
+
+
+def test_a_re_install_keeps_the_box_s_key_to_its_own_routines():
+    """STUDIO_API_KEY is minted by `nufi-box flows install`, never asked for.
+
+    render_env used to leave it out of the file it rewrites wholesale, so every
+    re-run dropped it. Invisible when the mint that follows succeeds, permanent
+    when it does not — and that step is a warn rather than a die on purpose, so
+    a box whose Studio was slow to answer finished installing with its four
+    routines in Studio and no key to call them. `run_flows.py` then dies in
+    five seconds with `no Studio API key`, which is how the acceptance found
+    this.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        envfile = pathlib.Path(tmp) / "box.env"
+        first = dry(NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_ENV=str(envfile),
+                    BOX_NAME="demo", DEPARTMENTS="legal")
+        # An installed box: the file the first run would have written, plus the
+        # key `flows install` wrote back into it. Appended, because that is what
+        # envfile_set does when the line is absent — the state of every box the
+        # current release installed.
+        envfile.write_text(_rendered_env(first) + "STUDIO_API_KEY=sk-keep-me\n")
+
+        second = dry(NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_ENV=str(envfile),
+                     BOX_NAME="demo", DEPARTMENTS="legal")
+        assert "STUDIO_API_KEY=sk-keep-me" in second, "the re-install dropped the key"
+        # It is a bearer token for the whole of Studio: it lives in .env and
+        # nowhere else, so no command the run plans may carry it.
+        for line in second.splitlines():
+            if line.startswith("  $ "):
+                assert "sk-keep-me" not in line, line
+
+        # Not an operator answer and not in REUSE_VARS: a stale export in the
+        # shell that happens to run the installer must not replace the box's
+        # own key with another box's.
+        third = dry(NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_ENV=str(envfile),
+                    BOX_NAME="demo", DEPARTMENTS="legal",
+                    STUDIO_API_KEY="sk-from-another-box")
+        assert "STUDIO_API_KEY=sk-keep-me" in third
+        assert "sk-from-another-box" not in third
+
+        # A box that has never installed its routines gets the line anyway,
+        # with the empty value .env.example documents.
+        assert "STUDIO_API_KEY=\n" in first
+
+
+def test_the_drives_are_given_to_that_uid_after_they_are_created():
+    """A box installed as root, or upgraded from the release that pinned the
+    account to 1000, has drive directories with the wrong owner already on
+    disk; creating them is not enough."""
+    out = dry(NUFI_BOX_FAKE_OS="Linux", DEPARTMENTS="legal,hr",
+              NUFI_BOX_FAKE_UID="1001", NUFI_BOX_FAKE_GID="1001")
+    assert out.index("mkdir -p") < out.index("chown -R 1001:1001")
+    assert "drives/legal" in out and "drives/hr" in out
+    assert out.count("chown -R 1001:1001") == 2
+
+
+# --- the department routines (Task 8) ---
+
+def test_the_installer_puts_the_routines_in_studio():
+    """The last thing a fresh box needs is the routines it is bought for, and
+    the installer must plan them from the answers it just wrote, not from a
+    second copy of the same logic: it delegates to `nufi-box flows install`."""
+    out = dry(NUFI_BOX_FAKE_OS="Darwin", BOX_NAME="demo", DEPARTMENTS="legal,hr",
+              ADMIN_EMAIL="boss@example.com")
+    assert "Installing the department routines into Studio" in out
+    assert "build_flows.py" in out
+    assert "--departments legal,hr" in out
+    assert "--drives-root /drives" in out
+    # It mints the box's own Studio key by logging in as the superuser it
+    # created above; the password travels in the environment, never in argv.
+    assert "--login boss@example.com" in out
+    assert "--key-out" in out
+    assert "STUDIO_SUPERUSER_PASSWORD=" not in out.split("Installing the department")[1]
+
+
+def test_the_routines_step_comes_after_the_certificate():
+    """The builder reaches Studio over the box's own TLS, so the CA has to have
+    been exported before the flows are installed."""
+    out = dry(NUFI_BOX_FAKE_OS="Linux", BOX_NAME="demo")
+    assert out.index("nufi-box-ca.crt") < out.index("Installing the department routines")
+
+
+def test_the_banner_says_where_the_routines_are():
+    out = dry(NUFI_BOX_FAKE_OS="Darwin", BOX_NAME="demo", ADMIN_EMAIL="boss@example.com")
+    assert "Routines:" in out and "https://demo.local:7860" in out
+    assert "nufi-box flows install | flows list" in out
+    # A member who signs in through the app gets their own Studio account, and
+    # the installed routines are not in it. Say so on the banner rather than
+    # letting the first member discover an empty workspace.
+    assert "own empty Studio" in out
+
+
+# --- .env's mode is decided, not inherited from the umask --------------------
+
+
+def _install_far_enough_to_write_env(tmp, umask="022", seed_mode=None):
+    """Run the installer for real until it dies at the image pull.
+
+    .env is rendered before the pull, so this is the cheapest way to get the
+    file an installed box would have — the same trick
+    test_a_failing_image_pull_is_retried_three_times_then_explained uses.
+    """
+    import shutil
+    box = pathlib.Path(tmp) / "box"
+    shutil.copytree(BOX, box, ignore=shutil.ignore_patterns("data", ".env", "tests"))
+    envfile = box / ".env"
+    if seed_mode is not None:
+        envfile.write_text("JWT_SECRET=from-an-older-release\n")
+        envfile.chmod(seed_mode)
+    bin_ = pathlib.Path(tmp) / "bin"
+    bin_.mkdir()
+    for name, body in (("docker", 'case "$*" in\n  *" pull") exit 1 ;;\n  *) exit 0 ;;\nesac\n'),
+                       ("sudo", "exit 0\n"), ("curl", "exit 0\n")):
+        p = bin_ / name
+        p.write_text("#!/bin/sh\n" + body)
+        p.chmod(0o755)
+    e = dict(os.environ, PATH=f"{bin_}:/usr/bin:/bin", NUFI_BOX_FAKE_OS="Linux",
+             NUFI_DATA_DIR=str(pathlib.Path(tmp) / "data"), NUFI_BOX_ENV=str(envfile))
+    r = subprocess.run(
+        [BASH, "-c", 'umask %s; exec "$@"' % umask, "_",
+         BASH, str(box / "install-box.sh"), "--yes"],
+        cwd=box, env=e, capture_output=True, text=True)
+    assert envfile.exists(), r.stdout + r.stderr
+    return envfile, r
+
+
+def test_env_is_owner_only_from_the_first_write():
+    """It holds ADMIN_PASSWORD, MONGO_PASSWORD, the JWT secrets, the OIDC
+    signing key, SAMBA_PASSWORD, STUDIO_API_KEY — and MESH_API_KEY, which
+    controls every box on the coordinator. `render_env > .env` neither chmod'd
+    nor umask'd, so at a normal 022 the file was 0644. The mode it ended up
+    with was accidental rather than absent: envfile_set writes through mktemp +
+    mv, so the first `mesh up` or `flows install` tightened it silently and a
+    box where `flows install` warned and no mesh was joined kept 0644.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        envfile, _ = _install_far_enough_to_write_env(tmp, umask="022")
+        assert "ADMIN_PASSWORD=" in envfile.read_text()
+        assert oct(envfile.stat().st_mode)[-3:] == "600"
+
+
+def test_a_re_install_tightens_an_env_an_older_release_left_readable():
+    with tempfile.TemporaryDirectory() as tmp:
+        envfile, _ = _install_far_enough_to_write_env(tmp, umask="022", seed_mode=0o644)
+        assert oct(envfile.stat().st_mode)[-3:] == "600"
+        assert "JWT_SECRET=from-an-older-release" in envfile.read_text(), \
+            "tightening the mode must not cost the box its secrets"
+
+
+def test_envfile_set_leaves_the_file_owner_only_too():
+    """The other writer of .env. It gets there through mktemp + mv rather than
+    a chmod, so a change to an in-place rewrite would widen the file back
+    without anything saying so."""
+    with tempfile.TemporaryDirectory() as tmp:
+        envf = pathlib.Path(tmp) / ".env"
+        envf.write_text("A=1\n")
+        envf.chmod(0o644)
+        r = subprocess.run(
+            [BASH, "-c", 'umask 022; . "$1"; envfile_set "$2" STUDIO_API_KEY sk-x',
+             "_", str(BOX / "lib" / "envfile.sh"), str(envf)],
+            capture_output=True, text=True)
+        assert r.returncode == 0, r.stderr
+        assert "STUDIO_API_KEY=sk-x" in envf.read_text()
+        assert oct(envf.stat().st_mode)[-3:] == "600"
+
+
+def test_the_vm_acceptance_scripts_parse_under_macos_bash():
+    """deploy/box/tests/vm/ runs against a Lima VM, so CI can never execute it
+    — and it had no check at all, not even that it parses. These are the
+    scripts a person reaches for when a box is misbehaving."""
+    vm = BOX / "tests" / "vm"
+    scripts = sorted(vm.glob("*.sh"))
+    assert scripts, "no scripts in tests/vm"
+    for script in scripts:
+        r = subprocess.run([BASH, "-n", str(script)], capture_output=True, text=True)
+        assert r.returncode == 0, f"{script.name}: {r.stderr}"
+
+
+def test_the_vm_verifier_does_not_count_an_uncited_answer_as_a_citation():
+    """run_box.py writes the literal `sources: none` for an answer that cited
+    nothing, so `grep -q 'sources: .*[^ ]'` — which this script used, and which
+    Task 9's review caught in day-at-home.sh — passed on the exact case the
+    check exists to catch."""
+    # Code only: the comment next to the fix necessarily quotes the old
+    # pattern, and must not be able to make this pass or fail on its wording.
+    code = "\n".join(l for l in (BOX / "tests" / "vm" / "verify-ubuntu-box.sh")
+                     .read_text().splitlines() if not l.lstrip().startswith("#"))
+    assert "sources: .*[^ ]" not in code
+    assert 'grep -v "sources: none$"' in code

@@ -1,0 +1,17 @@
+# Port map for running the coordinator on a developer Mac, where 80/443 are
+# already held by deploy/box's own Caddy. `ports:` lists merge by
+# concatenation across compose files (not replacement), so this uses the
+# compose-spec `!override` merge tag to replace the base ports outright
+# instead of adding a second, conflicting set:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.lab-ports.yml ...
+#
+# Committed (not gitignored) — it is the lab's port map, not a secret.
+services:
+  headscale:
+    ports: !override
+      - "13478:3478/udp"
+  caddy:
+    ports: !override
+      - "8080:80"
+      - "8443:443"

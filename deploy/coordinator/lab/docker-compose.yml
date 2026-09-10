@@ -1,0 +1,339 @@
+# =============================================================================
+# The NAT lab. Two nodes, each behind its own NAT with no port forwarding, join
+# the real coordinator stack and then talk to each other: HTTPS to the box's
+# MagicDNS name and an SMB write read back on the far side.
+#
+#      lan-a 10.10.0.0/24 (internal)          lan-b 10.20.0.0/24 (internal)
+#      ┌───────────────────────────┐          ┌───────────────────────────┐
+#      │ node-a  10.10.0.3         │          │ node-b  10.20.0.3         │
+#      │  tag:member, "node-a"     │          │  tag:box, "nufi"          │
+#      │  + tools-a (curl,         │          │  + box-caddy  :3080 https │
+#      │    smbclient) in its netns│          │  + box-samba  :445  smb   │
+#      └────────────┬──────────────┘          └────────────┬──────────────┘
+#                   │ default route                        │
+#      ┌────────────┴──────────────┐          ┌────────────┴──────────────┐
+#      │ router-a 10.10.0.2        │          │ router-b 10.20.0.2        │
+#      │ MASQUERADE, no forwarding │          │ MASQUERADE, no forwarding │
+#      └────────────┬──────────────┘          └────────────┬──────────────┘
+#                   │ 172.30.0.11                          │ 172.30.0.12
+#      ═════════════╧══════════════════════════════════════╧═══════════════
+#            wan 172.30.0.0/24        │
+#                                     │ 172.30.0.10  "coordinator.lab"
+#                          ┌──────────┴───────────┐
+#                          │ headscale + caddy    │  443/tcp control + DERP
+#                          │ (../docker-compose)  │  3478/udp STUN
+#                          └──────────────────────┘
+#
+# The LANs have no masquerade of their own, so the ONLY path between node-a and
+# node-b is through their routers and the wan segment — there is no docker
+# bridge they share and no host NAT they can borrow. With run.sh --force-relay the
+# routers additionally drop every forwarded UDP packet except STUN, which
+# leaves DERP over TCP 443 as the only way the two nodes can exchange a byte.
+#
+# Project name `nufi-lab`, deliberately distinct from `nufi-box` (the P1 stack)
+# and `nufi-coordinator` (a real coordinator on the same machine) so the three
+# never share a container, network or volume.
+# =============================================================================
+name: nufi-lab
+
+# The coordinator is not re-declared here; it IS deploy/coordinator, layered
+# with the lab-only override next to this file. `project_directory: ..` makes
+# the included file's relative bind mounts (./config/headscale.yaml,
+# ./Caddyfile.rendered) resolve against deploy/coordinator as they do on a VPS;
+# `env_file` supplies MESH_SERVER_HOST/TLS_MODE for its interpolation, so the
+# lab never picks up a real coordinator's .env.
+include:
+  - path:
+      - ../docker-compose.yml
+      - ./coordinator.lab.yml
+    project_directory: ..
+    env_file: ./lab.env
+
+networks:
+  # The "internet": everything routable meets here, and nothing else does.
+  wan:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+  # Two homes, each with exactly one way out: its own router container.
+  #
+  # `enable_ip_masquerade: "false"` is what makes that true. Docker's default
+  # per-bridge MASQUERADE rule is the thing that would otherwise give these
+  # nodes a second, NAT-free-of-charge path to the world; without it the host
+  # will not translate their addresses, and docker's own inter-bridge isolation
+  # already stops them from reaching `wan` or each other directly. The only
+  # packets that leave are the ones router-a/router-b re-emit on their own
+  # WAN leg.
+  #
+  # NOT `internal: true`, which is the obvious spelling and does not work here:
+  # docker implements it as a host-side rule dropping any frame arriving on the
+  # bridge whose destination is outside the subnet. With br_netfilter loaded
+  # (it always is under docker) even container-to-container frames on that same
+  # bridge traverse the host FORWARD chain, so a node's packet to its own
+  # router's *WAN* address is dropped before the router ever sees it —
+  # confirmed on docker 29.4.2: with `internal: true` node-a could ping
+  # 10.10.0.2 (in-subnet) but not 172.30.0.11, the same interface's other
+  # address, and every join timed out.
+  lan-a:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: 10.10.0.0/24
+  lan-b:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: 10.20.0.0/24
+
+volumes:
+  node-a-state:
+  node-b-state:
+  box-caddy-data:
+  box-caddy-config:
+  box-shares:
+
+services:
+  # ---------------------------------------------------------------------------
+  # The two NAT routers. Same image, different LAN; see router/entrypoint.sh.
+  # ---------------------------------------------------------------------------
+  router-a:
+    build: ./router
+    image: nufi-lab-router:1
+    restart: unless-stopped
+    cap_add: [NET_ADMIN]
+    sysctls:
+      net.ipv4.ip_forward: "1"
+    environment:
+      LAN_SUBNET: 10.10.0.0/24
+      WAN_SUBNET: 172.30.0.0/24
+      WAN_GATEWAY: 172.30.0.1
+      STUN_PORT: "3478"
+      FORCE_RELAY: ${LAB_FORCE_RELAY:-0}
+    extra_hosts:
+      - "coordinator.lab:172.30.0.10"
+    healthcheck:
+      test: ["CMD", "test", "-f", "/run/router-ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 2s
+    networks:
+      wan:
+        ipv4_address: 172.30.0.11
+      lan-a:
+        ipv4_address: 10.10.0.2
+
+  router-b:
+    build: ./router
+    image: nufi-lab-router:1
+    restart: unless-stopped
+    cap_add: [NET_ADMIN]
+    sysctls:
+      net.ipv4.ip_forward: "1"
+    environment:
+      LAN_SUBNET: 10.20.0.0/24
+      WAN_SUBNET: 172.30.0.0/24
+      WAN_GATEWAY: 172.30.0.1
+      STUN_PORT: "3478"
+      FORCE_RELAY: ${LAB_FORCE_RELAY:-0}
+    extra_hosts:
+      - "coordinator.lab:172.30.0.10"
+    healthcheck:
+      test: ["CMD", "test", "-f", "/run/router-ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 2s
+    networks:
+      wan:
+        ipv4_address: 172.30.0.12
+      lan-b:
+        ipv4_address: 10.20.0.2
+
+  # ---------------------------------------------------------------------------
+  # node-a — the member's laptop on an LTE hotspot.
+  #
+  # TS_USERSPACE=false is not optional: in userspace mode tailscaled has no TUN
+  # device and the container's own curl/smbclient never leave through the mesh,
+  # which is precisely what this lab has to prove. Kernel mode needs
+  # /dev/net/tun and NET_ADMIN.
+  # ---------------------------------------------------------------------------
+  node-a:
+    image: tailscale/tailscale:v1.102.3
+    restart: unless-stopped
+    hostname: node-a
+    depends_on:
+      router-a:
+        condition: service_healthy
+    cap_add: [NET_ADMIN, NET_RAW]
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    entrypoint: ["/bin/sh", "/lab/node/entrypoint.sh"]
+    environment:
+      TS_LAB_NAME: node-a
+      LAB_DEFAULT_GW: 10.10.0.2
+      LAB_AUTHKEY_FILE: /lab/keys/node-a.key
+      TS_USERSPACE: "false"
+      TS_ACCEPT_DNS: "true"
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_ENABLE_HEALTH_CHECK: "true"
+      # Nothing in the lab can reach log.tailscale.com, and tailscaled spends a
+      # minute of every start proving it. --no-logs-no-support turns the client
+      # logger off outright.
+      TS_TAILSCALED_EXTRA_ARGS: "--no-logs-no-support"
+      # No --advertise-tags. headscale v0.29.3 rejects RequestTags outright for
+      # ANY pre-auth-key registration — hscontrol/state/state.go:1862, "Reject
+      # advertise-tags for PreAuthKey registrations early ... PreAuthKey nodes
+      # get their tags from the key itself, not from client requests" — with
+      # "requested tags [tag:member] are invalid or not permitted", no matter
+      # what tagOwners says. The tag comes from `preauthkeys create --tags`,
+      # which is also how `nufi-box invite` will mint a member's key.
+      TS_EXTRA_ARGS: "--login-server=https://coordinator.lab --hostname=node-a"
+      # Go's crypto/x509 reads SSL_CERT_FILE in place of the system bundle, so
+      # this is what makes tailscaled trust Caddy's internal CA. run.sh exports
+      # the root there before this service starts.
+      SSL_CERT_FILE: /lab/keys/coordinator-ca.crt
+    extra_hosts:
+      - "coordinator.lab:172.30.0.10"
+    volumes:
+      - ./node:/lab/node:ro
+      - ./keys:/lab/keys:ro
+      - node-a-state:/var/lib/tailscale
+    healthcheck:
+      test: ["CMD-SHELL", "tailscale ip -4 >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 5s
+    networks:
+      lan-a:
+        ipv4_address: 10.10.0.3
+
+  # ---------------------------------------------------------------------------
+  # node-b — the box at the office, behind its own NAT. Hostname `nufi`, so
+  # MagicDNS gives it nufi.box.lab, the name a member's join file will use.
+  # ---------------------------------------------------------------------------
+  node-b:
+    image: tailscale/tailscale:v1.102.3
+    restart: unless-stopped
+    hostname: nufi
+    depends_on:
+      router-b:
+        condition: service_healthy
+    cap_add: [NET_ADMIN, NET_RAW]
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    entrypoint: ["/bin/sh", "/lab/node/entrypoint.sh"]
+    environment:
+      TS_LAB_NAME: node-b
+      LAB_DEFAULT_GW: 10.20.0.2
+      LAB_AUTHKEY_FILE: /lab/keys/node-b.key
+      TS_USERSPACE: "false"
+      TS_ACCEPT_DNS: "true"
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_ENABLE_HEALTH_CHECK: "true"
+      TS_TAILSCALED_EXTRA_ARGS: "--no-logs-no-support"
+      TS_EXTRA_ARGS: "--login-server=https://coordinator.lab --hostname=nufi"
+      SSL_CERT_FILE: /lab/keys/coordinator-ca.crt
+    extra_hosts:
+      - "coordinator.lab:172.30.0.10"
+    volumes:
+      - ./node:/lab/node:ro
+      - ./keys:/lab/keys:ro
+      - node-b-state:/var/lib/tailscale
+    healthcheck:
+      test: ["CMD-SHELL", "tailscale ip -4 >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 5s
+    networks:
+      lan-b:
+        ipv4_address: 10.20.0.3
+
+  # ---------------------------------------------------------------------------
+  # What the member actually types. In node-a's network namespace, so its curl
+  # and smbclient use node-a's mesh address and routes; its resolver is pointed
+  # at MagicDNS by tools/entrypoint.sh.
+  # ---------------------------------------------------------------------------
+  tools-a:
+    build: ./tools
+    image: nufi-lab-tools:1
+    restart: unless-stopped
+    network_mode: "service:node-a"
+    depends_on:
+      node-a:
+        condition: service_healthy
+    environment:
+      LAB_SEARCH_DOMAIN: box.lab
+    volumes:
+      - ./keys:/lab/keys:ro
+      # The P2 acceptance scripts, so day-at-home.sh can run them from the
+      # member's side of the NAT instead of from the Mac (read-only: the
+      # member's laptop reads the repo, it does not write to it).
+      - ../../platform/scenarios:/lab/scenarios:ro
+    healthcheck:
+      test: ["CMD", "test", "-f", "/run/tools-ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 2s
+
+  # ---------------------------------------------------------------------------
+  # The box's two services, in node-b's namespace so they listen on the mesh
+  # address. Neither publishes a host port: 445 and 3080 belong to the P1 box
+  # on a developer Mac, and nothing outside the mesh needs to reach these.
+  # ---------------------------------------------------------------------------
+  box-caddy:
+    image: caddy:2.10.0-alpine
+    restart: unless-stopped
+    network_mode: "service:node-b"
+    depends_on:
+      node-b:
+        condition: service_healthy
+    environment:
+      BOX_MESH_HOST: nufi.box.lab
+    volumes:
+      - ./box/Caddyfile:/etc/caddy/Caddyfile:ro
+      - box-caddy-data:/data
+      - box-caddy-config:/config
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "--no-check-certificate", "https://localhost:3080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
+  box-samba:
+    # Same pin as deploy/box/docker-compose.linux.yml — the lab shares the
+    # box's SMB server, not a lookalike.
+    image: ghcr.io/servercontainers/samba:a3.24.1-s4.23.8-r0
+    restart: unless-stopped
+    network_mode: "service:node-b"
+    depends_on:
+      node-b:
+        condition: service_healthy
+    environment:
+      SAMBA_CONF_LOG_LEVEL: "1"
+      # Nothing in the lab browses for shares; the member's join file maps
+      # \\nufi\<dept> by name. Disabling the three discovery daemons keeps the
+      # container from broadcasting on a namespace it shares with tailscaled.
+      NETBIOS_DISABLE: "true"
+      AVAHI_DISABLE: "true"
+      WSDD2_DISABLE: "true"
+      ACCOUNT_lab: lab
+      UID_lab: "1000"
+      SAMBA_VOLUME_CONFIG_lab: "[lab]; path=/shares/lab; valid users = lab; guest ok = no; read only = no; browseable = yes"
+    volumes:
+      - box-shares:/shares
+    healthcheck:
+      test: ["CMD-SHELL", "smbclient -L 127.0.0.1 -N >/dev/null 2>&1 || nc -z 127.0.0.1 445"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 10s
