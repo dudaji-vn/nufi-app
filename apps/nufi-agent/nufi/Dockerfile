@@ -79,6 +79,12 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
+# NuFi-owned backend code, kept out of the vendored tree so `git subtree pull`
+# never has to reconcile it. /app on PYTHONPATH is what makes `import nufi.…`
+# resolve at run time; the one upstream file that reaches for it is
+# services/auth/service.py, allowlisted in nufi/check-fork-diff.sh.
+COPY nufi/__init__.py nufi/member_routines.py ./nufi/
+ENV PYTHONPATH=/app
 COPY --from=frontend /app/src/frontend/build ./src/backend/base/langflow/frontend
 
 # A build that succeeds is not evidence of a branded image. The rename is a

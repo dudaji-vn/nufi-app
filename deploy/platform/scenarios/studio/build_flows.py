@@ -173,11 +173,18 @@ class FlowBuilder:
             "id": f"reactflow__edge-{src}{enc(sh)}-{dst}{enc(th)}",
         })
 
-    def flow(self, name, description):
-        return {"name": name, "description": description, "is_component": False,
-                "endpoint_name": None,
-                "data": {"nodes": self.nodes, "edges": self.edges, "viewport":
-                         {"x": 0, "y": 0, "zoom": 0.75}}}
+    def flow(self, name, description, tags=None):
+        # `tags` is how the Studio image tells the box's four routines from the
+        # eight department scenarios: a member signing in over SSO is seeded with
+        # copies of what carries ROUTINE_TAG, and the scenarios are the admin's
+        # own work, not a member's to inherit.
+        payload = {"name": name, "description": description, "is_component": False,
+                   "endpoint_name": None,
+                   "data": {"nodes": self.nodes, "edges": self.edges, "viewport":
+                            {"x": 0, "y": 0, "zoom": 0.75}}}
+        if tags:
+            payload["tags"] = list(tags)
+        return payload
 
 
 # The board's own product introduction lists, per department, the first job each
@@ -346,9 +353,20 @@ SCENARIOS = [
 # read-only into Studio at /drives/<department>. `drive: None` means "whichever
 # department this box was installed with" -- the path is a tweak, so one flow
 # serves every department (`run_flows.py --only docqa --department hr`).
+ROUTINE_TAG = "nufi-routine"
+
+# A routine talks to Ollama directly, so LiteLLM's request_timeout: 600 is not
+# in its path, and the component's Timeout input is dropped by pydantic
+# (langchain-ollama 0.3.10's ChatOllama has no such field). num_predict is the
+# only ceiling there is. P2 watched a generation pass 40,000 tokens and outlive
+# the client that asked for it; 2048 is far above what any of the four have ever
+# needed to answer from a department drive, and twenty times under the runaway.
+ROUTINE_MAX_TOKENS = 2048
+
 RECIPES = [
     {
         "id": "docqa",
+        "tags": [ROUTINE_TAG],
         "name": "Routine · ask the department drive",
         "desc": "Answers a question from the department's own documents, and "
                 "names the file it answered from.",
@@ -365,6 +383,7 @@ RECIPES = [
     },
     {
         "id": "meeting",
+        "tags": [ROUTINE_TAG],
         "name": "Routine · meeting transcript to decisions",
         "desc": "Paste a transcript; get the decisions with an owner and a "
                 "deadline against each one.",
@@ -385,6 +404,7 @@ RECIPES = [
     },
     {
         "id": "helpdesk",
+        "tags": [ROUTINE_TAG],
         "name": "Routine · HR helpdesk from the policy",
         "desc": "Answers an employee question strictly from the HR drive, cites "
                 "the policy file, and refuses when the policy is silent.",
@@ -402,6 +422,7 @@ RECIPES = [
     },
     {
         "id": "weekly",
+        "tags": [ROUTINE_TAG],
         "name": "Routine · weekly report from the drive",
         "desc": "Drafts the department's weekly report from what is on its "
                 "drive, in the department's own tone, citing each file. Reads "
@@ -489,14 +510,15 @@ def build_recipe(catalog, spec, opts):
     b.link(passages, "text", ["Message"], prompt, "documents", ["Message"])
     llm = b.add("ChatOllama-llm", OLLAMA, "On-box model",
                 {"base_url": opts["ollama"], "model_name": opts["model"],
-                 "temperature": 0, "top_k": 1},
+                 "temperature": 0, "top_k": 1,
+                 "num_predict": ROUTINE_MAX_TOKENS},
                 selected_output="text_output", at=place["llm"])
     chat_out = b.add("ChatOutput-out", "ChatOutput", "Answer", at=place["out"])
     b.link(chat_in, "message", ["Message"], llm, "input_value", ["Message"])
     b.link(prompt, "prompt", ["Message"], llm, "system_message", ["Message"])
     b.link(llm, "text_output", ["Message"], chat_out, "input_value",
            ["Data", "JSON", "DataFrame", "Table", "Message"], "other")
-    return b.flow(spec["name"], spec["desc"]), dept, path
+    return b.flow(spec["name"], spec["desc"], spec.get("tags")), dept, path
 
 
 def build(catalog, spec, model, ollama):
@@ -518,9 +540,13 @@ def build(catalog, spec, model, ollama):
     # not enough: the notice-drafting flow came back with a Korean sentence
     # finished in Chinese ("정보资产安全及保密性을"). Greedy decoding removes the
     # sampling that was reaching for those tokens.
-    llm = b.add("ChatOllama-llm", OLLAMA, "On-box model",
-                {"base_url": ollama, "model_name": model,
-                 "temperature": 0, "top_k": 1},
+    # The cap is for what members run unattended. The department scenarios go
+    # through here too and are left alone: they are the admin's own, run
+    # interactively, and were tuned in P2.
+    llm_values = {"base_url": ollama, "model_name": model, "temperature": 0, "top_k": 1}
+    if ROUTINE_TAG in (spec.get("tags") or []):
+        llm_values["num_predict"] = ROUTINE_MAX_TOKENS
+    llm = b.add("ChatOllama-llm", OLLAMA, "On-box model", llm_values,
                 selected_output="text_output", at=place["llm"])
     chat_out = b.add("ChatOutput-out", "ChatOutput", "Answer", at=place["out"])
 
@@ -548,7 +574,7 @@ def build(catalog, spec, model, ollama):
         b.link(llm, "text_output", ["Message"], chat_out, "input_value",
                ["Data", "JSON", "DataFrame", "Table", "Message"], "other")
 
-    return b.flow(spec["name"], spec["desc"])
+    return b.flow(spec["name"], spec["desc"], spec.get("tags"))
 
 
 def plan(specs, opts):

@@ -162,6 +162,14 @@ class ChatOllamaComponent(LCModelComponent):
             advanced=True,
         ),
         IntInput(
+            name="num_predict",
+            display_name="Max Tokens to Generate",
+            info="Hard ceiling on one generation, in tokens. Unset means no ceiling: the "
+                 "model runs until it emits a stop token, which is how a NuFi box routine "
+                 "reached 40,000 tokens and outlived the client that asked. (Default: unset)",
+            advanced=True,
+        ),
+        IntInput(
             name="num_gpu",
             display_name="Number of GPUs",
             info="Number of GPUs to use for computation. (Default: 1 on macOS, 0 to disable)",
@@ -287,6 +295,7 @@ class ChatOllamaComponent(LCModelComponent):
             "mirostat_eta": mirostat_eta,
             "mirostat_tau": mirostat_tau,
             "num_ctx": self.num_ctx or None,
+            "num_predict": self.num_predict or None,
             "num_gpu": self.num_gpu or None,
             "num_thread": self.num_thread or None,
             "repeat_last_n": self.repeat_last_n or None,

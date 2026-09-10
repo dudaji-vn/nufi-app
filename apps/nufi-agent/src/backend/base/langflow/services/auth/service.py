@@ -449,9 +449,12 @@ class AuthService(BaseAuthService):
     async def _initialize_jit_user_defaults(user: User, db: AsyncSession) -> None:
         from langflow.initial_setup.setup import get_or_create_default_folder
         from langflow.services.deps import get_variable_service
+        from nufi.member_routines import seed_member_routines
 
         await get_or_create_default_folder(db, user.id)
         await get_variable_service().initialize_user_variables(user.id, db)
+        # The NuFi box's department routines; see nufi/README.md.
+        await seed_member_routines(db, user.id)
 
     async def api_key_security(
         self, query_param: str | None, header_param: str | None, db: AsyncSession | None = None

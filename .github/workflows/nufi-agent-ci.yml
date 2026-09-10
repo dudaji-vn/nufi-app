@@ -29,6 +29,24 @@ jobs:
       - name: Compare apps/nufi-agent against its vendored upstream tag
         run: ./apps/nufi-agent/nufi/check-fork-diff.sh
 
+  nufi-backend:
+    name: NuFi-owned backend tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # The only backend test this repository runs for the Studio fork. The
+      # rest of src/backend/tests is upstream's and is not ours to keep green;
+      # this file is ours, it guards the one upstream touchpoint the allowlist
+      # carries, and until it ran here it had only ever been green on one
+      # laptop.
+      - name: The backend tests this fork owns
+        working-directory: apps/nufi-agent
+        run: uv run pytest nufi -q
+
   locale-parity:
     name: ko.json stays a clean, declared subset of en.json
     runs-on: ubuntu-latest
