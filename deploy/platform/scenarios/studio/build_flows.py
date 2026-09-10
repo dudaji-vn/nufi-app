@@ -355,6 +355,14 @@ SCENARIOS = [
 # serves every department (`run_flows.py --only docqa --department hr`).
 ROUTINE_TAG = "nufi-routine"
 
+# A routine talks to Ollama directly, so LiteLLM's request_timeout: 600 is not
+# in its path, and the component's Timeout input is dropped by pydantic
+# (langchain-ollama 0.3.10's ChatOllama has no such field). num_predict is the
+# only ceiling there is. P2 watched a generation pass 40,000 tokens and outlive
+# the client that asked for it; 2048 is far above what any of the four have ever
+# needed to answer from a department drive, and twenty times under the runaway.
+ROUTINE_MAX_TOKENS = 2048
+
 RECIPES = [
     {
         "id": "docqa",
@@ -502,7 +510,8 @@ def build_recipe(catalog, spec, opts):
     b.link(passages, "text", ["Message"], prompt, "documents", ["Message"])
     llm = b.add("ChatOllama-llm", OLLAMA, "On-box model",
                 {"base_url": opts["ollama"], "model_name": opts["model"],
-                 "temperature": 0, "top_k": 1},
+                 "temperature": 0, "top_k": 1,
+                 "num_predict": ROUTINE_MAX_TOKENS},
                 selected_output="text_output", at=place["llm"])
     chat_out = b.add("ChatOutput-out", "ChatOutput", "Answer", at=place["out"])
     b.link(chat_in, "message", ["Message"], llm, "input_value", ["Message"])
@@ -531,9 +540,13 @@ def build(catalog, spec, model, ollama):
     # not enough: the notice-drafting flow came back with a Korean sentence
     # finished in Chinese ("정보资产安全及保密性을"). Greedy decoding removes the
     # sampling that was reaching for those tokens.
-    llm = b.add("ChatOllama-llm", OLLAMA, "On-box model",
-                {"base_url": ollama, "model_name": model,
-                 "temperature": 0, "top_k": 1},
+    # The cap is for what members run unattended. The department scenarios go
+    # through here too and are left alone: they are the admin's own, run
+    # interactively, and were tuned in P2.
+    llm_values = {"base_url": ollama, "model_name": model, "temperature": 0, "top_k": 1}
+    if ROUTINE_TAG in (spec.get("tags") or []):
+        llm_values["num_predict"] = ROUTINE_MAX_TOKENS
+    llm = b.add("ChatOllama-llm", OLLAMA, "On-box model", llm_values,
                 selected_output="text_output", at=place["llm"])
     chat_out = b.add("ChatOutput-out", "ChatOutput", "Answer", at=place["out"])
 

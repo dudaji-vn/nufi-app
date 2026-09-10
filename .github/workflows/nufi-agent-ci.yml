@@ -29,8 +29,8 @@ jobs:
       - name: Compare apps/nufi-agent against its vendored upstream tag
         run: ./apps/nufi-agent/nufi/check-fork-diff.sh
 
-  member-routines:
-    name: SSO members are seeded with the box's routines
+  nufi-backend:
+    name: NuFi-owned backend tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -43,9 +43,9 @@ jobs:
       # this file is ours, it guards the one upstream touchpoint the allowlist
       # carries, and until it ran here it had only ever been green on one
       # laptop.
-      - name: Seeding a member's routines
+      - name: The backend tests this fork owns
         working-directory: apps/nufi-agent
-        run: uv run pytest nufi/test_member_routines.py -q
+        run: uv run pytest nufi -q
 
   locale-parity:
     name: ko.json stays a clean, declared subset of en.json

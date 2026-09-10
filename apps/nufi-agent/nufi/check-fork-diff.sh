@@ -45,6 +45,15 @@ ALLOWLIST=(
   # kept to an import, a call and one comment, with the reasoning in
   # nufi/README.md rather than here.
   "src/backend/base/langflow/services/auth/service.py"
+  # One IntInput and one line in llm_params: num_predict, the only ceiling a
+  # routine can put on a generation. The component already exposes num_ctx,
+  # num_gpu, repeat_last_n and the mirostat trio, and ChatOllama has the field
+  # (verified against the pinned langchain-ollama 0.3.10) -- upstream simply
+  # never wired it. Its `timeout` input is dropped by pydantic, and the routines
+  # bypass the gateway, so without this a generation runs until the model
+  # unloads: P2 watched one pass 40,000 tokens and outlive its client. Worth
+  # sending upstream; until it lands there, it lives here.
+  "src/bundles/lfx-bundles/src/lfx_bundles/ollama/ollama.py"
   # One line moved: Korean sits directly after English in the language
   # picker, at the Korean team's request. A leaf constants file, so a resync
   # conflict here is a two-line merge rather than a rebase problem.

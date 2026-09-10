@@ -120,32 +120,27 @@ def test_weekly_reads_without_a_vector_store():
           edges.get(("Directory-drive", "df")) == "ParseDataFrame-passages")
 
 
-def test_nothing_in_a_recipe_can_bound_the_generation():
-    """Defect D2 of the P2 acceptance, pinned where it is decided.
+def test_the_recipe_can_now_bound_its_generation():
+    """Defect D2 of the P2 acceptance — closed here, where it was pinned.
 
     `weekly` never came back: 39,000 tokens on a 4,096-token context, still
-    climbing after its client had been killed, starving every other question
-    on the box. The cap belongs at this node — the recipe knows a weekly report
-    is a few hundred tokens — and it cannot be set here:
+    climbing after its client had been killed, starving every other question on
+    the box. This check used to assert the opposite of what it asserts now: that
+    the component exposed no cap at all, so that the day the Studio image grew
+    one, it would go red and say `build_recipe` should start setting it. That is
+    what happened, and this is the other side of it.
 
-      * the Ollama component the recipes use has no `num_predict` input, and
-        its build_model() never passes one, although langchain-ollama's
-        ChatOllama has the field (verified against the pinned 0.3.10);
-      * the one input that looks like a deadline, `timeout`, is dropped on the
-        floor: the component sets it in llm_params, and ChatOllama has no such
-        field, so pydantic ignores it and nothing reaches Ollama;
-      * and the recipes talk to Ollama directly, so LiteLLM's own
-        `request_timeout: 600` — the box's other bound — is not in this path.
-
-    So the fix is a change to the Studio image (apps/nufi-agent), outside the
-    box branch. When that component grows an output cap, this check fails and
-    build_recipe should start setting it.
+    The three facts behind the cap are unchanged and worth keeping written down:
+    the component's `timeout` input is dropped on the floor (it is set in
+    llm_params and ChatOllama has no such field, so pydantic ignores it); the
+    recipes talk to Ollama directly, so LiteLLM's `request_timeout: 600` is not
+    in their path; and `num_predict` is therefore the only ceiling that reaches
+    the model. `test_every_routine_bounds_its_own_generation` pins the value on
+    every routine; this one pins that the component still offers the knob.
     """
     template = CATALOG["ollama"][bf.OLLAMA]["template"]
-    caps = [k for k in template
-            if k in ("num_predict", "max_tokens", "max_output_tokens", "max_completion_tokens")]
-    check("the recipes' model component still exposes no output cap "
-          "(set one in build_recipe when it does)", not caps, caps)
+    check("the recipes' model component exposes an output cap",
+          "num_predict" in template, sorted(template)[:6])
     _flow, nodes, _e, _d, _p = graph("weekly")
     check("weekly's model node is the Ollama one, decoding greedily",
           nodes["ChatOllama-llm"]["data"]["type"] == bf.OLLAMA
@@ -245,6 +240,27 @@ def test_the_recipes_carry_the_routine_tag_and_the_scenarios_do_not():
     flow = _built(scenario)
     check(f"the {scenario['id']} scenario does not carry the routine tag",
           "nufi-routine" not in (flow.get("tags") or []), flow.get("tags"))
+
+
+def test_every_routine_bounds_its_own_generation():
+    # A routine talks to Ollama directly, so LiteLLM's request_timeout: 600 is
+    # not in its path, and the component's Timeout input is dropped by pydantic
+    # (langchain-ollama 0.3.10's ChatOllama has no such field). num_predict is
+    # the only ceiling left, and without one P2 watched a generation pass 40,000
+    # tokens and outlive the client that asked for it.
+    for rid in RECIPE_IDS:
+        flow = _built(spec(rid))
+        nodes = {n["id"]: n for n in flow["data"]["nodes"]}
+        check(f"{rid} caps its generation",
+              field(nodes, "ChatOllama-llm", "num_predict") == bf.ROUTINE_MAX_TOKENS,
+              field(nodes, "ChatOllama-llm", "num_predict"))
+    # The department scenarios are the admin's own, run interactively and tuned
+    # in P2; the cap is for what members run unattended.
+    scenario = bf.SCENARIOS[0]
+    nodes = {n["id"]: n for n in _built(scenario)["data"]["nodes"]}
+    check(f"the {scenario['id']} scenario is left uncapped",
+          not field(nodes, "ChatOllama-llm", "num_predict"),
+          field(nodes, "ChatOllama-llm", "num_predict"))
 
 
 def main():
