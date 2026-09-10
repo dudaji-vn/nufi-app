@@ -447,11 +447,17 @@ class AuthService(BaseAuthService):
 
     @staticmethod
     async def _initialize_jit_user_defaults(user: User, db: AsyncSession) -> None:
+        from langflow.initial_setup import nufi_routines
         from langflow.initial_setup.setup import get_or_create_default_folder
         from langflow.services.deps import get_variable_service
 
         await get_or_create_default_folder(db, user.id)
         await get_variable_service().initialize_user_variables(user.id, db)
+        # A member arriving over SSO owns nothing, and a flow is visible to the
+        # account that owns it, so without this the box's department routines are
+        # an admin-only feature. Copies, not a share: a member can adapt one to
+        # their department, and the ones they leave alone follow the box.
+        await nufi_routines.seed_member_routines(db, user.id)
 
     async def api_key_security(
         self, query_param: str | None, header_param: str | None, db: AsyncSession | None = None

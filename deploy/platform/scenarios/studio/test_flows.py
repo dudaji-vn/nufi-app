@@ -222,6 +222,31 @@ def test_dry_run_prints_the_recipes():
     check("--dry-run reaches no Studio", "http" in out and "Traceback" not in out)
 
 
+def _built(entry):
+    """Build one spec the way build_flows dispatches it: the drive-reading
+    routines go through build_recipe, everything else (the scenarios, and
+    `meeting`, which is a prompt) through build."""
+    if entry["kind"] in ("drive_rag", "drive_read"):
+        flow, _dept, _path = bf.build_recipe(CATALOG, entry, OPTS)
+        return flow
+    return bf.build(CATALOG, entry, OPTS["model"], OPTS["ollama"])
+
+
+def test_the_recipes_carry_the_routine_tag_and_the_scenarios_do_not():
+    # A member who signs in over SSO gets copies of the box's routines, and the
+    # seeder inside the Studio image finds the canonical set by this tag. Without
+    # it the four routines are indistinguishable from the eight department
+    # scenarios, which are the admin's own work and not a member's to inherit.
+    for rid in RECIPE_IDS:
+        flow = _built(spec(rid))
+        check(f"{rid} carries the routine tag",
+              "nufi-routine" in (flow.get("tags") or []), flow.get("tags"))
+    scenario = bf.SCENARIOS[0]
+    flow = _built(scenario)
+    check(f"the {scenario['id']} scenario does not carry the routine tag",
+          "nufi-routine" not in (flow.get("tags") or []), flow.get("tags"))
+
+
 def main():
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):

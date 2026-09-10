@@ -173,11 +173,18 @@ class FlowBuilder:
             "id": f"reactflow__edge-{src}{enc(sh)}-{dst}{enc(th)}",
         })
 
-    def flow(self, name, description):
-        return {"name": name, "description": description, "is_component": False,
-                "endpoint_name": None,
-                "data": {"nodes": self.nodes, "edges": self.edges, "viewport":
-                         {"x": 0, "y": 0, "zoom": 0.75}}}
+    def flow(self, name, description, tags=None):
+        # `tags` is how the Studio image tells the box's four routines from the
+        # eight department scenarios: a member signing in over SSO is seeded with
+        # copies of what carries ROUTINE_TAG, and the scenarios are the admin's
+        # own work, not a member's to inherit.
+        payload = {"name": name, "description": description, "is_component": False,
+                   "endpoint_name": None,
+                   "data": {"nodes": self.nodes, "edges": self.edges, "viewport":
+                            {"x": 0, "y": 0, "zoom": 0.75}}}
+        if tags:
+            payload["tags"] = list(tags)
+        return payload
 
 
 # The board's own product introduction lists, per department, the first job each
@@ -346,9 +353,12 @@ SCENARIOS = [
 # read-only into Studio at /drives/<department>. `drive: None` means "whichever
 # department this box was installed with" -- the path is a tweak, so one flow
 # serves every department (`run_flows.py --only docqa --department hr`).
+ROUTINE_TAG = "nufi-routine"
+
 RECIPES = [
     {
         "id": "docqa",
+        "tags": [ROUTINE_TAG],
         "name": "Routine · ask the department drive",
         "desc": "Answers a question from the department's own documents, and "
                 "names the file it answered from.",
@@ -365,6 +375,7 @@ RECIPES = [
     },
     {
         "id": "meeting",
+        "tags": [ROUTINE_TAG],
         "name": "Routine · meeting transcript to decisions",
         "desc": "Paste a transcript; get the decisions with an owner and a "
                 "deadline against each one.",
@@ -385,6 +396,7 @@ RECIPES = [
     },
     {
         "id": "helpdesk",
+        "tags": [ROUTINE_TAG],
         "name": "Routine · HR helpdesk from the policy",
         "desc": "Answers an employee question strictly from the HR drive, cites "
                 "the policy file, and refuses when the policy is silent.",
@@ -402,6 +414,7 @@ RECIPES = [
     },
     {
         "id": "weekly",
+        "tags": [ROUTINE_TAG],
         "name": "Routine · weekly report from the drive",
         "desc": "Drafts the department's weekly report from what is on its "
                 "drive, in the department's own tone, citing each file. Reads "
@@ -496,7 +509,7 @@ def build_recipe(catalog, spec, opts):
     b.link(prompt, "prompt", ["Message"], llm, "system_message", ["Message"])
     b.link(llm, "text_output", ["Message"], chat_out, "input_value",
            ["Data", "JSON", "DataFrame", "Table", "Message"], "other")
-    return b.flow(spec["name"], spec["desc"]), dept, path
+    return b.flow(spec["name"], spec["desc"], spec.get("tags")), dept, path
 
 
 def build(catalog, spec, model, ollama):
@@ -548,7 +561,7 @@ def build(catalog, spec, model, ollama):
         b.link(llm, "text_output", ["Message"], chat_out, "input_value",
                ["Data", "JSON", "DataFrame", "Table", "Message"], "other")
 
-    return b.flow(spec["name"], spec["desc"])
+    return b.flow(spec["name"], spec["desc"], spec.get("tags"))
 
 
 def plan(specs, opts):
