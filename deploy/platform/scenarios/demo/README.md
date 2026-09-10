@@ -20,6 +20,10 @@ Three files, three jobs, deliberately separate:
 
 Wording can be argued about without touching the machinery that verifies it.
 
+The other two cuts follow the same split against the same `stage.mjs`:
+`week.mjs` + `record-week.mjs` for the weekly report on the Studio scenarios,
+and `box-script.mjs` + `box.mjs` for [the box cut](#the-box-cut).
+
 The cut follows the frame the board set out: a department buys a PC and uses a
 **shared drive**, a **chat tool**, and an **AI agent** — plus the connector that
 has to be as easy as Tailscale. An earlier cut showed only RAG and the refusals;
@@ -71,6 +75,83 @@ Two production details worth knowing:
   motionless page for most of a minute.
 - **The overlay is `pointer-events:none`.** Without it the presentation layer
   swallows the click meant for the app, and the recording films itself.
+
+## The box cut
+
+`box.mjs` is the weekly report about the NuFi box: one command, and then a
+department's drive becoming its agent's knowledge. Same look, same rules, a
+different subject and a different live target — a real box on the LAN rather
+than the platform stack.
+
+```bash
+node box.mjs --lang en --out box-en.webm --box ../../../box
+node box.mjs --lang ko --out box-ko.webm --box ../../../box
+ffmpeg -i box-en.webm -c:v libx264 -pix_fmt yuv420p -crf 24 -movflags +faststart box-en.mp4
+```
+
+`--box` is the installed box's directory: the recorder reads its `.env` for the
+box name, its address, the admin login and the model, so nothing about the
+target is hard-coded here. `--ingest` names the ingest container
+(`nufi-box-nufi-ingest-1`), `--evidence` the acceptance JSON the closing card is
+computed from. `box-en.mp4` and `box-ko.mp4` run about four minutes each.
+
+### The shots
+
+| # | Shot | What it verifies before it is captioned |
+|---|---|---|
+| 1 | Title | — |
+| 2 | One command | Each of the four URLs the banner prints is fetched in a scratch tab; a non-2xx aborts the run |
+| 3 | The app | Login lands on `/c/…`, and the model badge on screen equals `NUFI_MODEL` from `.env` |
+| 4 | The acceptance question | The Legal agent is found by name through the app's own API; the answer is read back and the caption picked from it (leaked tool call, or the number) |
+| 5 | A question it answers | Up to three tries, counted on screen; the answer must contain both the year and the file name before the "cited" caption is used |
+| 6 | The drive | The document is written, `stat`ed, and `ls`-ed; the panel shows the real listing and byte count |
+| 7 | Ingest | `docker logs` is polled from the moment of the write until this file's own `added … (embedded=True)` line appears, and the elapsed seconds go on the card |
+| 8 | The new file's own question | Two tries; the "cited" caption needs the new file's name in the answer |
+| 9 | One login | The account menu's console tab must carry no password field |
+| 10 | Studio | Same — plus whether it has flows, which chooses between two captions |
+| 11 | What it scores | 8 / 32 / 10 is recomputed from `../evidence/box.json`, not typed |
+| 12 | Next | — |
+
+### Three things it deliberately does
+
+**The banner is the README's, not the installer's.** `install-box.sh --dry-run`
+prints the generated admin password, the JWT secrets and the LiteLLM master key.
+A recording that goes to a board cannot film that, so the card carries the
+banner as the box README documents it and proves it instead by asking all four
+of its URLs live, during the take.
+
+**It puts the drive back.** The cut writes one document into
+`data/drives/legal` on camera and removes it in a `finally`, then waits for the
+daemon's `removed …` line. The daemon deletes the server-side file and its
+embedding on that scan, so a recording leaves the Legal corpus exactly as it
+found it and the next acceptance run measures the same thing as the last one.
+
+**It resolves the box's name itself.** The installer announces `nufi.local` with
+a background `dns-sd` holding the address the machine had at install time, so a
+new DHCP lease leaves the name pointing at a stranger. Rather than reconfigure a
+box this recording is only supposed to use, Chromium is launched with
+`--host-resolver-rules=MAP <box host> <BOX_IP from .env>`. The name in the frame
+and the certificate behind it are both the box's own.
+
+### What it does not have
+
+**No Studio flow shot.** The box installs the four products but no flows —
+`build_flows.py --box` is P2 work and is not done — so Studio opens signed in
+and empty, and the caption says exactly that. When flows do ship with the
+installer the recorder already carries the other caption and will pick it.
+
+### What this box does, filmed rather than argued about
+
+The first question the acceptance run asks Legal (`자동연장 … 며칠 전까지`,
+answer 60) leaked its tool call as prose on every take. The second
+(`NDA … 몇 년간`) answered, cited `계약검토_표준조항.txt`, and the passage it
+retrieved is the one that also holds the 60. Retrieval is not the weak part.
+
+One thing worth knowing before relying on a drive: measured on this box on
+2026-09-09, the same NDA question answered 3/3 with one file on the Legal drive
+and leaked its tool call 5/5 with two. The recorder handles both — that is why
+shots 5 and 8 each carry a "cited" and a "did not" caption — but a 7B model
+choosing between two documents is a real limit, not a flaky take.
 
 ## Preconditions
 
