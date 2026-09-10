@@ -374,12 +374,18 @@ def _blank_linux_box(tmp, daemon="denied", groups="sun docker"):
     return bin_
 
 
-def _install_on_blank_linux(tmp, **env):
+def _install_on_blank_linux(tmp, extra_path="", **env):
     bin_ = _blank_linux_box(tmp, daemon=env.pop("daemon", "denied"),
                             groups=env.pop("groups", "sun docker"))
+    # NUFI_BOX_FAKE_NO_DOCKER states the premise instead of arranging it. Leaving
+    # docker out of this PATH did not state it: the PATH keeps /usr/bin, and a
+    # runner with /usr/bin/docker inverted the premise silently — see the note
+    # on has_docker in install-box.sh.
     e = dict(os.environ,
-             PATH=f"{bin_}:/usr/bin:/bin",
+             PATH=f"{bin_}:{extra_path}:/usr/bin:/bin" if extra_path
+                  else f"{bin_}:/usr/bin:/bin",
              NUFI_BOX_FAKE_OS="Linux",
+             NUFI_BOX_FAKE_NO_DOCKER="1",
              NUFI_BOX_ENV=str(pathlib.Path(tmp) / "absent.env"),
              **env)
     r = subprocess.run([BASH, str(BOX / "install-box.sh"), "--yes", "--registry", "10.0.0.5:5000"],
@@ -401,6 +407,28 @@ def test_fresh_docker_install_re_execs_inside_the_docker_group():
         assert "install-box.sh" in args
         assert "--yes" in args and "--registry 10.0.0.5:5000" in args
         assert "Writing .env" not in r.stdout, "re-exec must replace this run, not continue it"
+
+
+def test_a_docker_on_the_ambient_path_cannot_flip_the_blank_box_premise():
+    # The regression that took main red: these tests ran green on a Mac, where
+    # docker is in /opt/homebrew/bin and so outside the PATH they build, and red
+    # on ubuntu-latest, where it is in /usr/bin and inside it. There the
+    # installer found a working docker, skipped the install branch, never laid
+    # down the stub the rest of the scenario depends on, and ran on to the image
+    # pull. Put a working docker where a runner has one and the outcome must not
+    # move.
+    with tempfile.TemporaryDirectory() as tmp:
+        usr_like = pathlib.Path(tmp) / "usrlike"
+        usr_like.mkdir()
+        d = usr_like / "docker"
+        d.write_text("#!/bin/sh\nexit 0\n")   # a docker that answers, like a runner's
+        d.chmod(0o755)
+        r, sg_args = _install_on_blank_linux(tmp, extra_path=str(usr_like))
+        assert r.returncode == 0, r.stderr
+        assert "Installing Docker Engine" in r.stdout, \
+            "an ambient docker must not skip the install branch"
+        assert "Re-running inside the new docker group" in r.stdout
+        assert sg_args.exists(), "the installer never re-execed"
 
 
 def test_the_re_exec_happens_once_then_says_what_to_do():

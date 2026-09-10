@@ -91,6 +91,17 @@ cd "$BOX_HOME"
 
 have() { command -v "$1" >/dev/null 2>&1; }
 has_nvidia() { [ "${NUFI_BOX_FAKE_NVIDIA:-}" = "1" ] || have nvidia-smi; }
+# The blank-machine tests mean "Docker is not installed yet". They used to say
+# so by leaving docker out of the stub PATH they build — but that PATH keeps
+# /usr/bin, and a CI runner has /usr/bin/docker, so the premise inverted itself
+# there: the install branch below was skipped, the stub docker was never laid
+# down, and the run went on to the image pull. Green on a Mac (docker lives in
+# /opt/homebrew/bin), red on ubuntu-latest. The absence has to be stated, not
+# arranged — the same way NUFI_BOX_FAKE_NVIDIA states a GPU's presence.
+has_docker() {
+  if [ "${NUFI_BOX_FAKE_NO_DOCKER:-}" = "1" ]; then return 1; fi
+  have docker
+}
 
 # ---------- prerequisites ------------------------------------------------------
 say "Checking prerequisites on $OS/$ARCH"
@@ -100,12 +111,12 @@ if [ "$DRY" = 0 ]; then
   case "$OS" in
     Darwin)
       have brew || die "Homebrew is required on macOS: https://brew.sh"
-      have docker || { say "Installing OrbStack (Docker-compatible, lighter than Docker Desktop)"; brew install --cask orbstack; }
+      has_docker || { say "Installing OrbStack (Docker-compatible, lighter than Docker Desktop)"; brew install --cask orbstack; }
       have ollama || { say "Installing Ollama"; brew install ollama; }
       pgrep -x ollama >/dev/null 2>&1 || brew services start ollama || (ollama serve >/dev/null 2>&1 &)
       ;;
     Linux)
-      if ! have docker; then
+      if ! has_docker; then
         say "Installing Docker Engine"
         curl -fsSL https://get.docker.com | sh
         sudo usermod -aG docker "$USER" || true
