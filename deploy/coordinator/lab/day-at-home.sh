@@ -407,7 +407,15 @@ MESH_NAME="$(vm 'cd $HOME/deploy/box && grep "^BOX_MESH_HOST=" .env | cut -d= -f
 # whether or not `mesh up` did anything today. `online` is the coordinator's
 # view of a live connection, so that is what the row gates on; a registration
 # with nobody behind it is reported as its own failure rather than a pass.
-join_state="$(hs nodes list -o json 2>/dev/null | python3 -c '
+# headscale's view of "online" is a longpoll it has to notice, and mesh up has
+# only just returned; a second's lag here would turn a real join into a red row
+# and cost a VM boot to find out. Every other wait in this script is a bounded
+# loop, and so is this one.
+JOIN_TRIES=5
+JOIN_WAIT=2
+join_state=absent
+for _ in $(seq 1 "$JOIN_TRIES"); do
+  join_state="$(hs nodes list -o json 2>/dev/null | python3 -c '
 import json, sys
 want = sys.argv[1]
 state = "absent"
@@ -417,6 +425,9 @@ for n in (json.load(sys.stdin) or []):
         if state == "online":
             break
 print(state)' "$BOX_NODE" 2>/dev/null)"
+  [ "$join_state" = online ] && break
+  sleep "$JOIN_WAIT"
+done
 case "$join_state" in
   online)
     R_JOIN=PASS; ok "headscale lists the box as '$BOX_NODE' ($BOX_MESH_HOST) and online, joined in ${T_BOX}s" ;;
