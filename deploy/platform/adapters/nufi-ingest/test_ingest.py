@@ -515,6 +515,25 @@ def main():
             I.time.sleep = real_sleep
         assert slept == [40, 80, 160, 300], \
             f"consecutive failures must back off and cap, got {slept}"
+        # --- reconcile: the box's model changed under the agents ------------
+        # INFERENCE_MODEL is one of the installer's four questions, and changing
+        # it is the documented answer to "this model is too weak". The agents are
+        # found by name and never recreated, so they keep the model id they were
+        # created with, and the app then refuses every question with
+        # `The model "qwen2.5-7b" is not available for NuFi.` — watched on the
+        # live Mac box the moment it moved from 7b to 14b, with the chat header
+        # already showing the new model.
+        state4 = pathlib.Path(tmp) / "state4"
+        bigger = I.Config(**{**cfg2.__dict__, "model": "qwen2.5-14b",
+                             "state_dir": str(state4)})
+        mark = len(FakeApp.seen)
+        I.Ingester(bigger).scan()
+        sent = [json.loads(s[3]) for s in FakeApp.seen[mark:] if s[0] == "PATCH"]
+        assert any(p.get("model") == "qwen2.5-14b" for p in sent), (
+            "an agent must follow the box's model; otherwise changing "
+            f"INFERENCE_MODEL breaks every department. PATCHes sent: {sent}"
+        )
+
     print("PASS")
 
 
