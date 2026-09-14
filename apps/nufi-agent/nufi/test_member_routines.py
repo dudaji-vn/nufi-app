@@ -10,6 +10,7 @@ from uuid import uuid4
 
 import pytest
 from langflow.services.database.models.flow.model import Flow
+from langflow.services.database.models.folder.model import Folder
 from langflow.services.database.models.user.model import User
 from nufi.member_routines import ROUTINE_TAG, seed_member_routines
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -75,6 +76,91 @@ async def test_a_member_gets_a_copy_of_every_box_routine(async_session):
     mine = await _flows_of(async_session, member.id)
     assert sorted(f.name for f in mine) == sorted(NAMES), "the member should own one copy of each routine"
     assert all(f.id != uuid4() for f in mine)
+
+
+async def test_a_seeded_routine_lands_in_the_folder_studio_lists(async_session):
+    """A routine in no folder is a routine nobody sees.
+
+    Studio lists flows by project (a `folder` row), and the sidebar opens on the
+    member's default one. `_initialize_jit_user_defaults` creates that folder
+    immediately before calling this seeder, and the copies were written without
+    a `folder_id` -- so on a live box the member's four routines were in the
+    database, correct in every other respect, and the canvas said "Start
+    building" with an empty project. The feature shipped writing rows nobody
+    could open.
+
+    Every earlier test here asked whether the rows exist. None asked where.
+    """
+    owner = await _user(async_session, "box-admin", superuser=True)
+    member = await _user(async_session, "alice")
+    home = Folder(name="Starter Project", user_id=member.id)
+    async_session.add(home)
+    await async_session.commit()
+    await _canonical_routines(async_session, owner.id)
+
+    await seed_member_routines(async_session, member.id)
+
+    mine = await _flows_of(async_session, member.id)
+    assert mine, "nothing was seeded"
+    assert all(f.folder_id == home.id for f in mine), (
+        "every copy belongs in the member's own project, or Studio never lists it: "
+        f"{[(f.name, f.folder_id) for f in mine]}"
+    )
+
+
+async def test_the_next_sign_in_rehomes_routines_seeded_before_there_was_a_folder(async_session):
+    """A box that already ran the broken version has orphaned copies on it.
+
+    Those members do not get re-seeded -- they own a copy of every routine
+    already, so the "is there a copy?" branch never fires again. Their next
+    sign-in is the only chance to move what is already there into a project
+    they can open, so the refresh branch rehomes a copy that has no folder.
+    """
+    owner = await _user(async_session, "box-admin", superuser=True)
+    member = await _user(async_session, "alice")
+    await _canonical_routines(async_session, owner.id)
+
+    # Seeded by the version that did not know about folders.
+    await seed_member_routines(async_session, member.id)
+    for flow in await _flows_of(async_session, member.id):
+        flow.folder_id = None
+        async_session.add(flow)
+    await async_session.commit()
+
+    home = Folder(name="Starter Project", user_id=member.id)
+    async_session.add(home)
+    await async_session.commit()
+
+    await seed_member_routines(async_session, member.id)
+
+    mine = await _flows_of(async_session, member.id)
+    assert sorted(f.name for f in mine) == sorted(NAMES), "no copy should have been duplicated"
+    assert all(f.folder_id == home.id for f in mine), (
+        f"the orphans should have been rehomed: {[(f.name, f.folder_id) for f in mine]}"
+    )
+
+
+async def test_a_routine_the_member_moved_stays_where_they_put_it(async_session):
+    """Rehoming is for orphans only, never for a member's own filing."""
+    owner = await _user(async_session, "box-admin", superuser=True)
+    member = await _user(async_session, "alice")
+    home = Folder(name="Starter Project", user_id=member.id)
+    elsewhere = Folder(name="My routines", user_id=member.id)
+    async_session.add(home)
+    async_session.add(elsewhere)
+    await async_session.commit()
+    await _canonical_routines(async_session, owner.id)
+
+    await seed_member_routines(async_session, member.id)
+    moved = (await _flows_of(async_session, member.id))[0]
+    moved.folder_id = elsewhere.id
+    async_session.add(moved)
+    await async_session.commit()
+
+    await seed_member_routines(async_session, member.id)
+
+    again = {f.name: f for f in await _flows_of(async_session, member.id)}
+    assert again[moved.name].folder_id == elsewhere.id, "a routine the member filed was moved back"
 
 
 async def test_a_second_member_copies_the_box_not_the_first_member(async_session):

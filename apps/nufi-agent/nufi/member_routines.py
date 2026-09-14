@@ -20,6 +20,7 @@ from copy import deepcopy
 from uuid import UUID
 
 from langflow.services.database.models.flow.model import Flow
+from langflow.services.database.models.folder.model import Folder
 from langflow.services.database.models.user.model import User
 from sqlmodel import select
 
@@ -48,6 +49,21 @@ def _untouched(flow: Flow) -> bool:
     return seeded is not None and seeded == _fingerprint(flow.data)
 
 
+async def _home_folder_id(session, user_id: UUID):
+    """The project Studio opens on for this member, if there is one.
+
+    `_initialize_jit_user_defaults` calls `get_or_create_default_folder` just
+    before it calls this seeder, so by the time we run there is one. Picking the
+    oldest rather than asserting a name keeps this working for a member who has
+    since renamed it, and returning None on a member who somehow has no folder
+    leaves the old behaviour rather than failing their sign-in.
+    """
+    folders = (await session.exec(select(Folder).where(Folder.user_id == user_id))).all()
+    if not folders:
+        return None
+    return sorted(folders, key=lambda f: (f.id is None, str(f.id)))[0].id
+
+
 async def seed_member_routines(session, user_id: UUID) -> int:
     """Give ``user_id`` the box's routines. Returns how many were written.
 
@@ -56,7 +72,13 @@ async def seed_member_routines(session, user_id: UUID) -> int:
     second member inherit the first member's copies on top of the box's. That is
     not a cosmetic duplicate — ``flow`` is unique on (user_id, name), so the
     second sign-in would raise IntegrityError and fail outright.
+
+    The copies go into the member's own project. Studio lists flows by folder
+    and opens on the default one, so a copy with no ``folder_id`` is a row in
+    the database that the member never sees — which is how this shipped: four
+    correct routines, invisible, under a canvas that said "Start building".
     """
+    home = await _home_folder_id(session, user_id)
     stmt = select(Flow).join(User, User.id == Flow.user_id).where(User.is_superuser == True)  # noqa: E712
     rows = (await session.exec(stmt)).all()
     canonical = [f for f in rows if f.tags and ROUTINE_TAG in f.tags and f.user_id != user_id]
@@ -76,12 +98,19 @@ async def seed_member_routines(session, user_id: UUID) -> int:
                     tags=[ROUTINE_TAG, _seed_tag(source.data)],
                     data=deepcopy(source.data),
                     user_id=user_id,
+                    folder_id=home,
                 )
             )
             written += 1
         elif _untouched(copy):
             copy.data = deepcopy(source.data)
             copy.tags = [ROUTINE_TAG, _seed_tag(source.data)]
+            # Also repairs a copy seeded before this had a folder at all: an
+            # existing box has members whose routines are already orphaned, and
+            # their next sign-in is the only chance to put them somewhere
+            # visible. A copy the member has moved is left where they put it.
+            if copy.folder_id is None:
+                copy.folder_id = home
             session.add(copy)
             written += 1
 
