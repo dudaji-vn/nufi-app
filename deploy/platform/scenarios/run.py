@@ -25,6 +25,7 @@ import json
 import pathlib
 import sys
 import time
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -33,6 +34,16 @@ HERE = pathlib.Path(__file__).resolve().parent
 REFUSAL_MARKERS = ("모르", "모릅", "없습니다", "찾을 수 없", "확인할 수 없",
                    "확인되지 않", "알 수 없", "제공되지 않", "언급되지 않",
                    "포함되어 있지 않",
+                   # Korean negates two ways and this list only knew one of
+                   # them. "찾을 수 없" is 7b's phrasing; 14b declines just as
+                   # correctly with 못 ("찾지 못했습니다") and with other -지 않
+                   # verbs ("검색되지 않았습니다", "제공하지 않습니다"), and two
+                   # correct refusals were scored as the box inventing an
+                   # answer. Stems rather than whole sentences, so a tense or
+                   # a politeness level does not need its own entry.
+                   "찾지 못", "확인하지 못", "검색되지 않", "제공하지 않",
+                   "포함되지 않", "포함하고 있지 않", "나와 있지 않",
+                   "명시되어 있지 않", "언급하지 않",
                    # The model sometimes declines correctly but slips out of
                    # Korean mid-sentence. That is a different defect from
                    # inventing an answer, and conflating the two would hide the
@@ -43,13 +54,33 @@ REFUSAL_MARKERS = ("모르", "모릅", "없습니다", "찾을 수 없", "확인
 
 
 def drifted(text):
-    """True when a Korean answer contains Han characters Korean prose would not.
+    """True when a Korean answer contains letters Korean prose would not.
 
-    A crude but sufficient tell: the on-box model occasionally finishes a Korean
-    sentence in Chinese. For a product sold to Korean departments that is a
-    defect worth naming, even when the answer is otherwise right.
+    The on-box model sometimes slips out of Korean mid-answer. For a product
+    sold to Korean departments that is a defect worth naming, even when the
+    answer is otherwise right.
+
+    This used to test for Han characters, because Chinese was the only slip
+    anyone had seen -- and it was written while the box ran qwen2.5-7b. On
+    qwen2.5-14b the model slips into *Thai* instead, and whole Thai answers
+    were recorded as drifted=false by a detector that was looking somewhere
+    else. Naming the next script would only move the same hole along, so the
+    test is inverted: a correct answer here is written in Hangul, Latin,
+    digits and punctuation, and any other *letter* is the tell. Only letters
+    count -- currency signs, dashes, percent signs and the like are ordinary.
     """
-    return any("\u4e00" <= ch <= "\u9fff" for ch in text)
+    for ch in text:
+        if not unicodedata.category(ch).startswith("L"):
+            continue
+        if "\uac00" <= ch <= "\ud7a3" or "\u1100" <= ch <= "\u11ff" or "\u3130" <= ch <= "\u318f":
+            continue  # Hangul syllables, jamo, compatibility jamo
+        try:
+            if "LATIN" in unicodedata.name(ch):
+                continue
+        except ValueError:
+            pass  # unnamed letter: not Latin, not Hangul -- drift
+        return True
+    return False
 
 
 class Box:

@@ -291,6 +291,17 @@ class Chat:
                     return a["id"]
         return None
 
+    def model_of(self, agent_id):
+        """The model this agent actually answers with.
+
+        Not read from the box's .env: the question is not what the box serves
+        but what the agent is pinned to, and those two drift apart. The agent
+        listing carries neither model nor instructions, so this is a second
+        call per department.
+        """
+        with self.call("GET", f"/api/agents/{agent_id}") as r:
+            return json.load(r).get("model")
+
     def files_of(self, agent_id):
         with self.call("GET", f"/api/files/agent/{agent_id}") as r:
             return [f["filename"] for f in json.load(r)]
@@ -387,6 +398,7 @@ def main():
 
     drives = pathlib.Path(a.drives)
     out = {"base": a.base, "started": time.strftime("%Y-%m-%dT%H:%M:%S"), "departments": []}
+    models = set()
     failures = 0
     for d in depts:
         (drives / d["drive"]).mkdir(parents=True, exist_ok=True)
@@ -404,7 +416,11 @@ def main():
                     ingest_complete = True
                     break
             time.sleep(POLL_INTERVAL)
-        rec = {"id": d["id"], "agent": agent, "ingest_seconds": round(time.time() - t0, 1),
+        model = chat.model_of(agent) if agent else None
+        if model:
+            models.add(model)
+        rec = {"id": d["id"], "agent": agent, "model": model,
+               "ingest_seconds": round(time.time() - t0, 1),
                "ingest_complete": ingest_complete, "missing": [] if ingest_complete else missing,
                "questions": []}
         if not agent:
@@ -437,14 +453,24 @@ def main():
             print(f"[{'ok' if ok else 'FAIL'}] {d['id']}: {q['ask']} → {answer[:80]!r} {sources}")
         out["departments"].append(rec)
     out["failures"] = failures
+    # A list, not a string: departments whose agents point at different models
+    # are a fact about the run, and a score averaged over two models is not a
+    # score of either. Whoever reads this evidence -- the recording's closing
+    # card does -- can refuse it when this is not exactly one model.
+    out["models"] = sorted(models)
 
     outdir = pathlib.Path(a.out)
     outdir.mkdir(parents=True, exist_ok=True)
     (outdir / "box.json").write_text(json.dumps(out, ensure_ascii=False, indent=1))
     asked = sum(len(d["questions"]) for d in out["departments"])
+    # The model belongs in the headline, not only in the JSON: a score is a
+    # score *of a model*, and this file is what gets read months later.
+    drift = sum(1 for d in out["departments"] for q in d["questions"] if q["drifted"])
     md = [f"# Box acceptance — {out['started']} — {a.base}", "",
           f"**{asked - failures}/{asked} checks passed** "
-          f"({failures} failure{'' if failures == 1 else 's'}).", ""]
+          f"({failures} failure{'' if failures == 1 else 's'}) on "
+          f"**{', '.join(out['models']) or 'an unknown model'}**.", "",
+          f"{drift} of {asked} answers left Korean mid-sentence.", ""]
     for d in out["departments"]:
         md.append(f"## {d['id']} (agent {d['agent']}, ingested in {d['ingest_seconds']} s)")
         # An ingest gap is the reason a whole department's answers go wrong, so
