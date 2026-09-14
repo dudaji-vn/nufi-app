@@ -62,7 +62,7 @@ class Cron:
         if len(parts) != 5:
             raise ValueError(f"a cron expression has five fields, got {len(parts)}: {text!r}")
         sets = {}
-        for name, part in zip(FIELDS, parts):
+        for name, part in zip(FIELDS, parts, strict=True):
             try:
                 sets[name] = cls._field(part, *BOUNDS[name])
             except ValueError as exc:

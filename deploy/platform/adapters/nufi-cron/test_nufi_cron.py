@@ -287,8 +287,9 @@ class Running(unittest.TestCase):
         runner = self._runner()
         ok = runner.run_once(self._schedule(), at(2026, 9, 18, 17, 0))
         self.assertTrue(ok, "the run should have succeeded")
-        written = self.root / "drives" / "legal" / nufi_cron.OUTPUT_DIR / "weekly-report-2026-09-18.md"
-        self.assertTrue(written.exists(), sorted(p.name for p in (self.root / "drives" / "legal").rglob("*")))
+        legal = self.root / "drives" / "legal"
+        written = legal / nufi_cron.OUTPUT_DIR / "weekly-report-2026-09-18.md"
+        self.assertTrue(written.exists(), sorted(p.name for p in legal.rglob("*")))
         self.assertIn("근거: a.txt", written.read_text(encoding="utf-8"))
 
     def test_the_graph_it_posts_is_pointed_at_the_schedules_own_drive(self):
