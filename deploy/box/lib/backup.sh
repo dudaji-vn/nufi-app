@@ -54,8 +54,14 @@ backup_run() {
   # pg_dumpall, not pg_dump: the box has several databases (the app's, Studio's,
   # LiteLLM's) and a per-database dump is one more thing to remember to add when
   # a service is added. Roles come with it, which a restore needs.
+  # --clean, so the dump drops each database and role before recreating it.
+  # Without it a restore onto a box that still has its databases is a MERGE:
+  # psql reports "relation already exists" on every table, rows added since the
+  # backup survive, and the restore reports success. It only looks right when
+  # the box has not diverged from the backup -- which is exactly the case you
+  # are not restoring for.
   echo "  postgres"
-  run sh -c "$COMPOSE exec -T postgres pg_dumpall -U '${POSTGRES_USER:-nufi}' | gzip > '$_out/postgres.sql.gz'"
+  run sh -c "$COMPOSE exec -T postgres pg_dumpall --clean -U '${POSTGRES_USER:-nufi}' | gzip > '$_out/postgres.sql.gz'"
 
   # --username/--password/--authenticationDatabase, because the box's mongo is
   # not open: a bare `mongodump` answers "(Unauthorized) command listDatabases
@@ -147,7 +153,19 @@ backup_restore() {
   echo "Restoring $_from"
   run cp "$_from/env" "$ENVF"
   run sh -c "tar -xzf '$_from/ca.tar.gz' -C '${NUFI_DATA_DIR}'"
-  run sh -c "tar -xzf '$_from/drives.tar.gz' -C '${NUFI_DATA_DIR}'"
+  # Replace, not merge. `tar -xzf` over the existing tree writes what is in the
+  # archive and removes nothing, so a file added since the backup survives a
+  # "restore" -- which is the one thing a restore is supposed to undo. The old
+  # tree is moved aside rather than deleted: if this is the wrong backup, the
+  # department's documents are still in data/drives.previous.
+  echo "  drives (the tree as it was is kept in drives.previous)"
+  run sh -c "set -e; D='${NUFI_DATA_DIR}'; \
+    rm -rf \"\$D/drives.restoring\" \"\$D/drives.previous\"; \
+    mkdir -p \"\$D/drives.restoring\"; \
+    tar -xzf '$_from/drives.tar.gz' -C \"\$D/drives.restoring\"; \
+    if [ -d \"\$D/drives\" ]; then mv \"\$D/drives\" \"\$D/drives.previous\"; fi; \
+    mv \"\$D/drives.restoring/drives\" \"\$D/drives\"; \
+    rmdir \"\$D/drives.restoring\""
 
   echo "  stopping the box"
   run $COMPOSE down
@@ -158,6 +176,8 @@ backup_restore() {
     run sh -c "docker run --rm -v 'nufi-box_$_vol:/v' -v '$_from:/in:ro' alpine:3.20 sh -c 'rm -rf /v/* /v/..?* 2>/dev/null; tar -xzf /in/$_vol.tar.gz -C /v'"
   done
 
+  # Only the databases: nothing else may hold a connection while the dump drops
+  # and recreates them.
   echo "  starting the databases"
   run $COMPOSE up -d postgres mongodb
   run sh -c "until $COMPOSE exec -T postgres pg_isready -U '${POSTGRES_USER:-nufi}' >/dev/null 2>&1; do sleep 2; done"

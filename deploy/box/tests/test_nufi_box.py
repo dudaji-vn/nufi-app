@@ -540,7 +540,10 @@ def test_backup_takes_everything_a_restore_needs(tmp_path):
     assert r.returncode == 0, r.stderr
     out = r.stdout
     # The two the plan names...
-    assert "pg_dumpall" in out, out
+    # --clean, or a restore onto a box that still has its databases merges into
+    # them: "relation already exists" on every table, rows added since the
+    # backup surviving, and success reported.
+    assert "pg_dumpall --clean" in out, out
     assert "mongodump" in out, out
     # ...and the four it does not, each of which a restore cannot do without.
     # A box rebuilt from the dumps alone comes up with every account and agent

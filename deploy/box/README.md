@@ -383,6 +383,28 @@ secrets is a restore that half-works — the rows come back and the sessions,
 signed tokens and certificate do not match them. It asks you to type the box's
 name first, unless you pass `--yes`. Afterwards, `nufi-box doctor`.
 
+It **replaces** rather than merges. The drive tree is swapped, not extracted
+over — `tar -xzf` writes what is in the archive and removes nothing, so a file
+added since the backup would otherwise survive the one operation meant to undo
+it. The tree as it was is kept in `data/drives.previous`, so a restore from the
+wrong backup is not the end of the department's documents. The database dump is
+taken with `pg_dumpall --clean`, so it drops each database before recreating it.
+
+Two errors during a restore are expected and harmless:
+
+```
+ERROR:  current user cannot be dropped
+ERROR:  role "nufi" already exists
+```
+
+The dump tries to drop the role it is being restored as. Anything else — in
+particular `relation ... already exists` — means the databases were not dropped
+and you are looking at a merge, not a restore.
+
+One limit worth knowing: `mongorestore --drop` drops the collections that are
+*in the archive*. A collection created since the backup and absent from it
+survives.
+
 ### Running them on a clock
 
 A routine can also run on a schedule and leave its answer on the department's
