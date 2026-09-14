@@ -332,11 +332,48 @@ by name is kept, edits and all, and only what is missing is created.
 superuser the installer created (`ADMIN_EMAIL`, with the Studio password in
 `.env` as `STUDIO_SUPERUSER_PASSWORD`) — sign in at `https://<box>:7860`
 with those. A member who reaches Studio the usual way, through the app's
-Account → Agents → NUFI Studio, arrives as their own Studio account with
-their own empty workspace, and does **not** see these routines: Studio scopes
-flows to their owner and this build has no sharing between accounts. Copying
-a routine to a colleague today means exporting it from the canvas and
-importing it into theirs.
+Account → Agents → NUFI Studio, arrives as their own Studio account, and
+**gets their own copy of every routine** on the way in: Studio scopes flows to
+their owner, so each member is seeded rather than shared with. A copy a member
+edits is theirs and is never overwritten; one they have not touched follows the
+box when a routine is rebuilt.
+
+### Running them on a clock
+
+A routine can also run on a schedule and leave its answer on the department's
+drive. `data/schedules.ini` holds one section per scheduled routine, and the
+installer ships it with every section commented out — nothing runs until you
+uncomment one.
+
+```ini
+[legal-weekly]
+cron  = 0 17 * * 5
+flow  = Routine · weekly report from the drive
+drive = legal
+ask   = 이번 주 주간보고 초안을 써줘.
+out   = weekly-report-{date}.md
+```
+
+```sh
+nufi-box schedule list      # what that file means, and when each next fires
+nufi-box logs nufi-cron     # what happened when one ran
+```
+
+The answer lands in `data/drives/legal/_routines/weekly-report-2026-09-18.md`,
+inside the department's own shared folder. **Nothing under `_routines/` is ever
+embedded**: without that rule last week's report becomes a source this week's is
+drafted from, and the routine ends up citing itself. That is not hypothetical —
+it was watched happening on this box before the rule existed.
+
+A run that outstays `NUFI_CRON_RUN_TIMEOUT` (15 minutes by default) is
+**cancelled at Studio**, not merely abandoned: an abandoned run keeps generating
+and holds the box's one model against every other question. A schedule that is
+still running when its next turn comes round is skipped. Nothing is caught up —
+a box that was off over a scheduled minute has missed that report, and firing
+five hours of them at boot is worse than the gap.
+
+Details and the reasoning:
+[`deploy/platform/adapters/nufi-cron/README.md`](../platform/adapters/nufi-cron/README.md).
 
 ## 6. Inference profiles
 

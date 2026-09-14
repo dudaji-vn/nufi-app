@@ -6,6 +6,7 @@ on:
     paths:
       - 'deploy/platform/litellm/**'
       - 'deploy/platform/adapters/nufi-ingest/**'
+      - 'deploy/platform/adapters/nufi-cron/**'
       - 'apps/nufi-agent/**'
       - '.github/workflows/box-images.yml'
     tags: ['nufi-box-v*']
@@ -33,6 +34,10 @@ jobs:
           - name: nufi-ingest
             context: deploy/platform/adapters/nufi-ingest
             file: deploy/platform/adapters/nufi-ingest/Dockerfile
+            tagprefix: ''
+          - name: nufi-cron
+            context: deploy/platform/adapters/nufi-cron
+            file: deploy/platform/adapters/nufi-cron/Dockerfile
             tagprefix: ''
           - name: nufi-studio
             context: apps/nufi-agent

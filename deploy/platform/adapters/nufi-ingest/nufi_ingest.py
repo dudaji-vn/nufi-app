@@ -39,6 +39,13 @@ UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
       "Chrome/131.0.0.0 Safari/537.36")
 SUPPORTED = {".pdf", ".docx", ".pptx", ".xlsx", ".txt", ".md", ".csv", ".json", ".html", ".htm"}
 IGNORED_PREFIXES = (".", "~$", "._")
+# Where nufi-cron writes a scheduled routine's answer, inside the department's
+# own drive so people find their report where they already look. Never embedded:
+# last week's report would become a source this week's is drafted from, and the
+# routine would cite itself a little more confidently each week. A dot-name
+# would have been ignored for free, and is not used -- a folder hidden in Finder
+# and over Samba is a report nobody can see.
+ROUTINE_OUTPUT_DIR = "_routines"
 UPLOADS_PER_WINDOW = 40          # app default is 50 per 15 min per user
 WINDOW_SECONDS = 15 * 60
 
@@ -459,7 +466,10 @@ class Ingester:
             for p in sorted(dept_dir.rglob("*")):
                 if not p.is_file() or p.suffix.lower() not in SUPPORTED:
                     continue
-                if any(part.startswith(IGNORED_PREFIXES) for part in p.relative_to(root).parts):
+                parts = p.relative_to(root).parts
+                if any(part.startswith(IGNORED_PREFIXES) for part in parts):
+                    continue
+                if ROUTINE_OUTPUT_DIR in parts:
                     continue
                 st = p.stat()
                 rel = p.relative_to(root).as_posix()
