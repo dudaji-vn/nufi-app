@@ -537,5 +537,37 @@ def main():
     print("PASS")
 
 
+def test_a_routine_writing_to_the_drive_is_not_ingested():
+    """The box's own scheduled reports must not become its knowledge.
+
+    nufi-cron writes a routine's answer into `<drive>/_routines/`. That folder
+    is inside the department's drive on purpose -- people find their weekly
+    report where they already look -- and IGNORED_PREFIXES (".", "~$", "._")
+    does not cover it. Embedded, last week's report becomes a source the next
+    week's report is drafted from: a routine citing itself, a little more
+    confidently each week, with no file on the drive to blame.
+
+    Naming the folder `.routines` would have been free and is not what shipped:
+    a dot-folder is hidden in Finder and over Samba, and a report nobody can
+    see is not a report.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        drives = pathlib.Path(tmp) / "drives"
+        (drives / "legal" / I.ROUTINE_OUTPUT_DIR).mkdir(parents=True)
+        (drives / "legal" / "policy.txt").write_text("자동연장 60일")
+        (drives / "legal" / I.ROUTINE_OUTPUT_DIR / "weekly-report-2026-09-18.md").write_text(
+            "이번 주 한 일: ... (근거: policy.txt)")
+        cfg = I.Config(app_url="http://unused", email="e", password="p", jwt_secret=SECRET,
+                       drives_dir=str(drives), state_dir=str(pathlib.Path(tmp) / "state"),
+                       model="m", provider="NuFi", interval=0, share="team", settle_scans=1)
+        listing = I.Ingester(cfg)._listing()
+
+    assert "legal/policy.txt" in listing, "the department's own document is still ingested"
+    assert not [rel for rel in listing if I.ROUTINE_OUTPUT_DIR in rel], \
+        f"a routine's own output was picked up for embedding: {sorted(listing)}"
+    print("PASS: a routine's output on the drive is not embedded back into the drive")
+
+
 if __name__ == "__main__":
     main()
+    test_a_routine_writing_to_the_drive_is_not_ingested()

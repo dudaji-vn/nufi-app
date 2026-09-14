@@ -490,6 +490,31 @@ else
   sed -e "s|@NUFI_MODEL@|$NUFI_MODEL|" -e "s|@INFERENCE_MODEL@|$INFERENCE_MODEL|" litellm/config.yaml.tmpl > litellm/config.yaml
 fi
 for d in $(printf '%s' "$DEPARTMENTS" | tr ',' ' '); do run mkdir -p "$NUFI_DATA_DIR/drives/$d"; done
+
+# The scheduler's config, shipped as a commented example. Written only when it
+# is absent, so re-running the installer never wipes the schedules a department
+# has come to depend on. Every section is commented out: a box that starts
+# writing reports the day it is installed is a box nobody asked.
+if [ ! -f "$NUFI_DATA_DIR/schedules.ini" ]; then
+  run sh -c "cat > '$NUFI_DATA_DIR/schedules.ini'" <<'SCHEDULES'
+# Scheduled department routines, read by nufi-cron every 20 seconds.
+# Nothing here runs until a section is uncommented.
+#
+#   nufi-box schedule list      what this file means, and when each next fires
+#   nufi-box logs nufi-cron     what happened when one ran
+#
+# The answer is written to  data/drives/<drive>/_routines/<out>  and is never
+# embedded back into the drive, so a report cannot become a source for the next
+# one.
+#
+# [legal-weekly]
+# cron  = 0 17 * * 5
+# flow  = Routine · weekly report from the drive
+# drive = legal
+# ask   = 이번 주 주간보고 초안을 써줘.
+# out   = weekly-report-{date}.md
+SCHEDULES
+fi
 # …and owned by the uid the Samba account runs as, or a member cannot write to
 # them (see NUFI_SMB_UID above). A drive this run just created already is; this
 # is for the two cases where it is not — a box installed as root, whose drives

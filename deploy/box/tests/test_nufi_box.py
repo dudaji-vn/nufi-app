@@ -517,3 +517,111 @@ def test_mesh_up_does_not_pass_the_mesh_file_twice(tmp_path):
     line = next(l for l in r.stdout.splitlines() if "up -d tailscale" in l)
     assert line.count("docker-compose.mesh.yml") == 1, line
     assert line.count("--profile mesh") == 1, line
+
+
+# --- backup and restore ---------------------------------------------------
+#
+# Dry run, so these assert the plan rather than the effect: the same trick the
+# drive and mesh tests use. What is worth pinning is what a restore would NEED
+# and an eye would not miss -- two database dumps look like a complete backup
+# right up to the moment someone tries to bring a box back from them.
+
+def _env(tmp_path, **extra):
+    envf = tmp_path / ".env"
+    body = {"NUFI_DATA_DIR": str(tmp_path), "BOX_NAME": "nufi", "BOX_HOST": "nufi.local",
+            "POSTGRES_USER": "nufi", "NUFI_MODEL": "qwen2.5-14b"}
+    body.update(extra)
+    envf.write_text("".join(f"{k}={v}\n" for k, v in body.items()))
+    return envf
+
+
+def test_backup_takes_everything_a_restore_needs(tmp_path):
+    r = cli("backup", NUFI_BOX_ENV=str(_env(tmp_path)))
+    assert r.returncode == 0, r.stderr
+    out = r.stdout
+    # The two the plan names...
+    assert "pg_dumpall" in out, out
+    assert "mongodump" in out, out
+    # ...and the four it does not, each of which a restore cannot do without.
+    # A box rebuilt from the dumps alone comes up with every account and agent
+    # and no documents, on new secrets, behind a certificate no laptop trusts.
+    assert "drives.tar.gz" in out, "the department's own documents"
+    assert "app-uploads.tar.gz" in out, "files people attached in the app"
+    assert "ca.tar.gz" in out, "the certificate published to laptops"
+    # The box's real authority is the root key inside caddy-data; the file on
+    # the host is only the copy handed out. Restore without the volume and the
+    # box comes back serving a certificate nothing trusts.
+    assert "caddy-data.tar.gz" in out, "the certificate authority itself"
+    assert "ingest-state.tar.gz" in out, "what has already been uploaded, or it all goes up twice"
+    assert "/env" in out, "the secrets every one of those is keyed to"
+
+
+def test_backup_leaves_generated_reports_out_of_the_archive(tmp_path):
+    # _routines holds what the scheduler wrote; the box can write them again,
+    # and keeping them would grow every backup for ever.
+    r = cli("backup", NUFI_BOX_ENV=str(_env(tmp_path)))
+    assert "--exclude '_routines'" in r.stdout, r.stdout
+
+
+def test_backup_prunes_old_runs_and_keeps_the_newest(tmp_path):
+    backups = tmp_path / "backup"
+    backups.mkdir()
+    for day in range(1, 10):
+        (backups / f"2026090{day}-000000").mkdir()
+    (backups / "not-a-backup").mkdir()
+    r = cli("backup", "--keep", "3", NUFI_BOX_ENV=str(_env(tmp_path)))
+    assert r.returncode == 0, r.stderr
+    pruned = {line.split()[-1] for line in r.stdout.splitlines() if line.strip().startswith("pruning ")}
+    assert pruned == {f"2026090{d}-000000" for d in range(1, 7)}, pruned
+    assert "not-a-backup" not in r.stdout, "only this command's own directories are pruned"
+
+
+def test_restore_refuses_a_directory_that_is_not_a_backup(tmp_path):
+    (tmp_path / "junk").mkdir()
+    r = cli("restore", str(tmp_path / "junk"), "--yes", NUFI_BOX_ENV=str(_env(tmp_path)))
+    assert r.returncode != 0
+    assert "MANIFEST" in r.stderr
+
+
+def test_restore_puts_the_secrets_back_before_it_starts_anything(tmp_path):
+    """Order is the whole correctness of a restore.
+
+    Data restored into a stack already running on freshly generated secrets is
+    a restore that half-works: the rows come back and the sessions, signed
+    tokens and certificate do not match them.
+    """
+    src = tmp_path / "20260914-000000"
+    src.mkdir()
+    (src / "MANIFEST").write_text("box: nufi\n")
+    (src / "env").write_text("BOX_NAME=nufi\n")
+    r = cli("restore", str(src), "--yes", NUFI_BOX_ENV=str(_env(tmp_path)))
+    assert r.returncode == 0, r.stderr
+    plan = r.stdout
+    assert plan.index("/env") < plan.index("compose") and plan.index("/env") < plan.index("up -d"), plan
+
+
+def test_status_says_when_the_last_backup_was(tmp_path):
+    envf = _env(tmp_path)
+    r = cli("status", NUFI_BOX_ENV=str(envf))
+    assert "Last backup: never" in r.stdout, r.stdout
+    (tmp_path / "backup" / "20260914-033000").mkdir(parents=True)
+    r = cli("status", NUFI_BOX_ENV=str(envf))
+    assert "Last backup: 20260914-033000" in r.stdout, r.stdout
+
+
+def test_nightly_installs_a_host_timer_not_a_container(tmp_path):
+    """The box's own scheduler runs Studio flows, and a container that could
+    back the box up would need the docker socket -- the whole host, handed to
+    anything that gets into that container. The timer belongs to the host."""
+    env = str(_env(tmp_path))
+    mac = cli("backup", "--install-nightly", "--at", "02:15",
+              NUFI_BOX_ENV=env, NUFI_BOX_FAKE_OS="Darwin")
+    assert mac.returncode == 0, mac.stderr
+    assert "launchctl load" in mac.stdout and "LaunchAgents" in mac.stdout
+    assert "<integer>02</integer>" in mac.stdout and "<integer>15</integer>" in mac.stdout
+
+    linux = cli("backup", "--install-nightly", "--at", "02:15",
+                NUFI_BOX_ENV=env, NUFI_BOX_FAKE_OS="Linux")
+    assert linux.returncode == 0, linux.stderr
+    assert "nufi-box-backup.timer" in linux.stdout
+    assert "OnCalendar=*-*-* 02:15:00" in linux.stdout

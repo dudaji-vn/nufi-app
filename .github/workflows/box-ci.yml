@@ -8,6 +8,7 @@ on:
       - 'deploy/coordinator/**'
       - 'deploy/platform/scenarios/**'
       - 'deploy/platform/adapters/nufi-ingest/**'
+      - 'deploy/platform/adapters/nufi-cron/**'
       - '.github/workflows/box-ci.yml'
   pull_request:
     paths:
@@ -56,6 +57,8 @@ jobs:
       # the box is the only thing that runs them -- so they run here.
       - name: nufi-ingest daemon
         run: python3 deploy/platform/adapters/nufi-ingest/test_ingest.py
+      - name: nufi-cron scheduler
+        run: python3 deploy/platform/adapters/nufi-cron/test_nufi_cron.py
       - name: Box acceptance runner
         run: python3 deploy/platform/scenarios/test_run_box.py
       # Same house style, same paths filter -- and it had never run anywhere.

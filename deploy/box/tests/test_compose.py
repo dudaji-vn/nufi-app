@@ -19,7 +19,8 @@ LINUX = {"ollama", "samba"}
 # ${NUFI_REGISTRY:-ghcr.io/dudaji-vn}/<name>:<tag>. Everything else (caddy,
 # postgres, mongodb, rag_api, and the linux-profile ollama/samba, plus any
 # future tailscale sidecar) is a third-party image and must be untouched.
-NUFI_SERVICES = {"litellm-proxy", "librechat", "console", "admin-panel", "studio", "nufi-ingest"}
+NUFI_SERVICES = {"litellm-proxy", "librechat", "console", "admin-panel", "studio",
+                 "nufi-ingest", "nufi-cron"}
 
 
 def render(*files, profiles=(), **extra_env):
@@ -198,7 +199,15 @@ def test_the_samba_share_is_not_widened_to_reach_the_drives():
     cfg = render("docker-compose.yml", "docker-compose.linux.yml",
                  profiles=("linux",), NUFI_SMB_UID="501", NUFI_SMB_GID="988")
     svc = cfg["services"]["samba"]
-    env = json.dumps(svc["environment"])
+    # Only the keys that configure samba. This used to json.dumps() the whole
+    # environment, which compose fills with every variable in .env -- including
+    # generated passwords. A box whose MONGO_PASSWORD happened to contain the
+    # four characters "0777" failed this test, and the failure said the share
+    # had been widened. A check that goes red on a coin toss teaches people to
+    # re-run it until it is green, which is worse than not having it.
+    shares = {k: v for k, v in svc["environment"].items()
+              if k.startswith(("SAMBA_", "ACCOUNT_"))}
+    env = json.dumps(shares)
     assert "force user" not in env and "guest ok = yes" not in env
     assert "0777" not in env and "create mask" not in env
     mounts = {v["target"] for v in svc["volumes"]}

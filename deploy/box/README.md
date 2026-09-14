@@ -332,11 +332,93 @@ by name is kept, edits and all, and only what is missing is created.
 superuser the installer created (`ADMIN_EMAIL`, with the Studio password in
 `.env` as `STUDIO_SUPERUSER_PASSWORD`) — sign in at `https://<box>:7860`
 with those. A member who reaches Studio the usual way, through the app's
-Account → Agents → NUFI Studio, arrives as their own Studio account with
-their own empty workspace, and does **not** see these routines: Studio scopes
-flows to their owner and this build has no sharing between accounts. Copying
-a routine to a colleague today means exporting it from the canvas and
-importing it into theirs.
+Account → Agents → NUFI Studio, arrives as their own Studio account, and
+**gets their own copy of every routine** on the way in: Studio scopes flows to
+their owner, so each member is seeded rather than shared with. A copy a member
+edits is theirs and is never overwritten; one they have not touched follows the
+box when a routine is rebuilt.
+
+## Backups
+
+```sh
+nufi-box backup                       # into data/backup/<timestamp>/
+nufi-box backup --to /Volumes/USB     # or onto a disk you carry away
+nufi-box backup --install-nightly --at 03:30
+nufi-box restore data/backup/20260914-033000
+```
+
+`nufi-box status` says when the last one was, or that there has never been one.
+
+**What it holds, and why each piece is there.** Two database dumps look like a
+complete backup right up to the moment somebody tries to bring a box back from
+them, so the backup is decided by what a restore needs:
+
+| | |
+|---|---|
+| `postgres.sql.gz` | `pg_dumpall` — the app, Studio and LiteLLM databases, and the roles |
+| `mongodb.archive.gz` | the app's own data: accounts, conversations, agents |
+| `drives.tar.gz` | **the department's documents** — the one thing on the box nobody else has a copy of. `_routines/` is left out: the box can write those reports again. |
+| `app-uploads.tar.gz` | files people attached in the app |
+| `caddy-data.tar.gz` | **the certificate authority itself.** `data/nufi-box-ca.crt` is only the copy handed to laptops; the root key lives in this volume. Restore without it and the box comes back up perfectly, serving a certificate every laptop that was told to trust it now rejects. |
+| `ingest-state.tar.gz` | what the watcher has already uploaded. Without it, every document on every drive goes up again and each agent ends up holding two of everything. |
+| `ca.tar.gz`, `env` | the published certificate, and the secrets all of the above are keyed to |
+
+**A backup holds the box's secrets in clear.** `env` is the box's `.env` —
+database passwords, JWT secrets, the LiteLLM master key. The directory is
+`0700` and the file `0600`, and a copy on a USB disk in a drawer is the box's
+keys in a drawer. Treat it the way you would treat the box.
+
+**Retention.** The newest seven are kept and older ones pruned (`--keep N`), so
+a box cannot fill its own disk with its own backups. Only the timestamped
+directories this command writes are ever considered for pruning.
+
+**Nightly** installs a launchd job (macOS) or a systemd user timer (Linux), not
+a container. A container that could back the box up would need the docker
+socket, which is the whole host handed to anything that gets into that
+container. `--remove-nightly` takes it away again.
+
+**Restoring** puts `.env` and the certificate authority back *before* it starts
+anything: data restored into a stack already running on freshly generated
+secrets is a restore that half-works — the rows come back and the sessions,
+signed tokens and certificate do not match them. It asks you to type the box's
+name first, unless you pass `--yes`. Afterwards, `nufi-box doctor`.
+
+### Running them on a clock
+
+A routine can also run on a schedule and leave its answer on the department's
+drive. `data/schedules.ini` holds one section per scheduled routine, and the
+installer ships it with every section commented out — nothing runs until you
+uncomment one.
+
+```ini
+[legal-weekly]
+cron  = 0 17 * * 5
+flow  = Routine · weekly report from the drive
+drive = legal
+ask   = 이번 주 주간보고 초안을 써줘.
+out   = weekly-report-{date}.md
+```
+
+```sh
+nufi-box schedule list      # what that file means, and when each next fires
+nufi-box logs nufi-cron     # what happened when one ran
+```
+
+The answer lands in `data/drives/legal/_routines/weekly-report-2026-09-18.md`,
+inside the department's own shared folder. **Nothing under `_routines/` is ever
+embedded**: without that rule last week's report becomes a source this week's is
+drafted from, and the routine ends up citing itself. That is not hypothetical —
+it was watched happening on this box before the rule existed.
+
+A run that outstays `NUFI_CRON_RUN_TIMEOUT` (15 minutes by default) is
+**cancelled at Studio**, not merely abandoned: an abandoned run keeps generating
+and holds the box's one model against every other question. A schedule that is
+still running when its next turn comes round is skipped. Nothing is caught up —
+a box that was off over a scheduled minute has missed that report, and firing
+five hours of them at boot is worse than the gap.
+
+Details and the reasoning:
+[`deploy/platform/adapters/nufi-cron/README.md`](../platform/adapters/nufi-cron/README.md).
 
 ## 6. Inference profiles
 

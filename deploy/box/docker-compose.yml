@@ -12,6 +12,7 @@ volumes:
   app-uploads:
   studio-data:
   ingest-state:
+  cron-state:
 
 services:
   # ---------------------------------------------------------------------------
@@ -349,4 +350,41 @@ services:
       timeout: 5s
       retries: 3
       start_period: 60s
+    networks: [box]
+
+  # Scheduled department routines. Inert until data/schedules.ini exists, so an
+  # existing box gains a stopped-empty scheduler and behaves exactly as before.
+  nufi-cron:
+    image: ${NUFI_REGISTRY:-ghcr.io/dudaji-vn}/nufi-cron:${NUFI_CRON_TAG:-main}
+    restart: unless-stopped
+    depends_on:
+      studio:
+        condition: service_healthy
+    environment:
+      NUFI_STUDIO_URL: http://studio:7860
+      STUDIO_API_KEY: ${STUDIO_API_KEY}
+      NUFI_DRIVES_DIR: /drives
+      NUFI_STATE_DIR: /state
+      NUFI_SCHEDULES: /config/schedules.ini
+      NUFI_CRON_TICK_INTERVAL: "20"
+      NUFI_CRON_RUN_TIMEOUT: "900"
+    volumes:
+      # Read-write, unlike nufi-ingest's mount: a routine's whole point is the
+      # file it leaves on the department's drive. It only ever writes inside
+      # _routines/, and `out` is validated as a bare file name so a schedule
+      # cannot be edited into a path that climbs out of the drive.
+      - ${NUFI_DATA_DIR}/drives:/drives
+      # The data directory, not the file: binding a path docker cannot find
+      # makes an empty DIRECTORY of that name, so a box with no schedules yet
+      # would grow a `schedules.ini/` folder and the daemon would read nothing
+      # while the box looked configured. Read-only, and the daemon opens one
+      # file inside it.
+      - ${NUFI_DATA_DIR}:/config:ro
+      - cron-state:/state
+    healthcheck:
+      test: ["CMD-SHELL", "test -n \"$(find /state/heartbeat -mmin -3 2>/dev/null)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     networks: [box]
