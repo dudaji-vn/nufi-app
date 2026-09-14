@@ -51,9 +51,60 @@ if (!existsSync(envPath)) throw new Error(`no box .env at ${envPath} -- pass --b
 const ENV = Object.fromEntries(readFileSync(envPath, 'utf8').split('\n')
   .filter((l) => l.includes('=') && !l.trimStart().startsWith('#'))
   .map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]));
-for (const k of ['BOX_HOST', 'BOX_IP', 'ADMIN_EMAIL', 'ADMIN_PASSWORD', 'NUFI_MODEL', 'NUFI_DATA_DIR']) {
+for (const k of ['BOX_HOST', 'BOX_IP', 'ADMIN_EMAIL', 'ADMIN_PASSWORD', 'NUFI_MODEL', 'NUFI_DATA_DIR',
+  'STUDIO_API_KEY']) {
   if (!ENV[k]) throw new Error(`.env is missing ${k}`);
 }
+// ---- the score, from the acceptance run rather than from memory ---------
+//
+// Read here and not at the closing card, because three captions quote it and
+// two of them play long before the card. The old version asserted the numbers
+// it had been told to expect (`8/32/10`) and printed the card from a string;
+// that is backwards -- a re-measured box would abort the recording instead of
+// being reported. What is worth refusing is evidence that is not about the
+// box being filmed, so that is what is checked: one model, and that model the
+// one this box serves.
+const EV = JSON.parse(readFileSync(EVIDENCE, 'utf8'));
+const SCORE = {
+  model: ENV.NUFI_MODEL,
+  depts: EV.departments.length,
+  qs: EV.departments.reduce((n, d) => n + d.questions.length, 0),
+  passed: EV.departments.reduce((n, d) => n + d.questions.filter((q) => q.pass).length, 0),
+};
+SCORE.failed = SCORE.qs - SCORE.passed;
+// Answers that left Korean mid-sentence. On this box that is eleven of
+// thirty-two, and until now the recording had no line that said so: a viewer
+// saw one Thai preamble on screen and no way to know whether it was a fluke.
+SCORE.drift = EV.departments.reduce(
+  (n, d) => n + d.questions.filter((q) => q.drifted).length, 0);
+// The breadth card claims every citation that appeared named the file the
+// answer came from, and every department ingested. Both are read off the
+// evidence here rather than trusted, for the same reason the four URLs in the
+// banner are asked live: a sentence on screen that nothing checks is a
+// sentence that goes quietly false. A question that cites a file and still
+// fails is the counterexample -- there was one, and it turned out to be the
+// judge missing a refusal, not a bad citation.
+const citedAndWrong = EV.departments
+  .flatMap((d) => d.questions)
+  .filter((q) => (q.sources || []).length && !q.pass);
+if (citedAndWrong.length) {
+  throw new Error(`${citedAndWrong.length} answer(s) cite a file and still fail, so the `
+    + `breadth card cannot claim otherwise: ${citedAndWrong[0].ask}`);
+}
+const notIngested = EV.departments.filter((d) => !d.ingest_complete);
+if (notIngested.length) {
+  throw new Error(`${notIngested.map((d) => d.id).join(', ')} never finished ingesting, so `
+    + 'the breadth card cannot say every department did');
+}
+if (!EV.models || EV.models.length !== 1) {
+  throw new Error(`the evidence was measured across ${JSON.stringify(EV.models)}; `
+    + 'a single score cannot describe more than one model');
+}
+if (EV.models[0] !== ENV.NUFI_MODEL) {
+  throw new Error(`the evidence was measured on ${EV.models[0]}, but this box serves `
+    + `${ENV.NUFI_MODEL} -- re-run run_box.py before recording`);
+}
+
 const HOST = ENV.BOX_HOST;
 const NAME = ENV.BOX_NAME || HOST.replace(/\.local$/, '');
 const CHAT = `https://${HOST}:3080`;
@@ -95,6 +146,11 @@ const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
 /** Fills {n}/{max} in a caption with numbers the run actually counted. */
 const fill = (lines, vars) =>
   lines.map((l) => l.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m)));
+const fillCard = (c, vars) => ({
+  eyebrow: c.eyebrow,
+  head: fill([c.head], vars)[0],
+  sub: fill(c.sub || [], vars),
+});
 
 // ---- the presentation layer, from stage.mjs -----------------------------
 //
@@ -206,6 +262,60 @@ async function lastAnswer(page, agentName) {
   const i = full.lastIndexOf(agentName);
   if (i < 0) return '';
   return full.slice(i + agentName.length).replace(/NUFI v[\d.a-z-]+\s*$/i, '').trim();
+}
+
+/** The last answer as the box stored it, split into its parts.
+ *
+ * `lastAnswer` scrapes the message view, which is the right source for "has it
+ * stopped growing" and the wrong one for "what did the model say": the
+ * retrieved passage is rendered on screen too, so a citation card containing
+ * the number and the file name satisfies any regex looking for the number and
+ * the file name, whether or not the model ever wrote them. An earlier version
+ * of this script only escaped that by gating the answer test behind `!leaked`,
+ * which made "leaked" and "answered" mutually exclusive -- and this box does
+ * both at once.
+ *
+ * So the verdict comes from the message the box persisted:
+ *   - `prose`      the model's own text, minus any typed-out call
+ *   - `typedCall`  a text part in which the model printed its tool call
+ *   - `toolCalls`  calls it actually made
+ * Same-origin fetch, and the session exchanged for a bearer first, for the
+ * same reasons as the agent listing above.
+ */
+async function answerParts(page) {
+  // The app rewrites the URL to /c/<id> once the conversation exists, which is
+  // the cheapest place to get the id -- but if it has not yet, the newest
+  // conversation on the account is this one, because the recording is the only
+  // thing talking to this box. Falling back beats aborting a six-minute take
+  // over a URL that had not caught up.
+  const fromUrl = (page.url().match(/\/c\/([\w-]+)/) || [])[1];
+  const msgs = await page.evaluate(async (hint) => {
+    const rt = await fetch('/api/auth/refresh', { method: 'POST', credentials: 'include' });
+    if (!rt.ok) return { error: `refresh ${rt.status}` };
+    const { token } = await rt.json();
+    const auth = { Authorization: `Bearer ${token}` };
+    let cid = hint && hint !== 'new' ? hint : null;
+    if (!cid) {
+      const c = await fetch('/api/convos?pageNumber=1', { headers: auth });
+      if (!c.ok) return { error: `convos ${c.status}` };
+      const body = await c.json();
+      cid = (body.conversations || body.data || [])[0]?.conversationId;
+      if (!cid) return { error: 'no conversation on the account' };
+    }
+    const r = await fetch(`/api/messages/${cid}`, { headers: auth });
+    return r.ok ? r.json() : { error: `messages ${r.status}` };
+  }, fromUrl);
+  if (msgs.error) throw new Error(`could not read the answer back: ${msgs.error}`);
+  const last = [...msgs].reverse().find((m) => !m.isCreatedByUser);
+  if (!last) throw new Error('the conversation has no answer in it');
+  const parts = last.content || [];
+  const texts = parts.filter((x) => x.type === 'text').map((x) => x.text || '');
+  const isCall = (t) => /file_search|tool_call|"arguments"/.test(t);
+  return {
+    prose: texts.filter((t) => !isCall(t)).join('\n').trim(),
+    typedCall: texts.some(isCall),
+    toolCalls: parts.filter((x) => x.type === 'tool_call').length,
+  };
 }
 
 /** Opens a fresh conversation with one agent, ready for a question. */
@@ -360,7 +470,7 @@ async function main() {
       throw new Error(`no "${ENV.NUFI_MODEL}" on the chat screen; saw ${shown.slice(0, 8).join(' | ')}`);
     }
     console.log(`model badge: ${badge}`);
-    await say(page, T.model, 6800);
+    await say(page, fill(T.model, SCORE), 6800);
     await hush(page);
 
     // 4 -- the department's agent, on the drive as it was found
@@ -386,41 +496,62 @@ async function main() {
     await say(page, T.ask, 5500);
     const a1 = await ask(page, legal.name, Q1);
     console.log(`q1 (${a1.seconds.toFixed(1)}s): ${a1.text.replace(/\s+/g, ' ').slice(0, 140)}`);
-    // The caption follows the screen, never the other way round -- and the
-    // "answered" one needs the number *and* the file it came from, because the
-    // retrieved passage is on screen too and contains the number either way.
-    const leaked = /file_search|tool_call|"arguments"/.test(a1.text);
-    const answered = !leaked && /60/.test(a1.text) && /계약검토_표준조항/.test(a1.text);
-    if (!leaked && !answered) {
-      throw new Error(`q1 was neither a leaked tool call nor a cited answer: ${a1.text.slice(0, 160)}`);
+    // The caption follows the screen, never the other way round -- and there
+    // are three things the screen can show, not two. The model can print the
+    // call instead of making it (nothing is retrieved, nothing is answered);
+    // it can make the call and answer; or it can print the call *and* make it
+    // *and* answer, which is what this box does on a 14B model and what the
+    // old two-way verdict had no caption for.
+    //
+    // Each half of the verdict is read where its claim lives. The *number* has
+    // to come out of the model's own prose -- the retrieved passage is on
+    // screen too and contains it either way, so a screen-wide regex for "60"
+    // proves nothing about the answer. The *file name* is the opposite: the
+    // caption's claim is that it is printed above the answer, which is the
+    // citation card, so the screen is exactly the right place to read it.
+    const p1 = await answerParts(page);
+    const answered = /60/.test(p1.prose) && /계약검토_표준조항/.test(a1.text);
+    console.log(`q1 parts: typedCall=${p1.typedCall} toolCalls=${p1.toolCalls} answered=${answered}`);
+    if (!answered && !p1.typedCall) {
+      throw new Error(`q1 was neither a printed tool call nor a cited answer: ${a1.text.slice(0, 160)}`);
     }
-    await say(page, leaked ? T.q1Drift : T.q1Answered, 9000);
+    let q1Cap = fill(T.q1Drift, SCORE);
+    if (answered) q1Cap = p1.typedCall ? T.q1AnsweredNoisy : T.q1Answered;
+    await say(page, q1Cap, 9000);
 
     // 5 -- ...and one the same agent does answer, off the same drive.
     //
-    // Up to three tries, because at the app's own temperature this model leaks
-    // the tool call some of the time, and a cut that can only be finished on a
-    // lucky first roll is a cut that gets re-run until it flatters the box.
-    // Nothing changes between attempts, the retries are counted on screen, and
-    // three failures get their own caption rather than an abort: three leaked
-    // tool calls in a row is a thing this cut is willing to say out loud.
+    // Up to three tries, because at the app's own temperature this model can
+    // print its tool call instead of making it, and a cut that can only be
+    // finished on a lucky first roll is a cut that gets re-run until it
+    // flatters the box. Nothing changes between attempts, the retries are
+    // counted on screen, and three failures get their own caption rather than
+    // an abort: three questions answered with nothing but a printed call is a
+    // thing this cut is willing to say out loud. Printing the call and then
+    // making it anyway is not a failed try -- the answer is what decides.
     await openAgent(page, legal.id);
     await say(page, T.ask2, 5000);
     const tries = 3;
     let a2 = null;
     for (let n = 1; n <= tries; n += 1) {
       if (n > 1) {
-        await say(page, fill(T.q2Retry, { n, max: tries }), 7000);
+        await say(page, fill(T.q2Retry, { n, max: tries, model: ENV.NUFI_MODEL }), 7000);
         await openAgent(page, legal.id);
       }
       const got = await ask(page, legal.name, Q2);
-      console.log(`q2/${n} (${got.seconds.toFixed(1)}s): ${got.text.replace(/\s+/g, ' ').slice(0, 160)}`);
-      if (/3년|3 years/.test(got.text) && /계약검토_표준조항/.test(got.text)) { a2 = got; break; }
-      if (!/file_search|tool_call|"arguments"/.test(got.text)) {
-        throw new Error(`q2 answered something this script cannot caption: ${got.text.slice(0, 160)}`);
+      const p2 = await answerParts(page);
+      console.log(`q2/${n} (${got.seconds.toFixed(1)}s): typedCall=${p2.typedCall} `
+        + `toolCalls=${p2.toolCalls} :: ${p2.prose.replace(/\s+/g, ' ').slice(0, 140)}`);
+      if (/3년|3 years/.test(p2.prose) && /계약검토_표준조항/.test(got.text)) { a2 = got; break; }
+      if (!p2.typedCall) {
+        throw new Error(`q2 answered something this script cannot caption: ${p2.prose.slice(0, 160)}`);
       }
     }
-    await say(page, a2 ? T.q2 : fill(T.q2Drift, { max: tries }), 9500);
+    // The second half of the `q2` caption used to tell the viewer that the
+    // previous question had this same page a tool call away and never made the
+    // call. That is a claim about q1, and it is only true on a box where q1
+    // failed -- so it is now its own caption, picked by what q1 actually did.
+    await say(page, a2 ? (answered ? T.q2 : T.q2AfterDrift) : fill(T.q2Drift, { max: tries, model: ENV.NUFI_MODEL }), 9500);
     await hush(page);
 
     // 6 -- the drive, written on camera
@@ -475,8 +606,12 @@ async function main() {
     for (let n = 1; n <= 2 && !a3; n += 1) {
       if (n > 1) await openAgent(page, legal.id);
       const got = await ask(page, legal.name, Q3);
-      console.log(`q3/${n} (${got.seconds.toFixed(1)}s): ${got.text.replace(/\s+/g, ' ').slice(0, 160)}`);
-      if (/부속서_하도급/.test(got.text)) a3 = got;
+      const p3 = await answerParts(page);
+      console.log(`q3/${n} (${got.seconds.toFixed(1)}s): typedCall=${p3.typedCall} `
+        + `toolCalls=${p3.toolCalls} :: ${p3.prose.replace(/\s+/g, ' ').slice(0, 140)}`);
+      // The claim is the name above the answer, so the name is read off the
+      // screen; the prose only has to be an answer rather than a printed call.
+      if (/부속서_하도급/.test(got.text) && p3.prose.length > 20) a3 = got;
     }
     await say(page, a3 ? T.newCited : T.newDrift, 9500);
     await hush(page);
@@ -533,7 +668,10 @@ async function main() {
     // many depends on the box. Waiting on the screen rather than on a fixed
     // beat -- an earlier take aborted here for reading a spinner, which is the
     // check doing its job but a poor reason to lose a recording.
-    const ready = /create first flow|첫 플로우|my projects|starter project|flows/i;
+    // Both empty-state wordings, because Studio has had two of them, plus
+    // the sidebar's own labels. This decides only *when the page has
+    // finished loading*; what is on it is counted, not read.
+    const ready = /create first flow|첫 플로우|start building|my projects|starter project|flows/i;
     let studioText = '';
     for (let i = 0; i < 40; i += 1) {
       studioText = await page.locator('body').innerText().catch(() => '');
@@ -544,26 +682,57 @@ async function main() {
     if (await page.locator('input[type=password]').count()) {
       throw new Error('Studio asked for a password -- single sign-on did not carry');
     }
-    const emptyStudio = /create first flow|첫 플로우/i.test(studioText);
     if (!ready.test(studioText)) {
       throw new Error(`Studio never finished loading: ${studioText.slice(0, 140)}`);
     }
-    console.log(`studio: ${emptyStudio ? 'no flows' : 'flows present'}`);
+
+    // How many flows this canvas has is a number, not a phrase. It used to be
+    // read by looking for Studio's empty-state copy ("Create first flow"), and
+    // when that copy changed to "Start building" the test matched neither
+    // branch and fell through to "flows present" -- so the cut captioned a
+    // canvas that plainly said Start building as having the department flows
+    // already there. A check whose unknown answer is the flattering one is not
+    // a check.
+    //
+    // Two counts, because they caption differently. `mine` is what the signed-
+    // in member can list, which is what the viewer is looking at. `onBox` is
+    // what the box holds under its superuser, read with the API key from .env
+    // (never rendered) -- a member seeing none of the routines the box does
+    // have is a different story from a box that has none.
+    // `headers: {}` is not decoration: Studio wraps window.fetch and its
+    // interceptor writes Accept-Language into whatever headers object it is
+    // given, so a call without one dies inside the app's own bundle.
+    const mine = await page.evaluate(async () => {
+      const r = await fetch('/api/v1/flows/?get_all=true&header_flows=true',
+        { credentials: 'include', headers: {} });
+      if (!r.ok) return { error: `flows ${r.status}` };
+      const body = await r.json();
+      const list = (Array.isArray(body) ? body : (body.flows || body.items || []))
+        .filter((f) => !f.is_component);
+      // Studio's sidebar lists flows *by project*, and opens on the default
+      // one. A flow with no folder is returned by this endpoint and rendered
+      // nowhere, so counting rows would caption an empty canvas as full --
+      // which is exactly the bug this shot uncovered. Count what is listable.
+      return { count: list.filter((f) => f.folder_id).length, rows: list.length };
+    });
+    if (mine.error) throw new Error(`could not list this member's flows: ${mine.error}`);
+    const onBox = JSON.parse(execFileSync('curl', ['-sk', '-H', `x-api-key: ${ENV.STUDIO_API_KEY}`,
+      '-H', 'User-Agent: Mozilla/5.0',
+      `https://${HOST}:7860/api/v1/flows/?get_all=true&header_flows=true`],
+      { encoding: 'utf8' })).filter((f) => !f.is_component).length;
+    console.log(`studio: ${mine.count} flow(s) in this member's projects `
+      + `(${mine.rows} row(s) owned), ${onBox} on the box`);
     await install(page);
-    await say(page, emptyStudio ? T.studioEmpty : T.studioFlows, 9000);
+    let studioCap = T.studioEmpty;
+    if (mine.count > 0) studioCap = T.studioFlows;
+    else if (onBox > 0) studioCap = fill(T.studioNotMine, { onBox, rows: mine.rows });
+    await say(page, studioCap, 9000);
     await hush(page);
 
-    // 11 -- what it scores, recomputed from the evidence rather than typed
-    const ev = JSON.parse(readFileSync(EVIDENCE, 'utf8'));
-    const depts = ev.departments.length;
-    const qs = ev.departments.reduce((n, d) => n + d.questions.length, 0);
-    const passed = ev.departments.reduce(
-      (n, d) => n + d.questions.filter((q) => q.pass).length, 0);
-    if (depts !== 8 || qs !== 32 || passed !== 10) {
-      throw new Error(`evidence says ${depts}/${qs}/${passed}; the closing card says 8/32/10`);
-    }
-    console.log(`evidence: ${depts} departments, ${qs} questions, ${passed} passed`);
-    await card(page, T.breadth, 10500);
+    // 11 -- what it scores, printed from the evidence rather than typed
+    console.log(`evidence: ${SCORE.depts} departments, ${SCORE.qs} questions, `
+      + `${SCORE.passed} passed, on ${EV.models[0]} (${EV.started})`);
+    await card(page, fillCard(T.breadth, SCORE), 10500);
 
     // 12 -- what is next
     await card(page, T.close, 8000);

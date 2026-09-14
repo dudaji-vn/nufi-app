@@ -2,15 +2,24 @@
 // the wording can be argued about without touching the machinery that verifies
 // it -- same split as script.mjs and week.mjs.
 //
-// Several captions in here come in pairs -- `q1Drift`/`q1Answered`,
-// `q2`/`q2Drift` (with `q2Retry` between the attempts), `newCited`/`newDrift`,
-// and `studioEmpty`/`studioFlows`. The recorder reads the screen first and then
-// picks the one that is true of what it read. Neither half is a prediction, and
-// the recorder never picks one without having read the thing it describes.
+// Several captions in here come in alternatives -- `q1Drift`/`q1Answered`/
+// `q1AnsweredNoisy`, `q2`/`q2AfterDrift`/`q2Drift` (with `q2Retry` between the
+// attempts), `newCited`/`newDrift`, and `studioEmpty`/`studioNotMine`/
+// `studioFlows`. The
+// recorder reads the answer the box stored and then picks the one that is true
+// of what it read. None of them is a prediction, and the recorder never picks
+// one without having read the thing it describes.
+//
+// q1 has three and not two on purpose: this box prints its `file_search` call
+// as text *and* then makes the call *and* answers correctly, and a two-way
+// verdict had no caption for that -- it had to call a correct answer a
+// failure.
 //
 // `{n}` and `{max}` are filled in by the recorder with attempts it actually
-// counted, so a caption can say how many tries a question took without anyone
-// having to guess in advance.
+// counted, and `{model}`, `{depts}`, `{qs}`, `{passed}`, `{failed}` and
+// `{drift}` come from the box's own .env and from the acceptance evidence, so
+// no caption names a model or a score that someone has to remember to retype
+// when either moves. Both moved this week.
 export const BOX = {
   en: {
     font: '"IBM Plex Sans","Helvetica Neue",Arial,sans-serif',
@@ -34,7 +43,7 @@ export const BOX = {
     login: ['The app, on the box&rsquo;s own name and the box&rsquo;s own certificate.',
             'No cloud account was created to reach this screen, and no certificate warning stood in front of it.'],
     model: ['The model in the corner is the one on this machine.',
-            '<b>qwen2.5-7b</b>, served by Ollama on the host. It is the only model this box offers, and it never leaves the box.'],
+            '<b>{model}</b>, served by Ollama on the host. It is the only model this box offers, and it never leaves the box.'],
 
     drive: {
       eyebrow: 'THE DRIVE IS THE INTERFACE',
@@ -47,7 +56,7 @@ export const BOX = {
     newCited: ['It answers out of the file that landed on the drive a minute ago.',
                'The name above the answer is the addendum, not the old guide. Nothing was restarted, re-indexed by hand, or configured between the copy and this answer. The drive really is the whole interface.'],
     newDrift: ['It did not answer from the new file.',
-               'Same agent, same drive, one more document on it &mdash; and the model either leaked its tool call again or read the older guide instead. The ingest is not in doubt; the daemon logged the embedding a minute ago. Choosing between two documents is what a 7B model is bad at, and a larger one on a GPU box is the lever.'],
+               'Same agent, same drive, one more document on it &mdash; and the model either leaked its tool call again or read the older guide instead. The ingest is not in doubt; the daemon logged the embedding a minute ago. Choosing between two documents is what a small model is bad at, and a larger one on a GPU box is the lever.'],
     driveCap: ['A new Legal document, written into the drive while you watch.',
                'A subcontracting addendum to the department&rsquo;s clause guide. Nothing else about the box was touched to put it there.'],
     waiting: ['The watcher scans the drives every twenty seconds.',
@@ -58,17 +67,21 @@ export const BOX = {
     ask: ['Now the question the acceptance run asks the Legal agent first.',
           '&ldquo;A contract with an auto-renewal clause &mdash; how many days before expiry must notice be given?&rdquo; The answer is in the guide: sixty.'],
     q1Drift: ['The model leaked its tool call instead of making it.',
-              'It printed the <code>file_search</code> call as prose, so retrieval never ran and no answer came back. This is one of the twenty-two failures, filmed rather than cut around.'],
+              'It printed the <code>file_search</code> call as prose, so retrieval never ran and no answer came back. This is one of the {failed} failures, filmed rather than cut around.'],
     q1Answered: ['Sixty days, from the department&rsquo;s own guide.',
                  'The number was retrieved from the file on the drive, not recalled from training.'],
+    q1AnsweredNoisy: ['Sixty days, from the department&rsquo;s own guide.',
+                      'Read the first line: the model printed its <code>file_search</code> call as text &mdash; and then made the call anyway. The passage came off the drive and the number is the drive&rsquo;s. The stray line is the model&rsquo;s habit, not a failed retrieval.'],
     ask2: ['Same agent, same drive, a question it does answer.',
            '&ldquo;How long does an NDA&rsquo;s confidentiality obligation survive the contract?&rdquo;'],
     q2Retry: ['It leaked the tool call again. Asking a second time.',
-              'Attempt {n} of {max}. Nothing is being changed between tries &mdash; same agent, same drive, same question. A 7B model is simply not reliable about calling its tools.'],
+              'Attempt {n} of {max}. Nothing is being changed between tries &mdash; same agent, same drive, same question. <code>{model}</code> is simply not reliable about calling its tools.'],
     q2: ['Three years &mdash; and the file it read is named above the answer.',
-         'Look at the passage it retrieved: Article 2 of that same guide is the one that says <b>sixty days</b>. The question before this one had that page a single tool call away, and never made the call.'],
+         'Same agent, same drive, a second question answered out of the same guide. Look at the passage it retrieved: Article 2 is the clause that carries the <b>sixty days</b> from the question before.'],
+    q2AfterDrift: ['Three years &mdash; and the file it read is named above the answer.',
+                   'Look at the passage it retrieved: Article 2 of that same guide is the one that says <b>sixty days</b>. The question before this one had that page a single tool call away, and never made the call.'],
     q2Drift: ['{max} attempts, {max} leaked tool calls.',
-              'This is the ten-out-of-thirty-two, live and undisguised. The drive ingested, the agent exists, retrieval is wired &mdash; and a 7B model on CPU still will not reliably call the tool in front of it. That is the model, and a bigger one on a GPU box is the fix.'],
+              'The drive ingested, the agent exists, retrieval is wired &mdash; and <code>{model}</code> on CPU still will not reliably call the tool in front of it. That is the model, not the box.'],
 
     sso: {
       eyebrow: 'ONE LOGIN',
@@ -81,16 +94,19 @@ export const BOX = {
     choose: ['&ldquo;You are already signed in.&rdquo; &mdash; the console&rsquo;s own words, not ours.',
              'One card, one click, and Studio opens on the same session.'],
     studioEmpty: ['NUFI Studio opens signed in, and empty.',
-                  'The installer ships the four products, not the flows. Putting the department recipes into a fresh box &mdash; <code>build_flows.py --box</code> &mdash; is the next piece of work, and it is not done.'],
+                  'This box has no flows on it at all. The department recipes are put there by <code>build_flows.py --box</code>, which a newer installer runs and this one did not.'],
     studioFlows: ['NUFI Studio opens signed in, with the department flows already there.',
                   'The same account, the same box, a canvas a person can open and change.'],
+    studioNotMine: ['NUFI Studio opens signed in &mdash; on an empty project.',
+                    'The box holds {onBox} flows under its own admin, and this account already owns {rows} copies of the routines &mdash; and cannot open one. Studio lists flows by project; the copies were written into no project, so they exist in the database and appear nowhere. Found by filming this shot and reading the canvas instead of the caption.'],
 
     breadth: {
       eyebrow: 'WHAT IT SCORES',
-      head: 'Eight departments, thirty-two questions, ten right.',
+      head: '{depts} departments, {qs} questions, {passed} right.',
       sub: ['At temperature 0 with a fixed seed, and identical across two back-to-back runs &mdash; no answer differed.',
-            'Every department ingested. Retrieval found the passage. The citation was right whenever one appeared.',
-            'The mechanism holds; the score is the model&rsquo;s. A larger model on a GPU box is the lever that moves it &mdash; not more prompt tuning.'],
+            'Every department ingested. Retrieval found the passage. Every citation that appeared named the file the answer came from.',
+            '{drift} of the {qs} answers open in the wrong language &mdash; a line of Thai, or the tool call typed out &mdash; before the Korean answer underneath. That is the model narrating itself, not retrieval failing.',
+            'The same thirty-two questions scored ten on qwen2.5-7b. Nothing about the box changed between those two numbers except the model, which is the whole point: the lever is a larger model on a GPU box, not more prompt tuning.'],
     },
 
     close: {
@@ -123,7 +139,7 @@ export const BOX = {
     login: ['박스 자신의 이름과 박스 자신의 인증서로 열리는 앱입니다.',
             '이 화면에 오기 위해 만든 클라우드 계정도, 앞을 가로막는 인증서 경고도 없습니다.'],
     model: ['오른쪽 위 모델은 이 장비에서 도는 모델입니다.',
-            '호스트의 Ollama가 서빙하는 <b>qwen2.5-7b</b>. 이 박스가 제공하는 유일한 모델이고, 박스를 떠나지 않습니다.'],
+            '호스트의 Ollama가 서빙하는 <b>{model}</b>. 이 박스가 제공하는 유일한 모델이고, 박스를 떠나지 않습니다.'],
 
     drive: {
       eyebrow: '드라이브가 곧 인터페이스',
@@ -136,7 +152,7 @@ export const BOX = {
     newCited: ['1분 전 드라이브에 떨어진 그 파일에서 답이 나옵니다.',
                '답 위에 붙은 이름은 예전 가이드가 아니라 방금 넣은 부속서입니다. 복사와 이 답 사이에 재시작도, 수동 색인도, 설정 변경도 없었습니다. 드라이브가 정말로 인터페이스 전부입니다.'],
     newDrift: ['새 파일에서 답하지 못했습니다.',
-               '같은 에이전트, 같은 드라이브, 문서 하나만 더 늘었을 뿐 &mdash; 그런데 모델이 또 도구 호출을 흘리거나 예전 가이드를 읽었습니다. 색인은 의심의 여지가 없습니다. 1분 전에 데몬이 임베딩을 로그로 남겼으니까요. 문서 두 개 중에 고르는 일이 7B 모델이 못하는 일이고, 지렛대는 GPU 박스 위의 더 큰 모델입니다.'],
+               '같은 에이전트, 같은 드라이브, 문서 하나만 더 늘었을 뿐 &mdash; 그런데 모델이 또 도구 호출을 흘리거나 예전 가이드를 읽었습니다. 색인은 의심의 여지가 없습니다. 1분 전에 데몬이 임베딩을 로그로 남겼으니까요. 문서 두 개 중에 고르는 일이 작은 모델이 못하는 일이고, 지렛대는 GPU 박스 위의 더 큰 모델입니다.'],
     driveCap: ['새 법무 문서를 보시는 앞에서 드라이브에 씁니다.',
                '부서 표준 조항 가이드의 하도급 부속서입니다. 이걸 넣기 위해 박스의 다른 설정은 아무것도 건드리지 않았습니다.'],
     waiting: ['감시 데몬은 20초마다 드라이브를 훑습니다.',
@@ -147,17 +163,21 @@ export const BOX = {
     ask: ['이제 인수 테스트가 법무 에이전트에게 가장 먼저 던지는 질문입니다.',
           '&ldquo;자동연장 조항이 있는 계약은 만료 며칠 전까지 통보해야 하나요?&rdquo; 가이드에 답이 있습니다 &mdash; 60일.'],
     q1Drift: ['모델이 도구 호출을 실행하지 않고 그대로 출력해 버렸습니다.',
-              '<code>file_search</code> 호출을 글자로 찍어냈고, 그래서 검색은 아예 돌지 않았고 답도 없습니다. 22개 실패 중 하나이며, 잘라내지 않고 그대로 촬영했습니다.'],
+              '<code>file_search</code> 호출을 글자로 찍어냈고, 그래서 검색은 아예 돌지 않았고 답도 없습니다. {failed}개 실패 중 하나이며, 잘라내지 않고 그대로 촬영했습니다.'],
     q1Answered: ['60일 &mdash; 부서 자기 가이드에서 나온 숫자입니다.',
                  '학습에서 떠올린 값이 아니라 드라이브의 파일에서 검색해 온 값입니다.'],
+    q1AnsweredNoisy: ['60일 &mdash; 부서 자기 가이드에서 나온 숫자입니다.',
+                      '첫 줄을 보십시오. 모델이 <code>file_search</code> 호출을 글자로 찍어낸 다음, 그 호출을 실제로 했습니다. 본문은 드라이브에서 검색해 왔고 숫자도 드라이브의 것입니다. 저 한 줄은 모델의 버릇이지 검색 실패가 아닙니다.'],
     ask2: ['같은 에이전트, 같은 드라이브, 이번엔 실제로 답하는 질문입니다.',
            '&ldquo;NDA의 비밀유지 의무는 계약 종료 후 몇 년간 존속하나요?&rdquo;'],
     q2Retry: ['또 도구 호출을 그대로 뱉었습니다. 다시 물어봅니다.',
-              '{max}번 중 {n}번째 시도입니다. 시도 사이에 바꾼 것은 없습니다 &mdash; 같은 에이전트, 같은 드라이브, 같은 질문. 7B 모델은 도구 호출을 안정적으로 하지 못합니다.'],
+              '{max}번 중 {n}번째 시도입니다. 시도 사이에 바꾼 것은 없습니다 &mdash; 같은 에이전트, 같은 드라이브, 같은 질문. <code>{model}</code>은 도구 호출을 안정적으로 하지 못합니다.'],
     q2: ['3년 &mdash; 그리고 읽은 파일 이름이 답 위에 붙어 있습니다.',
-         '검색해 온 본문을 보십시오. 같은 가이드의 제2조가 바로 <b>60일</b>을 말하는 조항입니다. 바로 앞 질문도 도구 호출 한 번이면 닿는 자리에 그 페이지가 있었고, 모델이 그 호출을 하지 않았을 뿐입니다.'],
+         '같은 에이전트, 같은 드라이브, 같은 가이드에서 나온 두 번째 답입니다. 검색해 온 본문을 보십시오. 제2조가 바로 앞 질문의 <b>60일</b>을 담고 있는 조항입니다.'],
+    q2AfterDrift: ['3년 &mdash; 그리고 읽은 파일 이름이 답 위에 붙어 있습니다.',
+                   '검색해 온 본문을 보십시오. 같은 가이드의 제2조가 바로 <b>60일</b>을 말하는 조항입니다. 바로 앞 질문도 도구 호출 한 번이면 닿는 자리에 그 페이지가 있었고, 모델이 그 호출을 하지 않았을 뿐입니다.'],
     q2Drift: ['{max}번 시도, {max}번 모두 도구 호출 유출.',
-              '32개 중 10개라는 숫자가 그대로 화면에 있습니다. 드라이브는 색인됐고, 에이전트는 있고, 검색은 연결돼 있습니다 &mdash; 그런데 CPU 위의 7B 모델은 눈앞의 도구조차 안정적으로 부르지 못합니다. 이건 모델의 문제이고, 해법은 GPU 박스 위의 더 큰 모델입니다.'],
+              '드라이브는 색인됐고, 에이전트는 있고, 검색은 연결돼 있습니다 &mdash; 그런데 CPU 위의 <code>{model}</code>은 눈앞의 도구조차 안정적으로 부르지 못합니다. 이건 박스가 아니라 모델의 문제입니다.'],
 
     sso: {
       eyebrow: '로그인 한 번',
@@ -170,16 +190,19 @@ export const BOX = {
     choose: ['&ldquo;이미 로그인되어 있습니다&rdquo; &mdash; 우리 말이 아니라 콘솔이 하는 말입니다.',
              '카드 하나, 클릭 한 번이면 같은 세션으로 스튜디오가 열립니다.'],
     studioEmpty: ['NUFI 스튜디오는 로그인된 채로, 그리고 비어 있는 채로 열립니다.',
-                  '설치 프로그램은 제품 넷을 올릴 뿐 플로우는 넣지 않습니다. 새 박스에 부서 레시피를 함께 넣는 일 &mdash; <code>build_flows.py --box</code> &mdash; 이 다음 작업이고, 아직 되어 있지 않습니다.'],
+                  '이 박스에는 플로우가 하나도 없습니다. 부서 레시피는 <code>build_flows.py --box</code>가 넣어 주는데, 최신 설치 프로그램은 이걸 실행하고 이 박스의 것은 실행하지 않았습니다.'],
     studioFlows: ['NUFI 스튜디오가 로그인된 채로, 부서 플로우와 함께 열립니다.',
                   '같은 계정, 같은 박스, 사람이 열어서 고칠 수 있는 캔버스.'],
+    studioNotMine: ['NUFI 스튜디오는 로그인된 채로 열리지만 &mdash; 프로젝트가 비어 있습니다.',
+                    '박스에는 관리자 소유로 {onBox}개의 플로우가 있고, 이 계정은 이미 루틴 복사본 {rows}개를 가지고 있습니다 &mdash; 그런데 하나도 열 수 없습니다. 스튜디오는 플로우를 프로젝트 단위로 보여 주는데, 복사본이 어느 프로젝트에도 들어가지 않아 DB에는 있고 화면에는 없습니다. 캡션이 아니라 캔버스를 읽어서 이 장면에서 찾아낸 문제입니다.'],
 
     breadth: {
       eyebrow: '점수는 이렇습니다',
-      head: '8개 부서, 32개 질문, 10개 정답.',
+      head: '{depts}개 부서, {qs}개 질문, {passed}개 정답.',
       sub: ['온도 0에 시드 고정, 연속 두 번 실행에서 답이 하나도 달라지지 않았습니다.',
-            '모든 부서가 색인됐고, 검색은 해당 본문을 찾아냈고, 출처가 붙은 경우 출처는 늘 옳았습니다.',
-            '구조는 버팁니다. 점수는 모델의 몫입니다. 이걸 움직이는 지렛대는 프롬프트 튜닝이 아니라 GPU 박스 위의 더 큰 모델입니다.'],
+            '모든 부서가 색인됐고, 검색은 해당 본문을 찾아냈고, 출처가 붙은 경우 그 출처는 답이 나온 파일이었습니다.',
+            '{qs}개 답변 중 {drift}개는 첫 줄이 엉뚱한 언어로 시작합니다 &mdash; 태국어 한 줄이거나, 도구 호출을 글자로 찍은 것. 그 아래에는 한국어 답이 있습니다. 검색이 실패한 게 아니라 모델이 혼잣말을 한 것입니다.',
+            '같은 32개 질문이 qwen2.5-7b에서는 10개였습니다. 두 숫자 사이에서 바뀐 것은 모델뿐이고, 그게 요점입니다. 지렛대는 프롬프트 튜닝이 아니라 GPU 박스 위의 더 큰 모델입니다.'],
     },
 
     close: {

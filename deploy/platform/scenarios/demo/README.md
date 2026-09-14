@@ -102,14 +102,14 @@ computed from. `box-en.mp4` and `box-ko.mp4` run about four minutes each.
 | 1 | Title | — |
 | 2 | One command | Each of the four URLs the banner prints is fetched in a scratch tab; a non-2xx aborts the run |
 | 3 | The app | Login lands on `/c/…`, and the model badge on screen equals `NUFI_MODEL` from `.env` |
-| 4 | The acceptance question | The Legal agent is found by name through the app's own API; the answer is read back and the caption picked from it (leaked tool call, or the number) |
-| 5 | A question it answers | Up to three tries, counted on screen; the answer must contain both the year and the file name before the "cited" caption is used |
+| 4 | The acceptance question | The Legal agent is found by name through the app's own API; the answer is read back **out of the message the box stored** and the caption picked from it — three outcomes, not two: the call printed instead of made, the call made and answered, or (what this box does) the call printed *and* made *and* answered |
+| 5 | A question it answers | Up to three tries, counted on screen. The year has to come from the model's own prose and the file name from the screen — the retrieved passage is rendered too, so a screen-wide search for either proves nothing about the answer |
 | 6 | The drive | The document is written, `stat`ed, and `ls`-ed; the panel shows the real listing and byte count |
 | 7 | Ingest | `docker logs` is polled from the moment of the write until this file's own `added … (embedded=True)` line appears, and the elapsed seconds go on the card |
-| 8 | The new file's own question | Two tries; the "cited" caption needs the new file's name in the answer |
+| 8 | The new file's own question | Two tries; the "cited" caption needs the new file's name above the answer and prose under it, not a printed call |
 | 9 | One login | The account menu's console tab must carry no password field |
 | 10 | Studio | Same — plus whether it has flows, which chooses between two captions |
-| 11 | What it scores | 8 / 32 / 10 is recomputed from `../evidence/box.json`, not typed |
+| 11 | What it scores | Departments, questions and passes are printed from `../evidence/box.json`, not typed — and the run aborts if that evidence was measured on a model other than the one this box serves, or across more than one |
 | 12 | Next | — |
 
 ### Three things it deliberately does
@@ -135,10 +135,12 @@ and the certificate behind it are both the box's own.
 
 ### What it does not have
 
-**No Studio flow shot.** The box installs the four products but no flows —
-`build_flows.py --box` is P2 work and is not done — so Studio opens signed in
-and empty, and the caption says exactly that. When flows do ship with the
-installer the recorder already carries the other caption and will pick it.
+**A Studio shot that could go either way.** When this was written the box
+installed the four products but no flows, so Studio opened signed in and empty
+and the caption said exactly that. `build_flows.py --box` has since shipped and
+the recorder now reads `studio: flows present` on this box and picks the other
+caption. Both are still carried, because a box installed before that work still
+opens empty and the cut should be able to film either one.
 
 ### What this box does, filmed rather than argued about
 
