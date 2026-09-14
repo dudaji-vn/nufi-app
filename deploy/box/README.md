@@ -338,6 +338,51 @@ their owner, so each member is seeded rather than shared with. A copy a member
 edits is theirs and is never overwritten; one they have not touched follows the
 box when a routine is rebuilt.
 
+## Backups
+
+```sh
+nufi-box backup                       # into data/backup/<timestamp>/
+nufi-box backup --to /Volumes/USB     # or onto a disk you carry away
+nufi-box backup --install-nightly --at 03:30
+nufi-box restore data/backup/20260914-033000
+```
+
+`nufi-box status` says when the last one was, or that there has never been one.
+
+**What it holds, and why each piece is there.** Two database dumps look like a
+complete backup right up to the moment somebody tries to bring a box back from
+them, so the backup is decided by what a restore needs:
+
+| | |
+|---|---|
+| `postgres.sql.gz` | `pg_dumpall` — the app, Studio and LiteLLM databases, and the roles |
+| `mongodb.archive.gz` | the app's own data: accounts, conversations, agents |
+| `drives.tar.gz` | **the department's documents** — the one thing on the box nobody else has a copy of. `_routines/` is left out: the box can write those reports again. |
+| `app-uploads.tar.gz` | files people attached in the app |
+| `caddy-data.tar.gz` | **the certificate authority itself.** `data/nufi-box-ca.crt` is only the copy handed to laptops; the root key lives in this volume. Restore without it and the box comes back up perfectly, serving a certificate every laptop that was told to trust it now rejects. |
+| `ingest-state.tar.gz` | what the watcher has already uploaded. Without it, every document on every drive goes up again and each agent ends up holding two of everything. |
+| `ca.tar.gz`, `env` | the published certificate, and the secrets all of the above are keyed to |
+
+**A backup holds the box's secrets in clear.** `env` is the box's `.env` —
+database passwords, JWT secrets, the LiteLLM master key. The directory is
+`0700` and the file `0600`, and a copy on a USB disk in a drawer is the box's
+keys in a drawer. Treat it the way you would treat the box.
+
+**Retention.** The newest seven are kept and older ones pruned (`--keep N`), so
+a box cannot fill its own disk with its own backups. Only the timestamped
+directories this command writes are ever considered for pruning.
+
+**Nightly** installs a launchd job (macOS) or a systemd user timer (Linux), not
+a container. A container that could back the box up would need the docker
+socket, which is the whole host handed to anything that gets into that
+container. `--remove-nightly` takes it away again.
+
+**Restoring** puts `.env` and the certificate authority back *before* it starts
+anything: data restored into a stack already running on freshly generated
+secrets is a restore that half-works — the rows come back and the sessions,
+signed tokens and certificate do not match them. It asks you to type the box's
+name first, unless you pass `--yes`. Afterwards, `nufi-box doctor`.
+
 ### Running them on a clock
 
 A routine can also run on a schedule and leave its answer on the department's

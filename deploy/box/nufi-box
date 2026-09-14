@@ -63,7 +63,11 @@ nufi-box <verb>
   flows install       put the department routines into Studio (safe to repeat)
   flows list          every flow in the box's Studio, with its id
   schedule list       the routines that run on a clock, and when each fires next
-  update | backup | support   (coming in P4)
+  backup [--to DIR] [--keep N]
+                      dump the databases, the drives and the secrets
+  backup --install-nightly [--at HH:MM] | --remove-nightly
+  restore DIR [--yes]  put a backup back, over this box
+  update | support    (coming in P4)
 EOF
 }
 case "${1:-}" in
@@ -74,7 +78,13 @@ case "${1:-}" in
   status)
     run $COMPOSE ps --format 'table {{.Name}}\t{{.Status}}'
     echo; echo "Model: ${NUFI_MODEL:-?} via ${INFERENCE_PROFILE:-?}   Drives: ${NUFI_DATA_DIR:-?}/drives   Host: https://${BOX_HOST:-?}:3080"
-    run df -h "${NUFI_DATA_DIR:-.}" ;;
+    run df -h "${NUFI_DATA_DIR:-.}"
+    # A backup nobody checks is a backup nobody has. The status line is where
+    # somebody will see that the last one was three weeks ago.
+    . "$HERE/lib/backup.sh"
+    _last="$(backup_last)"
+    if [ -n "$_last" ]; then echo "Last backup: $_last UTC"
+    else echo "Last backup: never — run 'nufi-box backup'"; fi ;;
   logs) shift; run $COMPOSE logs -f --tail=200 "$@" ;;
   drive)
     if [ "${2:-}" != "add" ]; then usage; exit 2; fi
@@ -212,7 +222,42 @@ case "${1:-}" in
     . "$HERE/lib/schedule.sh"
     schedule_list ;;
   # --- end the department routines ---
-  update|backup|support) echo "$1: coming in the next phase"; exit 3 ;;
+  backup)
+    shift
+    BACKUP_TO=""; BACKUP_KEEP=""; NIGHTLY=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --to) BACKUP_TO="${2:?--to needs a directory}"; shift 2 ;;
+        --keep) BACKUP_KEEP="${2:?--keep needs a number}"; shift 2 ;;
+        --at) BACKUP_AT="${2:?--at needs HH:MM}"; shift 2 ;;
+        --install-nightly) NIGHTLY=install; shift ;;
+        --remove-nightly) NIGHTLY=remove; shift ;;
+        *) die "backup: unknown option: $1" ;;
+      esac
+    done
+    export BACKUP_TO BACKUP_KEEP BACKUP_AT
+    . "$HERE/lib/backup.sh"
+    case "$NIGHTLY" in
+      install) backup_install_nightly ;;
+      remove) backup_remove_nightly ;;
+      *) backup_run ;;
+    esac ;;
+  restore)
+    shift
+    BACKUP_YES=0
+    _from=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --yes|-y) BACKUP_YES=1; shift ;;
+        -*) die "restore: unknown option: $1" ;;
+        *) _from="$1"; shift ;;
+      esac
+    done
+    [ -n "$_from" ] || die "restore: say which backup — nufi-box restore <directory>"
+    export BACKUP_YES
+    . "$HERE/lib/backup.sh"
+    backup_restore "$_from" ;;
+  update|support) echo "$1: coming in the next phase"; exit 3 ;;
   -h|--help|"") usage ;;
   *) echo "unknown command: $1" >&2; usage; exit 2 ;;
 esac
