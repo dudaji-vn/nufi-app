@@ -46,6 +46,10 @@ LEGAL = next(d for d in DEPARTMENTS if d["id"] == "legal")
 DOC_NAME = LEGAL["documents"][0]["name"]
 AGENT_ID = "agent_legal_test"
 TOKEN = "fake-jwt-token"
+# The model the fake's agent is pinned to. The evidence has to report the model
+# that actually answered, not the one the box serves: on the live box those two
+# drifted apart for days and nothing noticed.
+AGENT_MODEL = "qwen2.5-14b"
 
 # Wrong on purpose for the second extract question (expects "3", answered "2")
 # so one check must FAIL -- see module docstring.
@@ -128,6 +132,15 @@ class _FakeApp(BaseHTTPRequestHandler):
             if not (self._require_chrome_ua() and self._require_bearer()):
                 return
             return self._json(200, {"data": [{"id": AGENT_ID, "name": "Legal assistant"}]})
+
+        # The listing above carries no model -- the real one does not either --
+        # so the runner asks each agent for its own. Same gates as every other
+        # agent route.
+        if self.path.startswith("/api/agents/agent_"):
+            if not (self._require_chrome_ua() and self._require_bearer()):
+                return
+            return self._json(200, {"id": AGENT_ID, "name": "Legal assistant",
+                                    "model": AGENT_MODEL, "provider": "NuFi"})
 
         if self.path.startswith("/api/files/agent/"):
             if not (self._require_chrome_ua() and self._require_bearer()):
@@ -412,6 +425,13 @@ def main():
     assert dept["id"] == "legal"
     assert dept["agent"] == AGENT_ID
     assert dept["ingest_complete"] is True, dept
+    # The model that answered, recorded per department and collected at the
+    # top. Without this the evidence says how many questions a box got right
+    # and not which model got them right, and a score measured on one model can
+    # be reported over a recording of another -- which is exactly what the
+    # closing card of the box cut would have done this week.
+    assert dept["model"] == AGENT_MODEL, dept
+    assert data["models"] == [AGENT_MODEL], data["models"]
     questions = dept["questions"]
     assert len(questions) == 4, questions
     for i, q in enumerate(questions):
@@ -522,8 +542,71 @@ def test_the_agent_name_matches_the_daemons_own_mapping():
     print("PASS: the agent name this runner polls for is the one the daemon creates")
 
 
+def test_drift_is_detected_in_every_script_and_not_only_chinese():
+    """A Korean answer that slips into any other writing system is drift.
+
+    The detector was written against the one slip anyone had seen -- a Korean
+    sentence finishing in Chinese -- and it named that script in its condition.
+    Moving the box from qwen2.5-7b to qwen2.5-14b changed which script the model
+    slips into: on 14b whole answers come back in Thai, and every one of them
+    was recorded as drifted=false. The alphabet of a correct answer here is
+    Hangul, Latin, digits and punctuation; anything else is the tell, whatever
+    script it happens to be this month.
+    """
+    from run import drifted
+
+    assert drifted("계약 검토 표준 조항 无法回答"), "Chinese, the original case"
+    assert drifted("คณะกรรมการทำความค้นหาในเอกสาร"), "Thai, what 14b actually does"
+    assert drifted("계약 종료 후 3年간 존속합니다"), "a single Han character mid-sentence"
+    assert drifted("ответ не найден"), "Cyrillic"
+    assert drifted("回答が見つかりません"), "Japanese kana"
+
+    # ...and the things a correct Korean answer is full of are not drift.
+    assert not drifted("자동연장 조항이 포함된 계약은 만료일로부터 60일 전까지 통보해야 합니다.")
+    assert not drifted("NDA의 비밀유지 의무는 3년간 존속합니다 (계약검토_표준조항.txt 참조)")
+    assert not drifted("file_search 도구를 사용했습니다 — 결과: 30만원, 50%"), \
+        "Latin, digits, an em dash and a percent sign are all ordinary here"
+    assert not drifted(""), "an empty answer is a different defect, judged elsewhere"
+    print("PASS: drift is any script Korean prose would not contain, not only Chinese")
+
+
+def test_a_refusal_counts_however_the_model_phrases_it():
+    """The refusal markers were collected from one model's vocabulary.
+
+    A "refuse" question has no answer in the documents, so declining is the
+    right behaviour and inventing one is the failure that matters. The markers
+    that recognise a decline were written down while the box ran qwen2.5-7b,
+    which said 찾을 수 없습니다. qwen2.5-14b declines just as correctly and says
+    찾지 못했습니다 and 검색되지 않았습니다 -- neither of which was in the list,
+    so two correct refusals were recorded as the box making something up, and
+    the acceptance reported 19/32 where the box had earned 21/32.
+
+    Both strings below are verbatim from evidence/box.json.
+    """
+    from run import judge
+
+    for answer in (
+        "문서에서 신입 개발자의 온보딩 교육 기간에 대한 정보를 찾지 못했습니다.",
+        "관련 정보를 찾았지만, 항공권 예약 등급에 대한 내용이 포함된 문서는 검색되지 않았습니다. "
+        '"취업규칙_휴가.txt" 파일은 해당 질문에 필요한 정보를 제공하지 않습니다.',
+        "죄송합니다, 문의하신 내용은 문서에 없습니다.",
+    ):
+        ok, why = judge("refuse", answer, None)
+        assert ok, (answer[:40], why)
+
+    # ...and the failure this check exists for is still a failure: a fluent
+    # answer to a question the documents do not cover.
+    ok, why = judge("refuse", "해외 출장 항공권은 비즈니스 등급으로 예약합니다.", None)
+    assert not ok, why
+    ok, why = judge("refuse", "", None)
+    assert not ok, why
+    print("PASS: a decline is recognised however the model phrases it")
+
+
 if __name__ == "__main__":
     main()
+    test_drift_is_detected_in_every_script_and_not_only_chinese()
+    test_a_refusal_counts_however_the_model_phrases_it()
     test_the_agent_name_matches_the_daemons_own_mapping()
     test_a_broken_stream_becomes_a_recorded_failure()
     test_connect_to_moves_the_socket_and_leaves_the_url_alone()
