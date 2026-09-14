@@ -743,10 +743,14 @@ def test_the_banner_says_where_the_routines_are():
     out = dry(NUFI_BOX_FAKE_OS="Darwin", BOX_NAME="demo", ADMIN_EMAIL="boss@example.com")
     assert "Routines:" in out and "https://demo.local:7860" in out
     assert "nufi-box flows install | flows list" in out
-    # A member who signs in through the app gets their own Studio account, and
-    # the installed routines are not in it. Say so on the banner rather than
-    # letting the first member discover an empty workspace.
-    assert "own empty Studio" in out
+    # This assertion used to read "own empty Studio", and it kept passing after
+    # the behaviour changed underneath it: members were given their own copies,
+    # and a routine gained a ceiling, while the banner went on describing the
+    # box that existed before. A live upgrade is what noticed. Pin the two
+    # facts an operator acts on, so the next behaviour change has to come back
+    # here.
+    assert "own copy of each" in out, "the banner must say members get the routines"
+    assert "2048 tokens" in out, "the banner must say what bounds a routine"
 
 
 # --- .env's mode is decided, not inherited from the umask --------------------
