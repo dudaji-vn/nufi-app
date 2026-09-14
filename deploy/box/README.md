@@ -287,27 +287,30 @@ component in this Studio build exposes one (the Directory node hands on a
 file's path and its text, nothing more). Read the dates in the draft before
 sending it, and keep a department's drive tidy if the reports matter.
 
-**A routine's length is not bounded — known limitation.** Nothing in the box
-caps how much a routine generates, and nothing stops a run whose client has
-gone. On a small model that is not theoretical: with `qwen2.5:0.5b`, `weekly`
-has been seen generating past **39,000 tokens** — long after the caller had
-given up — holding the model and slowing every other question on the box
-until it was unloaded. The reason is that the cap belongs on the routine's
-model node and cannot be set there: this Studio build's Ollama component
-exposes no output limit, and the one field that looks like a deadline
-(`Timeout`) is dropped before it reaches Ollama. Chat is not affected — it
-goes through the gateway, which has its own 600-second request timeout — but
-the routines talk to Ollama directly and bypass it.
+**A routine's length is bounded; an abandoned run is not.** Each of the four
+routines carries a ceiling of **2048 tokens** on one generation — far above what
+any of them has needed to answer from a department drive, and set on the model
+node itself, so it holds however the routine is called. Before that ceiling
+existed, `weekly` on `qwen2.5:0.5b` was seen generating past **39,000 tokens**,
+long after the caller had given up, holding the model and slowing every other
+question on the box.
 
-Until the Studio image grows the setting:
+What is still not bounded is the *client's* side: nothing cancels a run whose
+caller has gone, so a routine that is generating keeps going until it reaches
+the ceiling. Two things remain true and worth knowing:
 
-* run the routines on **`qwen2.5:1.5b` or larger**. `weekly` answers in about
-  five seconds on 1.5b; 0.5b is the size that rambles;
-* if a routine does not come back, `nufi-box logs ollama` shows whether the
-  box is still generating (`n_gen` climbing with nobody listening), and
-  unloading the model is what ends it:
-  `docker compose exec ollama ollama stop <model>` on Linux, `ollama stop
-  <model>` on macOS.
+* the component's `Timeout` field is **not** a deadline — it is dropped before
+  it reaches Ollama, so setting it does nothing;
+* chat and the agents are not affected either way: they go through the gateway,
+  which has its own 600-second request timeout, and only the routines talk to
+  Ollama directly and bypass it.
+
+Practical advice unchanged: run the routines on **`qwen2.5:1.5b` or larger**
+(`weekly` answers in about five seconds on 1.5b; 0.5b is the size that rambles),
+and if a routine still does not come back, `nufi-box logs ollama` shows whether
+the box is generating (`n_gen` climbing with nobody listening); unloading the
+model ends it: `docker compose exec ollama ollama stop <model>` on Linux,
+`ollama stop <model>` on macOS.
 
 The drive is a field on the flow, not a copy of the flow: the same routine
 serves every department. In the canvas, change the **Drive** node's path
@@ -599,10 +602,11 @@ built yet:
   The setting belongs on the routine's model node and this Studio build does
   not expose it. The workaround, and how to spot it, are in [Departments and
   drives](#5-departments-and-drives).
-- **Routines for members.** The routines belong to the Studio superuser
-  account. A member signing in through the app gets their own empty Studio;
-  giving every member the four routines needs a change in the Studio image
-  itself, not in this box.
+- **Routines for members — now built.** A member signing in through the app is
+  given their own copy of each of the four routines, on every sign-in, not only
+  the first. A copy nobody has touched is refreshed from the box; a copy the
+  member has edited is left alone for good. It needed a change in the Studio
+  image, which shipped.
 - **The acceptance score is a measurement of the model, not the box.** The
   10/32 figure above says how good `qwen2.5:7b` is at these questions. It
   does not say whether ingestion, retrieval, or citation work — those

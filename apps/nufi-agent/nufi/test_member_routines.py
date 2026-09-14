@@ -173,3 +173,40 @@ async def test_the_jit_sign_in_path_seeds_the_routines(async_session, monkeypatc
     await AuthService._initialize_jit_user_defaults(member, async_session)
 
     assert called == [member.id], "the JIT sign-in path must seed the member's routines"
+
+
+async def test_a_member_who_signs_in_again_is_seeded_too(async_session, monkeypatch):
+    """Found on a live box, not in a test: `nufi-box flows list` showed sixteen
+    flows and the member's Studio showed none.
+
+    The seeding call sat in the branch that CREATES an SSO profile, so it fired
+    once — on a member's very first sign-in — and never again. Every member who
+    had already signed in before the box was upgraded stayed empty forever, and
+    "the copies you leave alone follow the box" was true for nobody. The seeder
+    is idempotent by construction (see the test above), so the returning path
+    can call it too.
+    """
+    import nufi.member_routines as member_routines
+    from langflow.services.auth.external import ExternalIdentity
+    from langflow.services.auth.service import AuthService
+    from langflow.services.deps import get_settings_service
+
+    calls: list = []
+
+    async def _spy(session, user_id):
+        calls.append(user_id)
+        return 0
+
+    monkeypatch.setattr(member_routines, "seed_member_routines", _spy)
+
+    service = AuthService(get_settings_service())
+    identity = ExternalIdentity(provider="console", subject="sub-1", username="alice", email="a@b.test")
+
+    first = await service._materialize_external_user(identity, async_session)
+    second = await service._materialize_external_user(identity, async_session)
+
+    assert first.id == second.id, "the same identity must map to one account"
+    assert calls == [first.id, first.id], (
+        "a returning member's sign-in must seed too, or the box's routines only "
+        f"ever reach a brand-new account (seeded on: {calls})"
+    )

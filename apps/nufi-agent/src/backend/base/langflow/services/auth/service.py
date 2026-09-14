@@ -379,6 +379,8 @@ class AuthService(BaseAuthService):
             profile.sso_last_login_at = now
             profile.updated_at = now
             await update_user_last_login_at(user.id, db)
+            # Returning members too, not only the first sign-in; see nufi/README.md.
+            await self._initialize_jit_user_defaults(user, db)
             return user
 
         username = await self._unique_external_username(db, identity)
