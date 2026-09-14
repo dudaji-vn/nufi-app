@@ -281,10 +281,15 @@ class App:
     def reconcile_agent(self, agent_id, instructions):
         """Bring an agent that already exists up to what this daemon would create.
 
-        Two things drift, and both of them are corrections this repo has
+        Three things drift, and each of them is a correction this repo has
         already had to make on a live box: MODEL_PARAMETERS (so an acceptance
-        score reproduces) and the system prompt (so the model searches before
-        it answers, and answers in the question's language). An upgraded box
+        score reproduces), the system prompt (so the model searches before it
+        answers, and answers in the question's language), and the model id
+        itself — INFERENCE_MODEL is one of the installer's four questions and
+        changing it is the documented answer to "this model is too weak", but
+        an agent keeps the id it was created with and the app then refuses
+        every question with `The model "…" is not available for NuFi`. An
+        upgraded box
         keeps the agents it has -- they are found by name and never recreated
         -- so without this, exactly the agents that need the fix never get it,
         and the release notes describe a box nobody is running.
@@ -320,6 +325,12 @@ class App:
             patch["model_parameters"] = dict(MODEL_PARAMETERS)
         if instructions and (agent.get("instructions") or "") != instructions:
             patch["instructions"] = instructions
+        # The provider rides with it: a box that moves between an Ollama model
+        # and a cloud one changes both, and sending the id without the provider
+        # would leave the agent pointing at a model its provider does not serve.
+        if agent.get("model") != self.cfg.model:
+            patch["model"] = self.cfg.model
+            patch["provider"] = self.cfg.provider
         if patch:
             self._request("PATCH", f"/api/agents/{agent_id}", patch, browser=True)
             LOG.info("agent %s → reconciled %s", agent_id, ", ".join(sorted(patch)))
