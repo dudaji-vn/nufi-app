@@ -23,6 +23,30 @@ already done.
 ./nufi-box ca-cert     # prints where the certificate file is
 ```
 
+### The warning screen is the certificate, not a fault
+
+Until a device trusts the box's certificate, its browser stops with *"Your
+connection is not private"* and you have to click **Advanced → Proceed**. That
+is what a private certificate authority looks like from the outside, and it is
+expected — not a sign that anything is wrong.
+
+It goes away for good on that device once the certificate is installed. Until
+then the connection is still encrypted; the browser simply has no way to know
+who issued the certificate.
+
+Two things worth knowing before you promise a room full of laptops that this
+takes a minute:
+
+- Some managed corporate laptops **disable the Advanced button** by policy, and
+  installing a certificate authority may need administrator rights. On those
+  machines the box is unreachable until IT allows it.
+- If the certificate will not download in the browser, fetch it directly —
+  Chrome and Edge cancel downloads over plain HTTP:
+
+  ```bash
+  curl -O https://nufi.local:3080/nufi-box-ca.crt   # warns once, then downloads
+  ```
+
 ## 2. Sign in
 
 Open `https://nufi.local:3080` and use the admin login from the banner. The same
@@ -79,6 +103,38 @@ the citation are right.
 A larger model is the lever. On the same 32-question acceptance set, moving
 from `qwen2.5:7b` to `qwen2.5:14b` took the score from 10 to 21 with nothing
 else changed. See [Inference profiles](/docs/box/install#inference-profiles).
+
+## When another machine cannot reach the box
+
+Work down this list; each step tells you something the one before it did not.
+
+| What you see | What it means |
+|---|---|
+| Certificate warning, then it works | Normal. That device has not trusted the certificate yet. |
+| `nufi.local` not found, but `https://<box-ip>:3080` works | The network is fine and mDNS is not resolving. Use the address; the certificate covers it too. |
+| Neither the name nor the address works, from a phone | Check the phone's own IP. If it is not on the box's subnet it is on another network — a guest SSID, a second band, or an extender with its own range. |
+| Neither works, and the device *is* on the same subnet | The access point has client isolation on, which blocks device-to-device traffic entirely. Nothing on the box can change that; it is a router setting. |
+| Nothing at all, from every device | `./nufi-box doctor` on the box itself. |
+
+**Android phones cannot resolve `.local` names.** Android has no system-wide
+mDNS resolver for ordinary lookups, so Chrome on Android will not open
+`https://nufi.local:3080` however healthy the box is. Use the address instead.
+iPhones resolve `.local` normally.
+
+On iOS the certificate needs a second step that is easy to miss: after
+installing the profile, go to **Settings → General → About → Certificate Trust
+Settings** and switch it on. Without that, the certificate is installed and
+still not trusted.
+
+To see whether a request reached the box at all while somebody is trying:
+
+```bash
+./nufi-box logs caddy
+```
+
+Every request is logged. It will not tell you *which* device — Docker's network
+rewrites the source address on the way in — but "a request arrived and got a
+200" against complete silence is usually the whole answer.
 
 ## Add a department later
 
