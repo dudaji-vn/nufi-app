@@ -10,6 +10,27 @@ HERE="$(cd "$(dirname "$SELF")" && pwd)"
 ENVF="${NUFI_BOX_ENV:-$HERE/.env}"
 DRY="${NUFI_BOX_DRY_RUN:-0}"
 run() { if [ "$DRY" = 1 ]; then printf '  $ %s\n' "$*"; else "$@"; fi; }
+# This machine's address on the LAN, the same way install-box.sh works it out.
+this_ip() {
+  if [ "$OS" = "Darwin" ]; then
+    ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo 127.0.0.1
+  else
+    hostname -I 2>/dev/null | awk '{print $1}' | grep . || echo 127.0.0.1
+  fi
+}
+# What the LAN currently believes $BOX_HOST is, asked over mDNS.
+announced_ip() {
+  if [ "$OS" = "Darwin" ]; then
+    # $2 == "Add", not /Add/: the header row's "Address" column contains
+    # "Add", so a regex match takes the header and reports the box as pointing
+    # at the literal string "Address" -- a false alarm on a healthy box, which
+    # is the way to get this check ignored.
+    dns-sd -t 2 -G v4 "${BOX_HOST:-nufi.local}" 2>/dev/null \
+      | awk '$2 == "Add" {print $6; exit}'
+  else
+    avahi-resolve -n4 "${BOX_HOST:-nufi.local}" 2>/dev/null | awk '{print $2; exit}'
+  fi
+}
 die() { echo "$*" >&2; exit 2; }
 [ -f "$ENVF" ] && { set -a; . "$ENVF"; set +a; }
 # NUFI_BOX_FAKE_OS lets the tests plan the other OS's run, exactly as
@@ -49,6 +70,7 @@ nufi-box <verb>
   logs [service]      follow logs (all, or one service)
   drive add <name>    create a department drive: folder, share, team and agent
   ca-cert             print the path of the certificate laptops must trust
+  announce            re-publish the box's name at the address it has now
   doctor              check the things that usually break, in plain words
   up | down | restart start, stop, or restart the whole box
   mesh up | status | down
@@ -86,6 +108,31 @@ case "${1:-}" in
     if [ -n "$_last" ]; then echo "Last backup: $_last UTC"
     else echo "Last backup: never — run 'nufi-box backup'"; fi ;;
   logs) shift; run $COMPOSE logs -f --tail=200 "$@" ;;
+  announce)
+    # Re-publish $BOX_HOST at the address this machine has now. One command,
+    # because the common case is "the laptop moved network" and re-running the
+    # whole installer for that is a hammer nobody reaches for before a demo.
+    _now="$(this_ip)"
+    echo "Announcing ${BOX_HOST:-nufi.local} at $_now"
+    case "$OS" in
+      Darwin)
+        # The stale publisher first: dns-sd does not take a name another
+        # process is still holding, so announcing over the top does nothing at
+        # all and says so to nobody.
+        run pkill -f "dns-sd -P ${BOX_NAME:-nufi} " || true
+        run sh -c "nohup dns-sd -P ${BOX_NAME:-nufi} _https._tcp local 3080 ${BOX_HOST:-nufi.local} $_now >/dev/null 2>&1 &" ;;
+      Linux)
+        run pkill -f "avahi-publish -a -R ${BOX_HOST:-nufi.local}" || true
+        run sh -c "nohup avahi-publish -a -R ${BOX_HOST:-nufi.local} $_now >/dev/null 2>&1 &" ;;
+      *) die "no mDNS announcement for $OS" ;;
+    esac
+    # .env carries BOX_IP into the certificate and the banner, so it has to
+    # follow the machine too -- otherwise the next `up` serves a certificate
+    # for an address the box no longer has.
+    . "$HERE/lib/envfile.sh"
+    run envfile_set "$ENVF" BOX_IP "$_now"
+    echo "BOX_IP=$_now"
+    echo "Done. Check it with: nufi-box doctor" ;;
   drive)
     if [ "${2:-}" != "add" ]; then usage; exit 2; fi
     if [ -z "${3:-}" ]; then echo "drive add: a name is required" >&2; usage; exit 2; fi
@@ -149,6 +196,25 @@ case "${1:-}" in
       echo " !!  caddy/mesh.caddy was written by an older box — run: nufi-box mesh up"; fail=1
     else
       echo " ok  caddy/mesh.caddy matches this Caddyfile"
+    fi
+    # The name every other laptop uses. Every check above this line goes to
+    # localhost, which is exactly the address nobody else types -- so a box
+    # whose mDNS announcement has gone stale passed all of them while being
+    # unreachable from the rest of the room. The installer publishes
+    # $BOX_HOST with the address the machine had that day, and a new DHCP
+    # lease leaves the name pointing at a stranger. That happened three times
+    # in five days on the box this was written on.
+    if [ "$DRY" = 1 ]; then
+      printf '  $ check %s resolves to this machine\n' "${BOX_HOST:-nufi.local}"
+    else
+      _now="$(this_ip)"; _said="$(announced_ip)"
+      if [ -z "$_said" ]; then
+        echo " !!  ${BOX_HOST:-nufi.local} is not being announced on the LAN — run: nufi-box announce"; fail=1
+      elif [ "$_said" != "$_now" ]; then
+        echo " !!  ${BOX_HOST:-nufi.local} points at $_said, this machine is $_now — run: nufi-box announce"; fail=1
+      else
+        echo " ok  ${BOX_HOST:-nufi.local} resolves to $_now"
+      fi
     fi
     [ "$fail" = 0 ] && echo "All good." || { echo "Something is off; run: nufi-box logs <service>"; exit 1; } ;;
   # Both start Caddy again, so both are places a caddy/mesh.caddy left behind by
