@@ -1,0 +1,98 @@
+---
+title: Installing the box
+description: One command, four questions, a banner. About 25 minutes on a blank Ubuntu machine, most of it download.
+---
+
+## Before you start
+
+| | |
+|---|---|
+| **Machine** | Ubuntu 24.04 or macOS. On Windows, run this inside WSL2 Ubuntu — the installer stops if you try it anywhere else. |
+| **Docker** | Engine plus Compose v2. On Ubuntu the installer offers to install Docker for you; on macOS install Docker Desktop or OrbStack first. |
+| **Memory** | On macOS, give the Docker VM at least **12 GB** (Settings → Resources → Memory). The installer warns below 11 GB and carries on. The box itself uses about 3 GB running. |
+| **Disk** | Budget 30 GB. Most of it is the model and the images. |
+
+A GPU is optional. Without one the box answers from the CPU, which works and is
+slower; a machine serving a handful of people at once wants a GPU.
+
+## Get the box
+
+`deploy/box` is self-contained — 36 files, about 400 KB. There is no need to
+clone the whole repository:
+
+```bash
+curl -fsSL https://codeload.github.com/dudaji-vn/nufi-app/tar.gz/refs/heads/main \
+  | tar -xz --strip-components=2 '*/deploy/box'
+cd box
+```
+
+## Install
+
+```bash
+./install-box.sh --yes
+```
+
+`--yes` takes every default. Drop it to be asked instead:
+
+| Question | Default | What it decides |
+|---|---|---|
+| Box name | `nufi` | The LAN hostname (`nufi.local`) and the name on its certificate |
+| Admin email | `admin@nufi.local` | The one login you use across all four products |
+| Departments | `legal,hr,ga,strategy` | One drive folder, one team and one agent per name |
+| Inference profile | `ollama` (macOS) or `ollama-docker` (Linux) | Where the model runs |
+
+### Inference profiles
+
+| Profile | Where the model runs |
+|---|---|
+| `ollama` | Ollama already on the host (macOS default) |
+| `ollama-docker` | Ollama in a container the box manages (Linux default) |
+| `remote` | Another machine on your network speaking the OpenAI API |
+| `cloud` | A hosted provider. The only profile where text leaves the building. |
+
+`ollama` and `ollama-docker` ask which model; the default is `qwen2.5:7b`.
+`remote` and `cloud` ask for a base URL and a key.
+
+## How long it takes
+
+Measured, not estimated:
+
+| | |
+|---|---|
+| Blank Ubuntu 24.04, 4 vCPU, 8 GB, no Docker, nothing cached | **25 min 40 s** from the first command to the banner |
+| A machine that already has the images and the model | **about 75 seconds** |
+
+Nearly all of the difference is download. Docker Engine goes on, the installer
+re-runs itself inside the new `docker` group, and the first image starts coming
+down within two minutes.
+
+## The banner is the result
+
+```
+  NuFi box "nufi" is up.
+
+  Chat:        https://nufi.local:3080     (also https://<box-ip>:3080)
+  Agents:      https://nufi.local:3001/choose
+  Console:     https://nufi.local:3001
+  Admin panel: https://nufi.local:3002
+  Certificate: http://nufi.local/   ← laptops trust it once
+
+  Admin login: admin@nufi.local / <generated password>
+  Drives:      <data dir>/drives/<department>  → become that department's knowledge
+
+  Day two:     nufi-box status | logs | drive add <name> | ca-cert | doctor
+```
+
+Four URLs, one login, and where the folders live. Write the admin password
+down now — it is generated during the install and it is in `.env`, which is
+created mode `0600` and holds every other secret the box has.
+
+## If something goes wrong
+
+```bash
+./nufi-box doctor
+```
+
+It checks the things that actually break and says what to do about each in
+plain words. Re-running `./install-box.sh` is safe: it keeps the answers already
+on disk unless you override them explicitly.

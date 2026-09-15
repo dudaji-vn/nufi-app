@@ -1,0 +1,88 @@
+---
+title: Backups
+description: What a backup holds, why it holds more than two database dumps, and what a restore replaces.
+---
+
+```bash
+./nufi-box backup                       # into data/backup/<timestamp>/
+./nufi-box backup --to /Volumes/USB     # or onto a disk you carry away
+./nufi-box backup --install-nightly --at 03:30
+./nufi-box restore data/backup/20260914-033000
+```
+
+`./nufi-box status` says when the last one was, or that there has never been one.
+
+## What is in it
+
+Two database dumps look like a complete backup right until somebody tries to
+bring a box back from them. A box rebuilt from the dumps alone comes up with
+every account and every agent and **no documents** — the one thing on the box
+nobody else has a copy of — on new secrets, behind a certificate no laptop
+trusts. So a backup holds what a restore needs:
+
+| | |
+|---|---|
+| `postgres.sql.gz` | the app, Studio and gateway databases, and the roles |
+| `mongodb.archive.gz` | accounts, conversations, agents |
+| `drives.tar.gz` | **the department's documents** |
+| `app-uploads.tar.gz` | files people attached in the app |
+| `caddy-data.tar.gz` | **the certificate authority itself** |
+| `ingest-state.tar.gz` | what the watcher has already uploaded |
+| `ca.tar.gz`, `env` | the published certificate, and the secrets all of it is keyed to |
+
+Two of those are easy to leave out and expensive to miss. The box's real
+certificate authority is the root key inside `caddy-data`; the file on disk is
+only the copy handed to laptops, so a restore without the volume comes back
+serving a certificate every laptop rejects. And without `ingest-state` the
+watcher re-uploads every document on every drive, leaving each agent holding
+two of everything.
+
+Reports written by scheduled routines are left out on purpose — the box can
+write them again, and keeping them would grow every backup for ever.
+
+## A backup holds the box's secrets in clear
+
+`env` is the box's `.env`: database passwords, JWT secrets, the gateway master
+key. The directory is `0700` and the file `0600`. A copy on a USB disk in a
+drawer is the box's keys in a drawer — treat it the way you would treat the box.
+
+## Retention
+
+The newest seven are kept and older ones pruned; `--keep N` changes that. Only
+the timestamped directories this command writes are ever considered, so a
+`--to` directory holding other things loses none of them.
+
+## Nightly
+
+`--install-nightly` writes a launchd job on macOS or a systemd user timer on
+Linux — not a container. A container that could back the box up would need the
+Docker socket, which is the whole host handed to anything that gets into that
+container. `--remove-nightly` takes it away.
+
+## Restoring
+
+A restore **replaces**; it does not merge. The drive tree is swapped rather than
+extracted over, and the tree as it was is kept in `data/drives.previous` so a
+restore from the wrong backup is not the end of the department's documents.
+
+It puts `.env` and the certificate authority back *before* it starts anything:
+data restored into a stack already running on freshly generated secrets is a
+restore that half-works, with the rows back and the sessions, tokens and
+certificate strangers to them.
+
+You are asked to type the box's name to confirm, unless you pass `--yes`.
+Afterwards, run `./nufi-box doctor`.
+
+### Two errors during a restore are expected
+
+```
+ERROR:  current user cannot be dropped
+ERROR:  role "nufi" already exists
+```
+
+The dump tries to drop the role it is being restored as. Anything else — in
+particular `relation ... already exists` — means the databases were not dropped
+and you are looking at a merge rather than a restore.
+
+One limit worth knowing: the Mongo restore drops the collections that are *in
+the archive*. A collection created since the backup and absent from it survives.

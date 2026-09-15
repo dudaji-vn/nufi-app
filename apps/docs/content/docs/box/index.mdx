@@ -1,0 +1,60 @@
+---
+title: What the box is
+description: One command puts the whole of NuFi on a machine a department already owns, and a shared folder becomes that department's knowledge.
+---
+
+The NuFi Team box is the whole product — chat, agents, Studio, the console and
+the admin panel — installed on one machine a department already owns, reachable
+over the office LAN, with no cloud account and nothing to configure per user.
+
+The idea it is built around is a folder. Each department gets one:
+
+```
+data/drives/legal/      → the Legal team's agent knows what is in here
+data/drives/hr/         → the HR team's agent knows what is in here
+```
+
+Drop a file in, and a minute later that department's agent can answer from it
+and name the file it answered from. There is no upload screen, no per-file
+permission to grant, and no button to press. The folder is the interface.
+
+## What you get
+
+| | |
+|---|---|
+| **Chat** | `https://<box>:3080` — the NuFi app, one agent per department |
+| **Console** | `https://<box>:3001` — the box's identity authority and model gateway |
+| **Admin panel** | `https://<box>:3002` — accounts, teams, audit |
+| **Studio** | `https://<box>:7860` — the flow canvas, with the department routines in it |
+
+One login works across all four. A member signs in once, on the box, and never
+sees a second password.
+
+## Where the answers come from
+
+The model runs on the box. By default that is `qwen2.5:7b` served by Ollama on
+the machine itself, and it never leaves the box — no request, no document and
+no question goes to a third party. You can point the box at a bigger model on
+another machine, or at a hosted provider, when you want to: see
+[Inference profiles](/docs/box/install#inference-profiles).
+
+Retrieval is per department. The Legal agent reads the Legal drive and the
+Legal vector index; asking it an HR question gets you an honest "that is not in
+these documents" rather than an answer out of the wrong folder.
+
+## What it is not, yet
+
+Being straight about this is cheaper than a surprise:
+
+- **It does not read or send email.** Nothing in the box touches a mailbox.
+- **It does not record or transcribe meetings.** It summarises a transcript you
+  give it.
+- **Reaching the box from home** is built and works in the lab, but has not yet
+  been proven against a public coordinator in the field. On the LAN it is solid.
+- **`nufi-box update` does not exist yet.** Upgrading today means pulling new
+  images by hand.
+
+## Next
+
+- [Install it](/docs/box/install) — one command, four questions
+- [The first hour](/docs/box/first-hour) — trust the certificate, drop a file, ask a question

@@ -1,0 +1,14 @@
+{
+  "title": "NuFi Team box",
+  "icon": "Server",
+  "pages": [
+    "---Start here---",
+    "index",
+    "install",
+    "first-hour",
+    "---Operate---",
+    "day-two",
+    "backups",
+    "routines"
+  ]
+}
