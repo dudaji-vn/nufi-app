@@ -17,6 +17,24 @@
 
 (box_tls) {
 	tls internal
+	# The certificate, on every TLS port as well as on :80.
+	#
+	# It used to be reachable only over plain HTTP, which is the one protocol a
+	# browser is increasingly unwilling to download a file over -- Chrome and
+	# Edge cancel it outright. That put the very first step a new laptop takes
+	# ("trust this certificate") behind the thing browsers block, with no other
+	# route to the file.
+	#
+	# Over HTTPS the browser warns that it does not trust this certificate yet,
+	# which is true and is the whole point; clicking through once is a smaller
+	# ask than a download that silently cancels. :80 keeps serving it for
+	# `curl` and for anyone who prefers it.
+	handle /nufi-box-ca.crt {
+		root * /data/caddy/pki/authorities/local
+		rewrite * /root.crt
+		file_server
+		header Content-Type "application/x-x509-ca-cert"
+	}
 }
 
 # Plain HTTP landing page: links, the root certificate, per-OS trust steps.

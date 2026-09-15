@@ -4,7 +4,8 @@ import re
 
 import pytest
 
-CADDYFILE = (pathlib.Path(__file__).resolve().parents[1] / "Caddyfile").read_text()
+BOX_DIR = pathlib.Path(__file__).resolve().parents[1]
+CADDYFILE = (BOX_DIR / "Caddyfile").read_text()
 # The global options block: everything to the first `}` alone on a line. Not
 # `split("}")` — the block itself contains `{$BOX_IP}`.
 GLOBAL = re.match(r"\{\n(.*?)\n\}\n", CADDYFILE, re.S).group(1)
@@ -35,6 +36,48 @@ def test_every_product_port_is_served():
 def test_the_certificate_is_downloadable_by_its_public_name():
     assert "handle /nufi-box-ca.crt {" in CADDYFILE
     assert "rewrite * /root.crt" in CADDYFILE
+
+
+def test_the_certificate_is_also_reachable_over_https():
+    """Not only over plain HTTP on :80.
+
+    The first thing a new laptop does is fetch this file, and for a while the
+    only way to fetch it was the one protocol browsers are least willing to
+    download over -- Chrome and Edge cancel an insecure download outright. Over
+    HTTPS the browser warns that it does not trust this certificate yet, which
+    is true and is the point; clicking through once beats a download that
+    silently cancels.
+
+    It lives in the `box_tls` snippet, so every TLS site gets it -- including
+    the mesh sites, which import the same snippet.
+    """
+    snippet = re.search(r"\(box_tls\) \{\n(.*?)\n\}\n", CADDYFILE, re.S)
+    assert snippet, "the box_tls snippet has been renamed or removed"
+    body = snippet.group(1)
+    assert "handle /nufi-box-ca.crt {" in body, (
+        "the certificate is served only on :80 again; a browser will cancel that download"
+    )
+    assert "rewrite * /root.crt" in body
+
+
+def test_the_mesh_stamp_moves_when_the_snippet_the_mesh_sites_import_changes():
+    """`caddy/mesh.caddy.empty` and lib/mesh.sh carry the same revision.
+
+    The generated mesh sites `import box_tls`, so a box holding a mesh.caddy
+    written before a change to that snippet is serving a front door assembled
+    from two different designs. The stamp is how lib/mesh.sh notices and
+    re-renders instead of taking the front door down -- which only works if the
+    two numbers agree.
+    """
+    template = (BOX_DIR / "caddy" / "mesh.caddy.empty").read_text().splitlines()[0]
+    mesh_sh = (BOX_DIR / "lib" / "mesh.sh").read_text()
+    stamped = re.search(r"^# nufi-box mesh\.caddy rev (\d+)$", template)
+    declared = re.search(r"^MESH_CADDY_REV=(\d+)$", mesh_sh, re.M)
+    assert stamped and declared, (template, "MESH_CADDY_REV not found")
+    assert stamped.group(1) == declared.group(1), (
+        f"template says rev {stamped.group(1)}, lib/mesh.sh says {declared.group(1)}"
+        " — bump both together, or neither"
+    )
 
 
 # --- Task 6: the mesh sites --------------------------------------------------

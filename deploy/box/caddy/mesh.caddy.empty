@@ -1,4 +1,4 @@
-# nufi-box mesh.caddy rev 2
+# nufi-box mesh.caddy rev 3
 # caddy/mesh.caddy — the box's sites on its mesh address.
 #
 # This is the empty template. install-box.sh copies it to caddy/mesh.caddy
