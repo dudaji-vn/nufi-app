@@ -85,6 +85,9 @@ nufi-box <verb>
   flows install       put the department routines into Studio (safe to repeat)
   flows list          every flow in the box's Studio, with its id
   schedule list       the routines that run on a clock, and when each fires next
+  user add EMAIL [--name "Full Name"]
+                      give somebody an account on this box
+  user list           everyone who can sign in
   backup [--to DIR] [--keep N]
                       dump the databases, the drives and the secrets
   backup --install-nightly [--at HH:MM] | --remove-nightly
@@ -278,6 +281,53 @@ case "${1:-}" in
     esac
     . "$HERE/lib/flows.sh"
     "flows_$FLOWS_VERB" ;;
+  user)
+    # People, as opposed to laptops. `invite` and `members` are about machines
+    # joining the mesh; this is about who may sign in at all.
+    #
+    # Registration is off on a box by design -- a department appliance is not a
+    # public sign-up page -- so without this there was no way to give the second
+    # person an account. The app image has carried the tools all along; nothing
+    # surfaced them, and nothing wrote them down.
+    shift
+    case "${1:-}" in
+      add)
+        _email="${2:-}"
+        [ -n "$_email" ] || die "user add: say who — nufi-box user add <email>"
+        case "$_email" in
+          *@*.*) : ;;
+          *) die "user add: that is not an email address: $_email" ;;
+        esac
+        shift 2
+        _name=""
+        while [ $# -gt 0 ]; do
+          case "$1" in
+            --name) _name="${2:?--name needs a value}"; shift 2 ;;
+            *) die "user add: unknown option: $1" ;;
+          esac
+        done
+        # The username the app wants, from the address an administrator has to
+        # hand. The local part, minus anything the app would not take.
+        _user="$(printf '%s' "${_email%%@*}" | tr -cd 'a-zA-Z0-9._-')"
+        [ -n "$_name" ] || _name="$_user"
+        # Generated, not asked for: the installer generates the admin password
+        # the same way, and an administrator inventing one per person is how
+        # every account on a box ends up sharing it.
+        _pw="$(openssl rand -hex 8)"
+        echo "Creating $_email on this box"
+        run $COMPOSE exec -T librechat npm run create-user -- \
+          "$_email" "$_name" "$_user" "$_pw"
+        echo
+        echo "  email:    $_email"
+        echo "  password: $_pw"
+        echo
+        echo "Write it down now — it is not stored anywhere you can read it back."
+        echo "They can change it once signed in." ;;
+      list)
+        run $COMPOSE exec -T librechat npm run list-users ;;
+      "") echo "user: say what to do — add or list" >&2; usage; exit 2 ;;
+      *) echo "user: unknown subcommand: $1 (use add or list)" >&2; exit 2 ;;
+    esac ;;
   schedule)
     shift
     case "${1:-}" in
