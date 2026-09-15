@@ -665,3 +665,54 @@ def test_announce_on_linux_uses_avahi(tmp_path):
     r = cli("announce", NUFI_BOX_ENV=str(_env(tmp_path)), NUFI_BOX_FAKE_OS="Linux")
     assert r.returncode == 0, r.stderr
     assert "avahi-publish" in r.stdout, r.stdout
+
+
+# --- people, as opposed to laptops ----------------------------------------
+
+def test_user_add_creates_an_account_through_the_apps_own_tool(tmp_path):
+    """A box shipped with no way to give the second person an account.
+
+    Registration is off by design — a department appliance is not a public
+    sign-up — and `invite` and `members` are about laptops joining the mesh,
+    not people. The capability was inside the app image all along, behind
+    `docker compose exec librechat npm run create-user`, which nobody had
+    written down. A department of eight could not log in.
+    """
+    r = cli("user", "add", "alice@dept.local", NUFI_BOX_ENV=str(_env(tmp_path)))
+    assert r.returncode == 0, r.stderr
+    assert "create-user" in r.stdout, r.stdout
+    assert "alice@dept.local" in r.stdout
+    # The username is derived, because the app wants one and an email is what
+    # an administrator actually has to hand.
+    assert "alice" in r.stdout
+
+
+def test_user_add_generates_a_password_rather_than_asking_for_one(tmp_path):
+    """The installer generates the admin's password; this matches it.
+
+    Asking an administrator to invent a password per person is how every
+    account on the box ends up with the same one.
+    """
+    import re
+    r = cli("user", "add", "bob@dept.local", NUFI_BOX_ENV=str(_env(tmp_path)))
+    assert r.returncode == 0, r.stderr
+    shown = re.search(r"password:\s+([0-9a-f]{16})\b", r.stdout)
+    assert shown, f"no generated password in the output: {r.stdout}"
+    # ...and a second call does not hand out the same one.
+    again = cli("user", "add", "bob@dept.local", NUFI_BOX_ENV=str(_env(tmp_path)))
+    other = re.search(r"password:\s+([0-9a-f]{16})\b", again.stdout)
+    assert other and other.group(1) != shown.group(1), "the password is not being generated"
+
+
+def test_user_list_and_a_refused_verb(tmp_path):
+    env = str(_env(tmp_path))
+    assert "list-users" in cli("user", "list", NUFI_BOX_ENV=env).stdout
+    assert cli("user", "frobnicate", NUFI_BOX_ENV=env).returncode != 0
+    assert cli("user", NUFI_BOX_ENV=env).returncode != 0
+
+
+def test_user_add_refuses_something_that_is_not_an_email(tmp_path):
+    """The address becomes a login; a typo becomes an account nobody can use."""
+    r = cli("user", "add", "not-an-email", NUFI_BOX_ENV=str(_env(tmp_path)))
+    assert r.returncode != 0
+    assert "email" in (r.stderr + r.stdout).lower()

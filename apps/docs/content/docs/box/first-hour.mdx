@@ -53,7 +53,42 @@ Open `https://nufi.local:3080` and use the admin login from the banner. The same
 login works on the console, the admin panel and Studio — you will not be asked
 for a second password.
 
-## 3. Put a document in a department folder
+## 3. Give your colleagues accounts
+
+There is no sign-up page, and that is deliberate: a department appliance is not
+a public service, so who may sign in is a decision an administrator makes rather
+than something anyone with the address can do for themselves.
+
+A fresh box has exactly two accounts — the administrator the installer created,
+and the watcher daemon's own. Everybody else is added by hand:
+
+```bash
+./nufi-box user add hana@legal.example --name "Hana Kim"
+```
+
+```
+  email:    hana@legal.example
+  password: 4f9c2ad81b7e0c35
+
+Write it down now — it is not stored anywhere you can read it back.
+They can change it once signed in.
+```
+
+The password is generated rather than chosen, for the same reason the
+installer generates the administrator's: an administrator inventing one per
+person is how every account on a box ends up sharing a password. It is printed
+once and not kept in readable form.
+
+```bash
+./nufi-box user list     # everyone who can sign in
+```
+
+That same login works on all four products. A person added here can open the
+app, the console, the admin panel and Studio without a second password, and
+they get their own copy of the department routines the first time they open
+Studio.
+
+## 4. Put a document in a department folder
 
 ```bash
 cp 계약검토_표준조항.txt <data dir>/drives/legal/
@@ -78,7 +113,7 @@ Over the network the same folders are shares — `\\nufi\legal`, `\\nufi\hr` —
 so a department can drag files in from Finder or Explorer without touching a
 terminal.
 
-## 4. Ask the department's agent
+## 5. Ask the department's agent
 
 In chat, pick the **Legal assistant** and ask something only that document
 answers:

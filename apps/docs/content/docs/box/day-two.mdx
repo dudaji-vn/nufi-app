@@ -59,6 +59,21 @@ only after the app restarts.
 ./nufi-box drive add finance   # folder, share, team and agent
 ```
 
+## People
+
+```bash
+./nufi-box user add hana@legal.example --name "Hana Kim"
+./nufi-box user list
+```
+
+The box has no sign-up page — who may sign in is an administrator's decision,
+not a self-service one. `user add` prints a generated password once; it is not
+stored anywhere it can be read back.
+
+Note that this is a different thing from `invite`, which is about a **laptop**
+joining the mesh so it can reach the box from outside the office. `user add` is
+about a **person** being allowed to sign in at all.
+
 ## Studio routines
 
 ```bash
