@@ -628,3 +628,40 @@ def test_nightly_installs_a_host_timer_not_a_container(tmp_path):
     assert linux.returncode == 0, linux.stderr
     assert "nufi-box-backup.timer" in linux.stdout
     assert "OnCalendar=*-*-* 02:15:00" in linux.stdout
+
+
+# --- the name every other laptop uses -------------------------------------
+
+def test_doctor_checks_the_name_and_not_only_localhost(tmp_path):
+    """`doctor` passed ten checks and none of them was the one that breaks.
+
+    Every check went to localhost. `nufi.local` — the address each laptop in
+    the room types — was never looked at. The installer announces that name
+    over mDNS with the address the machine had at install time, so a new DHCP
+    lease leaves the name pointing at a stranger while `doctor` still reports
+    All good. That happened three times in five days on the development box.
+    """
+    r = cli("doctor", NUFI_BOX_ENV=str(_env(tmp_path, BOX_IP="192.168.1.25")))
+    assert "nufi.local" in r.stdout, r.stdout
+
+
+def test_announce_republishes_the_name_at_the_address_the_box_has_now(tmp_path):
+    """The fix has to be one command, or it will not be run before a demo.
+
+    Re-running the whole installer works and is far too big a hammer for "the
+    laptop moved network", which is the common case.
+    """
+    r = cli("announce", NUFI_BOX_ENV=str(_env(tmp_path, BOX_IP="10.0.0.9")),
+            NUFI_BOX_FAKE_OS="Darwin")
+    assert r.returncode == 0, r.stderr
+    # The stale publisher has to go first: a second dns-sd for a name another
+    # process still holds is ignored, so the announce silently does nothing.
+    assert "pkill" in r.stdout, r.stdout
+    assert "dns-sd -P nufi" in r.stdout, r.stdout
+    assert "BOX_IP=" in r.stdout, "the new address belongs in .env too"
+
+
+def test_announce_on_linux_uses_avahi(tmp_path):
+    r = cli("announce", NUFI_BOX_ENV=str(_env(tmp_path)), NUFI_BOX_FAKE_OS="Linux")
+    assert r.returncode == 0, r.stderr
+    assert "avahi-publish" in r.stdout, r.stdout

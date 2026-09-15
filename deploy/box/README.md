@@ -338,6 +338,36 @@ their owner, so each member is seeded rather than shared with. A copy a member
 edits is theirs and is never overwritten; one they have not touched follows the
 box when a routine is rebuilt.
 
+## Before a demo, or after the box moves network
+
+```sh
+nufi-box doctor
+```
+
+Ten of its checks go to `localhost`. The eleventh is the one that matters to
+everybody else in the room: that `nufi.local` is being announced on the LAN and
+points at *this* machine.
+
+The installer publishes that name over mDNS with the address the box had that
+day. A new DHCP lease, a different Wi-Fi network, a dock unplugged — and the
+name points at a stranger while the box itself is perfectly healthy. `doctor`
+used to pass all ten checks in exactly that state, because nothing it asked was
+the question a visiting laptop asks.
+
+```
+ !!  nufi.local points at 192.168.1.99, this machine is 192.168.1.25 — run: nufi-box announce
+```
+
+```sh
+nufi-box announce      # re-publish the name at the address the box has now
+```
+
+That also writes the new `BOX_IP` into `.env`, so the certificate and the banner
+follow the machine.
+
+A laptop joining for the first time still needs the box's certificate once —
+`nufi-box ca-cert` prints where it is.
+
 ## Backups
 
 ```sh
