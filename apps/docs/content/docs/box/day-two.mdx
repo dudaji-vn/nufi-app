@@ -1,0 +1,99 @@
+---
+title: Day two
+description: The handful of nufi-box commands that matter after the install, and the one check that catches the failure nobody expects.
+---
+
+Everything below is `./nufi-box` from the directory you installed from.
+
+## Is it healthy?
+
+```bash
+./nufi-box doctor
+```
+
+Eleven checks in plain words. Ten of them ask the box about itself. The
+eleventh is the one worth knowing about.
+
+### The name, not just the box
+
+The box announces `nufi.local` on the LAN with the address it had on install
+day. Change network, pick up a new DHCP lease, unplug a dock — and the name now
+points at a stranger while the box itself is in perfect health. Every laptop in
+the room fails to reach it; the box has no idea.
+
+```
+ !!  nufi.local points at 192.168.1.99, this machine is 192.168.1.25 — run: nufi-box announce
+```
+
+```bash
+./nufi-box announce
+```
+
+That re-publishes the name at the address the box has now and records it, so
+the certificate and the banner follow the machine. **Run `doctor` before any
+demo.** This is the single most common way a working box looks broken.
+
+## What is running
+
+```bash
+./nufi-box status          # every service, the model, disk, last backup
+./nufi-box logs            # all of it, following
+./nufi-box logs librechat  # one service
+```
+
+## Start, stop, restart
+
+```bash
+./nufi-box up
+./nufi-box down
+./nufi-box restart
+```
+
+Restart is also the cure for one specific confusion: the app caches the model
+list per gateway and never expires it, so a model you have just added shows up
+only after the app restarts.
+
+## Departments
+
+```bash
+./nufi-box drive add finance   # folder, share, team and agent
+```
+
+## Studio routines
+
+```bash
+./nufi-box flows install    # put the department routines into Studio; safe to repeat
+./nufi-box flows list       # every flow, with its id
+```
+
+`flows install` keeps a routine that is already there, edits and all, and
+creates only what is missing.
+
+## From home
+
+```bash
+./nufi-box mesh up            # join the box to the coordinator
+./nufi-box mesh status
+./nufi-box invite alice --os macos --drives legal,hr
+./nufi-box members
+./nufi-box revoke alice
+```
+
+`invite` writes one file a laptop opens to join. This path is proven in the lab
+and has not yet been run against a public coordinator in the field — on the LAN
+you need none of it.
+
+## The certificate
+
+```bash
+./nufi-box ca-cert     # the file every laptop trusts once
+```
+
+## Not yet
+
+```bash
+./nufi-box update      # coming
+./nufi-box support     # coming
+```
+
+Upgrading today is `docker compose pull` and `./nufi-box up` by hand.

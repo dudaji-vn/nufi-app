@@ -1,0 +1,83 @@
+---
+title: Routines on a clock
+description: A routine is a Studio flow that reads a department drive. Give it a schedule and it leaves its answer as a file in that department's folder.
+---
+
+The box installs four **routines** into Studio — flows that read a department's
+drive and answer from it. You can run one by hand on the canvas, or put it on a
+clock.
+
+```bash
+./nufi-box flows list        # what is installed
+./nufi-box schedule list     # what runs on a clock, and when each fires next
+```
+
+## Writing a schedule
+
+Schedules live in `data/schedules.ini`. The installer ships it with every
+section commented out, so nothing runs until you say so — a box that starts
+writing reports the day it is installed is a box nobody asked.
+
+```ini
+[legal-weekly]
+cron  = 0 17 * * 5
+flow  = Routine · weekly report from the drive
+drive = legal
+ask   = 이번 주 주간보고 초안을 써줘.
+out   = weekly-report-{date}.md
+```
+
+| Key | |
+|---|---|
+| `cron` | five fields — minute, hour, day of month, month, day of week. `*`, numbers, `a-b`, `a,b` and `*/n`. No `@weekly` aliases. |
+| `flow` | the routine's name, exactly as Studio shows it |
+| `drive` | which department drive it reads, and writes into |
+| `ask` | the question the routine is given |
+| `out` | the file name. `{date}` becomes the run's date; a name without it is overwritten each run. |
+
+The file is re-read every twenty seconds, so adding a report needs no restart.
+
+```bash
+./nufi-box schedule list
+```
+
+```
+NAME                 WHEN             DRIVE      NEXT
+legal-weekly         0 17 * * 5       legal      2026-09-18 17:00
+                     -> legal/_routines/weekly-report-2026-09-18.md
+```
+
+That comes from the same parser the scheduler uses, so it cannot disagree with
+what will actually happen. A section it cannot understand is reported and
+skipped — one typo does not stop the department's other reports.
+
+## Where the answer goes
+
+```
+data/drives/legal/_routines/weekly-report-2026-09-18.md
+```
+
+Inside the department's own shared folder, where people already look. No app to
+open.
+
+**Nothing under `_routines/` is ever embedded back into the drive.** Without
+that rule last week's report becomes a source this week's is drafted from, and
+the routine ends up citing itself a little more confidently each week. It is not
+a hypothetical — it was watched happening on a box before the rule existed.
+
+## Limits worth knowing
+
+- **One at a time.** A schedule still running when its next turn comes round is
+  skipped and logged. The box answers one question at a time.
+- **No catching up.** A box that was off over a scheduled minute has missed that
+  report. Firing five hours of them at boot is worse than the gap.
+- **A run that overstays is cancelled**, not merely abandoned — an abandoned run
+  keeps generating with nobody listening and holds the box's only model against
+  every other question. The deadline is fifteen minutes by default.
+- **Schedules belong to the box, not to a person.** Routines are copied to each
+  member's own Studio account, so a schedule attached to a member's copy would
+  run once per member and write the same department report several times over.
+
+```bash
+./nufi-box logs nufi-cron    # what happened when one ran
+```

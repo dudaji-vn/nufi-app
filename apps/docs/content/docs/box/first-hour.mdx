@@ -1,0 +1,95 @@
+---
+title: The first hour
+description: Trust the certificate once, drop a file into a department folder, and watch the agent answer from it.
+---
+
+The install is done and the banner is on screen. This is the shortest path from
+there to the thing the box is for.
+
+## 1. Trust the box's certificate, once per laptop
+
+The box issues its own certificates, so the first visit warns you. Each laptop
+trusts the box once:
+
+```
+http://nufi.local/
+```
+
+That page serves the certificate. Install it, and every NuFi URL on the box is
+a normal padlock from then on. On the machine that ran the installer this is
+already done.
+
+```bash
+./nufi-box ca-cert     # prints where the certificate file is
+```
+
+## 2. Sign in
+
+Open `https://nufi.local:3080` and use the admin login from the banner. The same
+login works on the console, the admin panel and Studio — you will not be asked
+for a second password.
+
+## 3. Put a document in a department folder
+
+```bash
+cp 계약검토_표준조항.txt <data dir>/drives/legal/
+```
+
+That is the whole of it. A watcher scans the drives every twenty seconds, waits
+for a file to stop changing before it touches it, then uploads it to that
+department's agent and embeds it.
+
+```bash
+./nufi-box logs nufi-ingest
+```
+
+```
+INFO added legal/계약검토_표준조항.txt → 3c7d56c0-… (embedded=True)
+```
+
+`embedded=True` is the moment the document became knowledge. It usually lands
+within a minute of the copy.
+
+Over the network the same folders are shares — `\\nufi\legal`, `\\nufi\hr` —
+so a department can drag files in from Finder or Explorer without touching a
+terminal.
+
+## 4. Ask the department's agent
+
+In chat, pick the **Legal assistant** and ask something only that document
+answers:
+
+> 자동연장 조항이 있는 계약은 만료 며칠 전까지 통보해야 하나요?
+
+The answer comes back with the file name above it. That citation is the point:
+the number came out of the department's own document, not out of the model's
+training.
+
+If you ask it something the documents do not cover, it should decline rather
+than invent. That behaviour is what the box's acceptance run measures.
+
+## What to expect from the answers
+
+The box ships with `qwen2.5:7b`, which is small enough to run on a machine
+without a GPU. Small models are uneven: they sometimes print their search call
+as text before making it, and occasionally start a sentence in the wrong
+language. The retrieval underneath is not what is wobbling — the passage and
+the citation are right.
+
+A larger model is the lever. On the same 32-question acceptance set, moving
+from `qwen2.5:7b` to `qwen2.5:14b` took the score from 10 to 21 with nothing
+else changed. See [Inference profiles](/docs/box/install#inference-profiles).
+
+## Add a department later
+
+```bash
+./nufi-box drive add finance
+```
+
+Folder, share, team and agent, in one command.
+
+## Next
+
+- [Day two](/docs/box/day-two) — the commands you will actually use
+- [Routines on a clock](/docs/box/routines) — a weekly report that writes itself
+- [Backups](/docs/box/backups) — and how to put one back
