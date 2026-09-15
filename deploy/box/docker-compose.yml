@@ -14,6 +14,18 @@ volumes:
   ingest-state:
   cron-state:
 
+# Container logs, bounded.
+#
+# Docker's default json-file driver has no size limit, so an appliance that
+# runs for months writes until the disk is full -- and this box has already
+# been there once. 20 MB x 3 per service is a few days of ordinary chatter and
+# enough history to answer "did that laptop ever reach us".
+x-logging: &box-logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "3"
+
 services:
   # ---------------------------------------------------------------------------
   # TLS front. One hostname, several ports; internal CA. Laptops trust the root
@@ -22,6 +34,7 @@ services:
   # for the console's JWKS.
   # ---------------------------------------------------------------------------
   caddy:
+    logging: *box-logging
     image: caddy:2.10.0-alpine
     restart: unless-stopped
     environment:
@@ -56,6 +69,7 @@ services:
           - "${BOX_HOST}"
 
   postgres:
+    logging: *box-logging
     image: pgvector/pgvector:pg16
     restart: unless-stopped
     environment:
@@ -74,6 +88,7 @@ services:
     networks: [box]
 
   mongodb:
+    logging: *box-logging
     # 4.4 is the last release that runs on CPUs without AVX; ships the legacy
     # `mongo` shell (no mongosh), which the healthcheck and installer use.
     image: mongo:4.4
@@ -92,6 +107,7 @@ services:
     networks: [box]
 
   litellm-proxy:
+    logging: *box-logging
     image: ${NUFI_REGISTRY:-ghcr.io/dudaji-vn}/nufi-litellm:${NUFI_LITELLM_TAG}
     restart: unless-stopped
     extra_hosts:
@@ -121,6 +137,7 @@ services:
     networks: [box]
 
   librechat:
+    logging: *box-logging
     image: ${NUFI_REGISTRY:-ghcr.io/dudaji-vn}/nufichat:${NUFI_CHAT_TAG}
     restart: unless-stopped
     depends_on:
@@ -162,6 +179,7 @@ services:
     networks: [box]
 
   rag_api:
+    logging: *box-logging
     image: ${NUFI_RAG_IMAGE}
     restart: unless-stopped
     extra_hosts:
@@ -194,6 +212,7 @@ services:
   # it verifies the chat cookie server-side and mints the Studio identity JWT.
   # ---------------------------------------------------------------------------
   console:
+    logging: *box-logging
     image: ${NUFI_REGISTRY:-ghcr.io/dudaji-vn}/nufi-console:${NUFI_CONSOLE_TAG}
     restart: unless-stopped
     depends_on:
@@ -232,6 +251,7 @@ services:
     networks: [box]
 
   admin-panel:
+    logging: *box-logging
     image: ${NUFI_REGISTRY:-ghcr.io/dudaji-vn}/nufichat-admin-panel:${NUFI_ADMIN_TAG}
     restart: unless-stopped
     depends_on:
@@ -252,6 +272,7 @@ services:
     networks: [box]
 
   studio:
+    logging: *box-logging
     image: ${NUFI_REGISTRY:-ghcr.io/dudaji-vn}/nufi-studio:${NUFI_STUDIO_TAG}
     restart: unless-stopped
     extra_hosts:
@@ -325,6 +346,7 @@ services:
   # RAG store, acting as the ingest service account created by the installer.
   # ---------------------------------------------------------------------------
   nufi-ingest:
+    logging: *box-logging
     image: ${NUFI_REGISTRY:-ghcr.io/dudaji-vn}/nufi-ingest:${NUFI_INGEST_TAG}
     restart: unless-stopped
     depends_on:
@@ -355,6 +377,7 @@ services:
   # Scheduled department routines. Inert until data/schedules.ini exists, so an
   # existing box gains a stopped-empty scheduler and behaves exactly as before.
   nufi-cron:
+    logging: *box-logging
     image: ${NUFI_REGISTRY:-ghcr.io/dudaji-vn}/nufi-cron:${NUFI_CRON_TAG:-main}
     restart: unless-stopped
     depends_on:

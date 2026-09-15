@@ -441,7 +441,7 @@ except Exception:
 #   the imports — every `import <name>` in the generated file must be a
 #                 `(<name>)` snippet in this Caddyfile. Catches the drift
 #                 nobody remembered to bump, which is the one that happened.
-MESH_CADDY_REV=2
+MESH_CADDY_REV=3
 
 # mesh_caddy_stale FILE CADDYFILE — 0 (true) when FILE was written by an older
 # box, or asks CADDYFILE for a snippet it no longer defines. A file that is not
