@@ -67,8 +67,7 @@ there to remember.
 
 The Engine API has no handle on a running exec, so the deadline is
 enforced where the process is: every exec with a `timeoutMs` runs as
-`timeout -s KILL <seconds> <command>` inside the sandbox (the image is
-ours; busybox and coreutils both ship `timeout`), and the caller's
+`timeout -s KILL <seconds> <command>` inside the sandbox, and the caller's
 deadline — or the environment's own `timeoutMs` when the caller sets none
 — is always there. The provider's own timer is still the arbiter of
 `timedOut: true`: when it fires, the result says so and the exit code is
@@ -77,6 +76,13 @@ what gets killed. Killing the container instead — the earlier design —
 destroyed the agent's sandbox on any single slow command, and the host's
 run-log tail execs every 250 ms with a 15 s deadline, tolerating a few
 timeouts but not the sandbox vanishing under it.
+
+**The image must ship GNU coreutils' `timeout`, not busybox's.** GNU signals
+the whole process group; busybox signals only the direct child. The host runs
+its scripts as `bash -lc …`, so under busybox a timed-out script with a forked
+child would leave that child holding the stream, and the container-kill
+fallback would fire — the very regression the wrapper prevents. This is a hard
+requirement on `nufi-sandbox:main`, which is not yet defined in this repo.
 
 The container is killed only as a fallback. If the provider's timer fires
 and the stream has still not ended five seconds later

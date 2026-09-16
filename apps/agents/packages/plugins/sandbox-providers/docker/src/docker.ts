@@ -308,8 +308,15 @@ export class DockerClient {
 
 /**
  * The command under the sandbox's own timeout(1), which sends SIGKILL when
- * the seconds run out. Our image is ours; busybox and coreutils both ship
- * it. Whole seconds, rounded up: a deadline is never shortened by rounding.
+ * the seconds run out. Whole seconds, rounded up: a deadline is never
+ * shortened by rounding.
+ *
+ * The image must ship GNU coreutils' timeout, not busybox's. GNU signals the
+ * whole process group; busybox signals only the direct child. The host runs
+ * `bash -lc <script>`, so under busybox a timed-out script whose current step
+ * is a forked child would leave that child holding stdout, the stream would
+ * not end, and the 5 s container-kill fallback would fire -- the regression
+ * this wrapper exists to prevent. A hard requirement on nufi-sandbox:main.
  */
 function withDeadline(cmd: string[], timeoutMs: number): string[] {
   return ["timeout", "-s", "KILL", String(Math.ceil(timeoutMs / 1000)), ...cmd];
