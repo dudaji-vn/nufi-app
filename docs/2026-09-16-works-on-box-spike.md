@@ -77,7 +77,8 @@ Every one of those maps onto a single Docker operation. There is no hook that
 needs Kubernetes concepts. The provider talks to the daemon over the socket
 (`dockerode` is the usual library), which means **the Works container needs the
 Docker socket mounted** — the same trust the box already extends to nothing
-else, and worth a line in the design.
+else, and worth a line in the design. `dockerode` would be a new dependency;
+nothing in `apps/agents` uses it today.
 
 **Plugins are loaded from a local path.** `plugin-dev-watcher.ts` documents
 "plugins installed from a local path", so the seventh provider can live in the
