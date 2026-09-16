@@ -1,3 +1,4 @@
+import Dockerode from "dockerode";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FakeDocker } from "./fake-docker.js";
 import plugin from "./plugin.js";
@@ -59,16 +60,20 @@ describe("the lease lifecycle", () => {
     expect(create.HostConfig.Privileged).toBeFalsy();
   });
 
-  it("resume reattaches to a stopped container and starts it", async () => {
+  // onEnvironmentReleaseLease/onEnvironmentResumeLease take providerLeaseId
+  // directly on params (PluginEnvironmentReleaseLeaseParams /
+  // PluginEnvironmentResumeLeaseParams in @paperclipai/plugin-sdk), not a
+  // nested `lease` -- unlike onEnvironmentRealizeWorkspace/onEnvironmentExecute,
+  // which do carry the full PluginEnvironmentLease. See ../e2b/src/plugin.test.ts
+  // for the same shape.
+
+  it("resume reattaches to a container that was stopped by other means", async () => {
     const lease = await hooks.onEnvironmentAcquireLease!({ ...base, config: {}, runId: "run-3" } as never);
-    // onEnvironmentReleaseLease/onEnvironmentResumeLease take providerLeaseId
-    // directly on params (PluginEnvironmentReleaseLeaseParams /
-    // PluginEnvironmentResumeLeaseParams in @paperclipai/plugin-sdk), not a
-    // nested `lease` -- unlike onEnvironmentRealizeWorkspace/onEnvironmentExecute,
-    // which do carry the full PluginEnvironmentLease. See ../e2b/src/plugin.test.ts
-    // for the same shape.
-    await hooks.onEnvironmentReleaseLease!({ ...base, config: {}, providerLeaseId: lease.providerLeaseId } as never);
-    expect(fake.containers.get(lease.providerLeaseId!)?.running).toBe(false);
+    // Not via onEnvironmentReleaseLease: release now removes the container
+    // (Ruling 1 below), so a container that is merely stopped -- e.g. the
+    // daemon restarted, or an operator stopped it by hand -- is the only
+    // realistic way to exercise "stopped but still there" for resume.
+    fake.containers.get(lease.providerLeaseId!)!.running = false;
     const resumed = await hooks.onEnvironmentResumeLease!({ ...base, config: {}, providerLeaseId: lease.providerLeaseId } as never);
     expect(resumed.providerLeaseId).toBe(lease.providerLeaseId);
     expect(fake.containers.get(lease.providerLeaseId!)?.running).toBe(true);
@@ -80,10 +85,31 @@ describe("the lease lifecycle", () => {
     ).rejects.toThrow(/no longer exists|not found|gone/i);
   });
 
-  it("destroy removes the container", async () => {
+  it("release removes the container -- the manifest declares no reusable leases, so release is the only cleanup a run gets", async () => {
+    const lease = await hooks.onEnvironmentAcquireLease!({ ...base, config: {}, runId: "run-9" } as never);
+    await hooks.onEnvironmentReleaseLease!({ ...base, config: {}, providerLeaseId: lease.providerLeaseId } as never);
+    expect(fake.containers.has(lease.providerLeaseId!)).toBe(false);
+  });
+
+  it("destroy removes the container and its named workspace volume", async () => {
     const lease = await hooks.onEnvironmentAcquireLease!({ ...base, config: {}, runId: "run-4" } as never);
     await hooks.onEnvironmentDestroyLease!({ ...base, config: {}, providerLeaseId: lease.providerLeaseId } as never);
     expect(fake.containers.has(lease.providerLeaseId!)).toBe(false);
+    // Named (containerName(lease)), not anonymous -- `v: true` on the
+    // container remove alone would leak it.
+    expect(fake.calls.some((c) => c.method === "DELETE" && c.path === "/volumes/works-sandbox-run-4")).toBe(true);
+  });
+
+  it("destroy refuses to touch a container this provider did not create", async () => {
+    // Simulates another service on the same box (e.g. nufi-chat) sharing the
+    // Docker socket: created directly through the fake, with none of our
+    // me.nufi.works.run labelling.
+    const docker = new Dockerode({ socketPath: fake.socketPath });
+    const foreign = await docker.createContainer({ Image: "nufi-chat:latest", name: "nufi-chat" });
+    await expect(
+      hooks.onEnvironmentDestroyLease!({ ...base, config: {}, providerLeaseId: foreign.id } as never),
+    ).rejects.toThrow(/not a Works sandbox/);
+    expect(fake.calls.some((c) => c.method === "DELETE" && c.path === `/containers/${foreign.id}`)).toBe(false);
   });
 });
 

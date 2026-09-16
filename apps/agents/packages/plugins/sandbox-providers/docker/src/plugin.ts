@@ -40,6 +40,17 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+// Shared by onEnvironmentReleaseLease and onEnvironmentDestroyLease: both are
+// "force-remove this lease's container, but refuse if it is not one of
+// ours" (see DockerClient.assertOurs -- the socket has no per-caller scope).
+// assertOurs rejecting here is not swallowed: a refusal must fail the hook.
+async function removeLease(id: string | null): Promise<void> {
+  if (!id) return;
+  const d = client();
+  await d.assertOurs(id);
+  await d.remove(id);
+}
+
 const plugin = definePlugin({
   async setup(ctx) {
     docker = new DockerClient({ socketPath: process.env.NUFI_DOCKER_SOCKET });
@@ -109,12 +120,19 @@ const plugin = definePlugin({
     return { providerLeaseId: id, metadata: { ...(params.leaseMetadata ?? {}), resumed: true } };
   },
 
+  // The host calls onEnvironmentReleaseLease at the end of every run for
+  // every plugin-backed lease, and calls onEnvironmentDestroyLease only for
+  // leases the manifest marks reuse_by_environment -- which ours never are
+  // (see manifest.ts). So release is not a "pause, might resume later" step
+  // here: it is the only cleanup call a normal run gets. Releasing by
+  // stopping (not removing) would leave a stopped container -- and its
+  // volume -- on the box forever, once per run.
   async onEnvironmentReleaseLease(params: PluginEnvironmentReleaseLeaseParams): Promise<void> {
-    if (params.providerLeaseId) await client().stop(params.providerLeaseId);
+    await removeLease(params.providerLeaseId);
   },
 
   async onEnvironmentDestroyLease(params: PluginEnvironmentDestroyLeaseParams): Promise<void> {
-    if (params.providerLeaseId) await client().remove(params.providerLeaseId);
+    await removeLease(params.providerLeaseId);
   },
 
   async onEnvironmentRealizeWorkspace(
@@ -150,8 +168,10 @@ const plugin = definePlugin({
       // dropped mid-command, or the post-timeout kill itself may have
       // failed. Either way we cannot claim to know what is running in
       // there, so we force-remove the container rather than leave an orphan
-      // the host has no other handle on.
-      await client().remove(id).catch(() => undefined);
+      // the host has no other handle on -- but assertOurs still guards this
+      // exactly like release/destroy: an unknown state is not a license to
+      // remove a container this provider did not create.
+      await client().assertOurs(id).then(() => client().remove(id)).catch(() => undefined);
       return {
         exitCode: null,
         timedOut: false,

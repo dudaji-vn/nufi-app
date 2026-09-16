@@ -80,11 +80,21 @@ export class FakeDocker {
     }
     if ((m = /^\/containers\/([^/]+)\/json$/.exec(path))) {
       const c = this.find(m[1]); if (!c) return json(404, { message: "no such container" });
-      return json(200, { Id: c.id, Name: `/${c.name}`, State: { Running: c.running, Status: c.running ? "running" : "exited" }, Config: (c.create as { Env?: string[] }) ?? {}, HostConfig: (c.create as { HostConfig?: unknown })?.HostConfig ?? {} });
+      const createBody = (c.create as { Labels?: Record<string, string>; HostConfig?: unknown }) ?? {};
+      return json(200, {
+        Id: c.id,
+        Name: `/${c.name}`,
+        State: { Running: c.running, Status: c.running ? "running" : "exited" },
+        Config: { ...createBody, Labels: createBody.Labels ?? {} },
+        HostConfig: createBody.HostConfig ?? {},
+      });
     }
     if ((m = /^\/containers\/([^/]+)$/.exec(path)) && req.method === "DELETE") {
       const c = this.find(m[1]); if (!c) return json(404, { message: "no such container" });
       this.containers.delete(c.id); res.writeHead(204); return void res.end();
+    }
+    if ((m = /^\/volumes\/([^/]+)$/.exec(path)) && req.method === "DELETE") {
+      res.writeHead(204); return void res.end();
     }
     if ((m = /^\/containers\/([^/]+)\/exec$/.exec(path)) && req.method === "POST") {
       const c = this.find(m[1]); if (!c) return json(404, { message: "no such container" });

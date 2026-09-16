@@ -66,12 +66,37 @@ export class DockerClient {
     }
   }
 
+  /**
+   * `force: true, v: true` only takes anonymous volumes with the container --
+   * ours is named (`containerName(lease)`, from container-spec.ts), so a
+   * plain remove leaks it. Read the volume's name off the container's own
+   * HostConfig before the container (and that HostConfig) is gone, then
+   * delete it by name afterwards.
+   */
   async remove(id: string): Promise<void> {
+    let volumeNames: string[] = [];
+    try {
+      const info = await this.docker.getContainer(id).inspect();
+      volumeNames = (info.HostConfig.Mounts ?? [])
+        .filter((m) => m.Type === "volume")
+        .map((m) => m.Source);
+    } catch (err) {
+      if ((err as { statusCode?: number }).statusCode !== 404) throw err;
+      // Already gone -- nothing to inspect, nothing new to remove below.
+    }
+
     try {
       await this.docker.getContainer(id).remove({ force: true, v: true });
     } catch (err) {
-      if ((err as { statusCode?: number }).statusCode === 404) return;
-      throw err;
+      if ((err as { statusCode?: number }).statusCode !== 404) throw err;
+    }
+
+    for (const name of volumeNames) {
+      try {
+        await this.docker.getVolume(name).remove();
+      } catch (err) {
+        if ((err as { statusCode?: number }).statusCode !== 404) throw err;
+      }
     }
   }
 
@@ -82,6 +107,27 @@ export class DockerClient {
       const code = (err as { statusCode?: number }).statusCode;
       if (code === 404 || code === 409) return; // gone, or already not running
       throw err;
+    }
+  }
+
+  /**
+   * Docker has no per-caller scope: with the socket, remove()/stop() reach
+   * every container on the box, not only ones this provider created. Every
+   * destructive path calls this first so a mislabeled or foreign container
+   * -- another plugin's, a co-located service's -- cannot be torn down
+   * through us. A 404 means there is nothing there to protect; the caller's
+   * own 404 handling (already gone) proceeds from there.
+   */
+  async assertOurs(id: string): Promise<void> {
+    let info: { Config?: { Labels?: Record<string, string> } };
+    try {
+      info = await this.docker.getContainer(id).inspect();
+    } catch (err) {
+      if ((err as { statusCode?: number }).statusCode === 404) return;
+      throw err;
+    }
+    if (!info.Config?.Labels?.["me.nufi.works.run"]) {
+      throw new Error(`refusing to touch container ${id.slice(0, 12)}: not a Works sandbox (no me.nufi.works.run label)`);
     }
   }
 
