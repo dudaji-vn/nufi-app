@@ -8,13 +8,48 @@ the rest of the box. Two probes: the runtime, and the provider contract.
 ## Verdict
 
 **About three weeks, in three separable pieces, and the box's shape survives.**
-One of the two probes could not be finished on the development machine and has
-to be run on Ubuntu before any code is written. Everything below says which
+Both probes are now finished. The runtime probe could not be run on the
+development machine and was run instead on a GitHub Actions `ubuntu-latest`
+runner — Ubuntu 24.04, x86-64, Docker Engine, which is the box's actual target
+— and passed on the third attempt. The two failed attempts each corrected
+something this note had taken from documentation. Everything below says which
 claims come from reading and which from running.
 
-## Probe 1 — can `runsc` be a Docker runtime on the box? *(not finished)*
+## Probe 1 — can `runsc` be a Docker runtime on the box? *(finished: yes)*
 
-What is established:
+Run as `.github/workflows/gvisor-probe.yml` on `ubuntu-latest`
+(Ubuntu 24.04.5 LTS, kernel `6.17.0-1022-azure`, Docker Engine 28.0.4),
+run 35048384818, all four steps green:
+
+```
+runtimes before:  io.containerd.runc.v2 runc
+runsc version     release-20260907.0
+runtimes after:   io.containerd.runc.v2 runc runsc
+
+host kernel:      6.17.0-1022-azure
+inside runc:      6.17.0-1022-azure          ← shares the host kernel
+inside runsc:     4.19.0-gvisor              ← gVisor's own
+[    0.000000] Starting gVisor...
+
+package install: ok · python under gvisor: ok · file write: ok · outbound https: ok
+PASS: on an internal network the sandbox has no route out (fails closed)
+```
+
+That last line is the property the egress design leans on: a sandbox placed on
+a Docker `--internal` network cannot reach the world at all, so a forward proxy
+on that network is the *only* way out rather than the polite one.
+
+Two things the first two runs corrected, both taken from documentation rather
+than seen:
+
+- **The containerd shim is not published at `latest`** (404). It is not needed:
+  Docker calls the runtime binary directly; the shim is for containerd's own
+  path. The install is one binary and one `daemon.json` stanza.
+- The "outbound HTTPS" check fetched the root of a GCS bucket, which answers
+  400 to everyone. TLS had already succeeded — which was the point — and the
+  probe still failed on its own choice of URL.
+
+What was established before the run, and still holds:
 
 - gVisor publishes `runsc` and its containerd shim for both `x86_64` and
   `aarch64` (checked: both return 200 from the release bucket). Docker
@@ -26,25 +61,7 @@ What is established:
   binaries *into that VM*, which this session was not permitted to do. Not
   attempted a second time: it is the wrong target anyway.
 
-What is not established, and blocks writing code:
-
-- **That `runsc` starts a container on the box's actual target, Ubuntu 24.04 on
-  x86-64, with Docker Engine.** This is the platform gVisor is built for and
-  documented on, so the expectation is that it works — but "documented" is not
-  "seen", and the difference has cost this project before. The check is ten
-  minutes on any Ubuntu machine:
-
-  ```sh
-  curl -fsSL -o /usr/local/bin/runsc https://storage.googleapis.com/gvisor/releases/release/latest/x86_64/runsc
-  curl -fsSL -o /usr/local/bin/containerd-shim-runsc-v1 https://storage.googleapis.com/gvisor/releases/release/latest/x86_64/containerd-shim-runsc-v1
-  chmod +x /usr/local/bin/runsc /usr/local/bin/containerd-shim-runsc-v1
-  # daemon.json: {"runtimes": {"runsc": {"path": "/usr/local/bin/runsc"}}}
-  systemctl restart docker
-  docker run --rm --runtime=runsc alpine:3.20 dmesg | head -3   # prints gVisor's own kernel banner
-  ```
-
-  The last line is the whole test: under gVisor, `dmesg` inside the container
-  shows gVisor's synthetic boot messages rather than the host kernel's.
+What remains open:
 
 - **Apple Silicon.** gVisor ships `aarch64` binaries, but Docker Desktop is the
   only Docker most Macs have, and it does not let an operator add a runtime
@@ -118,16 +135,15 @@ touches something the cloud deployment also runs.
 
 | Piece | Size | Touches |
 |---|---|---|
-| Probe 1 on Ubuntu | one morning | nothing in the repo |
 | The provider: ten hooks over `dockerode`, tests against a fake daemon | ~1,200 lines, a week | a new package under `sandbox-providers/` |
 | The egress proxy: a container, a config template rendered from the allow list, a test that a disallowed host fails closed | two or three days | `deploy/box/` compose and one Caddy-style template |
 | Execution mode `"docker"` | a day | `execution-policy-bootstrap.ts` + tests |
 | Works in the box compose: the service, the socket mount, `runsc` in `install-box.sh`, `doctor` checking the runtime is present | two or three days | `deploy/box/` |
 | Docs | a day | `apps/docs` |
 
-**Three weeks** if probe 1 passes on Ubuntu. If it does not, option B is dead
-and the honest fallback is option A (k3s on the box), which is a different
-project.
+**Three weeks.** Probe 1 has passed on the target platform, so the conditional
+is gone. The install step for the box is smaller than this table first
+assumed: one binary, one `daemon.json` stanza, one daemon restart.
 
 ## What it does not disturb
 
@@ -149,9 +165,9 @@ that can talk to the daemon can start any container on the box.
 
 ## Recommendation
 
-Run probe 1 on an Ubuntu machine first. It is ten minutes, it needs nothing
-from the repository, and every other line in this note depends on it. If
-`dmesg` under `--runtime=runsc` prints gVisor's banner, proceed to a design
-document for the three pieces above; if it does not, stop and reconsider A.
+Proceed to a design document for the three pieces above. The probe workflow
+stays in the repository as a manually triggered check, because the box's
+installer will one day carry the same three lines and it is worth being able to
+re-run the proof against a fresh gVisor release without rediscovering the shim.
 
-Nothing in this spike is code to keep.
+Nothing else in this spike is code to keep.
