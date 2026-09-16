@@ -1,6 +1,6 @@
 #!/bin/sh
 # The egress allow list, rendered to stdout as tinyproxy's filter file: one
-# host per line, exact-match (FilterExtended Off in the config that reads it).
+# host per line, exact-match (FilterType fnmatch in the config that reads it).
 #
 # Two hosts are always here and are not the operator's to remove: the Works
 # server the sandbox reports back to, and the gateway the model is reached
@@ -26,10 +26,11 @@ seen=" $ALWAYS "
 IFS=','
 for raw in ${WORKS_EGRESS_ALLOW:-}; do
   # Lowercased: the filter that reads this is case-sensitive and DNS is not.
-  h=$(printf '%s' "$raw" | tr -d '[:space:]' | tr 'A-Z' 'a-z')
+  h=$(printf '%s' "$raw" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | tr 'A-Z' 'a-z')
   [ -n "$h" ] || continue
   # Strip trailing :port before checking model hosts
   port_stripped=${h%%:*}
+  # MODEL_HOSTS is space-separated; with the outer loop's IFS=',' it would never split and no model host would ever be refused.
   IFS=' '
   for m in $MODEL_HOSTS; do
     if [ "$port_stripped" = "$m" ]; then
@@ -39,7 +40,7 @@ for raw in ${WORKS_EGRESS_ALLOW:-}; do
   IFS=','
   # A hostname: labels of [a-z0-9-], joined by dots, nothing else.
   case "$h" in
-    *://*|*/*|*:*|*'*'*|*'?'*)
+    *://*|*/*|*:*|*'*'*|*'?'*|*' '*|*'	'*)
       echo "WORKS_EGRESS_ALLOW: not a bare hostname: $raw" >&2; exit 2 ;;
   esac
   if ! printf '%s' "$h" | grep -Eq '^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$'; then

@@ -53,6 +53,15 @@ def test_entries_are_lowercased_because_the_filter_is_not():
     print("PASS: entries are lowercased before they are checked or deduplicated")
 
 
+def test_two_hosts_without_a_comma_are_refused_not_merged():
+    """"pypi.org files.pythonhosted.org" is a forgotten comma. Stripping the
+    space would render one host that exists nowhere and allow neither."""
+    r = render("pypi.org files.pythonhosted.org")
+    assert r.returncode == 2, (r.returncode, r.stdout)
+    assert "pypi.org files.pythonhosted.org" in r.stderr, r.stderr
+    print("PASS: a forgotten comma is refused, not merged into a host that exists nowhere")
+
+
 def test_an_entry_that_is_not_a_hostname_is_refused():
     for bad in ("https://pypi.org", "pypi.org/simple", "pypi.org:443", "*.pypi.org", "10.0.0.5"):
         r = render(bad)
@@ -81,6 +90,7 @@ if __name__ == "__main__":
     test_the_two_fixed_hosts_are_always_first()
     test_the_operator_list_is_appended_trimmed_and_deduplicated()
     test_entries_are_lowercased_because_the_filter_is_not()
+    test_two_hosts_without_a_comma_are_refused_not_merged()
     test_an_entry_that_is_not_a_hostname_is_refused()
     test_the_model_host_cannot_be_allowed_directly()
     test_nothing_else_is_in_the_output()
