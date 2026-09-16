@@ -12,22 +12,31 @@
 # The model host can never be added. A sandbox that reaches Ollama directly is
 # a sandbox outside the gateway's rate limits, budgets and guardrails, and the
 # gateway is on this list precisely so that it does not have to be.
-set -eu
+# -f: the operator list is split on commas below, and a glob in it must
+# reach the validator as text, not as a directory listing.
+set -euf
 
 ALWAYS="works litellm-proxy"
-# Names the model is served under on the box, in any spelling an operator
-# might try. The gateway (litellm-proxy) is the way to it.
-MODEL_HOSTS="ollama host.docker.internal"
+# Names the model host answers to on a box, in any spelling an operator
+# might try, plus the box's own name (BOX_HOST serves the model on its own
+# port on an ollama-profile box) and the proxy itself. The gateway
+# (litellm-proxy) is the way to the model.
+box_host=$(printf '%s' "${BOX_HOST:-}" | tr 'A-Z' 'a-z')
+MODEL_HOSTS="ollama host.docker.internal gateway.docker.internal localhost works-egress ${box_host}"
 
 echo "# rendered by works-egress/render.sh from WORKS_EGRESS_ALLOW; do not edit"
 for h in $ALWAYS; do echo "$h"; done
 
 seen=" $ALWAYS "
+nl=$(printf '\nx'); nl=${nl%x}
 IFS=','
 for raw in ${WORKS_EGRESS_ALLOW:-}; do
   # Lowercased: the filter that reads this is case-sensitive and DNS is not.
   h=$(printf '%s' "$raw" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | tr 'A-Z' 'a-z')
   [ -n "$h" ] || continue
+  # grep below validates one line at a time; an entry carrying a newline
+  # would pass on its first line and smuggle its second, unvalidated, in.
+  case "$h" in *"$nl"*) echo "WORKS_EGRESS_ALLOW: not a bare hostname (contains a newline): $raw" >&2; exit 2 ;; esac
   # Strip trailing :port before checking model hosts
   port_stripped=${h%%:*}
   # MODEL_HOSTS is space-separated; with the outer loop's IFS=',' it would never split and no model host would ever be refused.

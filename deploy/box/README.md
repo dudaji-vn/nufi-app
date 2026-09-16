@@ -496,9 +496,10 @@ WORKS_EGRESS_ALLOW=pypi.org,files.pythonhosted.org
 
 Bare hostnames, comma-separated. A scheme, a path, a port, a glob or an
 address is refused at start with the entry named, and so is the model host
-under any of its spellings — a sandbox reaches the model through the gateway
-or not at all, which keeps every model call inside the same limits and
-guardrails as a chat.
+by the names the box knows it under (including the box's own name, which
+serves the model directly on an ollama-profile box) — a sandbox reaches the
+model through the gateway or not at all, which keeps every model call inside
+the same limits and guardrails as a chat.
 
 If the proxy is down, sandboxes have no network rather than an unfiltered
 one — that falls out of `works-egress` being the sandbox network's only

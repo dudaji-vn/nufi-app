@@ -19,10 +19,12 @@ HERE = pathlib.Path(__file__).resolve().parent
 RENDER = HERE / "render.sh"
 
 
-def render(allow=None):
-    env = {k: v for k, v in os.environ.items() if k != "WORKS_EGRESS_ALLOW"}
+def render(allow=None, box_host=None):
+    env = {k: v for k, v in os.environ.items() if k not in ("WORKS_EGRESS_ALLOW", "BOX_HOST")}
     if allow is not None:
         env["WORKS_EGRESS_ALLOW"] = allow
+    if box_host is not None:
+        env["BOX_HOST"] = box_host
     return subprocess.run(["/bin/sh", str(RENDER)], env=env, capture_output=True, text=True)
 
 
@@ -62,8 +64,17 @@ def test_two_hosts_without_a_comma_are_refused_not_merged():
     print("PASS: a forgotten comma is refused, not merged into a host that exists nowhere")
 
 
+def test_a_newline_inside_an_entry_is_refused_not_split():
+    """grep validates one line at a time; an entry that carries a newline would
+    pass on its first line and smuggle its second, unvalidated, into the filter."""
+    r = render("pypi.org\nevil.com")
+    assert r.returncode == 2, (r.returncode, r.stdout)
+    assert "newline" in r.stderr, r.stderr
+    print("PASS: a newline inside an entry is refused, not split into two lines")
+
+
 def test_an_entry_that_is_not_a_hostname_is_refused():
-    for bad in ("https://pypi.org", "pypi.org/simple", "pypi.org:443", "*.pypi.org", "10.0.0.5"):
+    for bad in ("https://pypi.org", "pypi.org/simple", "pypi.org:443", "*.pypi.org", "10.0.0.5", "*", "[a-z]*"):
         r = render(bad)
         assert r.returncode == 2, (bad, r.returncode, r.stdout)
         assert bad in r.stderr, (bad, r.stderr)
@@ -72,11 +83,24 @@ def test_an_entry_that_is_not_a_hostname_is_refused():
 
 def test_the_model_host_cannot_be_allowed_directly():
     """A sandbox reaches the model through the gateway or not at all."""
-    for host in ("ollama", "host.docker.internal", "ollama:11434"):
+    for host in ("ollama", "host.docker.internal", "ollama:11434",
+                 "gateway.docker.internal", "localhost", "works-egress"):
         r = render(host)
         assert r.returncode == 2, (host, r.stdout)
         assert "gateway" in r.stderr.lower(), r.stderr
     print("PASS: the model host is refused; the gateway is the only route to the model")
+
+
+def test_the_box_s_own_name_is_a_model_host_only_when_it_is_the_box_s_name():
+    """On an ollama-profile box, BOX_HOST serves the model directly on its own
+    port -- allowing it would open a second, ungoverned route to the model. A
+    hostname the box does not answer to is just a hostname."""
+    r = render("NuFi.local", box_host="nufi.local")
+    assert r.returncode == 2, (r.returncode, r.stdout)
+    assert "gateway" in r.stderr.lower(), r.stderr
+    r = render("nufi.local")
+    assert r.returncode == 0, (r.returncode, r.stderr)
+    print("PASS: the box's own name is refused as the model host only when BOX_HOST says so")
 
 
 def test_nothing_else_is_in_the_output():
@@ -86,11 +110,25 @@ def test_nothing_else_is_in_the_output():
     print("PASS: the file holds hosts and comments, nothing else")
 
 
+def test_the_entrypoint_keeps_the_three_directives_that_make_the_boundary():
+    """Nothing in CI starts the image. These three lines are what turns a
+    forward proxy into an allow list; a typo in any of them ships a proxy
+    that matches substrings or denies nothing."""
+    text = (HERE / "entrypoint.sh").read_text()
+    for line in ("FilterDefaultDeny Yes", "FilterType fnmatch", 'Filter "/etc/tinyproxy/filter"'):
+        assert line in text, line
+    assert "LogFile" not in text, "tinyproxy 1.11 refuses /dev/stderr and then logs nothing"
+    print("PASS: the entrypoint carries the three directives that make the boundary")
+
+
 if __name__ == "__main__":
     test_the_two_fixed_hosts_are_always_first()
     test_the_operator_list_is_appended_trimmed_and_deduplicated()
     test_entries_are_lowercased_because_the_filter_is_not()
     test_two_hosts_without_a_comma_are_refused_not_merged()
+    test_a_newline_inside_an_entry_is_refused_not_split()
     test_an_entry_that_is_not_a_hostname_is_refused()
     test_the_model_host_cannot_be_allowed_directly()
+    test_the_box_s_own_name_is_a_model_host_only_when_it_is_the_box_s_name()
     test_nothing_else_is_in_the_output()
+    test_the_entrypoint_keeps_the_three_directives_that_make_the_boundary()

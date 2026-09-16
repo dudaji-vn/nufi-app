@@ -434,10 +434,14 @@ services:
       # `litellm-proxy` are always allowed and the model host never is; see
       # works-egress/render.sh.
       WORKS_EGRESS_ALLOW: ${WORKS_EGRESS_ALLOW:-}
+      # So the renderer can refuse the box's own name: on an ollama-profile
+      # box it serves the model directly.
+      BOX_HOST: ${BOX_HOST}
     healthcheck:
-      # A proxy whose filter failed to load answers 200 to everything and
-      # looks healthy by any liveness probe. The one answer that proves the
-      # filter is loaded is a refusal, so ask for a host that is on no list.
+      # A config that lost its Filter directive proxies everything and looks
+      # healthy by any liveness probe. The one answer that proves the filter
+      # is loaded is a refusal, so ask for a host that is on no list and
+      # expect the 403.
       test: ["CMD-SHELL", "http_proxy=http://127.0.0.1:3128 wget -S -T 5 -O /dev/null http://healthcheck.invalid/ 2>&1 | grep -q ' 403 '"]
       interval: 30s
       timeout: 10s

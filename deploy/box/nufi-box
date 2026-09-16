@@ -219,16 +219,18 @@ case "${1:-}" in
         echo " ok  ${BOX_HOST:-nufi.local} resolves to $_now"
       fi
     fi
-    # The egress proxy, asked for a host that is not on its list. A proxy that
-    # lets everything through is indistinguishable from a healthy one by any
-    # other check; the 403 is the one answer that proves the filter loaded.
-    # Asked from inside the sandbox network, which is the only place a sandbox
-    # ever stands, using the proxy's own image so nothing new is pulled. A box
-    # whose compose does not define the service skips this; a box whose proxy
-    # is down fails it.
+    # A config that lost its Filter directive proxies everything and looks
+    # healthy by any liveness probe. The one answer that proves the filter is
+    # loaded is a refusal, so ask for a host that is on no list and expect the
+    # 403. Asked from inside the sandbox network, which is the only place a
+    # sandbox ever stands, using the proxy's own image so nothing new is
+    # pulled. A box whose compose does not define the service skips this; a
+    # box whose proxy is down fails it.
+    # Captured before grep -q: under pipefail, grep closing the pipe on its
+    # match makes compose's exit the pipeline's, and the check is skipped.
     if [ "$DRY" = 1 ]; then
       printf '  $ ask works-egress for a host not on the list, expect 403 (refuses)\n'
-    elif $COMPOSE config --services 2>/dev/null | grep -qx works-egress; then
+    elif _svcs=$($COMPOSE config --services 2>/dev/null) && printf '%s\n' "$_svcs" | grep -qx works-egress; then
       # Guarded: the script runs under set -e, and a missing network or image must be a "!!" line, not a doctor that stops mid-run.
       _img=$($COMPOSE config --images 2>/dev/null | grep nufi-works-egress | head -1) || _img=""
       _code=$(docker run --rm --network works-sandbox --entrypoint sh "$_img" -c \
