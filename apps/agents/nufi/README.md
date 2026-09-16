@@ -18,6 +18,8 @@ fails the build if that is violated.
 | `ui/public/favicon.*`, `apple-touch-icon.png`, `android-chrome-*.png`, `site.webmanifest` | NuFi marks |
 | `ui/src/index.css` | **1 line** — imports `nufi-brand.css` |
 | `ui/vite.config.ts` | **2 lines** — registers `nufiRebrand()` |
+| `packages/plugins/sandbox-providers/docker/` | The Docker+gVisor sandbox provider for Works on the NuFi box — an eighth provider beside upstream's seven, in upstream's own plugin shape. Never in upstream |
+| `packages/plugins/sandbox-providers/docker/README.md` | What every sandbox gets and cannot change, the socket grant, the deadline; design in `docs/superpowers/specs/2026-09-16-works-on-box-design.md` |
 
 Two edited upstream lines in total. Everything else is additive.
 
