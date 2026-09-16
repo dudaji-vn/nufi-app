@@ -3,9 +3,13 @@ name: gvisor-probe
 # The one check docs/2026-09-16-works-on-box-spike.md could not run: does
 # `runsc` start a container under Docker Engine on Ubuntu x86-64, the box's
 # actual target? The development machine is Docker Desktop, whose daemon lives
-# in a VM; ubuntu-latest here is the real thing. Manual trigger only -- this is
-# a probe, not a gate, and it is meant to be run once and read.
+# in a VM; ubuntu-latest here is the real thing. Runs on its own branch only
+# -- this is a probe, not a gate, and it is meant to be run once and read.
+# (workflow_dispatch needs the file on the default branch first, which would
+# mean merging a probe in order to run it.)
 on:
+  push:
+    branches: ['spike/gvisor-probe']
   workflow_dispatch:
 
 jobs:
