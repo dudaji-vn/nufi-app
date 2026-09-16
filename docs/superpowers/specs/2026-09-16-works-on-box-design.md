@@ -224,3 +224,56 @@ days — C is now a box script, so it lands together with the compose changes),
 then docs. A is testable without B — a provider on a network with no proxy
 simply has no egress, which is the safe default — so the pieces land as
 separate pull requests and the box is never left half-wired.
+
+## Addendum, 2026-09-16 — what C found when it read the host
+
+Written before C's plan, after A (#119) and B (#120) merged. Six things the
+section above leaves open, each settled by reading `apps/agents` rather than
+by preference.
+
+1. **How the box gets an instance admin without a human step.** Works in
+   `authenticated` mode grants instance admin only to the first browser
+   session that claims it (`POST /api/bootstrap/claim`, private exposure), and
+   a board API key carries whatever rights its user has. So `nufi-box works
+   install` signs in **as the box admin, through the same SSO path a browser
+   takes**: the chat login (`ADMIN_EMAIL`/`ADMIN_PASSWORD`, which the box
+   already holds for the ingest daemon) → the console's `/oidc/authorize` →
+   Works' `/api/auth/oauth2/callback/nufi`. That session claims first admin
+   and mints one board key (`WORKS_BOX_KEY` in `.env`) for every later call.
+   No service account, no direct database write, no host change — and the
+   admin's own browser lands on the same account, because it is the same
+   OIDC identity. A separate password account for the admin was rejected:
+   better-auth refuses to link an OAuth sign-in to an existing local user
+   unless the provider asserts `email_verified`, which the console does not,
+   so the admin would have had two accounts and the automation would have
+   owned the wrong one.
+2. **Environments are instance-wide.** The route is
+   `/companies/:companyId/environments`, but the table has no company column,
+   `instance_settings.default_environment_id` is the instance default the
+   heartbeat resolves first, and upstream's `Local` row is one per instance.
+   The register step therefore needs one company to exist and creates the
+   box's (`BOX_NAME`) when there is none — the admin lands in it as owner.
+3. **The sandbox image is the box's own.** Piece A defaults to
+   `ghcr.io/dudaji-vn/nufi-sandbox:main`, which did not exist; upstream's
+   per-adapter runtime images are published only under `git-<sha>` tags. C
+   builds `deploy/box/sandbox/Dockerfile` in `box-images` — Ubuntu (GNU
+   coreutils `timeout`, A's hard requirement), Node, git, the coding harnesses
+   the box's adapter file enables — and registers it **by digest**, resolved
+   after the installer pulls it.
+4. **The model credential in a sandbox is a LiteLLM virtual key, never the
+   master key.** The harness env reaches the sandbox, and `litellm-proxy` is on
+   the egress allow list, so a master key there is a key to the gateway's
+   admin API from inside untrusted code. `works install` mints
+   `WORKS_MODEL_KEY` and the `works` service exposes it as the three names the
+   adapters read.
+5. **`works` and `works-egress` sit behind compose profile `works`**
+   (`NUFI_WORKS=1` in `.env`, set by `--with-works`). B shipped the proxy on
+   every box; the section above says a box without `--with-works` is
+   byte-for-byte today's box, and the profile is what makes that true.
+   `doctor`'s egress check already skips when the service is not defined.
+6. **The socket reaches the provider's worker as uid 1000.** Upstream's
+   entrypoint drops privileges with `gosu`, which discards `group_add`; run
+   the container as `1000:1000` instead and the entrypoint execs directly,
+   keeping the docker group (`DOCKER_GID`, read from the socket at install).
+   Works-on-box stays Ubuntu-only: `--with-works` refuses on macOS, where
+   Docker Desktop cannot host `runsc`.
