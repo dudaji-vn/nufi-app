@@ -71,7 +71,10 @@ jobs:
             apk add --no-cache python3 >/dev/null 2>&1 && echo "package install: ok"
             python3 -c "print(\"python under gvisor: ok\")"
             echo hello > /tmp/f && cat /tmp/f
-            wget -qO- https://storage.googleapis.com/ >/dev/null && echo "outbound https: ok"
+            # A URL that answers 200 at its root. The first run used the GCS
+            # bucket root, which answers 400 to everyone -- the TLS handshake
+            # had succeeded, which was the point, and the probe still failed.
+            wget -qO- https://dl-cdn.alpinelinux.org/alpine/ >/dev/null && echo "outbound https: ok"
           '
 
       - name: Does it survive being told there is no route out? (what the egress design relies on)
@@ -80,7 +83,7 @@ jobs:
           docker network create --internal probe-isolated
           # No route out: the fetch must fail, quickly, rather than hang.
           if timeout 20 docker run --rm --runtime=runsc --network probe-isolated alpine:3.20 \
-               wget -T 5 -qO- https://storage.googleapis.com/ >/dev/null 2>&1; then
+               wget -T 5 -qO- https://dl-cdn.alpinelinux.org/alpine/ >/dev/null 2>&1; then
             echo "FAIL: an internal network let traffic out"; exit 1
           else
             echo "PASS: on an internal network the sandbox has no route out (fails closed)"
