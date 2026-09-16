@@ -8,6 +8,7 @@ on:
       - 'deploy/platform/adapters/nufi-ingest/**'
       - 'deploy/platform/adapters/nufi-cron/**'
       - 'deploy/box/works-egress/**'
+      - 'deploy/box/sandbox/**'
       - 'apps/nufi-agent/**'
       - '.github/workflows/box-images.yml'
     tags: ['nufi-box-v*']
@@ -43,6 +44,10 @@ jobs:
           - name: nufi-works-egress
             context: deploy/box/works-egress
             file: deploy/box/works-egress/Dockerfile
+            tagprefix: ''
+          - name: nufi-sandbox
+            context: deploy/box/sandbox
+            file: deploy/box/sandbox/Dockerfile
             tagprefix: ''
           - name: nufi-studio
             context: apps/nufi-agent
