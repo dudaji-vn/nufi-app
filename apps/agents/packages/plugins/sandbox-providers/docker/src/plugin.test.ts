@@ -91,6 +91,12 @@ describe("the lease lifecycle", () => {
     expect(fake.containers.has(lease.providerLeaseId!)).toBe(false);
   });
 
+  it("release is final -- resuming a released lease throws rather than silently starting a new container", async () => {
+    const lease = await hooks.onEnvironmentAcquireLease!({ ...base, config: {}, runId: "run-10" } as never);
+    await hooks.onEnvironmentReleaseLease!({ ...base, config: {}, providerLeaseId: lease.providerLeaseId } as never);
+    await expect(hooks.onEnvironmentResumeLease!({ ...base, config: {}, providerLeaseId: lease.providerLeaseId! } as never)).rejects.toThrow(/no longer exists/);
+  });
+
   it("destroy removes the container and its named workspace volume", async () => {
     const lease = await hooks.onEnvironmentAcquireLease!({ ...base, config: {}, runId: "run-4" } as never);
     await hooks.onEnvironmentDestroyLease!({ ...base, config: {}, providerLeaseId: lease.providerLeaseId } as never);
