@@ -9,3 +9,8 @@ services:
     platform: linux/amd64
   admin-panel:
     platform: linux/amd64
+  # nufi-works is published for amd64 only (agents-image.yml). Sandboxes still
+  # cannot run on a Mac -- Docker Desktop has no runsc -- so this is for the
+  # server alone, on a developer's machine.
+  works:
+    platform: linux/amd64

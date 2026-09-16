@@ -90,6 +90,14 @@
 	reverse_proxy admin-panel:3000
 }
 
+# NUFI Works. Its OIDC callback and every better-auth POST are checked
+# against PAPERCLIP_PUBLIC_URL (https://{$BOX_HOST}:3003), so the chooser
+# links Works by name; the IP and localhost forms answer for curl and doctor.
+{$BOX_HOST}:3003, {$BOX_IP}:3003, localhost:3003 {
+	import box_tls
+	reverse_proxy works:3100
+}
+
 # NUFI Studio. /nufi/* is the console, so Studio's session-expiry bounce
 # (VITE_NUFI_ENTER_URL=/nufi/enter/studio in the box image) lands on the console
 # while staying on the Studio origin.

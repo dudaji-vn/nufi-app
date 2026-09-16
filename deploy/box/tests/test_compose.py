@@ -20,7 +20,7 @@ LINUX = {"ollama", "samba"}
 # postgres, mongodb, rag_api, and the linux-profile ollama/samba, plus any
 # future tailscale sidecar) is a third-party image and must be untouched.
 NUFI_SERVICES = {"litellm-proxy", "librechat", "console", "admin-panel", "studio",
-                 "nufi-ingest", "nufi-cron", "works-egress"}
+                 "nufi-ingest", "nufi-cron", "works-egress", "works"}
 
 
 def render(*files, profiles=(), **extra_env):
@@ -60,7 +60,7 @@ def test_images_come_from_the_configured_registry():
     """A customer box (and the Ubuntu VM test that follows) cannot log in to
     GHCR, so every NuFi-built image must be pullable from any registry."""
     cfg = render("docker-compose.yml", "docker-compose.linux.yml", "docker-compose.gpu.yml",
-                 profiles=("linux", "gpu"), NUFI_REGISTRY="10.0.0.5:5000")
+                 profiles=("linux", "gpu", "works"), NUFI_REGISTRY="10.0.0.5:5000")
     for name in NUFI_SERVICES:
         image = cfg["services"][name]["image"]
         assert image.startswith("10.0.0.5:5000/"), (name, image)
@@ -71,7 +71,7 @@ def test_images_come_from_the_configured_registry():
         assert not image.startswith("10.0.0.5:5000/"), (name, image)
 
     # Unset (the default on every box today): falls back to ghcr.io/dudaji-vn.
-    default_cfg = render()
+    default_cfg = render(profiles=("works",))
     for name in NUFI_SERVICES:
         image = default_cfg["services"][name]["image"]
         assert image.startswith("ghcr.io/dudaji-vn/"), (name, image)
@@ -88,7 +88,7 @@ def test_core_services_present_and_named():
 
 def test_every_service_follows_the_house_rules():
     cfg = render("docker-compose.yml", "docker-compose.linux.yml", "docker-compose.gpu.yml",
-                 "docker-compose.mesh.yml", profiles=("linux", "gpu", "mesh"))
+                 "docker-compose.mesh.yml", profiles=("linux", "gpu", "mesh", "works"))
     for name, svc in cfg["services"].items():
         assert svc.get("restart") == "unless-stopped", name
         assert "healthcheck" in svc, name
@@ -228,10 +228,12 @@ def test_gpu_profile_adds_the_device_reservation_to_ollama():
 
 
 def test_emulate_layer_only_marks_the_images_published_amd64_only():
-    svcs = render("docker-compose.yml", "docker-compose.emulate.yml")["services"]
+    svcs = render("docker-compose.yml", "docker-compose.emulate.yml",
+                 profiles=("works",))["services"]
     assert svcs["librechat"]["platform"] == "linux/amd64"
     assert svcs["admin-panel"]["platform"] == "linux/amd64"
-    for name in set(svcs) - {"librechat", "admin-panel"}:
+    assert svcs["works"]["platform"] == "linux/amd64"
+    for name in set(svcs) - {"librechat", "admin-panel", "works"}:
         assert "platform" not in svcs[name], name
 
 
@@ -336,14 +338,14 @@ def test_the_sandbox_network_is_internal_and_literally_named():
     network has no route out except through a member that is also on the box
     network -- and the proxy is the only such member.
     """
-    cfg = render()
+    cfg = render(profiles=("works",))
     net = cfg["networks"]["works-sandbox"]
     assert net.get("name") == "works-sandbox", net
     assert net.get("internal") is True, net
 
 
 def test_the_egress_proxy_sits_on_both_networks_and_publishes_nothing():
-    cfg = render()
+    cfg = render(profiles=("works",))
     svc = cfg["services"]["works-egress"]
     assert set(svc["networks"]) == {"box", "works-sandbox"}, svc["networks"]
     assert "ports" not in svc, "the proxy is reached from the sandbox network only"
@@ -355,6 +357,86 @@ def test_the_egress_proxy_sits_on_both_networks_and_publishes_nothing():
 def test_no_other_service_is_on_the_sandbox_network():
     """The only member with a route out must be the proxy. A second member on
     both networks is a second door."""
-    cfg = render()
+    cfg = render(profiles=("works",))
     on_sandbox = [n for n, s in cfg["services"].items() if "works-sandbox" in (s.get("networks") or {})]
     assert on_sandbox == ["works-egress"], on_sandbox
+
+
+# --- Task 3: the works service, its profile, and the sixth port -------------
+
+def test_works_and_its_proxy_exist_only_behind_the_works_profile():
+    """A box installed without --with-works is byte-for-byte the box that
+    ships today: neither the Works server nor the egress proxy."""
+    plain = render()["services"]
+    assert "works" not in plain and "works-egress" not in plain, sorted(plain)
+    with_works = render(profiles=("works",))["services"]
+    assert "works" in with_works and "works-egress" in with_works
+
+
+def test_only_works_holds_the_docker_socket():
+    """The socket is root on the box. One service has it, on purpose, and it
+    is the one that creates sandboxes as sibling containers."""
+    cfg = render("docker-compose.yml", "docker-compose.linux.yml", "docker-compose.gpu.yml",
+                 "docker-compose.mesh.yml", profiles=("linux", "gpu", "mesh", "works"))
+    holders = sorted(n for n, s in cfg["services"].items()
+                     if any(v.get("source") == "/var/run/docker.sock" for v in s.get("volumes") or []))
+    assert holders == ["works"], holders
+
+
+def test_works_runs_as_uid_1000_in_the_docker_group():
+    """Upstream's entrypoint drops root with gosu, and gosu resets the
+    supplementary groups group_add gave the container. Starting as 1000 makes
+    the entrypoint exec directly, and the docker group survives to the plugin
+    worker that opens the socket."""
+    svc = render(profiles=("works",), DOCKER_GID="988")["services"]["works"]
+    assert svc["user"] == "1000:1000", svc.get("user")
+    assert svc["group_add"] == ["988"], svc.get("group_add")
+
+
+def test_works_is_wired_to_the_box_and_nothing_else():
+    svc = render(profiles=("works",))["services"]["works"]
+    env = svc["environment"]
+    assert env["PAPERCLIP_DEPLOYMENT_MODE"] == "authenticated"
+    assert env["PAPERCLIP_DEPLOYMENT_EXPOSURE"] == "private"
+    assert env["PAPERCLIP_PUBLIC_URL"] == "https://nufi.local:3003"
+    assert env["NUFI_OIDC_ISSUER"] == "https://nufi.local:3001"
+    assert env["NUFI_OIDC_CLIENT_ID"] == "nufi-works"
+    assert env["PAPERCLIP_AUTH_DISABLE_SIGN_UP"] == "true"
+    assert env["PAPERCLIP_DISABLE_PLUGIN_AUTOBUILD"] == "1"
+    assert env["PAPERCLIP_ADAPTERS_FILE"] == "/box/adapters.json"
+    assert env["NODE_EXTRA_CA_CERTS"] == "/caddy/caddy/pki/authorities/local/root.crt"
+    assert env["DATABASE_URL"].endswith("@postgres:5432/nufi_works")
+    targets = {v["target"]: v for v in svc["volumes"]}
+    assert targets["/box/adapters.json"]["read_only"] is True
+    assert targets["/caddy"]["read_only"] is True
+    assert targets["/paperclip"]["type"] == "volume"
+    assert "ports" not in svc
+    assert list(svc["networks"]) == ["box"]
+
+
+def test_the_model_key_in_the_works_env_is_never_the_master_key():
+    """That env reaches every sandbox, and litellm-proxy is on the egress
+    allow list. A master key there is the gateway's admin API from inside
+    untrusted code."""
+    text = (BOX / "docker-compose.yml").read_text()
+    works = text[text.index("  works:\n"):text.index("  works-egress:\n")]
+    assert "LITELLM_MASTER_KEY" not in works
+    env = render(profiles=("works",), WORKS_MODEL_KEY="sk-virtual")["services"]["works"]["environment"]
+    for k in ("NUFI_MODEL_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"):
+        assert env[k] == "sk-virtual", k
+
+
+def test_the_console_opens_the_works_door_only_when_the_box_has_one():
+    plain = render()["services"]["console"]["environment"]
+    assert plain["PUBLIC_WORKS_URL"] == ""
+    on = render(WORKS_PUBLIC_URL="https://nufi.local:3003")["services"]["console"]["environment"]
+    assert on["PUBLIC_WORKS_URL"] == "https://nufi.local:3003"
+    clients = json.loads(on["OIDC_CLIENTS"])
+    (works,) = [c for c in clients if c["clientId"] == "nufi-works"]
+    assert works["product"] == "works"
+    assert works["redirectUris"] == ["https://nufi.local:3003/api/auth/oauth2/callback/nufi"]
+
+
+def test_caddy_publishes_the_works_port():
+    ports = {int(p["published"]) for p in render()["services"]["caddy"]["ports"]}
+    assert 3003 in ports, ports
