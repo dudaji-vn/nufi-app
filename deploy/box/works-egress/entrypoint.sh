@@ -7,7 +7,7 @@
 set -eu
 /usr/local/bin/render.sh > /etc/tinyproxy/filter
 
-cat > /etc/tinyproxy/tinyproxy.conf <<EOF
+cat > /etc/tinyproxy/tinyproxy.conf <<'EOF'
 User tinyproxy
 Group tinyproxy
 Port 3128
@@ -16,11 +16,11 @@ Port 3128
 Listen 0.0.0.0
 Timeout 600
 # Refusals are the one thing this design has that Cilium's does not: an
-# answer to "what did that agent try to reach". tinyproxy 1.11 refuses a
-# LogFile directive outright ("has been changed before it could be opened")
-# and then logs nothing, so this runs in the foreground (-d below) and logs
-# to stdout instead, which \`nufi-box logs works-egress\` already captures
-# under the box's bounded log rotation.
+# answer to "what did that agent try to reach". tinyproxy 1.11's safe-open
+# check refuses LogFile "/dev/stderr" (a symlink: "has been changed before
+# it could be opened") and then logs nothing, so this runs in the foreground
+# (-d below) and logs to stdout instead, which nufi-box logs works-egress
+# already captures under the box's bounded log rotation.
 LogLevel Connect
 MaxClients 64
 # The filter: exact hostnames, default deny. FilterType fnmatch is what makes
