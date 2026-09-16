@@ -3,6 +3,16 @@ name: nufi-box
 networks:
   box:
     driver: bridge
+  # Where every Works sandbox lives. `internal: true` is the whole fail-closed
+  # argument: nothing on this network has a route out unless it is also on
+  # `box`, and the only member that is, is works-egress. The literal `name:`
+  # matters -- the sandbox provider hard-codes "works-sandbox" (its
+  # SANDBOX_NETWORK constant), and without it compose would create
+  # nufi-box_works-sandbox and every sandbox would fail to start.
+  works-sandbox:
+    name: works-sandbox
+    driver: bridge
+    internal: true
 
 volumes:
   caddy-data:
@@ -411,3 +421,26 @@ services:
       retries: 3
       start_period: 30s
     networks: [box]
+
+  # The one way out of the sandbox network: a forward proxy that consults an
+  # allow list and refuses everything else with a 403 it logs by hostname.
+  # Idle until a sandbox exists -- piece C is what puts sandboxes on this box.
+  works-egress:
+    image: ${NUFI_REGISTRY:-ghcr.io/dudaji-vn}/nufi-works-egress:${NUFI_WORKS_EGRESS_TAG:-main}
+    restart: unless-stopped
+    logging: *box-logging
+    environment:
+      # Bare hostnames, comma-separated, empty by default. `works` and
+      # `litellm-proxy` are always allowed and the model host never is; see
+      # works-egress/render.sh.
+      WORKS_EGRESS_ALLOW: ${WORKS_EGRESS_ALLOW:-}
+    healthcheck:
+      # A proxy whose filter failed to load answers 200 to everything and
+      # looks healthy by any liveness probe. The one answer that proves the
+      # filter is loaded is a refusal, so ask for a host that is on no list.
+      test: ["CMD-SHELL", "http_proxy=http://127.0.0.1:3128 wget -S -T 5 -O /dev/null http://healthcheck.invalid/ 2>&1 | grep -q ' 403 '"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks: [box, works-sandbox]

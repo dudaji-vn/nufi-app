@@ -20,7 +20,7 @@ LINUX = {"ollama", "samba"}
 # postgres, mongodb, rag_api, and the linux-profile ollama/samba, plus any
 # future tailscale sidecar) is a third-party image and must be untouched.
 NUFI_SERVICES = {"litellm-proxy", "librechat", "console", "admin-panel", "studio",
-                 "nufi-ingest", "nufi-cron"}
+                 "nufi-ingest", "nufi-cron", "works-egress"}
 
 
 def render(*files, profiles=(), **extra_env):
@@ -100,7 +100,13 @@ def test_every_service_follows_the_house_rules():
             assert svc["network_mode"] == "host", name
             assert not svc.get("networks"), name
         else:
-            assert list(svc.get("networks", {}).keys()) == ["box"], name
+            nets = set(svc.get("networks", {}))
+            assert "box" in nets, name
+            # The only service allowed off the box network is the egress proxy,
+            # and the only other network it may sit on is the sandbox one. A
+            # second service on works-sandbox is a second door out of it.
+            extra = {"works-sandbox"} if name == "works-egress" else set()
+            assert nets - {"box"} <= extra, (name, nets)
         image = svc.get("image", "")
         assert not image.endswith(":latest"), f"{name} pins :latest"
 
@@ -319,3 +325,36 @@ def test_the_drives_reach_studio_and_ingest_from_the_same_place():
     studio = next(v["source"] for v in svcs["studio"]["volumes"] if v["target"] == "/drives")
     ingest = next(v["source"] for v in svcs["nufi-ingest"]["volumes"] if v["target"] == "/drives")
     assert studio == ingest, (studio, ingest)
+
+
+# --- Task 2: the works-sandbox network and the works-egress proxy -----------
+
+def test_the_sandbox_network_is_internal_and_literally_named():
+    """Piece A's provider hard-codes the network name; compose would prefix it.
+
+    `internal: true` is the whole fail-closed argument: a sandbox on this
+    network has no route out except through a member that is also on the box
+    network -- and the proxy is the only such member.
+    """
+    cfg = render()
+    net = cfg["networks"]["works-sandbox"]
+    assert net.get("name") == "works-sandbox", net
+    assert net.get("internal") is True, net
+
+
+def test_the_egress_proxy_sits_on_both_networks_and_publishes_nothing():
+    cfg = render()
+    svc = cfg["services"]["works-egress"]
+    assert set(svc["networks"]) == {"box", "works-sandbox"}, svc["networks"]
+    assert "ports" not in svc, "the proxy is reached from the sandbox network only"
+    env = svc["environment"]
+    assert "WORKS_EGRESS_ALLOW" in env
+    assert svc["image"].startswith("ghcr.io/dudaji-vn/nufi-works-egress:")
+
+
+def test_no_other_service_is_on_the_sandbox_network():
+    """The only member with a route out must be the proxy. A second member on
+    both networks is a second door."""
+    cfg = render()
+    on_sandbox = [n for n, s in cfg["services"].items() if "works-sandbox" in (s.get("networks") or {})]
+    assert on_sandbox == ["works-egress"], on_sandbox
