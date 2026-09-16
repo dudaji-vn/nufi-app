@@ -21,6 +21,7 @@ describe("containerCreateOptions — the things a sandbox cannot change", () => 
 
   it("is on the internal sandbox network and nothing else", () => {
     expect(host.NetworkMode).toBe(SANDBOX_NETWORK);
+    expect(SANDBOX_NETWORK).toBe("works-sandbox");
     expect(opts.NetworkingConfig?.EndpointsConfig).toEqual({ [SANDBOX_NETWORK]: {} });
   });
 
@@ -48,10 +49,13 @@ describe("containerCreateOptions — the things a sandbox cannot change", () => 
     expect(opts.WorkingDir).toBe(WORKSPACE_DIR);
   });
 
-  it("has no Docker socket, no privilege, no added capabilities", () => {
+  it("has no Docker socket, no privilege, no added capabilities, no bind mounts", () => {
     expect(host.Privileged).toBeFalsy();
     expect(host.CapAdd).toBeUndefined();
     expect(host.CapDrop).toEqual(["ALL"]);
+    expect(host.SecurityOpt).toEqual(["no-new-privileges"]);
+    // The only mount is the named volume above; nothing from the host's filesystem.
+    expect(host.Binds).toBeUndefined();
     expect(JSON.stringify(opts)).not.toContain("docker.sock");
   });
 
@@ -69,7 +73,7 @@ describe("containerCreateOptions — the things a sandbox cannot change", () => 
     expect(host.AutoRemove).toBeFalsy();
   });
 
-  it("runs an init (tini) as PID 1 so a graceful stop on release is prompt, not a 5s wait for SIGKILL", () => {
+  it("runs an init (tini) as PID 1 to reap the zombies a run's many execs leave behind", () => {
     expect(host.Init).toBe(true);
   });
 });

@@ -72,10 +72,13 @@ export function containerCreateOptions(
       // The lease owns the lifetime; an auto-removed container would vanish
       // between execs.
       AutoRemove: false,
-      // PID 1 is "sleep infinity", which ignores SIGTERM: without an init,
-      // every graceful stop() on release would silently cost the daemon's
-      // full grace period before it gives up and SIGKILLs. tini reaps and
-      // forwards the signal so a normal stop is prompt.
+      // A real init (tini) as PID 1 in place of "sleep infinity". A run is
+      // many exec()s, and each one's process tree is reparented to PID 1
+      // when it exits; sleep does not reap, so without an init the zombies
+      // accumulate against the pids limit for the life of the container.
+      // Not for a graceful stop: there is no stop path -- release and destroy
+      // force-remove, and a timed-out command is killed by the sandbox's own
+      // timeout(1).
       Init: true,
     },
   };

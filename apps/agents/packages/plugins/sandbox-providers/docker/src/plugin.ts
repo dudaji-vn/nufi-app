@@ -20,7 +20,7 @@ import {
   type PluginHealthDiagnostics,
 } from "@paperclipai/plugin-sdk";
 import { parseConfig, validateConfig } from "./config.js";
-import { containerCreateOptions, WORKSPACE_DIR } from "./container-spec.js";
+import { containerCreateOptions, containerName, WORKSPACE_DIR } from "./container-spec.js";
 import { DockerClient, SandboxStateUnknownError } from "./docker.js";
 
 // One client for the worker's lifetime. NUFI_DOCKER_SOCKET exists for the
@@ -40,15 +40,23 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+function volumeName(metadata: Record<string, unknown> | undefined): string | undefined {
+  const v = metadata?.volumeName;
+  return typeof v === "string" && v.length > 0 ? v : undefined;
+}
+
 // Shared by onEnvironmentReleaseLease and onEnvironmentDestroyLease: both are
 // "force-remove this lease's container, but refuse if it is not one of
 // ours" (see DockerClient.assertOurs -- the socket has no per-caller scope).
 // assertOurs rejecting here is not swallowed: a refusal must fail the hook.
-async function removeLease(id: string | null): Promise<void> {
+// The lease's own record of its volume name goes along so the volume is
+// removed even when the container is already gone and cannot be asked.
+async function removeLease(params: PluginEnvironmentReleaseLeaseParams): Promise<void> {
+  const id = params.providerLeaseId;
   if (!id) return;
   const d = client();
   await d.assertOurs(id);
-  await d.remove(id);
+  await d.remove(id, volumeName(params.leaseMetadata));
 }
 
 const plugin = definePlugin({
@@ -84,22 +92,25 @@ const plugin = definePlugin({
     // plugin.test.ts, not only container-spec.test.ts, because this is the
     // path a stored config actually takes.
     const config = parseConfig(params.config ?? {});
-    const options = containerCreateOptions(config, {
-      runId: params.runId,
-      agentId: params.agentId,
-      companyId: params.companyId,
-    });
+    const lease = { runId: params.runId, agentId: params.agentId, companyId: params.companyId };
     const d = client();
-    const id = await d.create(options);
+    const id = await d.create(containerCreateOptions(config, lease));
     try {
       await d.start(id);
     } catch (err) {
-      await d.remove(id).catch(() => undefined);
+      await d.remove(id, containerName(lease)).catch(() => undefined);
       throw err;
     }
     return {
       providerLeaseId: id,
-      metadata: { provider: "docker", image: config.image, remoteCwd: WORKSPACE_DIR },
+      metadata: {
+        provider: "docker",
+        image: config.image,
+        remoteCwd: WORKSPACE_DIR,
+        // The named /workspace volume, so release can remove it even after
+        // the container -- and the HostConfig that names it -- is gone.
+        volumeName: containerName(lease),
+      },
       expiresAt: new Date(Date.now() + config.timeoutMs).toISOString(),
     };
   },
@@ -131,11 +142,11 @@ const plugin = definePlugin({
   // stopping (not removing) would leave a stopped container -- and its
   // volume -- on the box forever, once per run.
   async onEnvironmentReleaseLease(params: PluginEnvironmentReleaseLeaseParams): Promise<void> {
-    await removeLease(params.providerLeaseId);
+    await removeLease(params);
   },
 
   async onEnvironmentDestroyLease(params: PluginEnvironmentDestroyLeaseParams): Promise<void> {
-    await removeLease(params.providerLeaseId);
+    await removeLease(params);
   },
 
   async onEnvironmentRealizeWorkspace(
@@ -183,7 +194,7 @@ const plugin = definePlugin({
       // release/destroy: an unknown state is not a license to remove a
       // container this provider did not create.
       const d = client();
-      await d.assertOurs(id).then(() => d.remove(id)).catch(() => undefined);
+      await d.assertOurs(id).then(() => d.remove(id, volumeName(params.lease.metadata))).catch(() => undefined);
       return {
         exitCode: null,
         timedOut: false,

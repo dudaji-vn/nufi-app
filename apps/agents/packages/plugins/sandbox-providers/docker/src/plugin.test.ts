@@ -1,9 +1,9 @@
 import Dockerode from "dockerode";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { DEFAULTS } from "./config.js";
+import { DEFAULTS, parseConfig } from "./config.js";
 import { FakeDocker } from "./fake-docker.js";
 import plugin from "./plugin.js";
-import { SANDBOX_NETWORK, SANDBOX_RUNTIME } from "./container-spec.js";
+import { SANDBOX_NETWORK, SANDBOX_RUNTIME, containerCreateOptions } from "./container-spec.js";
 
 // definePlugin returns { definition }; the hooks live one level down.
 const hooks = plugin.definition;
@@ -50,8 +50,12 @@ describe("the lease lifecycle", () => {
     expect(create.HostConfig.Runtime).toBe(SANDBOX_RUNTIME);
     expect(create.HostConfig.NetworkMode).toBe(SANDBOX_NETWORK);
     expect(create.Env).toContain("HTTPS_PROXY=http://works-egress:3128");
+    // The whole body, not just the parts named above: the spec is the request.
+    expect(create).toEqual(containerCreateOptions(parseConfig({}), { runId: "run-1", agentId: "a-1", companyId: "co-1" }));
     expect(fake.calls.some((c) => c.path.endsWith("/start"))).toBe(true);
     expect(fake.containers.get(lease.providerLeaseId!)?.running).toBe(true);
+    // The lease carries its volume's name, for a release that finds the container already gone.
+    expect(lease.metadata?.volumeName).toBe("works-sandbox-run-1");
   });
 
   it("never asks for any runtime but runsc, whatever the config says", async () => {
@@ -116,6 +120,13 @@ describe("the lease lifecycle", () => {
     expect(fake.calls.some((c) => c.method === "DELETE" && c.path === "/volumes/works-sandbox-run-4")).toBe(true);
   });
 
+  it("release removes the workspace volume named in the lease metadata even when the container is already gone", async () => {
+    const lease = await hooks.onEnvironmentAcquireLease!({ ...base, config: {}, runId: "run-11" } as never);
+    fake.containers.delete(lease.providerLeaseId!); // e.g. an operator's `docker rm -f`
+    await hooks.onEnvironmentReleaseLease!({ ...base, config: {}, providerLeaseId: lease.providerLeaseId, leaseMetadata: lease.metadata } as never);
+    expect(fake.calls.some((c) => c.method === "DELETE" && c.path === "/volumes/works-sandbox-run-11")).toBe(true);
+  });
+
   it("destroy refuses to touch a container this provider did not create", async () => {
     // Simulates another service on the same box (e.g. nufi-chat) sharing the
     // Docker socket: created directly through the fake, with none of our
@@ -171,13 +182,14 @@ describe("workspace and execute", () => {
     expect(fake.containers.get(lease.providerLeaseId!)?.running).toBe(true);
   });
 
-  it("execute removes the sandbox and reports its state as unknown when the daemon connection is lost mid-exec", async () => {
+  it("execute removes the sandbox (and its volume) and reports its state as unknown when the daemon connection is lost mid-exec", async () => {
     fake.execScript(() => ({ exitCode: 0, stdout: "", stderr: "", error: true }));
     const lease = await hooks.onEnvironmentAcquireLease!({ ...base, config: {}, runId: "run-8" } as never);
     const r = await hooks.onEnvironmentExecute!({ ...base, config: {}, lease, command: "true" } as never);
     expect(r.exitCode).toBeNull();
     expect(r.stderr).toMatch(/unknown state/);
     expect(fake.calls.some((c) => c.method === "DELETE" && c.path === `/containers/${lease.providerLeaseId}`)).toBe(true);
+    expect(fake.calls.some((c) => c.method === "DELETE" && c.path === "/volumes/works-sandbox-run-8")).toBe(true);
   });
 
   it("execute against a container the daemon refuses an exec on is a plain failure -- nothing ran, nothing is removed", async () => {

@@ -2,7 +2,7 @@ name: agents-ci
 
 on:
   pull_request:
-    paths: ['apps/agents/**', '.github/workflows/agents-ci.yml', 'apps/agents/packages/plugins/sandbox-providers/docker/**']
+    paths: ['apps/agents/**', '.github/workflows/agents-ci.yml']
 
 concurrency:
   group: agents-ci-${{ github.ref_name }}
@@ -150,14 +150,15 @@ jobs:
         working-directory: apps/agents
         run: pnpm install --frozen-lockfile --filter @paperclipai/plugin-sdk
       # The provider packages sit outside the pnpm workspace on purpose
-      # (upstream publishes them standalone), so each installs on its own.
-      # Nothing in this workflow ran any provider's tests before this job.
+      # (upstream publishes them standalone), so each installs on its own,
+      # from its own committed lockfile. Nothing in this workflow ran any
+      # provider's tests before this job.
       # --ignore-workspace is required: a plain `pnpm install` here still finds
       # apps/agents' pnpm-workspace.yaml and installs the whole monorepo instead
       # of just this package.
       - name: Install
         working-directory: apps/agents/packages/plugins/sandbox-providers/docker
-        run: pnpm install --ignore-workspace
+        run: pnpm install --frozen-lockfile --ignore-workspace
       - name: Typecheck
         working-directory: apps/agents/packages/plugins/sandbox-providers/docker
         run: pnpm typecheck

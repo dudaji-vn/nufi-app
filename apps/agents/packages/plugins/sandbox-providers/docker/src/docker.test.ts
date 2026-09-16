@@ -195,3 +195,12 @@ describe("assertOurs", () => {
     expect(fake.calls.filter((c) => c.method === "GET" && /\/json$/.test(c.path))).toHaveLength(2);
   });
 });
+
+describe("remove", () => {
+  it("removes the named volume it is told about even when the container is already gone", async () => {
+    fake = await FakeDocker.start();
+    const d = new DockerClient({ socketPath: fake.socketPath });
+    await d.remove("deadbeef".repeat(8), "works-sandbox-run-gone");
+    expect(fake.calls.some((c) => c.method === "DELETE" && c.path === "/volumes/works-sandbox-run-gone")).toBe(true);
+  });
+});

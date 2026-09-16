@@ -57,7 +57,7 @@ const manifest: PaperclipPluginManifestV1 = {
           },
           timeoutMs: {
             type: "number",
-            description: "Sandbox lifetime in milliseconds; a lease older than this is not resumed.",
+            description: "Sandbox lifetime in milliseconds, recorded as the lease's expiresAt.",
             default: 3600000,
           },
         },

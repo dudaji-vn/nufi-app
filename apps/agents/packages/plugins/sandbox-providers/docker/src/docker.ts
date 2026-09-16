@@ -102,18 +102,20 @@ export class DockerClient {
    * ours is named (`containerName(lease)`, from container-spec.ts), so a
    * plain remove leaks it. Read the volume's name off the container's own
    * HostConfig before the container (and that HostConfig) is gone, then
-   * delete it by name afterwards.
+   * delete it by name afterwards. `volumeName` is the lease's own record of
+   * that name, for when the container is already gone and there is no
+   * HostConfig left to read it from.
    */
-  async remove(id: string): Promise<void> {
-    let volumeNames: string[] = [];
+  async remove(id: string, volumeName?: string): Promise<void> {
+    const volumeNames = new Set<string>(volumeName ? [volumeName] : []);
     try {
       const info = await this.docker.getContainer(id).inspect();
-      volumeNames = (info.HostConfig.Mounts ?? [])
-        .filter((m) => m.Type === "volume")
-        .map((m) => m.Source);
+      for (const m of info.HostConfig.Mounts ?? []) {
+        if (m.Type === "volume") volumeNames.add(m.Source);
+      }
     } catch (err) {
       if ((err as { statusCode?: number }).statusCode !== 404) throw err;
-      // Already gone -- nothing to inspect, nothing new to remove below.
+      // Already gone -- nothing to inspect; only the hinted volume is left to remove.
     }
 
     try {
