@@ -219,6 +219,22 @@ case "${1:-}" in
         echo " ok  ${BOX_HOST:-nufi.local} resolves to $_now"
       fi
     fi
+    # The egress proxy, asked for a host that is not on its list. A proxy that
+    # lets everything through is indistinguishable from a healthy one by any
+    # other check; the 403 is the one answer that proves the filter loaded.
+    # Asked from inside the sandbox network, which is the only place a sandbox
+    # ever stands, using the proxy's own image so nothing new is pulled. A box
+    # whose compose does not define the service skips this; a box whose proxy
+    # is down fails it.
+    if [ "$DRY" = 1 ]; then
+      printf '  $ ask works-egress for a host not on the list, expect 403 (refuses)\n'
+    elif $COMPOSE config --services 2>/dev/null | grep -qx works-egress; then
+      _img=$($COMPOSE config --images 2>/dev/null | grep nufi-works-egress | head -1)
+      _code=$(docker run --rm --network works-sandbox --entrypoint sh "$_img" -c \
+        'http_proxy=http://works-egress:3128 wget -S -T 5 -O /dev/null http://healthcheck.invalid/ 2>&1 | sed -n "s/^ *HTTP\/[0-9.]* \([0-9]*\).*/\1/p" | head -1' 2>/dev/null)
+      if [ "$_code" = "403" ]; then echo " ok  works-egress refuses a host not on the list (403)"
+      else echo " !!  works-egress answered ${_code:-nothing} for a host not on the list; the filter may not be loaded — run: nufi-box logs works-egress"; fail=1; fi
+    fi
     [ "$fail" = 0 ] && echo "All good." || { echo "Something is off; run: nufi-box logs <service>"; exit 1; } ;;
   # Both start Caddy again, so both are places a caddy/mesh.caddy left behind by
   # an older box would refuse the whole front door. Put it back in step first.

@@ -472,6 +472,45 @@ five hours of them at boot is worse than the gap.
 Details and the reasoning:
 [`deploy/platform/adapters/nufi-cron/README.md`](../platform/adapters/nufi-cron/README.md).
 
+### Works sandboxes and where they may reach
+
+A NUFI Works sandbox — the container an agent's code runs in — lives on the
+`works-sandbox` network, which has no route out (the network itself is
+`internal: true`, not a firewall rule that could be missed). The only exit is
+`works-egress`, a proxy that consults an allow list and refuses everything
+else with a 403. It logs every refusal to stdout — there is no log file to go
+looking for — one line per attempt, by hostname:
+
+```sh
+nufi-box logs works-egress
+# Proxying refused on filtered domain "evil.example"
+```
+
+Two hosts are always allowed and are not yours to remove: `works` (the Works
+server the sandbox reports back to) and `litellm-proxy` (the gateway the
+model is reached through). Everything else comes from `.env`:
+
+```
+WORKS_EGRESS_ALLOW=pypi.org,files.pythonhosted.org
+```
+
+Bare hostnames, comma-separated. A scheme, a path, a port, a glob or an
+address is refused at start with the entry named, and so is the model host
+under any of its spellings — a sandbox reaches the model through the gateway
+or not at all, which keeps every model call inside the same limits and
+guardrails as a chat.
+
+If the proxy is down, sandboxes have no network rather than an unfiltered
+one — that falls out of `works-egress` being the sandbox network's only
+member with a route out, not from anything doctor does. `nufi-box doctor`
+asks the proxy, from inside the sandbox network, for a host that is not on
+the list and expects the 403 — the one answer that proves the filter is
+loaded, since a proxy that lets everything through looks healthy by every
+other measure.
+
+Nothing here runs an agent yet: the sandboxes themselves arrive with the next
+piece, which installs the provider and registers the environment.
+
 ## 6. Inference profiles
 
 | Profile | Where the model runs | Trade-off |

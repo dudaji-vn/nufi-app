@@ -716,3 +716,14 @@ def test_user_add_refuses_something_that_is_not_an_email(tmp_path):
     r = cli("user", "add", "not-an-email", NUFI_BOX_ENV=str(_env(tmp_path)))
     assert r.returncode != 0
     assert "email" in (r.stderr + r.stdout).lower()
+
+
+# --- the egress proxy, asked to prove its filter is loaded -----------------
+
+def test_doctor_checks_the_egress_proxy_refuses(tmp_path):
+    """A proxy that lets everything through looks identical to one that
+    works, from the box. Doctor asks it for a host that is not on the list
+    and expects a 403 -- the one answer that proves the filter is loaded."""
+    r = cli("doctor", NUFI_BOX_ENV=str(_env(tmp_path)))
+    assert "works-egress" in r.stdout, r.stdout
+    assert "403" in r.stdout or "refuses" in r.stdout, r.stdout
