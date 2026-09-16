@@ -1,8 +1,8 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { randomBytes } from "node:crypto";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 type ExecHandler = (cmd: string[]) => { exitCode: number; stdout: string; stderr: string; delayMs?: number };
 
@@ -32,6 +32,7 @@ export class FakeDocker {
 
   async stop(): Promise<void> {
     await new Promise<void>((resolve) => this.server.close(() => resolve()));
+    rmSync(dirname(this.socketPath), { recursive: true, force: true });
   }
 
   private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {

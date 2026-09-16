@@ -50,4 +50,12 @@ describe("FakeDocker speaks enough of the Engine API for dockerode", () => {
     // Multiplexed frames: 8-byte header then payload; the provider demuxes with dockerode's modem.
     expect(Buffer.concat(chunks).length).toBeGreaterThan(8);
   });
+
+  it("strips the API-version prefix a versioned client sends, so routes match", async () => {
+    fake = await FakeDocker.start();
+    const docker = new Dockerode({ socketPath: fake.socketPath, version: "v1.47" });
+    await docker.info();
+    // The fake saw "/v1.47/info" on the wire and recorded "/info".
+    expect(fake.calls.map((c) => c.path)).toEqual(["/info"]);
+  });
 });
