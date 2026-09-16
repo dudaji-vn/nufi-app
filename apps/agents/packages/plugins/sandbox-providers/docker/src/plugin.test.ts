@@ -80,6 +80,15 @@ describe("the lease lifecycle", () => {
     expect(fake.containers.get(lease.providerLeaseId!)?.running).toBe(true);
   });
 
+  it("resume refuses a container this provider did not create, before starting it", async () => {
+    const docker = new Dockerode({ socketPath: fake.socketPath });
+    const foreign = await docker.createContainer({ Image: "nufi-chat:latest", name: "nufi-chat-stopped" });
+    await expect(
+      hooks.onEnvironmentResumeLease!({ ...base, config: {}, providerLeaseId: foreign.id } as never),
+    ).rejects.toThrow(/not a Works sandbox/);
+    expect(fake.calls.some((c) => c.path === `/containers/${foreign.id}/start`)).toBe(false);
+  });
+
   it("resume of a container that is gone fails rather than silently making a new one", async () => {
     await expect(
       hooks.onEnvironmentResumeLease!({ ...base, config: {}, providerLeaseId: "deadbeef".repeat(8) } as never),
@@ -179,5 +188,16 @@ describe("workspace and execute", () => {
     expect(r.stderr).toMatch(/not running/);
     expect(fake.calls.some((c) => c.method === "DELETE")).toBe(false);
     expect(fake.containers.has(lease.providerLeaseId!)).toBe(true);
+  });
+
+  it("execute into a container this provider did not create is refused before any exec is created, and nothing is removed", async () => {
+    const docker = new Dockerode({ socketPath: fake.socketPath });
+    const foreign = await docker.createContainer({ Image: "nufi-chat:latest", name: "nufi-chat" });
+    await foreign.start();
+    const r = await hooks.onEnvironmentExecute!({ ...base, config: {}, lease: { providerLeaseId: foreign.id }, command: "true" } as never);
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toMatch(/not a Works sandbox/);
+    expect(fake.calls.some((c) => /\/exec$/.test(c.path))).toBe(false);
+    expect(fake.calls.some((c) => c.method === "DELETE")).toBe(false);
   });
 });

@@ -51,6 +51,11 @@ function settledWithin(p: Promise<unknown>, ms: number): Promise<boolean> {
 export class DockerClient {
   private readonly docker: Dockerode;
   private readonly killGraceMs: number;
+  // Container ids this client has already confirmed carry our label. The
+  // run-log tail execs about four times a second, and an inspect per exec
+  // would double the daemon's load for an answer that cannot change: a
+  // label is set at create and never edited, and an id is never reused.
+  private readonly ours = new Set<string>();
 
   constructor(opts: { socketPath?: string; killGraceMs?: number } = {}) {
     this.docker = new Dockerode({ socketPath: opts.socketPath ?? "/var/run/docker.sock" });
@@ -137,14 +142,16 @@ export class DockerClient {
   }
 
   /**
-   * Docker has no per-caller scope: with the socket, remove()/kill() reach
-   * every container on the box, not only ones this provider created. Every
-   * destructive path calls this first so a mislabeled or foreign container
-   * -- another plugin's, a co-located service's -- cannot be torn down
-   * through us. A 404 means there is nothing there to protect; the caller's
-   * own 404 handling (already gone) proceeds from there.
+   * Docker has no per-caller scope: with the socket, exec()/remove()/kill()
+   * reach every container on the box, not only ones this provider created.
+   * Every path that touches a container calls this first so a mislabeled or
+   * foreign container -- another plugin's, a co-located service's -- cannot
+   * be run in or torn down through us. A 404 means there is nothing there
+   * to protect; the caller's own 404 handling (already gone) proceeds from
+   * there, and nothing is remembered about the id.
    */
   async assertOurs(id: string): Promise<void> {
+    if (this.ours.has(id)) return;
     let info: { Config?: { Labels?: Record<string, string> } };
     try {
       info = await this.docker.getContainer(id).inspect();
@@ -155,6 +162,7 @@ export class DockerClient {
     if (!info.Config?.Labels?.[OURS_LABEL]) {
       throw new Error(`refusing to touch container ${id.slice(0, 12)}: not a Works sandbox (no ${OURS_LABEL} label)`);
     }
+    this.ours.add(id);
   }
 
   /**
@@ -180,6 +188,7 @@ export class DockerClient {
     cmd: string[],
     opts: { cwd?: string; env?: Record<string, string>; stdin?: string; timeoutMs?: number },
   ): Promise<ExecResult> {
+    await this.assertOurs(id);
     const container = this.docker.getContainer(id);
 
     // The timer starts before the first request so a hung exec-create is

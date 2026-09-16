@@ -116,6 +116,9 @@ const plugin = definePlugin({
       // host has an acquire hook for that.
       throw new Error(`sandbox ${id.slice(0, 12)} no longer exists on this box`);
     }
+    // A lease id is just a container id, and the socket reaches every
+    // container on the box: refuse to adopt one this provider did not create.
+    await d.assertOurs(id);
     if (!state.running) await d.start(id);
     return { providerLeaseId: id, metadata: { ...(params.leaseMetadata ?? {}), resumed: true } };
   },
@@ -166,8 +169,8 @@ const plugin = definePlugin({
       });
       return { exitCode: r.exitCode, timedOut: r.timedOut, stdout: r.stdout, stderr: r.stderr };
     } catch (err) {
-      // A rejection before the exec existed -- the daemon refused to create
-      // the exec -- is a known state: nothing ran,
+      // A rejection before the exec existed -- assertOurs refused, or the
+      // daemon refused to create the exec -- is a known state: nothing ran,
       // the container is as it was, and the command simply failed.
       if (!(err instanceof SandboxStateUnknownError)) {
         return { exitCode: 1, timedOut: false, stdout: "", stderr: errorMessage(err) };
