@@ -44,11 +44,16 @@ other route out (the property the probe's last step proved).
 |---|---|---|
 | **A** — the sandbox provider | `apps/agents/packages/plugins/sandbox-providers/docker/` | no — a new package beside the six that exist |
 | **B** — the egress proxy | `deploy/box/` (a service, a rendered config, a test) | no existing service |
-| **C** — execution mode `docker` | `apps/agents/server/src/services/execution-policy-bootstrap.ts` | **yes**: one accepted value added, ~30 lines plus tests |
+| **C** — the box registers the environment | `deploy/box/` (one script, run by the installer) | **no** — see the revision below |
 
-C is the only line of host code, and it is the same file the cloud deployment
-runs. It is kept to the smallest change that lets a box refuse every provider
-but this one, which is what `kubernetes` mode does for the cluster today.
+**Revision, 2026-09-16, before any code.** The first draft of C added a third
+value to `PAPERCLIP_EXECUTION_MODE` in `execution-policy-bootstrap.ts`. Writing
+the plan for it found what the spec had missed: `apps/agents` is a vendored
+upstream (`nufi/upstream.json`, `paperclipai/paperclip` at `v2026.722.0`)
+guarded by `nufi/check-fork-diff.sh`, and none of the three files that change
+would touch is on the allowlist. The forced-mode machinery is upstream's, built
+for upstream's Kubernetes; widening the fork to generalise it is exactly the
+drift the guard exists to stop. So C does not touch the host at all.
 
 ## A — the Docker provider
 
@@ -127,18 +132,36 @@ have no network rather than an unfiltered one. The test for this is the same
 as the probe's: a sandbox on the network with the proxy stopped cannot reach a
 public host within five seconds.
 
-## C — execution mode `docker`
+## C — the box registers the Docker environment
 
-`execution-policy-bootstrap.ts` accepts `PAPERCLIP_EXECUTION_MODE` of
-`kubernetes` or `any`. It gains `docker`, which does for the box what
-`kubernetes` does for the cluster: forces every company onto the named
-provider and denies local execution. The config it carries is small —
-`PAPERCLIP_DOCKER_IMAGE`, `_MEMORY`, `_CPUS`, `_EGRESS_ALLOW` — and mirrors the
-`PAPERCLIP_K8S_*` shape so the two read the same way.
+Upstream already has the seam: `POST /environments` accepts `driver: "sandbox"`
+with a free-form `config`, and a sandbox environment resolves to whichever
+provider `config.provider` names. That is how an operator adds the E2B or
+Daytona provider to a cloud instance today, with no forced mode. The box does
+the same for `docker`:
 
-The change is additive: a deployment that never sets `docker` cannot observe
-it. The existing tests for the `kubernetes` branch stay; the new ones are the
-same tests with the other value.
+- `nufi-box works install` (called by `install-box.sh --with-works`) signs in
+  with the box's Works credentials, installs the provider plugin from its local
+  path, creates — idempotently, by name — one environment
+  `{ driver: "sandbox", config: { provider: "docker", image, memory, cpus,
+  egressAllow } }`, and sets it as the instance default. Every company's runs
+  land on it.
+- The same command sets the upstream `Local` environment's `status` to
+  `archived` (the only inactive status upstream defines). Upstream creates that row on first boot (`ensureLocalEnvironment`)
+  and it would run agent code inside the `works` container under plain Docker,
+  with no gVisor. Disabling it is the box's equivalent of the cloud's forced
+  mode.
+- `nufi-box doctor` checks both: the default environment's provider is `docker`,
+  and `Local` is archived.
+
+What this gives up, stated plainly: the cloud's forced mode is enforced **per
+run** in the heartbeat and cannot be undone from the product UI; the box's
+arrangement is enforced **at install** and could be undone by an administrator
+un-archiving `Local` in the Environments page. On a single-department appliance
+whose administrator already holds `.env`, that is an acceptable trade for not
+forking the host. If a hard per-run gate is ever wanted, the shape it should
+take is a `forcedProviderKey()` in upstream's `execution-allowlist.ts` — a
+patch to send **upstream**, not to carry in the fork.
 
 ## On the box
 
@@ -181,7 +204,10 @@ Each piece has its own suite, and the box gets one end-to-end check.
   parser-in-CLI rule `schedule list` follows: one renderer, no second copy);
   and on a box, a sandbox reaching a listed host gets through, an unlisted one
   gets 403, and with the proxy stopped nothing gets out.
-- **C**: the bootstrap tests, duplicated for the new value.
+- **C**: the register script's tests, in the shape of `test_nufi_box.py` — dry-run
+  asserts the calls it plans (create environment with `provider: "docker"`, set
+  default, disable `Local`), and a fake Works API asserts idempotency: a second
+  run creates nothing.
 - **Box**: `verify-ubuntu-box.sh` gains a Works step on `--with-works` boxes —
   a run that executes `uname -r` in a sandbox and asserts `gvisor` in the
   output, which is the probe's own test performed through the product.
@@ -192,8 +218,9 @@ fail, and a security boundary is the worst place to meet it again.
 
 ## Order
 
-C first (a day; it is what lets the box run in `docker` mode at all), then A
-(a week), then B (two or three days), then the box wiring (two or three days),
+A first (a week; nothing can be registered until there is a provider to
+register), then B (two or three days), then C with the box wiring (two or three
+days — C is now a box script, so it lands together with the compose changes),
 then docs. A is testable without B — a provider on a network with no proxy
 simply has no egress, which is the safe default — so the pieces land as
 separate pull requests and the box is never left half-wired.
