@@ -229,9 +229,10 @@ case "${1:-}" in
     if [ "$DRY" = 1 ]; then
       printf '  $ ask works-egress for a host not on the list, expect 403 (refuses)\n'
     elif $COMPOSE config --services 2>/dev/null | grep -qx works-egress; then
-      _img=$($COMPOSE config --images 2>/dev/null | grep nufi-works-egress | head -1)
+      # Guarded: the script runs under set -e, and a missing network or image must be a "!!" line, not a doctor that stops mid-run.
+      _img=$($COMPOSE config --images 2>/dev/null | grep nufi-works-egress | head -1) || _img=""
       _code=$(docker run --rm --network works-sandbox --entrypoint sh "$_img" -c \
-        'http_proxy=http://works-egress:3128 wget -S -T 5 -O /dev/null http://healthcheck.invalid/ 2>&1 | sed -n "s/^ *HTTP\/[0-9.]* \([0-9]*\).*/\1/p" | head -1' 2>/dev/null)
+        'http_proxy=http://works-egress:3128 wget -S -T 5 -O /dev/null http://healthcheck.invalid/ 2>&1 | sed -n "s/^ *HTTP\/[0-9.]* \([0-9]*\).*/\1/p" | head -1' 2>/dev/null) || _code=""
       if [ "$_code" = "403" ]; then echo " ok  works-egress refuses a host not on the list (403)"
       else echo " !!  works-egress answered ${_code:-nothing} for a host not on the list; the filter may not be loaded — run: nufi-box logs works-egress"; fail=1; fi
     fi
