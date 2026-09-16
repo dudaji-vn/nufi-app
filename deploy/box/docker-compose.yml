@@ -481,9 +481,9 @@ services:
       NUFI_OIDC_ISSUER: https://${BOX_HOST}:3001
       NUFI_OIDC_CLIENT_ID: nufi-works
       NUFI_OIDC_CLIENT_SECRET: ${WORKS_OIDC_SECRET}
-      # The OIDC token exchange goes to the console through Caddy's internal
-      # CA (the container resolves ${BOX_HOST} to caddy).
-      NODE_EXTRA_CA_CERTS: /caddy/caddy/pki/authorities/local/root.crt
+      # Fetched at start by works/entrypoint.sh from Caddy's :80 -- the caddy
+      # volume's PKI directory is root-only and this container is uid 1000.
+      NODE_EXTRA_CA_CERTS: /tmp/nufi-box-ca.crt
       # A LiteLLM virtual key minted by `nufi-box works install`, under the
       # three names the adapters read. Never the master key: this env reaches
       # every sandbox, and litellm-proxy is on the egress allow list.
@@ -493,8 +493,9 @@ services:
     volumes:
       - works-data:/paperclip
       - ./works/adapters.json:/box/adapters.json:ro
-      - caddy-data:/caddy:ro
+      - ./works/entrypoint.sh:/usr/local/bin/works-entrypoint.sh:ro
       - /var/run/docker.sock:/var/run/docker.sock
+    entrypoint: ["/usr/local/bin/works-entrypoint.sh"]
     healthcheck:
       test: ["CMD-SHELL", "curl -fs http://127.0.0.1:3100/api/health >/dev/null || exit 1"]
       interval: 20s

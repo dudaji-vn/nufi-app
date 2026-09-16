@@ -404,14 +404,29 @@ def test_works_is_wired_to_the_box_and_nothing_else():
     assert env["PAPERCLIP_AUTH_DISABLE_SIGN_UP"] == "true"
     assert env["PAPERCLIP_DISABLE_PLUGIN_AUTOBUILD"] == "1"
     assert env["PAPERCLIP_ADAPTERS_FILE"] == "/box/adapters.json"
-    assert env["NODE_EXTRA_CA_CERTS"] == "/caddy/caddy/pki/authorities/local/root.crt"
+    assert env["NODE_EXTRA_CA_CERTS"] == "/tmp/nufi-box-ca.crt"
     assert env["DATABASE_URL"].endswith("@postgres:5432/nufi_works")
     targets = {v["target"]: v for v in svc["volumes"]}
     assert targets["/box/adapters.json"]["read_only"] is True
-    assert targets["/caddy"]["read_only"] is True
+    assert "/caddy" not in targets, "the CA private key never enters the works container"
+    assert targets["/usr/local/bin/works-entrypoint.sh"]["read_only"] is True
     assert targets["/paperclip"]["type"] == "volume"
+    assert svc["entrypoint"] == ["/usr/local/bin/works-entrypoint.sh"]
     assert "ports" not in svc
     assert list(svc["networks"]) == ["box"]
+
+
+def test_the_works_entrypoint_starts_the_image_command():
+    """The entrypoint's final `exec` must mirror apps/agents/Dockerfile's own
+    ENTRYPOINT + CMD (docker-entrypoint.sh node --import .../loader.mjs
+    server/dist/index.js) -- overriding ENTRYPOINT in compose resets CMD, so
+    this line is the only thing that still starts Works the way its image
+    would. If that Dockerfile's CMD ever changes, this line has to move with
+    it or the works container never starts its server."""
+    text = (BOX / "works" / "entrypoint.sh").read_text()
+    assert ("exec /usr/local/bin/docker-entrypoint.sh node --import "
+            "./server/node_modules/tsx/dist/loader.mjs server/dist/index.js") in text
+    assert "http://caddy/nufi-box-ca.crt" in text
 
 
 def test_the_model_key_in_the_works_env_is_never_the_master_key():
@@ -419,22 +434,26 @@ def test_the_model_key_in_the_works_env_is_never_the_master_key():
     allow list. A master key there is the gateway's admin API from inside
     untrusted code."""
     text = (BOX / "docker-compose.yml").read_text()
+    assert text.index("  works:\n") < text.index("  works-egress:\n")
     works = text[text.index("  works:\n"):text.index("  works-egress:\n")]
     assert "LITELLM_MASTER_KEY" not in works
     env = render(profiles=("works",), WORKS_MODEL_KEY="sk-virtual")["services"]["works"]["environment"]
     for k in ("NUFI_MODEL_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"):
         assert env[k] == "sk-virtual", k
+    assert "sk-x" not in env.values(), "the master key under any name"
 
 
 def test_the_console_opens_the_works_door_only_when_the_box_has_one():
     plain = render()["services"]["console"]["environment"]
     assert plain["PUBLIC_WORKS_URL"] == ""
-    on = render(WORKS_PUBLIC_URL="https://nufi.local:3003")["services"]["console"]["environment"]
+    on = render(WORKS_PUBLIC_URL="https://nufi.local:3003",
+               WORKS_OIDC_SECRET="s3")["services"]["console"]["environment"]
     assert on["PUBLIC_WORKS_URL"] == "https://nufi.local:3003"
     clients = json.loads(on["OIDC_CLIENTS"])
     (works,) = [c for c in clients if c["clientId"] == "nufi-works"]
     assert works["product"] == "works"
     assert works["redirectUris"] == ["https://nufi.local:3003/api/auth/oauth2/callback/nufi"]
+    assert works["clientSecret"] == "s3"
 
 
 def test_caddy_publishes_the_works_port():
