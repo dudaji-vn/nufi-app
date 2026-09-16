@@ -44,6 +44,15 @@ def test_the_operator_list_is_appended_trimmed_and_deduplicated():
     print("PASS: the operator list is appended, trimmed, deduplicated")
 
 
+def test_entries_are_lowercased_because_the_filter_is_not():
+    """tinyproxy's fnmatch filter is case-sensitive and DNS is not; an operator
+    who types PyPI.org must get pypi.org, and a duplicate in another case is a
+    duplicate."""
+    r = render("PyPI.org,pypi.org,Files.PythonHosted.org")
+    assert lines(r) == ["works", "litellm-proxy", "pypi.org", "files.pythonhosted.org"], lines(r)
+    print("PASS: entries are lowercased before they are checked or deduplicated")
+
+
 def test_an_entry_that_is_not_a_hostname_is_refused():
     for bad in ("https://pypi.org", "pypi.org/simple", "pypi.org:443", "*.pypi.org", "10.0.0.5"):
         r = render(bad)
@@ -71,6 +80,7 @@ def test_nothing_else_is_in_the_output():
 if __name__ == "__main__":
     test_the_two_fixed_hosts_are_always_first()
     test_the_operator_list_is_appended_trimmed_and_deduplicated()
+    test_entries_are_lowercased_because_the_filter_is_not()
     test_an_entry_that_is_not_a_hostname_is_refused()
     test_the_model_host_cannot_be_allowed_directly()
     test_nothing_else_is_in_the_output()

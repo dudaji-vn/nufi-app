@@ -25,7 +25,8 @@ for h in $ALWAYS; do echo "$h"; done
 seen=" $ALWAYS "
 IFS=','
 for raw in ${WORKS_EGRESS_ALLOW:-}; do
-  h=$(printf '%s' "$raw" | tr -d '[:space:]')
+  # Lowercased: the filter that reads this is case-sensitive and DNS is not.
+  h=$(printf '%s' "$raw" | tr -d '[:space:]' | tr 'A-Z' 'a-z')
   [ -n "$h" ] || continue
   # Strip trailing :port before checking model hosts
   port_stripped=${h%%:*}
