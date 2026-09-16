@@ -13,6 +13,10 @@ type ExecHandler = (cmd: string[]) => {
   error?: boolean;
   /** Never respond at all -- not even headers -- so the client's start() call hangs until it gives up on its own. */
   neverStart?: boolean;
+  /** Respond with headers (or the 101), then never write a frame and never end -- a command that ignores every deadline. */
+  neverEnd?: boolean;
+  /** Keep reporting Running: true from /exec/{id}/json for this long after the stream has ended, as the daemon can. */
+  exitAfterEndMs?: number;
 };
 
 interface FakeContainer { id: string; name: string; create: unknown; running: boolean }
@@ -98,6 +102,8 @@ export class FakeDocker {
     }
     if ((m = /^\/containers\/([^/]+)\/exec$/.exec(path)) && req.method === "POST") {
       const c = this.find(m[1]); if (!c) return json(404, { message: "no such container" });
+      // The daemon's own answer to an exec on a container that is not up.
+      if (!c.running) return json(409, { message: `container ${c.id.slice(0, 12)} is not running` });
       const id = randomBytes(32).toString("hex");
       this.execs.set(id, { id, containerId: c.id, cmd: (body as { Cmd: string[] }).Cmd, exitCode: null, running: false });
       return json(201, { Id: id });
@@ -119,15 +125,11 @@ export class FakeDocker {
         setTimeout(() => { res.destroy(); }, r.delayMs ?? 0);
         return;
       }
+      if (r.neverEnd) return; // headers went out; the command never finishes.
       const finish = () => {
-        // Docker multiplexed stream: [type(1) 0 0 0 len(4 BE)] + payload, type 1=stdout 2=stderr
-        for (const [type, text] of [[1, r.stdout], [2, r.stderr]] as const) {
-          if (!text) continue;
-          const payload = Buffer.from(text);
-          const header = Buffer.alloc(8); header[0] = type; header.writeUInt32BE(payload.length, 4);
-          res.write(Buffer.concat([header, payload]));
-        }
-        e.exitCode = r.exitCode; e.running = false; res.end();
+        res.write(muxFrames(r.stdout, r.stderr));
+        this.finishExec(e, r);
+        res.end();
       };
       if (r.delayMs) setTimeout(finish, r.delayMs); else finish();
       return;
@@ -139,10 +141,28 @@ export class FakeDocker {
     json(404, { message: `fake docker: no route for ${req.method} ${path}` });
   }
 
+  private finishExec(e: FakeExec, r: ReturnType<ExecHandler>): void {
+    e.exitCode = r.exitCode;
+    if (r.exitAfterEndMs) setTimeout(() => { e.running = false; }, r.exitAfterEndMs);
+    else e.running = false;
+  }
+
   private find(idOrName: string): FakeContainer | undefined {
     return this.containers.get(idOrName)
       ?? [...this.containers.values()].find((c) => c.name === idOrName || c.id.startsWith(idOrName));
   }
+}
+
+/** Docker multiplexed stream: [type(1) 0 0 0 len(4 BE)] + payload, type 1=stdout 2=stderr. */
+function muxFrames(stdout: string, stderr: string): Buffer {
+  const frames: Buffer[] = [];
+  for (const [type, text] of [[1, stdout], [2, stderr]] as const) {
+    if (!text) continue;
+    const payload = Buffer.from(text);
+    const header = Buffer.alloc(8); header[0] = type; header.writeUInt32BE(payload.length, 4);
+    frames.push(header, payload);
+  }
+  return Buffer.concat(frames);
 }
 
 async function readJson(req: IncomingMessage): Promise<unknown> {

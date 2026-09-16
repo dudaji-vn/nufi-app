@@ -1,5 +1,6 @@
 import Dockerode from "dockerode";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { DEFAULTS } from "./config.js";
 import { FakeDocker } from "./fake-docker.js";
 import plugin from "./plugin.js";
 import { SANDBOX_NETWORK, SANDBOX_RUNTIME } from "./container-spec.js";
@@ -126,14 +127,22 @@ describe("workspace and execute", () => {
     const r = await hooks.onEnvironmentRealizeWorkspace!({ ...base, config: {}, lease, workspace: { remotePath: "/workspace/proj" } } as never);
     expect(r.cwd).toBe("/workspace/proj");
     const mk = fake.calls.find((c) => /\/exec$/.test(c.path))!.body as { Cmd: string[] };
-    expect(mk.Cmd).toEqual(["mkdir", "-p", "/workspace/proj"]);
+    expect(mk.Cmd).toEqual(["timeout", "-s", "KILL", "30", "mkdir", "-p", "/workspace/proj"]);
   });
 
-  it("execute runs the command and returns the result shape the host expects", async () => {
+  it("execute runs the command under the caller's deadline and returns the result shape the host expects", async () => {
     fake.execScript((cmd) => ({ exitCode: 0, stdout: `${cmd.join(" ")}\n`, stderr: "" }));
     const lease = await hooks.onEnvironmentAcquireLease!({ ...base, config: {}, runId: "run-6" } as never);
     const r = await hooks.onEnvironmentExecute!({ ...base, config: {}, lease, command: "uname", args: ["-r"], cwd: "/workspace", timeoutMs: 5000 } as never);
-    expect(r).toMatchObject({ exitCode: 0, timedOut: false, stdout: "uname -r\n", stderr: "" });
+    expect(r).toMatchObject({ exitCode: 0, timedOut: false, stdout: "timeout -s KILL 5 uname -r\n", stderr: "" });
+  });
+
+  it("execute falls back to the environment's own timeoutMs when the caller sets none", async () => {
+    const lease = await hooks.onEnvironmentAcquireLease!({ ...base, config: {}, runId: "run-6b" } as never);
+    await hooks.onEnvironmentExecute!({ ...base, config: { timeoutMs: 120_000 }, lease, command: "uname", args: ["-r"] } as never);
+    const ex = fake.calls.find((c) => /\/exec$/.test(c.path))!.body as { Cmd: string[] };
+    expect(ex.Cmd).toEqual(["timeout", "-s", "KILL", "120", "uname", "-r"]);
+    expect(DEFAULTS.timeoutMs).toBe(3_600_000); // and with no config at all, the default lifetime
   });
 
   it("execute with no lease id returns a failed result, not a throw", async () => {
@@ -142,11 +151,15 @@ describe("workspace and execute", () => {
     expect(r.stderr).toMatch(/lease/i);
   });
 
-  it("execute honours the deadline and reports timedOut", async () => {
-    fake.execScript(() => ({ exitCode: 0, stdout: "", stderr: "", delayMs: 2000 }));
+  it("execute honours the deadline and reports timedOut, and the sandbox is still there afterwards", async () => {
+    fake.execScript(() => ({ exitCode: 137, stdout: "", stderr: "", delayMs: 500 }));
     const lease = await hooks.onEnvironmentAcquireLease!({ ...base, config: {}, runId: "run-7" } as never);
     const r = await hooks.onEnvironmentExecute!({ ...base, config: {}, lease, command: "sleep", args: ["10"], timeoutMs: 200 } as never);
     expect(r.timedOut).toBe(true);
+    // The run-log tail execs every 250ms and tolerates a few timeouts; it
+    // does not tolerate its sandbox vanishing on the first slow one.
+    expect(fake.calls.some((c) => /\/kill$/.test(c.path))).toBe(false);
+    expect(fake.containers.get(lease.providerLeaseId!)?.running).toBe(true);
   });
 
   it("execute removes the sandbox and reports its state as unknown when the daemon connection is lost mid-exec", async () => {
@@ -154,6 +167,17 @@ describe("workspace and execute", () => {
     const lease = await hooks.onEnvironmentAcquireLease!({ ...base, config: {}, runId: "run-8" } as never);
     const r = await hooks.onEnvironmentExecute!({ ...base, config: {}, lease, command: "true" } as never);
     expect(r.exitCode).toBeNull();
+    expect(r.stderr).toMatch(/unknown state/);
     expect(fake.calls.some((c) => c.method === "DELETE" && c.path === `/containers/${lease.providerLeaseId}`)).toBe(true);
+  });
+
+  it("execute against a container the daemon refuses an exec on is a plain failure -- nothing ran, nothing is removed", async () => {
+    const lease = await hooks.onEnvironmentAcquireLease!({ ...base, config: {}, runId: "run-8b" } as never);
+    fake.containers.get(lease.providerLeaseId!)!.running = false; // exec-create answers 409
+    const r = await hooks.onEnvironmentExecute!({ ...base, config: {}, lease, command: "true" } as never);
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toMatch(/not running/);
+    expect(fake.calls.some((c) => c.method === "DELETE")).toBe(false);
+    expect(fake.containers.has(lease.providerLeaseId!)).toBe(true);
   });
 });

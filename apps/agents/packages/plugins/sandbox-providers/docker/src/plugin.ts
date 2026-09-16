@@ -21,7 +21,7 @@ import {
 } from "@paperclipai/plugin-sdk";
 import { parseConfig, validateConfig } from "./config.js";
 import { containerCreateOptions, WORKSPACE_DIR } from "./container-spec.js";
-import { DockerClient } from "./docker.js";
+import { DockerClient, SandboxStateUnknownError } from "./docker.js";
 
 // One client for the worker's lifetime. NUFI_DOCKER_SOCKET exists for the
 // tests, which point it at a fake daemon on a unix socket; on a box it is
@@ -154,24 +154,33 @@ const plugin = definePlugin({
     if (!id) {
       return { exitCode: 1, timedOut: false, stdout: "", stderr: "No provider lease ID available for execution." };
     }
+    // Every exec has a deadline: the caller's, or the environment's own
+    // lifetime when the caller sets none (the e2b provider does the same).
+    const config = parseConfig(params.config ?? {});
     try {
       const r = await client().exec(id, [params.command, ...(params.args ?? [])], {
         cwd: params.cwd,
         env: params.env,
         stdin: params.stdin,
-        timeoutMs: params.timeoutMs,
+        timeoutMs: params.timeoutMs ?? config.timeoutMs,
       });
       return { exitCode: r.exitCode, timedOut: r.timedOut, stdout: r.stdout, stderr: r.stderr };
     } catch (err) {
-      // A rejection from exec() means the container's state is unknown (see
-      // DockerClient.exec's doc comment): the daemon connection may have
-      // dropped mid-command, or the post-timeout kill itself may have
-      // failed. Either way we cannot claim to know what is running in
-      // there, so we force-remove the container rather than leave an orphan
-      // the host has no other handle on -- but assertOurs still guards this
-      // exactly like release/destroy: an unknown state is not a license to
-      // remove a container this provider did not create.
-      await client().assertOurs(id).then(() => client().remove(id)).catch(() => undefined);
+      // A rejection before the exec existed -- the daemon refused to create
+      // the exec -- is a known state: nothing ran,
+      // the container is as it was, and the command simply failed.
+      if (!(err instanceof SandboxStateUnknownError)) {
+        return { exitCode: 1, timedOut: false, stdout: "", stderr: errorMessage(err) };
+      }
+      // After that point a rejection means the container's state is unknown
+      // (see DockerClient.exec's doc comment): the daemon connection dropped
+      // mid-command. We cannot claim to know what is running in there, so we
+      // force-remove the container rather than leave an orphan the host has
+      // no other handle on -- but assertOurs still guards this exactly like
+      // release/destroy: an unknown state is not a license to remove a
+      // container this provider did not create.
+      const d = client();
+      await d.assertOurs(id).then(() => d.remove(id)).catch(() => undefined);
       return {
         exitCode: null,
         timedOut: false,

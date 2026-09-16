@@ -5,6 +5,7 @@
  */
 import Dockerode from "dockerode";
 import { PassThrough, type Duplex } from "node:stream";
+import { setTimeout as sleep } from "node:timers/promises";
 import { SANDBOX_RUNTIME } from "./container-spec.js";
 
 export interface ExecResult {
@@ -14,11 +15,46 @@ export interface ExecResult {
   timedOut: boolean;
 }
 
+/**
+ * How long past its deadline a command's stream may still end on its own
+ * before the container is killed out from under it. The in-sandbox
+ * timeout(1) rounds the deadline up to whole seconds, so an ordinary
+ * timed-out exec ends up to a second late; five seconds is well clear of
+ * that and still short enough that a command which escaped timeout(1) --
+ * or an exec-create the daemon never answered -- is not left running.
+ */
+export const DEFAULT_KILL_GRACE_MS = 5_000;
+
+/**
+ * exec() failed after the exec was created: a command may be running in
+ * there and this client no longer knows. A rejection that is *not* this
+ * (assertOurs refused, exec-create itself failed) leaves the container
+ * exactly as it was, and the caller may treat it as an ordinary error.
+ */
+export class SandboxStateUnknownError extends Error {
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+    this.name = "SandboxStateUnknownError";
+  }
+}
+
+const OURS_LABEL = "me.nufi.works.run";
+
+/** Resolves true if `p` settles (either way) within `ms`, false otherwise. */
+function settledWithin(p: Promise<unknown>, ms: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), ms);
+    p.then(() => true, () => true).then((v) => { clearTimeout(timer); resolve(v); });
+  });
+}
+
 export class DockerClient {
   private readonly docker: Dockerode;
+  private readonly killGraceMs: number;
 
-  constructor(opts: { socketPath?: string } = {}) {
+  constructor(opts: { socketPath?: string; killGraceMs?: number } = {}) {
     this.docker = new Dockerode({ socketPath: opts.socketPath ?? "/var/run/docker.sock" });
+    this.killGraceMs = opts.killGraceMs ?? DEFAULT_KILL_GRACE_MS;
   }
 
   async health(): Promise<{ ok: true } | { ok: false; reason: string }> {
@@ -52,16 +88,6 @@ export class DockerClient {
       return { exists: true, running: Boolean(info.State?.Running) };
     } catch (err) {
       if ((err as { statusCode?: number }).statusCode === 404) return { exists: false, running: false };
-      throw err;
-    }
-  }
-
-  async stop(id: string): Promise<void> {
-    try {
-      await this.docker.getContainer(id).stop({ t: 5 });
-    } catch (err) {
-      const code = (err as { statusCode?: number }).statusCode;
-      if (code === 304 || code === 404) return; // already stopped, or gone
       throw err;
     }
   }
@@ -111,7 +137,7 @@ export class DockerClient {
   }
 
   /**
-   * Docker has no per-caller scope: with the socket, remove()/stop() reach
+   * Docker has no per-caller scope: with the socket, remove()/kill() reach
    * every container on the box, not only ones this provider created. Every
    * destructive path calls this first so a mislabeled or foreign container
    * -- another plugin's, a co-located service's -- cannot be torn down
@@ -126,16 +152,28 @@ export class DockerClient {
       if ((err as { statusCode?: number }).statusCode === 404) return;
       throw err;
     }
-    if (!info.Config?.Labels?.["me.nufi.works.run"]) {
-      throw new Error(`refusing to touch container ${id.slice(0, 12)}: not a Works sandbox (no me.nufi.works.run label)`);
+    if (!info.Config?.Labels?.[OURS_LABEL]) {
+      throw new Error(`refusing to touch container ${id.slice(0, 12)}: not a Works sandbox (no ${OURS_LABEL} label)`);
     }
   }
 
   /**
-   * A rejection from exec() means the container's state is unknown -- the
-   * deadline path SIGKILLs and the stream path can fail mid-teardown, so the
-   * caller must force-remove rather than treat a rejection as a clean,
-   * side-effect-free failure.
+   * Runs `cmd` in the container and waits for it.
+   *
+   * With a `timeoutMs`, the command is wrapped in the sandbox's own
+   * `timeout -s KILL` so the deadline is enforced where the process is --
+   * the Engine API has no "kill this exec", and killing the container
+   * instead would destroy the agent's sandbox on any single slow command
+   * (the host's run-log tail execs every 250ms with a 15s deadline and
+   * tolerates a few timeouts; it does not tolerate its sandbox vanishing).
+   * Our own timer stays the arbiter of `timedOut: true`. If it fires and
+   * the stream has still not ended within `killGraceMs`, the command has
+   * outlived the one thing that was supposed to stop it, and the container
+   * is killed rather than the command abandoned.
+   *
+   * Rejects with SandboxStateUnknownError for a failure after the exec was
+   * created (a dropped daemon connection mid-command); any other rejection
+   * happened before anything ran.
    */
   async exec(
     id: string,
@@ -143,69 +181,76 @@ export class DockerClient {
     opts: { cwd?: string; env?: Record<string, string>; stdin?: string; timeoutMs?: number },
   ): Promise<ExecResult> {
     const container = this.docker.getContainer(id);
-    const exec = await container.exec({
-      Cmd: cmd,
-      WorkingDir: opts.cwd,
-      Env: opts.env ? Object.entries(opts.env).map(([k, v]) => `${k}=${v}`) : undefined,
-      AttachStdout: true,
-      AttachStderr: true,
-      AttachStdin: opts.stdin !== undefined,
-    });
 
-    const outChunks: Buffer[] = [];
-    const errChunks: Buffer[] = [];
-    // The deadline has to cover the whole exchange, not just "wait for the
-    // stream to end": a server that has not sent a byte yet (headers held
-    // back until the first write, which is exactly what a still-running
-    // command looks like) leaves exec.start() itself unresolved. Racing only
-    // the post-start wait would let that hang outlast timeoutMs.
-    const abortController = new AbortController();
-    let stream: Duplex | undefined;
-
-    const run = (async () => {
-      const s = await exec.start({
-        hijack: opts.stdin !== undefined,
-        stdin: opts.stdin !== undefined,
-        abortSignal: abortController.signal,
-      });
-      stream = s;
-      const stdout = new PassThrough();
-      const stderr = new PassThrough();
-      stdout.on("data", (d: Buffer) => outChunks.push(d));
-      stderr.on("data", (d: Buffer) => errChunks.push(d));
-      this.docker.modem.demuxStream(s, stdout, stderr);
-      if (opts.stdin !== undefined) {
-        s.write(opts.stdin);
-        s.end();
-      }
-      // dockerode hands back a bare stream with no listeners of its own. An
-      // 'error' event nobody is listening for is Node's cue to throw --
-      // straight through to uncaughtException and down the whole worker
-      // process -- so we always attach one. A clean 'end' resolves as
-      // before; 'close' is also a resolution signal (it is what a hijacked
-      // stdin session's own destroy() -- ours, below, on the timeout path --
-      // produces instead of 'end'), but a 'close' that arrives *without* a
-      // preceding 'end' means the daemon's connection dropped mid-exec, and
-      // that is treated as the same failure as an explicit 'error' --
-      // silently returning as if the command had finished would be worse
-      // than rejecting.
-      let sawEnd = false;
-      await new Promise<void>((resolve, reject) => {
-        s.once("error", reject);
-        s.once("end", () => { sawEnd = true; resolve(); });
-        s.once("close", () => {
-          if (sawEnd) resolve();
-          else reject(new Error("the exec stream closed before it ended -- the connection to the Docker daemon was lost"));
-        });
-      });
-    })();
-
+    // The timer starts before the first request so a hung exec-create is
+    // bounded too; the abort signal reaches both requests.
     let timer: NodeJS.Timeout | undefined;
     const deadline = opts.timeoutMs
       ? new Promise<"timeout">((resolve) => {
           timer = setTimeout(() => resolve("timeout"), opts.timeoutMs);
         })
       : new Promise<never>(() => {});
+    const abortController = new AbortController();
+
+    const outChunks: Buffer[] = [];
+    const errChunks: Buffer[] = [];
+    let stream: Duplex | undefined;
+
+    const run = (async (): Promise<Dockerode.Exec> => {
+      const exec = await container.exec({
+        Cmd: opts.timeoutMs ? withDeadline(cmd, opts.timeoutMs) : cmd,
+        WorkingDir: opts.cwd,
+        Env: opts.env ? Object.entries(opts.env).map(([k, v]) => `${k}=${v}`) : undefined,
+        AttachStdout: true,
+        AttachStderr: true,
+        AttachStdin: opts.stdin !== undefined,
+        abortSignal: abortController.signal,
+      });
+      try {
+        // A server that has not sent a byte yet (headers held back until
+        // the first write, which is exactly what a still-running command
+        // looks like) leaves exec.start() itself unresolved; the deadline
+        // above covers that too.
+        const s = await exec.start({
+          hijack: opts.stdin !== undefined,
+          stdin: opts.stdin !== undefined,
+          abortSignal: abortController.signal,
+        });
+        stream = s;
+        const stdout = new PassThrough();
+        const stderr = new PassThrough();
+        stdout.on("data", (d: Buffer) => outChunks.push(d));
+        stderr.on("data", (d: Buffer) => errChunks.push(d));
+        this.docker.modem.demuxStream(s, stdout, stderr);
+        if (opts.stdin !== undefined) {
+          s.write(opts.stdin);
+          s.end();
+        }
+        // dockerode hands back a bare stream with no listeners of its own. An
+        // 'error' event nobody is listening for is Node's cue to throw --
+        // straight through to uncaughtException and down the whole worker
+        // process -- so we always attach one. A clean 'end' resolves as
+        // before; 'close' is also a resolution signal (it is what a hijacked
+        // stdin session's own destroy() -- ours, below, on the timeout path --
+        // produces instead of 'end'), but a 'close' that arrives *without* a
+        // preceding 'end' means the daemon's connection dropped mid-exec, and
+        // that is treated as the same failure as an explicit 'error' --
+        // silently returning as if the command had finished would be worse
+        // than rejecting.
+        let sawEnd = false;
+        await new Promise<void>((resolve, reject) => {
+          s.once("error", reject);
+          s.once("end", () => { sawEnd = true; resolve(); });
+          s.once("close", () => {
+            if (sawEnd) resolve();
+            else reject(new Error("the exec stream closed before it ended -- the connection to the Docker daemon was lost"));
+          });
+        });
+      } catch (err) {
+        throw new SandboxStateUnknownError(err);
+      }
+      return exec;
+    })();
 
     let winner: "done" | "timeout";
     try {
@@ -215,25 +260,32 @@ export class DockerClient {
     }
 
     if (winner === "timeout") {
-      // The Engine API has no "kill this exec". The container is the only
-      // handle it gives us on a running exec, and a command that has
-      // outstayed its deadline gets no grace period: PID 1 is "sleep
-      // infinity" (an init reaps it, but there is nothing to shut down
-      // gracefully here), so this is a kill (SIGKILL), not a stop -- a
-      // stop() on a command that is deliberately ignoring its deadline would
-      // just be five more seconds of the daemon waiting on a SIGTERM nobody
-      // is going to honour before it SIGKILLs anyway. We also tear down our
-      // own end -- destroy the attached stream if we got one, otherwise
-      // abort the still-pending start request -- so this client does not
-      // just stop listening while the command runs on underneath it.
-      if (stream) stream.destroy();
-      else abortController.abort();
-      run.catch(() => {});
-      await this.kill(id);
+      // The ordinary case: timeout(1) inside the sandbox kills the command
+      // within the second, the stream ends, and the container is untouched.
+      const ended = await settledWithin(run, this.killGraceMs);
+      if (!ended) {
+        // The fallback. Tear down our own end -- destroy the attached stream
+        // if we got one, otherwise abort the still-pending request -- so this
+        // client does not just stop listening, then SIGKILL the container:
+        // PID 1 is "sleep infinity", there is nothing to shut down
+        // gracefully, and a stop() would only be five more seconds of the
+        // daemon waiting on a SIGTERM nobody honours.
+        if (stream) stream.destroy();
+        else abortController.abort();
+        run.catch(() => {});
+        await this.kill(id);
+      }
       return { exitCode: null, stdout: Buffer.concat(outChunks).toString("utf8"), stderr: Buffer.concat(errChunks).toString("utf8"), timedOut: true };
     }
 
-    const info = await exec.inspect();
+    // The stream can end a moment before the daemon records the exit code;
+    // read it only once the exec reports it is no longer running.
+    const exec = await run;
+    let info = await exec.inspect();
+    for (let polls = 0; info.Running && polls < 20; polls += 1) {
+      await sleep(50);
+      info = await exec.inspect();
+    }
     return {
       exitCode: info.ExitCode ?? null,
       stdout: Buffer.concat(outChunks).toString("utf8"),
@@ -241,4 +293,13 @@ export class DockerClient {
       timedOut: false,
     };
   }
+}
+
+/**
+ * The command under the sandbox's own timeout(1), which sends SIGKILL when
+ * the seconds run out. Our image is ours; busybox and coreutils both ship
+ * it. Whole seconds, rounded up: a deadline is never shortened by rounding.
+ */
+function withDeadline(cmd: string[], timeoutMs: number): string[] {
+  return ["timeout", "-s", "KILL", String(Math.ceil(timeoutMs / 1000)), ...cmd];
 }
