@@ -18,6 +18,12 @@ Design and the decisions behind it:
 | filesystem | read-only root, a per-run `/workspace` volume, a `noexec` tmpfs `/tmp` |
 | privilege | none: all capabilities dropped, `no-new-privileges`, no Docker socket |
 
+The provider only requests `works-sandbox` by name; the box compose that
+declares it (`internal: true`) is piece C and has not landed yet, so until
+it does, a sandbox started on a box without that network simply fails —
+Docker refuses to attach a container to a network it does not know, which
+is the safe direction to fail in.
+
 The config schema exposes the image, the limits, the proxy address and a
 lifetime. It does not expose the runtime, the network or privilege, and
 `manifest.test.ts` pins that: a provider that can be told to use `runc` is
@@ -46,11 +52,11 @@ stop or remove any container on the box too. It is the same grant
 `nufi-cron` deliberately avoids. It is accepted here because sibling
 containers cannot be created any other way, and it is confined to the
 `works` service — no sandbox has the mount. The cheapest confinement this
-grant gets is `DockerClient.assertOurs`: every destructive call inspects
-its target first and refuses to stop or remove a container missing the
-`me.nufi.works.run` label, so a mislabeled or foreign container — another
-plugin's, a co-located service's — cannot be torn down through this
-provider.
+grant gets is `DockerClient.assertOurs`: every release, destroy and
+unknown-state removal inspects its target first and refuses to stop or
+remove a container missing the `me.nufi.works.run` label, so a mislabeled
+or foreign container — another plugin's, a co-located service's — cannot
+be torn down through this provider.
 
 ## The deadline
 
@@ -61,9 +67,12 @@ running is the failure this whole design exists to avoid. It is a kill,
 not a graceful stop — PID 1 is `sleep infinity`, which has nothing to shut
 down for, so a `stop()` here would just be five more seconds of the daemon
 waiting on a SIGTERM nobody is going to honour before it SIGKILLs anyway.
-`HostConfig.Init: true` is set for the other stop path instead, so that a
-graceful `stop()` on release stays prompt: `sleep infinity` ignores
-SIGTERM on its own, and the init reaps and forwards the signal for it.
+`HostConfig.Init: true` buys something else: a real init (`tini`) sitting
+at PID 1 in place of the command itself, reaping the zombie processes left
+behind across the many `exec()` calls a single run makes and forwarding
+signals to them. `DockerClient.stop()` exists but nothing calls it —
+release and destroy force-remove, which SIGKILLs with no grace period, so
+there is no graceful-stop path for `Init: true` to keep prompt.
 `docker.test.ts` asserts the kill call arrives on timeout.
 
 A rejection from `exec()` itself leaves the container's state unknown —
@@ -75,7 +84,11 @@ null`, rather than claim to know what is still running in there.
 ## Tests
 
 ```sh
-pnpm install
+# from apps/agents — the typecheck compiles the SDK with the workspace's tsc
+pnpm install --frozen-lockfile --filter @paperclipai/plugin-sdk
+# from this directory
+pnpm install --ignore-workspace
+pnpm typecheck
 pnpm test
 ```
 
