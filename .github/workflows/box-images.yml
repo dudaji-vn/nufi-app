@@ -7,6 +7,7 @@ on:
       - 'deploy/platform/litellm/**'
       - 'deploy/platform/adapters/nufi-ingest/**'
       - 'deploy/platform/adapters/nufi-cron/**'
+      - 'deploy/box/works-egress/**'
       - 'apps/nufi-agent/**'
       - '.github/workflows/box-images.yml'
     tags: ['nufi-box-v*']
@@ -38,6 +39,10 @@ jobs:
           - name: nufi-cron
             context: deploy/platform/adapters/nufi-cron
             file: deploy/platform/adapters/nufi-cron/Dockerfile
+            tagprefix: ''
+          - name: nufi-works-egress
+            context: deploy/box/works-egress
+            file: deploy/box/works-egress/Dockerfile
             tagprefix: ''
           - name: nufi-studio
             context: apps/nufi-agent

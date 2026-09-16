@@ -219,6 +219,25 @@ case "${1:-}" in
         echo " ok  ${BOX_HOST:-nufi.local} resolves to $_now"
       fi
     fi
+    # A config that lost its Filter directive proxies everything and looks
+    # healthy by any liveness probe. The one answer that proves the filter is
+    # loaded is a refusal, so ask for a host that is on no list and expect the
+    # 403. Asked from inside the sandbox network, which is the only place a
+    # sandbox ever stands, using the proxy's own image so nothing new is
+    # pulled. A box whose compose does not define the service skips this; a
+    # box whose proxy is down fails it.
+    # Captured before grep -q: under pipefail, grep closing the pipe on its
+    # match makes compose's exit the pipeline's, and the check is skipped.
+    if [ "$DRY" = 1 ]; then
+      printf '  $ ask works-egress for a host not on the list, expect 403 (refuses)\n'
+    elif _svcs=$($COMPOSE config --services 2>/dev/null) && printf '%s\n' "$_svcs" | grep -qx works-egress; then
+      # Guarded: the script runs under set -e, and a missing network or image must be a "!!" line, not a doctor that stops mid-run.
+      _img=$($COMPOSE config --images 2>/dev/null | grep nufi-works-egress | head -1) || _img=""
+      _code=$(docker run --rm --network works-sandbox --entrypoint sh "$_img" -c \
+        'http_proxy=http://works-egress:3128 wget -S -T 5 -O /dev/null http://healthcheck.invalid/ 2>&1 | sed -n "s/^ *HTTP\/[0-9.]* \([0-9]*\).*/\1/p" | head -1' 2>/dev/null) || _code=""
+      if [ "$_code" = "403" ]; then echo " ok  works-egress refuses a host not on the list (403)"
+      else echo " !!  works-egress answered ${_code:-nothing} for a host not on the list; the filter may not be loaded — run: nufi-box logs works-egress"; fail=1; fi
+    fi
     [ "$fail" = 0 ] && echo "All good." || { echo "Something is off; run: nufi-box logs <service>"; exit 1; } ;;
   # Both start Caddy again, so both are places a caddy/mesh.caddy left behind by
   # an older box would refuse the whole front door. Put it back in step first.

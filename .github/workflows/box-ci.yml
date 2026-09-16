@@ -60,6 +60,8 @@ jobs:
         run: python3 deploy/platform/adapters/nufi-ingest/test_ingest.py
       - name: nufi-cron scheduler
         run: python3 deploy/platform/adapters/nufi-cron/test_nufi_cron.py
+      - name: works-egress renderer
+        run: python3 deploy/box/works-egress/test_render.py
       # Network, unlike everything else here, and deliberately: the published
       # install guide tells the public to fetch deploy/box and run the
       # installer, which carries no docker login. That page is true only while
