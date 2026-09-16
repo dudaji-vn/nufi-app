@@ -8,8 +8,6 @@ name: gvisor-probe
 # (workflow_dispatch needs the file on the default branch first, which would
 # mean merging a probe in order to run it.)
 on:
-  push:
-    branches: ['spike/gvisor-probe']
   workflow_dispatch:
 
 jobs:
