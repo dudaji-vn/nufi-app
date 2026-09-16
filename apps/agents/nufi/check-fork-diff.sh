@@ -22,6 +22,10 @@ TAG=$(node -p "require('./$PIN').tag")
 # Paths NuFi owns, relative to apps/agents/. Anything else must match upstream.
 ALLOWLIST=(
   "nufi/"
+  # The Docker+gVisor sandbox provider for NUFI Works on the NuFi box. A
+  # seventh provider beside upstream's six, in upstream's own plugin shape,
+  # touching nothing of upstream's; see docs/superpowers/specs/2026-09-16-works-on-box-design.md.
+  "packages/plugins/sandbox-providers/docker/"
   # Upstream bug fix, see nufi/README.md "Upstream patches". Sent upstream;
   # drop this entry once a release carries the fix.
   "ui/src/plugins/slots.tsx"

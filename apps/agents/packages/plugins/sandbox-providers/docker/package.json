@@ -1,0 +1,52 @@
+{
+  "name": "@nufi/plugin-docker-sandbox",
+  "version": "0.1.0",
+  "description": "Docker+gVisor sandbox provider plugin for NUFI Works on the NuFi box",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dudaji-vn/nufi-app",
+    "directory": "apps/agents/packages/plugins/sandbox-providers/docker"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    },
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts"
+  },
+  "files": [
+    "dist"
+  ],
+  "paperclipPlugin": {
+    "manifest": "./dist/manifest.js",
+    "worker": "./dist/worker.js"
+  },
+  "keywords": ["paperclip", "plugin", "sandbox", "docker", "gvisor", "nufi"],
+  "scripts": {
+    "prebuild": "pnpm -C ../../../.. --filter @paperclipai/plugin-sdk ensure-build-deps",
+    "build": "rm -rf dist && tsc",
+    "clean": "rm -rf dist",
+    "typecheck": "pnpm -C ../../../.. --filter @paperclipai/plugin-sdk ensure-build-deps && tsc --noEmit",
+    "test": "vitest run --config vitest.config.ts",
+    "prepack": "rm -f package.dev.json && cp package.json package.dev.json && node ../../../../scripts/generate-plugin-package-json.mjs",
+    "postpack": "if [ -f package.dev.json ]; then mv package.dev.json package.json; fi"
+  },
+  "dependencies": {
+    "dockerode": "^4.0.2"
+  },
+  "devDependencies": {
+    "@types/dockerode": "^3.3.31",
+    "@types/node": "^24.6.0",
+    "typescript": "^5.7.3",
+    "vitest": "^4.1.8"
+  }
+}

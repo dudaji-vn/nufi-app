@@ -2,7 +2,7 @@ name: agents-ci
 
 on:
   pull_request:
-    paths: ['apps/agents/**', '.github/workflows/agents-ci.yml']
+    paths: ['apps/agents/**', '.github/workflows/agents-ci.yml', 'apps/agents/packages/plugins/sandbox-providers/docker/**']
 
 concurrency:
   group: agents-ci-${{ github.ref_name }}
@@ -126,3 +126,31 @@ jobs:
       - name: Test
         working-directory: apps/agents/ui
         run: pnpm exec vitest run nufi-rebrand.test.ts
+
+  docker-sandbox-provider:
+    name: Docker sandbox provider
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          # The repo root has no package.json (see rebrand job above), so the
+          # action cannot infer a version from it and fails with
+          # "No pnpm version is specified".
+          package_json_file: apps/agents/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # The provider packages sit outside the pnpm workspace on purpose
+      # (upstream publishes them standalone), so each installs on its own.
+      # Nothing in this workflow ran any provider's tests before this job.
+      - name: Install
+        working-directory: apps/agents/packages/plugins/sandbox-providers/docker
+        run: pnpm install
+      - name: Typecheck
+        working-directory: apps/agents/packages/plugins/sandbox-providers/docker
+        run: pnpm typecheck
+      - name: Test
+        working-directory: apps/agents/packages/plugins/sandbox-providers/docker
+        run: pnpm test
