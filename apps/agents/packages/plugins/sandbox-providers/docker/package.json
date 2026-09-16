@@ -50,6 +50,7 @@
     "vitest": "^4.1.8"
   },
   "pnpm": {
+    "//overrides": "Root cause is upstream's apps/agents/tsconfig.json:15 referencing the never-existent packages/adapters/droid-local; that file is outside nufi/check-fork-diff.sh's allowlist, so this package-local pin (matching what apps/agents/pnpm-lock.yaml already resolves) is the in-allowlist workaround, not a carried patch.",
     "overrides": {
       "vitest": "4.1.10",
       "vite": "6.4.1"

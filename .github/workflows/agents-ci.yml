@@ -145,9 +145,12 @@ jobs:
       # The provider packages sit outside the pnpm workspace on purpose
       # (upstream publishes them standalone), so each installs on its own.
       # Nothing in this workflow ran any provider's tests before this job.
+      # --ignore-workspace is required: a plain `pnpm install` here still finds
+      # apps/agents' pnpm-workspace.yaml and installs the whole monorepo instead
+      # of just this package.
       - name: Install
         working-directory: apps/agents/packages/plugins/sandbox-providers/docker
-        run: pnpm install
+        run: pnpm install --ignore-workspace
       - name: Typecheck
         working-directory: apps/agents/packages/plugins/sandbox-providers/docker
         run: pnpm typecheck
