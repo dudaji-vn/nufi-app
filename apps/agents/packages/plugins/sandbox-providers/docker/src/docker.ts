@@ -4,7 +4,7 @@
  * is here, so plugin.ts reads as the ten hooks and nothing else.
  */
 import Dockerode from "dockerode";
-import { PassThrough } from "node:stream";
+import { PassThrough, type Duplex } from "node:stream";
 import { SANDBOX_RUNTIME } from "./container-spec.js";
 
 export interface ExecResult {
@@ -75,6 +75,22 @@ export class DockerClient {
     }
   }
 
+  async kill(id: string): Promise<void> {
+    try {
+      await this.docker.getContainer(id).kill();
+    } catch (err) {
+      const code = (err as { statusCode?: number }).statusCode;
+      if (code === 404 || code === 409) return; // gone, or already not running
+      throw err;
+    }
+  }
+
+  /**
+   * A rejection from exec() means the container's state is unknown -- the
+   * deadline path SIGKILLs and the stream path can fail mid-teardown, so the
+   * caller must force-remove rather than treat a rejection as a clean,
+   * side-effect-free failure.
+   */
   async exec(
     id: string,
     cmd: string[],
@@ -98,7 +114,7 @@ export class DockerClient {
     // command looks like) leaves exec.start() itself unresolved. Racing only
     // the post-start wait would let that hang outlast timeoutMs.
     const abortController = new AbortController();
-    let stream: NodeJS.ReadWriteStream | undefined;
+    let stream: Duplex | undefined;
 
     const run = (async () => {
       const s = await exec.start({
@@ -116,7 +132,26 @@ export class DockerClient {
         s.write(opts.stdin);
         s.end();
       }
-      await new Promise<void>((resolve) => s.on("end", () => resolve()));
+      // dockerode hands back a bare stream with no listeners of its own. An
+      // 'error' event nobody is listening for is Node's cue to throw --
+      // straight through to uncaughtException and down the whole worker
+      // process -- so we always attach one. A clean 'end' resolves as
+      // before; 'close' is also a resolution signal (it is what a hijacked
+      // stdin session's own destroy() -- ours, below, on the timeout path --
+      // produces instead of 'end'), but a 'close' that arrives *without* a
+      // preceding 'end' means the daemon's connection dropped mid-exec, and
+      // that is treated as the same failure as an explicit 'error' --
+      // silently returning as if the command had finished would be worse
+      // than rejecting.
+      let sawEnd = false;
+      await new Promise<void>((resolve, reject) => {
+        s.once("error", reject);
+        s.once("end", () => { sawEnd = true; resolve(); });
+        s.once("close", () => {
+          if (sawEnd) resolve();
+          else reject(new Error("the exec stream closed before it ended -- the connection to the Docker daemon was lost"));
+        });
+      });
     })();
 
     let timer: NodeJS.Timeout | undefined;
@@ -126,22 +161,29 @@ export class DockerClient {
         })
       : new Promise<never>(() => {});
 
-    const winner = await Promise.race([run.then((): "done" => "done"), deadline]);
-    if (timer) clearTimeout(timer);
+    let winner: "done" | "timeout";
+    try {
+      winner = await Promise.race([run.then((): "done" => "done"), deadline]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
 
     if (winner === "timeout") {
-      // The Engine API has no "kill this exec". Stopping the container is the
-      // one handle it gives, and it is the right one: a lease whose command
-      // has outstayed its deadline is a lease the caller is about to give up
-      // on. Stopping here is what makes the deadline real rather than a
-      // client that walked away from a process still running. We also tear
-      // down our own end -- destroy the attached stream if we got one,
-      // otherwise abort the still-pending start request -- so this client
-      // does not just stop listening while the command runs on underneath it.
+      // The Engine API has no "kill this exec". The container is the only
+      // handle it gives us on a running exec, and a command that has
+      // outstayed its deadline gets no grace period: PID 1 is "sleep
+      // infinity" (an init reaps it, but there is nothing to shut down
+      // gracefully here), so this is a kill (SIGKILL), not a stop -- a
+      // stop() on a command that is deliberately ignoring its deadline would
+      // just be five more seconds of the daemon waiting on a SIGTERM nobody
+      // is going to honour before it SIGKILLs anyway. We also tear down our
+      // own end -- destroy the attached stream if we got one, otherwise
+      // abort the still-pending start request -- so this client does not
+      // just stop listening while the command runs on underneath it.
       if (stream) stream.destroy();
       else abortController.abort();
       run.catch(() => {});
-      await this.stop(id);
+      await this.kill(id);
       return { exitCode: null, stdout: Buffer.concat(outChunks).toString("utf8"), stderr: Buffer.concat(errChunks).toString("utf8"), timedOut: true };
     }
 

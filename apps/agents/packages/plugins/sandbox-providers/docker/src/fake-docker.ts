@@ -4,7 +4,16 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-type ExecHandler = (cmd: string[]) => { exitCode: number; stdout: string; stderr: string; delayMs?: number };
+type ExecHandler = (cmd: string[]) => {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+  delayMs?: number;
+  /** Write the response headers, then kill the connection before ever finishing -- a mid-exec drop, not a clean end. */
+  error?: boolean;
+  /** Never respond at all -- not even headers -- so the client's start() call hangs until it gives up on its own. */
+  neverStart?: boolean;
+};
 
 interface FakeContainer { id: string; name: string; create: unknown; running: boolean }
 interface FakeExec { id: string; containerId: string; cmd: string[]; exitCode: number | null; running: boolean }
@@ -65,6 +74,10 @@ export class FakeDocker {
       const c = this.find(m[1]); if (!c) return json(404, { message: "no such container" });
       c.running = false; res.writeHead(204); return void res.end();
     }
+    if ((m = /^\/containers\/([^/]+)\/kill$/.exec(path)) && req.method === "POST") {
+      const c = this.find(m[1]); if (!c) return json(404, { message: "no such container" });
+      c.running = false; res.writeHead(204); return void res.end();
+    }
     if ((m = /^\/containers\/([^/]+)\/json$/.exec(path))) {
       const c = this.find(m[1]); if (!c) return json(404, { message: "no such container" });
       return json(200, { Id: c.id, Name: `/${c.name}`, State: { Running: c.running, Status: c.running ? "running" : "exited" }, Config: (c.create as { Env?: string[] }) ?? {}, HostConfig: (c.create as { HostConfig?: unknown })?.HostConfig ?? {} });
@@ -83,7 +96,19 @@ export class FakeDocker {
       const e = this.execs.get(m[1]); if (!e) return json(404, { message: "no such exec" });
       e.running = true;
       const r = this.execHandler(e.cmd);
+      if (r.neverStart) return; // leave the request hanging -- no response, ever.
       res.writeHead(200, { "Content-Type": "application/vnd.docker.raw-stream" });
+      // A real Engine writes its 101/200 line before the exec even starts, so
+      // start() resolves promptly; flush now rather than letting Node hold the
+      // headers back for the first body write, which is what a still-running
+      // command's slow-to-produce-output stream would otherwise look like.
+      res.flushHeaders();
+      if (r.error) {
+        // Simulate a connection drop mid-exec: headers went out, then the
+        // wire dies -- no clean end, ever.
+        setTimeout(() => { res.destroy(); }, r.delayMs ?? 0);
+        return;
+      }
       const finish = () => {
         // Docker multiplexed stream: [type(1) 0 0 0 len(4 BE)] + payload, type 1=stdout 2=stderr
         for (const [type, text] of [[1, r.stdout], [2, r.stderr]] as const) {

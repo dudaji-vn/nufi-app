@@ -80,6 +80,11 @@ export function containerCreateOptions(
       // The lease owns the lifetime; an auto-removed container would vanish
       // between execs.
       AutoRemove: false,
+      // PID 1 is "sleep infinity", which ignores SIGTERM: without an init,
+      // every graceful stop() on release would silently cost the daemon's
+      // full grace period before it gives up and SIGKILLs. tini reaps and
+      // forwards the signal so a normal stop is prompt.
+      Init: true,
     },
   };
 }

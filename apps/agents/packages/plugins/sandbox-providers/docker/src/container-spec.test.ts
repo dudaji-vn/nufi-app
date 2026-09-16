@@ -69,6 +69,10 @@ describe("containerCreateOptions — the things a sandbox cannot change", () => 
     expect(opts.Cmd).toEqual(["sleep", "infinity"]);
     expect(host.AutoRemove).toBeFalsy();
   });
+
+  it("runs an init (tini) as PID 1 so a graceful stop on release is prompt, not a 5s wait for SIGKILL", () => {
+    expect(host.Init).toBe(true);
+  });
 });
 
 describe("containerCreateOptions — the things the config does change", () => {
