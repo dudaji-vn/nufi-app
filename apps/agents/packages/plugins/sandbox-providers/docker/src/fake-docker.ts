@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import type { Duplex } from "node:stream";
 
 type ExecHandler = (cmd: string[]) => {
   exitCode: number;
@@ -20,12 +21,13 @@ type ExecHandler = (cmd: string[]) => {
 };
 
 interface FakeContainer { id: string; name: string; create: unknown; running: boolean }
-interface FakeExec { id: string; containerId: string; cmd: string[]; exitCode: number | null; running: boolean }
+interface FakeExec { id: string; containerId: string; cmd: string[]; exitCode: number | null; running: boolean; stdin?: Buffer }
 
 export class FakeDocker {
   readonly calls: Array<{ method: string; path: string; body?: unknown }> = [];
   readonly containers = new Map<string, FakeContainer>();
   private readonly execs = new Map<string, FakeExec>();
+  private readonly hijacked = new Set<Duplex>();
   private execHandler: ExecHandler = () => ({ exitCode: 0, stdout: "", stderr: "" });
   private server!: Server;
   readonly socketPath: string;
@@ -37,13 +39,23 @@ export class FakeDocker {
   static async start(opts: { runtimes?: string[] } = {}): Promise<FakeDocker> {
     const fake = new FakeDocker(opts.runtimes ?? ["runc", "runsc"]);
     fake.server = createServer((req, res) => void fake.handle(req, res));
+    // A request carrying `Upgrade` never reaches the request handler above;
+    // Node hands it here with the raw socket instead.
+    fake.server.on("upgrade", (req, socket, head) => fake.handleUpgrade(req, socket, head));
     await new Promise<void>((resolve) => fake.server.listen(fake.socketPath, resolve));
     return fake;
   }
 
   execScript(handler: ExecHandler): void { this.execHandler = handler; }
 
+  /** What the client wrote on a hijacked exec's stdin, as delivered, once it half-closed. */
+  stdinFor(execId: string): string | undefined {
+    return this.execs.get(execId)?.stdin?.toString("utf8");
+  }
+
   async stop(): Promise<void> {
+    for (const s of this.hijacked) s.destroy();
+    this.server.closeAllConnections();
     await new Promise<void>((resolve) => this.server.close(() => resolve()));
     rmSync(dirname(this.socketPath), { recursive: true, force: true });
   }
@@ -139,6 +151,75 @@ export class FakeDocker {
       return json(200, { ID: e.id, Running: e.running, ExitCode: e.exitCode, ContainerID: e.containerId });
     }
     json(404, { message: `fake docker: no route for ${req.method} ${path}` });
+  }
+
+  /**
+   * `POST /exec/{id}/start` with `Upgrade: tcp`, which is what dockerode
+   * sends for `hijack: true` (an exec with stdin). The Engine answers 101 and
+   * from then on the socket is the exec's stdin one way and its multiplexed
+   * stdout/stderr the other. dockerode sends the JSON body (Content-Length)
+   * ahead of the upgrade; the parser hands back whatever it had already read
+   * past the headers as `head`, the rest arrives as socket data, and
+   * everything after that body is stdin, until the client half-closes.
+   */
+  private handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
+    this.hijacked.add(socket);
+    socket.once("close", () => this.hijacked.delete(socket));
+    const url = new URL(req.url ?? "/", "http://docker");
+    const path = url.pathname.replace(/^\/v[\d.]+/, "");
+    const m = /^\/exec\/([^/]+)\/start$/.exec(path);
+    if (!m || req.method !== "POST") {
+      socket.end("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n");
+      return;
+    }
+    const contentLength = Number(req.headers["content-length"] ?? 0);
+    let received = Buffer.alloc(0);
+    let body: unknown;
+    let bodySeen = false;
+    const stdinChunks: Buffer[] = [];
+    let exec: FakeExec | undefined;
+    let script: ReturnType<ExecHandler> | undefined;
+
+    const onBody = () => {
+      const text = received.subarray(0, contentLength).toString("utf8");
+      try { body = text.length > 0 ? JSON.parse(text) : undefined; } catch { body = text; }
+      this.calls.push({ method: "POST", path, body });
+      exec = this.execs.get(m[1]);
+      if (!exec) {
+        socket.end("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n");
+        return;
+      }
+      exec.running = true;
+      script = this.execHandler(exec.cmd);
+      if (script.neverStart) return; // no 101, ever: the client never gets its socket.
+      socket.write("HTTP/1.1 101 UPGRADED\r\nConnection: Upgrade\r\nUpgrade: tcp\r\n\r\n");
+      if (script.error) {
+        setTimeout(() => { socket.destroy(); }, script.delayMs ?? 0);
+      }
+    };
+    const take = (chunk: Buffer) => {
+      if (bodySeen) { stdinChunks.push(chunk); return; }
+      received = Buffer.concat([received, chunk]);
+      if (received.length < contentLength) return;
+      bodySeen = true;
+      const rest = received.subarray(contentLength);
+      onBody();
+      if (rest.length > 0) stdinChunks.push(rest);
+    };
+    socket.on("data", take);
+    socket.on("end", () => {
+      if (!exec || !script) return;
+      exec.stdin = Buffer.concat(stdinChunks);
+      if (script.neverStart || script.error || script.neverEnd) return;
+      const r = script;
+      const finish = () => {
+        socket.write(muxFrames(r.stdout, r.stderr));
+        this.finishExec(exec!, r);
+        socket.end();
+      };
+      if (r.delayMs) setTimeout(finish, r.delayMs); else finish();
+    });
+    take(head);
   }
 
   private finishExec(e: FakeExec, r: ReturnType<ExecHandler>): void {

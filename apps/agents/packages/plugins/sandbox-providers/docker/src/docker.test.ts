@@ -44,15 +44,22 @@ describe("exec", () => {
     expect(r).toEqual({ exitCode: 3, stdout: "out:hi", stderr: "warn", timedOut: false });
   });
 
-  it("passes cwd and env through, and stdin when given", async () => {
+  it("passes cwd and env through, and delivers stdin byte for byte over the hijacked connection", async () => {
     fake = await FakeDocker.start();
+    fake.execScript(() => ({ exitCode: 0, stdout: "took it", stderr: "" }));
     const d = new DockerClient({ socketPath: fake.socketPath });
     const id = await ours(d, "e2");
-    await d.exec(id, ["pwd"], { cwd: "/workspace/sub", env: { FOO: "bar" }, stdin: "data" });
+    // Big enough that the socket will hand it over in more than one chunk.
+    const stdin = "line of input\n".repeat(20_000);
+    const r = await d.exec(id, ["cat"], { cwd: "/workspace/sub", env: { FOO: "bar" }, stdin });
     const execCreate = execCreates()[0].body as Record<string, unknown>;
     expect(execCreate.WorkingDir).toBe("/workspace/sub");
     expect(execCreate.Env).toEqual(["FOO=bar"]);
     expect(execCreate.AttachStdin).toBe(true);
+    const execId = /^\/exec\/([^/]+)\/start$/.exec(fake.calls.find((c) => /\/exec\/[^/]+\/start$/.test(c.path))!.path)![1];
+    expect(fake.stdinFor(execId)).toBe(stdin);
+    // The frames come back over the same upgraded socket and demux as usual.
+    expect(r).toEqual({ exitCode: 0, stdout: "took it", stderr: "", timedOut: false });
   });
 
   it("waits for the exec to report not-running before reading its exit code", async () => {

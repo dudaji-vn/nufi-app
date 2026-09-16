@@ -6,7 +6,6 @@ import {
   WORKSPACE_DIR,
   containerCreateOptions,
   containerName,
-  memoryBytes,
 } from "./container-spec.js";
 
 const lease = { runId: "run-42", agentId: "agent-7", companyId: "co-1" };
@@ -91,16 +90,5 @@ describe("containerName", () => {
   it("is derived from the run and safe for Docker", () => {
     expect(containerName({ runId: "run-42" })).toBe("works-sandbox-run-42");
     expect(containerName({ runId: "a/b c" })).toMatch(/^works-sandbox-[a-zA-Z0-9_.-]+$/);
-  });
-});
-
-describe("memoryBytes", () => {
-  it("converts each Docker size unit to bytes", () => {
-    expect(memoryBytes("512m")).toBe(512 * 1024 ** 2);
-    expect(memoryBytes("2g")).toBe(2 * 1024 ** 3);
-    expect(memoryBytes("1.5g")).toBe(1.5 * 1024 ** 3);
-    expect(memoryBytes("1024k")).toBe(1024 * 1024);
-    expect(memoryBytes("100")).toBe(100); // bare number = bytes
-    expect(memoryBytes("1B")).toBe(1);
   });
 });

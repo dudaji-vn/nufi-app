@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ConfigError, DEFAULTS, parseConfig, validateConfig } from "./config.js";
+import { ConfigError, DEFAULTS, MIN_MEMORY, memoryBytes, parseConfig, validateConfig } from "./config.js";
 
 describe("parseConfig", () => {
   it("fills every default when given nothing", () => {
@@ -31,6 +31,14 @@ describe("parseConfig", () => {
     expect(() => parseConfig({ pidsLimit: -1 })).toThrow(/pidsLimit/);
   });
 
+  it("refuses a memory limit under Docker's 6 MiB minimum -- \"0\" parses, and means unlimited", () => {
+    expect(() => parseConfig({ memory: "0" })).toThrow(/memory/);
+    expect(() => parseConfig({ memory: "1m" })).toThrow(/memory/);
+    expect(() => parseConfig({ memory: "0" })).toThrow(new RegExp(MIN_MEMORY));
+    expect(parseConfig({ memory: "6m" }).memory).toBe("6m");
+    expect(MIN_MEMORY).toBe("6m");
+  });
+
   it("refuses a proxy that is not host:port", () => {
     expect(() => parseConfig({ egressProxy: "http://works-egress:3128" })).toThrow(/egressProxy/);
     expect(() => parseConfig({ egressProxy: "works-egress" })).toThrow(/egressProxy/);
@@ -38,6 +46,17 @@ describe("parseConfig", () => {
 
   it("ignores keys it does not know, so provider: docker in the stored config is fine", () => {
     expect(parseConfig({ provider: "docker", somethingElse: 1 })).toEqual(DEFAULTS);
+  });
+});
+
+describe("memoryBytes", () => {
+  it("converts each Docker size unit to bytes", () => {
+    expect(memoryBytes("512m")).toBe(512 * 1024 ** 2);
+    expect(memoryBytes("2g")).toBe(2 * 1024 ** 3);
+    expect(memoryBytes("1.5g")).toBe(1.5 * 1024 ** 3);
+    expect(memoryBytes("1024k")).toBe(1024 * 1024);
+    expect(memoryBytes("100")).toBe(100); // bare number = bytes
+    expect(memoryBytes("1B")).toBe(1);
   });
 });
 

@@ -31,6 +31,19 @@ const PINNED_IMAGE = /^[^\s]+(:[\w][\w.-]{0,127}|@sha256:[0-9a-f]{64})$/;
 const HOST_PORT = /^[a-zA-Z0-9.-]+:\d{1,5}$/;
 const DOCKER_MEMORY = /^\d+(\.\d+)?[bkmg]?$/i;
 
+const UNIT: Record<string, number> = { b: 1, k: 1024, m: 1024 ** 2, g: 1024 ** 3 };
+
+/** "2g" → bytes. Only for a value DOCKER_MEMORY has already accepted. */
+export function memoryBytes(size: string): number {
+  const m = /^(\d+(?:\.\d+)?)([bkmg]?)$/i.exec(size)!;
+  return Math.round(Number(m[1]) * UNIT[(m[2] || "b").toLowerCase()]);
+}
+
+// Docker's own floor for --memory. Below it the daemon refuses the create --
+// except "0", which it accepts and reads as *no limit*: a sandbox that
+// cannot be bounded, reachable through a value the syntax check passes.
+export const MIN_MEMORY = "6m";
+
 type Problem = { field: keyof DockerProviderConfig; message: string };
 
 function check(raw: Record<string, unknown>): { config: DockerProviderConfig; problems: Problem[] } {
@@ -45,6 +58,8 @@ function check(raw: Record<string, unknown>): { config: DockerProviderConfig; pr
   if (raw.memory !== undefined) {
     if (typeof raw.memory !== "string" || !DOCKER_MEMORY.test(raw.memory)) {
       problems.push({ field: "memory", message: `memory must be a Docker size like "2g", got ${JSON.stringify(raw.memory)}` });
+    } else if (memoryBytes(raw.memory) < memoryBytes(MIN_MEMORY)) {
+      problems.push({ field: "memory", message: `memory must be at least ${MIN_MEMORY} (Docker's minimum), got ${JSON.stringify(raw.memory)}` });
     } else out.memory = raw.memory;
   }
   for (const field of ["cpus", "pidsLimit", "timeoutMs"] as const) {

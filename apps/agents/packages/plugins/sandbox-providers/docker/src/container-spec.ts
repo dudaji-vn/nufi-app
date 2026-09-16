@@ -6,7 +6,7 @@
  * and nothing in here talks to Docker.
  */
 import type Dockerode from "dockerode";
-import type { DockerProviderConfig } from "./config.js";
+import { memoryBytes, type DockerProviderConfig } from "./config.js";
 
 export const SANDBOX_NETWORK = "works-sandbox";
 export const SANDBOX_RUNTIME = "runsc";
@@ -16,14 +16,6 @@ export interface LeaseIdentity {
   runId: string;
   agentId?: string;
   companyId?: string;
-}
-
-const UNIT: Record<string, number> = { b: 1, k: 1024, m: 1024 ** 2, g: 1024 ** 3 };
-
-/** "2g" → bytes. config.ts has already refused anything this cannot parse. */
-export function memoryBytes(size: string): number {
-  const m = /^(\d+(?:\.\d+)?)([bkmg]?)$/i.exec(size)!;
-  return Math.round(Number(m[1]) * UNIT[(m[2] || "b").toLowerCase()]);
 }
 
 const SAFE_NAME = /[^a-zA-Z0-9_.-]/g;
