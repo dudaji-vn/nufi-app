@@ -142,6 +142,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      # The provider's typecheck runs ensure-build-deps, which compiles
+      # @paperclipai/shared and plugin-sdk from source with the workspace's
+      # own tsc. So the workspace has to be installed first -- just the sdk
+      # and what it pulls in, from the lockfile, the way the ui job does.
+      - name: Install the plugin SDK from the workspace lockfile
+        working-directory: apps/agents
+        run: pnpm install --frozen-lockfile --filter @paperclipai/plugin-sdk
       # The provider packages sit outside the pnpm workspace on purpose
       # (upstream publishes them standalone), so each installs on its own.
       # Nothing in this workflow ran any provider's tests before this job.
