@@ -42,6 +42,28 @@ Retrieval is per department. The Legal agent reads the Legal drive and the
 Legal vector index; asking it an HR question gets you an honest "that is not in
 these documents" rather than an answer out of the wrong folder.
 
+## Studio is here; Works is not
+
+NuFi has two agent products. **NUFI Studio** — the flow canvas — is on the box.
+**NUFI Works** is not, and will not be.
+
+That is a safety decision rather than an unfinished one. Works runs code its
+agents write, which means untrusted code, and the thing that makes that safe is
+not part of Works at all — it is two properties of the cluster underneath it: a
+`gvisor` runtime class, so a sandboxed container does not share the host kernel
+as its only boundary, and Cilium as the network layer, because egress has to be
+restricted by hostname and ordinary Kubernetes network policy cannot express a
+hostname.
+
+A single machine running Docker cannot offer either. Putting Works on a box
+would mean running generated code with the host kernel as the only thing
+between it and the department's documents — so Works stays on the cloud cluster
+that can honour those two words, and the box ships the product that does not
+need them.
+
+Signing in on the box shows Studio alone for this reason. It is not a missing
+card.
+
 ## What it is not, yet
 
 Being straight about this is cheaper than a surprise:
