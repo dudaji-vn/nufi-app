@@ -872,3 +872,64 @@ def test_the_vm_verifier_cannot_read_a_failed_install_as_a_reached_banner():
                            input=text, capture_output=True, text=True)
         assert r.returncode == 0, "sed -n exits 0 on a range that matches nothing"
         assert bool(r.stdout.strip()) is has_banner
+
+
+GVISOR = "https://storage.googleapis.com/gvisor/releases/release/20260907/x86_64/gvisor.tar.bz2"
+GVISOR_SHA = "c38cc38ee709d862501e55eebd99f5bd105899cbc7cf3fa1f620493fa127364c5b74c7361d231bd8b9523be48918ea3820dd40b28c61c2b2cb644edbf10261fb"
+
+
+def test_with_works_refuses_a_mac_and_says_why():
+    """Sandboxes run under gVisor, and Docker Desktop cannot host a runtime.
+    Refuse before anything is written, and name the reason."""
+    r = install("--with-works", NUFI_BOX_FAKE_OS="Darwin")
+    assert r.returncode != 0
+    assert "Docker Desktop" in r.stderr, r.stderr
+    assert ".env written" not in r.stdout
+
+
+def test_with_works_installs_a_pinned_runsc_and_registers_it():
+    out = dry("--with-works", NUFI_BOX_FAKE_OS="Linux")
+    assert GVISOR in out, out
+    assert GVISOR_SHA in out, "the tarball's checksum is verified, not just downloaded"
+    assert "tar -xjf" in out and "runsc" in out
+    assert "/usr/local/bin/runsc" in out
+    assert '"runtimes"' in out or "runtimes" in out, "daemon.json gains the runtime by a merge"
+    assert "systemctl restart docker" in out
+
+
+def test_with_works_turns_the_profile_on_and_records_it():
+    out = dry("--with-works", NUFI_BOX_FAKE_OS="Linux")
+    assert "--profile works" in out
+    assert "NUFI_WORKS=1" in out
+    assert "WORKS_PUBLIC_URL=https://nufi.local:3003" in out
+    assert "DOCKER_GID=" in out
+    assert "nufi-sandbox:main" in out, "the sandbox image is pulled with the stack"
+    assert "WORKS_SANDBOX_IMAGE" in out, "and registered by digest"
+    assert "works install" in out, "registration is delegated to nufi-box works install"
+
+
+def test_without_the_flag_the_box_is_the_box_that_ships_today():
+    out = dry(NUFI_BOX_FAKE_OS="Linux")
+    for absent in ("--profile works", "gvisor", "runsc", "nufi-sandbox", "works install"):
+        assert absent not in out, absent
+    assert "NUFI_WORKS=0" in out
+    assert "WORKS_PUBLIC_URL=\n" in out or "WORKS_PUBLIC_URL=" in out
+
+
+def test_the_works_secrets_exist_on_every_box():
+    """The console registers Works as an OIDC client on every box, so the
+    secret must exist whether or not Works does; a box that adds Works later
+    then needs no console change."""
+    out = dry(NUFI_BOX_FAKE_OS="Linux")
+    for key in ("WORKS_AUTH_SECRET=", "WORKS_OIDC_SECRET="):
+        line = next(l for l in out.splitlines() if l.startswith(key))
+        assert len(line.split("=", 1)[1]) >= 32, line
+        assert "replace-me" not in line
+
+
+def test_a_rerun_keeps_works_on_without_the_flag(tmp_path):
+    envf = tmp_path / ".env"
+    envf.write_text("NUFI_WORKS=1\nBOX_HOST=nufi.local\nWORKS_PUBLIC_URL=https://nufi.local:3003\n")
+    out = dry(NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_ENV=str(envf))
+    assert "--profile works" in out
+    assert "NUFI_WORKS=1" in out

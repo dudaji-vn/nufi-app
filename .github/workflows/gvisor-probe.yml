@@ -75,6 +75,14 @@ jobs:
             wget -qO- https://dl-cdn.alpinelinux.org/alpine/ >/dev/null && echo "outbound https: ok"
           '
 
+      - name: The provider's exact container shape under runsc (piece A's HostConfig)
+        run: |
+          set -eux
+          docker run --rm --runtime=runsc --init --read-only --cap-drop ALL \
+            --security-opt no-new-privileges --tmpfs /tmp:noexec,nosuid \
+            --memory 512m --cpus 1 --pids-limit 256 --network none \
+            alpine:3.20 sh -c 'uname -r; dmesg | grep -qi gvisor && echo "PASS: A'"'"'s HostConfig starts under gVisor"'
+
       - name: Does it survive being told there is no route out? (what the egress design relies on)
         run: |
           set -eux
