@@ -627,9 +627,9 @@ if [ ! -f "$NUFI_DATA_DIR/schedules.ini" ]; then
 #
 # [hr-onboarding]
 # watch = onboarding/new
-# flow  = HR · leave entitlement
+# flow  = Routine · HR helpdesk from the policy
 # drive = hr
-# ask   = onboarding/new/{file} 에 새 입사자의 서류가 들어왔습니다. 첫 달 온보딩 체크리스트를 작성해줘.
+# ask   = onboarding/new/{file} 에 새 입사자의 서류가 들어왔습니다. 규정에 따르면 신규 입사자에게 안내해야 할 절차를 알려줘.
 # out   = onboarding-{file}-{date}.md
 SCHEDULES
 fi

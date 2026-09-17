@@ -632,14 +632,17 @@ class WatchTicking(unittest.TestCase):
         self.assertEqual(self.fired, [], "hidden and office-lock files must never fire")
 
     def test_a_missing_watch_folder_logs_once_and_fires_nothing(self):
+        """WARNING, not ERROR: the docs are explicit that a folder appearing
+        later is the expected shape, not a failure."""
         d = self._daemon()
         s = self._schedule(watch="onboarding/does-not-exist")
-        with self.assertLogs(nufi_cron.LOG, level="ERROR") as cm:
+        with self.assertLogs(nufi_cron.LOG, level="WARNING") as cm:
             for m in range(3):
                 d.tick([s], at(2026, 9, 18, 9, m))
         self.assertEqual(self.fired, [])
         missing = [line for line in cm.output if "does not exist yet" in line]
         self.assertEqual(len(missing), 1, cm.output)
+        self.assertTrue(all(line.startswith("WARNING:") for line in missing), missing)
 
     def test_a_cron_section_and_a_watch_section_coexist(self):
         d = self._daemon()
@@ -653,6 +656,201 @@ class WatchTicking(unittest.TestCase):
         d.tick([cron_s, watch_s], at(2026, 9, 18, 17, 1))
         d.tick([cron_s, watch_s], at(2026, 9, 18, 17, 2))
         self.assertIn(("hr-onboarding", "kim-minsu.pdf"), self.fired)
+
+    def test_one_sections_exception_does_not_starve_the_others(self):
+        """A cron section next to a watch section whose scan blows up for
+        some unforeseen reason -- the cron section must still fire this
+        tick, and the watch section's exception must not take the whole
+        tick down (nor the daemon: `LOG.exception` names which section)."""
+        d = self._daemon()
+        cron_s = nufi_cron.Schedule(name="legal-weekly", cron=nufi_cron.Cron.parse("* * * * *"),
+                                    flow="F", drive="legal", ask="q", out="o.md")
+        watch_s = self._schedule()
+
+        def boom(schedule):
+            raise RuntimeError("boom")
+
+        d._watch_listing = boom
+        with self.assertLogs(nufi_cron.LOG, level="ERROR") as cm:
+            d.tick([cron_s, watch_s], at(2026, 9, 18, 9, 0))
+        self.assertEqual(self.fired, [("legal-weekly", None)],
+                         "the cron section must still have fired")
+        self.assertTrue(
+            any("hr-onboarding" in line and "tick failed" in line for line in cm.output),
+            cm.output)
+
+    # --- retargeting a section (item 3) -------------------------------------
+
+    def test_retargeting_a_section_is_treated_as_a_first_scan_not_a_storm(self):
+        """Changing `watch` (or `drive`) under an unchanged section name must
+        not compare the new folder's files against the old folder's history
+        -- every file already in the new folder is recorded and NONE of them
+        fire, exactly like a section seen for the first time."""
+        d = self._daemon()
+        s = self._schedule()
+        self._mkwatch()
+        d.tick([s], at(2026, 9, 18, 9, 0))          # first scan of onboarding/new: empty
+
+        policies = self.root / "drives" / "hr" / "policies"
+        for i in range(5):
+            self._touch2(policies, f"p{i}.pdf")
+        retargeted = self._schedule(watch="policies")
+        for m in range(1, 5):
+            d.tick([retargeted], at(2026, 9, 18, 9, m))
+        self.assertEqual(self.fired, [], "no file already in the new folder should fire")
+        seen = json.loads((self.root / "state" / "seen.json").read_text())
+        record = seen["hr-onboarding"]
+        self.assertEqual(record["folder"], "hr/policies")
+        self.assertEqual(set(record["files"]), {f"p{i}.pdf" for i in range(5)})
+
+        # ...and a genuinely new file dropped into the (now current) folder
+        # afterwards still fires normally.
+        self._touch2(policies, "p5.pdf")
+        for m in range(5, 8):
+            d.tick([retargeted], at(2026, 9, 18, 9, m))
+        self.assertEqual(self.fired, [("hr-onboarding", "p5.pdf")])
+
+    def test_an_old_shape_seen_json_is_treated_as_a_mismatch_not_a_crash(self):
+        """A state file written by a release before `folder` was tracked is a
+        bare {relative_path: mtime} dict -- migrated by treating it exactly
+        like a retarget: a fresh first scan, not a crash and not a storm."""
+        s = self._schedule()
+        self._touch("kim-minsu.pdf")
+        (self.root / "state" / "seen.json").write_text(
+            json.dumps({"hr-onboarding": {"kim-minsu.pdf": 1}}))
+        d = self._daemon()
+        for m in range(3):
+            d.tick([s], at(2026, 9, 18, 9, m))
+        self.assertEqual(self.fired, [], "an old-shape record must not be read as already-seen")
+
+    def test_a_seen_json_that_is_not_a_dict_is_treated_as_empty(self):
+        """`null` (valid JSON, not a mapping) must not crash the daemon on
+        every single tick -- an `isinstance` guard, exactly like a corrupt
+        (unparseable) file, not merely a `try/except json.JSONDecodeError`
+        that a syntactically-valid non-object slips straight past."""
+        s = self._schedule()
+        self._touch("kim-minsu.pdf")
+        (self.root / "state" / "seen.json").write_text("null")
+        d = self._daemon()
+        for m in range(3):
+            d.tick([s], at(2026, 9, 18, 9, m))  # must not raise
+        self.assertEqual(self.fired, [], "a null seen.json is a fresh first scan, not a crash")
+
+    # --- a folder that appears mid-flight (item 4) --------------------------
+
+    def test_a_file_dropped_the_moment_the_folder_appears_still_fires(self):
+        """Docs promise: a watch folder that does not exist yet is picked up
+        as soon as someone creates it. A file created in the very same
+        window as the folder itself must not be swallowed by what would
+        otherwise look like the folder's first scan."""
+        d = self._daemon()
+        s = self._schedule()
+        d.tick([s], at(2026, 9, 18, 9, 0))          # folder absent
+        d.tick([s], at(2026, 9, 18, 9, 1))          # still absent
+        self._touch("kim-minsu.pdf")                # folder + file appear together
+        d.tick([s], at(2026, 9, 18, 9, 2))
+        self.assertEqual(self.fired, [], "must not fire on the first sighting")
+        d.tick([s], at(2026, 9, 18, 9, 3))
+        self.assertEqual(self.fired, [("hr-onboarding", "kim-minsu.pdf")])
+
+    # --- rules that a mutation to "mark seen only on success" leaves green
+    # unless tested directly (item 5) ----------------------------------------
+
+    def test_a_failed_run_still_marks_the_file_seen_and_is_not_retried(self):
+        d = self._daemon()
+        d.run_once = lambda schedule, when, file=None: (
+            self.fired.append((schedule.name, file)) or False)
+        s = self._schedule()
+        self._mkwatch()
+        d.tick([s], at(2026, 9, 18, 9, 0))
+        self._touch("kim-minsu.pdf")
+        d.tick([s], at(2026, 9, 18, 9, 1))
+        d.tick([s], at(2026, 9, 18, 9, 2))
+        self.assertEqual(len(self.fired), 1, "a failing run still counts as fired once")
+        seen = json.loads((self.root / "state" / "seen.json").read_text())
+        self.assertIn("kim-minsu.pdf", seen["hr-onboarding"]["files"],
+                      "a failed run must still be marked seen")
+        for m in range(3, 8):
+            d.tick([s], at(2026, 9, 18, 9, m))
+        self.assertEqual(len(self.fired), 1, "a failure must not be retried on its own")
+
+    def test_a_tick_while_the_previous_watch_run_is_still_going_is_skipped(self):
+        d = self._daemon()
+        s = self._schedule()
+        self._mkwatch()
+        d.tick([s], at(2026, 9, 18, 9, 0))
+        self._touch("kim-minsu.pdf")
+        d.tick([s], at(2026, 9, 18, 9, 1))          # streak 1, not fired
+
+        started = threading.Event()
+        release = threading.Event()
+
+        def slow(schedule, when, file=None):
+            started.set()
+            release.wait(5)
+            self.fired.append((schedule.name, file))
+            return True
+
+        d.run_once = slow
+        first = threading.Thread(target=d.tick, args=([s], at(2026, 9, 18, 9, 2)))
+        first.start()
+        self.assertTrue(started.wait(5), "the first run never started")
+        d.tick([s], at(2026, 9, 18, 9, 3))          # would also be ready; one is in flight
+        release.set()
+        first.join(5)
+        self.assertEqual(len(self.fired), 1, self.fired)
+
+    # --- flat, not recursive (item 6) ---------------------------------------
+
+    def test_a_file_in_a_subfolder_of_the_watched_folder_does_not_fire(self):
+        """`watch` names one folder a file lands in, not a tree: two files
+        named alike in different subfolders would otherwise collide on the
+        same `{file}` and the second overwrite the first's `out`."""
+        d = self._daemon()
+        s = self._schedule()
+        self._mkwatch()
+        d.tick([s], at(2026, 9, 18, 9, 0))
+        self._touch("2025/kim.pdf")
+        self._touch("2026/kim.pdf")
+        for m in range(1, 5):
+            d.tick([s], at(2026, 9, 18, 9, m))
+        self.assertEqual(self.fired, [], "a file inside a subfolder must never fire")
+
+    def test_bare_name_strips_directories_and_leading_dots(self):
+        """`_bare_name` is load-bearing for `{file}` in `ask`/`out`: it must
+        never let a directory component or a leading dot reach either."""
+        cases = {
+            "../../x.md": "x.md",
+            ".hidden": "hidden",
+            "a/b": "b",
+            "kim-minsu.pdf": "kim-minsu.pdf",
+        }
+        for given, want in cases.items():
+            with self.subTest(given=given):
+                self.assertEqual(nufi_cron._bare_name(given), want)
+
+    # --- the full ignored-name list (item 7) --------------------------------
+
+    def test_the_full_ignored_name_list(self):
+        d = self._daemon()
+        s = self._schedule()
+        self._mkwatch()
+        d.tick([s], at(2026, 9, 18, 9, 0))
+        ignored = [
+            ".DS_Store", "~$kim-minsu.pdf", ".~lock.kim-minsu.pdf#",
+            "~WRD0001.tmp", "report.tmp", "report.part", "report.crdownload",
+            "report.partial", "Thumbs.db", "desktop.ini",
+        ]
+        for name in ignored:
+            self._touch(name)
+        for m in range(1, 6):
+            d.tick([s], at(2026, 9, 18, 9, m))
+        self.assertEqual(self.fired, [], "none of the ignored names may ever fire")
+
+    def _touch2(self, folder, name, content=b"x"):
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / name).write_bytes(content)
+        return folder / name
 
 
 if __name__ == "__main__":

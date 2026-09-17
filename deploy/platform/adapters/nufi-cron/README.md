@@ -39,6 +39,17 @@ fires — through the daemon's own parser, so the two cannot disagree.
 A section that cannot be understood is logged and skipped. One typo does not
 stop the other reports.
 
+## Or a folder instead of a clock
+
+A section names exactly one trigger: `cron`, above, or `watch` — a folder
+relative to the drive, fired when a file lands in it. Two rules keep that
+from misfiring: the first scan of a `watch` folder records everything
+already there and fires nothing (the same "nothing is caught up" rule
+`cron` follows), and a file has to hold still — same size, same modified
+time — for two ticks in a row before it fires, so a copy still landing over
+Samba is never triggered on half a file. Details and the full key table:
+[`deploy/box/README.md`](../../../box/README.md).
+
 ## Where the answer goes
 
 `data/drives/<drive>/_routines/<out>` — inside the department's shared folder,

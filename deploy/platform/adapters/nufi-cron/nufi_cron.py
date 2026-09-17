@@ -450,10 +450,27 @@ class Runner:
 # Samba write still in flight, must not trigger a run on a half-written file.
 WATCH_SETTLE_TICKS = 2
 
-# A leading "." catches both dotfiles and Samba/Office lock files
-# (".~lock.foo.docx#"); "~$" catches Word/Excel's own temp files
-# ("~$foo.docx"), which do not start with a dot.
-WATCH_IGNORED_PREFIXES = (".", "~$")
+# A leading "." catches dotfiles and Samba/Office lock files
+# (".~lock.foo.docx#"); a leading "~" catches both Word/Excel's own
+# save-in-progress temp files ("~$foo.docx") and its crash-recovery ones
+# ("~WRD0001.tmp"), which do not start with a dot.
+WATCH_IGNORED_PREFIXES = (".", "~")
+# A download or a sync client still writing leaves the suffix on until it is
+# done; these must never be read as the finished file.
+WATCH_IGNORED_SUFFIXES = (".tmp", ".part", ".crdownload", ".partial")
+# The two files Windows and macOS scatter into a folder on their own, never a
+# person's.
+WATCH_IGNORED_NAMES = {"Thumbs.db", "desktop.ini"}
+
+
+def _watch_ignored(name: str) -> bool:
+    """Whether a name inside a watched folder must never be treated as a
+    trigger -- see the three constants above for what each guards against."""
+    if name.startswith(WATCH_IGNORED_PREFIXES):
+        return True
+    if name.endswith(WATCH_IGNORED_SUFFIXES):
+        return True
+    return name in WATCH_IGNORED_NAMES
 
 
 class Daemon(Runner):
@@ -470,15 +487,21 @@ class Daemon(Runner):
                 self._fired = json.loads(self._state.read_text())
             except (OSError, json.JSONDecodeError):
                 self._fired = {}
-        # {schedule_name: {relative_path: mtime}} -- one entry per file a
-        # `watch` section has ever fired for (or recorded on its first scan).
-        # Persisted, unlike `_pending` below, so a restart does not treat
-        # every file already on the drive as new again.
+        # {schedule_name: {"folder": "<drive>/<watch>", "files": {name:
+        # mtime}}} -- one entry per file a `watch` section has ever fired for
+        # (or recorded on its first scan). Persisted, unlike `_pending`
+        # below, so a restart does not treat every file already on the drive
+        # as new again. The folder rides along with the files so that
+        # pointing a section at a different `watch` or `drive` is detected as
+        # a mismatch and treated as a first scan of the new folder, rather
+        # than comparing its files against another folder's history and
+        # firing on all of them at once.
         self._seen = {}
         self._seen_state = pathlib.Path(cfg.state_dir) / "seen.json"
         if self._seen_state.exists():
             try:
-                self._seen = json.loads(self._seen_state.read_text())
+                loaded = json.loads(self._seen_state.read_text())
+                self._seen = loaded if isinstance(loaded, dict) else {}
             except (OSError, json.JSONDecodeError):
                 self._seen = {}
         # {(schedule_name, relative_path): (size, mtime, consecutive ticks
@@ -499,19 +522,39 @@ class Daemon(Runner):
             LOG.warning("could not record the last run: %s", exc)
 
     def _remember_seen(self):
+        # Written atomically (temp file + replace): a half-written seen.json
+        # read back as a corrupt one would treat every watch section as a
+        # fresh first scan, which is exactly the "forty résumés fire forty
+        # runs" case this file exists to prevent. It never shrinks -- a name
+        # is added or its mtime overwritten, never pruned -- and that is
+        # fine: what it holds is one department's own set of files it has
+        # ever seen land, which is not a size that matters over a box's life.
+        tmp = self._seen_state.with_suffix(".tmp")
         try:
-            self._seen_state.write_text(json.dumps(self._seen))
+            tmp.write_text(json.dumps(self._seen))
+            tmp.replace(self._seen_state)
         except OSError as exc:
             LOG.warning("could not record the watched files: %s", exc)
 
     def tick(self, schedules, now):
         """Fire whatever is due at `now`: cron sections on their minute,
-        watch sections when a file in their folder has settled."""
+        watch sections when a file in their folder has settled.
+
+        Each section's own dispatch is wrapped so one section's exception --
+        a permissions error under its folder, anything unforeseen -- cannot
+        stop the others from being considered this tick. `main()` already
+        catches a failure around the whole `tick()` call; this is the same
+        guard moved one level in, so a bad section costs itself, not every
+        other department's report.
+        """
         for schedule in schedules:
-            if schedule.cron is not None:
-                self._tick_cron(schedule, now)
-            else:
-                self._tick_watch(schedule, now)
+            try:
+                if schedule.cron is not None:
+                    self._tick_cron(schedule, now)
+                else:
+                    self._tick_watch(schedule, now)
+            except Exception:  # noqa: BLE001 -- see the docstring above
+                LOG.exception("%s: tick failed", schedule.name)
 
     def _tick_cron(self, schedule, now):
         """A minute already fired is remembered, because the loop polls many
@@ -541,30 +584,47 @@ class Daemon(Runner):
             with self._lock:
                 self._inflight.discard(schedule.name)
 
+    @staticmethod
+    def _folder_key(schedule):
+        return f"{schedule.drive}/{schedule.watch}"
+
     def _watch_listing(self, schedule):
-        """Every non-ignored file currently in `schedule`'s watched folder, as
-        {relative_path: (path, size, mtime)}. None if the folder does not
-        exist yet -- a box freshly installed has no `onboarding/new` until
-        someone creates it on the share, and that is not an error."""
+        """Every non-ignored file directly inside `schedule`'s watched
+        folder, as {name: (path, size, mtime)}. Flat, not recursive: `watch`
+        names ONE folder a file lands in, not a tree -- a recursive scan let
+        two files of the same name in different subfolders (`2025/kim.pdf`,
+        `2026/kim.pdf`) collide on the same `{file}`, the second silently
+        overwriting the first run's `out`. None if the folder does not exist
+        yet -- a box freshly installed has no `onboarding/new` until someone
+        creates it on the share, and that is not an error.
+        """
         folder = pathlib.Path(self.cfg.drives_dir) / schedule.drive / schedule.watch
         if not folder.is_dir():
             if schedule.name not in self._missing_watch:
-                LOG.error("%s: watch folder %s does not exist yet", schedule.name, folder)
+                LOG.warning("%s: watch folder %s does not exist yet", schedule.name, folder)
                 self._missing_watch.add(schedule.name)
             return None
         self._missing_watch.discard(schedule.name)
         out = {}
-        for p in sorted(folder.rglob("*")):
-            if not p.is_file():
+        try:
+            entries = sorted(folder.iterdir())
+        except OSError as exc:
+            LOG.warning("%s: could not list %s: %s", schedule.name, folder, exc)
+            return None
+        for p in entries:
+            if _watch_ignored(p.name):
                 continue
-            rel = p.relative_to(folder).as_posix()
-            parts = pathlib.PurePosixPath(rel).parts
-            if any(part.startswith(WATCH_IGNORED_PREFIXES) for part in parts):
+            try:
+                if not p.is_file():
+                    continue
+                st = p.stat()
+            except OSError:
+                # Gone between the listing and here -- an Office save that
+                # renames a temp file out from under us, a Samba delete. Skip
+                # it this tick; if it is really still there it is picked up
+                # on the next one.
                 continue
-            if OUTPUT_DIR in parts:
-                continue
-            st = p.stat()
-            out[rel] = (p, int(st.st_size), int(st.st_mtime))
+            out[p.name] = (p, int(st.st_size), int(st.st_mtime))
         return out
 
     def _tick_watch(self, schedule, now):
@@ -575,19 +635,43 @@ class Daemon(Runner):
         new or edited, and has to hold still (same size and mtime) for
         `WATCH_SETTLE_TICKS` in a row before it fires. Single-flight per
         section, exactly as cron: `_inflight` is the same set.
+
+        A record only counts as "already scanned" when its folder matches
+        `schedule`'s current `drive`/`watch` -- pointing a section at a
+        different folder (or recovering from a corrupt or pre-migration
+        state file) is treated exactly like seeing the section for the first
+        time, not like comparing the new folder's files against the old
+        folder's history.
+
+        A folder that was missing on an earlier tick is the one exception:
+        its (empty) record is planted the moment it is noticed missing, so
+        that when the folder appears -- even with a file already inside it,
+        created in the same window as the folder itself -- that file is new
+        against an empty record and enters the settle pipeline normally,
+        rather than being swept into "everything already here" on what would
+        otherwise look like the folder's first scan.
         """
+        folder_key = self._folder_key(schedule)
         listing = self._watch_listing(schedule)
         if listing is None:
+            record = self._seen.get(schedule.name)
+            if not isinstance(record, dict) or record.get("folder") != folder_key:
+                self._seen[schedule.name] = {"folder": folder_key, "files": {}}
+                self._remember_seen()
             return
-        seen = self._seen.get(schedule.name)
-        if seen is None:
-            self._seen[schedule.name] = {rel: mtime for rel, (_, _, mtime) in listing.items()}
+        record = self._seen.get(schedule.name)
+        if not isinstance(record, dict) or record.get("folder") != folder_key:
+            self._seen[schedule.name] = {
+                "folder": folder_key,
+                "files": {rel: mtime for rel, (_, _, mtime) in listing.items()},
+            }
             self._remember_seen()
             return
+        seen_files = record["files"]
         fire = None
         for rel in sorted(listing):
             _, size, mtime = listing[rel]
-            if seen.get(rel) == mtime:
+            if seen_files.get(rel) == mtime:
                 self._pending.pop((schedule.name, rel), None)
                 continue
             key = (schedule.name, rel)
@@ -596,6 +680,12 @@ class Daemon(Runner):
             self._pending[key] = (size, mtime, streak)
             if fire is None and streak >= WATCH_SETTLE_TICKS:
                 fire = (rel, mtime)
+        # A file that moved out of the listing (renamed, deleted, and not
+        # back by this tick) must not keep its streak: if it returns later
+        # under the same name it starts settling from zero, not from
+        # wherever it happened to be when it left.
+        for key in [k for k in self._pending if k[0] == schedule.name and k[1] not in listing]:
+            del self._pending[key]
         if fire is None:
             return
         rel, mtime = fire
@@ -612,7 +702,7 @@ class Daemon(Runner):
             # must not re-run every tick, and editing the file afterwards (a
             # new mtime) is what makes it eligible again.
             self._pending.pop((schedule.name, rel), None)
-            self._seen[schedule.name][rel] = mtime
+            self._seen[schedule.name]["files"][rel] = mtime
             self._remember_seen()
 
 

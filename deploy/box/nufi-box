@@ -90,7 +90,8 @@ nufi-box <verb>
   flows list          every flow in the box's Studio, with its id
   works install       register the Docker sandbox environment in Works (the installer does this; re-run after an upgrade)
   works status        check whether Works is fully registered
-  schedule list       the routines that run on a clock, and when each fires next
+  schedule list       the routines that run on a clock or when a file lands,
+                      and when each fires next
   user add EMAIL [--name "Full Name"]
                       give somebody an account on this box
   user list           everyone who can sign in
