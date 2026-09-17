@@ -139,14 +139,15 @@ built them — and point the box at it.
 Such a box usually has no checkout either. Make one from a machine that has
 the repo and carry it over (scp, a USB stick — no GitHub involved). The same
 three directories `update` fetches: `deploy/box` plus the two it depends on —
-`nufi-box flows install` needs the builder in
-`deploy/platform/scenarios/studio`, `nufi-box schedule list` needs the
-adapter in `deploy/platform/adapters/nufi-cron` — or the install finishes
-with "the routines are not in Studio yet":
+`nufi-box flows install` needs the builder in `deploy/platform/scenarios`
+(the whole directory: `build_flows.py` imports `run_box` and `run`, both
+siblings of `studio/` at its root, not inside it), `nufi-box schedule list`
+needs the adapter in `deploy/platform/adapters/nufi-cron` — or the install
+finishes with "the routines are not in Studio yet":
 
 ```bash
 git archive -o box.tar HEAD \
-  deploy/box deploy/platform/scenarios/studio deploy/platform/adapters/nufi-cron
+  deploy/box deploy/platform/scenarios deploy/platform/adapters/nufi-cron
 ```
 
 and on the box, `tar xf box.tar && cd deploy/box`.
@@ -654,38 +655,54 @@ to `install-box.sh` and is also symlinked onto your `PATH`.
 | `revoke <name>` / `revoke --id <id>` | Remove a laptop's access to the mesh |
 | `flows install` | Put the department routines into Studio — safe to repeat |
 | `flows list` | Every flow in the box's Studio, with its id |
-| `update [--ref REF]` / `update --rollback` | Fetch the newest release, apply it, check it, roll back automatically if the check fails — see [Updating](#updating) |
+| `update [--ref REF] [--yes]` / `update --rollback` | Fetch the newest release, apply it, check it, roll back automatically if the check — or the apply, or the installer — fails — see [Updating](#updating) |
 | `backup [--to DIR] [--keep N]` / `restore DIR` | Dump the databases, drives and secrets, or put a backup back — see [Backups](#backups) |
 | `support` | Not built yet — see [What is not built yet](#10-what-is-not-built-yet) |
 
 ### Updating
 
 ```bash
-nufi-box update                 # fetch the newest main, apply, check
-nufi-box update --ref v1.2.3    # a specific tag instead of main
-nufi-box update --rollback      # put back what the last update replaced
+nufi-box update                       # fetch the newest main, apply, check
+nufi-box update --ref nufi-box-v1.2.0 # a specific tag instead of main
+nufi-box update --rollback            # put back what the last update replaced
 ```
 
-One command re-runs the whole day-one path: it fetches the newest `deploy/box`
-and the two directories it depends on (the same three directories described
-in [Boxes without GitHub access](#boxes-without-github-access)) from GitHub,
-runs `nufi-box backup` first, snapshots the current files and the digest of
-every image running now to `.previous/`, applies the new files, and re-runs
-`install-box.sh` — the same installer day one used, so `.env`, every answer,
-and the mesh address are kept exactly as `install-box.sh` already keeps them
-on any re-run.
+`update` asks for confirmation (type the box name) unless run with `--yes` —
+needed for anything without a terminal (a script, a timer, once one exists).
+It resolves the ref (or `main`) to a commit through the GitHub API first, so
+the fetched archive and the box's own report of what it updated to
+(`nufi-box status`'s `update: <sha> since <date>`) name the same commit; if
+the API is unreachable it falls back to fetching the ref directly and says
+`sha unknown`. `NUFI_BOX_SOURCE` in `.env` overrides the fetch entirely (a
+mirror for a box that cannot reach GitHub for the tarball either) and skips
+the resolve.
 
-It then runs `nufi-box doctor`. A pass is the whole result. A failure rolls
-back automatically: the files and the running images go back to what
-`.previous/` holds, the stack restarts, and doctor runs once more so the
-message says whether the box is healthy again. A rollback does **not**
-restore the backup taken at the start on its own — an update's migrations
-are meant to carry the data forward, and putting the database back is a
-decision for a person holding the backup's path (`nufi-box restore <path>`),
-never something a failed check decides by itself.
+One command re-runs the whole day-one path: it fetches the whole archive
+(the archive is the whole repository — pulling `deploy/box` out of it
+selectively is a GNU-tar-only trick that fails plainly on Ubuntu's stock
+`tar`, so this takes it all rather than being right on one platform and
+wrong on the other), runs `nufi-box backup` first, snapshots the current
+files, the routine builder and adapter, and the digest of every image
+running now to `.previous/`, applies the new `deploy/box` and the two
+directories beside it (the same three described in [Boxes without GitHub
+access](#boxes-without-github-access)), and re-runs `install-box.sh` — the
+same installer day one used, so `.env`, every answer, and the mesh address
+are kept exactly as `install-box.sh` already keeps them on any re-run.
+
+It then runs `nufi-box doctor`. A pass is the whole result. A failure — the
+health check, the installer, or the apply itself — rolls back automatically:
+the files and the running images go back to what `.previous/` holds, the
+stack restarts, and doctor runs once more so the message says whether the
+box is healthy again. A rollback does **not** restore the backup taken at
+the start on its own — an update's migrations are meant to carry the data
+forward, and putting the database back is a decision for a person holding
+the backup's path (`nufi-box restore <path>`), never something a failed
+check decides by itself.
 
 `nufi-box status` shows `update: <sha> since <date>` once a box has updated,
-or `update: never updated` before the first one.
+or `update: never updated` before the first one; a rollback clears it.
+
+Needs `rsync`, which `install-box.sh` installs alongside Docker on Ubuntu.
 
 **Not signed yet.** This is GitHub over TLS — the same transport a browser
 gets — not a signed bundle. See [What is not built yet](#10-what-is-not-built-yet).
@@ -895,11 +912,6 @@ built yet:
   (`install-box.sh --with-works`, see [NUFI Works on the
   box](#nufi-works-on-the-box)); Docker Desktop cannot host the gVisor
   runtime it needs, so a Mac box does not get it.
-- **Scheduled routines, and routines from the app.** The four routines take a
-  per-run question and a per-run department (see [Departments and
-  drives](#5-departments-and-drives)), but only through the canvas or the
-  Studio API — the app has no button that runs one, and nothing runs one on a
-  schedule.
 - **A weekly report that knows which files are this week's.** `weekly` reads
   the whole drive and asks the model to respect the period; nothing filters
   the files by their modification date. See [Departments and

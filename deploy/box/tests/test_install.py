@@ -1015,19 +1015,35 @@ def test_a_rerun_keeps_works_on_without_the_flag(tmp_path):
 
 # --- the published fetch names everything a box needs, not just deploy/box ---
 
-def test_install_docs_and_readme_fetch_name_all_three_directories():
-    """The published install guide (apps/docs/content/docs/box/install.mdx)
-    and the README's "Boxes without GitHub access" section are the only two
-    places telling someone what to fetch before they have a checkout.
-    Fetching only deploy/box leaves `nufi-box flows install` (lib/flows.sh,
-    which shells out to deploy/platform/scenarios/studio/build_flows.py) and
-    `nufi-box schedule list` (lib/schedule.sh, deploy/platform/adapters/
-    nufi-cron/nufi_cron.py) with nothing to run — the install finishes with
-    "the routines are not in Studio yet." Both fetch lines have to name all
-    three directories `nufi-box update` fetches too."""
+def test_the_fetched_set_is_enough_to_run_the_routine_builder(tmp_path):
+    """A grep for directory names here once passed while the set it checked
+    for was still wrong: deploy/platform/scenarios/studio alone, without the
+    scenarios/ root beside it. build_flows.py does `from run_box import ...`
+    and run_box.py does `from run import ...` — both run_box.py and run.py
+    live at the ROOT of deploy/platform/scenarios/, not inside studio/, so a
+    fetch of studio/ alone builds a set that fails on the first import. This
+    test builds the set a person (or `nufi-box update`) actually fetches —
+    git archive, not a hand-maintained list of names — and runs the one
+    command `nufi-box flows install` shells out to, from the one directory a
+    person actually cds into. That is the test that would have caught the
+    regression."""
     repo_root = BOX.parents[1]
+    archive = subprocess.run(
+        ["git", "archive", "HEAD", "deploy/box", "deploy/platform/scenarios",
+         "deploy/platform/adapters/nufi-cron"],
+        cwd=str(repo_root), capture_output=True, check=True)
+    subprocess.run(["tar", "-x", "-C", str(tmp_path)], input=archive.stdout, check=True)
+    r = subprocess.run(
+        [sys.executable, "../platform/scenarios/studio/build_flows.py", "--help"],
+        cwd=str(tmp_path / "deploy" / "box"), capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "usage: build_flows.py" in r.stdout
+
+    # And the two published fetch lines have to actually name this set —
+    # the functional check above proves the set works, this proves the docs
+    # tell a person (or a mirror-building script) to fetch it.
     install_mdx = (repo_root / "apps" / "docs" / "content" / "docs" / "box" / "install.mdx").read_text()
     readme = (BOX / "README.md").read_text()
     for text, name in ((install_mdx, "install.mdx"), (readme, "README.md")):
-        for d in ("deploy/box", "deploy/platform/scenarios/studio", "deploy/platform/adapters/nufi-cron"):
+        for d in ("deploy/box", "deploy/platform/scenarios", "deploy/platform/adapters/nufi-cron"):
             assert d in text, "%s is missing %s from its fetch instructions" % (name, d)

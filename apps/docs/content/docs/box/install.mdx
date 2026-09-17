@@ -17,19 +17,24 @@ slower; a machine serving a handful of people at once wants a GPU.
 
 ## Get the box
 
-`deploy/box` is self-contained — 36 files, about 400 KB — but it is not the
-whole story: `nufi-box flows install` needs the routine builder in
-`deploy/platform/scenarios/studio`, and `nufi-box schedule list` needs the
-adapter in `deploy/platform/adapters/nufi-cron`. Fetch all three together, or
-the install finishes with "the routines are not in Studio yet." There is no
-need to clone the whole repository:
+`nufi-box flows install` needs the routine builder in
+`deploy/platform/scenarios` (not just its `studio/` subfolder — the builder
+imports two modules that live beside it), and `nufi-box schedule list` needs
+the adapter in `deploy/platform/adapters/nufi-cron`. Fetching `deploy/box`
+alone finishes the install with "the routines are not in Studio yet."
 
 ```bash
-curl -fsSL https://codeload.github.com/dudaji-vn/nufi-app/tar.gz/refs/heads/main \
-  | tar -xz --strip-components=1 '*/deploy/box' \
-      '*/deploy/platform/scenarios/studio' '*/deploy/platform/adapters/nufi-cron'
-cd deploy/box
+curl -fsSL https://codeload.github.com/dudaji-vn/nufi-app/tar.gz/refs/heads/main | tar -xz
+cd nufi-app-main/deploy/box
 ```
+
+The archive is the whole repository, about 200 MB; the box needs `deploy/box`
+and two folders beside it (`deploy/platform/scenarios`,
+`deploy/platform/adapters/nufi-cron`), which the installer finds by their
+relative paths — pulling the folders out selectively is a GNU-tar-only trick
+(`tar --wildcards`) that fails plainly on Ubuntu's stock `tar`, so this fetch
+takes the whole thing rather than being right on one platform and wrong on
+the other.
 
 ## Install
 

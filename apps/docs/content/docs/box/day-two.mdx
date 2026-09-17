@@ -107,25 +107,34 @@ you need none of it.
 ## Updating
 
 ```bash
-./nufi-box update              # fetch the newest release, apply it, check it
-./nufi-box update --ref v1.2.3 # a specific tag instead of the latest main
-./nufi-box update --rollback   # put back what the last update replaced
+./nufi-box update                       # fetch the newest release, apply it, check it
+./nufi-box update --ref nufi-box-v1.2.0 # a specific tag instead of the latest main
+./nufi-box update --rollback            # put back what the last update replaced
 ```
 
-One command: it fetches the newest `deploy/box` (plus the two directories it
-depends on, `deploy/platform/scenarios/studio` and
-`deploy/platform/adapters/nufi-cron`), backs up the box first
-(`nufi-box backup`), snapshots the current files and the digest of every
-image running now, applies the new files, and re-runs `install-box.sh` — the
-same installer day one used, which already keeps `.env` and every answer and
-secret, so an update never re-asks the four questions.
+It asks you to type the box name to confirm, unless run with `--yes` (needed
+when there is no terminal to confirm on — a script, a timer). It resolves the
+ref (or `main`) to a commit sha through the GitHub API before fetching, so
+`nufi-box status` can later say truthfully what commit the box is running; if
+the API is unreachable it fetches the ref directly and says `sha unknown`
+instead of guessing.
 
-Then it runs `nufi-box doctor`. If that passes, you are done. If it fails,
-`update` rolls back on its own — the files and the images go back to what
-they were, the stack restarts, and it prints where the backup from this run
-landed. It does **not** restore that backup automatically: your data is meant
-to carry forward across an update by design (migrations), and putting the
-database back is a decision for a person holding the backup's path
+Then: it fetches the whole archive (deliberately — pulling just `deploy/box`
+out of it is a trick that only works on macOS's `tar`, and fails plainly on
+every Ubuntu box), backs up the box first (`nufi-box backup`), snapshots the
+current files — `deploy/box`, the two directories beside it it depends on,
+and the digest of every image running now — applies the new ones, and
+re-runs `install-box.sh` — the same installer day one used, which already
+keeps `.env` and every answer and secret, so an update never re-asks the
+four questions.
+
+Then it runs `nufi-box doctor`. If that passes, you are done. If it fails —
+or if the installer itself fails, or the file copy does — `update` rolls
+back on its own — the files and the images go back to what they were, the
+stack restarts, and it prints where the backup from this run landed. It does
+**not** restore that backup automatically: your data is meant to carry
+forward across an update by design (migrations), and putting the database
+back is a decision for a person holding the backup's path
 (`nufi-box restore <path>`), not something a failed check should do by
 itself.
 

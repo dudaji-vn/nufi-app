@@ -133,6 +133,10 @@ if [ "$DRY" = 0 ]; then
         curl -fsSL https://get.docker.com | sh
         sudo usermod -aG docker "$USER" || true
       fi
+      # rsync is nufi-box update's own prerequisite (lib/update.sh mirrors
+      # the box's tree with it), installed here so a day-one box already has
+      # it rather than discovering the gap on the first day-two update.
+      have rsync || { say "Installing rsync"; sudo apt-get update -qq && sudo apt-get install -y -qq rsync; }
       if has_nvidia && ! dpkg -s nvidia-container-toolkit >/dev/null 2>&1; then
         say "Installing the NVIDIA container toolkit"
         curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg

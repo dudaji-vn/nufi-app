@@ -861,38 +861,51 @@ def test_schedule_list_still_shows_a_cron_section_next_to_a_watch_one(tmp_path):
     assert "hr-onboarding" in r.stdout and "on file in onboarding/new/" in r.stdout
 
 
+
 # --- update ---------------------------------------------------------------
 #
-# `update` fetches over the network, snapshots and re-tags real docker
-# images, and re-runs install-box.sh — none of which this suite may do for
-# real. The dry-run tests below are the plan; the real-mode ones run the
-# actual (non---dry-run) code path against a temp HERE built the same way
-# test_install.py's test_a_failing_image_pull_is_retried_three_times_then_explained
-# builds one: a full copy of this checkout, so every real file `update`
-# depends on (lib/mesh.sh, Caddyfile, docker-compose.yml, ...) is there, with
-# `curl`/`docker` replaced by a stub PATH and install-box.sh plus the
-# `doctor` verb replaced by fakes this test controls.
+# `update` fetches over the network, resolves a ref through the GitHub API,
+# snapshots and re-tags real docker images, and re-runs install-box.sh —
+# none of which this suite may do for real. The dry-run tests below are the
+# plan; the real-mode ones run the actual (non---dry-run) code path against a
+# temp HERE built the same way test_install.py's
+# test_a_failing_image_pull_is_retried_three_times_then_explained builds one:
+# a full copy of this checkout, so every real file `update` depends on
+# (lib/mesh.sh, Caddyfile, docker-compose.yml, ...) is there, with
+# `curl`/`docker` replaced by a stub PATH, `NUFI_BOX_SOURCE` pointed at the
+# stub (so the GitHub API resolve is never attempted), and install-box.sh
+# plus the `doctor` verb replaced by fakes this test controls.
 
 def test_update_dry_run_plan_names_the_fetch_snapshot_apply_check_and_rollback(tmp_path):
     r = cli("update", NUFI_BOX_ENV=str(_env(tmp_path)))
     assert r.returncode == 0, r.stderr
     out = r.stdout
-    assert "https://codeload.github.com/dudaji-vn/nufi-app/tar.gz/refs/heads/main" in out
-    assert "*/deploy/box" in out
-    assert "*/deploy/platform/scenarios/studio" in out
-    assert "*/deploy/platform/adapters/nufi-cron" in out
+    assert "api.github.com/repos/dudaji-vn/nufi-app/commits/main" in out
+    assert "codeload.github.com/dudaji-vn/nufi-app/tar.gz" in out
+    assert "tar -xzf" in out, "the whole archive, not selected members -- GNU tar does not glob member names"
+    assert "deploy/box" in out
+    assert "deploy/platform/scenarios" in out
+    assert "deploy/platform/adapters/nufi-cron" in out
     assert "nufi-box backup" in out
     assert ".previous" in out
     assert "images.txt" in out
+    assert "COMPLETE" in out
     assert "install-box.sh --yes --no-trust" in out
     assert "doctor" in out
     assert "rollback" in out, "the plan has to say a failed check rolls back on its own"
 
 
-def test_update_ref_rewrites_the_source_to_the_tag(tmp_path):
-    out = cli("update", "--ref", "v9", NUFI_BOX_ENV=str(_env(tmp_path))).stdout
-    assert "https://codeload.github.com/dudaji-vn/nufi-app/tar.gz/refs/tags/v9" in out
-    assert "refs/heads/main" not in out
+def test_update_ref_resolves_the_named_tag(tmp_path):
+    out = cli("update", "--ref", "nufi-box-v1.2.0", NUFI_BOX_ENV=str(_env(tmp_path))).stdout
+    assert "api.github.com/repos/dudaji-vn/nufi-app/commits/nufi-box-v1.2.0" in out
+    assert "Fetching nufi-box-v1.2.0" in out
+
+
+def test_update_a_custom_source_skips_the_resolve(tmp_path):
+    envf = _env(tmp_path, NUFI_BOX_SOURCE="https://mirror.example/box.tar.gz")
+    out = cli("update", NUFI_BOX_ENV=str(envf)).stdout
+    assert "api.github.com" not in out
+    assert "mirror.example/box.tar.gz" in out
 
 
 def test_update_rollback_dry_run_plan_names_previous_tag_up_and_doctor(tmp_path):
@@ -924,6 +937,75 @@ def test_update_rollback_without_previous_dies_with_nothing_to_roll_back_to(tmp_
     assert "nothing to roll back to" in r.stderr
 
 
+def test_update_rollback_with_an_incomplete_snapshot_dies(tmp_path):
+    """A .previous started but never finished (the box lost power between the
+    file copy and images.txt, say) must read as no snapshot at all, not as
+    one a rollback trusts halfway."""
+    here = tmp_path / "box"
+    here.mkdir()
+    shutil.copy(BOX / "nufi-box", here / "nufi-box")
+    (here / "nufi-box").chmod(0o755)
+    (here / "lib").mkdir()
+    shutil.copy(BOX / "lib" / "update.sh", here / "lib" / "update.sh")
+    (here / ".previous").mkdir()
+    (here / ".previous" / "tree").mkdir()
+    # No COMPLETE file -- the interrupted case.
+    e = dict(os.environ, NUFI_BOX_ENV=str(_env(tmp_path)))
+    e.pop("NUFI_BOX_DRY_RUN", None)
+    r = subprocess.run([BASH, str(here / "nufi-box"), "update", "--rollback"],
+                       cwd=here, env=e, capture_output=True, text=True)
+    assert r.returncode == 2
+    assert "incomplete" in r.stderr
+    assert "nothing to roll back to" in r.stderr
+
+
+# --- C3: a NUFI_DATA_DIR that is not literally $HERE/data ------------------
+#
+# Exercises _update_protect_paths + _update_copy directly, the way
+# test_envfile_set_... sources lib/envfile.sh directly: no docker, no curl,
+# no backup -- just the exclude computation and the copy it drives, which is
+# the whole surface the bug (an unanchored exclude protecting nothing for a
+# custom data directory) lived in.
+
+def _run_update_copy(here, data_dir, src, dst):
+    lib = str(BOX / "lib" / "update.sh")
+    script = (
+        'HERE="$1"; DRY=0; NUFI_DATA_DIR="$2"; src="$3"; dst="$4"\n'
+        'run() { "$@"; }\n'
+        'die() { echo "$*" >&2; exit 2; }\n'
+        'source "$0"\n'
+        '_update_protect_paths\n'
+        '_update_copy "$src" "$dst"\n'
+    )
+    return subprocess.run([BASH, "-c", script, lib, str(here), str(data_dir), str(src), str(dst)],
+                          capture_output=True, text=True)
+
+
+def test_a_custom_data_dir_under_here_survives_apply_and_rollback(tmp_path):
+    here = tmp_path / "box"
+    storage = here / "storage"
+    storage.mkdir(parents=True)
+    (storage / "drives.txt").write_text("the department's own documents\n")
+    src = tmp_path / "release"
+    src.mkdir()
+    (src / "newfile.txt").write_text("the new release\n")
+
+    r = _run_update_copy(here, storage, src, here)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert (storage / "drives.txt").read_text() == "the department's own documents\n", \
+        "an apply must not delete a NUFI_DATA_DIR that is not literally $HERE/data"
+    assert (here / "newfile.txt").read_text() == "the new release\n"
+
+    # And the same holds copying the other direction, as a rollback does.
+    src2 = tmp_path / "previous"
+    src2.mkdir()
+    (src2 / "oldfile.txt").write_text("what was here before\n")
+    r2 = _run_update_copy(here, storage, src2, here)
+    assert r2.returncode == 0, r2.stdout + r2.stderr
+    assert (storage / "drives.txt").read_text() == "the department's own documents\n"
+    assert (here / "oldfile.txt").read_text() == "what was here before\n"
+
+
 def _update_wrap_nufi_box(box_dir, doctor_exit):
     """Turn box_dir/nufi-box into a wrapper that answers `doctor` with
     doctor_exit and delegates every other verb to the real script (renamed
@@ -945,9 +1027,10 @@ def _update_wrap_nufi_box(box_dir, doctor_exit):
 def _update_here(tmp_path):
     """A temp HERE: a full, working copy of this checkout (so lib/mesh.sh,
     Caddyfile, docker-compose.yml — everything update's real code touches —
-    is there), doctor faked to pass, and the files an update must leave
-    alone."""
-    here = tmp_path / "box"
+    is there), plus its platform siblings beside it, doctor faked to pass,
+    and the files an update must leave alone."""
+    box_dir = tmp_path / "box"
+    here = box_dir
     shutil.copytree(BOX, here, ignore=shutil.ignore_patterns("data", ".env", "tests"))
     _update_wrap_nufi_box(here, doctor_exit=0)
     (here / "data" / "drives").mkdir(parents=True)
@@ -955,18 +1038,29 @@ def _update_here(tmp_path):
     (here / "data" / "x").write_text("data-x-content\n")
     (here / "caddy").mkdir(exist_ok=True)
     (here / "caddy" / "mesh.caddy").write_text("mesh-caddy-content\n")
-    (here / "PRE_EXISTING_MARKER.txt").write_text("old\n")
+    (here / "VERSION").write_text("pre-existing\n")
+    # Not part of any fake release built below -- a real file an apply has
+    # to actually delete, not a name that is merely absent because nothing
+    # ever wrote it.
+    (here / "OLD_FILE_NOT_IN_THE_RELEASE.txt").write_text("gone once applied\n")
     (here / ".env").write_text(
         "NUFI_DATA_DIR=%s/data\nBOX_NAME=nufi\nBOX_HOST=nufi.local\n"
         "POSTGRES_USER=nufi\nMONGO_USER=nufi\nMONGO_PASSWORD=testpw\n"
         "NUFI_MODEL=qwen2.5-14b\n" % here
     )
+    platform = tmp_path / "platform"
+    (platform / "scenarios" / "studio").mkdir(parents=True)
+    (platform / "scenarios" / "run_box.py").write_text("# run_box\n")
+    (platform / "scenarios" / "run.py").write_text("# run\n")
+    (platform / "scenarios" / "studio" / "build_flows.py").write_text("v0\n")
+    (platform / "adapters" / "nufi-cron").mkdir(parents=True)
+    (platform / "adapters" / "nufi-cron" / "nufi_cron.py").write_text("v0\n")
     return here
 
 
-def _update_fake_release(root, top, doctor_exit, marker_add):
-    """Build root/<top>/deploy/{box,platform/...} the shape update's own tar
-    extraction expects, with install-box.sh and doctor faked the same way
+def _update_fake_release(root, top, doctor_exit, version, install_exit=0):
+    """Build root/<top>/deploy/{box,platform/...} the shape a codeload
+    archive extracts to, with install-box.sh and doctor faked the same way
     _update_wrap_nufi_box fakes them in HERE — apply overwrites HERE's copies
     of both with whatever the archive holds, so the fakes have to travel with
     the archive too, not just live in HERE beforehand. Returns the tarball
@@ -974,26 +1068,37 @@ def _update_fake_release(root, top, doctor_exit, marker_add):
     box = root / top / "deploy" / "box"
     shutil.copytree(BOX, box, ignore=shutil.ignore_patterns("data", ".env", "tests"))
     _update_wrap_nufi_box(box, doctor_exit)
-    (box / "install-box.sh").write_text("#!/bin/sh\nexit 0\n")
+    (box / "install-box.sh").write_text("#!/bin/sh\nexit %d\n" % install_exit)
     (box / "install-box.sh").chmod(0o755)
-    (box / marker_add).write_text("%s\n" % marker_add)
-    studio = root / top / "deploy" / "platform" / "scenarios" / "studio"
-    studio.mkdir(parents=True)
-    (studio / "build_flows.py").write_text("# fake builder\n")
+    (box / "VERSION").write_text("%s\n" % version)
+    scenarios = root / top / "deploy" / "platform" / "scenarios"
+    (scenarios / "studio").mkdir(parents=True)
+    (scenarios / "run_box.py").write_text("# run_box\n")
+    (scenarios / "run.py").write_text("# run\n")
+    (scenarios / "studio" / "build_flows.py").write_text("%s\n" % version)
     cron = root / top / "deploy" / "platform" / "adapters" / "nufi-cron"
     cron.mkdir(parents=True)
-    (cron / "nufi_cron.py").write_text("# fake adapter\n")
+    (cron / "nufi_cron.py").write_text("%s\n" % version)
     tar_path = root / (top + ".tar.gz")
-    subprocess.run(["tar", "-czf", str(tar_path), "-C", str(root), top], check=True)
+    # COPYFILE_DISABLE: macOS's bsdtar otherwise writes an AppleDouble
+    # "._<name>" sidecar for the top-level entry, which becomes the archive's
+    # FIRST member — exactly the one update.sh's own top-directory read
+    # (tarfile.open(...).next()) trusts. A real codeload tarball never has
+    # one; this is purely an artifact of building the test fixture here.
+    subprocess.run(["tar", "-czf", str(tar_path), "-C", str(root), top],
+                   check=True, env=dict(os.environ, COPYFILE_DISABLE="1"))
     return tar_path
 
 
 def _update_stub_path(tmp_path, images_json):
     """curl copies whichever tarball $STUB_TARBALL names, ignoring the real
-    URL; docker answers `compose config --services/--images`, `compose images
-    --format json` and `image inspect` with fixed data and logs every call it
-    sees to $STUB_LOG — the same shape test_install.py's blank-machine tests
-    use to stand in for curl/sudo/sg/docker."""
+    URL (NUFI_BOX_SOURCE is set by the caller to a stub URL so the GitHub API
+    resolve is never attempted, and curl never sees a real network call);
+    docker answers `compose config --services` and `compose images --format
+    json` with fixed data and `image inspect` with a fixed digest, and logs
+    every call it sees to $STUB_LOG. It does not answer `config --images` —
+    update no longer calls it, on purpose (C2: that call prints a service's
+    whole dependency closure, not just its own image)."""
     bin_ = tmp_path / "bin"
     bin_.mkdir()
     (bin_ / "curl").write_text(
@@ -1012,8 +1117,7 @@ def _update_stub_path(tmp_path, images_json):
         '  while [ $# -gt 0 ]; do case "$1" in -f) shift 2 ;; *) break ;; esac; done\n'
         '  sub="$1"; [ $# -gt 0 ] && shift\n'
         '  case "$sub" in\n'
-        '    config) case "$1" in --services) echo web ;; '
-        '--images) echo "ghcr.io/dudaji-vn/nufichat:main" ;; esac; exit 0 ;;\n'
+        '    config) case "$1" in --services) echo web ;; esac; exit 0 ;;\n'
         '    images) cat "$STUB_IMAGES_JSON"; exit 0 ;;\n'
         "    *) exit 0 ;;\n"
         "  esac\n"
@@ -1031,14 +1135,20 @@ def _update_stub_path(tmp_path, images_json):
     return bin_, log, images_json_path
 
 
-def _run_update(here, bin_, log, images_json_path, repo_digest, tarball):
+def _run_update(here, bin_, log, images_json_path, repo_digest, tarball, *extra_args):
     log.write_text("")
-    e = dict(os.environ, PATH="%s:/usr/bin:/bin" % bin_, NUFI_BOX_FAKE_OS="Darwin",
+    # The stub dir wins for curl/docker; everything else (python3, rsync,
+    # tar) falls back to wherever this host already has it -- a hardcoded
+    # /usr/bin:/bin misses python3 on, say, the python:3.12-slim image the
+    # GNU-tar gate runs this suite in, which ships it under /usr/local/bin.
+    e = dict(os.environ, PATH="%s:%s" % (bin_, os.environ.get("PATH", "/usr/bin:/bin")),
+             NUFI_BOX_FAKE_OS="Darwin",
+             NUFI_BOX_SOURCE="https://stub.invalid/archive.tar.gz",
              STUB_TARBALL=str(tarball), STUB_LOG=str(log),
              STUB_IMAGES_JSON=str(images_json_path), STUB_REPO_DIGEST=repo_digest)
     e.pop("NUFI_BOX_DRY_RUN", None)
     e.pop("NUFI_BOX_ENV", None)
-    return subprocess.run([BASH, str(here / "nufi-box"), "update", "--yes"],
+    return subprocess.run([BASH, str(here / "nufi-box"), "update", "--yes", *extra_args],
                           cwd=here, env=e, capture_output=True, text=True)
 
 
@@ -1049,39 +1159,50 @@ def test_update_applies_the_release_snapshots_digests_and_rolls_back_on_a_failed
     install."""
     here = _update_here(tmp_path)
     bin_, log, images_json_path = _update_stub_path(
-        tmp_path, '[{"Repository":"ghcr.io/dudaji-vn/nufichat","ID":"sha256:cfgaaa"}]')
+        tmp_path, '[{"Repository":"ghcr.io/dudaji-vn/nufichat","Tag":"main","ID":"sha256:cfgaaa"}]')
 
     # A good release: doctor passes, nothing rolls back.
     good_root = tmp_path / "repo-good"; good_root.mkdir()
-    good_tar = _update_fake_release(good_root, "nufi-app-goodsha", doctor_exit=0, marker_add="NEW_MARKER")
+    good_tar = _update_fake_release(good_root, "nufi-app-goodsha", doctor_exit=0, version="good-v1")
     r = _run_update(here, bin_, log, images_json_path,
                     "ghcr.io/dudaji-vn/nufichat@sha256:realdigest111", good_tar)
     assert r.returncode == 0, r.stdout + r.stderr
-    assert "Updated to main (goodsha)" in r.stdout
+    assert "Updated to main (sha unknown)" in r.stdout, r.stdout
 
     # (i) .env, data/x, caddy/mesh.caddy are untouched by an update.
     assert (here / ".env").read_text().startswith("NUFI_DATA_DIR=%s/data" % here)
     assert (here / "data" / "x").read_text() == "data-x-content\n"
     assert (here / "caddy" / "mesh.caddy").read_text() == "mesh-caddy-content\n"
 
-    # (ii) the new release's file is here; the old one that is not in it is
-    # gone from HERE and kept in .previous.
-    assert (here / "NEW_MARKER").exists()
-    assert not (here / "PRE_EXISTING_MARKER.txt").exists()
-    assert (here / ".previous" / "PRE_EXISTING_MARKER.txt").exists()
+    # (ii) the new release's content is here (I7: content, not just presence),
+    # and a file that was here but is not in the release is gone -- present
+    # in .previous/tree, which the next assertions cover.
+    assert (here / "VERSION").read_text() == "good-v1\n"
+    assert not (here / "OLD_FILE_NOT_IN_THE_RELEASE.txt").exists()
+    assert (here / ".previous" / "tree" / "OLD_FILE_NOT_IN_THE_RELEASE.txt").read_text() == "gone once applied\n"
 
-    # (iii) images.txt names the digest the stub answered.
+    # (iii) images.txt names the digest the stub answered and the tag to
+    # re-tag it as (C2: recorded at snapshot time, three columns).
     images_txt = (here / ".previous" / "images.txt").read_text()
-    assert images_txt.strip() == "web ghcr.io/dudaji-vn/nufichat@sha256:realdigest111"
+    assert images_txt.strip() == \
+        "web ghcr.io/dudaji-vn/nufichat@sha256:realdigest111 ghcr.io/dudaji-vn/nufichat:main"
+    assert (here / ".previous" / "COMPLETE").exists()
 
-    # the flows/schedule directories update fetches for the outside-developer
-    # install this change exists to fix (see install.mdx / README.md).
-    assert (here.parent / "platform" / "scenarios" / "studio" / "build_flows.py").exists()
-    assert (here.parent / "platform" / "adapters" / "nufi-cron" / "nufi_cron.py").exists()
+    # I6: the routine builder and adapter are snapshotted and applied too.
+    platform = tmp_path / "platform"
+    assert (platform / "scenarios" / "studio" / "build_flows.py").read_text() == "good-v1\n"
+    assert (platform / "scenarios" / "run_box.py").exists()
+    assert (platform / "adapters" / "nufi-cron" / "nufi_cron.py").read_text() == "good-v1\n"
+    assert (here / ".previous" / "platform" / "scenarios" / "studio" / "build_flows.py").read_text() == "v0\n"
+
+    # I4: updated-from lives at NUFI_DATA_DIR, not .previous, and is not
+    # touched by the next update's snapshot/apply.
+    assert (here / "data" / "updated-from").exists()
+    assert not (here / ".previous" / "updated-from").exists()
 
     # A bad release: doctor fails, update rolls back to what the good release left.
     bad_root = tmp_path / "repo-bad"; bad_root.mkdir()
-    bad_tar = _update_fake_release(bad_root, "nufi-app-badsha", doctor_exit=1, marker_add="BAD_MARKER")
+    bad_tar = _update_fake_release(bad_root, "nufi-app-badsha", doctor_exit=1, version="bad-v2")
     r = _run_update(here, bin_, log, images_json_path,
                     "ghcr.io/dudaji-vn/nufichat@sha256:realdigest222", bad_tar)
     assert r.returncode == 1
@@ -1089,10 +1210,44 @@ def test_update_applies_the_release_snapshots_digests_and_rolls_back_on_a_failed
     assert "Rolled back" in r.stdout
 
     # (iv) the digest snapshotted this run was re-tagged, the stack was
-    # brought back up, and the file the good release added is back — the bad
-    # release's own new file is not.
+    # brought back up, and the OLD content (the good release's, not just
+    # "a" file) is back.
     calls = log.read_text()
     assert "tag ghcr.io/dudaji-vn/nufichat@sha256:realdigest222 ghcr.io/dudaji-vn/nufichat:main" in calls
     assert "up -d" in calls
-    assert (here / "NEW_MARKER").exists()
-    assert not (here / "BAD_MARKER").exists()
+    assert (here / "VERSION").read_text() == "good-v1\n"
+    assert (platform / "scenarios" / "studio" / "build_flows.py").read_text() == "good-v1\n"
+
+    # I4: a rollback clears the record — the box is no longer running what
+    # updated-from said it was.
+    assert not (here / "data" / "updated-from").exists()
+
+
+def test_update_rolls_back_when_the_installer_itself_fails(tmp_path):
+    """C5: a failing install-box.sh (or a failing apply copy) must not leave
+    the box half-applied with no hint. First establishes a good baseline the
+    same way the test above does, then a release whose installer fails
+    outright — no doctor check is even reached."""
+    here = _update_here(tmp_path)
+    bin_, log, images_json_path = _update_stub_path(
+        tmp_path, '[{"Repository":"ghcr.io/dudaji-vn/nufichat","Tag":"main","ID":"sha256:cfgaaa"}]')
+
+    good_root = tmp_path / "repo-good"; good_root.mkdir()
+    good_tar = _update_fake_release(good_root, "nufi-app-goodsha", doctor_exit=0, version="good-v1")
+    r = _run_update(here, bin_, log, images_json_path,
+                    "ghcr.io/dudaji-vn/nufichat@sha256:realdigest111", good_tar)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+    broken_root = tmp_path / "repo-broken"; broken_root.mkdir()
+    broken_tar = _update_fake_release(broken_root, "nufi-app-brokensha", doctor_exit=0,
+                                      version="broken-v3", install_exit=1)
+    r = _run_update(here, bin_, log, images_json_path,
+                    "ghcr.io/dudaji-vn/nufichat@sha256:realdigest333", broken_tar)
+    assert r.returncode == 1
+    assert "installer failed" in r.stdout
+    assert "rolling back" in r.stdout
+    assert "Rolled back" in r.stdout
+
+    calls = log.read_text()
+    assert "up -d" in calls
+    assert (here / "VERSION").read_text() == "good-v1\n"
