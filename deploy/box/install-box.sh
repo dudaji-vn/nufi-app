@@ -88,7 +88,7 @@ gen_fernet() { openssl rand -base64 32 | tr '+/' '-_'; }
 
 # ---------- where am I --------------------------------------------------------
 OS="${NUFI_BOX_FAKE_OS:-$(uname -s)}"
-ARCH="$(uname -m)"
+ARCH="${NUFI_BOX_FAKE_ARCH:-$(uname -m)}"  # nothing but tests ever sets it
 HERE="$(cd "$(dirname "$0")" && pwd)"
 BOX_HOME="${SRC:-$HERE}"
 cd "$BOX_HOME"
@@ -109,6 +109,14 @@ has_docker() {
 
 # ---------- prerequisites ------------------------------------------------------
 say "Checking prerequisites on $OS/$ARCH"
+# Works on the box means agent code in gVisor sandboxes, and gVisor is a Docker
+# runtime -- something Docker Desktop's VM-hosted daemon cannot be given. Refuse
+# before a byte is written, and before the Darwin branch below installs
+# anything -- OrbStack and Ollama must not go on a machine the flag has
+# already rejected. Say so in the words the person will search for.
+if [ "$WITH_WORKS" = 1 ] && [ "$OS" != "Linux" ]; then
+  die "--with-works needs Ubuntu: Works sandboxes run under gVisor, which Docker Desktop cannot host. Install the box without it here, or with it on the Linux machine that will be the box."
+fi
 have openssl || die "openssl is required"
 if [ "$DRY" = 0 ]; then
   have curl || die "curl is required"
@@ -164,13 +172,6 @@ if [ "$DRY" = 0 ]; then
     mem=$(docker info --format '{{.MemTotal}}' 2>/dev/null || echo 0)
     [ "$mem" -lt 11000000000 ] && warn "Docker VM has $((mem/1073741824)) GB; give it 12 GB (Docker Desktop → Settings → Resources) or use OrbStack"
   fi
-fi
-
-# Works on the box means agent code in gVisor sandboxes, and gVisor is a Docker
-# runtime -- something Docker Desktop's VM-hosted daemon cannot be given. Refuse
-# before a byte is written, and say so in the words the person will search for.
-if [ "$WITH_WORKS" = 1 ] && [ "$OS" != "Linux" ]; then
-  die "--with-works needs Ubuntu: Works sandboxes run under gVisor, which Docker Desktop cannot host. Install the box without it here, or with it on the Linux machine that will be the box."
 fi
 
 # ---------- keep previous answers on a re-run; explicit overrides always win --
@@ -536,40 +537,54 @@ if [ "$NUFI_WORKS" = 1 ]; then
   GVISOR_URL="https://storage.googleapis.com/gvisor/releases/release/$GVISOR_RELEASE/$GVISOR_ARCH/gvisor.tar.bz2"
   GVISOR_SHA="$(gvisor_sha "$GVISOR_ARCH")"
   [ -n "$GVISOR_SHA" ] || die "no gVisor build is pinned for $GVISOR_ARCH"
+  # Under `pipefail`, `cmd | grep -q pattern` reports grep's exit status, not
+  # cmd's -- a `runsc --version` that itself failed would still read as "not
+  # installed" rather than an error, and a hung `docker info` would look the
+  # same as "no runsc runtime". Capture first, then test the string: the
+  # repo's own rule (yq | grep -q under pipefail returns 141 on a match).
+  _runsc_v="$(/usr/local/bin/runsc --version 2>/dev/null || true)"
+  _rt="$(docker info --format '{{range $k,$v := .Runtimes}}{{$k}} {{end}}' 2>/dev/null || true)"
   if [ "$DRY" = 1 ]; then
     printf '  $ curl -fsSL -o gvisor.tar.bz2 %s\n' "$GVISOR_URL"
     printf '  $ echo "%s  gvisor.tar.bz2" | sha512sum -c -\n' "$GVISOR_SHA"
     printf '  $ tar -xjf gvisor.tar.bz2 runsc && sudo install -m 0755 runsc /usr/local/bin/runsc\n'
     printf '  $ python3 - <<PY   # merge into /etc/docker/daemon.json\n{"runtimes": {"runsc": {"path": "/usr/local/bin/runsc"}}}\nPY\n'
     printf '  $ sudo systemctl restart docker\n'
-  elif /usr/local/bin/runsc --version 2>/dev/null | grep -q "release-$GVISOR_RELEASE" \
-       && docker info --format '{{range $k,$v := .Runtimes}}{{$k}} {{end}}' | grep -qw runsc; then
+  elif case "$_runsc_v" in *"release-$GVISOR_RELEASE"*) true ;; *) false ;; esac \
+       && case " $_rt " in *" runsc "*) true ;; *) false ;; esac; then
     ok "runsc $GVISOR_RELEASE is already a Docker runtime"
   else
+    have bzip2 || die "bzip2 is required to unpack gVisor: sudo apt-get install -y bzip2"
     _gv="$(mktemp -d)"
+    # A downloaded-but-unverified tarball is 165 MB left behind on every
+    # early exit below (a bad checksum, an interrupted install) unless
+    # cleanup runs regardless of how this scope is left.
+    trap 'rm -rf "$_gv"' EXIT
     curl -fsSL -o "$_gv/gvisor.tar.bz2" "$GVISOR_URL" || die "could not download $GVISOR_URL"
     ( cd "$_gv" && echo "$GVISOR_SHA  gvisor.tar.bz2" | sha512sum -c - >/dev/null ) \
       || die "gvisor.tar.bz2 does not match the pinned checksum; not installing it"
     tar -xjf "$_gv/gvisor.tar.bz2" -C "$_gv" runsc
     sudo install -m 0755 "$_gv/runsc" /usr/local/bin/runsc
-    rm -rf "$_gv"
     sudo python3 - /etc/docker/daemon.json <<'PYEOF'
-import json, sys
+import json, os, sys
 path = sys.argv[1]
 try:
     with open(path) as f:
         cfg = json.load(f)
 except (FileNotFoundError, ValueError):
     cfg = {}
+os.makedirs(os.path.dirname(path), exist_ok=True)
 cfg.setdefault("runtimes", {})["runsc"] = {"path": "/usr/local/bin/runsc"}
 with open(path, "w") as f:
     json.dump(cfg, f, indent=2)
     f.write("\n")
 PYEOF
     sudo systemctl restart docker || die "could not restart docker to load the runsc runtime"
-    docker info --format '{{range $k,$v := .Runtimes}}{{$k}} {{end}}' | grep -qw runsc \
-      || die "docker does not list runsc after the restart; check /etc/docker/daemon.json"
-    ok "runsc $GVISOR_RELEASE is a Docker runtime"
+    _rt_after="$(docker info --format '{{range $k,$v := .Runtimes}}{{$k}} {{end}}' 2>/dev/null || true)"
+    case " $_rt_after " in
+      *" runsc "*) ok "runsc $GVISOR_RELEASE is a Docker runtime" ;;
+      *) die "docker does not list runsc after the restart; check /etc/docker/daemon.json" ;;
+    esac
   fi
 fi
 
@@ -676,10 +691,16 @@ if [ "$NUFI_WORKS" = 1 ] && [ "$NO_PULL" = 0 ]; then
   SANDBOX_REF="${NUFI_REGISTRY:-ghcr.io/dudaji-vn}/nufi-sandbox:${NUFI_SANDBOX_TAG:-main}"
   run docker pull "$SANDBOX_REF" || die "could not pull $SANDBOX_REF"
   if [ "$DRY" = 1 ]; then
-    printf '  $ WORKS_SANDBOX_IMAGE=$(docker image inspect --format {{index .RepoDigests 0}} %s)  # written to .env\n' "$SANDBOX_REF"
+    printf '  $ WORKS_SANDBOX_IMAGE=...  # the digest under %s\n' "${SANDBOX_REF%:*}"
   else
-    WORKS_SANDBOX_IMAGE="$(docker image inspect --format '{{index .RepoDigests 0}}' "$SANDBOX_REF")"
-    [ -n "$WORKS_SANDBOX_IMAGE" ] || die "$SANDBOX_REF has no repo digest after the pull"
+    # `docker image inspect --format {{index .RepoDigests 0}}` picks whichever
+    # digest sorts first -- on a box first installed from ghcr.io and later
+    # re-run with --registry registry.lan:5000, the ghcr digest can sort
+    # ahead of the LAN one, and .env would then name an image this box can no
+    # longer pull. Take the digest under the ref's own repository instead.
+    _ds="$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$SANDBOX_REF" 2>/dev/null || true)"
+    WORKS_SANDBOX_IMAGE="$(printf '%s\n' "$_ds" | grep "^${SANDBOX_REF%:*}@" | head -1 || true)"
+    [ -n "$WORKS_SANDBOX_IMAGE" ] || die "$SANDBOX_REF has no digest under its own repository after the pull"
     . "$BOX_HOME/lib/envfile.sh"
     envfile_set "$NUFI_BOX_ENV" WORKS_SANDBOX_IMAGE "$WORKS_SANDBOX_IMAGE"
   fi

@@ -876,19 +876,45 @@ def test_the_vm_verifier_cannot_read_a_failed_install_as_a_reached_banner():
 
 GVISOR = "https://storage.googleapis.com/gvisor/releases/release/20260907/x86_64/gvisor.tar.bz2"
 GVISOR_SHA = "c38cc38ee709d862501e55eebd99f5bd105899cbc7cf3fa1f620493fa127364c5b74c7361d231bd8b9523be48918ea3820dd40b28c61c2b2cb644edbf10261fb"
+GVISOR_AARCH64 = "https://storage.googleapis.com/gvisor/releases/release/20260907/aarch64/gvisor.tar.bz2"
+GVISOR_AARCH64_SHA = "fce113699d2e722785e0f66718def9b287cfeef92bd5694da5830ec0c2107d26da94d050e9e6ce68ae65212c437b4eb8f64b67b34add7b04637f4dd12befa2f4"
 
 
 def test_with_works_refuses_a_mac_and_says_why():
     """Sandboxes run under gVisor, and Docker Desktop cannot host a runtime.
     Refuse before anything is written, and name the reason."""
-    r = install("--with-works", NUFI_BOX_FAKE_OS="Darwin")
+    r = install("--with-works", NUFI_BOX_FAKE_OS="Darwin", NUFI_BOX_FAKE_ARCH="x86_64")
     assert r.returncode != 0
     assert "Docker Desktop" in r.stderr, r.stderr
     assert ".env written" not in r.stdout
 
 
+def test_with_works_on_a_mac_installs_nothing_first():
+    """The refusal used to sit after the real-mode Homebrew installs, so a Mac
+    got OrbStack and Ollama installed before being told --with-works needs
+    Linux. Run for real (no --dry-run) with a stub `brew` that leaves a
+    marker, and prove the marker never appears — same shape as the blank-Linux
+    tests above: a stub PATH stands in for the one program the refusal must
+    never reach."""
+    with tempfile.TemporaryDirectory() as tmp:
+        bin_ = pathlib.Path(tmp) / "bin"
+        bin_.mkdir()
+        marker = pathlib.Path(tmp) / "brew-ran"
+        brew = bin_ / "brew"
+        brew.write_text(f"#!/bin/sh\ntouch {marker}\nexit 0\n")
+        brew.chmod(0o755)
+        e = dict(os.environ, PATH=f"{bin_}:/usr/bin:/bin",
+                 NUFI_BOX_FAKE_OS="Darwin", NUFI_BOX_FAKE_ARCH="x86_64",
+                 NUFI_BOX_ENV=str(pathlib.Path(tmp) / "absent.env"))
+        r = subprocess.run([BASH, str(BOX / "install-box.sh"), "--with-works", "--yes"],
+                           cwd=BOX, env=e, capture_output=True, text=True)
+        assert r.returncode != 0
+        assert "Docker Desktop" in r.stderr, r.stderr
+        assert not marker.exists(), "brew ran before the refusal"
+
+
 def test_with_works_installs_a_pinned_runsc_and_registers_it():
-    out = dry("--with-works", NUFI_BOX_FAKE_OS="Linux")
+    out = dry("--with-works", NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_FAKE_ARCH="x86_64")
     assert GVISOR in out, out
     assert GVISOR_SHA in out, "the tarball's checksum is verified, not just downloaded"
     assert "tar -xjf" in out and "runsc" in out
@@ -897,8 +923,20 @@ def test_with_works_installs_a_pinned_runsc_and_registers_it():
     assert "systemctl restart docker" in out
 
 
+def test_with_works_pins_the_aarch64_build_too():
+    out = dry("--with-works", NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_FAKE_ARCH="aarch64")
+    assert GVISOR_AARCH64 in out, out
+    assert GVISOR_AARCH64_SHA in out
+
+
+def test_with_works_refuses_an_arch_it_has_no_gvisor_for():
+    r = install("--with-works", NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_FAKE_ARCH="riscv64")
+    assert r.returncode != 0
+    assert "no gVisor build is pinned" in r.stderr, r.stderr
+
+
 def test_with_works_turns_the_profile_on_and_records_it():
-    out = dry("--with-works", NUFI_BOX_FAKE_OS="Linux")
+    out = dry("--with-works", NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_FAKE_ARCH="x86_64")
     assert "--profile works" in out
     assert "NUFI_WORKS=1" in out
     assert "WORKS_PUBLIC_URL=https://nufi.local:3003" in out
@@ -909,7 +947,7 @@ def test_with_works_turns_the_profile_on_and_records_it():
 
 
 def test_without_the_flag_the_box_is_the_box_that_ships_today():
-    out = dry(NUFI_BOX_FAKE_OS="Linux")
+    out = dry(NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_FAKE_ARCH="x86_64")
     for absent in ("--profile works", "gvisor", "runsc", "nufi-sandbox", "works install"):
         assert absent not in out, absent
     assert "NUFI_WORKS=0" in out
@@ -920,7 +958,7 @@ def test_the_works_secrets_exist_on_every_box():
     """The console registers Works as an OIDC client on every box, so the
     secret must exist whether or not Works does; a box that adds Works later
     then needs no console change."""
-    out = dry(NUFI_BOX_FAKE_OS="Linux")
+    out = dry(NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_FAKE_ARCH="x86_64")
     for key in ("WORKS_AUTH_SECRET=", "WORKS_OIDC_SECRET="):
         line = next(l for l in out.splitlines() if l.startswith(key))
         assert len(line.split("=", 1)[1]) >= 32, line
@@ -930,6 +968,6 @@ def test_the_works_secrets_exist_on_every_box():
 def test_a_rerun_keeps_works_on_without_the_flag(tmp_path):
     envf = tmp_path / ".env"
     envf.write_text("NUFI_WORKS=1\nBOX_HOST=nufi.local\nWORKS_PUBLIC_URL=https://nufi.local:3003\n")
-    out = dry(NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_ENV=str(envf))
+    out = dry(NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_FAKE_ARCH="x86_64", NUFI_BOX_ENV=str(envf))
     assert "--profile works" in out
     assert "NUFI_WORKS=1" in out
