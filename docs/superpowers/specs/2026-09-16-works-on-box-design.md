@@ -275,5 +275,9 @@ by preference.
    entrypoint drops privileges with `gosu`, which discards `group_add`; run
    the container as `1000:1000` instead and the entrypoint execs directly,
    keeping the docker group (`DOCKER_GID`, read from the socket at install).
-   Works-on-box stays Ubuntu-only: `--with-works` refuses on macOS, where
-   Docker Desktop cannot host `runsc`.
+   The caddy volume's PKI directory is 0700 root, so `works` cannot read the
+   CA off it the way a root process would; instead `works` fetches the
+   public root from Caddy's `:80` (`/nufi-box-ca.crt`) at start, through a
+   bind-mounted entrypoint (`deploy/box/works/entrypoint.sh`) — the private
+   key never enters the container. Works-on-box stays Ubuntu-only:
+   `--with-works` refuses on macOS, where Docker Desktop cannot host `runsc`.
