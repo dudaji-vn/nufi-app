@@ -30,27 +30,68 @@ UPDATE_CODELOAD_BASE="https://codeload.github.com/dudaji-vn/nufi-app/tar.gz"
 
 # _update_protect_paths — sets UPDATE_PROTECT, the rsync excludes no copy in
 # this file may cross: .env, caddy/mesh.caddy, any snapshot already sitting
-# in .previous, and — computed from where NUFI_DATA_DIR actually resolves,
-# not assumed to be named "data" — the drives, the CA and schedules.ini.
+# in .previous, the default data/ by name always, and — computed from where
+# NUFI_DATA_DIR actually resolves, not assumed to be named "data" — the
+# drives, the CA and schedules.ini.
+#
 # Anchored (a leading /): an unanchored `--exclude=data/` protects any
 # directory named "data" anywhere in the tree, which both protects too much
 # (a same-named directory two levels down that a release legitimately wants
 # to change) and, for a NUFI_DATA_DIR that is not literally $HERE/data,
-# protects nothing at all — an apply's `rsync --delete` then reads the
-# drives, the CA and the backup just taken as files the new release removed,
-# and deletes them.
+# protects nothing at all.
+#
+# Compared both as spelled (HERE and NUFI_DATA_DIR exactly as given) and as
+# resolved (`pwd -P`, every symlink followed): HERE reached through a
+# symlink while NUFI_DATA_DIR is physical, or the reverse, made the two
+# strings disagree even though they name the same place on disk, so the
+# comparison below checks every combination rather than trusting either
+# alone. NUFI_DATA_DIR resolving to $HERE itself — a misconfiguration, not
+# something an apply can protect its way around — is refused outright:
+# every file under $HERE is "the tree" to a `rsync --delete` that excludes
+# nothing, and that includes the drives, the CA, and the backup just taken.
+#
+# No trailing slash on the computed exclude: rsync's trailing-slash form
+# matches a directory only, so `data -> /mnt/drives` as a symlink (a second
+# disk for the drives) would not match `/data/` and would itself be deleted
+# as "extraneous" — not its target's contents, `-a` never follows a symlink
+# to delete through it, but the symlink entry itself. `/data` (no slash)
+# matches a directory, a symlink, or a file at that path, whichever it is.
 _update_protect_paths() {
-  UPDATE_PROTECT=(--exclude=/.env --exclude=/caddy/mesh.caddy --exclude=/.previous/)
+  UPDATE_PROTECT=(--exclude=/.env --exclude=/caddy/mesh.caddy --exclude=/.previous/ --exclude=/data)
   _dd="${NUFI_DATA_DIR:-$HERE/data}"
-  _dd_abs="$(cd "$_dd" 2>/dev/null && pwd)" || _dd_abs=""
-  if [ -n "$_dd_abs" ]; then
-    case "$_dd_abs/" in
-      "$HERE"/*)
-        _rel="${_dd_abs#$HERE/}"
-        UPDATE_PROTECT+=(--exclude="/$_rel/")
-        ;;
-    esac
-  fi
+  _here_l="$HERE"
+  _here_p="$(cd "$HERE" 2>/dev/null && pwd -P)" || _here_p="$_here_l"
+  _dd_l="$(cd "$_dd" 2>/dev/null && pwd)" || _dd_l=""
+  _dd_p="$(cd "$_dd" 2>/dev/null && pwd -P)" || _dd_p=""
+  # Nothing there yet (a data dir an update runs before install-box.sh has
+  # ever created it, which should not happen in practice -- backup_run,
+  # called before any of this, already needs it to exist).
+  [ -n "$_dd_l" ] || return 0
+
+  for _h in "$_here_l" "$_here_p"; do
+    for _d in "$_dd_l" "$_dd_p"; do
+      [ "$_h" = "$_d" ] && die "NUFI_DATA_DIR is the box directory itself; move the data under \$HERE/data (nufi-box down, move, edit .env) before updating"
+    done
+  done
+
+  _seen=""
+  for _h in "$_here_l" "$_here_p"; do
+    for _d in "$_dd_l" "$_dd_p"; do
+      case "$_d/" in
+        "$_h"/*)
+          _rel="${_d#$_h/}"
+          case "$_rel" in
+            ""|/*|../*|*/../*) continue ;;
+          esac
+          case " $_seen " in
+            *" $_rel "*) continue ;;
+          esac
+          _seen="$_seen $_rel"
+          UPDATE_PROTECT+=(--exclude="/$_rel")
+          ;;
+      esac
+    done
+  done
 }
 
 # _update_copy SRC DST [EXTRA rsync args...] — mirror SRC onto DST: files DST
@@ -319,7 +360,7 @@ update_rollback() {
   if [ "$DRY" = 1 ] || [ -d "$HERE/.previous/platform/adapters/nufi-cron" ]; then
     _update_copy "$HERE/.previous/platform/adapters/nufi-cron" "$_platform/adapters/nufi-cron"
   fi
-  rm -f "${NUFI_DATA_DIR:-$HERE/data}/updated-from"
+  run rm -f "${NUFI_DATA_DIR:-$HERE/data}/updated-from"
 
   echo "  re-tagging images"
   if [ "$DRY" = 1 ]; then
@@ -327,7 +368,12 @@ update_rollback() {
   elif [ -f "$HERE/.previous/images.txt" ]; then
     while read -r _svc _digest _tag_ref; do
       [ -n "$_svc" ] && [ -n "$_tag_ref" ] || continue
-      run docker tag "$_digest" "$_tag_ref"
+      # || not left to set -e: an image already pruned between the update
+      # and a stand-alone --rollback must not take the rest of the rollback
+      # down with it -- up -d and the doctor recheck below still matter even
+      # when one service could not be re-tagged.
+      run docker tag "$_digest" "$_tag_ref" \
+        || echo "  $_svc: could not re-tag $_tag_ref (image gone?); continuing"
     done < "$HERE/.previous/images.txt"
   fi
 

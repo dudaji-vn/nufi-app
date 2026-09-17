@@ -679,9 +679,10 @@ the resolve.
 
 One command re-runs the whole day-one path: it fetches the whole archive
 (the archive is the whole repository — pulling `deploy/box` out of it
-selectively is a GNU-tar-only trick that fails plainly on Ubuntu's stock
-`tar`, so this takes it all rather than being right on one platform and
-wrong on the other), runs `nufi-box backup` first, snapshots the current
+selectively during extraction is a bsdtar (macOS) feature; GNU tar, what
+Ubuntu actually ships, needs literal member names and fails plainly on a
+glob, so this takes the whole archive rather than being right on one
+platform and wrong on the other), runs `nufi-box backup` first, snapshots the current
 files, the routine builder and adapter, and the digest of every image
 running now to `.previous/`, applies the new `deploy/box` and the two
 directories beside it (the same three described in [Boxes without GitHub

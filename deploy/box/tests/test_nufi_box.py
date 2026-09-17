@@ -1006,6 +1006,70 @@ def test_a_custom_data_dir_under_here_survives_apply_and_rollback(tmp_path):
     assert (here / "oldfile.txt").read_text() == "what was here before\n"
 
 
+def test_a_data_dir_that_is_the_box_directory_itself_refuses(tmp_path):
+    """A misconfiguration an apply cannot protect its way around: every file
+    under $HERE is "the tree" to an exclude list that ends up excluding
+    nothing. Refused outright, before anything is copied."""
+    here = tmp_path / "box"
+    here.mkdir()
+    src = tmp_path / "release"
+    src.mkdir()
+    (src / "newfile.txt").write_text("new\n")
+    r = _run_update_copy(here, here, src, here)
+    assert r.returncode == 2
+    assert "NUFI_DATA_DIR is the box directory itself" in r.stderr
+    assert not (here / "newfile.txt").exists(), "nothing on the box was changed"
+
+
+def test_here_reached_through_a_symlink_still_protects_the_data_dir(tmp_path):
+    """HERE and NUFI_DATA_DIR spelled through different symlink chains to
+    the same disk location must not read as unrelated paths — the
+    regression this closes: the old code compared strings, not places."""
+    real = tmp_path / "real"
+    (real / "data").mkdir(parents=True)
+    (real / "data" / "drives.txt").write_text("the department's own documents\n")
+    link = tmp_path / "link"
+    link.symlink_to(real)
+    src = tmp_path / "release"
+    src.mkdir()
+    (src / "newfile.txt").write_text("new\n")
+
+    r = _run_update_copy(link, real / "data", src, link)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert (real / "data" / "drives.txt").read_text() == "the department's own documents\n"
+    assert (link / "newfile.txt").read_text() == "new\n"
+
+
+def test_a_data_dir_symlink_to_another_disk_survives_apply_and_rollback(tmp_path):
+    """A trailing-slash exclude (rsync's directory-only form) does not match
+    a symlink entry, so `data -> /mnt/drives` (a second disk mounted for the
+    drives) was deleted outright by the old pattern; the fix drops the
+    trailing slash so the symlink itself matches too."""
+    here = tmp_path / "box"
+    here.mkdir()
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / "drives.txt").write_text("the department's own documents\n")
+    (here / "data").symlink_to(elsewhere)
+    src = tmp_path / "release"
+    src.mkdir()
+    (src / "newfile.txt").write_text("new\n")
+
+    r = _run_update_copy(here, here / "data", src, here)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert (here / "data").is_symlink(), "the symlink itself must survive, not just its target"
+    assert (elsewhere / "drives.txt").read_text() == "the department's own documents\n"
+
+    # And the same holds copying the other direction, as a rollback does.
+    src2 = tmp_path / "previous"
+    src2.mkdir()
+    (src2 / "oldfile.txt").write_text("old\n")
+    r2 = _run_update_copy(here, here / "data", src2, here)
+    assert r2.returncode == 0, r2.stdout + r2.stderr
+    assert (here / "data").is_symlink()
+    assert (elsewhere / "drives.txt").read_text() == "the department's own documents\n"
+
+
 def _update_wrap_nufi_box(box_dir, doctor_exit):
     """Turn box_dir/nufi-box into a wrapper that answers `doctor` with
     doctor_exit and delegates every other verb to the real script (renamed
@@ -1124,6 +1188,7 @@ def _update_stub_path(tmp_path, images_json):
         "fi\n"
         'case "$1" in\n'
         '  image) printf "%s\\n" "$STUB_REPO_DIGEST"; exit 0 ;;\n'
+        '  tag) [ "$STUB_TAG_FAILS" = "1" ] && exit 1; exit 0 ;;\n'
         "  *) exit 0 ;;\n"
         "esac\n"
     )
@@ -1149,6 +1214,20 @@ def _run_update(here, bin_, log, images_json_path, repo_digest, tarball, *extra_
     e.pop("NUFI_BOX_DRY_RUN", None)
     e.pop("NUFI_BOX_ENV", None)
     return subprocess.run([BASH, str(here / "nufi-box"), "update", "--yes", *extra_args],
+                          cwd=here, env=e, capture_output=True, text=True)
+
+
+def _run_rollback(here, bin_, log, tag_fails=False):
+    """Standalone `nufi-box update --rollback` against a HERE that already
+    has a completed .previous/ (a prior _run_update call), independent of
+    another update having just failed."""
+    log.write_text("")
+    e = dict(os.environ, PATH="%s:%s" % (bin_, os.environ.get("PATH", "/usr/bin:/bin")),
+             NUFI_BOX_FAKE_OS="Darwin", STUB_LOG=str(log),
+             STUB_TAG_FAILS="1" if tag_fails else "0")
+    e.pop("NUFI_BOX_DRY_RUN", None)
+    e.pop("NUFI_BOX_ENV", None)
+    return subprocess.run([BASH, str(here / "nufi-box"), "update", "--rollback"],
                           cwd=here, env=e, capture_output=True, text=True)
 
 
@@ -1251,3 +1330,53 @@ def test_update_rolls_back_when_the_installer_itself_fails(tmp_path):
     calls = log.read_text()
     assert "up -d" in calls
     assert (here / "VERSION").read_text() == "good-v1\n"
+
+
+def test_rollback_survives_a_re_tag_that_fails(tmp_path):
+    """A `docker tag` failure (the image already pruned between the update
+    and a stand-alone --rollback) used to be a bare statement inside a
+    `while read` loop -- set -e killed the rollback right there, before
+    mesh_caddy_refresh, `up -d`, or the doctor recheck ever ran. One failing
+    service must not take the rest of the rollback down with it."""
+    here = _update_here(tmp_path)
+    bin_, log, images_json_path = _update_stub_path(
+        tmp_path, '[{"Repository":"ghcr.io/dudaji-vn/nufichat","Tag":"main","ID":"sha256:cfgaaa"}]')
+
+    good_root = tmp_path / "repo-good"; good_root.mkdir()
+    good_tar = _update_fake_release(good_root, "nufi-app-goodsha", doctor_exit=0, version="good-v1")
+    r = _run_update(here, bin_, log, images_json_path,
+                    "ghcr.io/dudaji-vn/nufichat@sha256:realdigest111", good_tar)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+    r = _run_rollback(here, bin_, log, tag_fails=True)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "could not re-tag" in r.stdout
+    assert "Rolled back" in r.stdout
+    calls = log.read_text()
+    assert "up -d" in calls
+
+
+def test_dry_run_rollback_does_not_delete_the_real_updated_from_record(tmp_path):
+    """`rm -f` on updated-from was a bare statement, not `run`-gated -- a
+    --dry-run rollback (meant to only print a plan) deleted the real record
+    of what the box last updated to."""
+    here = _update_here(tmp_path)
+    bin_, log, images_json_path = _update_stub_path(
+        tmp_path, '[{"Repository":"ghcr.io/dudaji-vn/nufichat","Tag":"main","ID":"sha256:cfgaaa"}]')
+
+    good_root = tmp_path / "repo-good"; good_root.mkdir()
+    good_tar = _update_fake_release(good_root, "nufi-app-goodsha", doctor_exit=0, version="good-v1")
+    r = _run_update(here, bin_, log, images_json_path,
+                    "ghcr.io/dudaji-vn/nufichat@sha256:realdigest111", good_tar)
+    assert r.returncode == 0, r.stdout + r.stderr
+    updated_from = here / "data" / "updated-from"
+    assert updated_from.exists()
+    before = updated_from.read_text()
+
+    e = dict(os.environ, NUFI_BOX_DRY_RUN="1")
+    e.pop("NUFI_BOX_ENV", None)
+    r = subprocess.run([BASH, str(here / "nufi-box"), "update", "--rollback"],
+                       cwd=here, env=e, capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert updated_from.exists(), "a --dry-run must not delete the real record"
+    assert updated_from.read_text() == before

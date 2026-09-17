@@ -122,11 +122,12 @@ instead of guessing.
 Then: it fetches the whole archive (deliberately — pulling just `deploy/box`
 out of it is a trick that only works on macOS's `tar`, and fails plainly on
 every Ubuntu box), backs up the box first (`nufi-box backup`), snapshots the
-current files — `deploy/box`, the two directories beside it it depends on,
+current files — `deploy/box`, the two directories it depends on beside it,
 and the digest of every image running now — applies the new ones, and
 re-runs `install-box.sh` — the same installer day one used, which already
 keeps `.env` and every answer and secret, so an update never re-asks the
-four questions.
+four questions. Each run downloads about 185 MB and unpacks about 340 MB in
+a temporary directory, removed once the update finishes either way.
 
 Then it runs `nufi-box doctor`. If that passes, you are done. If it fails —
 or if the installer itself fails, or the file copy does — `update` rolls

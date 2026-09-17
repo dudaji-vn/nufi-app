@@ -31,10 +31,10 @@ cd nufi-app-main/deploy/box
 The archive is the whole repository, about 200 MB; the box needs `deploy/box`
 and two folders beside it (`deploy/platform/scenarios`,
 `deploy/platform/adapters/nufi-cron`), which the installer finds by their
-relative paths — pulling the folders out selectively is a GNU-tar-only trick
-(`tar --wildcards`) that fails plainly on Ubuntu's stock `tar`, so this fetch
-takes the whole thing rather than being right on one platform and wrong on
-the other.
+relative paths — pulling the folders out selectively during extraction is a
+bsdtar (macOS) feature; GNU tar, what Ubuntu actually ships, needs literal
+member names and fails plainly on a glob, so this fetch takes the whole
+archive rather than being right on one platform and wrong on the other.
 
 ## Install
 
