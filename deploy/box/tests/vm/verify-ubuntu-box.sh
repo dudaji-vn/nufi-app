@@ -143,3 +143,27 @@ printf '%s\n' "$CITED" | sed 's/^ *- /    /'
 say "Answers (the model's, verbatim — judge verdicts included)"
 cat "$WORK/evidence/box.md"
 printf '\n  the box works: TLS from the Mac, drive → embedded=True, and a cited answer\n'
+
+# ---------- 4. Works, on a box installed with it ---------------------------------
+# The probe's own test, performed on the product's own pieces: the runtime the
+# installer registered, the image it pinned, the network the proxy guards --
+# `uname -r` inside a sandbox-shaped container says gVisor, not the host. Then
+# doctor, which asks Works itself whether the registration holds. An agent run
+# end to end is not asserted here: it needs a model that can drive a coding
+# harness, and the VM installs the smallest one the box offers.
+if vm 'grep -qx NUFI_WORKS=1 $HOME/deploy/box/.env'; then
+  say "Works: a sandbox-shaped container under runsc on the sandbox network"
+  IMAGE="$(vm 'sed -n "s/^WORKS_SANDBOX_IMAGE=//p" $HOME/deploy/box/.env')"
+  [ -n "$IMAGE" ] || die "no WORKS_SANDBOX_IMAGE in the box's .env"
+  KERNEL="$(vm "sg docker -c 'docker run --rm --runtime=runsc --init --read-only --cap-drop ALL --network works-sandbox $IMAGE uname -r'")"
+  say "kernel inside the sandbox: $KERNEL (host: $(vm 'uname -r'))"
+  case "$KERNEL" in *gvisor*) ;; *) die "the sandbox reports the host kernel ($KERNEL); runsc is not in effect" ;; esac
+  say "Works answers on :3003 and doctor agrees"
+  CURL=(curl -sS --max-time 30 --cacert "$WORK/ca.crt" --resolve "nufi.local:3003:$IP")
+  CODE=$("${CURL[@]}" -o /dev/null -w '%{http_code}' "https://nufi.local:3003/api/health")
+  [ "$CODE" = 200 ] || die "https://nufi.local:3003/api/health answered $CODE"
+  vm 'cd $HOME/deploy/box && sg docker -c "./nufi-box doctor"' | tee "$WORK/doctor.txt"
+  grep -q "ok  Works is registered" "$WORK/doctor.txt" || die "doctor does not report Works as registered"
+else
+  say "Works: not installed on this box (WITH_WORKS=1 on run-ubuntu-install.sh to include it)"
+fi

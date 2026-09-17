@@ -6,6 +6,7 @@
 #              [--no-pull] [--emulate-amd64] [--no-trust]
 #              [--registry HOST[:PORT][/path]]
 #              [--mesh URL --auth-key KEY [--mesh-api-key KEY]]
+#              [--with-works]
 #
 # Asks four questions (box name, admin email, departments, inference profile),
 # generates every secret here, renders the LiteLLM config, starts the stack,
@@ -29,6 +30,8 @@
 #                    the coordinator's headscale API key, so `nufi-box
 #                    invite | members | revoke` can talk to it. Optional:
 #                    without it the box joins but cannot invite anyone.
+#   --with-works     NUFI Works on this box (Ubuntu only): installs gVisor as a
+#                    Docker runtime and starts Works behind https://<box>:3003.
 #
 # NUFI_BOX_COMPOSE_EXTRA — space-separated extra compose files to layer last,
 # for a machine that needs a site-local tweak (a port map when something else
@@ -42,7 +45,7 @@ warn() { printf '\033[1;33m !!\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31m xx\033[0m %s\n' "$*" >&2; exit 1; }
 run()  { if [ "$DRY" = 1 ]; then printf '  $ %s\n' "$*"; else "$@"; fi; }
 
-YES=0; DRY=0; SRC=""; NO_PULL=0; NO_TRUST=0
+YES=0; DRY=0; SRC=""; NO_PULL=0; NO_TRUST=0; WITH_WORKS=0
 # The flags this run was given, requoted, so the docker-group re-exec in the
 # Linux prerequisites below can repeat this command exactly. Captured here
 # because the loop that follows consumes "$@".
@@ -54,6 +57,7 @@ while [ $# -gt 0 ]; do
     --dry-run) DRY=1 ;;
     --no-pull) NO_PULL=1 ;;
     --no-trust) NO_TRUST=1 ;;
+    --with-works) WITH_WORKS=1 ;;
     --emulate-amd64) NUFI_EMULATE_AMD64=1 ;;
     # `shift` on a bare --src would fail under `set -e` and exit 1 with no word
     # of explanation, so check for the value before consuming it.
@@ -67,7 +71,7 @@ while [ $# -gt 0 ]; do
     --auth-key=*) MESH_AUTH_KEY="${1#--auth-key=}"; [ -n "$MESH_AUTH_KEY" ] || die "--auth-key needs a value" ;;
     --mesh-api-key) [ $# -ge 2 ] || die "--mesh-api-key needs a value"; MESH_API_KEY="$2"; shift ;;
     --mesh-api-key=*) MESH_API_KEY="${1#--mesh-api-key=}"; [ -n "$MESH_API_KEY" ] || die "--mesh-api-key needs a value" ;;
-    -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,35p' "$0"; exit 0 ;;
   esac
   shift
 done
@@ -84,7 +88,7 @@ gen_fernet() { openssl rand -base64 32 | tr '+/' '-_'; }
 
 # ---------- where am I --------------------------------------------------------
 OS="${NUFI_BOX_FAKE_OS:-$(uname -s)}"
-ARCH="$(uname -m)"
+ARCH="${NUFI_BOX_FAKE_ARCH:-$(uname -m)}"  # nothing but tests ever sets it
 HERE="$(cd "$(dirname "$0")" && pwd)"
 BOX_HOME="${SRC:-$HERE}"
 cd "$BOX_HOME"
@@ -105,6 +109,14 @@ has_docker() {
 
 # ---------- prerequisites ------------------------------------------------------
 say "Checking prerequisites on $OS/$ARCH"
+# Works on the box means agent code in gVisor sandboxes, and gVisor is a Docker
+# runtime -- something Docker Desktop's VM-hosted daemon cannot be given. Refuse
+# before a byte is written, and before the Darwin branch below installs
+# anything -- OrbStack and Ollama must not go on a machine the flag has
+# already rejected. Say so in the words the person will search for.
+if [ "$WITH_WORKS" = 1 ] && [ "$OS" != "Linux" ]; then
+  die "--with-works needs Ubuntu: Works sandboxes run under gVisor, which Docker Desktop cannot host. Install the box without it here, or with it on the Linux machine that will be the box."
+fi
 have openssl || die "openssl is required"
 if [ "$DRY" = 0 ]; then
   have curl || die "curl is required"
@@ -303,6 +315,7 @@ sec POSTGRES_PASSWORD "gen_hex 16"; sec MONGO_PASSWORD "gen_hex 16"
 sec ADMIN_PASSWORD "gen_hex 8"
 sec LANGFLOW_SECRET_KEY "gen_fernet"; sec STUDIO_SUPERUSER_PASSWORD "gen_hex 12"
 sec ADMIN_SESSION_SECRET "gen_hex 32"; sec SAMBA_PASSWORD "gen_hex 8"
+sec WORKS_AUTH_SECRET "gen_hex 32"; sec WORKS_OIDC_SECRET "gen_hex 32"
 # The ingest daemon runs as the admin by default. Whoever creates a department
 # team owns it, and the daemon is the only thing that ever creates one — so if
 # it runs as its own bot account, the admin logs into a fresh box and sees no
@@ -314,6 +327,18 @@ sec ADMIN_SESSION_SECRET "gen_hex 32"; sec SAMBA_PASSWORD "gen_hex 8"
 INGEST_EMAIL="${INGEST_EMAIL:-$ADMIN_EMAIL}"
 if [ "$INGEST_EMAIL" = "$ADMIN_EMAIL" ]; then INGEST_PASSWORD="$ADMIN_PASSWORD"
 else sec INGEST_PASSWORD "gen_hex 16"; fi
+# Works: on when this run asked for it, or when a previous run did (a re-run
+# without the flag must not switch a department's Works off).
+NUFI_WORKS="${NUFI_WORKS:-0}"; [ "$WITH_WORKS" = 1 ] && NUFI_WORKS=1
+if [ "$NUFI_WORKS" = 1 ]; then
+  WORKS_PUBLIC_URL="https://$BOX_HOST:3003"
+  # The gid that owns the socket, so the works container's uid 1000 can open
+  # it. Read from the socket itself: the docker group's number is not the
+  # same on every distribution.
+  if [ "$DRY" = 1 ]; then DOCKER_GID="${DOCKER_GID:-999}"; else DOCKER_GID="$(stat -c %g /var/run/docker.sock)"; fi
+else
+  WORKS_PUBLIC_URL=""
+fi
 # Compose does NOT expand \n inside a double-quoted .env value (verified with
 # `docker compose config` on 2.39.2): X="a\nb" renders as the four characters
 # a\nb, while a real multi-line double-quoted value renders with a real
@@ -365,6 +390,16 @@ NUFI_LITELLM_TAG=${NUFI_LITELLM_TAG:-main}
 NUFI_INGEST_TAG=${NUFI_INGEST_TAG:-main}
 NUFI_WORKS_EGRESS_TAG=${NUFI_WORKS_EGRESS_TAG:-main}
 WORKS_EGRESS_ALLOW=${WORKS_EGRESS_ALLOW:-}
+NUFI_WORKS=$NUFI_WORKS
+NUFI_WORKS_TAG=${NUFI_WORKS_TAG:-main}
+NUFI_SANDBOX_TAG=${NUFI_SANDBOX_TAG:-main}
+WORKS_AUTH_SECRET=$WORKS_AUTH_SECRET
+WORKS_OIDC_SECRET=$WORKS_OIDC_SECRET
+WORKS_PUBLIC_URL=$WORKS_PUBLIC_URL
+WORKS_SANDBOX_IMAGE=${WORKS_SANDBOX_IMAGE:-}
+WORKS_MODEL_KEY=${WORKS_MODEL_KEY:-}
+WORKS_BOX_KEY=${WORKS_BOX_KEY:-}
+DOCKER_GID=${DOCKER_GID:-}
 NUFI_EMULATE_AMD64=$NUFI_EMULATE_AMD64
 NUFI_RAG_IMAGE=${NUFI_RAG_IMAGE:-ghcr.io/danny-avila/librechat-rag-api-dev-lite@sha256:f9f34c8ed6884b0ff9b17387e6174fed737dba29f21622ecb75604d82bc47bf8}
 NUFI_SAMBA_IMAGE=${NUFI_SAMBA_IMAGE:-ghcr.io/servercontainers/samba:a3.24.1-s4.23.8-r0}
@@ -484,6 +519,79 @@ PYEOF
   esac
 fi
 
+# ---------- gVisor -----------------------------------------------------------------
+# The kernel boundary every Works sandbox runs behind. runsc is one static
+# binary registered with the daemon as a runtime; Docker calls it directly and
+# needs no containerd shim (the gvisor-probe workflow found the shim is not
+# even published at the path the docs name). Pinned to a release and its
+# checksum: a sandbox runtime that tracks "latest" is a boundary that changes
+# under the box without a commit.
+GVISOR_RELEASE=20260907
+gvisor_sha() { case "$1" in
+  x86_64)  echo c38cc38ee709d862501e55eebd99f5bd105899cbc7cf3fa1f620493fa127364c5b74c7361d231bd8b9523be48918ea3820dd40b28c61c2b2cb644edbf10261fb ;;
+  aarch64) echo fce113699d2e722785e0f66718def9b287cfeef92bd5694da5830ec0c2107d26da94d050e9e6ce68ae65212c437b4eb8f64b67b34add7b04637f4dd12befa2f4 ;;
+  *) echo "" ;; esac; }
+if [ "$NUFI_WORKS" = 1 ]; then
+  say "Installing gVisor $GVISOR_RELEASE (runsc) as a Docker runtime"
+  GVISOR_ARCH="$ARCH"; [ "$ARCH" = "arm64" ] && GVISOR_ARCH=aarch64
+  GVISOR_URL="https://storage.googleapis.com/gvisor/releases/release/$GVISOR_RELEASE/$GVISOR_ARCH/gvisor.tar.bz2"
+  GVISOR_SHA="$(gvisor_sha "$GVISOR_ARCH")"
+  [ -n "$GVISOR_SHA" ] || die "no gVisor build is pinned for $GVISOR_ARCH"
+  # Under `pipefail`, `cmd | grep -q pattern` reports grep's exit status, not
+  # cmd's -- a `runsc --version` that itself failed would still read as "not
+  # installed" rather than an error, and a hung `docker info` would look the
+  # same as "no runsc runtime". Capture first, then test the string: the
+  # repo's own rule (yq | grep -q under pipefail returns 141 on a match).
+  # Not in a dry run: the plan is printed, nothing is asked of the daemon.
+  _runsc_v=""; _rt=""
+  if [ "$DRY" = 0 ]; then
+    _runsc_v="$(/usr/local/bin/runsc --version 2>/dev/null || true)"
+    _rt="$(docker info --format '{{range $k,$v := .Runtimes}}{{$k}} {{end}}' 2>/dev/null || true)"
+  fi
+  if [ "$DRY" = 1 ]; then
+    printf '  $ curl -fsSL -o gvisor.tar.bz2 %s\n' "$GVISOR_URL"
+    printf '  $ echo "%s  gvisor.tar.bz2" | sha512sum -c -\n' "$GVISOR_SHA"
+    printf '  $ tar -xjf gvisor.tar.bz2 runsc && sudo install -m 0755 runsc /usr/local/bin/runsc\n'
+    printf '  $ python3 - <<PY   # merge into /etc/docker/daemon.json\n{"runtimes": {"runsc": {"path": "/usr/local/bin/runsc"}}}\nPY\n'
+    printf '  $ sudo systemctl restart docker\n'
+  elif case "$_runsc_v" in *"release-$GVISOR_RELEASE"*) true ;; *) false ;; esac \
+       && case " $_rt " in *" runsc "*) true ;; *) false ;; esac; then
+    ok "runsc $GVISOR_RELEASE is already a Docker runtime"
+  else
+    have bzip2 || die "bzip2 is required to unpack gVisor: sudo apt-get install -y bzip2"
+    _gv="$(mktemp -d)"
+    # A downloaded-but-unverified tarball is 165 MB left behind on every
+    # early exit below (a bad checksum, an interrupted install) unless
+    # cleanup runs regardless of how this scope is left.
+    trap 'rm -rf "$_gv"' EXIT
+    curl -fsSL -o "$_gv/gvisor.tar.bz2" "$GVISOR_URL" || die "could not download $GVISOR_URL"
+    ( cd "$_gv" && echo "$GVISOR_SHA  gvisor.tar.bz2" | sha512sum -c - >/dev/null ) \
+      || die "gvisor.tar.bz2 does not match the pinned checksum; not installing it"
+    tar -xjf "$_gv/gvisor.tar.bz2" -C "$_gv" runsc
+    sudo install -m 0755 "$_gv/runsc" /usr/local/bin/runsc
+    sudo python3 - /etc/docker/daemon.json <<'PYEOF'
+import json, os, sys
+path = sys.argv[1]
+try:
+    with open(path) as f:
+        cfg = json.load(f)
+except (FileNotFoundError, ValueError):
+    cfg = {}
+os.makedirs(os.path.dirname(path), exist_ok=True)
+cfg.setdefault("runtimes", {})["runsc"] = {"path": "/usr/local/bin/runsc"}
+with open(path, "w") as f:
+    json.dump(cfg, f, indent=2)
+    f.write("\n")
+PYEOF
+    sudo systemctl restart docker || die "could not restart docker to load the runsc runtime"
+    _rt_after="$(docker info --format '{{range $k,$v := .Runtimes}}{{$k}} {{end}}' 2>/dev/null || true)"
+    case " $_rt_after " in
+      *" runsc "*) ok "runsc $GVISOR_RELEASE is a Docker runtime" ;;
+      *) die "docker does not list runsc after the restart; check /etc/docker/daemon.json" ;;
+    esac
+  fi
+fi
+
 # ---------- rendered files -----------------------------------------------------
 say "Rendering litellm/config.yaml and the drive folders"
 if [ "$DRY" = 1 ]; then
@@ -555,6 +663,7 @@ if [ "$OS" = "Linux" ]; then
   # its image too. macOS gets no container: Docker Desktop's host network is
   # the Linux VM's, so it could never give the Mac a mesh address.
   [ -n "$MESH_SERVER_URL" ] && COMPOSE="$COMPOSE -f docker-compose.mesh.yml --profile mesh"
+  [ "$NUFI_WORKS" = 1 ] && COMPOSE="$COMPOSE --profile works"
 fi
 for f in ${NUFI_BOX_COMPOSE_EXTRA:-}; do
   [ -f "$f" ] || die "NUFI_BOX_COMPOSE_EXTRA: no such file: $f"
@@ -577,6 +686,30 @@ else
   done
   [ "$pull_ok" = 1 ] || die "could not pull the images after 3 attempts; check the network (and, for a --registry box, that the registry is up) and re-run"
 fi
+
+# The image a sandbox runs in, pulled with the stack and then pinned by digest
+# in .env: the environment `nufi-box works install` registers must name an
+# immutable reference (the provider refuses anything else), and a tag is not
+# one.
+if [ "$NUFI_WORKS" = 1 ] && [ "$NO_PULL" = 0 ]; then
+  SANDBOX_REF="${NUFI_REGISTRY:-ghcr.io/dudaji-vn}/nufi-sandbox:${NUFI_SANDBOX_TAG:-main}"
+  run docker pull "$SANDBOX_REF" || die "could not pull $SANDBOX_REF"
+  if [ "$DRY" = 1 ]; then
+    printf '  $ WORKS_SANDBOX_IMAGE=...  # the digest under %s\n' "${SANDBOX_REF%:*}"
+  else
+    # `docker image inspect --format {{index .RepoDigests 0}}` picks whichever
+    # digest sorts first -- on a box first installed from ghcr.io and later
+    # re-run with --registry registry.lan:5000, the ghcr digest can sort
+    # ahead of the LAN one, and .env would then name an image this box can no
+    # longer pull. Take the digest under the ref's own repository instead.
+    _ds="$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$SANDBOX_REF" 2>/dev/null || true)"
+    WORKS_SANDBOX_IMAGE="$(printf '%s\n' "$_ds" | grep "^${SANDBOX_REF%:*}@" | head -1 || true)"
+    [ -n "$WORKS_SANDBOX_IMAGE" ] || die "$SANDBOX_REF has no digest under its own repository after the pull"
+    . "$BOX_HOME/lib/envfile.sh"
+    envfile_set "$NUFI_BOX_ENV" WORKS_SANDBOX_IMAGE "$WORKS_SANDBOX_IMAGE"
+  fi
+fi
+
 run $COMPOSE up -d
 if [ "$DRY" = 0 ]; then
   say "Waiting for the app (up to 5 minutes)"
@@ -703,6 +836,34 @@ else
   "$BOX_HOME/nufi-box" flows install || warn "the routines are not in Studio yet; run: nufi-box flows install"
 fi
 
+# ---------- Works ---------------------------------------------------------------------
+# Same delegation as the routines: registering the Docker environment is
+# day-two work too (`nufi-box works install` re-runs after an upgrade), and two
+# copies of "sign in, claim, install the provider, register" would drift.
+if [ "$NUFI_WORKS" = 1 ]; then
+  say "Registering the sandbox environment in Works"
+  if [ "$DRY" = 1 ]; then
+    printf '  $ nufi-box works install\n'
+    # The delegated dry run needs a WORKS_SANDBOX_IMAGE already in .env --
+    # works_install's own guard refuses without one -- and a fresh box's dry
+    # run has never pulled a real digest (that happens for real only outside
+    # --dry-run, above). A placeholder here is seen only by the printed plan,
+    # so the delegated command reaches its own compose-run/register_works.py
+    # line instead of dying on the same guard a real box hits only without
+    # --with-works.
+    # No < or > here: this value is written into a .env file that gets
+    # dot-sourced as shell (nufi-box's `. "$ENVF"`), and either character is
+    # an I/O redirection to the parser, not text.
+    WORKS_SANDBOX_IMAGE="${WORKS_SANDBOX_IMAGE:-${SANDBOX_REF:-ghcr.io/dudaji-vn/nufi-sandbox}@sha256:dryrun}"
+    _works_env="$(mktemp)"
+    render_env > "$_works_env"
+    NUFI_BOX_DRY_RUN=1 NUFI_BOX_FAKE_OS="$OS" NUFI_BOX_ENV="$_works_env" "$BOX_HOME/nufi-box" works install || true
+    rm -f "$_works_env"
+  else
+    "$BOX_HOME/nufi-box" works install || warn "Works is up but not registered yet; run: nufi-box works install"
+  fi
+fi
+
 # ---------- the mesh ------------------------------------------------------------------
 # Delegate to `nufi-box mesh up` rather than repeating it: waiting for the
 # address, writing BOX_MESH_*, rendering caddy/mesh.caddy and reloading Caddy
@@ -741,6 +902,7 @@ cat <<EOF
                through the app gets their own copy of each. A routine stops at
                2048 tokens; nothing cancels a run whose caller has gone, so run
                them on qwen2.5:1.5b or larger (README §5).
+$( [ "$NUFI_WORKS" = 1 ] && printf '\n  Works:       https://%s:3003  → enter it from the Agents page as %s.\n               Every agent run lands in a gVisor sandbox with no network\n               except the box gateway (README "NUFI Works on the box").\n' "$BOX_HOST" "$ADMIN_EMAIL" )
 
   Day two:     nufi-box status | logs | drive add <name> | ca-cert | doctor
                nufi-box flows install | flows list

@@ -28,7 +28,7 @@ def test_an_address_without_sni_still_gets_a_certificate():
 
 
 def test_every_product_port_is_served():
-    for port in (3080, 3001, 3002, 7860, 4000):
+    for port in (3080, 3001, 3002, 3003, 7860, 4000):
         assert re.search(rf"^\{{\$BOX_HOST\}}:{port}, ", CADDYFILE, re.M), port
     assert ":80 {" in CADDYFILE
 
@@ -112,17 +112,17 @@ def test_the_caddyfile_imports_the_generated_mesh_sites():
     assert "import caddy/mesh*.caddy" in CADDYFILE
 
 
-def test_mesh_caddy_serves_the_five_product_ports_on_both_mesh_addresses(tmp_path):
+def test_mesh_caddy_serves_the_six_product_ports_on_both_mesh_addresses(tmp_path):
     text = render_mesh_caddy(tmp_path / "mesh.caddy")
-    for port in (3080, 3001, 3002, 7860, 4000):
+    for port in (3080, 3001, 3002, 3003, 7860, 4000):
         line = re.search(rf"^{re.escape(MESH_HOST)}:{port}, {re.escape(MESH_IP)}:{port} \{{$",
                          text, re.M)
         assert line, f"no site block for port {port} in:\n{text}"
-    # Five blocks and no more. In particular no :80 block: the Caddyfile's own
+    # Six blocks and no more. In particular no :80 block: the Caddyfile's own
     # plain-HTTP site already answers on the mesh name (see the test below), so
-    # a sixth block here would be a second copy of the landing page that could
+    # a seventh block here would be a second copy of the landing page that could
     # drift from the first.
-    assert len(re.findall(r"^\S.*\{$", text, re.M)) == 5, text
+    assert len(re.findall(r"^\S.*\{$", text, re.M)) == 6, text
     assert f"{MESH_HOST}:80" not in text, text
     assert "{$BOX_HOST}" not in text and "{$BOX_MESH_HOST}" not in text
 
@@ -159,7 +159,7 @@ def test_the_plain_http_site_answers_for_every_host_including_the_mesh_name():
 # older code keeps its old render forever. Task 6 rendered `import landing` and
 # its fix round then deleted the `(landing)` snippet from the Caddyfile — the
 # deletion was right, the leftover render was not, and the P2 acceptance found
-# the box crash-looping Caddy with all six ports down. These pin the upgrade
+# the box crash-looping Caddy with all seven ports down. These pin the upgrade
 # path itself: a stale generated file already on disk when the box starts.
 
 # The shape Task 6 actually left on the VM box (a0090190e), abridged to the

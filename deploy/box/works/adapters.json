@@ -1,0 +1,38 @@
+[
+  {
+    "adapterType": "claude_local",
+    "enabled": true,
+    "envKeys": ["ANTHROPIC_API_KEY"],
+    "allowFqdns": ["litellm-proxy"],
+    "probeCommand": ["claude", "--version"],
+    "defaultEnv": { "ANTHROPIC_BASE_URL": "http://litellm-proxy:4000" }
+  },
+  {
+    "adapterType": "codex_local",
+    "enabled": true,
+    "envKeys": ["OPENAI_API_KEY"],
+    "allowFqdns": ["litellm-proxy"],
+    "probeCommand": ["codex", "--version"],
+    "defaultEnv": { "OPENAI_BASE_URL": "http://litellm-proxy:4000/v1" }
+  },
+  {
+    "adapterType": "opencode_local",
+    "enabled": true,
+    "envKeys": ["ANTHROPIC_API_KEY", "OPENAI_API_KEY"],
+    "allowFqdns": ["litellm-proxy"],
+    "probeCommand": ["opencode", "--version"],
+    "defaultEnv": {
+      "ANTHROPIC_BASE_URL": "http://litellm-proxy:4000",
+      "OPENAI_BASE_URL": "http://litellm-proxy:4000/v1"
+    }
+  },
+  {
+    "adapterType": "pi_local",
+    "enabled": false,
+    "allowFqdns": ["litellm-proxy"]
+  },
+  {
+    "adapterType": "nufi_agent",
+    "enabled": true
+  }
+]

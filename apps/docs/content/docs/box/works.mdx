@@ -1,0 +1,89 @@
+---
+title: Works on the box
+description: NUFI Works puts a coding-agent workspace on the box, Ubuntu only, with every run landing in a gVisor sandbox behind an egress proxy with one exit.
+---
+
+`install-box.sh --with-works` adds **NUFI Works** to the box at
+`https://<box>:3003`. It is reached by name, not by IP: Works' private-hostname
+guard accepts only its own name and loopback, and the console handoff is what
+carries an authenticated sign-in there, so it is entered the same way Studio
+is — from the Agents page. A cold visit to the address still works; it just
+lands on Works' own login page, with a button to sign in through NuFi rather
+than an already-authenticated session.
+
+## What a run is
+
+Every agent run on Works lands inside a **gVisor** sandbox: a container
+under the `runsc` runtime, on the `works-sandbox` network, with exactly one
+way out — the same `works-egress` proxy the rest of this section describes.
+It allows the model gateway and refuses everything else with a 403.
+
+## Installing
+
+```bash
+./install-box.sh --with-works
+```
+
+Ubuntu only. The installer refuses outright on macOS, where Docker Desktop
+cannot host `runsc`. When it is there, the closing banner names it:
+
+```
+Works:       https://<box>:3003  → enter it from the Agents page as <admin>.
+             Every agent run lands in a gVisor sandbox with no network
+             except the box gateway (README "NUFI Works on the box").
+```
+
+## First sign-in
+
+The install already did the paperwork: `nufi-box works install` signs in as
+the box admin and claims the instance, so that account lands as **instance
+admin** and **owner of the box's company**, with the sandbox environment
+already registered and made the default. The first person into Works has to
+be the box admin, from the Agents page — nobody else is registered yet.
+Everyone after that is invited from inside Works itself.
+
+`WORKS_BOX_KEY` in `.env` is the box admin's own Works API key (instance
+admin), kept at file mode 0600 beside the other secrets. The LiteLLM virtual
+key minted for a sandbox (`WORKS_MODEL_KEY`) carries no budget of its own —
+the box's usage limits apply through the gateway's own policy.
+
+## Reaching past the gateway
+
+A sandbox can otherwise reach only Works itself and the model gateway.
+Anything else a run needs — a package index, say — has to be named in
+`.env`:
+
+```
+WORKS_EGRESS_ALLOW=pypi.org,files.pythonhosted.org
+```
+
+Bare hostnames, comma-separated. Everything not on the list gets a 403, logged
+by hostname.
+
+## Checking it
+
+```bash
+./nufi-box doctor          # runtime, socket group, server, registration
+./nufi-box works status    # asks Works itself whether the registration holds
+```
+
+Run `nufi-box works install` again after an upgrade, or if the registration
+ever drifts — it is written to converge, not to fail on a second run.
+
+## Honest limits
+
+- **x86 only.** The Works image is published for `amd64`, so a Works box is
+  an x86 Ubuntu machine — not a Mac, and not Ubuntu on Arm.
+- **The first sign-in has to be the box admin, from the Agents page.** The
+  install registered that one account as instance admin and company owner;
+  everyone else waits to be invited from inside Works.
+- **A NuFi knowledge agent's gateway is per-agent config, not a box
+  default.** Point its `gatewayUrl` at `http://litellm-proxy:4000/v1` and
+  give it a model the box actually serves.
+- **The smallest box models cannot drive a coding harness.** Hiring codex,
+  claude or opencode as a Works agent wants real tool-calling; the box's
+  smallest model does not have it.
+- **Hiring a coding agent is meant to work as in the cloud — not yet
+  exercised on a live box.** codex, claude and opencode are installed and the
+  sandbox is wired up; nothing here has run one on a live box and watched it
+  finish a task yet.

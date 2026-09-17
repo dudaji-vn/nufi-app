@@ -60,10 +60,11 @@ START=$(date +%s)
 set +e
 # pipefail, or `| tee` reports its own success as the installer's and a failed
 # install looks like a clean one.
+# WITH_WORKS=1 installs Works too; verify-ubuntu-box.sh then runs its fourth step.
 limactl shell "$VM" -- bash -lc "set -o pipefail; cd \$HOME/deploy/box && \
   DEPARTMENTS='$DEPARTMENTS' INFERENCE_PROFILE='$INFERENCE_PROFILE' \
   INFERENCE_MODEL='$INFERENCE_MODEL' EMBEDDINGS_MODEL='$EMBEDDINGS_MODEL' \
-  ./install-box.sh --yes --registry '$REGISTRY' 2>&1 | tee \$HOME/install.log"
+  ./install-box.sh --yes --registry '$REGISTRY' ${WITH_WORKS:+--with-works} 2>&1 | tee \$HOME/install.log"
 rc=$?
 set -e
 END=$(date +%s)

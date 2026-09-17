@@ -512,6 +512,42 @@ other measure.
 Nothing here runs an agent yet: the sandboxes themselves arrive with the next
 piece, which installs the provider and registers the environment.
 
+### NUFI Works on the box
+
+`install-box.sh --with-works` (Ubuntu only) adds NUFI Works at
+`https://<box>:3003`, entered from the Agents page like Studio. Every agent
+run on it lands in a **gVisor** sandbox: a container under the `runsc`
+runtime the installer registers, on the `works-sandbox` network, with no
+route out except the egress proxy above. The box registers this itself —
+`nufi-box works install` signs in as the box admin through the console,
+claims the instance, installs the sandbox provider, registers the
+environment pinned to the image the installer pulled, makes it the default
+and archives the upstream `Local` environment (which would have run agent
+code inside the Works container under plain Docker).
+
+Two things to know:
+
+- **The Works container holds the Docker socket.** That is how it creates
+  sandboxes as sibling containers, and it is the only service that has it.
+  Whoever can run code *in the Works container* can start containers on the
+  box as root; nothing in a sandbox can.
+- **A sandbox's model key is a LiteLLM virtual key** (`WORKS_MODEL_KEY`),
+  never the master key: the key reaches the sandbox, and the gateway is on
+  the allow list.
+
+`nufi-box doctor` checks the runtime, the server and the registration.
+`nufi-box works status` asks Works whether the registration still holds; run
+`nufi-box works install` again after an upgrade. A LiteLLM key that was
+revoked in the console is not noticed by the box — delete `WORKS_MODEL_KEY`
+from `.env` and run `nufi-box works install` again to mint a new one. Hiring
+a coding agent (codex, claude, opencode) is meant to work as in the cloud —
+not yet exercised on a live box; a NuFi knowledge agent needs its
+`gatewayUrl` set to `http://litellm-proxy:4000/v1` and a model the box
+serves. `WORKS_BOX_KEY` in `.env` is the box admin's own Works API key
+(instance admin), kept at 0600 beside the other secrets; the LiteLLM virtual
+key it mints for a sandbox carries no budget of its own — the box's usage
+limits apply through the gateway's own policy.
+
 ## 6. Inference profiles
 
 | Profile | Where the model runs | Trade-off |
@@ -607,7 +643,7 @@ running `nufi-box mesh up`. Either way the box:
   network on Linux; the native Tailscale app on macOS, whose two commands
   `mesh up` prints for you),
 - writes `BOX_MESH_IP` and `BOX_MESH_HOST` into `.env`,
-- generates `caddy/mesh.caddy` so all five product ports answer on the mesh
+- generates `caddy/mesh.caddy` so all six product ports answer on the mesh
   name with the same certificate laptops already trust, and reloads Caddy
   (the plain-HTTP landing page and the CA download need no entry there — that
   site has no host matcher, so it already answers on the mesh name).

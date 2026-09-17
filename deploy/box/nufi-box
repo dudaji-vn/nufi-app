@@ -55,6 +55,10 @@ COMPOSE="docker compose -f $HERE/docker-compose.yml"
 # box joins with the native app instead (see mesh_up_native).
 [ "$OS" = "Linux" ] && [ -n "${MESH_SERVER_URL:-}" ] \
   && COMPOSE="$COMPOSE -f $HERE/docker-compose.mesh.yml --profile mesh"
+# Works and its egress proxy are one profile, switched on by the installer's
+# --with-works (NUFI_WORKS=1). Without this line a works box's `restart` would
+# bring up everything but the two services the flag was for.
+[ "${NUFI_WORKS:-0}" = "1" ] && COMPOSE="$COMPOSE --profile works"
 # Same check the installer makes (install-box.sh): docker compose treats a
 # missing -f as an empty override and starts a stack without whatever the
 # site-local file was there to change -- a port map, a mount, a memory cap.
@@ -84,6 +88,8 @@ nufi-box <verb>
                       NAME matches more than one node)
   flows install       put the department routines into Studio (safe to repeat)
   flows list          every flow in the box's Studio, with its id
+  works install       register the Docker sandbox environment in Works (the installer does this; re-run after an upgrade)
+  works status        check whether Works is fully registered
   schedule list       the routines that run on a clock, and when each fires next
   user add EMAIL [--name "Full Name"]
                       give somebody an account on this box
@@ -238,13 +244,52 @@ case "${1:-}" in
       if [ "$_code" = "403" ]; then echo " ok  works-egress refuses a host not on the list (403)"
       else echo " !!  works-egress answered ${_code:-nothing} for a host not on the list; the filter may not be loaded — run: nufi-box logs works-egress"; fail=1; fi
     fi
+    # A Works box, four ways: the kernel boundary is a runtime the daemon
+    # lists (a box whose daemon.json lost the stanza silently runs sandboxes
+    # under runc); the works container can actually reach the socket (its gid
+    # in .env matches the socket's, or the server is healthy while every
+    # sandbox creation fails EACCES with nothing else to say so); the server
+    # answers; and the registration holds -- provider ready, the Docker
+    # environment the instance default, Local archived. Each can fail on its
+    # own, and the fourth is asked of Works itself rather than inferred from
+    # .env.
+    if [ "${NUFI_WORKS:-0}" = 1 ]; then
+      # Captured, then matched: under pipefail a `| grep -q` gate reports
+      # grep's status, which is how the egress check above once skipped on
+      # half its runs.
+      _rt="$(docker info --format '{{range $k,$v := .Runtimes}}{{$k}} {{end}}' 2>/dev/null || true)"
+      if [ "$DRY" = 1 ]; then
+        printf '  $ docker info: runsc among the runtimes\n'
+      elif case " $_rt " in *" runsc "*) true ;; *) false ;; esac; then
+        echo " ok  runsc is a Docker runtime"
+      else
+        echo " !!  runsc is not a Docker runtime — sandboxes would run on the host kernel; run: install-box.sh --with-works"; fail=1
+      fi
+      if [ "$DRY" = 1 ]; then
+        printf '  $ stat -c %%g /var/run/docker.sock == DOCKER_GID in .env\n'
+      elif [ -n "${DOCKER_GID:-}" ] && [ "$(stat -c %g /var/run/docker.sock 2>/dev/null)" = "$DOCKER_GID" ]; then
+        echo " ok  DOCKER_GID=${DOCKER_GID} is the socket's group"
+      else
+        echo " !!  DOCKER_GID in .env is '${DOCKER_GID:-}' but the socket's group is $(stat -c %g /var/run/docker.sock 2>/dev/null) — sandboxes cannot be created; run: install-box.sh --with-works"; fail=1
+      fi
+      chk curl -fsk "https://localhost:3003/api/health"
+      . "$HERE/lib/works.sh"
+      if [ "$DRY" = 1 ]; then
+        works_check
+      elif _wc="$(works_check 2>&1)"; then
+        echo " ok  Works is registered: provider ready, Docker environment is the default, Local archived"
+      else
+        echo " !!  Works is not registered as installed — run: nufi-box works install"; fail=1
+        printf '%s\n' "$_wc" | sed -n 's/^works: missing: /     - /p'
+      fi
+    fi
     [ "$fail" = 0 ] && echo "All good." || { echo "Something is off; run: nufi-box logs <service>"; exit 1; } ;;
   # Both start Caddy again, so both are places a caddy/mesh.caddy left behind by
   # an older box would refuse the whole front door. Put it back in step first.
   up) . "$HERE/lib/mesh.sh"; mesh_caddy_refresh "$HERE"; run $COMPOSE up -d ;;
   down) run $COMPOSE down ;;
   restart) . "$HERE/lib/mesh.sh"; mesh_caddy_refresh "$HERE"; run $COMPOSE restart ;;
-  # --- the mesh (Tasks 6 and 7) ---
+  # --- the mesh ---
   mesh)
     shift
     case "${1:-}" in
@@ -289,8 +334,8 @@ case "${1:-}" in
       [ -n "${1:-}" ] || { echo "revoke: a name is required (or --id ID)" >&2; usage; exit 2; }
       mesh_delete "$1"
     fi ;;
-  # --- end the mesh (Tasks 6 and 7) ---
-  # --- the department routines in Studio (Task 8) ---
+  # --- end the mesh ---
+  # --- the department routines in Studio ---
   flows)
     shift
     case "${1:-}" in
@@ -300,6 +345,16 @@ case "${1:-}" in
     esac
     . "$HERE/lib/flows.sh"
     "flows_$FLOWS_VERB" ;;
+  # --- NUFI Works on the box ---
+  works)
+    shift
+    case "${1:-}" in
+      install|status) WORKS_VERB="$1" ;;
+      "") echo "works: say what to do — install or status" >&2; usage; exit 2 ;;
+      *) echo "works: unknown subcommand: $1 (use install or status)" >&2; exit 2 ;;
+    esac
+    . "$HERE/lib/works.sh"
+    "works_$WORKS_VERB" ;;
   user)
     # People, as opposed to laptops. `invite` and `members` are about machines
     # joining the mesh; this is about who may sign in at all.

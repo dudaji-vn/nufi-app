@@ -441,7 +441,7 @@ except Exception:
 #   the imports — every `import <name>` in the generated file must be a
 #                 `(<name>)` snippet in this Caddyfile. Catches the drift
 #                 nobody remembered to bump, which is the one that happened.
-MESH_CADDY_REV=3
+MESH_CADDY_REV=4
 
 # mesh_caddy_stale FILE CADDYFILE — 0 (true) when FILE was written by an older
 # box, or asks CADDYFILE for a snippet it no longer defines. A file that is not
@@ -479,7 +479,7 @@ mesh_caddy_refresh() {
   fi
 }
 
-# mesh_render_caddy HOST IP OUT — the box's five TLS sites again, on the mesh
+# mesh_render_caddy HOST IP OUT — the box's six TLS sites again, on the mesh
 # name and the mesh address. Nothing for :80 — see the note in the generated
 # header, and test_the_plain_http_site_answers_for_every_host_including_the_mesh_name. Literal values, not {$BOX_MESH_HOST} placeholders:
 # Caddy resolves an env placeholder to the empty string when it is unset,
@@ -494,7 +494,7 @@ mesh_render_caddy() {
 # The box's sites on the mesh: $host and $ip.
 # \`nufi-box mesh down\` replaces this with caddy/mesh.caddy.empty.
 #
-# Five blocks, one per TLS product port. Plain HTTP needs none: the
+# Six blocks, one per TLS product port. Plain HTTP needs none: the
 # Caddyfile's bare \`:80\` has no host matcher and Caddy binds it on every
 # interface, so the landing page and the CA download already answer on the
 # mesh name and the mesh address.
@@ -512,6 +512,12 @@ $host:3001, $ip:3001 {
 $host:3002, $ip:3002 {
 	import box_tls
 	reverse_proxy admin-panel:3000
+}
+
+# Works accepts only its own name (PAPERCLIP_PUBLIC_URL) and loopback; the IP and mesh forms reach Caddy and are refused by Works, so the chooser links it by name.
+$host:3003, $ip:3003 {
+	import box_tls
+	reverse_proxy works:3100
 }
 
 $host:7860, $ip:7860 {

@@ -56,7 +56,7 @@
 # Plain HTTP landing page: links, the root certificate, per-OS trust steps.
 # No host matcher and every interface, so this one site also answers on the
 # box's mesh name and mesh address once it has joined — which is why
-# caddy/mesh.caddy carries the five TLS ports and nothing for :80.
+# caddy/mesh.caddy carries the six TLS ports and nothing for :80.
 :80 {
 	log
 	root * /srv/landing
@@ -90,6 +90,14 @@
 	reverse_proxy admin-panel:3000
 }
 
+# NUFI Works. Works accepts only its own name (PAPERCLIP_PUBLIC_URL) and
+# loopback; the IP and mesh forms reach Caddy and are refused by Works, so
+# the chooser links it by name.
+{$BOX_HOST}:3003, {$BOX_IP}:3003, localhost:3003 {
+	import box_tls
+	reverse_proxy works:3100
+}
+
 # NUFI Studio. /nufi/* is the console, so Studio's session-expiry bounce
 # (VITE_NUFI_ENTER_URL=/nufi/enter/studio in the box image) lands on the console
 # while staying on the Studio origin.
@@ -113,7 +121,7 @@
 	reverse_proxy litellm-proxy:4000
 }
 
-# The same five TLS sites again on the box's mesh address and MagicDNS name, once
+# The same six TLS sites again on the box's mesh address and MagicDNS name, once
 # it has joined a coordinator. `nufi-box mesh up` generates caddy/mesh.caddy
 # with the literal addresses and reloads Caddy; `mesh down` empties it again.
 #

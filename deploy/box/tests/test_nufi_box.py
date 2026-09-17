@@ -727,3 +727,81 @@ def test_doctor_checks_the_egress_proxy_refuses(tmp_path):
     r = cli("doctor", NUFI_BOX_ENV=str(_env(tmp_path)))
     assert "works-egress" in r.stdout, r.stdout
     assert "403" in r.stdout or "refuses" in r.stdout, r.stdout
+
+
+# --- Works on the box: register the sandbox environment --------------------
+
+def _works_env(tmp_path, **extra):
+    body = {"NUFI_WORKS": "1", "ADMIN_EMAIL": "admin@nufi.local", "ADMIN_PASSWORD": "pw",
+            "LITELLM_MASTER_KEY": "sk-master", "BOX_NAME": "nufi",
+            "WORKS_SANDBOX_IMAGE": "ghcr.io/dudaji-vn/nufi-sandbox@sha256:" + "0" * 64}
+    body.update(extra)
+    return _env(tmp_path, **body)
+
+
+def test_works_needs_a_subcommand(tmp_path):
+    envf = _works_env(tmp_path)
+    r = cli("works", NUFI_BOX_ENV=str(envf))
+    assert r.returncode == 2 and "install or status" in r.stderr
+    assert cli("works", "frobnicate", NUFI_BOX_ENV=str(envf)).returncode == 2
+
+
+def test_works_install_runs_the_registrar_inside_the_box_network(tmp_path):
+    """The registrar must reach the box by the name the certificate carries and
+    trust the box's CA, and inside the network both are already true: the name
+    resolves to Caddy and the CA is a file. So it runs there, via compose run,
+    with the secrets in the environment and never in an argument."""
+    envf = _works_env(tmp_path)
+    r = cli("works", "install", NUFI_BOX_ENV=str(envf))
+    assert r.returncode == 0, r.stderr
+    out = r.stdout
+    assert "compose" in out and "run --rm --no-deps" in out and "nufi-cron" in out, out
+    assert "register_works.py" in out
+    for arg in ("--works https://nufi.local:3003", "--chat https://nufi.local:3080",
+                "--litellm http://litellm-proxy:4000", "--login admin@nufi.local", "--company nufi",
+                "--image ghcr.io/dudaji-vn/nufi-sandbox@sha256:"):
+        assert arg in out, (arg, out)
+    for secret in ("pw", "sk-master"):
+        assert " %s " % secret not in out and "=%s" % secret not in out, secret
+    for passed in ("-e ADMIN_PASSWORD", "-e LITELLM_MASTER_KEY", "-e WORKS_BOX_KEY", "-e WORKS_MODEL_KEY"):
+        assert passed in out, passed
+    assert "--profile works" in out
+
+
+def test_works_install_refuses_a_box_installed_without_works(tmp_path):
+    envf = _env(tmp_path, NUFI_WORKS="0")
+    r = cli("works", "install", NUFI_BOX_ENV=str(envf))
+    assert r.returncode == 2
+    assert "--with-works" in r.stderr
+
+
+def test_works_install_needs_the_pinned_image(tmp_path):
+    envf = _works_env(tmp_path, WORKS_SANDBOX_IMAGE="")
+    r = cli("works", "install", NUFI_BOX_ENV=str(envf))
+    assert r.returncode == 2
+    assert "WORKS_SANDBOX_IMAGE" in r.stderr
+
+
+def test_works_status_plans_the_read_only_check(tmp_path):
+    envf = _works_env(tmp_path, WORKS_BOX_KEY="bk")
+    r = cli("works", "status", NUFI_BOX_ENV=str(envf))
+    assert r.returncode == 0, r.stderr
+    assert "--check" in r.stdout and "register_works.py" in r.stdout
+    assert "bk" not in r.stdout.replace("WORKS_BOX_KEY", "")
+
+
+# --- doctor knows a Works box -----------------------------------------------
+
+def test_doctor_checks_a_works_box_four_ways(tmp_path):
+    r = cli("doctor", NUFI_BOX_ENV=str(_works_env(tmp_path)))
+    out = r.stdout
+    assert "runsc" in out, "the runtime the sandboxes depend on"
+    assert "DOCKER_GID" in out, "the socket's group, or every sandbox creation fails EACCES"
+    assert "3003/api/health" in out
+    assert "--check" in out and "register_works.py" in out, "the registration, read-only"
+
+
+def test_doctor_says_nothing_about_works_on_a_box_without_it(tmp_path):
+    r = cli("doctor", NUFI_BOX_ENV=str(_env(tmp_path)))
+    for absent in ("runsc", "3003", "register_works"):
+        assert absent not in r.stdout, absent
