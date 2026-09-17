@@ -788,3 +788,20 @@ def test_works_status_plans_the_read_only_check(tmp_path):
     assert r.returncode == 0, r.stderr
     assert "--check" in r.stdout and "register_works.py" in r.stdout
     assert "bk" not in r.stdout.replace("WORKS_BOX_KEY", "")
+
+
+# --- doctor knows a Works box -----------------------------------------------
+
+def test_doctor_checks_a_works_box_four_ways(tmp_path):
+    r = cli("doctor", NUFI_BOX_ENV=str(_works_env(tmp_path)))
+    out = r.stdout
+    assert "runsc" in out, "the runtime the sandboxes depend on"
+    assert "DOCKER_GID" in out, "the socket's group, or every sandbox creation fails EACCES"
+    assert "3003/api/health" in out
+    assert "--check" in out and "register_works.py" in out, "the registration, read-only"
+
+
+def test_doctor_says_nothing_about_works_on_a_box_without_it(tmp_path):
+    r = cli("doctor", NUFI_BOX_ENV=str(_env(tmp_path)))
+    for absent in ("runsc", "3003", "register_works"):
+        assert absent not in r.stdout, absent
