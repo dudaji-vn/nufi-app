@@ -51,6 +51,21 @@ def test_linux_gpu_plan_uses_ollama_container_and_samba():
     assert "docker-compose.gpu.yml" in out
 
 
+def test_linux_plan_names_installing_rsync():
+    """nufi-box update's own prerequisite -- a day-one Ubuntu box should get
+    it installed alongside Docker, not discover the gap on the first
+    day-two update. Named in the plan a person previewing the install would
+    read, the same as every other prerequisite."""
+    out = dry(NUFI_BOX_FAKE_OS="Linux")
+    assert "sudo apt-get install -y rsync" in out
+
+
+def test_macos_plan_does_not_mention_rsync():
+    # macOS ships rsync (openrsync) already; nothing to install or preview.
+    out = dry(NUFI_BOX_FAKE_OS="Darwin")
+    assert "rsync" not in out
+
+
 def test_linux_cpu_plan_has_no_gpu_layer():
     # No NUFI_BOX_FAKE_NVIDIA: has_nvidia() is false (unless a real nvidia-smi is on PATH,
     # which a CPU host doesn't have). Deliberately doesn't assert on INFERENCE_PROFILE — that
@@ -1011,3 +1026,50 @@ def test_a_rerun_keeps_works_on_without_the_flag(tmp_path):
     out = dry(NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_FAKE_ARCH="x86_64", NUFI_BOX_ENV=str(envf))
     assert "--profile works" in out
     assert "NUFI_WORKS=1" in out
+
+
+def test_a_rerun_keeps_a_custom_update_source(tmp_path):
+    """NUFI_BOX_SOURCE (nufi-box update's own mirror override) has to be in
+    render_env's fixed key list, or a re-run's `render_env > .env` silently
+    drops an operator's edit -- the .env override would have survived
+    exactly one update."""
+    envf = tmp_path / ".env"
+    envf.write_text("NUFI_BOX_SOURCE=https://mirror.example/box.tar.gz\nBOX_HOST=nufi.local\n")
+    out = dry(NUFI_BOX_ENV=str(envf))
+    assert "NUFI_BOX_SOURCE=https://mirror.example/box.tar.gz" in out
+
+
+# --- the published fetch names everything a box needs, not just deploy/box ---
+
+def test_the_fetched_set_is_enough_to_run_the_routine_builder(tmp_path):
+    """A grep for directory names here once passed while the set it checked
+    for was still wrong: deploy/platform/scenarios/studio alone, without the
+    scenarios/ root beside it. build_flows.py does `from run_box import ...`
+    and run_box.py does `from run import ...` — both run_box.py and run.py
+    live at the ROOT of deploy/platform/scenarios/, not inside studio/, so a
+    fetch of studio/ alone builds a set that fails on the first import. This
+    test builds the set a person (or `nufi-box update`) actually fetches —
+    git archive, not a hand-maintained list of names — and runs the one
+    command `nufi-box flows install` shells out to, from the one directory a
+    person actually cds into. That is the test that would have caught the
+    regression."""
+    repo_root = BOX.parents[1]
+    archive = subprocess.run(
+        ["git", "archive", "HEAD", "deploy/box", "deploy/platform/scenarios",
+         "deploy/platform/adapters/nufi-cron"],
+        cwd=str(repo_root), capture_output=True, check=True)
+    subprocess.run(["tar", "-x", "-C", str(tmp_path)], input=archive.stdout, check=True)
+    r = subprocess.run(
+        [sys.executable, "../platform/scenarios/studio/build_flows.py", "--help"],
+        cwd=str(tmp_path / "deploy" / "box"), capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "usage: build_flows.py" in r.stdout
+
+    # And the two published fetch lines have to actually name this set —
+    # the functional check above proves the set works, this proves the docs
+    # tell a person (or a mirror-building script) to fetch it.
+    install_mdx = (repo_root / "apps" / "docs" / "content" / "docs" / "box" / "install.mdx").read_text()
+    readme = (BOX / "README.md").read_text()
+    for text, name in ((install_mdx, "install.mdx"), (readme, "README.md")):
+        for d in ("deploy/box", "deploy/platform/scenarios", "deploy/platform/adapters/nufi-cron"):
+            assert d in text, "%s is missing %s from its fetch instructions" % (name, d)

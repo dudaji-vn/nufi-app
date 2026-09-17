@@ -104,11 +104,44 @@ you need none of it.
 ./nufi-box ca-cert     # the file every laptop trusts once
 ```
 
-## Not yet
+## Updating
 
 ```bash
-./nufi-box update      # coming
-./nufi-box support     # coming
+./nufi-box update                       # fetch the newest release, apply it, check it
+./nufi-box update --ref nufi-box-v1.2.0 # a specific tag instead of the latest main
+./nufi-box update --rollback            # put back what the last update replaced
 ```
 
-Upgrading today is `docker compose pull` and `./nufi-box up` by hand.
+It asks you to type the box name to confirm, unless run with `--yes` (needed
+when there is no terminal to confirm on — a script, a timer). It resolves the
+ref (or `main`) to a commit sha through the GitHub API before fetching, so
+`nufi-box status` can later say truthfully what commit the box is running; if
+the API is unreachable it fetches the ref directly and says `sha unknown`
+instead of guessing.
+
+Then: it fetches the whole archive (deliberately — pulling just `deploy/box`
+out of it is a trick that only works on macOS's `tar`, and fails plainly on
+every Ubuntu box), backs up the box first (`nufi-box backup`), snapshots the
+current files — `deploy/box`, the two directories it depends on beside it,
+and the digest of every image running now — applies the new ones, and
+re-runs `install-box.sh` — the same installer day one used, which already
+keeps `.env` and every answer and secret, so an update never re-asks the
+four questions. Each run downloads about 185 MB and unpacks about 340 MB in
+a temporary directory, removed once the update finishes either way.
+
+Then it runs `nufi-box doctor`. If that passes, you are done. If it fails —
+or if the installer itself fails, or the file copy does — `update` rolls
+back on its own — the files and the images go back to what they were, the
+stack restarts, and it prints where the backup from this run landed. It does
+**not** restore that backup automatically: your data is meant to carry
+forward across an update by design (migrations), and putting the database
+back is a decision for a person holding the backup's path
+(`nufi-box restore <path>`), not something a failed check should do by
+itself.
+
+**Not signed yet.** The archive comes straight from GitHub over TLS — the
+same transport a browser gets, nothing more. There is no signature on it and
+nothing checks one. A signed bundle from `updates.nufi.me` is the next phase
+(see the README's "What is not built yet").
+
+`./nufi-box support` is still coming.

@@ -118,6 +118,20 @@ if [ "$WITH_WORKS" = 1 ] && [ "$OS" != "Linux" ]; then
   die "--with-works needs Ubuntu: Works sandboxes run under gVisor, which Docker Desktop cannot host. Install the box without it here, or with it on the Linux machine that will be the box."
 fi
 have openssl || die "openssl is required"
+# rsync is nufi-box update's own prerequisite (lib/update.sh mirrors the
+# box's tree with it), installed here so a day-one box already has it
+# rather than discovering the gap on the first day-two update. Kept outside
+# the real-only block below (and its own tiny dry/real split, not `run`,
+# which nothing has assembled COMPOSE-wide meaning for yet here) so the
+# dry-run plan says so too, the same as every other step a person previewing
+# an install would want named.
+if [ "$OS" = "Linux" ]; then
+  if [ "$DRY" = 1 ]; then
+    printf '  $ sudo apt-get install -y rsync\n'
+  else
+    have rsync || { say "Installing rsync"; sudo apt-get update -qq && sudo apt-get install -y -qq rsync; }
+  fi
+fi
 if [ "$DRY" = 0 ]; then
   have curl || die "curl is required"
   case "$OS" in
@@ -197,6 +211,13 @@ REUSE_VARS="$REUSE_VARS BOX_MESH_IP BOX_MESH_HOST"
 #   NUFI_SMB_UID=$(id -u) NUFI_SMB_GID=$(id -g) ./install-box.sh --yes
 # is how a box is deliberately handed to a new owner.
 REUSE_VARS="$REUSE_VARS NUFI_SMB_UID NUFI_SMB_GID"
+# NUFI_BOX_SOURCE is nufi-box update's own override (a LAN mirror for a box
+# that cannot reach codeload.github.com for the tarball either, the same
+# reason NUFI_REGISTRY exists for the images). Without it here, render_env's
+# fixed key list below drops any line render_env did not put there itself —
+# an operator's .env edit would have survived exactly one update, gone the
+# moment this script next rewrote .env.
+REUSE_VARS="$REUSE_VARS NUFI_BOX_SOURCE"
 for v in $REUSE_VARS; do eval "_caller_$v=\${$v:-}"; done
 if [ -f "$NUFI_BOX_ENV" ]; then
   ok ".env exists; keeping its answers and secrets"
@@ -382,6 +403,7 @@ NUFI_DATA_DIR=$NUFI_DATA_DIR
 NUFI_SMB_UID=$NUFI_SMB_UID
 NUFI_SMB_GID=$NUFI_SMB_GID
 NUFI_REGISTRY=$NUFI_REGISTRY
+NUFI_BOX_SOURCE=${NUFI_BOX_SOURCE:-}
 NUFI_CHAT_TAG=${NUFI_CHAT_TAG:-main}
 NUFI_CONSOLE_TAG=${NUFI_CONSOLE_TAG:-main}
 NUFI_ADMIN_TAG=${NUFI_ADMIN_TAG:-main}
