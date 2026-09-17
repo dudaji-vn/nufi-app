@@ -3,6 +3,7 @@ import os
 import pathlib
 import re
 import subprocess
+import sys
 import tempfile
 
 BOX = pathlib.Path(__file__).resolve().parents[1]
@@ -711,6 +712,44 @@ def test_the_drives_are_given_to_that_uid_after_they_are_created():
     assert out.index("mkdir -p") < out.index("chown -R 1001:1001")
     assert "drives/legal" in out and "drives/hr" in out
     assert out.count("chown -R 1001:1001") == 2
+
+
+def test_the_shipped_schedules_example_includes_a_watch_trigger():
+    """The heredoc is written under `run`, which under NUFI_BOX_DRY_RUN only
+    echoes the command -- the piped-in text never reaches stdout (verified:
+    `printf '  $ %s\\n' "$*"` does not read stdin at all). So this is pinned
+    against the installer's own source, the same way
+    test_the_steps_that_fail_on_a_re_run_or_a_locked_down_host_only_warn does
+    for behaviour a dry run cannot show."""
+    src = _installer_source()
+    assert "on a schedule, or when a file lands in a folder" in src
+    assert "# watch = onboarding/new" in src
+    # both trigger styles ship as examples, commented out the same way
+    assert "# cron  = 0 17 * * 5" in src
+
+
+def test_the_shipped_watch_example_names_a_flow_the_daemon_actually_has():
+    """`flow =` in the example has to be a routine nufi-cron can find: one
+    tagged `nufi-routine` in build_flows.py's own RECIPES, the same set
+    `flow_id_for()` searches at runtime. A scenario flow with no such tag
+    (and, for a drive_rag one, no Directory-drive node to retarget) makes
+    `flow_id_for` raise on every single trigger, and since a failed run is
+    still marked seen, the file is silently swallowed forever.
+
+    Imported the same way `deploy/box/lib/schedule.sh` imports `nufi_cron`:
+    a `sys.path` insert onto the module living in the repo, not a copy of
+    its data pasted into the test."""
+    builder_dir = BOX.parent / "platform" / "scenarios" / "studio"
+    sys.path.insert(0, str(builder_dir))
+    import build_flows  # noqa: E402 -- imported here, at the point of use
+    routines = {r["name"] for r in build_flows.RECIPES if build_flows.ROUTINE_TAG in r["tags"]}
+    assert routines, "build_flows.py must still define at least one tagged routine"
+
+    src = (BOX / "install-box.sh").read_text()
+    m = re.search(r"^# \[hr-onboarding\]\n(?:# .*\n)*?# flow\s*= (.+)$", src, re.MULTILINE)
+    assert m, "the [hr-onboarding] example is missing or reshaped: " + src
+    flow_name = m.group(1).strip()
+    assert flow_name in routines, (flow_name, sorted(routines))
 
 
 # --- the department routines (Task 8) ---

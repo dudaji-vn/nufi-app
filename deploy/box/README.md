@@ -472,6 +472,61 @@ five hours of them at boot is worse than the gap.
 Details and the reasoning:
 [`deploy/platform/adapters/nufi-cron/README.md`](../platform/adapters/nufi-cron/README.md).
 
+### …or when a file lands
+
+A routine can also fire from a folder instead of a clock — a new hire's file
+dropped into `onboarding/new/` in HR's drive, and an HR policy routine
+answers from that drive with the file's name in the question. The routine
+itself is unchanged: `watch` only decides *when* it runs, the same flow
+still just answers the `ask` from the `drive`, citing a policy file or
+saying plainly when the policy is silent. A section has **exactly one**
+trigger: `cron` or `watch`, never both, never neither — a section with
+either mistake is reported and dropped like any other typo in this file.
+
+```ini
+[hr-onboarding]
+watch = onboarding/new
+flow  = Routine · HR helpdesk from the policy
+drive = hr
+ask   = onboarding/new/{file} 에 새 입사자의 서류가 들어왔습니다. 규정에 따르면 신규 입사자에게 안내해야 할 절차를 알려줘.
+out   = onboarding-{file}-{date}.md
+```
+
+`watch` is a folder relative to the drive — `onboarding/new`, not
+`/onboarding/new` or `../onboarding/new`, and never under `_routines/`
+itself — and it names ONE folder, not a tree: a file inside a subfolder of
+it never fires (two files of the same name in different subfolders would
+otherwise collide on the same `{file}` and the same `out`). `{file}` fills
+in the file that triggered the run: its full name, extension included, in
+`ask` (so the question above reads "... `kim-minsu.pdf` 에 ..."); its bare
+name without the extension in `out` (so the answer lands as
+`onboarding-kim-minsu-2026-09-18.md`).
+
+Two rules keep a watched folder from misfiring:
+
+- **A file has to sit still for two ticks in a row** — same size, same
+  modified time — before it fires. A copy still in progress, or a Samba
+  write still landing, must not trigger a routine against a half-written
+  file. At the default 20-second tick this means a landed file fires
+  20–40 seconds after it stops changing — plus however long the run ahead of
+  it in the queue takes, since the box answers one question at a time.
+- **The first scan of a `watch` folder fires nothing.** Everything already
+  there is recorded as seen, the same "nothing is caught up" rule a `cron`
+  schedule follows — a folder with forty résumés in it already must not
+  launch forty runs the moment the box comes up. Pointing `watch` (or
+  `drive`) at a different folder is treated the same way: nothing already in
+  the new folder fires either.
+
+After a run — successful or not — the file is marked seen and will not fire
+again on its own; a broken flow does not get retried every twenty seconds.
+Editing the file afterwards (a new modified time) makes it eligible again,
+which is what a person expects. Hidden files, Office/Samba temp files
+(`~$…`, `~WRD….tmp`, `.~lock…`), a download still in flight
+(`.tmp`/`.part`/`.crdownload`/`.partial`), and `Thumbs.db`/`desktop.ini` are
+never watched. A `watch` folder that does not exist yet is not an error — it
+is logged once, and picked up as soon as someone creates it on the share
+(even a file dropped in the very same moment the folder is).
+
 ### Works sandboxes and where they may reach
 
 A NUFI Works sandbox — the container an agent's code runs in — lives on the

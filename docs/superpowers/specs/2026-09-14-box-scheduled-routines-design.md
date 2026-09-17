@@ -154,9 +154,12 @@ No new UI. That half of the plan's sentence survives intact.
 
 ## What is deliberately not built
 
-- **Event triggers** ("a new file in `onboarding/new/`"). The plan lists these
-  next to schedules; `nufi-ingest` already watches the drives and is where that
-  belongs, and it is a separate piece of work.
+- **Event triggers** ("a new file in `onboarding/new/`"). Shipped later, in
+  `nufi-cron` itself rather than `nufi-ingest` as assumed above: the thing
+  that runs a flow and writes `_routines/` is `Runner`, already here, and a
+  second copy of that path in the ingest daemon is exactly what the box's
+  one-renderer rule forbids. See
+  [`deploy/platform/adapters/nufi-cron/README.md`](../../../deploy/platform/adapters/nufi-cron/README.md).
 - **Per-member schedules.** See above.
 - **A UI.** See above.
 - **Catch-up runs**, retries and backoff. A failed run is logged and the next
