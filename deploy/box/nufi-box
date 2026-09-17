@@ -267,7 +267,7 @@ case "${1:-}" in
       fi
       if [ "$DRY" = 1 ]; then
         printf '  $ stat -c %%g /var/run/docker.sock == DOCKER_GID in .env\n'
-      elif [ "$(stat -c %g /var/run/docker.sock 2>/dev/null)" = "${DOCKER_GID:-}" ]; then
+      elif [ -n "${DOCKER_GID:-}" ] && [ "$(stat -c %g /var/run/docker.sock 2>/dev/null)" = "$DOCKER_GID" ]; then
         echo " ok  DOCKER_GID=${DOCKER_GID} is the socket's group"
       else
         echo " !!  DOCKER_GID in .env is '${DOCKER_GID:-}' but the socket's group is $(stat -c %g /var/run/docker.sock 2>/dev/null) — sandboxes cannot be created; run: install-box.sh --with-works"; fail=1
@@ -276,10 +276,11 @@ case "${1:-}" in
       . "$HERE/lib/works.sh"
       if [ "$DRY" = 1 ]; then
         works_check
-      elif works_check >/dev/null 2>&1; then
+      elif _wc="$(works_check 2>&1)"; then
         echo " ok  Works is registered: provider ready, Docker environment is the default, Local archived"
       else
         echo " !!  Works is not registered as installed — run: nufi-box works install"; fail=1
+        printf '%s\n' "$_wc" | sed -n 's/^works: missing: /     - /p'
       fi
     fi
     [ "$fail" = 0 ] && echo "All good." || { echo "Something is off; run: nufi-box logs <service>"; exit 1; } ;;
@@ -288,7 +289,7 @@ case "${1:-}" in
   up) . "$HERE/lib/mesh.sh"; mesh_caddy_refresh "$HERE"; run $COMPOSE up -d ;;
   down) run $COMPOSE down ;;
   restart) . "$HERE/lib/mesh.sh"; mesh_caddy_refresh "$HERE"; run $COMPOSE restart ;;
-  # --- the mesh (Tasks 6 and 7) ---
+  # --- the mesh ---
   mesh)
     shift
     case "${1:-}" in
@@ -333,8 +334,8 @@ case "${1:-}" in
       [ -n "${1:-}" ] || { echo "revoke: a name is required (or --id ID)" >&2; usage; exit 2; }
       mesh_delete "$1"
     fi ;;
-  # --- end the mesh (Tasks 6 and 7) ---
-  # --- the department routines in Studio (Task 8) ---
+  # --- end the mesh ---
+  # --- the department routines in Studio ---
   flows)
     shift
     case "${1:-}" in
@@ -344,7 +345,7 @@ case "${1:-}" in
     esac
     . "$HERE/lib/flows.sh"
     "flows_$FLOWS_VERB" ;;
-  # --- NUFI Works on the box (Task 5) ---
+  # --- NUFI Works on the box ---
   works)
     shift
     case "${1:-}" in

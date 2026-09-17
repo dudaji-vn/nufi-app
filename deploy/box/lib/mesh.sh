@@ -514,6 +514,7 @@ $host:3002, $ip:3002 {
 	reverse_proxy admin-panel:3000
 }
 
+# Works accepts only its own name (PAPERCLIP_PUBLIC_URL) and loopback; the IP and mesh forms reach Caddy and are refused by Works, so the chooser links it by name.
 $host:3003, $ip:3003 {
 	import box_tls
 	reverse_proxy works:3100

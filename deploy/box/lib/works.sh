@@ -78,26 +78,27 @@ works_install() {
   # steps before a later one fails (the plugin install, the environment
   # registration), and a failed run that then discards the file leaves an
   # orphan key on Works with nothing here to show for it.
-  local line new_model_key=0
+  local line
   if grep -qE '^(WORKS_BOX_KEY|WORKS_MODEL_KEY)=' "$out"; then
     . "$HERE/lib/envfile.sh"
     while IFS= read -r line; do
       case "$line" in
         WORKS_BOX_KEY=*|WORKS_MODEL_KEY=*)
-          envfile_set "$ENVF" "${line%%=*}" "${line#*=}"
-          [ "${line%%=*}" = WORKS_MODEL_KEY ] && new_model_key=1 ;;
+          envfile_set "$ENVF" "${line%%=*}" "${line#*=}" ;;
       esac
     done < "$out"
   fi
   rm -f "$out"
   [ "$rc" = 0 ] || return "$rc"
-  # The model key is read by the works container at creation; a key minted
-  # just now is not in the running one. Recreate it, once, with the new .env.
-  if [ "$new_model_key" = 1 ]; then
-    set -a; . "$ENVF"; set +a
-    $COMPOSE up -d works >/dev/null
-    works_wait || { echo "works: Works did not come back after the model key was set — check: nufi-box logs works" >&2; return 1; }
-  fi
+  # Recreated whenever .env may have changed under it; compose does nothing
+  # when it has not. An interrupted first run (a key just written, then
+  # Ctrl-C before this point) would otherwise leave a container running with
+  # an empty NUFI_MODEL_API_KEY that later `status`/`doctor` calls treat as
+  # registered — recreating unconditionally, every time, means there is no
+  # such window.
+  set -a; . "$ENVF"; set +a
+  $COMPOSE up -d works >/dev/null
+  works_wait || { echo "works: Works did not come back after .env changed — check: nufi-box logs works" >&2; return 1; }
   echo "Works is at $WORKS_URL — enter it from https://${BOX_HOST:-nufi.local}:3001/choose as ${ADMIN_EMAIL:-the box admin}"
 }
 

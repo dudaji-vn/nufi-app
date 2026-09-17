@@ -540,9 +540,13 @@ Two things to know:
 `nufi-box works install` again after an upgrade. A LiteLLM key that was
 revoked in the console is not noticed by the box — delete `WORKS_MODEL_KEY`
 from `.env` and run `nufi-box works install` again to mint a new one. Hiring
-a coding agent (codex, claude, opencode) works as in the cloud; a NuFi
-knowledge agent needs its `gatewayUrl` set to `http://litellm-proxy:4000/v1`
-and a model the box serves.
+a coding agent (codex, claude, opencode) is meant to work as in the cloud —
+not yet exercised on a live box; a NuFi knowledge agent needs its
+`gatewayUrl` set to `http://litellm-proxy:4000/v1` and a model the box
+serves. `WORKS_BOX_KEY` in `.env` is the box admin's own Works API key
+(instance admin), kept at 0600 beside the other secrets; the LiteLLM virtual
+key it mints for a sandbox carries no budget of its own — the box's usage
+limits apply through the gateway's own policy.
 
 ## 6. Inference profiles
 

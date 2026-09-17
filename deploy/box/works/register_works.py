@@ -74,14 +74,23 @@ class Box:
             with self.opener.open(req, timeout=60) as r:
                 self.last_url = r.geturl()
                 raw = r.read()
-                return r.status, (json.loads(raw) if raw.strip() else None)
+                # Only a JSON body is ever ours to parse. The SSO round trip
+                # can land on Works' own SPA (its index.html, or an error
+                # page) -- text/html, 200 -- and json.loads on that is an
+                # uncaught traceback on every fresh box, not a status a
+                # caller can react to.
+                if "json" in r.headers.get("Content-Type", ""):
+                    return r.status, (json.loads(raw) if raw.strip() else None)
+                return r.status, raw.decode(errors="replace")
         except urllib.error.HTTPError as e:
             self.last_url = e.geturl() if hasattr(e, "geturl") else url
             raw = e.read()
-            try:
-                return e.code, json.loads(raw)
-            except ValueError:
-                return e.code, raw.decode(errors="replace")
+            if "json" in (e.headers.get("Content-Type", "") if e.headers is not None else ""):
+                try:
+                    return e.code, json.loads(raw)
+                except ValueError:
+                    return e.code, raw.decode(errors="replace")
+            return e.code, raw.decode(errors="replace")
         except urllib.error.URLError as e:
             # Connection refused, TLS failure, DNS -- not an HTTP status, and
             # a traceback here is not something an installer's stderr should
@@ -118,7 +127,7 @@ def sign_in_as_admin(box, chat, login, password):
     # actually landed on.
     landed = urllib.parse.urlparse(box.last_url or "")
     if landed.path.endswith("/error"):
-        say("Works' OAuth callback landed on its error page: %s" % (landed.query or "(no details)"))
+        say("Works refused the sign-in: %s" % (landed.query or "(no details)"))
         sys.exit(1)
     session = box.must("GET", "/api/auth/get-session")
     email = ((session or {}).get("user") or {}).get("email", "")
@@ -172,7 +181,19 @@ def plugin_ready(box, path, wait_s=90):
         return None
     p = find()
     if p is None:
-        box.must("POST", "/api/plugins/install", {"packageName": path, "isLocalPath": True})
+        status, out = box.call("POST", box.works + "/api/plugins/install", {"packageName": path, "isLocalPath": True})
+        if status not in (200, 201):
+            text = out if isinstance(out, str) else json.dumps(out or {})
+            if status == 400 and "manifest" in text.lower():
+                # Upstream's own message names a path nobody on this side can
+                # act on. The box's own image is the thing to fix: an older
+                # `nufi-box works install` (before the provider was built into
+                # it) leaves a Works image with no manifest at PLUGIN_PATH.
+                say("the Works image on this box predates the sandbox provider (no built manifest at %s); "
+                    "pull the current image: docker compose pull works && nufi-box works install" % path)
+            else:
+                say("POST /api/plugins/install -> %s %s" % (status, text[:400]))
+            sys.exit(1)
         say("installed the Docker sandbox provider from %s" % path)
     deadline = time.time() + wait_s
     while True:

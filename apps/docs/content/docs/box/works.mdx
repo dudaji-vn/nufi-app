@@ -4,9 +4,12 @@ description: NUFI Works puts a coding-agent workspace on the box, Ubuntu only, w
 ---
 
 `install-box.sh --with-works` adds **NUFI Works** to the box at
-`https://<box>:3003`. It is entered the same way Studio is — from the Agents
-page, not typed in cold — because better-auth trusts only that page's own
-origin as where a sign-in may start.
+`https://<box>:3003`. It is reached by name, not by IP: Works' private-hostname
+guard accepts only its own name and loopback, and the console handoff is what
+carries an authenticated sign-in there, so it is entered the same way Studio
+is — from the Agents page. A cold visit to the address still works; it just
+lands on Works' own login page, with a button to sign in through NuFi rather
+than an already-authenticated session.
 
 ## What a run is
 
@@ -38,6 +41,11 @@ admin** and **owner of the box's company**, with the sandbox environment
 already registered and made the default. The first person into Works has to
 be the box admin, from the Agents page — nobody else is registered yet.
 Everyone after that is invited from inside Works itself.
+
+`WORKS_BOX_KEY` in `.env` is the box admin's own Works API key (instance
+admin), kept at file mode 0600 beside the other secrets. The LiteLLM virtual
+key minted for a sandbox (`WORKS_MODEL_KEY`) carries no budget of its own —
+the box's usage limits apply through the gateway's own policy.
 
 ## Reaching past the gateway
 
@@ -75,3 +83,7 @@ ever drifts — it is written to converge, not to fail on a second run.
 - **The smallest box models cannot drive a coding harness.** Hiring codex,
   claude or opencode as a Works agent wants real tool-calling; the box's
   smallest model does not have it.
+- **Hiring a coding agent is meant to work as in the cloud — not yet
+  exercised on a live box.** codex, claude and opencode are installed and the
+  sandbox is wired up; nothing here has run one on a live box and watched it
+  finish a task yet.

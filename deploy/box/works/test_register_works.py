@@ -33,6 +33,7 @@ def fresh_state():
         "plugin_polls": 0,
         "chat_logins": 0,
         "fail_plugin_install": False,
+        "sso_error": False,        # True: the OAuth callback lands on /error
     }
 
 
@@ -54,6 +55,16 @@ class Fake(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         for k, v in headers:
             self.send_header(k, v)
+        self.end_headers()
+        self.wfile.write(data)
+
+    def send_html(self, code, html):
+        """Works' SPA answers text/html, not JSON -- the shape that crashed
+        the registrar's Content-Type-blind json.loads before the fix."""
+        data = html.encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "text/html")
+        self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
 
@@ -92,12 +103,19 @@ class Fake(http.server.BaseHTTPRequestHandler):
             target = q["redirect_uri"][0] + "?code=code-1&state=" + q["state"][0]
             self.send_response(302); self.send_header("Location", target); self.end_headers(); return
         if u.path == "/api/auth/oauth2/callback/nufi":         # Works, the far end of SSO
+            if st.get("sso_error"):
+                # better-auth renders a 200 error PAGE for a mismatched state
+                # rather than a non-200 status -- redirect there, same as the
+                # real thing, instead of asserting the happy-path cookies.
+                self.send_response(302); self.send_header("Location", "/error?error=state_mismatch"); self.end_headers(); return
             assert self.cookie("better-auth.state") == "st-1", "state cookie did not travel"
             assert q["code"] == ["code-1"]
             self.send_response(302); self.send_header("Set-Cookie", "session=sess-1; Path=/")
             self.send_header("Location", "/"); self.end_headers(); return
-        if u.path == "/":
-            self.send(200, {"ok": True}); return
+        if u.path == "/":                                       # Works' SPA -- HTML, not JSON
+            self.send_html(200, "<!doctype html><title>Works</title>"); return
+        if u.path == "/error":                                  # better-auth's error page -- HTML too
+            self.send_html(200, "<!doctype html><title>Works</title>"); return
         if u.path == "/api/auth/get-session":
             if self.cookie("session") != "sess-1":
                 self.send(200, None); return
@@ -233,6 +251,7 @@ def test_first_run_signs_in_as_the_admin_claims_and_registers_everything():
     try:
         r = run(base)
         assert r.returncode == 0, r.stderr
+        assert "Traceback" not in r.stderr, r.stderr
         st = Fake.state
         assert st["chat_logins"] == 1, "signed in to chat once, with the admin's password"
         assert st["claimed_by"] == "me", "the admin's SSO session claimed first admin"
@@ -344,6 +363,47 @@ def test_check_mode_reads_only_and_says_what_is_missing():
         srv.shutdown()
 
 
+def test_check_mode_passes_after_a_first_run():
+    """The negative test above proves --check complains; this proves it stops
+    complaining once `install` has actually run, and catches a re-pin."""
+    Fake.state = fresh_state()
+    srv, base = serve()
+    try:
+        first = run(base)
+        assert first.returncode == 0, first.stderr
+        image = "ghcr.io/dudaji-vn/nufi-sandbox@sha256:" + "0" * 64
+        env = dict(os.environ, WORKS_BOX_KEY="bk-1")
+        r = subprocess.run([sys.executable, str(SCRIPT), "--works", base, "--check", "--image", image],
+                           env=env, capture_output=True, text=True, timeout=60)
+        assert r.returncode == 0, r.stderr
+        assert "missing:" not in r.stderr, r.stderr
+        other_image = "ghcr.io/dudaji-vn/nufi-sandbox@sha256:" + "1" * 64
+        r2 = subprocess.run([sys.executable, str(SCRIPT), "--works", base, "--check", "--image", other_image],
+                            env=env, capture_output=True, text=True, timeout=60)
+        assert r2.returncode == 1, (r2.returncode, r2.stderr)
+        assert "pinned" in r2.stderr, r2.stderr
+        print("PASS: --check passes after a first run, and catches a re-pinned image")
+    finally:
+        srv.shutdown()
+
+
+def test_a_better_auth_error_page_is_named_not_parsed():
+    """The Critical this round fixed: the SSO callback can land on an HTML
+    error page instead of the JSON the old code assumed everywhere. This must
+    become a named, one-line failure -- not a JSONDecodeError traceback."""
+    Fake.state = fresh_state()
+    Fake.state["sso_error"] = True
+    srv, base = serve()
+    try:
+        r = run(base)
+        assert r.returncode == 1, (r.returncode, r.stderr)
+        assert "state_mismatch" in r.stderr, r.stderr
+        assert "Traceback" not in r.stderr, r.stderr
+        print("PASS: better-auth's error page is named, not parsed as JSON")
+    finally:
+        srv.shutdown()
+
+
 if __name__ == "__main__":
     test_first_run_signs_in_as_the_admin_claims_and_registers_everything()
     test_second_run_with_the_keys_creates_nothing_and_never_signs_in()
@@ -351,3 +411,5 @@ if __name__ == "__main__":
     test_a_minted_key_is_printed_before_a_later_step_can_fail()
     test_a_new_image_digest_repins_the_existing_environment()
     test_check_mode_reads_only_and_says_what_is_missing()
+    test_check_mode_passes_after_a_first_run()
+    test_a_better_auth_error_page_is_named_not_parsed()

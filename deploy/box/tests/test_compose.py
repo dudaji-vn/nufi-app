@@ -250,7 +250,7 @@ def test_studio_may_reach_the_box_model_host():
     assert "ollama" in hosts, allowed
 
 
-# --- Task 6: the box as a mesh node ------------------------------------------
+# --- the box as a mesh node --------------------------------------------------
 
 def test_the_mesh_profile_adds_the_tailscale_node():
     """`nufi-box mesh up` layers docker-compose.mesh.yml and starts one extra
@@ -298,7 +298,7 @@ def test_caddy_can_read_the_generated_mesh_sites():
     assert "/etc/caddy/caddy" in targets, targets
 
 
-# --- the department routines read the drives (Task 8) ---
+# --- the department routines read the drives ---
 
 def test_studio_mounts_the_department_drives_read_only():
     """The routines answer from the same folders Samba shares. Read-only: a
@@ -329,7 +329,7 @@ def test_the_drives_reach_studio_and_ingest_from_the_same_place():
     assert studio == ingest, (studio, ingest)
 
 
-# --- Task 2: the works-sandbox network and the works-egress proxy -----------
+# --- the works-sandbox network and the works-egress proxy --------------------
 
 def test_the_sandbox_network_is_internal_and_literally_named():
     """Piece A's provider hard-codes the network name; compose would prefix it.
@@ -362,7 +362,7 @@ def test_no_other_service_is_on_the_sandbox_network():
     assert on_sandbox == ["works-egress"], on_sandbox
 
 
-# --- Task 3: the works service, its profile, and the sixth port -------------
+# --- the works service, its profile, and the sixth port -----------------------
 
 def test_works_and_its_proxy_exist_only_behind_the_works_profile():
     """A box installed without --with-works is byte-for-byte the box that

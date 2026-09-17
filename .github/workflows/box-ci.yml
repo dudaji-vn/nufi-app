@@ -98,10 +98,17 @@ jobs:
       - name: The image keeps the sandbox contract
         run: |
           set -euo pipefail
-          docker run --rm nufi-sandbox:ci timeout --version | head -1 | grep -q 'GNU coreutils'
+          # Captured first, then matched: under pipefail a `| head -1 | grep -q`
+          # gate reports head's/grep's exit, not the run's -- the same class of
+          # bug fixed in nufi-box doctor's egress and runsc checks.
+          v="$(docker run --rm nufi-sandbox:ci timeout --version | head -1)"
+          case "$v" in *"GNU coreutils"*) ;; *) echo "not GNU timeout: $v"; exit 1;; esac
           docker run --rm nufi-sandbox:ci sh -c 'id -u' | grep -qx 1000
           docker run --rm nufi-sandbox:ci sh -c 'pwd' | grep -qx /workspace
+          # The rootfs is read-only under the provider; the harnesses keep
+          # their config under $HOME, so HOME must be the writable workspace.
+          docker run --rm nufi-sandbox:ci sh -c 'echo $HOME' | grep -qx /workspace
           for cli in codex claude opencode git node; do
             docker run --rm nufi-sandbox:ci sh -c "command -v $cli" >/dev/null || { echo "$cli not on PATH"; exit 1; }
           done
-          echo "PASS: GNU timeout, uid 1000, /workspace, codex claude opencode git node"
+          echo "PASS: GNU timeout, uid 1000, /workspace, HOME=/workspace, codex claude opencode git node"

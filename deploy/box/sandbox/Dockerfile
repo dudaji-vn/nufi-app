@@ -31,6 +31,10 @@ RUN npm install -g --omit=dev \
 RUN mkdir -p /workspace && chown 1000:1000 /workspace
 USER 1000:1000
 WORKDIR /workspace
+# The rootfs is read-only under the provider (only /workspace and /tmp are
+# writable); the harnesses keep their config under $HOME, so HOME is the
+# workspace.
+ENV HOME=/workspace
 # The provider sets Cmd to `sleep infinity` and execs into the container; this
 # is only what a bare `docker run` of the image does.
 CMD ["sleep", "infinity"]

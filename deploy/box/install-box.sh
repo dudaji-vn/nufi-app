@@ -843,10 +843,18 @@ fi
 if [ "$NUFI_WORKS" = 1 ]; then
   say "Registering the sandbox environment in Works"
   if [ "$DRY" = 1 ]; then
-    # nufi-box works install (Task 5) does not exist yet, so its own dry-run
-    # plan below is just the command's usage/error today -- name the step
-    # here so the plan says what will run once it does.
     printf '  $ nufi-box works install\n'
+    # The delegated dry run needs a WORKS_SANDBOX_IMAGE already in .env --
+    # works_install's own guard refuses without one -- and a fresh box's dry
+    # run has never pulled a real digest (that happens for real only outside
+    # --dry-run, above). A placeholder here is seen only by the printed plan,
+    # so the delegated command reaches its own compose-run/register_works.py
+    # line instead of dying on the same guard a real box hits only without
+    # --with-works.
+    # No < or > here: this value is written into a .env file that gets
+    # dot-sourced as shell (nufi-box's `. "$ENVF"`), and either character is
+    # an I/O redirection to the parser, not text.
+    WORKS_SANDBOX_IMAGE="${WORKS_SANDBOX_IMAGE:-${SANDBOX_REF:-ghcr.io/dudaji-vn/nufi-sandbox}@sha256:dryrun}"
     _works_env="$(mktemp)"
     render_env > "$_works_env"
     NUFI_BOX_DRY_RUN=1 NUFI_BOX_FAKE_OS="$OS" NUFI_BOX_ENV="$_works_env" "$BOX_HOME/nufi-box" works install || true
