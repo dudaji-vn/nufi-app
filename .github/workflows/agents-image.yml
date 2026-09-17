@@ -112,6 +112,19 @@ jobs:
           echo "$env_json" | grep -q 'DO_NOT_TRACK=1'
           echo "telemetry disabled in the image"
 
+      # The box installs the Docker sandbox provider from this path with
+      # plugin auto-build off; an image without its dist is a box whose
+      # `nufi-box works install` fails at the plugin step.
+      - name: Assert the Docker sandbox provider is built into the image
+        run: |
+          set -euo pipefail
+          docker run --rm nufi-works:branded sh -c '
+            test -f packages/plugins/sandbox-providers/docker/dist/manifest.js &&
+            test -f packages/plugins/sandbox-providers/docker/dist/worker.js &&
+            node -e "require.resolve(\"dockerode\",{paths:[\"packages/plugins/sandbox-providers/docker\"]})" &&
+            node -e "require.resolve(\"@paperclipai/plugin-sdk\",{paths:[\"packages/plugins/sandbox-providers/docker\"]})"'
+          echo "docker sandbox provider is built into the image"
+
       - name: Push every tag
         run: |
           set -euo pipefail

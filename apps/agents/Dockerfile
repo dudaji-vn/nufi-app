@@ -70,6 +70,22 @@ RUN test -f server/dist/index.js || (echo "ERROR: server build output missing" &
 RUN pnpm --dir nufi/adapter install --frozen-lockfile --ignore-workspace
 RUN pnpm --dir nufi/adapter build
 RUN test -f nufi/adapter/dist/index.js || (echo "ERROR: nufi adapter build output missing" && exit 1)
+# The box's Docker sandbox provider (packages/plugins/sandbox-providers/docker)
+# is outside the pnpm workspace like every sandbox provider, so nothing above
+# builds it -- and the box installs it with plugin auto-build OFF, because a
+# plugin install must never reach for npm from inside a box. Built here, with
+# its one runtime dependency (dockerode) installed beside it. The
+# @paperclipai/plugin-sdk link comes from the root postinstall
+# (scripts/link-plugin-dev-sdk.mjs); it is re-run because an --ignore-workspace
+# install may prune a link it did not make.
+RUN pnpm --dir packages/plugins/sandbox-providers/docker install --frozen-lockfile --ignore-workspace \
+ && node scripts/link-plugin-dev-sdk.mjs \
+ && pnpm --dir packages/plugins/sandbox-providers/docker build
+RUN test -f packages/plugins/sandbox-providers/docker/dist/manifest.js \
+ && test -f packages/plugins/sandbox-providers/docker/dist/worker.js \
+ && test -e packages/plugins/sandbox-providers/docker/node_modules/dockerode \
+ && test -e packages/plugins/sandbox-providers/docker/node_modules/@paperclipai/plugin-sdk \
+ || (echo "ERROR: docker sandbox provider build output missing" && exit 1)
 
 FROM base AS production
 ARG USER_UID=1000
