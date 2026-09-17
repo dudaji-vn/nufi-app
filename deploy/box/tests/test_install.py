@@ -944,6 +944,7 @@ def test_with_works_turns_the_profile_on_and_records_it():
     assert "nufi-sandbox:main" in out, "the sandbox image is pulled with the stack"
     assert "WORKS_SANDBOX_IMAGE" in out, "and registered by digest"
     assert "works install" in out, "registration is delegated to nufi-box works install"
+    assert "register_works.py" in out, "and the delegated plan shows the registrar's command"
 
 
 def test_without_the_flag_the_box_is_the_box_that_ships_today():
