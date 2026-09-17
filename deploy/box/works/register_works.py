@@ -54,6 +54,7 @@ class Box:
             handlers.append(urllib.request.HTTPSHandler(context=ssl.create_default_context(cafile=cacert)))
         self.opener = urllib.request.build_opener(*handlers)
         self.token = None
+        self.last_url = None
 
     def call(self, method, url, body=None, token=None, origin=False, ua=None):
         data = json.dumps(body).encode() if body is not None else None
@@ -68,16 +69,25 @@ class Box:
             # session-authenticated POST; a bearer key needs none.
             req.add_header("Origin", self.works)
         req.add_header("User-Agent", ua or "nufi-box/register_works")
+        self.last_url = url
         try:
             with self.opener.open(req, timeout=60) as r:
+                self.last_url = r.geturl()
                 raw = r.read()
                 return r.status, (json.loads(raw) if raw.strip() else None)
         except urllib.error.HTTPError as e:
+            self.last_url = e.geturl() if hasattr(e, "geturl") else url
             raw = e.read()
             try:
                 return e.code, json.loads(raw)
             except ValueError:
                 return e.code, raw.decode(errors="replace")
+        except urllib.error.URLError as e:
+            # Connection refused, TLS failure, DNS -- not an HTTP status, and
+            # a traceback here is not something an installer's stderr should
+            # ever have to be read past.
+            say("%s %s: %s" % (method, url, e.reason))
+            sys.exit(1)
 
     def must(self, method, path, body=None, ok=(200, 201), **kw):
         status, out = self.call(method, self.works + path, body, **kw)
@@ -102,6 +112,14 @@ def sign_in_as_admin(box, chat, login, password):
     if status != 200:
         say("the SSO round trip ended with %s (is the console's OIDC_CLIENTS carrying nufi-works, and PAPERCLIP_PUBLIC_URL the name the box announces?)" % status)
         sys.exit(1)
+    # better-auth renders a 200 error PAGE for some failures (a mismatched
+    # state, a provider it does not recognize) rather than a non-200 status,
+    # so the status check above passes and the only tell is the URL urllib
+    # actually landed on.
+    landed = urllib.parse.urlparse(box.last_url or "")
+    if landed.path.endswith("/error"):
+        say("Works' OAuth callback landed on its error page: %s" % (landed.query or "(no details)"))
+        sys.exit(1)
     session = box.must("GET", "/api/auth/get-session")
     email = ((session or {}).get("user") or {}).get("email", "")
     if email.lower() != login.lower():
@@ -115,8 +133,12 @@ def claim_or_confirm(box):
         say("claimed instance admin")
     elif status != 409:
         say("bootstrap claim -> %s %s" % (status, out)); sys.exit(1)
-    status, _ = box.call("GET", box.works + "/api/instance/settings")
-    if status != 200:
+    # Not /api/instance/settings: that answers 200 to any company member
+    # (assertBoardOrgAccess), so a box admin someone else later added to a
+    # company would sail through this check and only fail, confusingly, at
+    # plugin install. /api/cli-auth/me says isInstanceAdmin outright.
+    status, out = box.call("GET", box.works + "/api/cli-auth/me")
+    if status != 200 or not (out or {}).get("isInstanceAdmin"):
         say("this Works instance was claimed by someone else, and %s is not an instance admin." % "the box admin")
         say("In Works: Instance access -> promote the box admin to instance admin, then run: nufi-box works install")
         sys.exit(3)
@@ -126,8 +148,8 @@ def stored_key_works(box, existing):
     """A key from an earlier run means no sign-in at all this time."""
     if not existing:
         return False
-    status, _ = box.call("GET", box.works + "/api/instance/settings", token=existing)
-    if status == 200:
+    status, out = box.call("GET", box.works + "/api/cli-auth/me", token=existing)
+    if status == 200 and (out or {}).get("isInstanceAdmin"):
         box.token = existing
         return True
     say("the stored WORKS_BOX_KEY no longer works; signing in to mint a new one")
@@ -157,6 +179,8 @@ def plugin_ready(box, path, wait_s=90):
         p = find()
         if p and p.get("status") == "ready":
             return p
+        if p and p.get("status") == "error":
+            say("the provider plugin is in error -- check: nufi-box logs works"); sys.exit(1)
         if time.time() > deadline:
             say("the provider plugin is %s, not ready, after %ss -- check: nufi-box logs works" % (p and p.get("status"), wait_s))
             sys.exit(1)
@@ -179,7 +203,11 @@ def environment(box, company_id, image):
         env = docker[0]
         if (env.get("config") or {}).get("image") != image:
             cfg = dict(env.get("config") or {}); cfg["image"] = image
-            env = box.must("PATCH", "/api/environments/%s" % env["id"], {"config": cfg})
+            # A config PATCH resolves a secret context company and 400s
+            # ("requires a companyId context") unless the actor is in exactly
+            # one company; the box admin usually is, but say which one rather
+            # than lean on that.
+            env = box.must("PATCH", "/api/environments/%s?companyId=%s" % (env["id"], company_id), {"config": cfg})
             say("re-pinned the sandbox image to %s" % image)
     else:
         env = box.must("POST", "/api/companies/%s/environments" % company_id, {
@@ -192,7 +220,10 @@ def environment(box, company_id, image):
         say("made it the instance default")
     for e in envs:
         if e.get("driver") == "local" and e.get("status") == "active":
-            box.must("PATCH", "/api/environments/%s" % e["id"], {"status": "archived"})
+            # No config body here, so no companyId context to resolve -- but
+            # the query does no harm, and it is one less thing to remember if
+            # this PATCH ever grows a config field.
+            box.must("PATCH", "/api/environments/%s?companyId=%s" % (e["id"], company_id), {"status": "archived"})
             say("archived %r: it would run agent code inside the works container under plain Docker" % e.get("name"))
     return env
 
@@ -251,6 +282,11 @@ def main():
     box = Box(a.works, a.cacert)
     if a.check:
         check(box, a.image)
+    # Printed the moment each exists, not batched at the end: a later step
+    # (the plugin install, the environment registration) can still fail, and
+    # a key minted just before that and never handed back is an orphan on
+    # Works with nothing on this side to show for it. `minted` is kept only
+    # for the closing summary line, not to decide what reaches stdout.
     minted = {}
     if not stored_key_works(box, os.environ.get("WORKS_BOX_KEY") or None):
         if not (a.chat and a.login and os.environ.get("ADMIN_PASSWORD")):
@@ -258,6 +294,7 @@ def main():
         sign_in_as_admin(box, a.chat, a.login, os.environ["ADMIN_PASSWORD"])
         claim_or_confirm(box)
         minted["WORKS_BOX_KEY"] = mint_key(box)
+        print("WORKS_BOX_KEY=%s" % minted["WORKS_BOX_KEY"], flush=True)
     plugin_ready(box, a.plugin_path)
     c = company(box, a.company)
     environment(box, c["id"], a.image)
@@ -265,8 +302,9 @@ def main():
         mk = model_key(box, a.litellm, os.environ.get("WORKS_MODEL_KEY"), os.environ.get("LITELLM_MASTER_KEY"))
         if mk:
             minted["WORKS_MODEL_KEY"] = mk
-    for k, v in minted.items():
-        print("%s=%s" % (k, v))
+            print("WORKS_MODEL_KEY=%s" % mk, flush=True)
+    if minted:
+        say("minted: " + ", ".join(minted))
     say("registered")
 
 

@@ -32,6 +32,7 @@ def fresh_state():
         "keys_minted": 0,
         "plugin_polls": 0,
         "chat_logins": 0,
+        "fail_plugin_install": False,
     }
 
 
@@ -103,7 +104,21 @@ class Fake(http.server.BaseHTTPRequestHandler):
             self.send(200, {"user": {"email": ADMIN, "id": "u-1"}}); return
         if u.path == "/api/health":
             self.send(200, {"status": "ok"}); return
+        if u.path == "/api/cli-auth/me":                       # says isInstanceAdmin outright
+            if self.bearer() == "bk-1":
+                self.send(200, {"userId": "u-1", "isInstanceAdmin": st["claimed_by"] == "me",
+                                "companyIds": [c["id"] for c in st["companies"]], "source": "board_key"}); return
+            if self.cookie("session") == "sess-1":
+                self.send(200, {"userId": "u-1", "isInstanceAdmin": st["claimed_by"] == "me",
+                                "companyIds": [c["id"] for c in st["companies"]], "source": "session"}); return
+            self.send(401, {"error": "unauthenticated"}); return
         if u.path == "/api/instance/settings":
+            # assertBoardOrgAccess: any company member reads this, not only
+            # the instance admin -- the real looseness register_works.py must
+            # not use to decide "am I admin" (it asks /api/cli-auth/me for
+            # that instead).
+            if self.cookie("session") == "sess-1":
+                self.send(200, {"defaultEnvironmentId": st["default_env"]}); return
             if not self.as_admin():
                 self.send(403, {"error": "Instance admin access required"}); return
             self.send(200, {"defaultEnvironmentId": st["default_env"]}); return
@@ -154,6 +169,8 @@ class Fake(http.server.BaseHTTPRequestHandler):
         if not self.as_admin():
             self.send(403, {"error": "Instance admin required"}); return
         if u.path == "/api/plugins/install":
+            if st["fail_plugin_install"]:
+                self.send(500, {"error": "the worker is not answering"}); return
             assert b == {"packageName": "/app/packages/plugins/sandbox-providers/docker", "isLocalPath": True}, b
             st["plugins"].append({"id": "p-1", "packageName": PLUGIN, "status": "installed",
                                   "installed_at_poll": st["plugin_polls"]})
@@ -170,6 +187,7 @@ class Fake(http.server.BaseHTTPRequestHandler):
         self.record()
         st = Fake.state
         u = urllib.parse.urlparse(self.path)
+        q = urllib.parse.parse_qs(u.query)
         b = self.body()
         if not self.as_admin():
             self.send(403); return
@@ -177,6 +195,11 @@ class Fake(http.server.BaseHTTPRequestHandler):
             st["default_env"] = b["defaultEnvironmentId"]; self.send(200, {"defaultEnvironmentId": st["default_env"]}); return
         if u.path.startswith("/api/environments/"):
             env_id = u.path.rsplit("/", 1)[1]
+            if "config" in b:
+                # A config PATCH resolves a secret context company and 400s
+                # without ?companyId= unless the actor is in exactly one
+                # company -- pin that the registrar always sends it.
+                assert "companyId" in q, ("companyId missing from a config PATCH", self.path)
             (env,) = [e for e in st["environments"] if e["id"] == env_id]
             env.update(b); self.send(200, env); return
         self.send(404)
@@ -248,6 +271,12 @@ def test_second_run_with_the_keys_creates_nothing_and_never_signs_in():
 def test_an_instance_claimed_by_someone_else_is_named_not_worked_around():
     Fake.state = fresh_state()
     Fake.state["claimed_by"] = "other"
+    # The admin also happens to be a member of the existing company -- which
+    # is exactly the case /api/instance/settings alone would get wrong: that
+    # route answers 200 to any company member (assertBoardOrgAccess), not
+    # only an instance admin. The fake mirrors that looseness here so this
+    # test would fail if the registrar were still asking it "am I admin".
+    Fake.state["companies"] = [{"id": "c-1", "name": "nufi"}]
     srv, base = serve()
     try:
         r = run(base)
@@ -255,6 +284,23 @@ def test_an_instance_claimed_by_someone_else_is_named_not_worked_around():
         assert "claimed" in r.stderr and "promote" in r.stderr, r.stderr
         assert not [c for c in Fake.state["calls"] if c[1] in ("/api/plugins/install", "/api/companies") and c[0] == "POST"]
         print("PASS: someone else's instance is reported with the fix, not taken over")
+    finally:
+        srv.shutdown()
+
+
+def test_a_minted_key_is_printed_before_a_later_step_can_fail():
+    """A board key is minted the moment first admin is claimed; if the next
+    step -- installing the provider plugin -- then fails, the key must not be
+    lost. It is only good on Works, and a run that dies without printing it
+    leaves an orphan key nothing on this side has a record of."""
+    Fake.state = fresh_state()
+    Fake.state["fail_plugin_install"] = True
+    srv, base = serve()
+    try:
+        r = run(base)
+        assert r.returncode == 1, (r.returncode, r.stderr)
+        assert "WORKS_BOX_KEY=bk-1" in r.stdout, r.stdout
+        print("PASS: a minted key is printed before a later step can fail")
     finally:
         srv.shutdown()
 
@@ -302,5 +348,6 @@ if __name__ == "__main__":
     test_first_run_signs_in_as_the_admin_claims_and_registers_everything()
     test_second_run_with_the_keys_creates_nothing_and_never_signs_in()
     test_an_instance_claimed_by_someone_else_is_named_not_worked_around()
+    test_a_minted_key_is_printed_before_a_later_step_can_fail()
     test_a_new_image_digest_repins_the_existing_environment()
     test_check_mode_reads_only_and_says_what_is_missing()

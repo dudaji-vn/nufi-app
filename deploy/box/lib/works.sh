@@ -70,10 +70,14 @@ works_install() {
   fi
   $COMPOSE up -d works >/dev/null
   works_wait || { echo "works: Works is not answering at $WORKS_URL — check: nufi-box logs works" >&2; return 1; }
-  local out; out="$(mktemp)"
+  local out rc=0; out="$(mktemp)"
   works_run --chat "https://${BOX_HOST:-nufi.local}:3080" --litellm "http://litellm-proxy:4000" \
     --login "${ADMIN_EMAIL:-admin@nufi.local}" --company "${BOX_NAME:-nufi}" --image "$WORKS_SANDBOX_IMAGE" \
-    > "$out" || { rm -f "$out"; return 1; }
+    > "$out" || rc=$?
+  # Written whatever the exit status: a key can be minted and printed several
+  # steps before a later one fails (the plugin install, the environment
+  # registration), and a failed run that then discards the file leaves an
+  # orphan key on Works with nothing here to show for it.
   local line new_model_key=0
   if grep -qE '^(WORKS_BOX_KEY|WORKS_MODEL_KEY)=' "$out"; then
     . "$HERE/lib/envfile.sh"
@@ -86,6 +90,7 @@ works_install() {
     done < "$out"
   fi
   rm -f "$out"
+  [ "$rc" = 0 ] || return "$rc"
   # The model key is read by the works container at creation; a key minted
   # just now is not in the running one. Recreate it, once, with the new .env.
   if [ "$new_model_key" = 1 ]; then
