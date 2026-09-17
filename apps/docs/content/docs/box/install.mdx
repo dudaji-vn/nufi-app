@@ -17,13 +17,18 @@ slower; a machine serving a handful of people at once wants a GPU.
 
 ## Get the box
 
-`deploy/box` is self-contained — 36 files, about 400 KB. There is no need to
-clone the whole repository:
+`deploy/box` is self-contained — 36 files, about 400 KB — but it is not the
+whole story: `nufi-box flows install` needs the routine builder in
+`deploy/platform/scenarios/studio`, and `nufi-box schedule list` needs the
+adapter in `deploy/platform/adapters/nufi-cron`. Fetch all three together, or
+the install finishes with "the routines are not in Studio yet." There is no
+need to clone the whole repository:
 
 ```bash
 curl -fsSL https://codeload.github.com/dudaji-vn/nufi-app/tar.gz/refs/heads/main \
-  | tar -xz --strip-components=2 '*/deploy/box'
-cd box
+  | tar -xz --strip-components=1 '*/deploy/box' \
+      '*/deploy/platform/scenarios/studio' '*/deploy/platform/adapters/nufi-cron'
+cd deploy/box
 ```
 
 ## Install

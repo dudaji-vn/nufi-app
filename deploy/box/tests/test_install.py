@@ -1011,3 +1011,23 @@ def test_a_rerun_keeps_works_on_without_the_flag(tmp_path):
     out = dry(NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_FAKE_ARCH="x86_64", NUFI_BOX_ENV=str(envf))
     assert "--profile works" in out
     assert "NUFI_WORKS=1" in out
+
+
+# --- the published fetch names everything a box needs, not just deploy/box ---
+
+def test_install_docs_and_readme_fetch_name_all_three_directories():
+    """The published install guide (apps/docs/content/docs/box/install.mdx)
+    and the README's "Boxes without GitHub access" section are the only two
+    places telling someone what to fetch before they have a checkout.
+    Fetching only deploy/box leaves `nufi-box flows install` (lib/flows.sh,
+    which shells out to deploy/platform/scenarios/studio/build_flows.py) and
+    `nufi-box schedule list` (lib/schedule.sh, deploy/platform/adapters/
+    nufi-cron/nufi_cron.py) with nothing to run — the install finishes with
+    "the routines are not in Studio yet." Both fetch lines have to name all
+    three directories `nufi-box update` fetches too."""
+    repo_root = BOX.parents[1]
+    install_mdx = (repo_root / "apps" / "docs" / "content" / "docs" / "box" / "install.mdx").read_text()
+    readme = (BOX / "README.md").read_text()
+    for text, name in ((install_mdx, "install.mdx"), (readme, "README.md")):
+        for d in ("deploy/box", "deploy/platform/scenarios/studio", "deploy/platform/adapters/nufi-cron"):
+            assert d in text, "%s is missing %s from its fetch instructions" % (name, d)

@@ -99,7 +99,13 @@ nufi-box <verb>
                       dump the databases, the drives and the secrets
   backup --install-nightly [--at HH:MM] | --remove-nightly
   restore DIR [--yes]  put a backup back, over this box
-  update | support    (coming in P4)
+  update [--ref REF] | update --rollback
+                      fetch the newest box, back it up, re-run the installer
+                      that already keeps every answer and secret, check it,
+                      and roll back automatically if the check fails (not
+                      signed yet — GitHub over TLS, no signed bundle; see
+                      README "What is not built yet")
+  support              (coming — see README "What is not built yet")
 EOF
 }
 case "${1:-}" in
@@ -116,7 +122,16 @@ case "${1:-}" in
     . "$HERE/lib/backup.sh"
     _last="$(backup_last)"
     if [ -n "$_last" ]; then echo "Last backup: $_last UTC"
-    else echo "Last backup: never — run 'nufi-box backup'"; fi ;;
+    else echo "Last backup: never — run 'nufi-box backup'"; fi
+    # Read, not computed: the file is update_run's own record of what it did
+    # and when, and re-deriving either from the tree would just be a second
+    # place for the two to disagree.
+    if [ -f "$HERE/.previous/updated-from" ]; then
+      read -r _upd_sha _upd_date < "$HERE/.previous/updated-from"
+      echo "update: $_upd_sha since $_upd_date"
+    else
+      echo "update: never updated"
+    fi ;;
   logs) shift; run $COMPOSE logs -f --tail=200 "$@" ;;
   announce)
     # Re-publish $BOX_HOST at the address this machine has now. One command,
@@ -448,7 +463,21 @@ case "${1:-}" in
     export BACKUP_YES
     . "$HERE/lib/backup.sh"
     backup_restore "$_from" ;;
-  update|support) echo "$1: coming in the next phase"; exit 3 ;;
+  update)
+    shift
+    UPDATE_REF=""; UPDATE_YES=0; UPDATE_ROLLBACK=0
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --ref) UPDATE_REF="${2:?--ref needs a value}"; shift 2 ;;
+        --rollback) UPDATE_ROLLBACK=1; shift ;;
+        --yes) UPDATE_YES=1; shift ;;
+        *) die "update: unknown option: $1" ;;
+      esac
+    done
+    . "$HERE/lib/update.sh"
+    if [ "$UPDATE_ROLLBACK" = 1 ]; then update_rollback
+    else update_run "$UPDATE_REF" "$UPDATE_YES"; fi ;;
+  support) echo "support: coming in the next phase (see README \"What is not built yet\")"; exit 3 ;;
   -h|--help|"") usage ;;
   *) echo "unknown command: $1" >&2; usage; exit 2 ;;
 esac

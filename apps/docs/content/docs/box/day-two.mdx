@@ -104,11 +104,34 @@ you need none of it.
 ./nufi-box ca-cert     # the file every laptop trusts once
 ```
 
-## Not yet
+## Updating
 
 ```bash
-./nufi-box update      # coming
-./nufi-box support     # coming
+./nufi-box update              # fetch the newest release, apply it, check it
+./nufi-box update --ref v1.2.3 # a specific tag instead of the latest main
+./nufi-box update --rollback   # put back what the last update replaced
 ```
 
-Upgrading today is `docker compose pull` and `./nufi-box up` by hand.
+One command: it fetches the newest `deploy/box` (plus the two directories it
+depends on, `deploy/platform/scenarios/studio` and
+`deploy/platform/adapters/nufi-cron`), backs up the box first
+(`nufi-box backup`), snapshots the current files and the digest of every
+image running now, applies the new files, and re-runs `install-box.sh` — the
+same installer day one used, which already keeps `.env` and every answer and
+secret, so an update never re-asks the four questions.
+
+Then it runs `nufi-box doctor`. If that passes, you are done. If it fails,
+`update` rolls back on its own — the files and the images go back to what
+they were, the stack restarts, and it prints where the backup from this run
+landed. It does **not** restore that backup automatically: your data is meant
+to carry forward across an update by design (migrations), and putting the
+database back is a decision for a person holding the backup's path
+(`nufi-box restore <path>`), not something a failed check should do by
+itself.
+
+**Not signed yet.** The archive comes straight from GitHub over TLS — the
+same transport a browser gets, nothing more. There is no signature on it and
+nothing checks one. A signed bundle from `updates.nufi.me` is the next phase
+(see the README's "What is not built yet").
+
+`./nufi-box support` is still coming.

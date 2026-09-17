@@ -137,11 +137,16 @@ a small registry on a machine that already has the images — a Mac that
 built them — and point the box at it.
 
 Such a box usually has no checkout either. Make one from a machine that has
-the repo and carry it over (scp, a USB stick — no GitHub involved):
+the repo and carry it over (scp, a USB stick — no GitHub involved). The same
+three directories `update` fetches: `deploy/box` plus the two it depends on —
+`nufi-box flows install` needs the builder in
+`deploy/platform/scenarios/studio`, `nufi-box schedule list` needs the
+adapter in `deploy/platform/adapters/nufi-cron` — or the install finishes
+with "the routines are not in Studio yet":
 
 ```bash
 git archive -o box.tar HEAD \
-  deploy/box deploy/platform/scenarios deploy/platform/adapters/nufi-ingest docs
+  deploy/box deploy/platform/scenarios/studio deploy/platform/adapters/nufi-cron
 ```
 
 and on the box, `tar xf box.tar && cd deploy/box`.
@@ -649,7 +654,41 @@ to `install-box.sh` and is also symlinked onto your `PATH`.
 | `revoke <name>` / `revoke --id <id>` | Remove a laptop's access to the mesh |
 | `flows install` | Put the department routines into Studio — safe to repeat |
 | `flows list` | Every flow in the box's Studio, with its id |
-| `update` / `backup` / `support` | Not built yet — see [What is not built yet](#10-what-is-not-built-yet) |
+| `update [--ref REF]` / `update --rollback` | Fetch the newest release, apply it, check it, roll back automatically if the check fails — see [Updating](#updating) |
+| `backup [--to DIR] [--keep N]` / `restore DIR` | Dump the databases, drives and secrets, or put a backup back — see [Backups](#backups) |
+| `support` | Not built yet — see [What is not built yet](#10-what-is-not-built-yet) |
+
+### Updating
+
+```bash
+nufi-box update                 # fetch the newest main, apply, check
+nufi-box update --ref v1.2.3    # a specific tag instead of main
+nufi-box update --rollback      # put back what the last update replaced
+```
+
+One command re-runs the whole day-one path: it fetches the newest `deploy/box`
+and the two directories it depends on (the same three directories described
+in [Boxes without GitHub access](#boxes-without-github-access)) from GitHub,
+runs `nufi-box backup` first, snapshots the current files and the digest of
+every image running now to `.previous/`, applies the new files, and re-runs
+`install-box.sh` — the same installer day one used, so `.env`, every answer,
+and the mesh address are kept exactly as `install-box.sh` already keeps them
+on any re-run.
+
+It then runs `nufi-box doctor`. A pass is the whole result. A failure rolls
+back automatically: the files and the running images go back to what
+`.previous/` holds, the stack restarts, and doctor runs once more so the
+message says whether the box is healthy again. A rollback does **not**
+restore the backup taken at the start on its own — an update's migrations
+are meant to carry the data forward, and putting the database back is a
+decision for a person holding the backup's path (`nufi-box restore <path>`),
+never something a failed check decides by itself.
+
+`nufi-box status` shows `update: <sha> since <date>` once a box has updated,
+or `update: never updated` before the first one.
+
+**Not signed yet.** This is GitHub over TLS — the same transport a browser
+gets — not a signed bundle. See [What is not built yet](#10-what-is-not-built-yet).
 
 ## 8. From home
 
@@ -847,11 +886,15 @@ built yet:
   and both ends behind NAT. It has not been run against a coordinator on a
   real VPS with a public DNS name and a Let's Encrypt certificate. Nothing is
   known to be missing; it simply has not been done.
-- **`nufi-box update`.** There is no signed update bundle or rollback yet;
-  upgrading means pulling new images and running the installer again.
-- **`nufi-box backup`.** There is no scheduled backup yet.
-- **NUFI Works.** Only NUFI Studio runs on the box; Works stays in the
-  cloud — it needs infrastructure a box cannot provide.
+- **A signed update bundle, an update timer, and a USB update path.**
+  `nufi-box update` (see [Updating](#updating)) fetches straight from GitHub
+  over TLS, checks the result, and rolls back automatically if it fails —
+  but the archive is unsigned, nothing runs it on a schedule, and there is no
+  offline path for a box with no network at all.
+- **NUFI Works on macOS.** Works runs on the box on Ubuntu
+  (`install-box.sh --with-works`, see [NUFI Works on the
+  box](#nufi-works-on-the-box)); Docker Desktop cannot host the gVisor
+  runtime it needs, so a Mac box does not get it.
 - **Scheduled routines, and routines from the app.** The four routines take a
   per-run question and a per-run department (see [Departments and
   drives](#5-departments-and-drives)), but only through the canvas or the
