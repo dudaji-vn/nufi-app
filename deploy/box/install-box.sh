@@ -542,8 +542,12 @@ if [ "$NUFI_WORKS" = 1 ]; then
   # installed" rather than an error, and a hung `docker info` would look the
   # same as "no runsc runtime". Capture first, then test the string: the
   # repo's own rule (yq | grep -q under pipefail returns 141 on a match).
-  _runsc_v="$(/usr/local/bin/runsc --version 2>/dev/null || true)"
-  _rt="$(docker info --format '{{range $k,$v := .Runtimes}}{{$k}} {{end}}' 2>/dev/null || true)"
+  # Not in a dry run: the plan is printed, nothing is asked of the daemon.
+  _runsc_v=""; _rt=""
+  if [ "$DRY" = 0 ]; then
+    _runsc_v="$(/usr/local/bin/runsc --version 2>/dev/null || true)"
+    _rt="$(docker info --format '{{range $k,$v := .Runtimes}}{{$k}} {{end}}' 2>/dev/null || true)"
+  fi
   if [ "$DRY" = 1 ]; then
     printf '  $ curl -fsSL -o gvisor.tar.bz2 %s\n' "$GVISOR_URL"
     printf '  $ echo "%s  gvisor.tar.bz2" | sha512sum -c -\n' "$GVISOR_SHA"
