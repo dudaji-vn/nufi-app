@@ -88,6 +88,8 @@ nufi-box <verb>
                       NAME matches more than one node)
   flows install       put the department routines into Studio (safe to repeat)
   flows list          every flow in the box's Studio, with its id
+  works install       register the Docker sandbox environment in Works (the installer does this; re-run after an upgrade)
+  works status        check whether Works is fully registered
   schedule list       the routines that run on a clock, and when each fires next
   user add EMAIL [--name "Full Name"]
                       give somebody an account on this box
@@ -304,6 +306,16 @@ case "${1:-}" in
     esac
     . "$HERE/lib/flows.sh"
     "flows_$FLOWS_VERB" ;;
+  # --- NUFI Works on the box (Task 5) ---
+  works)
+    shift
+    case "${1:-}" in
+      install|status) WORKS_VERB="$1" ;;
+      "") echo "works: say what to do — install or status" >&2; usage; exit 2 ;;
+      *) echo "works: unknown subcommand: $1 (use install or status)" >&2; exit 2 ;;
+    esac
+    . "$HERE/lib/works.sh"
+    "works_$WORKS_VERB" ;;
   user)
     # People, as opposed to laptops. `invite` and `members` are about machines
     # joining the mesh; this is about who may sign in at all.
