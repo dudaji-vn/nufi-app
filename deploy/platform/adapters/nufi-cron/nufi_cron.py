@@ -4,7 +4,16 @@
 A routine is a Studio flow tagged `nufi-routine`, created by
 `build_flows.py --box` under the box's superuser. Until now one only ran when a
 person opened Studio and pressed a button, which is no use for "the weekly
-report, every Friday at five".
+report, every Friday at five" -- or "the onboarding checklist, when a new
+hire's file lands in the folder".
+
+A schedules.ini section has exactly one trigger: `cron`, on a clock, or
+`watch`, a folder relative to the drive that fires a run when a file appears
+in it and settles (see `Daemon._tick_watch`). Both live in one file and one
+daemon on purpose -- the thing that runs a flow and writes `_routines/` is
+`Runner` here, and a second copy of that path in nufi-ingest (which already
+watches the drives for its own reasons) is exactly what the box's
+one-renderer rule forbids.
 
 The schedule lives in `schedules.ini` on the box rather than on the flow, because
 routines are copied per member: a schedule attached to a member's copy would run
@@ -119,20 +128,56 @@ class Cron:
         return dom_hit and dow_hit
 
 
+def _bare_name(file: str) -> str:
+    """The triggering file's name, safe to splice into `ask` or `out`: no
+    directory components (a watch folder's own subfolders must not leak into
+    a path), and never starting with a dot -- a hidden file is filtered out
+    of the scan before this is ever called, but a name is not trusted twice.
+    """
+    name = pathlib.PurePosixPath(file).name
+    return name.lstrip(".") or name
+
+
 @dataclasses.dataclass
 class Schedule:
     name: str
-    cron: Cron
     flow: str
     drive: str
     ask: str
     out: str
+    cron: Cron | None = None
+    watch: str | None = None
 
-    def filename(self, when: datetime.datetime) -> str:
-        return self.out.replace("{date}", when.strftime("%Y-%m-%d"))
+    def filename(self, when: datetime.datetime, file: str | None = None) -> str:
+        name = self.out.replace("{date}", when.strftime("%Y-%m-%d"))
+        if file is not None:
+            # {file} in `out` is the STEM: "kim-minsu.pdf" -> "kim-minsu",
+            # so `onboarding-{file}-{date}.md` reads as a name, not a name
+            # with the original extension riding along inside it.
+            name = name.replace("{file}", pathlib.PurePosixPath(_bare_name(file)).stem)
+        return name
+
+    def ask_for(self, file: str | None = None) -> str:
+        if file is None:
+            return self.ask
+        # {file} in `ask` is the full NAME: the question should name the
+        # actual file a person just dropped in the folder.
+        return self.ask.replace("{file}", _bare_name(file))
 
 
-REQUIRED = ("cron", "flow", "drive", "ask", "out")
+REQUIRED = ("flow", "drive", "ask", "out")
+
+
+def _bad_watch(value: str) -> bool:
+    """`watch` validated like `out`: relative, no `..`, no leading `/` or
+    `.`, and not under `_routines` -- nufi-cron's own output folder, which
+    must never be watched back into a run."""
+    if not value or value.startswith("/") or value.startswith("."):
+        return True
+    parts = pathlib.PurePosixPath(value).parts
+    if ".." in parts:
+        return True
+    return parts[0] == OUTPUT_DIR
 
 
 def load_schedules(path):
@@ -166,18 +211,35 @@ def load_schedules(path):
         if "/" in out or "\\" in out or out.startswith("."):
             problems.append(f"[{name}]: out must be a bare file name, got {out!r}")
             continue
-        try:
-            cron = Cron.parse(section["cron"].strip())
-        except ValueError as exc:
-            problems.append(f"[{name}]: {exc}")
+        cron_text = (section.get("cron") or "").strip()
+        watch_text = (section.get("watch") or "").strip()
+        if bool(cron_text) == bool(watch_text):
+            problems.append(
+                f"[{name}]: exactly one of cron or watch is required, "
+                f"got {'both' if cron_text else 'neither'}")
             continue
+        cron = watch = None
+        if cron_text:
+            try:
+                cron = Cron.parse(cron_text)
+            except ValueError as exc:
+                problems.append(f"[{name}]: {exc}")
+                continue
+        else:
+            watch = watch_text.rstrip("/")
+            if _bad_watch(watch):
+                problems.append(
+                    f"[{name}]: watch must be a folder relative to the drive, "
+                    f"got {watch_text!r}")
+                continue
         schedules.append(Schedule(
             name=name,
-            cron=cron,
             flow=section["flow"].strip(),
             drive=section["drive"].strip(),
             ask=section["ask"].strip(),
             out=out,
+            cron=cron,
+            watch=watch,
         ))
     return schedules, problems
 
@@ -338,38 +400,60 @@ class Runner:
             time.sleep(self.cfg.poll_interval)
         return None
 
-    def write(self, schedule, when, text):
+    def write(self, schedule, when, text, file=None):
         folder = pathlib.Path(self.cfg.drives_dir) / schedule.drive / OUTPUT_DIR
         folder.mkdir(parents=True, exist_ok=True)
-        path = folder / schedule.filename(when)
+        path = folder / schedule.filename(when, file)
         path.write_text(text + "\n", encoding="utf-8")
         return path
 
-    def run_once(self, schedule, when) -> bool:
-        """One scheduled run, start to file. Never raises; returns success."""
+    def run_once(self, schedule, when, file=None) -> bool:
+        """One run, start to file. Never raises; returns success.
+
+        `file` is the relative path (inside `schedule.watch`) of the file
+        that triggered this run, or None for a plain cron schedule. Log lines
+        name it, so `nufi-box logs nufi-cron` says which résumé the box was
+        answering rather than only which section fired.
+        """
         job_id = None
+        subject = schedule.name if file is None else f"{schedule.name}: {schedule.watch}/{file}"
         try:
             flow_id = self.flow_id_for(schedule.flow)
             graph = self.graph_for(flow_id, schedule.drive)
-            job_id = self.start(flow_id, graph, schedule.ask)
+            job_id = self.start(flow_id, graph, schedule.ask_for(file))
             deadline = time.monotonic() + self.cfg.run_timeout
             text = self.collect(job_id, deadline)
             if text is None:
                 LOG.error("%s: no answer in %ss -- cancelling the run",
-                          schedule.name, self.cfg.run_timeout)
+                          subject, self.cfg.run_timeout)
                 self.cancel(job_id)
                 return False
             if not text:
-                LOG.error("%s: the run ended without saying anything", schedule.name)
+                LOG.error("%s: the run ended without saying anything", subject)
                 return False
-            path = self.write(schedule, when, text)
-            LOG.info("%s: wrote %s (%d chars)", schedule.name, path, len(text))
+            path = self.write(schedule, when, text, file)
+            if file is None:
+                LOG.info("%s: wrote %s (%d chars)", subject, path, len(text))
+            else:
+                LOG.info("%s -> wrote %s (%d chars)", subject, path, len(text))
             return True
         except (StudioError, urllib.error.URLError, OSError, ValueError) as exc:
-            LOG.error("%s: %s", schedule.name, exc)
+            LOG.error("%s: %s", subject, exc)
             if job_id:
                 self.cancel(job_id)
             return False
+
+
+# A file must look identical -- same size, same mtime -- across this many
+# consecutive ticks before it is considered done landing. Mirrors
+# nufi-ingest's `settle_scans`, for the same reason: a copy in progress, or a
+# Samba write still in flight, must not trigger a run on a half-written file.
+WATCH_SETTLE_TICKS = 2
+
+# A leading "." catches both dotfiles and Samba/Office lock files
+# (".~lock.foo.docx#"); "~$" catches Word/Excel's own temp files
+# ("~$foo.docx"), which do not start with a dot.
+WATCH_IGNORED_PREFIXES = (".", "~$")
 
 
 class Daemon(Runner):
@@ -386,6 +470,26 @@ class Daemon(Runner):
                 self._fired = json.loads(self._state.read_text())
             except (OSError, json.JSONDecodeError):
                 self._fired = {}
+        # {schedule_name: {relative_path: mtime}} -- one entry per file a
+        # `watch` section has ever fired for (or recorded on its first scan).
+        # Persisted, unlike `_pending` below, so a restart does not treat
+        # every file already on the drive as new again.
+        self._seen = {}
+        self._seen_state = pathlib.Path(cfg.state_dir) / "seen.json"
+        if self._seen_state.exists():
+            try:
+                self._seen = json.loads(self._seen_state.read_text())
+            except (OSError, json.JSONDecodeError):
+                self._seen = {}
+        # {(schedule_name, relative_path): (size, mtime, consecutive ticks
+        # seen unchanged)} -- in-memory only. A file mid-settle when the
+        # daemon restarts simply starts its count over, which is fine: it is
+        # not yet `_seen`, so nothing has fired for it either way.
+        self._pending = {}
+        # Schedule names whose watch folder was missing on the last tick that
+        # noticed, so the "does not exist yet" line is logged once rather
+        # than once per tick_interval until someone creates the folder.
+        self._missing_watch = set()
 
     def _remember(self, name, stamp):
         self._fired[name] = stamp
@@ -394,36 +498,122 @@ class Daemon(Runner):
         except OSError as exc:
             LOG.warning("could not record the last run: %s", exc)
 
-    def tick(self, schedules, now):
-        """Fire whatever is due at `now`.
+    def _remember_seen(self):
+        try:
+            self._seen_state.write_text(json.dumps(self._seen))
+        except OSError as exc:
+            LOG.warning("could not record the watched files: %s", exc)
 
-        Two guards, and they are different things. A minute already fired is
-        remembered, because the loop polls many times a minute and a report is
-        not wanted once per poll. A schedule already running is skipped, because
-        the box answers one question at a time and piling runs on it is how a
-        weekly report that overruns its own period takes the model down.
+    def tick(self, schedules, now):
+        """Fire whatever is due at `now`: cron sections on their minute,
+        watch sections when a file in their folder has settled."""
+        for schedule in schedules:
+            if schedule.cron is not None:
+                self._tick_cron(schedule, now)
+            else:
+                self._tick_watch(schedule, now)
+
+    def _tick_cron(self, schedule, now):
+        """A minute already fired is remembered, because the loop polls many
+        times a minute and a report is not wanted once per poll. A schedule
+        already running is skipped, because the box answers one question at a
+        time and piling runs on it is how a weekly report that overruns its
+        own period takes the model down.
 
         Nothing is caught up. A box that was off over a scheduled minute has
-        missed that report, and firing five hours of them at boot is worse than
-        the gap.
+        missed that report, and firing five hours of them at boot is worse
+        than the gap.
         """
-        for schedule in schedules:
-            if not schedule.cron.matches(now):
-                continue
-            stamp = now.strftime("%Y-%m-%dT%H:%M")
+        if not schedule.cron.matches(now):
+            return
+        stamp = now.strftime("%Y-%m-%dT%H:%M")
+        with self._lock:
+            if self._fired.get(schedule.name) == stamp:
+                return
+            if schedule.name in self._inflight:
+                LOG.warning("%s is still running; skipping %s", schedule.name, stamp)
+                return
+            self._inflight.add(schedule.name)
+            self._remember(schedule.name, stamp)
+        try:
+            self.run_once(schedule, now)
+        finally:
             with self._lock:
-                if self._fired.get(schedule.name) == stamp:
-                    continue
-                if schedule.name in self._inflight:
-                    LOG.warning("%s is still running; skipping %s", schedule.name, stamp)
-                    continue
-                self._inflight.add(schedule.name)
-                self._remember(schedule.name, stamp)
-            try:
-                self.run_once(schedule, now)
-            finally:
-                with self._lock:
-                    self._inflight.discard(schedule.name)
+                self._inflight.discard(schedule.name)
+
+    def _watch_listing(self, schedule):
+        """Every non-ignored file currently in `schedule`'s watched folder, as
+        {relative_path: (path, size, mtime)}. None if the folder does not
+        exist yet -- a box freshly installed has no `onboarding/new` until
+        someone creates it on the share, and that is not an error."""
+        folder = pathlib.Path(self.cfg.drives_dir) / schedule.drive / schedule.watch
+        if not folder.is_dir():
+            if schedule.name not in self._missing_watch:
+                LOG.error("%s: watch folder %s does not exist yet", schedule.name, folder)
+                self._missing_watch.add(schedule.name)
+            return None
+        self._missing_watch.discard(schedule.name)
+        out = {}
+        for p in sorted(folder.rglob("*")):
+            if not p.is_file():
+                continue
+            rel = p.relative_to(folder).as_posix()
+            parts = pathlib.PurePosixPath(rel).parts
+            if any(part.startswith(WATCH_IGNORED_PREFIXES) for part in parts):
+                continue
+            if OUTPUT_DIR in parts:
+                continue
+            st = p.stat()
+            out[rel] = (p, int(st.st_size), int(st.st_mtime))
+        return out
+
+    def _tick_watch(self, schedule, now):
+        """The first scan of a watch folder records everything already there
+        and fires nothing -- the same "nothing is caught up" rule cron
+        follows: a folder with forty résumés in it at boot must not launch
+        forty runs. After that, a file not matching its last-seen mtime is
+        new or edited, and has to hold still (same size and mtime) for
+        `WATCH_SETTLE_TICKS` in a row before it fires. Single-flight per
+        section, exactly as cron: `_inflight` is the same set.
+        """
+        listing = self._watch_listing(schedule)
+        if listing is None:
+            return
+        seen = self._seen.get(schedule.name)
+        if seen is None:
+            self._seen[schedule.name] = {rel: mtime for rel, (_, _, mtime) in listing.items()}
+            self._remember_seen()
+            return
+        fire = None
+        for rel in sorted(listing):
+            _, size, mtime = listing[rel]
+            if seen.get(rel) == mtime:
+                self._pending.pop((schedule.name, rel), None)
+                continue
+            key = (schedule.name, rel)
+            prev = self._pending.get(key)
+            streak = prev[2] + 1 if prev and prev[0] == size and prev[1] == mtime else 1
+            self._pending[key] = (size, mtime, streak)
+            if fire is None and streak >= WATCH_SETTLE_TICKS:
+                fire = (rel, mtime)
+        if fire is None:
+            return
+        rel, mtime = fire
+        with self._lock:
+            if schedule.name in self._inflight:
+                return
+            self._inflight.add(schedule.name)
+        try:
+            self.run_once(schedule, now, file=rel)
+        finally:
+            with self._lock:
+                self._inflight.discard(schedule.name)
+            # Marked seen whether the run succeeded or not: a broken flow
+            # must not re-run every tick, and editing the file afterwards (a
+            # new mtime) is what makes it eligible again.
+            self._pending.pop((schedule.name, rel), None)
+            self._seen[schedule.name][rel] = mtime
+            self._remember_seen()
 
 
 def _env_config():

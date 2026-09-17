@@ -472,6 +472,49 @@ five hours of them at boot is worse than the gap.
 Details and the reasoning:
 [`deploy/platform/adapters/nufi-cron/README.md`](../platform/adapters/nufi-cron/README.md).
 
+### …or when a file lands
+
+A routine can also fire from a folder instead of a clock — a new hire's file
+dropped into `onboarding/new/` in HR's drive, and the checklist runs against
+it. A section has **exactly one** trigger: `cron` or `watch`, never both,
+never neither — a section with either mistake is reported and dropped like
+any other typo in this file.
+
+```ini
+[hr-onboarding]
+watch = onboarding/new
+flow  = HR · leave entitlement
+drive = hr
+ask   = onboarding/new/{file} 에 새 입사자의 서류가 들어왔습니다. 첫 달 온보딩 체크리스트를 작성해줘.
+out   = onboarding-{file}-{date}.md
+```
+
+`watch` is a folder relative to the drive — `onboarding/new`, not
+`/onboarding/new` or `../onboarding/new`, and never under `_routines/`
+itself. `{file}` fills in the file that triggered the run: its full name,
+extension included, in `ask` (so the question above reads "...
+`kim-minsu.pdf` 에 ..."); its bare name without the extension in `out` (so
+the answer lands as `onboarding-kim-minsu-2026-09-18.md`).
+
+Two rules keep a watched folder from misfiring:
+
+- **A file has to sit still for two ticks in a row** — same size, same
+  modified time — before it fires. A copy still in progress, or a Samba
+  write still landing, must not trigger a routine against a half-written
+  file.
+- **The first scan of a `watch` folder fires nothing.** Everything already
+  there is recorded as seen, the same "nothing is caught up" rule a `cron`
+  schedule follows — a folder with forty résumés in it already must not
+  launch forty runs the moment the box comes up.
+
+After a run — successful or not — the file is marked seen and will not fire
+again on its own; a broken flow does not get retried every twenty seconds.
+Editing the file afterwards (a new modified time) makes it eligible again,
+which is what a person expects. Hidden files, Office/Samba temp files
+(`~$…`, `.~lock…`), and anything under `_routines/` are never watched. A
+`watch` folder that does not exist yet is not an error — it is logged once,
+and picked up as soon as someone creates it on the share.
+
 ### Works sandboxes and where they may reach
 
 A NUFI Works sandbox — the container an agent's code runs in — lives on the

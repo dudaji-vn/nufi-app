@@ -607,8 +607,9 @@ for d in $(printf '%s' "$DEPARTMENTS" | tr ',' ' '); do run mkdir -p "$NUFI_DATA
 # writing reports the day it is installed is a box nobody asked.
 if [ ! -f "$NUFI_DATA_DIR/schedules.ini" ]; then
   run sh -c "cat > '$NUFI_DATA_DIR/schedules.ini'" <<'SCHEDULES'
-# Scheduled department routines, read by nufi-cron every 20 seconds.
-# Nothing here runs until a section is uncommented.
+# Department routines, run on a schedule, or when a file lands in a folder.
+# Read by nufi-cron every 20 seconds. Nothing here runs until a section is
+# uncommented.
 #
 #   nufi-box schedule list      what this file means, and when each next fires
 #   nufi-box logs nufi-cron     what happened when one ran
@@ -623,6 +624,13 @@ if [ ! -f "$NUFI_DATA_DIR/schedules.ini" ]; then
 # drive = legal
 # ask   = 이번 주 주간보고 초안을 써줘.
 # out   = weekly-report-{date}.md
+#
+# [hr-onboarding]
+# watch = onboarding/new
+# flow  = HR · leave entitlement
+# drive = hr
+# ask   = onboarding/new/{file} 에 새 입사자의 서류가 들어왔습니다. 첫 달 온보딩 체크리스트를 작성해줘.
+# out   = onboarding-{file}-{date}.md
 SCHEDULES
 fi
 # …and owned by the uid the Samba account runs as, or a member cannot write to

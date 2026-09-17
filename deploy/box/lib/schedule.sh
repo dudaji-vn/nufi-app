@@ -24,14 +24,22 @@ if not schedules:
 now = datetime.datetime.now().replace(second=0, microsecond=0)
 print(f"{'NAME':<20} {'WHEN':<16} {'DRIVE':<10} NEXT")
 for s in schedules:
-    nxt = ""
-    when = now
-    for _ in range(60 * 24 * 366):
-        when += datetime.timedelta(minutes=1)
-        if s.cron.matches(when):
-            nxt = when.strftime("%Y-%m-%d %H:%M")
-            break
-    print(f"{s.name:<20} {s.cron.text:<16} {s.drive:<10} {nxt or 'never'}")
+    if s.cron is not None:
+        when_col = s.cron.text
+        nxt = ""
+        when = now
+        for _ in range(60 * 24 * 366):
+            when += datetime.timedelta(minutes=1)
+            if s.cron.matches(when):
+                nxt = when.strftime("%Y-%m-%d %H:%M")
+                break
+        next_col = nxt or "never"
+    else:
+        when_col = f"on file in {s.watch}/"
+        next_col = "(next file)"
+    print(f"{s.name:<20} {when_col:<16} {s.drive:<10} {next_col}")
+    # `s.filename(now)` -- no file passed -- leaves {file} as literal text;
+    # this line is a preview of the pattern, not a run.
     print(f"{'':<20} -> {s.drive}/_routines/{s.filename(now)}")
 PY
 }

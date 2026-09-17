@@ -4,12 +4,12 @@ description: A routine is a Studio flow that reads a department drive. Give it a
 ---
 
 The box installs four **routines** into Studio — flows that read a department's
-drive and answer from it. You can run one by hand on the canvas, or put it on a
-clock.
+drive and answer from it. You can run one by hand on the canvas, put it on a
+clock, or have it fire when a file lands in a folder.
 
 ```bash
 ./nufi-box flows list        # what is installed
-./nufi-box schedule list     # what runs on a clock, and when each fires next
+./nufi-box schedule list     # what runs on a clock or a folder, and when each fires next
 ```
 
 ## Writing a schedule
@@ -50,6 +50,47 @@ legal-weekly         0 17 * * 5       legal      2026-09-18 17:00
 That comes from the same parser the scheduler uses, so it cannot disagree with
 what will actually happen. A section it cannot understand is reported and
 skipped — one typo does not stop the department's other reports.
+
+## …or when a file lands
+
+A routine can also fire from a folder instead of a clock — a résumé dropped
+into `onboarding/new/` in HR's drive, and the onboarding checklist runs
+against it. A section has **exactly one** trigger, `cron` or `watch`; both or
+neither is reported and dropped, the same as any other typo.
+
+```ini
+[hr-onboarding]
+watch = onboarding/new
+flow  = HR · leave entitlement
+drive = hr
+ask   = onboarding/new/{file} 에 새 입사자의 서류가 들어왔습니다. 첫 달 온보딩 체크리스트를 작성해줘.
+out   = onboarding-{file}-{date}.md
+```
+
+| Key | |
+|---|---|
+| `watch` | a folder relative to the drive — `onboarding/new`, not `/onboarding/new`, `../onboarding/new`, or anything under `_routines/` |
+| `{file}` in `ask` | the triggering file's full name, extension included — `kim-minsu.pdf` |
+| `{file}` in `out` | the triggering file's bare name without the extension — `kim-minsu` |
+
+Two rules keep this from misfiring:
+
+- **A file has to sit still for two ticks in a row** — same size, same
+  modified time — before it fires. A copy still in progress, or a Samba
+  write still landing, must not trigger a routine against a half-written
+  file.
+- **The first scan of a `watch` folder fires nothing.** Everything already
+  there is recorded as seen — the same "nothing is caught up" rule a `cron`
+  schedule follows. A folder with forty résumés in it already must not
+  launch forty runs the moment the box comes up.
+
+After a run — successful or not — the file is marked seen and does not fire
+again on its own; a broken flow is not retried every twenty seconds. Editing
+the file afterwards (a new modified time) makes it eligible again. Hidden
+files, Office/Samba temp files (`~$…`, `.~lock…`), and anything under
+`_routines/` are never watched. A `watch` folder that does not exist yet is
+not an error — it is logged once, and picked up as soon as someone creates it
+on the share.
 
 ## Where the answer goes
 

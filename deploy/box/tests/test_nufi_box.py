@@ -805,3 +805,56 @@ def test_doctor_says_nothing_about_works_on_a_box_without_it(tmp_path):
     r = cli("doctor", NUFI_BOX_ENV=str(_env(tmp_path)))
     for absent in ("runsc", "3003", "register_works"):
         assert absent not in r.stdout, absent
+
+
+# --- schedule list, including event-triggered (watch) sections -------------
+
+def test_schedule_list_shows_a_watch_section(tmp_path):
+    """Not a dry run: `schedule_list` only ever runs `python3` for real (it
+    has nothing to plan), so NUFI_BOX_DRY_RUN is dropped here -- the same
+    real path `test_flows_list_without_a_key_says_what_to_run` exercises."""
+    envf = _env(tmp_path)
+    (tmp_path / "schedules.ini").write_text(
+        "[hr-onboarding]\n"
+        "watch = onboarding/new\n"
+        "flow  = HR · leave entitlement\n"
+        "drive = hr\n"
+        "ask   = onboarding/new/{file} 에 새 입사자의 서류가 들어왔습니다.\n"
+        "out   = onboarding-{file}-{date}.md\n"
+    )
+    e = dict(os.environ, NUFI_BOX_ENV=str(envf))
+    e.pop("NUFI_BOX_DRY_RUN", None)
+    r = subprocess.run(["/bin/bash", str(BOX / "nufi-box"), "schedule", "list"],
+                       cwd=BOX, env=e, capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert "hr-onboarding" in r.stdout
+    assert "on file in onboarding/new/" in r.stdout
+    assert "(next file)" in r.stdout
+    # the {date} half is filled in for the preview; {file} stays literal
+    assert "-> hr/_routines/onboarding-{file}-" in r.stdout
+
+
+def test_schedule_list_still_shows_a_cron_section_next_to_a_watch_one(tmp_path):
+    envf = _env(tmp_path)
+    (tmp_path / "schedules.ini").write_text(
+        "[legal-weekly]\n"
+        "cron  = 0 17 * * 5\n"
+        "flow  = Routine · weekly report from the drive\n"
+        "drive = legal\n"
+        "ask   = q\n"
+        "out   = weekly-report-{date}.md\n"
+        "\n"
+        "[hr-onboarding]\n"
+        "watch = onboarding/new\n"
+        "flow  = HR · leave entitlement\n"
+        "drive = hr\n"
+        "ask   = q {file}\n"
+        "out   = onboarding-{file}-{date}.md\n"
+    )
+    e = dict(os.environ, NUFI_BOX_ENV=str(envf))
+    e.pop("NUFI_BOX_DRY_RUN", None)
+    r = subprocess.run(["/bin/bash", str(BOX / "nufi-box"), "schedule", "list"],
+                       cwd=BOX, env=e, capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert "legal-weekly" in r.stdout and "0 17 * * 5" in r.stdout
+    assert "hr-onboarding" in r.stdout and "on file in onboarding/new/" in r.stdout

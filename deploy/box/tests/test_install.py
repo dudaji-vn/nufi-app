@@ -713,6 +713,20 @@ def test_the_drives_are_given_to_that_uid_after_they_are_created():
     assert out.count("chown -R 1001:1001") == 2
 
 
+def test_the_shipped_schedules_example_includes_a_watch_trigger():
+    """The heredoc is written under `run`, which under NUFI_BOX_DRY_RUN only
+    echoes the command -- the piped-in text never reaches stdout (verified:
+    `printf '  $ %s\\n' "$*"` does not read stdin at all). So this is pinned
+    against the installer's own source, the same way
+    test_the_steps_that_fail_on_a_re_run_or_a_locked_down_host_only_warn does
+    for behaviour a dry run cannot show."""
+    src = _installer_source()
+    assert "on a schedule, or when a file lands in a folder" in src
+    assert "# watch = onboarding/new" in src
+    # both trigger styles ship as examples, commented out the same way
+    assert "# cron  = 0 17 * * 5" in src
+
+
 # --- the department routines (Task 8) ---
 
 def test_the_installer_puts_the_routines_in_studio():
