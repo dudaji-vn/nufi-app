@@ -118,11 +118,23 @@ jobs:
       - name: Assert the Docker sandbox provider is built into the image
         run: |
           set -euo pipefail
-          docker run --rm nufi-works:branded sh -c '
-            test -f packages/plugins/sandbox-providers/docker/dist/manifest.js &&
-            test -f packages/plugins/sandbox-providers/docker/dist/worker.js &&
-            node -e "require.resolve(\"dockerode\",{paths:[\"packages/plugins/sandbox-providers/docker\"]})" &&
-            node -e "require.resolve(\"@paperclipai/plugin-sdk\",{paths:[\"packages/plugins/sandbox-providers/docker\"]})"'
+          # Checked the way the host checks and runs it: the loader looks for
+          # the built manifest and for node_modules/{dockerode,@paperclipai/
+          # plugin-sdk} inside the package, then forks the worker under the
+          # cli's tsx loader (plugin-loader.ts, DEV_TSX_LOADER_PATH) because
+          # @paperclipai/shared resolves to TypeScript sources in the repo
+          # layout. A plain `require.resolve` of the SDK cannot stand in for
+          # that: its exports are ESM-only and the call fails on a good image.
+          docker run --rm -w /app/packages/plugins/sandbox-providers/docker nufi-works:branded sh -c '
+            test -f dist/manifest.js && test -f dist/worker.js &&
+            test -e node_modules/dockerode && test -e node_modules/@paperclipai/plugin-sdk &&
+            node --import /app/cli/node_modules/tsx/dist/loader.mjs -e "
+              Promise.all([import(\"./dist/manifest.js\"), import(\"./dist/plugin.js\")]).then(([m, p]) => {
+                const man = m.default ?? m;
+                if (man.id !== \"nufi.docker-sandbox-provider\") throw new Error(\"manifest id \" + man.id);
+                if (!(p.default ?? p).definition) throw new Error(\"plugin module has no definition\");
+                console.log(\"provider loads:\", man.id);
+              })"'
           echo "docker sandbox provider is built into the image"
 
       - name: Push every tag
