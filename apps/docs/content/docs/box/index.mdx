@@ -42,27 +42,23 @@ Retrieval is per department. The Legal agent reads the Legal drive and the
 Legal vector index; asking it an HR question gets you an honest "that is not in
 these documents" rather than an answer out of the wrong folder.
 
-## Studio is here; Works is not
+## Studio is here; Works is optional
 
-NuFi has two agent products. **NUFI Studio** — the flow canvas — is on the box.
-**NUFI Works** is not, and will not be.
+NuFi has two agent products. **NUFI Studio** — the flow canvas — is on every
+box. **NUFI Works** — agents that write and run code — is on a box installed
+with `install-box.sh --with-works`, on Ubuntu only.
 
-That is a safety decision rather than an unfinished one. Works runs code its
-agents write, which means untrusted code, and the thing that makes that safe is
-not part of Works at all — it is two properties of the cluster underneath it: a
-`gvisor` runtime class, so a sandboxed container does not share the host kernel
-as its only boundary, and Cilium as the network layer, because egress has to be
-restricted by hostname and ordinary Kubernetes network policy cannot express a
-hostname.
+Works runs code its agents write, which means untrusted code, and what makes
+that safe is not part of Works at all: a kernel boundary, and egress restricted
+by hostname. On the cloud cluster those are a `gvisor` runtime class and Cilium.
+On a box they are the same two things in Docker's shape — every agent run lands
+in a **gVisor** sandbox (the `runsc` runtime the installer registers) on a
+network with no route out except a proxy that consults an allow list. A Mac
+cannot host that runtime, which is why the flag is Ubuntu-only; see
+[Works on the box](/docs/box/works).
 
-A single machine running Docker cannot offer either. Putting Works on a box
-would mean running generated code with the host kernel as the only thing
-between it and the department's documents — so Works stays on the cloud cluster
-that can honour those two words, and the box ships the product that does not
-need them.
-
-Signing in on the box shows Studio alone for this reason. It is not a missing
-card.
+Signing in on a box without the flag shows Studio alone. It is not a missing
+card; it is a box that was not asked for Works.
 
 ## What it is not, yet
 
@@ -73,8 +69,9 @@ Being straight about this is cheaper than a surprise:
   give it.
 - **Reaching the box from home** is built and works in the lab, but has not yet
   been proven against a public coordinator in the field. On the LAN it is solid.
-- **`nufi-box update` does not exist yet.** Upgrading today means pulling new
-  images by hand.
+- **Updates are not signed yet.** `nufi-box update` fetches the box from
+  GitHub over TLS, checks it, and rolls back on its own if the check fails —
+  but there is no signed bundle behind it yet ([day two](/docs/box/day-two)).
 
 ## Next
 

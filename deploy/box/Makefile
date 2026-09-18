@@ -25,7 +25,7 @@ REGISTRY_PORT ?= $(or $(word 2,$(subst :, ,$(REGISTRY))),5000)
 # to push to a registry that is somewhere else.
 PUSH_REGISTRY ?= localhost:$(REGISTRY_PORT)
 # Two third-party images live on ghcr.io as well, so a box that cannot reach
-# GitHub cannot pull them either — mirror them next to the NuFi six. Pinned by
+# GitHub cannot pull them either — mirror them next to the NuFi images. Pinned by
 # digest / exact release here; served from the mirror under $(TAG).
 RAG_IMAGE ?= ghcr.io/danny-avila/librechat-rag-api-dev-lite@sha256:f9f34c8ed6884b0ff9b17387e6174fed737dba29f21622ecb75604d82bc47bf8
 SAMBA_IMAGE ?= ghcr.io/servercontainers/samba:a3.24.1-s4.23.8-r0
@@ -54,9 +54,13 @@ config:
 registry-up:
 	docker run -d --name nufi-registry -p $(REGISTRY_PORT):5000 -v nufi-registry:/var/lib/registry registry:2.8.3 || docker start nufi-registry
 
-# Retag+push each of the six NuFi images the box needs, from the ghcr.io/dudaji-vn
+# Retag+push each NuFi image the box's compose names (the list is pinned to
+# docker-compose.yml by tests/test_makefile.py), from the ghcr.io/dudaji-vn
 # tag already on this machine to $(PUSH_REGISTRY). Explicit per-image lines (not
-# a shell loop) so `make -n registry-push` shows all six tag/push pairs.
+# a shell loop) so `make -n registry-push` shows every tag/push pair. The four
+# Works-era images ride along even on a box without Works: a mirror that lacks
+# them turns `--with-works` into a pull failure later, and nufi-works is amd64
+# only, so `docker pull --platform linux/amd64` it on an Apple Silicon Mac first.
 #
 # The tag changes on the way in: what a box pulls is ${NUFI_*_TAG} from its own
 # .env, which install-box.sh writes as `main` (and `box-main` for studio). The
@@ -71,5 +75,9 @@ registry-push:
 	docker tag ghcr.io/$(OWNER)/nufi-litellm:$(TAG) $(PUSH_REGISTRY)/nufi-litellm:$(TAG) && docker push $(PUSH_REGISTRY)/nufi-litellm:$(TAG)
 	docker tag ghcr.io/$(OWNER)/nufi-ingest:$(TAG) $(PUSH_REGISTRY)/nufi-ingest:$(TAG) && docker push $(PUSH_REGISTRY)/nufi-ingest:$(TAG)
 	docker tag ghcr.io/$(OWNER)/nufi-studio:$(STUDIO_TAG) $(PUSH_REGISTRY)/nufi-studio:box-$(TAG) && docker push $(PUSH_REGISTRY)/nufi-studio:box-$(TAG)
+	docker tag ghcr.io/$(OWNER)/nufi-cron:$(TAG) $(PUSH_REGISTRY)/nufi-cron:$(TAG) && docker push $(PUSH_REGISTRY)/nufi-cron:$(TAG)
+	docker tag ghcr.io/$(OWNER)/nufi-works-egress:$(TAG) $(PUSH_REGISTRY)/nufi-works-egress:$(TAG) && docker push $(PUSH_REGISTRY)/nufi-works-egress:$(TAG)
+	docker tag ghcr.io/$(OWNER)/nufi-sandbox:$(TAG) $(PUSH_REGISTRY)/nufi-sandbox:$(TAG) && docker push $(PUSH_REGISTRY)/nufi-sandbox:$(TAG)
+	docker tag ghcr.io/$(OWNER)/nufi-works:$(TAG) $(PUSH_REGISTRY)/nufi-works:$(TAG) && docker push $(PUSH_REGISTRY)/nufi-works:$(TAG)
 	docker pull -q $(RAG_IMAGE) && docker tag $(RAG_IMAGE) $(PUSH_REGISTRY)/librechat-rag-api-dev-lite:$(TAG) && docker push $(PUSH_REGISTRY)/librechat-rag-api-dev-lite:$(TAG)
 	docker pull -q $(SAMBA_IMAGE) && docker tag $(SAMBA_IMAGE) $(PUSH_REGISTRY)/samba:$(TAG) && docker push $(PUSH_REGISTRY)/samba:$(TAG)
