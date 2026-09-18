@@ -1,7 +1,8 @@
 #!/bin/bash
 # run-ubuntu-install.sh — install a NuFi box on a blank Ubuntu 24.04 VM and time it.
 #
-#   REGISTRY=192.168.1.26:5001 deploy/box/tests/vm/run-ubuntu-install.sh
+#   REGISTRY=ghcr deploy/box/tests/vm/run-ubuntu-install.sh          # public images
+#   REGISTRY=192.168.1.26:5001 deploy/box/tests/vm/run-ubuntu-install.sh  # a LAN mirror
 #
 # The acceptance the README's "Ubuntu 24.04: needs curl and openssl, the
 # installer brings Docker" claim rests on. The VM (lima-ubuntu.yaml) has no
@@ -12,8 +13,11 @@
 # Prints the wall time of the single install command and exits non-zero if the
 # banner never appears.
 #
-#   REGISTRY   host:port of a registry holding the six NuFi images (required;
-#              `make -C deploy/box registry-up registry-push` builds one)
+#   REGISTRY   host:port of a LAN registry holding the NuFi images
+#              (`make -C deploy/box registry-up registry-push` builds one), or
+#              `ghcr` to pull the public images straight from ghcr.io -- the
+#              path a customer with internet takes, and the one the published
+#              install guide describes. Required: say which.
 #   VM         lima instance name (default nufi-ubuntu)
 #   DEPARTMENTS, INFERENCE_PROFILE, INFERENCE_MODEL, EMBEDDINGS_MODEL
 #              passed to the installer; the defaults are the smallest models
@@ -32,12 +36,22 @@ ROOT="$(cd "$HERE/../../../.." && pwd)"
 say() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31m xx\033[0m %s\n' "$*" >&2; exit 1; }
 
-[ -n "$REGISTRY" ] || die "REGISTRY=<host:port> is required (see the header)"
+[ -n "$REGISTRY" ] || die "REGISTRY=<host:port> or REGISTRY=ghcr is required (see the header)"
 command -v limactl >/dev/null || die "limactl is required: brew install lima"
 
-say "Checking the registry $REGISTRY"
-curl -fsS --max-time 10 "http://$REGISTRY/v2/_catalog" | grep -q nufichat \
-  || die "$REGISTRY does not serve the NuFi images: make -C deploy/box registry-up registry-push REGISTRY=$REGISTRY"
+REGISTRY_FLAG=""
+if [ "$REGISTRY" = ghcr ]; then
+  say "Images come from ghcr.io (public), as the install guide describes"
+else
+  say "Checking the registry $REGISTRY"
+  # Captured, then tested: under pipefail `curl | grep -q` reports grep's
+  # status, and a matching catalog can read as a failed one.
+  _catalog="$(curl -fsS --max-time 10 "http://$REGISTRY/v2/_catalog" || true)"
+  case "$_catalog" in *nufichat*) ;; *)
+    die "$REGISTRY does not serve the NuFi images: make -C deploy/box registry-up registry-push REGISTRY=$REGISTRY" ;;
+  esac
+  REGISTRY_FLAG="--registry $REGISTRY"
+fi
 
 if ! limactl list "$VM" >/dev/null 2>&1; then
   say "Creating the blank Ubuntu VM $VM (first run downloads the image)"
@@ -49,8 +63,11 @@ fi
 
 say "Copying this checkout into $VM as a tarball (no GitHub, no host mount)"
 TAR="$(mktemp -t nufi-box-XXXXXX).tar"
+# The same set the published install fetches: deploy/box, and the two
+# deploy/platform folders nufi-box reaches by relative path (flows install
+# needs scenarios whole; schedule list needs adapters/nufi-cron).
 git -C "$ROOT" archive -o "$TAR" HEAD \
-  deploy/box deploy/platform/scenarios deploy/platform/adapters/nufi-ingest docs
+  deploy/box deploy/platform/scenarios deploy/platform/adapters/nufi-cron
 limactl copy "$TAR" "$VM:box.tar"
 rm -f "$TAR"
 limactl shell "$VM" -- bash -lc 'rm -rf ~/deploy && tar xf ~/box.tar -C ~'
@@ -64,7 +81,7 @@ set +e
 limactl shell "$VM" -- bash -lc "set -o pipefail; cd \$HOME/deploy/box && \
   DEPARTMENTS='$DEPARTMENTS' INFERENCE_PROFILE='$INFERENCE_PROFILE' \
   INFERENCE_MODEL='$INFERENCE_MODEL' EMBEDDINGS_MODEL='$EMBEDDINGS_MODEL' \
-  ./install-box.sh --yes --registry '$REGISTRY' ${WITH_WORKS:+--with-works} 2>&1 | tee \$HOME/install.log"
+  ./install-box.sh --yes $REGISTRY_FLAG ${WITH_WORKS:+--with-works} 2>&1 | tee \$HOME/install.log"
 rc=$?
 set -e
 END=$(date +%s)
