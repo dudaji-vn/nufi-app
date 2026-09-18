@@ -28,6 +28,12 @@ announced_ip() {
     dns-sd -t 2 -G v4 "${BOX_HOST:-nufi.local}" 2>/dev/null \
       | awk '$2 == "Add" {print $6; exit}'
   else
+    # Nothing to ask when avahi is not installed: an empty answer is "not
+    # announced", which is what doctor then says. Without this guard the
+    # command substitution exited 127 under set -e and doctor died after the
+    # mesh check with no line at all -- on a fresh Ubuntu box that is exactly
+    # how the first live nufi-box update came to roll back a healthy box.
+    command -v avahi-resolve >/dev/null 2>&1 || return 0
     avahi-resolve -n4 "${BOX_HOST:-nufi.local}" 2>/dev/null | awk '{print $2; exit}'
   fi
 }
@@ -107,7 +113,9 @@ nufi-box <verb>
                       confirmation (needed when there is no terminal to
                       confirm on). Not signed yet — GitHub over TLS, no
                       signed bundle; see README "What is not built yet"
-  support              (coming — see README "What is not built yet")
+  support [--to DIR]   gather a diagnostics bundle (no secret in it) to send
+                        to Dudaji when something is wrong — see README
+                        "When something is wrong"
 EOF
 }
 case "${1:-}" in
@@ -204,12 +212,12 @@ case "${1:-}" in
       if "$@" >/dev/null 2>&1; then echo " ok  $*"; else echo " !!  $*"; fail=1; fi
     }
     chk docker info
-    chk curl -fsk "https://localhost:3080/health"
-    chk curl -fsk "https://localhost:3001/_health"
-    chk curl -fsk "https://localhost:3001/.well-known/jwks.json"
-    chk curl -fsk "https://localhost:3002/"
-    chk curl -fsk "https://localhost:7860/health_check"
-    chk curl -fsk "https://localhost:4000/health/liveliness"
+    chk curl -fsk --max-time 20 "https://localhost:3080/health"
+    chk curl -fsk --max-time 20 "https://localhost:3001/_health"
+    chk curl -fsk --max-time 20 "https://localhost:3001/.well-known/jwks.json"
+    chk curl -fsk --max-time 20 "https://localhost:3002/"
+    chk curl -fsk --max-time 20 "https://localhost:7860/health_check"
+    chk curl -fsk --max-time 20 "https://localhost:4000/health/liveliness"
     # From inside the box, not from this shell: OLLAMA_BASE_URL is written for
     # containers, and host.docker.internal is a name only they have.
     chk $COMPOSE exec -T rag_api python -c \
@@ -292,7 +300,7 @@ case "${1:-}" in
       else
         echo " !!  DOCKER_GID in .env is '${DOCKER_GID:-}' but the socket's group is $(stat -c %g /var/run/docker.sock 2>/dev/null) — sandboxes cannot be created; run: install-box.sh --with-works"; fail=1
       fi
-      chk curl -fsk "https://localhost:3003/api/health"
+      chk curl -fsk --max-time 20 "https://localhost:3003/api/health"
       . "$HERE/lib/works.sh"
       if [ "$DRY" = 1 ]; then
         works_check
@@ -481,7 +489,18 @@ case "${1:-}" in
     . "$HERE/lib/update.sh"
     if [ "$UPDATE_ROLLBACK" = 1 ]; then update_rollback
     else update_run "$UPDATE_REF" "$UPDATE_YES"; fi ;;
-  support) echo "support: coming in the next phase (see README \"What is not built yet\")"; exit 3 ;;
+  support)
+    shift
+    SUPPORT_TO=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --to) SUPPORT_TO="${2:?--to needs a directory}"; shift 2 ;;
+        *) die "support: unknown option: $1" ;;
+      esac
+    done
+    export SUPPORT_TO
+    . "$HERE/lib/support.sh"
+    support_run ;;
   -h|--help|"") usage ;;
   *) echo "unknown command: $1" >&2; usage; exit 2 ;;
 esac

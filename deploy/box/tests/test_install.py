@@ -51,13 +51,16 @@ def test_linux_gpu_plan_uses_ollama_container_and_samba():
     assert "docker-compose.gpu.yml" in out
 
 
-def test_linux_plan_names_installing_rsync():
-    """nufi-box update's own prerequisite -- a day-one Ubuntu box should get
-    it installed alongside Docker, not discover the gap on the first
-    day-two update. Named in the plan a person previewing the install would
-    read, the same as every other prerequisite."""
+def test_linux_plan_names_the_packages_a_fresh_ubuntu_needs():
+    """The plan describes the box, not the shell previewing it: on a Mac
+    that happens to have rsync, the Linux plan still names rsync. The real
+    branch installs whichever of the same list the machine lacks -- one
+    list in install-box.sh feeds both, so the plan cannot name a package the
+    real branch would never touch."""
     out = dry(NUFI_BOX_FAKE_OS="Linux")
-    assert "sudo apt-get install -y rsync" in out
+    assert "sudo apt-get install -y rsync avahi-daemon avahi-utils" in out, out
+    src = (BOX / "install-box.sh").read_text()
+    assert src.count('_pkgs_all="rsync avahi-daemon avahi-utils"') == 1, "one list, two uses"
 
 
 def test_macos_plan_does_not_mention_rsync():

@@ -118,18 +118,34 @@ if [ "$WITH_WORKS" = 1 ] && [ "$OS" != "Linux" ]; then
   die "--with-works needs Ubuntu: Works sandboxes run under gVisor, which Docker Desktop cannot host. Install the box without it here, or with it on the Linux machine that will be the box."
 fi
 have openssl || die "openssl is required"
-# rsync is nufi-box update's own prerequisite (lib/update.sh mirrors the
-# box's tree with it), installed here so a day-one box already has it
-# rather than discovering the gap on the first day-two update. Kept outside
-# the real-only block below (and its own tiny dry/real split, not `run`,
-# which nothing has assembled COMPOSE-wide meaning for yet here) so the
-# dry-run plan says so too, the same as every other step a person previewing
-# an install would want named.
+# Two packages the box's own commands need, installed here so a day-one box
+# has them rather than discovering the gap later: rsync is nufi-box update's
+# prerequisite (lib/update.sh mirrors the tree with it), and avahi is how a
+# Linux box announces its name -- without avahi-daemon and avahi-publish the
+# installer's announce step could only warn, and every other laptop in the
+# room typed nufi.local into a name nobody was answering (the first blank
+# Ubuntu install from the public images ended exactly there). Kept outside
+# the real-only block below, with its own tiny dry/real split, so the
+# dry-run plan names it like every other step.
 if [ "$OS" = "Linux" ]; then
+  # One list, two uses: the dry-run plan names everything a fresh Ubuntu
+  # needs (the plan describes the box, not the shell previewing it), and the
+  # real branch installs whichever of them this machine still lacks.
+  _pkgs_all="rsync avahi-daemon avahi-utils"
   if [ "$DRY" = 1 ]; then
-    printf '  $ sudo apt-get install -y rsync\n'
+    printf '  $ sudo apt-get install -y %s\n' "$_pkgs_all"
   else
-    have rsync || { say "Installing rsync"; sudo apt-get update -qq && sudo apt-get install -y -qq rsync; }
+    _pkgs=""
+    for _p in $_pkgs_all; do
+      case "$_p" in
+        rsync) have rsync || _pkgs="$_pkgs $_p" ;;
+        avahi-daemon|avahi-utils) have avahi-publish || _pkgs="$_pkgs $_p" ;;
+      esac
+    done
+    if [ -n "$_pkgs" ]; then
+      say "Installing$_pkgs"
+      sudo apt-get update -qq && sudo apt-get install -y -qq $_pkgs
+    fi
   fi
 fi
 if [ "$DRY" = 0 ]; then
@@ -410,6 +426,7 @@ NUFI_ADMIN_TAG=${NUFI_ADMIN_TAG:-main}
 NUFI_STUDIO_TAG=${NUFI_STUDIO_TAG:-box-main}
 NUFI_LITELLM_TAG=${NUFI_LITELLM_TAG:-main}
 NUFI_INGEST_TAG=${NUFI_INGEST_TAG:-main}
+NUFI_CRON_TAG=${NUFI_CRON_TAG:-main}
 NUFI_WORKS_EGRESS_TAG=${NUFI_WORKS_EGRESS_TAG:-main}
 WORKS_EGRESS_ALLOW=${WORKS_EGRESS_ALLOW:-}
 NUFI_WORKS=$NUFI_WORKS

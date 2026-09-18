@@ -144,4 +144,39 @@ same transport a browser gets, nothing more. There is no signature on it and
 nothing checks one. A signed bundle from `updates.nufi.me` is the next phase
 (see the README's "What is not built yet").
 
-`./nufi-box support` is still coming.
+## Something is wrong
+
+```bash
+./nufi-box doctor              # first — what, in plain words
+./nufi-box support             # then — package it up to send
+```
+
+`support` gathers what an engineer actually needs for the first reply on a
+support thread — the box's version, `docker compose ps`, `doctor`'s own
+output, the last 300 lines of every service's logs, the compose config, and a
+few small files (`schedules.ini`, `caddy/mesh.caddy`, a per-department folder
+listing, the `data/backup` listing) — into one `.tar.gz` next to
+`data/support/` (or wherever `--to DIR` says). It prints the path, the size,
+and who to send it to.
+
+Nothing in it is a secret. `env-keys.txt` lists the *names* of every key in
+`.env` and whether each has a value, never the value — and never a fragment
+of one, since it reads `.env` as entries rather than lines, so a multi-line
+secret (the console's signing key is a PEM) counts as one key, not one per
+line of it. `compose.yml` is `docker compose config` with every value that
+looks like a secret — a `.env` key ending in `_KEY`, `_SECRET`, `_PASSWORD`,
+`PEM`, `TOKEN` or `_IV` — blanked out everywhere it appears, and again by
+that entry's own name. **Every other file in the bundle goes through the
+same value-level redaction** before the tar is made — a log line, not just
+`compose.yml`'s own rendering, can carry a secret too. No document's name
+ever leaves the box either: the bundle lists each department's folder and a
+file count, never a file's name. It works on a box that will not start and
+one whose `doctor` is failing: a check that cannot answer says so in the
+bundle instead of stopping the rest. The one thing that does stop it is the
+sweep itself — it needs `python3`, and without a working one the bundle is
+not packed: `support` prints `NOT SWEPT`, leaves the raw directory behind
+with a `README.txt` that says so, and exits non-zero.
+
+**This is the local half only.** `support` does not open a connection from
+Dudaji into the box, and nothing on the box listens for one — that remote
+half is still not built.

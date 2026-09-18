@@ -1,4 +1,4 @@
-import os, pathlib, shutil, subprocess
+import os, pathlib, shutil, subprocess, sys
 BOX = pathlib.Path(__file__).resolve().parents[1]
 BASH = "/bin/bash"   # macOS ships 3.2 here; the script must run under it
 
@@ -1380,3 +1380,575 @@ def test_dry_run_rollback_does_not_delete_the_real_updated_from_record(tmp_path)
     assert r.returncode == 0, r.stdout + r.stderr
     assert updated_from.exists(), "a --dry-run must not delete the real record"
     assert updated_from.read_text() == before
+
+
+def test_doctor_on_a_linux_box_without_avahi_says_not_announced_instead_of_dying(tmp_path):
+    """Real mode, Linux, a PATH with no avahi-resolve: doctor must reach its
+    last line. It used to exit 127 inside announced_ip() under set -e -- no
+    "!!", no "All good.", nothing -- and the first live nufi-box update read
+    that silence as a failed health check and rolled a healthy box back."""
+    envf = _env(tmp_path, BOX_IP="192.168.1.25")
+    stub = tmp_path / "bin"; stub.mkdir()
+    # Enough of a PATH for the script itself (bash, awk, grep, curl, docker are
+    # allowed to be missing -- their checks print "!!"), but no avahi tools.
+    e = dict(os.environ, NUFI_BOX_ENV=str(envf), NUFI_BOX_FAKE_OS="Linux",
+             PATH=f"{stub}:/usr/bin:/bin")
+    e.pop("NUFI_BOX_DRY_RUN", None)
+    r = subprocess.run(["/bin/bash", str(BOX / "nufi-box"), "doctor"],
+                       cwd=BOX, env=e, capture_output=True, text=True, timeout=120)
+    assert r.returncode != 127, r.stderr
+    assert "not being announced" in r.stdout, r.stdout
+    assert "Something is off" in r.stdout or "All good." in r.stdout, r.stdout
+
+
+# --- support: a diagnostics bundle with no secret in it --------------------
+
+def test_support_dry_run_plans_every_artifact_and_writes_nothing(tmp_path):
+    envf = _env(tmp_path)
+    r = cli("support", NUFI_BOX_ENV=str(envf))
+    assert r.returncode == 0, r.stderr
+    for name in ("box.txt", "env-keys.txt", "doctor.txt", "status.txt",
+                 "logs", "compose.yml", "README.txt", "schedules.ini",
+                 "mesh.caddy"):
+        assert name in r.stdout, (name, r.stdout)
+    assert "dry run: nothing was written" in r.stdout, r.stdout
+    assert not (tmp_path / "support").exists(), "dry run must write nothing"
+
+
+def test_support_dry_run_with_a_to_directory(tmp_path):
+    envf = _env(tmp_path)
+    to = tmp_path / "usb"
+    r = cli("support", "--to", str(to), NUFI_BOX_ENV=str(envf))
+    assert r.returncode == 0, r.stderr
+    assert str(to) in r.stdout, r.stdout
+    assert not to.exists(), "dry run must write nothing"
+
+
+def _support_wrap_nufi_box(box_dir, doctor_exit=0, doctor_out="ok\n"):
+    """doctor's checks are real docker/curl/dns-sd calls inline in nufi-box's
+    own case arm (see _update_wrap_nufi_box above), not a lib function this
+    file could call in-process, so a subprocess-level fake is the only way to
+    give it a deterministic exit code from a test. support's own recursive
+    `"$HERE/nufi-box" doctor` call resolves HERE from its own path, which is
+    always this directory, so it lands on this same wrapper — real doctor
+    (curl, dns-sd, mesh) is never actually run."""
+    (box_dir / "nufi-box").rename(box_dir / "nufi-box.real")
+    wrapper = box_dir / "nufi-box"
+    wrapper.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = "doctor" ]; then\n'
+        "  cat <<'DOCTOR_OUT'\n"
+        + doctor_out +
+        "DOCTOR_OUT\n"
+        "  exit %d\n"
+        "fi\n"
+        'exec "$(dirname "$0")/nufi-box.real" "$@"\n' % doctor_exit
+    )
+    wrapper.chmod(0o755)
+
+
+def _support_here(tmp_path, doctor_exit=1, doctor_out=" !!  something is off\n"):
+    """A temp HERE: a full copy of this checkout (lib/support.sh, the
+    Caddyfile — everything support's real code touches — travels with it),
+    doctor faked so its exit code and output are pinned, and an .env holding
+    two secret-looking values the redaction test must never see again."""
+    here = tmp_path / "box"
+    shutil.copytree(BOX, here, ignore=shutil.ignore_patterns("data", ".env", "tests"))
+    _support_wrap_nufi_box(here, doctor_exit=doctor_exit, doctor_out=doctor_out)
+    # A department drive with a sub-folder and a document in it: the bundle
+    # may say "legal, 1 file" and no more -- the sub-folder's name is as
+    # telling as the document's.
+    (here / "data" / "drives" / "legal" / "lawsuit-vs-acme").mkdir(parents=True)
+    (here / "data" / "drives" / "legal" / "lawsuit-vs-acme" / "nda-draft.pdf").write_text("x")
+    (here / "data" / "schedules.ini").write_text("# nothing scheduled yet\n")
+    (here / ".env").write_text(
+        "NUFI_DATA_DIR=%s/data\nBOX_NAME=nufi\nBOX_HOST=nufi.local\n"
+        "POSTGRES_USER=nufi\nNUFI_MODEL=qwen2.5-14b\nINFERENCE_PROFILE=ollama\n"
+        "DEPARTMENTS=legal\nMONGO_PASSWORD=hunter2\nLITELLM_MASTER_KEY=sk-topsecret\n"
+        # A multi-line double-quoted value with real newlines, stored the way
+        # install-box.sh stores the console's signing key. The first real
+        # bundle carried the private key because the redactor read .env one
+        # line at a time and never saw past the opening quote. The last body
+        # line ends in base64 "==" padding on purpose (5 of 6 real RSA keys
+        # have one): env-keys.txt used to read a line-by-line KEY=VALUE
+        # split, and a body line ending in "=" was read as if it were its
+        # own key with a value, printing a real fragment of the private key
+        # into the one file this bundle promises holds no secret.
+        "OIDC_PRIVATE_KEY_PEM=\"-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7pWCG9K3RIjBM\n"
+        "qsSPj7S3hiUMU9EGKReiJQAOqg==\n-----END PRIVATE KEY-----\"\n"
+        % here
+    )
+    return here
+
+
+def _support_stub_path(tmp_path, services, compose_yaml_path):
+    """docker answers `compose config` (bare) with $STUB_COMPOSE_YAML's text
+    (which holds the secret values, exactly the shape `docker compose
+    config` really has: every ${VAR} already resolved), `compose config
+    --services` with the given service names, `compose ps` / `compose
+    version` / `docker --version` / `docker info --format ...` with fixed
+    stub data, `compose exec` (doctor's ollama reachability check, when
+    doctor is not wrapped) with failure, and logs every call it sees to
+    $STUB_LOG. Same technique as _update_stub_path above."""
+    bin_ = tmp_path / "bin"
+    bin_.mkdir()
+    services_printf = " ".join(services)
+    (bin_ / "docker").write_text(
+        "#!/bin/sh\n"
+        'printf "%s\\n" "$*" >> "$STUB_LOG"\n'
+        'if [ "$1" = "compose" ]; then\n'
+        "  shift\n"
+        '  while [ $# -gt 0 ]; do case "$1" in -f) shift 2 ;; --profile) shift 2 ;; *) break ;; esac; done\n'
+        '  sub="$1"; [ $# -gt 0 ] && shift\n'
+        '  case "$sub" in\n'
+        "    config)\n"
+        '      case "${1:-}" in\n'
+        f'        --services) printf "%s\\n" {services_printf} ;;\n'
+        '        --images) echo "ghcr.io/dudaji-vn/nufichat:main" ;;\n'
+        '        *) cat "$STUB_COMPOSE_YAML" ;;\n'
+        "      esac\n"
+        "      exit 0 ;;\n"
+        '    ps) echo "NAME        STATUS"; echo "librechat   Up 2 hours"; exit 0 ;;\n'
+        "    logs)\n"
+        '      svc=""; for a in "$@"; do svc="$a"; done\n'
+        '      echo "log line for $svc"\n'
+        # One service's log carries a secret that never touched compose.yml
+        # at all (LiteLLM debug output, a failed ALTER ROLE, an ingest
+        # login-error body are the real shapes this stands in for) -- proof
+        # that the final sweep, not just compose.yml's own redaction, is
+        # what keeps it out of the bundle.
+        '      if [ "$svc" = "librechat" ]; then echo "auth failed for user with key sk-topsecret"; fi\n'
+        "      exit 0 ;;\n"
+        '    version) echo "Docker Compose version v2.30.0"; exit 0 ;;\n'
+        "    exec) exit 1 ;;\n"
+        "    *) exit 0 ;;\n"
+        "  esac\n"
+        "fi\n"
+        'case "$1" in\n'
+        '  --version) echo "Docker version 27.4.1, build stub"; exit 0 ;;\n'
+        "  info)\n"
+        '    if [ "$2" = "--format" ]; then\n'
+        '      echo \'{"ServerVersion":"27.4.1","OperatingSystem":"stub-os","Driver":"overlay2","Runtimes":{"runc":{}}}\'\n'
+        "    fi\n"
+        "    exit 0 ;;\n"
+        "  *) exit 0 ;;\n"
+        "esac\n"
+    )
+    (bin_ / "docker").chmod(0o755)
+    return bin_
+
+
+def _run_support(here, bin_, log, compose_yaml_path, *extra_args, path_tail=None):
+    log.write_text("")
+    if path_tail is None:
+        path_tail = os.environ.get("PATH", "/usr/bin:/bin")
+    e = dict(os.environ, PATH="%s:%s" % (bin_, path_tail),
+             NUFI_BOX_FAKE_OS="Darwin", STUB_LOG=str(log),
+             STUB_COMPOSE_YAML=str(compose_yaml_path))
+    e.pop("NUFI_BOX_DRY_RUN", None)
+    e.pop("NUFI_BOX_ENV", None)
+    return subprocess.run([BASH, str(here / "nufi-box"), "support", *extra_args],
+                          cwd=here, env=e, capture_output=True, text=True, timeout=120)
+
+
+def test_support_bundle_has_no_secret_anywhere_and_packs_a_tar(tmp_path):
+    """The one test that has to be real, not a dry-run plan: a bundle built
+    from an .env with two secret values must not contain either of them
+    anywhere on disk, even after `docker compose config` hands them straight
+    back resolved into the compose text."""
+    here = _support_here(tmp_path)
+    services = ("librechat", "rag_api")
+    compose_yaml = tmp_path / "compose-config.txt"
+    compose_yaml.write_text(
+        "services:\n"
+        "  librechat:\n"
+        "    environment:\n"
+        "      MONGO_PASSWORD: hunter2\n"
+        "      LITELLM_MASTER_KEY: sk-topsecret\n"
+        "      SAFE_VALUE: fine\n"
+        # compose renders a multi-line value as a block scalar, one line each
+        "  console:\n"
+        "    environment:\n"
+        "      OIDC_PRIVATE_KEY_PEM: |-\n"
+        "        -----BEGIN PRIVATE KEY-----\n"
+        "        MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7pWCG9K3RIjBM\n"
+        "        qsSPj7S3hiUMU9EGKReiJQAOqg==\n"
+        "        -----END PRIVATE KEY-----\n"
+        "      OTHER_TOKEN: plain-token-value\n"
+    )
+    bin_ = _support_stub_path(tmp_path, services, compose_yaml)
+    log = tmp_path / "calls.log"
+
+    r = _run_support(here, bin_, log, compose_yaml)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+    to_dir = here / "data" / "support"
+    leftover_dirs = [p for p in to_dir.iterdir() if p.is_dir()]
+    assert leftover_dirs == [], "the bundle directory must be removed after tar: %s" % leftover_dirs
+    tars = list(to_dir.glob("nufi-box-support-*.tar.gz"))
+    assert len(tars) == 1, tars
+    assert str(tars[0]) in r.stdout, r.stdout
+
+    extract_dir = tmp_path / "extracted"
+    extract_dir.mkdir()
+    subprocess.run(["tar", "-xzf", str(tars[0]), "-C", str(extract_dir)], check=True)
+    bundle_dirs = [p for p in extract_dir.iterdir()]
+    assert len(bundle_dirs) == 1, bundle_dirs
+    bundle = bundle_dirs[0]
+
+    # The assertion the whole feature exists for: grep the real bundle
+    # contents (extracted from the real tar, not a plan) for every secret --
+    # the PEM's own body lines (including the base64-padded last one, minus
+    # its "==", the exact shape env-keys.txt used to leak as a stray key)
+    # and the marker that only ever appeared in a service's LOG, never in
+    # compose.yml at all.
+    for secret in ("hunter2", "sk-topsecret",
+                   "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7pWCG9K3RIjBM",
+                   "qsSPj7S3hiUMU9EGKReiJQAOqg", "-----BEGIN", "PRIVATE KEY",
+                   "plain-token-value", "lawsuit-vs-acme", "nda-draft"):
+        grep = subprocess.run(["grep", "-r", secret, str(bundle)], capture_output=True, text=True)
+        assert grep.returncode != 0, "found %r in the bundle: %s" % (secret, grep.stdout)
+
+    env_keys = (bundle / "env-keys.txt").read_text()
+    assert "MONGO_PASSWORD=<set>" in env_keys, env_keys
+    assert "LITELLM_MASTER_KEY=<set>" in env_keys, env_keys
+
+    compose_out = (bundle / "compose.yml").read_text()
+    # MONGO_PASSWORD, LITELLM_MASTER_KEY, the PEM (one entry, block scalar
+    # gone) and OTHER_TOKEN (by name, no .env value at all): four.
+    assert compose_out.count("<redacted>") == 4, compose_out
+    assert "fine" in compose_out, "a non-secret value must survive redaction"
+
+    log_files = sorted(p.name for p in (bundle / "logs").iterdir())
+    assert log_files == ["librechat.log", "rag_api.log"], log_files
+    librechat_log = (bundle / "logs" / "librechat.log").read_text()
+    # (Important, coordinator review) only compose.yml went through the
+    # redactor before; a log line carrying a secret shipped verbatim. The
+    # final sweep must blank the secret while leaving the log's OTHER line
+    # alone -- a targeted redaction, not a wholesale file wipe.
+    assert "sk-topsecret" not in librechat_log, librechat_log
+    assert "<redacted>" in librechat_log, librechat_log
+    assert "log line for librechat" in librechat_log, librechat_log
+
+    doctor_txt = (bundle / "doctor.txt").read_text()
+    assert doctor_txt.splitlines()[0] == "exit status: 1", doctor_txt
+    assert "something is off" in doctor_txt, doctor_txt
+
+    readme = (bundle / "README.txt").read_text()
+    assert "is a secret" in readme.lower(), readme
+
+    schedules = (bundle / "schedules.ini").read_text()
+    assert "nothing scheduled" in schedules, schedules
+
+    drive_tree = (bundle / "drive-tree.txt").read_text()
+    assert "  legal/" in drive_tree, drive_tree
+    assert "legal: 1 file(s)" in drive_tree, drive_tree
+
+
+def test_support_still_bundles_when_doctor_itself_fails_hard(tmp_path):
+    """A box so broken doctor cannot even finish must still get a bundle —
+    support never dies mid-collection over a failing sub-check."""
+    here = _support_here(tmp_path, doctor_exit=2, doctor_out="")
+    services = ("librechat",)
+    compose_yaml = tmp_path / "compose-config.txt"
+    compose_yaml.write_text("services:\n  librechat:\n    environment: {}\n")
+    bin_ = _support_stub_path(tmp_path, services, compose_yaml)
+    log = tmp_path / "calls.log"
+
+    r = _run_support(here, bin_, log, compose_yaml)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+    tars = list((here / "data" / "support").glob("nufi-box-support-*.tar.gz"))
+    assert len(tars) == 1, tars
+
+
+def _path_without_python3(tmp_path):
+    """A PATH that has every tool /usr/bin and /bin offer EXCEPT python3: a
+    directory of symlinks. Dropping /usr/bin from PATH outright would take
+    tar, find and awk with it; this keeps the box's real tools and removes
+    only the one the sweep needs."""
+    farm = tmp_path / "nopython"
+    farm.mkdir()
+    for d in ("/usr/bin", "/bin"):
+        for name in os.listdir(d):
+            if name.startswith("python") or (farm / name).exists():
+                continue
+            try:
+                (farm / name).symlink_to(os.path.join(d, name))
+            except OSError:
+                pass
+    return str(farm)
+
+
+def _assert_not_swept(r, here):
+    """No tar, a loud refusal on stderr, the unswept directory left where the
+    operator can see it, and a README that says the sweep did not run."""
+    assert r.returncode != 0, r.stdout + r.stderr
+    assert "NOT SWEPT" in r.stderr, r.stdout + r.stderr
+    assert "Done." not in r.stdout, r.stdout
+    assert "support@nufi.me" not in r.stdout, r.stdout
+    to_dir = here / "data" / "support"
+    assert list(to_dir.glob("nufi-box-support-*.tar.gz")) == [], "nothing may be packed"
+    dirs = [p for p in to_dir.iterdir() if p.is_dir()]
+    assert len(dirs) == 1, dirs
+    readme = (dirs[0] / "README.txt").read_text()
+    assert "NOT SWEPT" in readme, readme
+    assert "has been swept" not in readme, readme
+    # the unswept log is still there, for the operator to look at -- and it
+    # is exactly why nothing was packed
+    assert "sk-topsecret" in (dirs[0] / "logs" / "librechat.log").read_text()
+
+
+def test_support_refuses_to_pack_when_python3_is_missing(tmp_path):
+    """(Important, re-review) with no python3 the sweep was skipped with a
+    silent `return 0`: the bundle was packed, README.txt said every file had
+    been swept, and the operator was told to email it -- with a service log
+    that still held a secret. A sweep that cannot run is not a sweep that
+    found nothing; the bundle must not be packed, and the operator must be
+    told so, in the output and in the README the raw directory keeps."""
+    here = _support_here(tmp_path)
+    services = ("librechat",)
+    compose_yaml = tmp_path / "compose-config.txt"
+    compose_yaml.write_text("services:\n  librechat:\n    environment: {}\n")
+    bin_ = _support_stub_path(tmp_path, services, compose_yaml)
+    log = tmp_path / "calls.log"
+
+    r = _run_support(here, bin_, log, compose_yaml, path_tail=_path_without_python3(tmp_path))
+    _assert_not_swept(r, here)
+    assert "python3" in r.stderr, r.stderr
+
+
+def test_support_refuses_to_pack_when_python3_is_present_but_fails(tmp_path):
+    """(Minor, re-review) the other shape of the same hole: a python3 that
+    exists and exits non-zero -- macOS with no developer tools ships a stub
+    that does exactly that. `find | xargs python3` then failed under `set -e`
+    and `pipefail` inside the sweep, killing support mid-run with no message
+    and the raw directory left behind. Same outcome as no python3 at all: no
+    tar, said out loud, and the reason (python3's own stderr) shown."""
+    here = _support_here(tmp_path)
+    services = ("librechat",)
+    compose_yaml = tmp_path / "compose-config.txt"
+    compose_yaml.write_text("services:\n  librechat:\n    environment: {}\n")
+    bin_ = _support_stub_path(tmp_path, services, compose_yaml)
+    (bin_ / "python3").write_text(
+        "#!/bin/sh\n"
+        'echo "xcode-select: note: No developer tools were found, requesting install." >&2\n'
+        "exit 1\n"
+    )
+    (bin_ / "python3").chmod(0o755)
+    log = tmp_path / "calls.log"
+
+    r = _run_support(here, bin_, log, compose_yaml)
+    _assert_not_swept(r, here)
+    assert "No developer tools were found" in r.stderr, r.stderr
+
+
+# --- lib/support-redact.py, tested directly ---------------------------------
+
+def _redact_py(*args, input=None):
+    return subprocess.run(
+        [sys.executable, str(BOX / "lib" / "support-redact.py"), *args],
+        input=input, capture_output=True, text=True,
+    )
+
+
+def test_redact_py_keys_never_leaks_a_pem_body_line_as_its_own_key(tmp_path):
+    """(Critical, coordinator review) env-keys.txt was built by splitting
+    each LINE of .env on its first "=" -- so a double-quoted multi-line PEM
+    value's own body lines, most of which end in base64 "=" padding (5 of 6
+    real RSA keys have one), were each read as if they were their own
+    key=value entry: `qsSPj7S3hiUMU9EGKReiJQAOqg=<set>`, a real fragment of
+    the private key, in the one file this bundle promises holds no secret.
+    `keys` walks .env as ENTRIES, so a multi-line value is one key here,
+    whatever its body contains.
+    """
+    envf = tmp_path / ".env"
+    body_line_1 = "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7pWCG9K3RIjBM"
+    body_line_2 = "qsSPj7S3hiUMU9EGKReiJQAOqg=="  # ends in "==" -- the failure mode
+    envf.write_text(
+        "BOX_NAME=nufi\n"
+        'OIDC_PRIVATE_KEY_PEM="-----BEGIN PRIVATE KEY-----\n'
+        f"{body_line_1}\n{body_line_2}\n"
+        '-----END PRIVATE KEY-----"\n'
+        "MONGO_PASSWORD=hunter2\n"
+    )
+    r = _redact_py("keys", str(envf))
+    assert r.returncode == 0, r.stderr
+    out = r.stdout
+    assert "-----BEGIN" not in out, out
+    assert body_line_2[:-2] not in out, "the last body line minus its padding leaked: %r" % out
+    assert body_line_1 not in out, out
+    assert "OIDC_PRIVATE_KEY_PEM=<set>" in out, out
+    assert "MONGO_PASSWORD=<set>" in out, out
+    assert out.count("OIDC_PRIVATE_KEY_PEM=") == 1, \
+        "a multi-line value must be ONE key, not one per body line: %r" % out
+
+
+def test_redact_py_quoted_value_ends_at_the_closing_quote_not_the_line():
+    """(Important, coordinator review) a quoted value used to be read as
+    closed only when the closing quote was the LAST character of its line,
+    so `KEY="value" # a note` and `KEY="value" ` (a trailing space) both
+    misread as "no closing quote here" and swallowed every following line up
+    to the next one ending in a quote -- in a real .env, some unrelated
+    later secret. The README tells an operator to hand-edit .env, so both
+    shapes are invited, not hypothetical.
+    """
+    envf_text = (
+        "BOX_NAME=nufi\n"
+        'LITELLM_MASTER_KEY="sk-quoted" # a note\n'
+        'MONGO_PASSWORD="hunter2" \n'
+        "DATABASE_URL=postgres://nufi:hunter2@postgres/nufi\n"
+        "MONGO_URI=mongodb://nufi:hunter2@mongodb/nufi\n"
+    )
+    import tempfile
+    with tempfile.NamedTemporaryFile("w", suffix=".env", delete=False) as f:
+        f.write(envf_text)
+        envf = f.name
+    try:
+        compose_text = (
+            "services:\n  app:\n    environment:\n"
+            "      DATABASE_URL: postgres://nufi:hunter2@postgres/nufi\n"
+            "      MONGO_URI: mongodb://nufi:hunter2@mongodb/nufi\n"
+            "      LITELLM_MASTER_KEY: sk-quoted\n"
+        )
+        r = _redact_py("redact-compose", envf, input=compose_text)
+        assert r.returncode == 0, r.stderr
+        assert "hunter2" not in r.stdout, r.stdout
+        assert "sk-quoted" not in r.stdout, r.stdout
+        # both URLs (MONGO_PASSWORD's value threaded into each) plus the key
+        assert r.stdout.count("<redacted>") >= 3, r.stdout
+    finally:
+        os.unlink(envf)
+
+
+def test_redact_py_unquoted_value_ends_before_an_inline_comment():
+    """(Important, re-review) an unquoted value was taken verbatim to the end
+    of the line, comment and all, so `MONGO_PASSWORD=hunter2 # rotated`
+    made the secret piece `hunter2 # rotated` -- which never matches the
+    `hunter2` compose renders into MONGO_URI, or a log line carrying the
+    same URL. compose's own rule: an unquoted value ends at the first
+    " #" (a space, then a hash), and trailing whitespace is dropped; a hash
+    with no space before it is part of the value. install-box.sh writes
+    every secret unquoted and the README invites an operator to edit them,
+    so the commented shape is the one to expect."""
+    envf_text = (
+        "BOX_NAME=nufi\n"
+        "MONGO_PASSWORD=hunter2 # rotated 2026-09-18\n"
+        "LITELLM_MASTER_KEY=sk-abc#def \n"
+        "MONGO_URI=mongodb://nufi:hunter2@mongodb/nufi\n"
+    )
+    import tempfile
+    with tempfile.NamedTemporaryFile("w", suffix=".env", delete=False) as f:
+        f.write(envf_text)
+        envf = f.name
+    try:
+        compose_text = (
+            "services:\n  app:\n    environment:\n"
+            "      MONGO_URI: mongodb://nufi:hunter2@mongodb/nufi\n"
+            "      UPSTREAM_AUTH: Bearer sk-abc#def\n"
+        )
+        r = _redact_py("redact-compose", envf, input=compose_text)
+        assert r.returncode == 0, r.stderr
+        assert "hunter2" not in r.stdout, r.stdout
+        assert "sk-abc#def" not in r.stdout, r.stdout
+        assert r.stdout.count("<redacted>") == 2, r.stdout
+        # and the same secret in a plain file, the sweep's own path
+        with tempfile.NamedTemporaryFile("w", suffix=".log", delete=False) as lf:
+            lf.write("auth failed for mongodb://nufi:hunter2@mongodb/nufi\n")
+            logf = lf.name
+        try:
+            r = _redact_py("redact", envf, logf)
+            assert r.returncode == 0, r.stderr
+            swept = open(logf).read()
+            assert "hunter2" not in swept, swept
+            assert "auth failed for mongodb://nufi:<redacted>@mongodb/nufi" in swept, swept
+        finally:
+            os.unlink(logf)
+    finally:
+        os.unlink(envf)
+
+
+def test_redact_py_installer_placeholders_are_not_secrets():
+    """install-box.sh writes INFERENCE_API_KEY=ollama on every Ollama-profile
+    box (LiteLLM wants a non-empty key; Ollama ignores it) and `none` for a
+    remote endpoint without one. Taken as a secret, "ollama" was blanked
+    everywhere it appeared in the first real bundle: INFERENCE_PROFILE,
+    NUFI_MODEL's `ollama/` prefix, every compose reference to the ollama
+    service, `langchain_ollama` in the RAG log -- the box's whole inference
+    wiring gone from the one file meant to show it. A placeholder the
+    installer itself writes is not a secret; the entry is still blanked by
+    NAME in compose.yml, where its value is never needed."""
+    envf_text = (
+        "INFERENCE_PROFILE=ollama\n"
+        "INFERENCE_API_KEY=ollama\n"
+        "MONGO_PASSWORD=hunter2\n"
+    )
+    import tempfile
+    with tempfile.NamedTemporaryFile("w", suffix=".env", delete=False) as f:
+        f.write(envf_text)
+        envf = f.name
+    try:
+        compose_text = (
+            "services:\n  litellm:\n    environment:\n"
+            "      INFERENCE_PROFILE: ollama\n"
+            "      INFERENCE_API_KEY: ollama\n"
+            "      NUFI_MODEL: ollama/qwen2.5:7b\n"
+            "      MONGO_URI: mongodb://nufi:hunter2@mongodb/nufi\n"
+        )
+        r = _redact_py("redact-compose", envf, input=compose_text)
+        assert r.returncode == 0, r.stderr
+        assert "INFERENCE_PROFILE: ollama" in r.stdout, r.stdout
+        assert "NUFI_MODEL: ollama/qwen2.5:7b" in r.stdout, r.stdout
+        assert "INFERENCE_API_KEY: <redacted>" in r.stdout, r.stdout
+        assert "hunter2" not in r.stdout, r.stdout
+        with tempfile.NamedTemporaryFile("w", suffix=".log", delete=False) as lf:
+            lf.write("Initialized embeddings of type: <class 'langchain_ollama.OllamaEmbeddings'>\n")
+            logf = lf.name
+        try:
+            r = _redact_py("redact", envf, logf)
+            assert r.returncode == 0, r.stderr
+            assert "langchain_ollama.OllamaEmbeddings" in open(logf).read()
+        finally:
+            os.unlink(logf)
+    finally:
+        os.unlink(envf)
+
+
+def test_support_to_directory_with_no_nufi_data_dir_does_not_abort_mid_bundle(tmp_path):
+    """(Minor, coordinator review) `--to DIR` bypasses `_support_dir`'s own
+    NUFI_DATA_DIR check entirely (SUPPORT_TO short-circuits the `:-`), so a
+    box whose .env never set NUFI_DATA_DIR reached later code that read
+    ${NUFI_DATA_DIR} unguarded and died under `set -u` partway through the
+    bundle. Every such reference now has a `:-$HERE/data` fallback."""
+    here = _support_here(tmp_path)
+    envf = here / ".env"
+    kept = [l for l in envf.read_text().splitlines() if not l.startswith("NUFI_DATA_DIR=")]
+    envf.write_text("\n".join(kept) + "\n")
+    services = ("librechat",)
+    compose_yaml = tmp_path / "compose-config.txt"
+    compose_yaml.write_text("services:\n  librechat:\n    environment: {}\n")
+    bin_ = _support_stub_path(tmp_path, services, compose_yaml)
+    log = tmp_path / "calls.log"
+    to_dir = tmp_path / "usb"
+
+    r = _run_support(here, bin_, log, compose_yaml, "--to", str(to_dir))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert list(to_dir.glob("nufi-box-support-*.tar.gz")), r.stdout
+    assert "Done." in r.stdout, r.stdout
+
+
+def test_redact_py_treats_creds_iv_as_a_secret():
+    """(Minor, coordinator review) CREDS_IV pairs with CREDS_KEY to encrypt
+    the app's own stored credentials; it belongs in the same bucket as
+    every other *_KEY."""
+    import tempfile
+    with tempfile.NamedTemporaryFile("w", suffix=".env", delete=False) as f:
+        f.write("BOX_NAME=nufi\nCREDS_IV=deadbeefcafef00d\n")
+        envf = f.name
+    try:
+        r = _redact_py("redact-compose", envf,
+                        input="services:\n  app:\n    environment:\n      CREDS_IV: deadbeefcafef00d\n")
+        assert r.returncode == 0, r.stderr
+        assert "deadbeefcafef00d" not in r.stdout, r.stdout
+    finally:
+        os.unlink(envf)

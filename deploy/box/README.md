@@ -374,6 +374,56 @@ follow the machine.
 A laptop joining for the first time still needs the box's certificate once —
 `nufi-box ca-cert` prints where it is.
 
+## When something is wrong
+
+```sh
+nufi-box doctor              # first — what, in plain words
+nufi-box support             # then — package it up to send
+```
+
+`doctor` is the first move; it names the thing that's broken. `support` is the
+second: it gathers what an engineer actually asks for in the first three
+emails of any support thread — the box's version, what's running, `doctor`'s
+own output, the last 300 lines of every service's logs, the compose config,
+and a few small files (`schedules.ini`, `caddy/mesh.caddy`, a per-department
+folder listing, the `data/backup` listing) — into one `.tar.gz` you attach and
+send to **support@nufi.me** with whatever you saw.
+
+**What it does not hold.** Nothing in the bundle is a secret. `env-keys.txt`
+lists the *names* of every key in `.env` and whether each has a value
+(`<set>` / `<empty>`) — never the value, and never a fragment of one: it is
+built by reading `.env` as entries, not lines, so a multi-line secret (the
+console's signing key is a PEM) is one key here, not one per line of it.
+`compose.yml` is `docker compose config` (every `${VAR}` resolved to what a
+service actually got) with every value that looks like a secret — a `.env`
+key ending in `_KEY`, `_SECRET`, `_PASSWORD`, `PEM`, `TOKEN` or `_IV` —
+blanked out wherever it appears, not only under the name that suggested it,
+and blanked again by that entry's own name as a second layer. Every other
+file in the bundle — every log, `doctor.txt`, `status.txt`, `box.txt` — is
+swept for the same secret-looking values before the tar is made, since a
+secret does not only ever show up inside `docker compose config`'s own
+rendering of it. Drive contents are never read and no document's name ever
+leaves the box: the bundle lists each department's folder and how many files
+are in it, nothing more.
+
+**What this is not.** `support` packages what the box already knows about
+itself into a file *you* send. It does not open a connection from Dudaji into
+the box, and nothing on the box listens for one — that remote half does not
+exist yet; see [What is not built yet](#10-what-is-not-built-yet).
+
+It works on a box that will not start, one with a failing `doctor`, and one
+that has never been backed up — nothing here stops partway because one check
+failed; a check that cannot answer says so in the bundle instead
+(`(unavailable: …)`) and the rest still gets collected. The one exception is
+the sweep itself: it needs `python3`, and if that is missing or broken the
+bundle is **not** packed — `support` prints `NOT SWEPT`, leaves the raw
+directory under `data/support/` with a `README.txt` that says the same, and
+exits non-zero. A sweep that could not run is not a sweep that found nothing.
+
+```sh
+nufi-box support --to /Volumes/USB   # write it somewhere other than data/support/
+```
+
 ## Backups
 
 ```sh
@@ -657,7 +707,7 @@ to `install-box.sh` and is also symlinked onto your `PATH`.
 | `flows list` | Every flow in the box's Studio, with its id |
 | `update [--ref REF] [--yes]` / `update --rollback` | Fetch the newest release, apply it, check it, roll back automatically if the check — or the apply, or the installer — fails — see [Updating](#updating) |
 | `backup [--to DIR] [--keep N]` / `restore DIR` | Dump the databases, drives and secrets, or put a backup back — see [Backups](#backups) |
-| `support` | Not built yet — see [What is not built yet](#10-what-is-not-built-yet) |
+| `support [--to DIR]` | Gather a diagnostics bundle (no secret in it) to send to support@nufi.me — see [When something is wrong](#when-something-is-wrong) |
 
 ### Updating
 
@@ -909,6 +959,12 @@ built yet:
   over TLS, checks the result, and rolls back automatically if it fails —
   but the archive is unsigned, nothing runs it on a schedule, and there is no
   offline path for a box with no network at all.
+- **Dudaji reaching into your box.** `nufi-box support` (see [When something
+  is wrong](#when-something-is-wrong)) is the local half only — it packages
+  what the box already knows about itself into a file you send. It opens no
+  connection from Dudaji into the box, and nothing on the box listens for
+  one. Remote support access would be a separate, explicit decision — not
+  something this command does on its own.
 - **NUFI Works on macOS.** Works runs on the box on Ubuntu
   (`install-box.sh --with-works`, see [NUFI Works on the
   box](#nufi-works-on-the-box)); Docker Desktop cannot host the gVisor

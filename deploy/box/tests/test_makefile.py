@@ -4,16 +4,33 @@ Run: cd deploy/box && python3 -m pytest tests -q
 """
 import os
 import pathlib
+import re
 import subprocess
 import tempfile
 
 BOX = pathlib.Path(__file__).resolve().parents[1]
-NUFI_IMAGES = ("nufichat", "nufichat-admin-panel", "nufi-console",
-               "nufi-litellm", "nufi-ingest", "nufi-studio")
+# Every NuFi image docker-compose.yml names, read from the file rather than
+# listed here: the mirror was "the NuFi six" for a month after nufi-cron made it
+# seven, and a box behind a LAN registry found out at pull time.
+NUFI_IMAGES = tuple(sorted(
+    set(re.findall(r"NUFI_REGISTRY:-ghcr\.io/dudaji-vn\}/([a-z0-9-]+):",
+                   (BOX / "docker-compose.yml").read_text()))
+    # …plus the one image the box pulls outside compose: the sandbox image,
+    # registered as the Works environment's image by digest (install-box.sh
+    # --with-works). Not a service, so compose never names it.
+    | set(re.findall(r"nufi-sandbox(?=:\$\{NUFI_SANDBOX_TAG)",
+                     (BOX / "install-box.sh").read_text()))))
 # The .env key each image's tag comes from, as docker-compose.yml reads it.
 TAG_KEY = {"nufichat": "NUFI_CHAT_TAG", "nufichat-admin-panel": "NUFI_ADMIN_TAG",
            "nufi-console": "NUFI_CONSOLE_TAG", "nufi-litellm": "NUFI_LITELLM_TAG",
-           "nufi-ingest": "NUFI_INGEST_TAG", "nufi-studio": "NUFI_STUDIO_TAG"}
+           "nufi-ingest": "NUFI_INGEST_TAG", "nufi-studio": "NUFI_STUDIO_TAG",
+           "nufi-cron": "NUFI_CRON_TAG", "nufi-works-egress": "NUFI_WORKS_EGRESS_TAG",
+           "nufi-sandbox": "NUFI_SANDBOX_TAG", "nufi-works": "NUFI_WORKS_TAG"}
+
+
+def test_the_compose_file_names_every_image_the_mirror_knows():
+    """The two lists above must agree, or a new image is mirrored under no tag."""
+    assert set(NUFI_IMAGES) == set(TAG_KEY), (sorted(NUFI_IMAGES), sorted(TAG_KEY))
 
 
 def make_n(target, **variables):
@@ -37,14 +54,14 @@ def test_registry_up_survives_a_registry_without_a_port():
     assert "-p 5000:5000" in make_n("registry-up", REGISTRY="registry.lan")
 
 
-def test_registry_push_pushes_all_six_nufi_images_over_loopback():
+def test_registry_push_pushes_every_nufi_image_over_loopback():
     # The push goes to localhost, not to REGISTRY: Docker trusts loopback
     # without an insecure-registries entry, so serving the images from a Mac
     # needs no Docker Desktop change. Same container, same stored images.
     out = make_n("registry-push", REGISTRY="172.10.10.30:5001")
     for image in NUFI_IMAGES:
         assert f"docker push localhost:5001/{image}:" in out, image
-    # the six NuFi images plus the two ghcr-hosted third-party ones
+    # every NuFi image plus the two ghcr-hosted third-party ones
     assert out.count("docker push ") == len(NUFI_IMAGES) + 2
     assert "docker push 172.10.10.30:5001" not in out
 
