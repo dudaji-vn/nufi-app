@@ -57,7 +57,8 @@ def test_linux_plan_names_installing_rsync():
     day-two update. Named in the plan a person previewing the install would
     read, the same as every other prerequisite."""
     out = dry(NUFI_BOX_FAKE_OS="Linux")
-    assert "sudo apt-get install -y rsync" in out
+    assert "sudo apt-get install -y rsync avahi-daemon avahi-utils" in out, \
+        "rsync for update; avahi so the box announces its name on a LAN (the first blank install could only warn)"
 
 
 def test_macos_plan_does_not_mention_rsync():

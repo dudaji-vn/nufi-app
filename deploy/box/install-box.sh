@@ -118,18 +118,26 @@ if [ "$WITH_WORKS" = 1 ] && [ "$OS" != "Linux" ]; then
   die "--with-works needs Ubuntu: Works sandboxes run under gVisor, which Docker Desktop cannot host. Install the box without it here, or with it on the Linux machine that will be the box."
 fi
 have openssl || die "openssl is required"
-# rsync is nufi-box update's own prerequisite (lib/update.sh mirrors the
-# box's tree with it), installed here so a day-one box already has it
-# rather than discovering the gap on the first day-two update. Kept outside
-# the real-only block below (and its own tiny dry/real split, not `run`,
-# which nothing has assembled COMPOSE-wide meaning for yet here) so the
-# dry-run plan says so too, the same as every other step a person previewing
-# an install would want named.
+# Two packages the box's own commands need, installed here so a day-one box
+# has them rather than discovering the gap later: rsync is nufi-box update's
+# prerequisite (lib/update.sh mirrors the tree with it), and avahi is how a
+# Linux box announces its name -- without avahi-daemon and avahi-publish the
+# installer's announce step could only warn, and every other laptop in the
+# room typed nufi.local into a name nobody was answering (the first blank
+# Ubuntu install from the public images ended exactly there). Kept outside
+# the real-only block below, with its own tiny dry/real split, so the
+# dry-run plan names it like every other step.
 if [ "$OS" = "Linux" ]; then
   if [ "$DRY" = 1 ]; then
-    printf '  $ sudo apt-get install -y rsync\n'
+    printf '  $ sudo apt-get install -y rsync avahi-daemon avahi-utils\n'
   else
-    have rsync || { say "Installing rsync"; sudo apt-get update -qq && sudo apt-get install -y -qq rsync; }
+    _need=""
+    have rsync || _need="$_need rsync"
+    have avahi-publish || _need="$_need avahi-daemon avahi-utils"
+    if [ -n "$_need" ]; then
+      say "Installing$_need"
+      sudo apt-get update -qq && sudo apt-get install -y -qq $_need
+    fi
   fi
 fi
 if [ "$DRY" = 0 ]; then
