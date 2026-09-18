@@ -1455,7 +1455,11 @@ def _support_here(tmp_path, doctor_exit=1, doctor_out=" !!  something is off\n")
     here = tmp_path / "box"
     shutil.copytree(BOX, here, ignore=shutil.ignore_patterns("data", ".env", "tests"))
     _support_wrap_nufi_box(here, doctor_exit=doctor_exit, doctor_out=doctor_out)
-    (here / "data" / "drives" / "legal").mkdir(parents=True)
+    # A department drive with a sub-folder and a document in it: the bundle
+    # may say "legal, 1 file" and no more -- the sub-folder's name is as
+    # telling as the document's.
+    (here / "data" / "drives" / "legal" / "lawsuit-vs-acme").mkdir(parents=True)
+    (here / "data" / "drives" / "legal" / "lawsuit-vs-acme" / "nda-draft.pdf").write_text("x")
     (here / "data" / "schedules.ini").write_text("# nothing scheduled yet\n")
     (here / ".env").write_text(
         "NUFI_DATA_DIR=%s/data\nBOX_NAME=nufi\nBOX_HOST=nufi.local\n"
@@ -1534,9 +1538,11 @@ def _support_stub_path(tmp_path, services, compose_yaml_path):
     return bin_
 
 
-def _run_support(here, bin_, log, compose_yaml_path, *extra_args):
+def _run_support(here, bin_, log, compose_yaml_path, *extra_args, path_tail=None):
     log.write_text("")
-    e = dict(os.environ, PATH="%s:%s" % (bin_, os.environ.get("PATH", "/usr/bin:/bin")),
+    if path_tail is None:
+        path_tail = os.environ.get("PATH", "/usr/bin:/bin")
+    e = dict(os.environ, PATH="%s:%s" % (bin_, path_tail),
              NUFI_BOX_FAKE_OS="Darwin", STUB_LOG=str(log),
              STUB_COMPOSE_YAML=str(compose_yaml_path))
     e.pop("NUFI_BOX_DRY_RUN", None)
@@ -1599,7 +1605,7 @@ def test_support_bundle_has_no_secret_anywhere_and_packs_a_tar(tmp_path):
     for secret in ("hunter2", "sk-topsecret",
                    "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7pWCG9K3RIjBM",
                    "qsSPj7S3hiUMU9EGKReiJQAOqg", "-----BEGIN", "PRIVATE KEY",
-                   "plain-token-value"):
+                   "plain-token-value", "lawsuit-vs-acme", "nda-draft"):
         grep = subprocess.run(["grep", "-r", secret, str(bundle)], capture_output=True, text=True)
         assert grep.returncode != 0, "found %r in the bundle: %s" % (secret, grep.stdout)
 
@@ -1634,6 +1640,10 @@ def test_support_bundle_has_no_secret_anywhere_and_packs_a_tar(tmp_path):
     schedules = (bundle / "schedules.ini").read_text()
     assert "nothing scheduled" in schedules, schedules
 
+    drive_tree = (bundle / "drive-tree.txt").read_text()
+    assert "  legal/" in drive_tree, drive_tree
+    assert "legal: 1 file(s)" in drive_tree, drive_tree
+
 
 def test_support_still_bundles_when_doctor_itself_fails_hard(tmp_path):
     """A box so broken doctor cannot even finish must still get a bundle —
@@ -1650,6 +1660,87 @@ def test_support_still_bundles_when_doctor_itself_fails_hard(tmp_path):
 
     tars = list((here / "data" / "support").glob("nufi-box-support-*.tar.gz"))
     assert len(tars) == 1, tars
+
+
+def _path_without_python3(tmp_path):
+    """A PATH that has every tool /usr/bin and /bin offer EXCEPT python3: a
+    directory of symlinks. Dropping /usr/bin from PATH outright would take
+    tar, find and awk with it; this keeps the box's real tools and removes
+    only the one the sweep needs."""
+    farm = tmp_path / "nopython"
+    farm.mkdir()
+    for d in ("/usr/bin", "/bin"):
+        for name in os.listdir(d):
+            if name.startswith("python") or (farm / name).exists():
+                continue
+            try:
+                (farm / name).symlink_to(os.path.join(d, name))
+            except OSError:
+                pass
+    return str(farm)
+
+
+def _assert_not_swept(r, here):
+    """No tar, a loud refusal on stderr, the unswept directory left where the
+    operator can see it, and a README that says the sweep did not run."""
+    assert r.returncode != 0, r.stdout + r.stderr
+    assert "NOT SWEPT" in r.stderr, r.stdout + r.stderr
+    assert "Done." not in r.stdout, r.stdout
+    assert "support@nufi.me" not in r.stdout, r.stdout
+    to_dir = here / "data" / "support"
+    assert list(to_dir.glob("nufi-box-support-*.tar.gz")) == [], "nothing may be packed"
+    dirs = [p for p in to_dir.iterdir() if p.is_dir()]
+    assert len(dirs) == 1, dirs
+    readme = (dirs[0] / "README.txt").read_text()
+    assert "NOT SWEPT" in readme, readme
+    assert "has been swept" not in readme, readme
+    # the unswept log is still there, for the operator to look at -- and it
+    # is exactly why nothing was packed
+    assert "sk-topsecret" in (dirs[0] / "logs" / "librechat.log").read_text()
+
+
+def test_support_refuses_to_pack_when_python3_is_missing(tmp_path):
+    """(Important, re-review) with no python3 the sweep was skipped with a
+    silent `return 0`: the bundle was packed, README.txt said every file had
+    been swept, and the operator was told to email it -- with a service log
+    that still held a secret. A sweep that cannot run is not a sweep that
+    found nothing; the bundle must not be packed, and the operator must be
+    told so, in the output and in the README the raw directory keeps."""
+    here = _support_here(tmp_path)
+    services = ("librechat",)
+    compose_yaml = tmp_path / "compose-config.txt"
+    compose_yaml.write_text("services:\n  librechat:\n    environment: {}\n")
+    bin_ = _support_stub_path(tmp_path, services, compose_yaml)
+    log = tmp_path / "calls.log"
+
+    r = _run_support(here, bin_, log, compose_yaml, path_tail=_path_without_python3(tmp_path))
+    _assert_not_swept(r, here)
+    assert "python3" in r.stderr, r.stderr
+
+
+def test_support_refuses_to_pack_when_python3_is_present_but_fails(tmp_path):
+    """(Minor, re-review) the other shape of the same hole: a python3 that
+    exists and exits non-zero -- macOS with no developer tools ships a stub
+    that does exactly that. `find | xargs python3` then failed under `set -e`
+    and `pipefail` inside the sweep, killing support mid-run with no message
+    and the raw directory left behind. Same outcome as no python3 at all: no
+    tar, said out loud, and the reason (python3's own stderr) shown."""
+    here = _support_here(tmp_path)
+    services = ("librechat",)
+    compose_yaml = tmp_path / "compose-config.txt"
+    compose_yaml.write_text("services:\n  librechat:\n    environment: {}\n")
+    bin_ = _support_stub_path(tmp_path, services, compose_yaml)
+    (bin_ / "python3").write_text(
+        "#!/bin/sh\n"
+        'echo "xcode-select: note: No developer tools were found, requesting install." >&2\n'
+        "exit 1\n"
+    )
+    (bin_ / "python3").chmod(0o755)
+    log = tmp_path / "calls.log"
+
+    r = _run_support(here, bin_, log, compose_yaml)
+    _assert_not_swept(r, here)
+    assert "No developer tools were found" in r.stderr, r.stderr
 
 
 # --- lib/support-redact.py, tested directly ---------------------------------
@@ -1726,6 +1817,99 @@ def test_redact_py_quoted_value_ends_at_the_closing_quote_not_the_line():
         assert "sk-quoted" not in r.stdout, r.stdout
         # both URLs (MONGO_PASSWORD's value threaded into each) plus the key
         assert r.stdout.count("<redacted>") >= 3, r.stdout
+    finally:
+        os.unlink(envf)
+
+
+def test_redact_py_unquoted_value_ends_before_an_inline_comment():
+    """(Important, re-review) an unquoted value was taken verbatim to the end
+    of the line, comment and all, so `MONGO_PASSWORD=hunter2 # rotated`
+    made the secret piece `hunter2 # rotated` -- which never matches the
+    `hunter2` compose renders into MONGO_URI, or a log line carrying the
+    same URL. compose's own rule: an unquoted value ends at the first
+    " #" (a space, then a hash), and trailing whitespace is dropped; a hash
+    with no space before it is part of the value. install-box.sh writes
+    every secret unquoted and the README invites an operator to edit them,
+    so the commented shape is the one to expect."""
+    envf_text = (
+        "BOX_NAME=nufi\n"
+        "MONGO_PASSWORD=hunter2 # rotated 2026-09-18\n"
+        "LITELLM_MASTER_KEY=sk-abc#def \n"
+        "MONGO_URI=mongodb://nufi:hunter2@mongodb/nufi\n"
+    )
+    import tempfile
+    with tempfile.NamedTemporaryFile("w", suffix=".env", delete=False) as f:
+        f.write(envf_text)
+        envf = f.name
+    try:
+        compose_text = (
+            "services:\n  app:\n    environment:\n"
+            "      MONGO_URI: mongodb://nufi:hunter2@mongodb/nufi\n"
+            "      UPSTREAM_AUTH: Bearer sk-abc#def\n"
+        )
+        r = _redact_py("redact-compose", envf, input=compose_text)
+        assert r.returncode == 0, r.stderr
+        assert "hunter2" not in r.stdout, r.stdout
+        assert "sk-abc#def" not in r.stdout, r.stdout
+        assert r.stdout.count("<redacted>") == 2, r.stdout
+        # and the same secret in a plain file, the sweep's own path
+        with tempfile.NamedTemporaryFile("w", suffix=".log", delete=False) as lf:
+            lf.write("auth failed for mongodb://nufi:hunter2@mongodb/nufi\n")
+            logf = lf.name
+        try:
+            r = _redact_py("redact", envf, logf)
+            assert r.returncode == 0, r.stderr
+            swept = open(logf).read()
+            assert "hunter2" not in swept, swept
+            assert "auth failed for mongodb://nufi:<redacted>@mongodb/nufi" in swept, swept
+        finally:
+            os.unlink(logf)
+    finally:
+        os.unlink(envf)
+
+
+def test_redact_py_installer_placeholders_are_not_secrets():
+    """install-box.sh writes INFERENCE_API_KEY=ollama on every Ollama-profile
+    box (LiteLLM wants a non-empty key; Ollama ignores it) and `none` for a
+    remote endpoint without one. Taken as a secret, "ollama" was blanked
+    everywhere it appeared in the first real bundle: INFERENCE_PROFILE,
+    NUFI_MODEL's `ollama/` prefix, every compose reference to the ollama
+    service, `langchain_ollama` in the RAG log -- the box's whole inference
+    wiring gone from the one file meant to show it. A placeholder the
+    installer itself writes is not a secret; the entry is still blanked by
+    NAME in compose.yml, where its value is never needed."""
+    envf_text = (
+        "INFERENCE_PROFILE=ollama\n"
+        "INFERENCE_API_KEY=ollama\n"
+        "MONGO_PASSWORD=hunter2\n"
+    )
+    import tempfile
+    with tempfile.NamedTemporaryFile("w", suffix=".env", delete=False) as f:
+        f.write(envf_text)
+        envf = f.name
+    try:
+        compose_text = (
+            "services:\n  litellm:\n    environment:\n"
+            "      INFERENCE_PROFILE: ollama\n"
+            "      INFERENCE_API_KEY: ollama\n"
+            "      NUFI_MODEL: ollama/qwen2.5:7b\n"
+            "      MONGO_URI: mongodb://nufi:hunter2@mongodb/nufi\n"
+        )
+        r = _redact_py("redact-compose", envf, input=compose_text)
+        assert r.returncode == 0, r.stderr
+        assert "INFERENCE_PROFILE: ollama" in r.stdout, r.stdout
+        assert "NUFI_MODEL: ollama/qwen2.5:7b" in r.stdout, r.stdout
+        assert "INFERENCE_API_KEY: <redacted>" in r.stdout, r.stdout
+        assert "hunter2" not in r.stdout, r.stdout
+        with tempfile.NamedTemporaryFile("w", suffix=".log", delete=False) as lf:
+            lf.write("Initialized embeddings of type: <class 'langchain_ollama.OllamaEmbeddings'>\n")
+            logf = lf.name
+        try:
+            r = _redact_py("redact", envf, logf)
+            assert r.returncode == 0, r.stderr
+            assert "langchain_ollama.OllamaEmbeddings" in open(logf).read()
+        finally:
+            os.unlink(logf)
     finally:
         os.unlink(envf)
 

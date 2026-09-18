@@ -414,7 +414,11 @@ exist yet; see [What is not built yet](#10-what-is-not-built-yet).
 It works on a box that will not start, one with a failing `doctor`, and one
 that has never been backed up — nothing here stops partway because one check
 failed; a check that cannot answer says so in the bundle instead
-(`(unavailable: …)`) and the rest still gets collected.
+(`(unavailable: …)`) and the rest still gets collected. The one exception is
+the sweep itself: it needs `python3`, and if that is missing or broken the
+bundle is **not** packed — `support` prints `NOT SWEPT`, leaves the raw
+directory under `data/support/` with a `README.txt` that says the same, and
+exits non-zero. A sweep that could not run is not a sweep that found nothing.
 
 ```sh
 nufi-box support --to /Volumes/USB   # write it somewhere other than data/support/

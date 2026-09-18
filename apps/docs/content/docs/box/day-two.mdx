@@ -172,7 +172,10 @@ same value-level redaction** before the tar is made — a log line, not just
 ever leaves the box either: the bundle lists each department's folder and a
 file count, never a file's name. It works on a box that will not start and
 one whose `doctor` is failing: a check that cannot answer says so in the
-bundle instead of stopping the rest.
+bundle instead of stopping the rest. The one thing that does stop it is the
+sweep itself — it needs `python3`, and without a working one the bundle is
+not packed: `support` prints `NOT SWEPT`, leaves the raw directory behind
+with a `README.txt` that says so, and exits non-zero.
 
 **This is the local half only.** `support` does not open a connection from
 Dudaji into the box, and nothing on the box listens for one — that remote

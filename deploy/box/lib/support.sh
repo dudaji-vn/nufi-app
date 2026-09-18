@@ -239,15 +239,25 @@ json.dump(trimmed, sys.stdout, indent=2)
 # What an engineer needs is "mounted, how many departments, how many files
 # in each, is _routines there" — never a document's own name. The old
 # `find -maxdepth 3` printed every path under drives/, which is every file
-# name on every department's drive, mailed straight to the vendor; this
-# lists directories only (two levels: a department, and anything under it
-# such as _routines) and a per-department file count instead.
+# name on every department's drive, mailed straight to the vendor. This
+# lists the department directories, whether each has a _routines/ folder,
+# and a per-department file count. Nothing below a department is named: a
+# sub-folder an operator made ("legal/lawsuit-vs-acme/") tells as much as a
+# document name would.
 
 _support_drive_tree() {
   local file="$1" drives="${NUFI_DATA_DIR:-$HERE/data}/drives" d name count
   {
-    echo "directories (2 levels deep, names only — never a document name):"
-    find "$drives" -maxdepth 2 -type d 2>&1 | sort || echo "  (unavailable)"
+    echo "departments (directory names only — never a document or sub-folder name):"
+    if [ -d "$drives" ]; then
+      for d in "$drives"/*/; do
+        [ -d "$d" ] || continue
+        name="$(basename "$d")"
+        if [ -d "$d/_routines" ]; then echo "  $name/ (with _routines/)"; else echo "  $name/"; fi
+      done
+    else
+      echo "  (unavailable: no drives)"
+    fi
     echo
     echo "files per department (not their names):"
     if [ -d "$drives" ]; then
@@ -286,13 +296,36 @@ _support_readme() {
 # every artifact exists and before the tar, over every regular file in the
 # bundle — compose.yml included, harmlessly: its secrets are already gone,
 # so this pass finds nothing left to replace there.
+#
+# This is the one step that is allowed to fail the bundle. Every other
+# collector degrades to an "(unavailable: ...)" line, because a missing
+# artifact is a worse bundle and still a bundle; a sweep that did not run is
+# not a sweep that found nothing, and packing anyway would hand the operator
+# a tar the README calls clean with a service log that may hold a secret.
+# So: no python3, or a python3 that exits non-zero (macOS with no developer
+# tools ships a stub that does exactly that), and support_run refuses to
+# pack. python3's own stderr is left visible — it is the reason.
 
 _support_redact_all() {
   local out="$1"
-  command -v python3 >/dev/null 2>&1 || return 0
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "python3: not found" >&2
+    return 1
+  fi
   find "$out" -type f -print0 2>/dev/null \
-    | xargs -0 python3 "$HERE/lib/support-redact.py" redact "$ENVF" 2>/dev/null
-  return 0
+    | xargs -0 python3 "$HERE/lib/support-redact.py" redact "$ENVF"
+}
+
+# README.txt for a bundle the sweep could not clean: the raw directory
+# stays on disk, and this is the note it carries.
+_support_readme_not_swept() {
+  local file="$1"
+  {
+    echo "NOT SWEPT. This directory was collected by nufi-box support, but the"
+    echo "sweep that removes secret-looking .env values from it could not run"
+    echo "(python3 is missing or failed). Files here may hold a secret."
+    echo "Do not send it. Install python3 and run nufi-box support again."
+  } > "$file"
 }
 
 # --- the whole bundle ----------------------------------------------------------
@@ -334,7 +367,14 @@ support_run() {
   run _support_readme "$_out/README.txt"
 
   echo "  redacting secret values across the whole bundle"
-  run _support_redact_all "$_out"
+  if ! run _support_redact_all "$_out"; then
+    _support_readme_not_swept "$_out/README.txt"
+    echo >&2
+    echo "NOT SWEPT: python3 is missing or failed, so secret values could not be" >&2
+    echo "redacted. Nothing was packed. The unswept files are in $_out —" >&2
+    echo "do not send them. Install python3 and run nufi-box support again." >&2
+    return 1
+  fi
 
   if [ "$DRY" = 1 ]; then
     echo "  (dry run: nothing was written)"

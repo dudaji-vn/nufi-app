@@ -39,12 +39,23 @@ short is not worth the risk of blanking an unrelated occurrence of the same
 short string elsewhere in a log line. Every secret this box generates itself
 is `openssl rand hex` output, far longer than that; the floor only ever
 excludes a value an operator set by hand.
+
+The installer's own placeholders are not secrets either. install-box.sh
+writes INFERENCE_API_KEY=ollama on every Ollama-profile box (LiteLLM wants
+a non-empty key; Ollama ignores it) and `none` for a remote endpoint that
+has no key. Taken as a secret, "ollama" was blanked everywhere it appeared
+in the first real bundle — INFERENCE_PROFILE, the `ollama/` model prefix,
+every compose reference to the ollama service, `langchain_ollama` in the
+RAG log — and the one file meant to show the box's inference wiring no
+longer did. The entry is still blanked by NAME in compose.yml; its value is
+just not hunted for across the rest of the bundle.
 """
 import re
 import sys
 
 SECRET_SUFFIXES = ("_KEY", "_SECRET", "_PASSWORD", "PEM", "TOKEN", "_IV")
 MIN_SECRET_LEN = 4
+PLACEHOLDER_VALUES = ("ollama", "none")
 
 
 def _find_unescaped(s, ch, start):
@@ -70,7 +81,9 @@ def parse_env(path):
     how `docker compose` itself reads one:
 
       - a comment or blank line is skipped;
-      - an unquoted value is the rest of the line, verbatim;
+      - an unquoted value runs to the first " #" (a space, then a hash —
+        compose's own inline-comment rule; a hash with no space before it
+        is part of the value), minus trailing whitespace;
       - a double- or single-quoted value ends at the first unescaped
         matching quote — on the SAME line if there is one there, in which
         case anything after that quote on that line is ignored; a
@@ -121,7 +134,7 @@ def parse_env(path):
             if not closed:
                 return
             continue
-        yield key, rest
+        yield key, rest.split(" #", 1)[0].rstrip()
 
 
 def secret_values(path):
@@ -133,7 +146,7 @@ def secret_values(path):
     values = []
     seen = set()
     for key, val in parse_env(path):
-        if not key.endswith(SECRET_SUFFIXES):
+        if not key.endswith(SECRET_SUFFIXES) or val in PLACEHOLDER_VALUES:
             continue
         pieces = [val] if "\n" not in val else [val] + val.split("\n")
         for piece in pieces:

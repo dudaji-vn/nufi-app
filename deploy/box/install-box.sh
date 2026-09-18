@@ -128,11 +128,6 @@ have openssl || die "openssl is required"
 # the real-only block below, with its own tiny dry/real split, so the
 # dry-run plan names it like every other step.
 if [ "$OS" = "Linux" ]; then
-  # One derivation, used by both branches: the dry-run line used to be a
-  # fixed three-package string regardless of what `have` actually found, so
-  # it could name a package the real branch would never touch (or leave one
-  # out the real branch would still install) on a box that already had one
-  # of the two.
   # One list, two uses: the dry-run plan names everything a fresh Ubuntu
   # needs (the plan describes the box, not the shell previewing it), and the
   # real branch installs whichever of them this machine still lacks.
