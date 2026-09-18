@@ -179,35 +179,85 @@ _support_compose_yml() {
     return 0
   fi
   if ! $COMPOSE config 2>/dev/null | python3 -c '
+import re
 import sys
 
 SECRET_SUFFIXES = ("_KEY", "_SECRET", "_PASSWORD", "PEM", "TOKEN")
 
 
 def secret_values(path):
+    """Every secret-looking value in .env, read the way compose reads it.
+
+    A double-quoted value may span lines (the console signing key is a PEM
+    stored with real newlines -- install-box.sh says why), so a line-by-line
+    read saw only its first line, and only with a stray quote on the front.
+    The first real bundle carried the private key in compose.yml for exactly
+    that reason. Each line of a multi-line value is a secret on its own, too:
+    compose renders such a value as a block scalar, one line at a time.
+    """
     values = []
     try:
-        with open(path) as f:
-            for line in f:
-                line = line.rstrip("\n")
-                if not line or line.lstrip().startswith("#"):
-                    continue
-                i = line.find("=")
-                if i == -1:
-                    continue
-                key, val = line[:i], line[i + 1:]
-                if val and key.endswith(SECRET_SUFFIXES):
-                    values.append(val)
+        text = open(path).read()
     except OSError:
-        pass
+        return values
+    lines = text.split("\n")
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        i += 1
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        eq = line.find("=")
+        if eq == -1:
+            continue
+        key, val = line[:eq].strip(), line[eq + 1:]
+        if val.startswith("\"") and not (len(val) > 1 and val.endswith("\"") and not val.endswith("\\\"")):
+            # an opening quote with no closing quote on this line: read on
+            body = [val[1:]]
+            while i < len(lines):
+                nxt = lines[i]
+                i += 1
+                if nxt.endswith("\""):
+                    body.append(nxt[:-1])
+                    break
+                body.append(nxt)
+            val = "\n".join(body)
+        elif len(val) >= 2 and val[0] == val[-1] and val[0] in "\"\x27":
+            val = val[1:-1]
+        if key.endswith(SECRET_SUFFIXES):
+            for piece in [val] + val.split("\n"):
+                piece = piece.strip()
+                if len(piece) >= 4 and piece not in values:
+                    values.append(piece)
     return values
+
+
+def redact_by_key(text):
+    """Belt to the value braces: any environment entry whose NAME looks like
+    a secret is blanked, block scalar included, whatever its value was."""
+    out = []
+    lines = text.split("\n")
+    i = 0
+    key_re = re.compile(r"^(\s+)([A-Za-z0-9_]+):\s*(.*)$")
+    while i < len(lines):
+        m = key_re.match(lines[i])
+        if m and m.group(2).upper().endswith(SECRET_SUFFIXES):
+            indent = len(m.group(1))
+            out.append("%s%s: <redacted>" % (m.group(1), m.group(2)))
+            i += 1
+            while i < len(lines) and lines[i].strip() and (len(lines[i]) - len(lines[i].lstrip())) > indent:
+                i += 1
+            continue
+        out.append(lines[i])
+        i += 1
+    return "\n".join(out)
 
 
 secrets = secret_values(sys.argv[1])
 text = sys.stdin.read()
-for value in secrets:
+for value in sorted(secrets, key=len, reverse=True):
     text = text.replace(value, "<redacted>")
-sys.stdout.write(text)
+sys.stdout.write(redact_by_key(text))
 ' "$ENVF" > "$file"; then
     echo "(unavailable: docker compose config)" > "$file"
   fi

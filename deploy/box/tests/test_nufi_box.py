@@ -1461,6 +1461,12 @@ def _support_here(tmp_path, doctor_exit=1, doctor_out=" !!  something is off\n")
         "NUFI_DATA_DIR=%s/data\nBOX_NAME=nufi\nBOX_HOST=nufi.local\n"
         "POSTGRES_USER=nufi\nNUFI_MODEL=qwen2.5-14b\nINFERENCE_PROFILE=ollama\n"
         "DEPARTMENTS=legal\nMONGO_PASSWORD=hunter2\nLITELLM_MASTER_KEY=sk-topsecret\n"
+        # A multi-line double-quoted value with real newlines, stored the way
+        # install-box.sh stores the console's signing key. The first real
+        # bundle carried the private key because the redactor read .env one
+        # line at a time and never saw past the opening quote.
+        "OIDC_PRIVATE_KEY_PEM=\"-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC\n"
+        "BKcwggSjAgEAAoIBAQC7pem\n-----END PRIVATE KEY-----\"\n"
         % here
     )
     return here
@@ -1543,6 +1549,15 @@ def test_support_bundle_has_no_secret_anywhere_and_packs_a_tar(tmp_path):
         "      MONGO_PASSWORD: hunter2\n"
         "      LITELLM_MASTER_KEY: sk-topsecret\n"
         "      SAFE_VALUE: fine\n"
+        # compose renders a multi-line value as a block scalar, one line each
+        "  console:\n"
+        "    environment:\n"
+        "      OIDC_PRIVATE_KEY_PEM: |-\n"
+        "        -----BEGIN PRIVATE KEY-----\n"
+        "        MIIEvQIBADANBgkqhkiG9w0BAQEFAASC\n"
+        "        BKcwggSjAgEAAoIBAQC7pem\n"
+        "        -----END PRIVATE KEY-----\n"
+        "      OTHER_TOKEN: plain-token-value\n"
     )
     bin_ = _support_stub_path(tmp_path, services, compose_yaml)
     log = tmp_path / "calls.log"
@@ -1566,7 +1581,8 @@ def test_support_bundle_has_no_secret_anywhere_and_packs_a_tar(tmp_path):
 
     # The assertion the whole feature exists for: grep the real bundle
     # contents (extracted from the real tar, not a plan) for either secret.
-    for secret in ("hunter2", "sk-topsecret"):
+    for secret in ("hunter2", "sk-topsecret", "MIIEvQIBADANBgkqhkiG9w0BAQEFAASC", "BKcwggSjAgEAAoIBAQC7pem",
+                   "PRIVATE KEY", "plain-token-value"):
         grep = subprocess.run(["grep", "-r", secret, str(bundle)], capture_output=True, text=True)
         assert grep.returncode != 0, "found %r in the bundle: %s" % (secret, grep.stdout)
 
@@ -1575,7 +1591,9 @@ def test_support_bundle_has_no_secret_anywhere_and_packs_a_tar(tmp_path):
     assert "LITELLM_MASTER_KEY=<set>" in env_keys, env_keys
 
     compose_out = (bundle / "compose.yml").read_text()
-    assert compose_out.count("<redacted>") == 2, compose_out
+    # MONGO_PASSWORD, LITELLM_MASTER_KEY, the PEM (one entry, block scalar
+    # gone) and OTHER_TOKEN (by name, no .env value at all): four.
+    assert compose_out.count("<redacted>") == 4, compose_out
     assert "fine" in compose_out, "a non-secret value must survive redaction"
 
     log_files = sorted(p.name for p in (bundle / "logs").iterdir())
