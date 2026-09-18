@@ -51,27 +51,16 @@ def test_linux_gpu_plan_uses_ollama_container_and_samba():
     assert "docker-compose.gpu.yml" in out
 
 
-def test_linux_plan_installs_exactly_what_the_real_branch_would():
-    """The dry-run line and the real `apt-get install` are now one
-    derivation (`_pkgs`, from the same `have` checks) rather than the
-    dry-run branch being a fixed three-package string independent of it --
-    that mismatch is exactly how a plan could once name a package the real
-    branch would never touch on a machine that already had it. Computed
-    here from this process's own PATH (the same PATH the subprocess
-    inherits) rather than hardcoded, so the assertion tracks whichever of
-    rsync / avahi-publish this host actually has, instead of assuming a
-    blank machine the test does not control."""
-    import shutil
+def test_linux_plan_names_the_packages_a_fresh_ubuntu_needs():
+    """The plan describes the box, not the shell previewing it: on a Mac
+    that happens to have rsync, the Linux plan still names rsync. The real
+    branch installs whichever of the same list the machine lacks -- one
+    list in install-box.sh feeds both, so the plan cannot name a package the
+    real branch would never touch."""
     out = dry(NUFI_BOX_FAKE_OS="Linux")
-    expected = []
-    if shutil.which("rsync") is None:
-        expected.append("rsync")
-    if shutil.which("avahi-publish") is None:
-        expected += ["avahi-daemon", "avahi-utils"]
-    if expected:
-        assert ("sudo apt-get install -y " + " ".join(expected)) in out, out
-    else:
-        assert "apt-get install" not in out, out
+    assert "sudo apt-get install -y rsync avahi-daemon avahi-utils" in out, out
+    src = (BOX / "install-box.sh").read_text()
+    assert src.count('_pkgs_all="rsync avahi-daemon avahi-utils"') == 1, "one list, two uses"
 
 
 def test_macos_plan_does_not_mention_rsync():

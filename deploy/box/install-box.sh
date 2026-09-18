@@ -133,12 +133,20 @@ if [ "$OS" = "Linux" ]; then
   # it could name a package the real branch would never touch (or leave one
   # out the real branch would still install) on a box that already had one
   # of the two.
-  _pkgs=""
-  have rsync || _pkgs="$_pkgs rsync"
-  have avahi-publish || _pkgs="$_pkgs avahi-daemon avahi-utils"
+  # One list, two uses: the dry-run plan names everything a fresh Ubuntu
+  # needs (the plan describes the box, not the shell previewing it), and the
+  # real branch installs whichever of them this machine still lacks.
+  _pkgs_all="rsync avahi-daemon avahi-utils"
   if [ "$DRY" = 1 ]; then
-    [ -n "$_pkgs" ] && printf '  $ sudo apt-get install -y%s\n' "$_pkgs"
+    printf '  $ sudo apt-get install -y %s\n' "$_pkgs_all"
   else
+    _pkgs=""
+    for _p in $_pkgs_all; do
+      case "$_p" in
+        rsync) have rsync || _pkgs="$_pkgs $_p" ;;
+        avahi-daemon|avahi-utils) have avahi-publish || _pkgs="$_pkgs $_p" ;;
+      esac
+    done
     if [ -n "$_pkgs" ]; then
       say "Installing$_pkgs"
       sudo apt-get update -qq && sudo apt-get install -y -qq $_pkgs
