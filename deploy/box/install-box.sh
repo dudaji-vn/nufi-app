@@ -128,15 +128,20 @@ have openssl || die "openssl is required"
 # the real-only block below, with its own tiny dry/real split, so the
 # dry-run plan names it like every other step.
 if [ "$OS" = "Linux" ]; then
+  # One derivation, used by both branches: the dry-run line used to be a
+  # fixed three-package string regardless of what `have` actually found, so
+  # it could name a package the real branch would never touch (or leave one
+  # out the real branch would still install) on a box that already had one
+  # of the two.
+  _pkgs=""
+  have rsync || _pkgs="$_pkgs rsync"
+  have avahi-publish || _pkgs="$_pkgs avahi-daemon avahi-utils"
   if [ "$DRY" = 1 ]; then
-    printf '  $ sudo apt-get install -y rsync avahi-daemon avahi-utils\n'
+    [ -n "$_pkgs" ] && printf '  $ sudo apt-get install -y%s\n' "$_pkgs"
   else
-    _need=""
-    have rsync || _need="$_need rsync"
-    have avahi-publish || _need="$_need avahi-daemon avahi-utils"
-    if [ -n "$_need" ]; then
-      say "Installing$_need"
-      sudo apt-get update -qq && sudo apt-get install -y -qq $_need
+    if [ -n "$_pkgs" ]; then
+      say "Installing$_pkgs"
+      sudo apt-get update -qq && sudo apt-get install -y -qq $_pkgs
     fi
   fi
 fi

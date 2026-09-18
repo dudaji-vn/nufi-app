@@ -1,4 +1,4 @@
-import os, pathlib, shutil, subprocess
+import os, pathlib, shutil, subprocess, sys
 BOX = pathlib.Path(__file__).resolve().parents[1]
 BASH = "/bin/bash"   # macOS ships 3.2 here; the script must run under it
 
@@ -1464,9 +1464,14 @@ def _support_here(tmp_path, doctor_exit=1, doctor_out=" !!  something is off\n")
         # A multi-line double-quoted value with real newlines, stored the way
         # install-box.sh stores the console's signing key. The first real
         # bundle carried the private key because the redactor read .env one
-        # line at a time and never saw past the opening quote.
-        "OIDC_PRIVATE_KEY_PEM=\"-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC\n"
-        "BKcwggSjAgEAAoIBAQC7pem\n-----END PRIVATE KEY-----\"\n"
+        # line at a time and never saw past the opening quote. The last body
+        # line ends in base64 "==" padding on purpose (5 of 6 real RSA keys
+        # have one): env-keys.txt used to read a line-by-line KEY=VALUE
+        # split, and a body line ending in "=" was read as if it were its
+        # own key with a value, printing a real fragment of the private key
+        # into the one file this bundle promises holds no secret.
+        "OIDC_PRIVATE_KEY_PEM=\"-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7pWCG9K3RIjBM\n"
+        "qsSPj7S3hiUMU9EGKReiJQAOqg==\n-----END PRIVATE KEY-----\"\n"
         % here
     )
     return here
@@ -1503,6 +1508,12 @@ def _support_stub_path(tmp_path, services, compose_yaml_path):
         "    logs)\n"
         '      svc=""; for a in "$@"; do svc="$a"; done\n'
         '      echo "log line for $svc"\n'
+        # One service's log carries a secret that never touched compose.yml
+        # at all (LiteLLM debug output, a failed ALTER ROLE, an ingest
+        # login-error body are the real shapes this stands in for) -- proof
+        # that the final sweep, not just compose.yml's own redaction, is
+        # what keeps it out of the bundle.
+        '      if [ "$svc" = "librechat" ]; then echo "auth failed for user with key sk-topsecret"; fi\n'
         "      exit 0 ;;\n"
         '    version) echo "Docker Compose version v2.30.0"; exit 0 ;;\n'
         "    exec) exit 1 ;;\n"
@@ -1554,8 +1565,8 @@ def test_support_bundle_has_no_secret_anywhere_and_packs_a_tar(tmp_path):
         "    environment:\n"
         "      OIDC_PRIVATE_KEY_PEM: |-\n"
         "        -----BEGIN PRIVATE KEY-----\n"
-        "        MIIEvQIBADANBgkqhkiG9w0BAQEFAASC\n"
-        "        BKcwggSjAgEAAoIBAQC7pem\n"
+        "        MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7pWCG9K3RIjBM\n"
+        "        qsSPj7S3hiUMU9EGKReiJQAOqg==\n"
         "        -----END PRIVATE KEY-----\n"
         "      OTHER_TOKEN: plain-token-value\n"
     )
@@ -1580,9 +1591,15 @@ def test_support_bundle_has_no_secret_anywhere_and_packs_a_tar(tmp_path):
     bundle = bundle_dirs[0]
 
     # The assertion the whole feature exists for: grep the real bundle
-    # contents (extracted from the real tar, not a plan) for either secret.
-    for secret in ("hunter2", "sk-topsecret", "MIIEvQIBADANBgkqhkiG9w0BAQEFAASC", "BKcwggSjAgEAAoIBAQC7pem",
-                   "PRIVATE KEY", "plain-token-value"):
+    # contents (extracted from the real tar, not a plan) for every secret --
+    # the PEM's own body lines (including the base64-padded last one, minus
+    # its "==", the exact shape env-keys.txt used to leak as a stray key)
+    # and the marker that only ever appeared in a service's LOG, never in
+    # compose.yml at all.
+    for secret in ("hunter2", "sk-topsecret",
+                   "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7pWCG9K3RIjBM",
+                   "qsSPj7S3hiUMU9EGKReiJQAOqg", "-----BEGIN", "PRIVATE KEY",
+                   "plain-token-value"):
         grep = subprocess.run(["grep", "-r", secret, str(bundle)], capture_output=True, text=True)
         assert grep.returncode != 0, "found %r in the bundle: %s" % (secret, grep.stdout)
 
@@ -1598,7 +1615,14 @@ def test_support_bundle_has_no_secret_anywhere_and_packs_a_tar(tmp_path):
 
     log_files = sorted(p.name for p in (bundle / "logs").iterdir())
     assert log_files == ["librechat.log", "rag_api.log"], log_files
-    assert "log line for librechat" in (bundle / "logs" / "librechat.log").read_text()
+    librechat_log = (bundle / "logs" / "librechat.log").read_text()
+    # (Important, coordinator review) only compose.yml went through the
+    # redactor before; a log line carrying a secret shipped verbatim. The
+    # final sweep must blank the secret while leaving the log's OTHER line
+    # alone -- a targeted redaction, not a wholesale file wipe.
+    assert "sk-topsecret" not in librechat_log, librechat_log
+    assert "<redacted>" in librechat_log, librechat_log
+    assert "log line for librechat" in librechat_log, librechat_log
 
     doctor_txt = (bundle / "doctor.txt").read_text()
     assert doctor_txt.splitlines()[0] == "exit status: 1", doctor_txt
@@ -1626,3 +1650,121 @@ def test_support_still_bundles_when_doctor_itself_fails_hard(tmp_path):
 
     tars = list((here / "data" / "support").glob("nufi-box-support-*.tar.gz"))
     assert len(tars) == 1, tars
+
+
+# --- lib/support-redact.py, tested directly ---------------------------------
+
+def _redact_py(*args, input=None):
+    return subprocess.run(
+        [sys.executable, str(BOX / "lib" / "support-redact.py"), *args],
+        input=input, capture_output=True, text=True,
+    )
+
+
+def test_redact_py_keys_never_leaks_a_pem_body_line_as_its_own_key(tmp_path):
+    """(Critical, coordinator review) env-keys.txt was built by splitting
+    each LINE of .env on its first "=" -- so a double-quoted multi-line PEM
+    value's own body lines, most of which end in base64 "=" padding (5 of 6
+    real RSA keys have one), were each read as if they were their own
+    key=value entry: `qsSPj7S3hiUMU9EGKReiJQAOqg=<set>`, a real fragment of
+    the private key, in the one file this bundle promises holds no secret.
+    `keys` walks .env as ENTRIES, so a multi-line value is one key here,
+    whatever its body contains.
+    """
+    envf = tmp_path / ".env"
+    body_line_1 = "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7pWCG9K3RIjBM"
+    body_line_2 = "qsSPj7S3hiUMU9EGKReiJQAOqg=="  # ends in "==" -- the failure mode
+    envf.write_text(
+        "BOX_NAME=nufi\n"
+        'OIDC_PRIVATE_KEY_PEM="-----BEGIN PRIVATE KEY-----\n'
+        f"{body_line_1}\n{body_line_2}\n"
+        '-----END PRIVATE KEY-----"\n'
+        "MONGO_PASSWORD=hunter2\n"
+    )
+    r = _redact_py("keys", str(envf))
+    assert r.returncode == 0, r.stderr
+    out = r.stdout
+    assert "-----BEGIN" not in out, out
+    assert body_line_2[:-2] not in out, "the last body line minus its padding leaked: %r" % out
+    assert body_line_1 not in out, out
+    assert "OIDC_PRIVATE_KEY_PEM=<set>" in out, out
+    assert "MONGO_PASSWORD=<set>" in out, out
+    assert out.count("OIDC_PRIVATE_KEY_PEM=") == 1, \
+        "a multi-line value must be ONE key, not one per body line: %r" % out
+
+
+def test_redact_py_quoted_value_ends_at_the_closing_quote_not_the_line():
+    """(Important, coordinator review) a quoted value used to be read as
+    closed only when the closing quote was the LAST character of its line,
+    so `KEY="value" # a note` and `KEY="value" ` (a trailing space) both
+    misread as "no closing quote here" and swallowed every following line up
+    to the next one ending in a quote -- in a real .env, some unrelated
+    later secret. The README tells an operator to hand-edit .env, so both
+    shapes are invited, not hypothetical.
+    """
+    envf_text = (
+        "BOX_NAME=nufi\n"
+        'LITELLM_MASTER_KEY="sk-quoted" # a note\n'
+        'MONGO_PASSWORD="hunter2" \n'
+        "DATABASE_URL=postgres://nufi:hunter2@postgres/nufi\n"
+        "MONGO_URI=mongodb://nufi:hunter2@mongodb/nufi\n"
+    )
+    import tempfile
+    with tempfile.NamedTemporaryFile("w", suffix=".env", delete=False) as f:
+        f.write(envf_text)
+        envf = f.name
+    try:
+        compose_text = (
+            "services:\n  app:\n    environment:\n"
+            "      DATABASE_URL: postgres://nufi:hunter2@postgres/nufi\n"
+            "      MONGO_URI: mongodb://nufi:hunter2@mongodb/nufi\n"
+            "      LITELLM_MASTER_KEY: sk-quoted\n"
+        )
+        r = _redact_py("redact-compose", envf, input=compose_text)
+        assert r.returncode == 0, r.stderr
+        assert "hunter2" not in r.stdout, r.stdout
+        assert "sk-quoted" not in r.stdout, r.stdout
+        # both URLs (MONGO_PASSWORD's value threaded into each) plus the key
+        assert r.stdout.count("<redacted>") >= 3, r.stdout
+    finally:
+        os.unlink(envf)
+
+
+def test_support_to_directory_with_no_nufi_data_dir_does_not_abort_mid_bundle(tmp_path):
+    """(Minor, coordinator review) `--to DIR` bypasses `_support_dir`'s own
+    NUFI_DATA_DIR check entirely (SUPPORT_TO short-circuits the `:-`), so a
+    box whose .env never set NUFI_DATA_DIR reached later code that read
+    ${NUFI_DATA_DIR} unguarded and died under `set -u` partway through the
+    bundle. Every such reference now has a `:-$HERE/data` fallback."""
+    here = _support_here(tmp_path)
+    envf = here / ".env"
+    kept = [l for l in envf.read_text().splitlines() if not l.startswith("NUFI_DATA_DIR=")]
+    envf.write_text("\n".join(kept) + "\n")
+    services = ("librechat",)
+    compose_yaml = tmp_path / "compose-config.txt"
+    compose_yaml.write_text("services:\n  librechat:\n    environment: {}\n")
+    bin_ = _support_stub_path(tmp_path, services, compose_yaml)
+    log = tmp_path / "calls.log"
+    to_dir = tmp_path / "usb"
+
+    r = _run_support(here, bin_, log, compose_yaml, "--to", str(to_dir))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert list(to_dir.glob("nufi-box-support-*.tar.gz")), r.stdout
+    assert "Done." in r.stdout, r.stdout
+
+
+def test_redact_py_treats_creds_iv_as_a_secret():
+    """(Minor, coordinator review) CREDS_IV pairs with CREDS_KEY to encrypt
+    the app's own stored credentials; it belongs in the same bucket as
+    every other *_KEY."""
+    import tempfile
+    with tempfile.NamedTemporaryFile("w", suffix=".env", delete=False) as f:
+        f.write("BOX_NAME=nufi\nCREDS_IV=deadbeefcafef00d\n")
+        envf = f.name
+    try:
+        r = _redact_py("redact-compose", envf,
+                        input="services:\n  app:\n    environment:\n      CREDS_IV: deadbeefcafef00d\n")
+        assert r.returncode == 0, r.stderr
+        assert "deadbeefcafef00d" not in r.stdout, r.stdout
+    finally:
+        os.unlink(envf)

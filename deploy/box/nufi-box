@@ -212,12 +212,12 @@ case "${1:-}" in
       if "$@" >/dev/null 2>&1; then echo " ok  $*"; else echo " !!  $*"; fail=1; fi
     }
     chk docker info
-    chk curl -fsk "https://localhost:3080/health"
-    chk curl -fsk "https://localhost:3001/_health"
-    chk curl -fsk "https://localhost:3001/.well-known/jwks.json"
-    chk curl -fsk "https://localhost:3002/"
-    chk curl -fsk "https://localhost:7860/health_check"
-    chk curl -fsk "https://localhost:4000/health/liveliness"
+    chk curl -fsk --max-time 20 "https://localhost:3080/health"
+    chk curl -fsk --max-time 20 "https://localhost:3001/_health"
+    chk curl -fsk --max-time 20 "https://localhost:3001/.well-known/jwks.json"
+    chk curl -fsk --max-time 20 "https://localhost:3002/"
+    chk curl -fsk --max-time 20 "https://localhost:7860/health_check"
+    chk curl -fsk --max-time 20 "https://localhost:4000/health/liveliness"
     # From inside the box, not from this shell: OLLAMA_BASE_URL is written for
     # containers, and host.docker.internal is a name only they have.
     chk $COMPOSE exec -T rag_api python -c \
@@ -300,7 +300,7 @@ case "${1:-}" in
       else
         echo " !!  DOCKER_GID in .env is '${DOCKER_GID:-}' but the socket's group is $(stat -c %g /var/run/docker.sock 2>/dev/null) — sandboxes cannot be created; run: install-box.sh --with-works"; fail=1
       fi
-      chk curl -fsk "https://localhost:3003/api/health"
+      chk curl -fsk --max-time 20 "https://localhost:3003/api/health"
       . "$HERE/lib/works.sh"
       if [ "$DRY" = 1 ]; then
         works_check

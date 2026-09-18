@@ -15,17 +15,24 @@
 # so a different file, and this one is safe to attach to an email because it
 # never holds a secret.
 #
-# Every value that COULD be a secret is kept out two different ways:
-#   - env-keys.txt never prints a value, only whether a key is set.
-#   - compose.yml is `docker compose config` (which resolves every
-#     ${VAR} in the compose files to its real value) piped through a filter
-#     that blanks out anything equal to a secret-looking .env value. Matching
-#     is done by the VALUE, not by re-deriving which compose key holds which
-#     secret: `docker compose config` does not use .env's key names, it uses
-#     whatever each service's environment: block happens to call the
-#     variable, and keeping that mapping in sync by hand is exactly the kind
-#     of thing that goes stale. A secret's characters do not change just
-#     because a different name pointed at them.
+# Every value that COULD be a secret is kept out three different ways, all
+# built on lib/support-redact.py's one .env parser (see that file for why a
+# line-by-line read of .env is not good enough — the console's signing key
+# is stored as a real multi-line PEM):
+#   - env-keys.txt never prints a value, only whether a key is set, and is
+#     built by walking .env as ENTRIES rather than lines, so a PEM body line
+#     is never mistaken for a key of its own.
+#   - compose.yml is `docker compose config` (which resolves every ${VAR} in
+#     the compose files to its real value) piped through a filter that
+#     blanks any text equal to a secret-looking .env VALUE, and — belt to
+#     that value layer's braces — any environment entry whose NAME looks
+#     like a secret, whatever it rendered as.
+#   - every other regular file in the bundle (logs, doctor.txt, status.txt,
+#     box.txt, ...) is swept for the same secret-looking VALUES once
+#     collection is done and before the tar is made — a secret does not
+#     only ever appear inside compose's own rendering of it; LiteLLM's debug
+#     log, a failed `ALTER ROLE ... PASSWORD`, or an ingest daemon's login
+#     error can all print one too.
 #
 # A stopped box, a box with a broken doctor, a box with no mesh, a box that
 # has never been backed up — all still get a bundle. Nothing here calls
@@ -37,14 +44,17 @@ _support_dir() { echo "${NUFI_DATA_DIR:?NUFI_DATA_DIR is not set}/support"; }
 # --- box.txt ---------------------------------------------------------------
 
 _support_box_txt() {
-  local file="$1"
+  local file="$1" _dd="${NUFI_DATA_DIR:-$HERE/data}"
   {
     echo "nufi-box version"
-    grep -E '^NUFI_[A-Za-z0-9]*_TAG=' "$ENVF" 2>/dev/null | sed 's/^/  /' \
+    # [A-Za-z0-9_]*, not [A-Za-z0-9]*: NUFI_WORKS_EGRESS_TAG has an
+    # underscore inside the part between NUFI_ and _TAG, which the tighter
+    # class used to miss entirely.
+    grep -E '^NUFI_[A-Za-z0-9_]*_TAG=' "$ENVF" 2>/dev/null | sed 's/^/  /' \
       || echo "  (no NUFI_*_TAG keys in .env)"
-    if [ -f "${NUFI_DATA_DIR}/updated-from" ]; then
+    if [ -f "$_dd/updated-from" ]; then
       printf '  updated-from: '
-      cat "${NUFI_DATA_DIR}/updated-from" 2>/dev/null || echo "(unreadable)"
+      cat "$_dd/updated-from" 2>/dev/null || echo "(unreadable)"
     fi
     echo
     echo "OS:"
@@ -55,7 +65,7 @@ _support_box_txt() {
     $COMPOSE version 2>&1 || echo "(unavailable)"
     echo
     echo "disk (NUFI_DATA_DIR):"
-    df -h "${NUFI_DATA_DIR}" 2>&1 || echo "(unavailable)"
+    df -h "$_dd" 2>&1 || echo "(unavailable)"
     echo "disk (/):"
     df -h / 2>&1 || echo "(unavailable)"
     echo
@@ -87,20 +97,22 @@ _support_box_txt() {
 # value itself. Which keys exist (and which an install left empty) is what an
 # engineer actually needs to ask the right next question; the values are
 # exactly what must never leave the box in this file.
+#
+# Built by lib/support-redact.py's `keys` command, not a line-by-line awk: a
+# key=value split done one line at a time treats every line of a multi-line
+# quoted value (the console's PEM) as ITS OWN key — and a base64 body line
+# ending in `=` printed as if it were a key with a value, a real fragment of
+# the private key sitting in the one file this bundle promises holds no
+# secret. support-redact.py walks .env as entries, so a multi-line value is
+# one key here, same as everywhere else.
 
 _support_env_keys() {
   local file="$1"
-  awk '
-    /^[[:space:]]*#/ { next }
-    /^[[:space:]]*$/ { next }
-    {
-      n = index($0, "=")
-      if (n == 0) { next }
-      key = substr($0, 1, n - 1)
-      val = substr($0, n + 1)
-      if (length(val) > 0) { print key "=<set>" } else { print key "=<empty>" }
-    }
-  ' "$ENVF" 2>/dev/null | sort > "$file" \
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "(unavailable: python3 is required to read .env keys)" > "$file"
+    return 0
+  fi
+  python3 "$HERE/lib/support-redact.py" keys "$ENVF" 2>/dev/null > "$file" \
     || echo "(unavailable: could not read .env)" > "$file"
 }
 
@@ -161,12 +173,14 @@ _support_logs_all() {
 # `docker compose config` prints the fully resolved compose file — every
 # ${VAR} filled in with its .env value, which is exactly what makes it useful
 # to an engineer (they can see what a service actually got, not just what
-# .env claims) and exactly what makes it dangerous unredacted. The filter
-# reads .env itself for anything that LOOKS like a secret (a key ending in
-# _KEY, _SECRET, _PASSWORD, PEM or TOKEN) and blanks every occurrence of that
-# value in the compose text — not just the one place the key's own name
-# suggests it should be, since a value can be threaded into more than one
-# service's environment.
+# .env claims) and exactly what makes it dangerous unredacted.
+# lib/support-redact.py's `redact-compose` reads .env for anything that
+# LOOKS like a secret and blanks it two ways: by value (wherever that text
+# appears, not just the one place the key's own name suggests it should be —
+# a value can be threaded into more than one service's environment) and by
+# the rendered entry's own NAME (belt to the value layer's braces, and the
+# only thing that catches a secret shorter than the value layer's 4-character
+# floor).
 #
 # The secret values themselves never appear on a command line (readable
 # through /proc/<pid>/cmdline on Linux): python reads .env by path, and the
@@ -178,95 +192,17 @@ _support_compose_yml() {
     echo "(unavailable: python3 is required to redact compose config)" > "$file"
     return 0
   fi
-  if ! $COMPOSE config 2>/dev/null | python3 -c '
-import re
-import sys
-
-SECRET_SUFFIXES = ("_KEY", "_SECRET", "_PASSWORD", "PEM", "TOKEN")
-
-
-def secret_values(path):
-    """Every secret-looking value in .env, read the way compose reads it.
-
-    A double-quoted value may span lines (the console signing key is a PEM
-    stored with real newlines -- install-box.sh says why), so a line-by-line
-    read saw only its first line, and only with a stray quote on the front.
-    The first real bundle carried the private key in compose.yml for exactly
-    that reason. Each line of a multi-line value is a secret on its own, too:
-    compose renders such a value as a block scalar, one line at a time.
-    """
-    values = []
-    try:
-        text = open(path).read()
-    except OSError:
-        return values
-    lines = text.split("\n")
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        i += 1
-        if not line.strip() or line.lstrip().startswith("#"):
-            continue
-        eq = line.find("=")
-        if eq == -1:
-            continue
-        key, val = line[:eq].strip(), line[eq + 1:]
-        if val.startswith("\"") and not (len(val) > 1 and val.endswith("\"") and not val.endswith("\\\"")):
-            # an opening quote with no closing quote on this line: read on
-            body = [val[1:]]
-            while i < len(lines):
-                nxt = lines[i]
-                i += 1
-                if nxt.endswith("\""):
-                    body.append(nxt[:-1])
-                    break
-                body.append(nxt)
-            val = "\n".join(body)
-        elif len(val) >= 2 and val[0] == val[-1] and val[0] in "\"\x27":
-            val = val[1:-1]
-        if key.endswith(SECRET_SUFFIXES):
-            for piece in [val] + val.split("\n"):
-                piece = piece.strip()
-                if len(piece) >= 4 and piece not in values:
-                    values.append(piece)
-    return values
-
-
-def redact_by_key(text):
-    """Belt to the value braces: any environment entry whose NAME looks like
-    a secret is blanked, block scalar included, whatever its value was."""
-    out = []
-    lines = text.split("\n")
-    i = 0
-    key_re = re.compile(r"^(\s+)([A-Za-z0-9_]+):\s*(.*)$")
-    while i < len(lines):
-        m = key_re.match(lines[i])
-        if m and m.group(2).upper().endswith(SECRET_SUFFIXES):
-            indent = len(m.group(1))
-            out.append("%s%s: <redacted>" % (m.group(1), m.group(2)))
-            i += 1
-            while i < len(lines) and lines[i].strip() and (len(lines[i]) - len(lines[i].lstrip())) > indent:
-                i += 1
-            continue
-        out.append(lines[i])
-        i += 1
-    return "\n".join(out)
-
-
-secrets = secret_values(sys.argv[1])
-text = sys.stdin.read()
-for value in sorted(secrets, key=len, reverse=True):
-    text = text.replace(value, "<redacted>")
-sys.stdout.write(redact_by_key(text))
-' "$ENVF" > "$file"; then
+  if ! $COMPOSE config 2>/dev/null | python3 "$HERE/lib/support-redact.py" redact-compose "$ENVF" > "$file"; then
     echo "(unavailable: docker compose config)" > "$file"
   fi
 }
 
-# --- schedules.ini, caddy/mesh.caddy, the drive tree, data/backup, docker info -
+# --- schedules.ini, caddy/mesh.caddy, data/backup, docker info -----------------
 
 _support_copies() {
-  local out="$1" schedules="${NUFI_DATA_DIR}/schedules.ini" meshcaddy="$HERE/caddy/mesh.caddy"
+  local out="$1" dd="${NUFI_DATA_DIR:-$HERE/data}" schedules meshcaddy
+  schedules="$dd/schedules.ini"
+  meshcaddy="$HERE/caddy/mesh.caddy"
 
   if [ -f "$schedules" ]; then
     cp "$schedules" "$out/schedules.ini" 2>/dev/null \
@@ -282,10 +218,7 @@ _support_copies() {
     echo "(unavailable: no caddy/mesh.caddy — this box is not on the mesh)" > "$out/caddy/mesh.caddy"
   fi
 
-  find "${NUFI_DATA_DIR}/drives" -maxdepth 3 > "$out/drive-tree.txt" 2>&1 \
-    || echo "(unavailable: no drives)" > "$out/drive-tree.txt"
-
-  ls -la "${NUFI_DATA_DIR}/backup" > "$out/backup-listing.txt" 2>&1 \
+  ls -la "$dd/backup" > "$out/backup-listing.txt" 2>&1 \
     || echo "(unavailable: no data/backup — this box has never been backed up)" > "$out/backup-listing.txt"
 
   if command -v python3 >/dev/null 2>&1 \
@@ -301,14 +234,65 @@ json.dump(trimmed, sys.stdout, indent=2)
   fi
 }
 
+# --- drive-tree.txt --------------------------------------------------------
+#
+# What an engineer needs is "mounted, how many departments, how many files
+# in each, is _routines there" — never a document's own name. The old
+# `find -maxdepth 3` printed every path under drives/, which is every file
+# name on every department's drive, mailed straight to the vendor; this
+# lists directories only (two levels: a department, and anything under it
+# such as _routines) and a per-department file count instead.
+
+_support_drive_tree() {
+  local file="$1" drives="${NUFI_DATA_DIR:-$HERE/data}/drives" d name count
+  {
+    echo "directories (2 levels deep, names only — never a document name):"
+    find "$drives" -maxdepth 2 -type d 2>&1 | sort || echo "  (unavailable)"
+    echo
+    echo "files per department (not their names):"
+    if [ -d "$drives" ]; then
+      for d in "$drives"/*/; do
+        [ -d "$d" ] || continue
+        name="$(basename "$d")"
+        count="$(find "$d" -type f 2>/dev/null | wc -l | tr -d ' ')"
+        echo "  $name: $count file(s)"
+      done
+    else
+      echo "  (unavailable: no drives)"
+    fi
+  } > "$file" 2>&1
+}
+
 # --- README.txt ----------------------------------------------------------------
 
 _support_readme() {
   local file="$1"
   {
     echo "This is a diagnostics bundle from a NuFi box, made with nufi-box support."
-    echo "Nothing in here is a secret; the keys file lists names only."
+    echo "Nothing in here is a secret; the keys file lists names only, and every"
+    echo "file has been swept for secret-looking .env values before packing."
   } > "$file"
+}
+
+# --- the final sweep --------------------------------------------------------
+#
+# compose.yml gets the richer, YAML-aware redaction (redact-compose, above)
+# at the moment it is written. Everything else — every log, doctor.txt,
+# status.txt, box.txt — is plain text collected from a service or a command
+# that never promised not to print a secret: LiteLLM under
+# --detailed_debug, LibreChat with DEBUG_CONSOLE=true, a failing
+# `ALTER ROLE ... PASSWORD` in postgres, an ingest daemon's login-error body
+# can all carry one. So the value layer runs a second time here, after
+# every artifact exists and before the tar, over every regular file in the
+# bundle — compose.yml included, harmlessly: its secrets are already gone,
+# so this pass finds nothing left to replace there.
+
+_support_redact_all() {
+  local out="$1"
+  command -v python3 >/dev/null 2>&1 || return 0
+  find "$out" -type f -print0 2>/dev/null \
+    | xargs -0 python3 "$HERE/lib/support-redact.py" redact "$ENVF" 2>/dev/null
+  return 0
 }
 
 # --- the whole bundle ----------------------------------------------------------
@@ -340,11 +324,17 @@ support_run() {
   echo "  compose.yml (redacted)"
   run _support_compose_yml "$_out/compose.yml"
 
-  echo "  schedules.ini, caddy/mesh.caddy, drive tree, backup listing, docker info"
+  echo "  schedules.ini, caddy/mesh.caddy, backup listing, docker info"
   run _support_copies "$_out"
+
+  echo "  drive-tree.txt"
+  run _support_drive_tree "$_out/drive-tree.txt"
 
   echo "  README.txt"
   run _support_readme "$_out/README.txt"
+
+  echo "  redacting secret values across the whole bundle"
+  run _support_redact_all "$_out"
 
   if [ "$DRY" = 1 ]; then
     echo "  (dry run: nothing was written)"
@@ -356,7 +346,7 @@ support_run() {
   run tar -czf "$_tar" -C "$_to" "$_stamp"
   run rm -rf "$_out"
 
-  _size="$(du -sh "$_tar" 2>/dev/null | cut -f1)"
+  _size="$(du -sh "$_tar" 2>/dev/null | cut -f1)" || _size="?"
   echo
   echo "Done. $_tar ($_size)"
   echo "Send this file to support@nufi.me with what you saw."
