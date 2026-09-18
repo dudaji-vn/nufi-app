@@ -28,6 +28,12 @@ announced_ip() {
     dns-sd -t 2 -G v4 "${BOX_HOST:-nufi.local}" 2>/dev/null \
       | awk '$2 == "Add" {print $6; exit}'
   else
+    # Nothing to ask when avahi is not installed: an empty answer is "not
+    # announced", which is what doctor then says. Without this guard the
+    # command substitution exited 127 under set -e and doctor died after the
+    # mesh check with no line at all -- on a fresh Ubuntu box that is exactly
+    # how the first live nufi-box update came to roll back a healthy box.
+    command -v avahi-resolve >/dev/null 2>&1 || return 0
     avahi-resolve -n4 "${BOX_HOST:-nufi.local}" 2>/dev/null | awk '{print $2; exit}'
   fi
 }
@@ -107,7 +113,9 @@ nufi-box <verb>
                       confirmation (needed when there is no terminal to
                       confirm on). Not signed yet — GitHub over TLS, no
                       signed bundle; see README "What is not built yet"
-  support              (coming — see README "What is not built yet")
+  support [--to DIR]   gather a diagnostics bundle (no secret in it) to send
+                        to Dudaji when something is wrong — see README
+                        "When something is wrong"
 EOF
 }
 case "${1:-}" in

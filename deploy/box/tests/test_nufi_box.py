@@ -1380,3 +1380,22 @@ def test_dry_run_rollback_does_not_delete_the_real_updated_from_record(tmp_path)
     assert r.returncode == 0, r.stdout + r.stderr
     assert updated_from.exists(), "a --dry-run must not delete the real record"
     assert updated_from.read_text() == before
+
+
+def test_doctor_on_a_linux_box_without_avahi_says_not_announced_instead_of_dying(tmp_path):
+    """Real mode, Linux, a PATH with no avahi-resolve: doctor must reach its
+    last line. It used to exit 127 inside announced_ip() under set -e -- no
+    "!!", no "All good.", nothing -- and the first live nufi-box update read
+    that silence as a failed health check and rolled a healthy box back."""
+    envf = _env(tmp_path, BOX_IP="192.168.1.25")
+    stub = tmp_path / "bin"; stub.mkdir()
+    # Enough of a PATH for the script itself (bash, awk, grep, curl, docker are
+    # allowed to be missing -- their checks print "!!"), but no avahi tools.
+    e = dict(os.environ, NUFI_BOX_ENV=str(envf), NUFI_BOX_FAKE_OS="Linux",
+             PATH=f"{stub}:/usr/bin:/bin")
+    e.pop("NUFI_BOX_DRY_RUN", None)
+    r = subprocess.run(["/bin/bash", str(BOX / "nufi-box"), "doctor"],
+                       cwd=BOX, env=e, capture_output=True, text=True, timeout=120)
+    assert r.returncode != 127, r.stderr
+    assert "not being announced" in r.stdout, r.stdout
+    assert "Something is off" in r.stdout or "All good." in r.stdout, r.stdout
