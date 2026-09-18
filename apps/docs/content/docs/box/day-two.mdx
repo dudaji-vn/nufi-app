@@ -144,4 +144,29 @@ same transport a browser gets, nothing more. There is no signature on it and
 nothing checks one. A signed bundle from `updates.nufi.me` is the next phase
 (see the README's "What is not built yet").
 
-`./nufi-box support` is still coming.
+## Something is wrong
+
+```bash
+./nufi-box doctor              # first — what, in plain words
+./nufi-box support             # then — package it up to send
+```
+
+`support` gathers what an engineer actually needs for the first reply on a
+support thread — the box's version, `docker compose ps`, `doctor`'s own
+output, the last 300 lines of every service's logs, the compose config, and a
+few small files (`schedules.ini`, `caddy/mesh.caddy`, the drive tree as names
+only, the `data/backup` listing) — into one `.tar.gz` next to `data/support/`
+(or wherever `--to DIR` says). It prints the path, the size, and who to send
+it to.
+
+Nothing in it is a secret. `env-keys.txt` lists the *names* of every key in
+`.env` and whether each has a value, never the value; `compose.yml` is
+`docker compose config` with every value that looks like a secret — a `.env`
+key ending in `_KEY`, `_SECRET`, `_PASSWORD`, `PEM` or `TOKEN` — blanked out
+everywhere it appears. It works on a box that will not start and one whose
+`doctor` is failing: a check that cannot answer says so in the bundle instead
+of stopping the rest.
+
+**This is the local half only.** `support` does not open a connection from
+Dudaji into the box, and nothing on the box listens for one — that remote
+half is still not built.

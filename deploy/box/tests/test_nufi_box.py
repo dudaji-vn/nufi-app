@@ -1399,3 +1399,212 @@ def test_doctor_on_a_linux_box_without_avahi_says_not_announced_instead_of_dying
     assert r.returncode != 127, r.stderr
     assert "not being announced" in r.stdout, r.stdout
     assert "Something is off" in r.stdout or "All good." in r.stdout, r.stdout
+
+
+# --- support: a diagnostics bundle with no secret in it --------------------
+
+def test_support_dry_run_plans_every_artifact_and_writes_nothing(tmp_path):
+    envf = _env(tmp_path)
+    r = cli("support", NUFI_BOX_ENV=str(envf))
+    assert r.returncode == 0, r.stderr
+    for name in ("box.txt", "env-keys.txt", "doctor.txt", "status.txt",
+                 "logs", "compose.yml", "README.txt", "schedules.ini",
+                 "mesh.caddy"):
+        assert name in r.stdout, (name, r.stdout)
+    assert "dry run: nothing was written" in r.stdout, r.stdout
+    assert not (tmp_path / "support").exists(), "dry run must write nothing"
+
+
+def test_support_dry_run_with_a_to_directory(tmp_path):
+    envf = _env(tmp_path)
+    to = tmp_path / "usb"
+    r = cli("support", "--to", str(to), NUFI_BOX_ENV=str(envf))
+    assert r.returncode == 0, r.stderr
+    assert str(to) in r.stdout, r.stdout
+    assert not to.exists(), "dry run must write nothing"
+
+
+def _support_wrap_nufi_box(box_dir, doctor_exit=0, doctor_out="ok\n"):
+    """doctor's checks are real docker/curl/dns-sd calls inline in nufi-box's
+    own case arm (see _update_wrap_nufi_box above), not a lib function this
+    file could call in-process, so a subprocess-level fake is the only way to
+    give it a deterministic exit code from a test. support's own recursive
+    `"$HERE/nufi-box" doctor` call resolves HERE from its own path, which is
+    always this directory, so it lands on this same wrapper — real doctor
+    (curl, dns-sd, mesh) is never actually run."""
+    (box_dir / "nufi-box").rename(box_dir / "nufi-box.real")
+    wrapper = box_dir / "nufi-box"
+    wrapper.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = "doctor" ]; then\n'
+        "  cat <<'DOCTOR_OUT'\n"
+        + doctor_out +
+        "DOCTOR_OUT\n"
+        "  exit %d\n"
+        "fi\n"
+        'exec "$(dirname "$0")/nufi-box.real" "$@"\n' % doctor_exit
+    )
+    wrapper.chmod(0o755)
+
+
+def _support_here(tmp_path, doctor_exit=1, doctor_out=" !!  something is off\n"):
+    """A temp HERE: a full copy of this checkout (lib/support.sh, the
+    Caddyfile — everything support's real code touches — travels with it),
+    doctor faked so its exit code and output are pinned, and an .env holding
+    two secret-looking values the redaction test must never see again."""
+    here = tmp_path / "box"
+    shutil.copytree(BOX, here, ignore=shutil.ignore_patterns("data", ".env", "tests"))
+    _support_wrap_nufi_box(here, doctor_exit=doctor_exit, doctor_out=doctor_out)
+    (here / "data" / "drives" / "legal").mkdir(parents=True)
+    (here / "data" / "schedules.ini").write_text("# nothing scheduled yet\n")
+    (here / ".env").write_text(
+        "NUFI_DATA_DIR=%s/data\nBOX_NAME=nufi\nBOX_HOST=nufi.local\n"
+        "POSTGRES_USER=nufi\nNUFI_MODEL=qwen2.5-14b\nINFERENCE_PROFILE=ollama\n"
+        "DEPARTMENTS=legal\nMONGO_PASSWORD=hunter2\nLITELLM_MASTER_KEY=sk-topsecret\n"
+        % here
+    )
+    return here
+
+
+def _support_stub_path(tmp_path, services, compose_yaml_path):
+    """docker answers `compose config` (bare) with $STUB_COMPOSE_YAML's text
+    (which holds the secret values, exactly the shape `docker compose
+    config` really has: every ${VAR} already resolved), `compose config
+    --services` with the given service names, `compose ps` / `compose
+    version` / `docker --version` / `docker info --format ...` with fixed
+    stub data, `compose exec` (doctor's ollama reachability check, when
+    doctor is not wrapped) with failure, and logs every call it sees to
+    $STUB_LOG. Same technique as _update_stub_path above."""
+    bin_ = tmp_path / "bin"
+    bin_.mkdir()
+    services_printf = " ".join(services)
+    (bin_ / "docker").write_text(
+        "#!/bin/sh\n"
+        'printf "%s\\n" "$*" >> "$STUB_LOG"\n'
+        'if [ "$1" = "compose" ]; then\n'
+        "  shift\n"
+        '  while [ $# -gt 0 ]; do case "$1" in -f) shift 2 ;; --profile) shift 2 ;; *) break ;; esac; done\n'
+        '  sub="$1"; [ $# -gt 0 ] && shift\n'
+        '  case "$sub" in\n'
+        "    config)\n"
+        '      case "${1:-}" in\n'
+        f'        --services) printf "%s\\n" {services_printf} ;;\n'
+        '        --images) echo "ghcr.io/dudaji-vn/nufichat:main" ;;\n'
+        '        *) cat "$STUB_COMPOSE_YAML" ;;\n'
+        "      esac\n"
+        "      exit 0 ;;\n"
+        '    ps) echo "NAME        STATUS"; echo "librechat   Up 2 hours"; exit 0 ;;\n'
+        "    logs)\n"
+        '      svc=""; for a in "$@"; do svc="$a"; done\n'
+        '      echo "log line for $svc"\n'
+        "      exit 0 ;;\n"
+        '    version) echo "Docker Compose version v2.30.0"; exit 0 ;;\n'
+        "    exec) exit 1 ;;\n"
+        "    *) exit 0 ;;\n"
+        "  esac\n"
+        "fi\n"
+        'case "$1" in\n'
+        '  --version) echo "Docker version 27.4.1, build stub"; exit 0 ;;\n'
+        "  info)\n"
+        '    if [ "$2" = "--format" ]; then\n'
+        '      echo \'{"ServerVersion":"27.4.1","OperatingSystem":"stub-os","Driver":"overlay2","Runtimes":{"runc":{}}}\'\n'
+        "    fi\n"
+        "    exit 0 ;;\n"
+        "  *) exit 0 ;;\n"
+        "esac\n"
+    )
+    (bin_ / "docker").chmod(0o755)
+    return bin_
+
+
+def _run_support(here, bin_, log, compose_yaml_path, *extra_args):
+    log.write_text("")
+    e = dict(os.environ, PATH="%s:%s" % (bin_, os.environ.get("PATH", "/usr/bin:/bin")),
+             NUFI_BOX_FAKE_OS="Darwin", STUB_LOG=str(log),
+             STUB_COMPOSE_YAML=str(compose_yaml_path))
+    e.pop("NUFI_BOX_DRY_RUN", None)
+    e.pop("NUFI_BOX_ENV", None)
+    return subprocess.run([BASH, str(here / "nufi-box"), "support", *extra_args],
+                          cwd=here, env=e, capture_output=True, text=True, timeout=120)
+
+
+def test_support_bundle_has_no_secret_anywhere_and_packs_a_tar(tmp_path):
+    """The one test that has to be real, not a dry-run plan: a bundle built
+    from an .env with two secret values must not contain either of them
+    anywhere on disk, even after `docker compose config` hands them straight
+    back resolved into the compose text."""
+    here = _support_here(tmp_path)
+    services = ("librechat", "rag_api")
+    compose_yaml = tmp_path / "compose-config.txt"
+    compose_yaml.write_text(
+        "services:\n"
+        "  librechat:\n"
+        "    environment:\n"
+        "      MONGO_PASSWORD: hunter2\n"
+        "      LITELLM_MASTER_KEY: sk-topsecret\n"
+        "      SAFE_VALUE: fine\n"
+    )
+    bin_ = _support_stub_path(tmp_path, services, compose_yaml)
+    log = tmp_path / "calls.log"
+
+    r = _run_support(here, bin_, log, compose_yaml)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+    to_dir = here / "data" / "support"
+    leftover_dirs = [p for p in to_dir.iterdir() if p.is_dir()]
+    assert leftover_dirs == [], "the bundle directory must be removed after tar: %s" % leftover_dirs
+    tars = list(to_dir.glob("nufi-box-support-*.tar.gz"))
+    assert len(tars) == 1, tars
+    assert str(tars[0]) in r.stdout, r.stdout
+
+    extract_dir = tmp_path / "extracted"
+    extract_dir.mkdir()
+    subprocess.run(["tar", "-xzf", str(tars[0]), "-C", str(extract_dir)], check=True)
+    bundle_dirs = [p for p in extract_dir.iterdir()]
+    assert len(bundle_dirs) == 1, bundle_dirs
+    bundle = bundle_dirs[0]
+
+    # The assertion the whole feature exists for: grep the real bundle
+    # contents (extracted from the real tar, not a plan) for either secret.
+    for secret in ("hunter2", "sk-topsecret"):
+        grep = subprocess.run(["grep", "-r", secret, str(bundle)], capture_output=True, text=True)
+        assert grep.returncode != 0, "found %r in the bundle: %s" % (secret, grep.stdout)
+
+    env_keys = (bundle / "env-keys.txt").read_text()
+    assert "MONGO_PASSWORD=<set>" in env_keys, env_keys
+    assert "LITELLM_MASTER_KEY=<set>" in env_keys, env_keys
+
+    compose_out = (bundle / "compose.yml").read_text()
+    assert compose_out.count("<redacted>") == 2, compose_out
+    assert "fine" in compose_out, "a non-secret value must survive redaction"
+
+    log_files = sorted(p.name for p in (bundle / "logs").iterdir())
+    assert log_files == ["librechat.log", "rag_api.log"], log_files
+    assert "log line for librechat" in (bundle / "logs" / "librechat.log").read_text()
+
+    doctor_txt = (bundle / "doctor.txt").read_text()
+    assert doctor_txt.splitlines()[0] == "exit status: 1", doctor_txt
+    assert "something is off" in doctor_txt, doctor_txt
+
+    readme = (bundle / "README.txt").read_text()
+    assert "is a secret" in readme.lower(), readme
+
+    schedules = (bundle / "schedules.ini").read_text()
+    assert "nothing scheduled" in schedules, schedules
+
+
+def test_support_still_bundles_when_doctor_itself_fails_hard(tmp_path):
+    """A box so broken doctor cannot even finish must still get a bundle —
+    support never dies mid-collection over a failing sub-check."""
+    here = _support_here(tmp_path, doctor_exit=2, doctor_out="")
+    services = ("librechat",)
+    compose_yaml = tmp_path / "compose-config.txt"
+    compose_yaml.write_text("services:\n  librechat:\n    environment: {}\n")
+    bin_ = _support_stub_path(tmp_path, services, compose_yaml)
+    log = tmp_path / "calls.log"
+
+    r = _run_support(here, bin_, log, compose_yaml)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+    tars = list((here / "data" / "support").glob("nufi-box-support-*.tar.gz"))
+    assert len(tars) == 1, tars

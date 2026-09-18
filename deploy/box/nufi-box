@@ -489,7 +489,18 @@ case "${1:-}" in
     . "$HERE/lib/update.sh"
     if [ "$UPDATE_ROLLBACK" = 1 ]; then update_rollback
     else update_run "$UPDATE_REF" "$UPDATE_YES"; fi ;;
-  support) echo "support: coming in the next phase (see README \"What is not built yet\")"; exit 3 ;;
+  support)
+    shift
+    SUPPORT_TO=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --to) SUPPORT_TO="${2:?--to needs a directory}"; shift 2 ;;
+        *) die "support: unknown option: $1" ;;
+      esac
+    done
+    export SUPPORT_TO
+    . "$HERE/lib/support.sh"
+    support_run ;;
   -h|--help|"") usage ;;
   *) echo "unknown command: $1" >&2; usage; exit 2 ;;
 esac
