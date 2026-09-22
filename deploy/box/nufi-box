@@ -417,7 +417,14 @@ case "${1:-}" in
         # every account on a box ends up sharing it.
         _pw="$(openssl rand -hex 8)"
         echo "Creating $_email on this box"
-        run $COMPOSE exec -T librechat npm run create-user -- \
+        # The app's create-user asks one question on stdin — "Email verified?
+        # (Y/n, default Y)" — and `exec -T` gives it no terminal, so left to
+        # itself it waits forever and `nufi-box user add` hangs with no output.
+        # Answer it: `printf` writes a couple of Y lines and exits 0 (the bytes
+        # sit in the pipe buffer, so it never takes SIGPIPE under pipefail even
+        # if create-user reads only the first). Verified is what a box wants —
+        # it runs no mail server to send a verification link to.
+        printf 'Y\nY\n' | run $COMPOSE exec -T librechat npm run create-user -- \
           "$_email" "$_name" "$_user" "$_pw"
         echo
         echo "  email:    $_email"
