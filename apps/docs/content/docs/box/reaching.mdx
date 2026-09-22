@@ -55,6 +55,15 @@ Nothing to set up. When the installer finishes, the box:
   once ([the first hour](/docs/box/first-hour#1-trust-the-boxs-certificate-once-per-laptop)),
 - shares each department's folder as `\\<name>.local\<department>`.
 
+**Give the box a fixed address.** The box records its own IP at install time —
+into the certificate and into what it serves on. If the network hands it a
+different address later (a plain DHCP lease renewing, or a Wi-Fi change on a
+laptop-hosted box), `<name>.local` and the plain-IP URL stop matching until you
+re-run `nufi-box announce`. On a machine that is meant to stay put, reserve its
+address on the router (a DHCP reservation, or a static IP) so it never moves.
+The from-home mesh is unaffected either way — the box reaches the coordinator
+outbound, whatever its local address.
+
 A member on the office Wi-Fi needs the address, the certificate once, and an
 account you create (`nufi-box user add`). That is the whole path.
 
@@ -137,9 +146,15 @@ single-use key that expires in an hour. Send it to that person privately —
 email or chat, never a public link. Running it trusts the certificate, joins
 the laptop to the mesh, maps the drives you named and opens chat. `members`
 lists who is joined and when each was last seen; `revoke` removes a laptop
-for good (the person needs a new invite to come back). A laptop already
-enrolled in a corporate Tailscale network cannot join a second one; that
-person joins from a personal device or asks their IT team.
+for good (the person needs a new invite to come back).
+
+**Managed devices are the common snag.** Two shapes to expect. A laptop already
+enrolled in a corporate Tailscale network cannot join a second one — that
+person joins from a personal device. And a company-managed (MDM) laptop often
+blocks Tailscale from installing at all: macOS refuses its system extension,
+Windows refuses the network driver, and neither can be approved without IT.
+Test on the actual device before you rely on it; a personal laptop or phone is
+the reliable fallback.
 
 ### What a member sees, and what the coordinator carries
 

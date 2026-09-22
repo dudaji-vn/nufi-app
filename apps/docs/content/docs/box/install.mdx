@@ -7,7 +7,8 @@ description: One command, four questions, a banner. About 25 minutes on a blank 
 
 | | |
 |---|---|
-| **Machine** | Ubuntu 24.04 or macOS. On Windows, run this inside WSL2 Ubuntu — the installer stops if you try it anywhere else. |
+| **Machine** | Ubuntu 24.04 or macOS. On Windows, run this inside WSL2 Ubuntu — the installer stops if you try it anywhere else. WSL2 puts the box behind a NAT the same way a virtual machine does, so other devices on the office network cannot reach it without a `netsh interface portproxy` forward; the from-home mesh works regardless. For a box the whole office reaches on the LAN, prefer a machine running Ubuntu or macOS directly. |
+| **Network** | For a box that stays in one place, give it a fixed address (a DHCP reservation on the router, or a static IP). The box bakes its address into its certificate at install; if a plain DHCP lease later hands it a different one, `<name>.local` stops matching until you re-run `nufi-box announce`. |
 | **Docker** | Engine plus Compose v2. On Ubuntu the installer offers to install Docker for you; on macOS install Docker Desktop or OrbStack first. |
 | **git** | Any recent one (2.25 or newer; Ubuntu 24.04 ships 2.43). On macOS the first `git` command offers to install the Command Line Tools if they are missing; on Ubuntu, `sudo apt-get install -y git` if `git --version` says nothing. |
 | **Memory** | On macOS, give the Docker VM at least **12 GB** (Settings → Resources → Memory). The installer warns below 11 GB and carries on. The box itself uses about 3 GB running. |
