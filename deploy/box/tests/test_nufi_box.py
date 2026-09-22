@@ -705,6 +705,33 @@ def test_user_add_generates_a_password_rather_than_asking_for_one(tmp_path):
     assert other and other.group(1) != shown.group(1), "the password is not being generated"
 
 
+def test_user_add_answers_the_verified_prompt_and_does_not_hang(tmp_path):
+    """The app's create-user asks one question on stdin ("Email verified?");
+    `exec -T` gives it no terminal, so without an answer piped in, `user add`
+    hangs forever with no output. A docker stub here blocks on `read` exactly
+    the way create-user does: if the box feeds an answer the call returns, and
+    if it does not this test times out. The 15 s bound is the regression."""
+    import os
+    bin_ = tmp_path / "bin"; bin_.mkdir()
+    (bin_ / "docker").write_text(
+        "#!/bin/sh\n"
+        "# only the create-user exec blocks on stdin; everything else is quiet\n"
+        'case "$*" in\n'
+        '  *create-user*) read ans; echo "verified answer: $ans"; exit 0 ;;\n'
+        "  *) exit 0 ;;\n"
+        "esac\n")
+    (bin_ / "docker").chmod(0o755)
+    env = _env(tmp_path)
+    e = dict(os.environ, PATH="%s:%s" % (bin_, os.environ.get("PATH", "/usr/bin:/bin")),
+             NUFI_BOX_ENV=str(env), NUFI_BOX_FAKE_OS="Linux")
+    e.pop("NUFI_BOX_DRY_RUN", None)
+    r = subprocess.run([BASH, str(BOX / "nufi-box"), "user", "add", "carol@dept.local"],
+                       cwd=BOX, env=e, capture_output=True, text=True, timeout=15)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "verified answer: Y" in r.stdout, r.stdout
+    assert "carol@dept.local" in r.stdout
+
+
 def test_user_list_and_a_refused_verb(tmp_path):
     env = str(_env(tmp_path))
     assert "list-users" in cli("user", "list", NUFI_BOX_ENV=env).stdout
