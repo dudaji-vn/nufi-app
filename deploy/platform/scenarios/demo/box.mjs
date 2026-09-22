@@ -64,6 +64,53 @@ export const BOX = {
     sub: ['Installed in one command, used through a folder, reached from anywhere its team is.',
           'Chat, agents, Studio and the model &mdash; on hardware the department already owns.'],
   },
+
+  // ---- detailed cut only -------------------------------------------------
+  whatYouGet: {
+    eyebrow: 'WHAT YOU GET',
+    head: 'The whole of NuFi, on one machine',
+    sub: ['<b>Chat</b> for every team &middot; <b>Console</b>, the box&rsquo;s identity and model gateway.',
+          '<b>Admin panel</b> for accounts and audit &middot; <b>Studio</b>, the flow canvas.',
+          'One login works across all four. A member signs in once and never sees a second password.'],
+  },
+  driveFill: {
+    eyebrow: 'THE IDEA, IN ONE STEP',
+    head: 'A file goes in; a minute later it is knowledge',
+    sub: ['No upload screen and no button &mdash; the department&rsquo;s folder is an ordinary network share.',
+          'The box watches it, waits for the file to finish copying, and embeds it.'],
+  },
+  driveFillCap: ['<b>Drop a document in the folder.</b>',
+                 'The box picks it up on its own and reports it embedded &mdash; ready to answer from.'],
+
+  term: ['<b>Ask again, and it stays on the document.</b>',
+         'Three years, straight from the NDA&rsquo;s term clause &mdash; not a number the model made up.'],
+  absent: ['<b>And it says when the answer is not there.</b>',
+           'Asked something the Legal folder does not hold, it declines rather than guessing.'],
+
+  separation: {
+    eyebrow: 'PER DEPARTMENT',
+    head: 'Each agent reads only its own folder',
+    sub: ['The Legal agent reads the Legal drive; the HR agent reads HR&rsquo;s.',
+          'Asking one about the other&rsquo;s documents gets an honest &ldquo;not in these documents&rdquo;, never a wrong answer from the wrong folder.'],
+  },
+  hr: ['<b>The HR agent answers from the HR folder.</b>',
+       '15 days, 18 from the fourth year &mdash; read out of the leave policy, the same way the Legal agent reads the NDA.'],
+
+  dayTwo: {
+    eyebrow: 'DAY TWO',
+    head: 'The box looks after itself',
+    sub: ['One command shows every service, the model and the disk. Another checks the things that break and says what to do.',
+          '<code>update</code> fetches the box, checks it, and rolls back on its own if the check fails.'],
+  },
+  dayTwoCap: ['<b>Thirteen services, one line to see them all.</b>',
+              'status, doctor, backup, update, support &mdash; day two without knowing Docker.'],
+
+  notYet: {
+    eyebrow: 'WHAT IT IS NOT, YET',
+    head: 'Being straight about the edges',
+    sub: ['It does not read or send email, and it does not record meetings &mdash; it summarises a transcript you give it.',
+          'Updates are checked and roll back on their own, but are not signed yet. On the LAN and over the mesh, it is solid.'],
+  },
 };
 
 // The real command output the film shows as styled terminals. Captured from
@@ -84,6 +131,14 @@ export const TERMINAL = {
     ['blank', ''],
     ['out', '  Drives:      data/drives/<department>  → the team’s knowledge'],
   ],
+  drop: [
+    ['prompt', 'cp NDA-Standard-Clauses.md  data/drives/legal/'],
+    ['dim', '  # nothing else to do — the box is watching the folder'],
+    ['blank', ''],
+    ['prompt', 'nufi-box logs nufi-ingest'],
+    ['ok', '  added legal/NDA-Standard-Clauses.md → d3df91d0… (embedded=True)'],
+    ['dim', '  # about a minute after the copy'],
+  ],
   flows: [
     ['prompt', 'nufi-box flows list'],
     ['out', '  Routine · ask the department drive'],
@@ -93,6 +148,24 @@ export const TERMINAL = {
     ['dim', '  …'],
     ['blank', ''],
     ['ok', '  14 flow(s) — open, edit, or run any of them'],
+  ],
+  status: [
+    ['prompt', 'nufi-box status'],
+    ['out', '  admin-panel   console   litellm-proxy   mongodb   postgres'],
+    ['out', '  librechat     caddy     nufi-ingest     nufi-cron  ollama'],
+    ['out', '  rag_api       samba     studio          tailscale'],
+    ['ok', '  13 services up (healthy)'],
+    ['blank', ''],
+    ['dim', '  Model: qwen2.5-3b via ollama-docker'],
+    ['dim', '  Disk: 31G used of 38G   Last backup: 20260918'],
+  ],
+  update: [
+    ['prompt', 'nufi-box update'],
+    ['dim', '  Fetching main, snapshotting the current box…'],
+    ['dim', '  Re-installing, then checking with doctor…'],
+    ['blank', ''],
+    ['ok', '  Updated to main (4f62b47)'],
+    ['dim', '  # if doctor had failed, it would have rolled itself back'],
   ],
   mesh: [
     ['prompt', 'nufi-box mesh status'],

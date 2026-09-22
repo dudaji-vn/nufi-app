@@ -41,10 +41,22 @@ if (!EMAIL || !PASSWORD) { console.error('Set BOX_ADMIN_EMAIL and BOX_ADMIN_PASS
 const SCENES = ['title', 'install', 'ask', 'studio', 'mesh', 'close'];
 const FROM = SCENES.indexOf(arg('from', 'title'));
 const runs = (s) => SCENES.indexOf(s) >= FROM;
+// The detailed cut adds scenes (what-you-get, the drive filling, a second and
+// a third question, the per-department wall, day two, and the honest edges).
+// The default is the two-minute intro.
+const DETAIL = has('detail');
 
 const FONT = '"IBM Plex Sans","Helvetica Neue",Arial,sans-serif';
 const ASK = 'Under our standard NDA, which law governs the agreement and where are disputes resolved?';
 const CITE_TOKENS = [/NDA/i, /Vietnam/i];   // what the reply must contain before the citation caption
+// The detailed cut's extra questions, each with what its reply must contain
+// before the film captions it (so a wrong or empty answer stops the recording).
+const ASK_TERM = 'How long does the standard NDA stay in effect?';
+const ASK_TERM_TOKENS = [/three|3\b/i, /year/i];
+const ASK_ABSENT = 'What is our parental leave entitlement?';
+const ASK_ABSENT_TOKENS = [/not|does not|no\b/i];   // it must decline, not answer
+const ASK_HR = 'How many days of annual leave do employees get, and does it change with length of service?';
+const ASK_HR_TOKENS = [/15/, /18/];
 
 const beat = (p, ms) => p.waitForTimeout(ms);
 let current = null;
@@ -199,6 +211,28 @@ async function waitReply(page, question, { timeout = 240000 } = {}) {
   throw new Error('no reply appeared');
 }
 
+// Type a question to the agent already selected, wait for the reply, and check
+// it contains what the caption is about to claim. Returns the reply text.
+async function askAndVerify(page, question, tokens) {
+  await tap(page, composer(page));
+  await type(page, question);
+  await page.keyboard.press('Enter');
+  await beat(page, 600);
+  const reply = await waitReply(page, question);
+  for (const rx of tokens) {
+    if (!rx.test(reply)) throw new Error(`refusing to film: reply to "${question.slice(0, 40)}…" did not match ${rx}`);
+  }
+  return reply;
+}
+
+// Select one department agent from the model picker (My Agents → <name>).
+async function pickAgent(page, nameRx) {
+  await tap(page, page.locator('button').filter({ hasText: /qwen|nufi|assistant/i }).first(), { after: 700 });
+  await tap(page, page.getByText(/my agents/i).first(), { after: 700 });
+  await tap(page, page.getByText(nameRx).first(), { after: 900 });
+  await beat(page, 600);
+}
+
 // ---- the film --------------------------------------------------------------
 async function main() {
   mkdirSync('recording', { recursive: true });
@@ -226,9 +260,19 @@ async function main() {
     .catch(() => page.locator('button[type="submit"]').first().click());
   await page.waitForURL((u) => !/\/login/.test(u.pathname), { timeout: 60000 });
 
+  // --- what you get (detailed cut) ----------------------------------------
+  if (runs('title') && DETAIL) { await card(page, BOX.whatYouGet, 8500); }
+
   // --- install: the one command and the banner ----------------------------
   if (runs('install')) {
     await terminalCard(page, BOX.install, TERMINAL.install, { step: 230, hold: 5200 });
+    await clearCard(page);
+  }
+
+  // --- the drive fills (detailed cut) -------------------------------------
+  if (runs('install') && DETAIL) {
+    await terminalCard(page, BOX.driveFill, TERMINAL.drop, { step: 300, hold: 3200 });
+    await say(page, BOX.driveFillCap, 6000);
     await clearCard(page);
   }
 
@@ -248,26 +292,42 @@ async function main() {
     await page.locator('#ui-mode-intro-dismiss').click({ timeout: 3000 }).catch(() => {});
     await page.getByRole('button', { name: /close sidebar/i }).first().click({ timeout: 4000 }).catch(() => {});
 
-    await card(page, BOX.premise, 6500);
-    await say(page, BOX.drop, 5200);
-    await clearCard(page);
+    if (!DETAIL) { await card(page, BOX.premise, 6500); await say(page, BOX.drop, 5200); await clearCard(page); }
     // Pick the Legal assistant: open the model picker, My Agents, Legal.
-    await tap(page, page.locator('button').filter({ hasText: /qwen|nufi/i }).first(), { after: 700 });
-    await tap(page, page.getByText(/my agents/i).first(), { after: 700 });
-    await tap(page, page.getByText(/legal assistant/i).first(), { after: 900 });
-    await beat(page, 600);
+    await pickAgent(page, /legal assistant/i);
     await say(page, BOX.ask, 4200);
-    await tap(page, composer(page));
-    await type(page, ASK);
-    const before = (await replyTexts(page, ASK)).length;
-    await page.keyboard.press('Enter');
-    await beat(page, 600);
-    const reply = await waitReply(page, ASK);
-    for (const rx of CITE_TOKENS) {
-      if (!rx.test(reply)) throw new Error(`refusing to film: the reply did not mention ${rx}`);
-    }
+    await askAndVerify(page, ASK, CITE_TOKENS);
     await beat(page, 800);
     await say(page, BOX.cite, 7000);
+    await hush(page);
+    await beat(page, 800);
+
+    // Detailed cut: a second question (stays on the document) and a third
+    // (declines when the answer is not in the folder).
+    if (DETAIL) {
+      await askAndVerify(page, ASK_TERM, ASK_TERM_TOKENS);
+      await beat(page, 700);
+      await say(page, BOX.term, 6500);
+      await hush(page);
+      await beat(page, 600);
+      await askAndVerify(page, ASK_ABSENT, ASK_ABSENT_TOKENS);
+      await beat(page, 700);
+      await say(page, BOX.absent, 6500);
+      await hush(page);
+      await beat(page, 800);
+    }
+  }
+
+  // --- per department: the HR agent answers from its own folder -----------
+  if (runs('ask') && DETAIL) {
+    await card(page, BOX.separation, 7000);
+    await go(page, `${BASE}:3080/c/new`);
+    await composer(page).waitFor({ state: 'visible', timeout: 60000 });
+    await clearCard(page);
+    await pickAgent(page, /hr assistant/i);
+    await askAndVerify(page, ASK_HR, ASK_HR_TOKENS);
+    await beat(page, 700);
+    await say(page, BOX.hr, 7000);
     await hush(page);
     await beat(page, 800);
   }
@@ -282,6 +342,16 @@ async function main() {
     await clearCard(page);
   }
 
+  // --- day two (detailed cut): the box looks after itself -----------------
+  if (runs('studio') && DETAIL) {
+    await terminalCard(page, BOX.dayTwo, TERMINAL.status, { step: 240, hold: 4200 });
+    await say(page, BOX.dayTwoCap, 5600);
+    await clearCard(page);
+    await terminalCard(page, { ...BOX.dayTwo, head: 'Update, and roll back on its own', eyebrow: 'DAY TWO' },
+      TERMINAL.update, { step: 300, hold: 4400 });
+    await clearCard(page);
+  }
+
   // --- from home: the mesh -------------------------------------------------
   if (runs('mesh')) {
     await go(page, `${BASE}:3080/c/new`);
@@ -293,6 +363,9 @@ async function main() {
     await say(page, BOX.meshInvite, 6200);
     await clearCard(page);
   }
+
+  // --- the honest edges (detailed cut) ------------------------------------
+  if (runs('mesh') && DETAIL) await card(page, BOX.notYet, 8500);
 
   if (runs('close')) await card(page, BOX.close, 8000);
 
