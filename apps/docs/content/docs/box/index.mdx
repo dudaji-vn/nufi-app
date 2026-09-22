@@ -67,8 +67,9 @@ Being straight about this is cheaper than a surprise:
 - **It does not read or send email.** Nothing in the box touches a mailbox.
 - **It does not record or transcribe meetings.** It summarises a transcript you
   give it.
-- **Reaching the box from home** is built and works in the lab, but has not yet
-  been proven against a public coordinator in the field. On the LAN it is solid.
+- **Reaching the box from home** has been proven against a public coordinator
+  with a real certificate, relay included — but not yet from a laptop on a
+  network other than the box's own. On the LAN it is solid.
 - **Updates are not signed yet.** `nufi-box update` fetches the box from
   GitHub over TLS, checks it, and rolls back on its own if the check fails —
   but there is no signed bundle behind it yet ([day two](/docs/box/day-two)).

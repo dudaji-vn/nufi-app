@@ -949,11 +949,12 @@ This install gives you a box on your own LAN, and — once it is on a
 coordinator — reachable from anywhere its members are. The following are not
 built yet:
 
-- **A coordinator proved in the field.** The mesh half of this box has been
-  run end to end against a coordinator in a Docker lab, with the relay forced
-  and both ends behind NAT. It has not been run against a coordinator on a
-  real VPS with a public DNS name and a Let's Encrypt certificate. Nothing is
-  known to be missing; it simply has not been done.
+- **A member on a network other than the box's.** The coordinator has run on
+  a real VPS with a public name and a Let's Encrypt certificate, a box has
+  joined it, and a member has signed in over the relay (the run is recorded in
+  [the coordinator's runbook](../coordinator/README.md#10-what-has-been-proved-and-what-has-not)).
+  Both test members sat on the same machine as the box, so a laptop on an LTE
+  hotspot is the one measurement still to take.
 - **A signed update bundle, an update timer, and a USB update path.**
   `nufi-box update` (see [Updating](#updating)) fetches straight from GitHub
   over TLS, checks the result, and rolls back automatically if it fails —
