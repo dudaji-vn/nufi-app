@@ -31,6 +31,38 @@ def dry(*flags, **env):
     return r.stdout
 
 
+def test_a_box_name_that_is_not_a_hostname_is_refused():
+    """The name becomes <name>.local and the box's mesh hostname; a space or
+    a capital in it breaks both, silently, later. Refuse it at the question."""
+    for bad in ("Boss Test", "nufi_box", "-nufi", "nufi-", "Legal"):
+        r = install(BOX_NAME=bad, NUFI_BOX_FAKE_OS="Linux")
+        assert r.returncode != 0, bad
+        assert "lowercase letters, digits" in r.stderr, (bad, r.stderr)
+    r = install(BOX_NAME="legal-hn2", NUFI_BOX_FAKE_OS="Linux")
+    assert r.returncode == 0, r.stderr
+
+
+def test_a_name_another_machine_already_answers_on_this_network_is_refused():
+    """Two boxes announcing one name on one network: a laptop opens whichever
+    answered first, and nobody is told. NUFI_BOX_FAKE_LAN_ANSWER states what
+    the network already says <name>.local is; a different machine's address
+    is a refusal that names it and says to pick another name."""
+    r = install(BOX_NAME="nufi", NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_FAKE_LAN_ANSWER="192.168.1.77")
+    assert r.returncode != 0
+    assert "nufi.local" in r.stderr and "192.168.1.77" in r.stderr, r.stderr
+    assert "BOX_NAME=" in r.stderr, r.stderr
+
+
+def test_a_name_this_machine_itself_answers_is_fine():
+    """A re-run on the box that already announces its own name must not
+    refuse itself. The plan prints the address it decided on (BOX_IP=...);
+    the network answering with that same address is this box."""
+    out = dry(BOX_NAME="nufi", NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_FAKE_LAN_ANSWER="")
+    own = [l.split("=", 1)[1] for l in out.splitlines() if l.startswith("BOX_IP=")][0]
+    r = install(BOX_NAME="nufi", NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_FAKE_LAN_ANSWER=own)
+    assert r.returncode == 0, (own, r.stderr)
+
+
 def test_macos_plan_uses_native_ollama_and_file_sharing():
     out = dry(NUFI_BOX_FAKE_OS="Darwin", BOX_NAME="demo", DEPARTMENTS="legal,hr")
     assert "INFERENCE_PROFILE=ollama" in out

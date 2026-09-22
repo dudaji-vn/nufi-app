@@ -61,7 +61,7 @@ The installer asks four questions:
 
 | Question | Default | What it decides |
 |---|---|---|
-| Box name | `nufi` | The LAN hostname (`<name>.local`) and a TLS certificate name |
+| Box name | `nufi` | Yours to choose: the LAN hostname (`<name>.local`), the mesh hostname (`<name>.<base domain>`) and the certificate name. Lowercase letters, digits, hyphens. The installer refuses a name another machine on the network already answers to; `mesh up` and `invite` refuse a name the coordinator already lists — two boxes, or two laptops, cannot share one |
 | Admin email | `admin@<name>.local` | The one login you use across all four products |
 | Departments | `legal,hr,ga,strategy` | One drive folder, one team, one agent created per name |
 | Inference profile | `ollama` (macOS) or `ollama-docker` (Linux) | Where the chat model runs — see [Inference profiles](#6-inference-profiles) |

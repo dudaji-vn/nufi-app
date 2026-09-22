@@ -138,9 +138,73 @@ def ca_b64(data_dir):
 
 # --- invite ------------------------------------------------------------
 
+def test_invite_refuses_a_name_already_on_the_mesh(tmp_path, fake_headscale):
+    """Two laptops under one name is the case `revoke` refuses to guess
+    about, so the place to stop it is the invite. `alice` is already a node
+    on the fake; inviting her again must not mint a key, must not write a
+    file, and must say what to do instead."""
+    envf, data_dir = make_env(tmp_path, fake_headscale)
+    r = cli("invite", "alice", "--os", "linux", env={"NUFI_BOX_ENV": str(envf)})
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "alice" in r.stderr and "already" in r.stderr, r.stderr
+    assert "nufi-box revoke alice" in r.stderr, r.stderr
+    assert not [req for req in fake_headscale.requests if req[0] == "POST"], "no key may be minted"
+    assert not (data_dir / "invites").exists() or not list((data_dir / "invites").iterdir())
+
+
+def test_mesh_up_refuses_a_box_name_the_coordinator_already_has(tmp_path, fake_headscale):
+    """A second box joining under a name already registered is given that
+    name with a random suffix by headscale, and every join file it then
+    writes points at the wrong address. When this box has no mesh state of
+    its own yet (a first join), a node already called BOX_NAME on the
+    coordinator is somebody else's box: refuse before touching Docker."""
+    fake_headscale.nodes.append(
+        {"id": "7", "name": "nufi", "ipAddresses": ["100.64.0.9"], "online": True,
+         "lastSeen": "2026-09-22T00:00:00Z", "user": {"name": "box"}})
+    envf, _ = make_env(tmp_path, fake_headscale, MESH_AUTH_KEY="hskey-auth-x")
+    # Real mode, Linux, a docker that records every call and answers nothing:
+    # `compose ps -a -q tailscale` printing nothing is "no local state".
+    bin_ = tmp_path / "bin"; bin_.mkdir()
+    log = tmp_path / "docker.log"
+    (bin_ / "docker").write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$STUB_LOG"\nexit 0\n')
+    (bin_ / "docker").chmod(0o755)
+    r = cli("mesh", "up", env={"NUFI_BOX_ENV": str(envf), "NUFI_BOX_FAKE_OS": "Linux",
+                                "PATH": "%s:%s" % (bin_, os.environ.get("PATH", "/usr/bin:/bin")),
+                                "STUB_LOG": str(log)})
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "nufi" in r.stderr and "already" in r.stderr, r.stderr
+    assert "BOX_NAME" in r.stderr, r.stderr
+    calls = log.read_text() if log.exists() else ""
+    assert "up -d" not in calls, calls
+
+
+def test_mesh_up_with_the_name_free_goes_on_to_join(tmp_path, fake_headscale):
+    """The guard must not stop a first join whose name is free: the fake has
+    bob and alice, not nufi, so `mesh up` reaches Docker."""
+    envf, _ = make_env(tmp_path, fake_headscale, MESH_AUTH_KEY="hskey-auth-x")
+    bin_ = tmp_path / "bin"; bin_.mkdir()
+    log = tmp_path / "docker.log"
+    # ...and answers the two questions asked after the join, so the command
+    # finishes instead of polling for an address for two minutes.
+    (bin_ / "docker").write_text(
+        '#!/bin/sh\nprintf "%s\\n" "$*" >> "$STUB_LOG"\n'
+        'case "$*" in *"ip -4"*) echo 100.64.0.1 ;; *"status --json"*) echo \'{"Self":{"DNSName":"nufi.box.lab."}}\' ;; esac\n'
+        'exit 0\n')
+    (bin_ / "docker").chmod(0o755)
+    r = cli("mesh", "up", env={"NUFI_BOX_ENV": str(envf), "NUFI_BOX_FAKE_OS": "Linux",
+                                "PATH": "%s:%s" % (bin_, os.environ.get("PATH", "/usr/bin:/bin")),
+                                "STUB_LOG": str(log)})
+    calls = log.read_text() if log.exists() else ""
+    assert "up -d tailscale" in calls, (calls, r.stderr)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
 def test_invite_macos_posts_preauthkey_and_writes_the_join_file(tmp_path, fake_headscale):
     envf, data_dir = make_env(tmp_path, fake_headscale)
-    r = cli("invite", "alice", "--os", "macos", "--drives", "legal,hr", env={"NUFI_BOX_ENV": str(envf)})
+    # "ivy" is not one of the fake's two nodes: an invite for a name already
+    # on the mesh is refused (see the guard tests below), so this test's
+    # subject has to be new.
+    r = cli("invite", "ivy", "--os", "macos", "--drives", "legal,hr", env={"NUFI_BOX_ENV": str(envf)})
     assert r.returncode == 0, r.stdout + r.stderr
 
     posts = [req for req in fake_headscale.requests if req[0] == "POST"]
@@ -161,7 +225,7 @@ def test_invite_macos_posts_preauthkey_and_writes_the_join_file(tmp_path, fake_h
     gets = [req for req in fake_headscale.requests if req[0] == "GET"]
     assert any(g[1].startswith("/api/v1/user") for g in gets)
 
-    out_file = data_dir / "invites" / "nufi-join-alice.command"
+    out_file = data_dir / "invites" / "nufi-join-ivy.command"
     assert out_file.exists()
     mode = oct(out_file.stat().st_mode)[-3:]
     assert mode == "600", mode
@@ -173,9 +237,9 @@ def test_invite_macos_posts_preauthkey_and_writes_the_join_file(tmp_path, fake_h
     assert "smb://nufi.box.lab/hr" in content
     assert "https://nufi.box.lab:3080" in content
     assert "single-use" in content
-    # the headscale node name must match NAME, or `nufi-box revoke alice`
-    # has nothing to resolve — the laptop's OS hostname is not "alice".
-    assert "--hostname=alice" in content
+    # the headscale node name must match NAME, or `nufi-box revoke ivy`
+    # has nothing to resolve — the laptop's OS hostname is not "ivy".
+    assert "--hostname=ivy" in content
     # headscale v0.29.3 rejects a pre-auth-key registration that carries
     # RequestTags, regardless of tagOwners — tag:member must come only from
     # the pre-auth key's own aclTags (asserted above), never a login flag.
@@ -474,11 +538,11 @@ def test_the_minted_preauth_key_never_reaches_argv(tmp_path, fake_headscale):
     fake_headscale.preauth_key = secret
     bin_, log = argv_recorder(tmp_path)
     envf, data_dir = make_env(tmp_path, fake_headscale)
-    r = cli("invite", "alice", "--os", "macos",
+    r = cli("invite", "ivy", "--os", "macos",
             env={"NUFI_BOX_ENV": str(envf), "PATH": "%s:%s" % (bin_, os.environ["PATH"])})
     assert r.returncode == 0, r.stdout + r.stderr
     # It reached the join file, which is the only place it belongs...
-    assert secret in (data_dir / "invites" / "nufi-join-alice.command").read_text()
+    assert secret in (data_dir / "invites" / "nufi-join-ivy.command").read_text()
     # ...and no argument on the way there.
     assert log.exists(), "the recording shim was never used — check PATH"
     assert secret not in log.read_text()
