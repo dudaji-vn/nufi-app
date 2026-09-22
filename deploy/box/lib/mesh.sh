@@ -175,6 +175,22 @@ for n in nodes:
 '
 }
 
+# mesh_node_id_by_name NAME — the id of the node the coordinator lists under
+# NAME, or nothing. headscale keeps a node's `name` as the hostname it joined
+# with, which is exactly what `invite` writes into a join file and what a box
+# passes as --hostname, so "is NAME taken" is one GET and one filter.
+mesh_node_id_by_name() {
+  local name="$1" body
+  body="$(mesh_api GET /api/v1/node)" || exit $?
+  printf '%s' "$body" | python3 -c '
+import json, sys
+name = sys.argv[1]
+for n in (json.load(sys.stdin).get("nodes") or []):
+    if n.get("name") == name:
+        print(n.get("id", "")); break
+' "$name"
+}
+
 # mesh_delete_by_id ID — DELETE a node directly, bypassing name resolution
 # (used both for the ambiguous-name case below and `revoke --id`).
 mesh_delete_by_id() {
@@ -329,6 +345,16 @@ mesh_invite() {
   ext="$(mesh_join_ext "$os")" || exit 2
   template="$HERE/lib/join-templates/$os.$ext"
   [ -f "$template" ] || { echo "invite: no template for os '$os'" >&2; exit 2; }
+  # Two laptops under one name is the case `revoke` refuses to guess about
+  # (see mesh_delete), so it is stopped here, before a key is minted: the
+  # join file registers the laptop as NAME, and a NAME the coordinator
+  # already lists is somebody's laptop that is still joined.
+  local taken
+  taken="$(mesh_node_id_by_name "$name")" || exit $?
+  if [ -n "$taken" ]; then
+    echo "invite: '$name' is already on the mesh (node $taken). A second laptop under the same name cannot be told apart later. Either remove the old one first — nufi-box revoke $name — or invite this one under another name, e.g. $name-2." >&2
+    exit 2
+  fi
   key="$(mesh_preauth "$name")" || exit $?
   ca_b64="$(mesh_ca_b64)" || exit $?
   drives_block="$(mesh_drives_block "$os" "$BOX_MESH_HOST" "$drives")"
@@ -577,11 +603,45 @@ mesh_up_native() {
   return 1
 }
 
+# mesh_has_local_state — has this box joined before? On Linux the tailscale
+# container exists (running or stopped after `mesh down`); on a Mac the app
+# reports a Self with a DNSName. Captured, not piped into grep: under
+# pipefail a `| grep -q` that matches early can exit 141.
+mesh_has_local_state() {
+  local st
+  if [ "$OS" = "Darwin" ]; then
+    [ -x "$MESH_MACOS_TS" ] || return 1
+    st="$("$MESH_MACOS_TS" status --json 2>/dev/null)" || return 1
+    case "$st" in *DNSName*) return 0 ;; *) return 1 ;; esac
+  else
+    st="$($(mesh_compose_cmd) ps -a -q tailscale 2>/dev/null)" || return 1
+    [ -n "$st" ]
+  fi
+}
+
+# mesh_box_name_is_free_or_die — a first join under a name the coordinator
+# already lists is somebody else's box: headscale gives this one the name
+# with a random suffix, and every join file it then writes points at the
+# wrong address. A box that has joined before (local state) is re-joining
+# on its own registration and skips this; so does a box without an API key
+# (it cannot ask), and a dry run (it does not call out).
+mesh_box_name_is_free_or_die() {
+  local taken
+  [ "$DRY" = 1 ] && { printf '  $ check the coordinator has no other node named %s\n' "${BOX_NAME:-nufi}"; return 0; }
+  [ -n "${MESH_API_KEY:-}" ] || return 0
+  mesh_has_local_state && return 0
+  taken="$(mesh_node_id_by_name "${BOX_NAME:-nufi}")" || exit $?
+  if [ -n "$taken" ]; then
+    die "mesh up: the coordinator already has a box named '${BOX_NAME:-nufi}' (node $taken), and two boxes cannot share a name — the second gets a random suffix and its join files point at the wrong address. Give this box another name (BOX_NAME=<other> ./install-box.sh, then mesh up again), or if that node is this box's own old registration, remove it first: nufi-box revoke --id $taken"
+  fi
+}
+
 # mesh_up — join the coordinator and serve everything on the mesh address too.
 mesh_up() {
   local ip host
   [ -n "${MESH_SERVER_URL:-}" ] || die "mesh up: MESH_SERVER_URL is not set in $ENVF — install-box.sh --mesh <coordinator-url> --auth-key <key> writes it"
   [ -n "${MESH_AUTH_KEY:-}" ] || die "mesh up: MESH_AUTH_KEY is not set in $ENVF — ask the coordinator for a pre-auth key. On the coordinator: headscale users list -o json for the box user's numeric id (v0.29.3's --user does not take a name), then headscale preauthkeys create --user <id> --tags tag:box — deploy/coordinator/README.md \"Hand it to a box\""
+  mesh_box_name_is_free_or_die
   if [ "$OS" = "Darwin" ]; then
     mesh_up_native || exit 1
   else

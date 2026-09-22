@@ -275,6 +275,14 @@ fi
 # ---------- the four questions ------------------------------------------------
 say "Four questions"
 ask BOX_NAME "Box name (becomes <name>.local)" "nufi"
+# The name becomes <name>.local on the office network, the box's hostname on
+# the mesh (<name>.<base domain>) and the name on its certificate, so it has
+# to be a hostname label: a space or a capital does not fail here, it fails
+# later and silently, in a browser that cannot resolve it.
+case "$BOX_NAME" in
+  ""|*[!a-z0-9-]*|-*|*-) die "box name '$BOX_NAME' must be lowercase letters, digits and hyphens, not starting or ending with a hyphen (it becomes $BOX_NAME.local and the box's mesh name)" ;;
+esac
+[ "${#BOX_NAME}" -le 63 ] || die "box name '$BOX_NAME' is longer than 63 characters"
 ask ADMIN_EMAIL "Admin email" "admin@$BOX_NAME.local"
 ask DEPARTMENTS "Departments (comma separated; one drive, team and agent each)" "legal,hr,ga,strategy"
 for d in $(printf '%s' "$DEPARTMENTS" | tr ',' ' '); do
@@ -311,6 +319,29 @@ BOX_HOST="$BOX_NAME.local"
 if [ "$OS" = "Darwin" ]; then BOX_IP="$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo 127.0.0.1)"
 else BOX_IP="$(hostname -I 2>/dev/null | awk '{print $1}')" || true; BOX_IP="${BOX_IP:-127.0.0.1}"; fi
 [ "$DRY" = 1 ] && BOX_IP="${BOX_IP:-192.168.1.10}"
+# Two boxes announcing one name on one network: a laptop opens whichever
+# answered first, and nobody is told. Ask the network what it already says
+# <name>.local is (the same mDNS probes doctor uses); an answer that is not
+# this machine's own address is another box, and the fix is a different
+# name, not a race. NUFI_BOX_FAKE_LAN_ANSWER states the network's answer for
+# the tests; a dry run without it does not probe (the plan describes the box,
+# and a developer's Mac already answering nufi.local is not a finding about
+# the box being planned).
+lan_answer_for() { # NAME.local -> the address the network already answers with, or nothing
+  if [ -n "${NUFI_BOX_FAKE_LAN_ANSWER+x}" ]; then printf '%s' "$NUFI_BOX_FAKE_LAN_ANSWER"; return 0; fi
+  [ "$DRY" = 1 ] && return 0
+  if [ "$OS" = "Darwin" ]; then
+    have dns-sd || return 0
+    dns-sd -t 2 -G v4 "$1" 2>/dev/null | awk '$2 == "Add" {print $6; exit}'
+  else
+    have avahi-resolve || return 0
+    avahi-resolve -n4 "$1" 2>/dev/null | awk '{print $2; exit}'
+  fi
+}
+_lan_says="$(lan_answer_for "$BOX_HOST")" || _lan_says=""
+if [ -n "$_lan_says" ] && [ "$_lan_says" != "$BOX_IP" ]; then
+  die "another machine on this network already answers as $BOX_HOST ($_lan_says; this machine is $BOX_IP). Two boxes cannot share a name — give this one another: BOX_NAME=<other> ./install-box.sh"
+fi
 NUFI_DATA_DIR="${NUFI_DATA_DIR:-$BOX_HOME/data}"
 
 # ---------- who the department drives belong to ---------------------------------
