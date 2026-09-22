@@ -126,17 +126,26 @@ the firewall and the certificate at once:
 curl -fsS https://mesh.nufi.me/health && echo         # 200, publicly trusted cert
 ```
 
-There is no honest one-liner for STUN: UDP is connectionless, so `nc -zu`
-reports success against a closed port as readily as an open one. What settles
-it is a client — once a box has joined, `tailscale netcheck` on it names the
-DERP region it can see and whether it got a UDP mapping, and
-`tailscale ping <box>` says `direct` or `via DERP`. Until then, the most you
-can check is that the VPS is listening and nothing in front of it is dropping
-the port:
+STUN needs a real probe, and not a generic one. `nc -zu` reports success
+against a closed UDP port as readily as an open one, and a stock STUN client
+gets no answer at all: headscale's STUN server is tailscale's, and it answers
+only a Binding Request shaped the way a Tailscale client sends it — with a
+`SOFTWARE` attribute of `tailnode` and a `FINGERPRINT`. Anything else is
+dropped in silence, which from outside looks exactly like a firewall eating
+the port. `stun-probe.py` sends the shape the server wants:
 
 ```sh
-sudo ss -lunp | grep 3478      # on the VPS: docker-proxy holding the port
+./stun-probe.py mesh.nufi.me
+# mesh.nufi.me:3478 -> Binding Response (57 ms) · you are 1.52.176.223:55304
 ```
+
+An answer proves the provider's network passes UDP 3478 in and out — the one
+thing the Docker lab could never tell you. No answer in 3 s means the packet
+is not arriving or not coming back; `sudo ss -lunp | grep 3478` on the VPS
+then separates "not listening" from "the provider drops it". Once a box has
+joined, its own client says the same thing from the inside: `tailscale
+netcheck` names the DERP region it sees and whether it got a UDP mapping, and
+`tailscale ping <box>` says `direct` or `via DERP`.
 
 (There is no shell inside the headscale image — it is a `ko`-built binary — so
 every probe of it runs either from the host or through `headscale` itself.)
@@ -368,6 +377,7 @@ already handed out.
 | `bootstrap.sh` dies with `MESH_BASE_DOMAIN … must not be a suffix of MESH_SERVER_HOST` | headscale requires the MagicDNS base domain to differ from the server hostname. `mesh.nufi.me` + `box.nufi.me` is fine; `mesh.nufi.me` + `nufi.me` is not. |
 | `headscale/caddy did not become healthy in time` | `docker compose logs caddy` first. In `acme` mode the usual cause is the A record not resolving yet, or port 80 closed — Caddy cannot finish the HTTP-01 challenge and has no certificate to serve. |
 | The certificate is untrusted from outside | `TLS_MODE=internal` was used. That mode is for the lab and for a VM under test; a real coordinator wants `acme`. Change `TLS_MODE` in `.env` and re-run `./bootstrap.sh`. |
+| A STUN probe gets no answer, but `tailscale netcheck` on a joined node says `UDP: true` | The probe was a generic STUN client. headscale's STUN answers only Tailscale-shaped requests (`SOFTWARE=tailnode` + `FINGERPRINT`); use `./stun-probe.py <host>`, which sends that shape. |
 | A box or laptop joins, but every packet is relayed and throughput is poor | `3478/udp` is not reachable, so no client can discover its own public address and no direct path can form. Check the VPS firewall and the provider's own network ACL. The mesh still works — it is just all going through this VPS. |
 | `nufi-box invite` on the box fails with `401` | Its `MESH_API_KEY` is wrong, expired, or was rotated here without the box being updated. `headscale apikeys list` shows what this coordinator holds. |
 | `nufi-box invite` fails on certificate verification | An `internal`-mode coordinator whose root the box does not trust. Copy `data/coordinator-ca.crt` to the box and point `MESH_CA_FILE` at it. |
@@ -384,8 +394,27 @@ then using each other over HTTPS and SMB, with the relay forced. `lab/run.sh`
 and `lab/day-at-home.sh` are that proof and print their own PASS/FAIL tables;
 `lab/README.md` records the measured runs.
 
-It has **not** been run on a real VPS with a public DNS name and a Let's
-Encrypt certificate. That is the field test, and it is P3's first task. The
-things it would exercise that the lab cannot are exactly the ones §9's first
-three rows are about: ACME issuance, a provider's own network ACL in front of
-`3478/udp`, and a real client's path selection over the public internet.
+**On 22 September 2026 it was run on a real VPS**, and everything the lab
+could not exercise held. The server: a 1 vCPU / 4 GB Hostinger KVM in Kuala
+Lumpur, Ubuntu 24.04, 57 ms from the development machine. `mesh.nufi.me` is
+an explicit A record in a zone whose wildcard points elsewhere. In order:
+
+| Step | Result |
+|---|---|
+| `./bootstrap.sh` in `TLS_MODE=acme` | Let's Encrypt issued `CN=mesh.nufi.me` on the first start; `/health` 200 from outside with no `-k`; the API key printed once |
+| UDP 3478 through the provider's network | `stun-probe.py` from the office: Binding Response in 52–65 ms, 4 of 4 — Hostinger passes it |
+| A box joins (Ubuntu VM, `nufi-box mesh up`) | `100.64.0.1`, MagicDNS `nufi.box.nufi.me`; its `tailscale netcheck`: `UDP: true`, its public endpoint learned, nearest DERP `NuFi DERP` at 65 ms |
+| `nufi-box invite` from that box | a `tag:member` key minted through the coordinator's API over the public certificate |
+| A member with a direct path | `tailscale ping nufi`: `direct` in 1 ms |
+| A member forced through the relay (`TS_DEBUG_ALWAYS_USE_DERP`) | `pong from nufi via DERP(nufi) in 126 ms`; `https://nufi.box.nufi.me:3080/health` 200 over the relay, certificate verified against the box's own CA, 0.53 s |
+| Sign-in over the relay | `POST /api/auth/login` 200, a token for the box admin |
+| `nufi-box revoke`, `./bootstrap.sh --rotate-key`, `apikeys expire` | all through the API; the box kept working on the new key |
+| §8 backup | 10 KB, the five files named there |
+
+What that run did **not** cover, and is still open: a member on a network
+other than the box's. Both test members were containers on the machine that
+hosts the box VM, so the direct path was found over a local address and the
+relayed path was forced by a debug knob rather than by a hostile NAT. The
+lab's two-NAT topology and this run's public coordinator together cover every
+piece; a laptop on an LTE hotspot is the one measurement that has not been
+taken with both at once.
