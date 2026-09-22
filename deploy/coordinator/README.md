@@ -9,7 +9,7 @@ get stable mesh IPs and a MagicDNS name, and traffic finds a path between them
 behind hostile NAT.
 
 This is the runbook for standing one up on a VPS from cold. Read it top to
-bottom the first time; after that, §7–§9 are the day-two half.
+bottom the first time; after that, §7–§8 are the day-two half.
 
 **One coordinator serves every box and every member.** It holds no documents,
 no models and no chat history — only the list of machines allowed onto the
@@ -362,15 +362,92 @@ docker run --rm -v nufi-coordinator_headscale-data:/data -v "$PWD":/backup \
   alpine tar czf /backup/headscale-data.tgz -C /data .
 ```
 
-Restoring is the reverse: stop the stack, extract into a fresh volume,
-`docker compose up -d`.
+Restoring is the reverse — stop the stack, put the backup into a fresh volume,
+bring it up:
 
-Losing `headscale-data` is not fatal but it is not free either: every box and
-every laptop has to join again with a fresh pre-auth key, and the mesh
-addresses they get will be different — which invalidates the join files
-already handed out.
+```sh
+docker compose down
+docker volume rm nufi-coordinator_headscale-data
+docker volume create nufi-coordinator_headscale-data
+docker run --rm -v nufi-coordinator_headscale-data:/data -v "$PWD":/backup \
+  alpine tar xzf /backup/headscale-data.tgz -C /data
+docker compose up -d
+```
 
-## 9. When it does not work
+A restore brings the registrations back whole. This was drilled on 22 September
+2026 against a real backup holding one joined box: after wiping the volume and
+extracting the backup, `headscale nodes list` showed the same node with the
+**same IP and the same node key** it had before. That node key is the point —
+a box (or laptop) authenticates by the key its own `tailscale` state still
+holds, so once the coordinator's record of that key is back, the box reconnects
+on its own, keeps its mesh address, and every join file already handed out
+stays valid. No re-invite, no new pre-auth key.
+
+So back up `headscale-data` and you are covered. Losing it **without** a backup
+is the expensive case: every box and every laptop has to join again with a
+fresh pre-auth key, and the mesh addresses they get will be different, which
+invalidates the join files already out.
+
+## 9. One coordinator per customer
+
+**One coordinator serves one organisation, never two.** A second company gets
+its own coordinator — a second `bootstrap.sh` on a second (or the same) VPS,
+with its own `.env`. It is worth understanding why this is a rule and not a
+preference before someone tries to save five dollars a month by sharing one.
+
+The mesh ACL (`config/policy.hujson`) is deliberately flat: every node tagged
+`tag:member` may reach every node tagged `tag:box`, and both tags are owned by
+the one headscale user, `box`. That is exactly what a single organisation
+wants — any invited laptop reaches the office box. Put two companies on one
+coordinator and that same rule reaches company A's laptops to company B's box.
+There is no per-company tag boundary to add, because a single coordinator has a
+single tag owner; the boundary **is** the coordinator.
+
+### The naming convention
+
+Give each customer a coordinator hostname and a MagicDNS base domain under it,
+and keep `BOX_NAME` for the department or site:
+
+| | Company "Acme" | Company "Globex" |
+|---|---|---|
+| `MESH_SERVER_HOST` | `acme.mesh.nufi.me` | `globex.mesh.nufi.me` |
+| `MESH_BASE_DOMAIN` | `box.acme.nufi.me` | `box.globex.nufi.me` |
+| A box named `legal` resolves as | `legal.box.acme.nufi.me` | `legal.box.globex.nufi.me` |
+
+`BOX_NAME` names the box within its company (`legal`, `hanoi`), never the
+company — the company is in the coordinator's name, so two customers can both
+have a `legal` box without a collision. (Within one coordinator, two boxes
+still must not share a name; `nufi-box mesh up` and `invite` refuse a name the
+coordinator already holds.)
+
+### The proof
+
+`two-customers.sh` stands two coordinators up side by side (separate compose
+projects, separate sqlite, separate DERP keys, internal TLS, no published
+ports — the member nodes join over each coordinator's own Docker network) and
+asserts the wall between them. Run on the field VPS on 22 September 2026, every
+row passed:
+
+```
+ ok  a node offering A's member key to B does not join B
+ ok  A's API key is not B's — neither coordinator honours the other's
+ ok  B's admin store does not contain A's key
+ ok  A lists node-a          ok  B never sees node-a
+ ok  B lists node-b          ok  A never sees node-b
+ ok  node-a sees no peer from B (only itself on A's tailnet)
+```
+
+Two coordinators are two separate meshes. A credential minted on one is refused
+by the other, and a node joined to one never appears in the other's node list
+or as a peer on its tailnet — so a member of one company cannot address, let
+alone reach, the other's box. It writes nothing into this directory and tears
+both stacks down after (pass `--keep` to leave them up).
+
+```sh
+./two-customers.sh
+```
+
+## 10. When it does not work
 
 | Symptom | What it is |
 |---|---|
@@ -385,7 +462,7 @@ already handed out.
 | `preauthkeys create --user box` fails | v0.29.3's `--user` takes the numeric user id. `headscale users list -o json` prints it. |
 | Two machines share a name in `nodes list` | headscale does not enforce unique node names. `nufi-box revoke` refuses to guess between them and asks for `--id`; from here, `nodes delete --identifier <id>`. |
 
-## 10. What has been proved, and what has not
+## 11. What has been proved, and what has not
 
 This coordinator has been run end to end **in a Docker lab** — two containers
 behind separate NATs that forward no inbound UDP but STUN, joining this exact

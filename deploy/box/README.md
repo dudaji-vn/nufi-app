@@ -952,7 +952,7 @@ built yet:
 - **A member on a network other than the box's.** The coordinator has run on
   a real VPS with a public name and a Let's Encrypt certificate, a box has
   joined it, and a member has signed in over the relay (the run is recorded in
-  [the coordinator's runbook](../coordinator/README.md#10-what-has-been-proved-and-what-has-not)).
+  [the coordinator's runbook](../coordinator/README.md#11-what-has-been-proved-and-what-has-not)).
   Both test members sat on the same machine as the box, so a laptop on an LTE
   hotspot is the one measurement still to take.
 - **A signed update bundle, an update timer, and a USB update path.**
