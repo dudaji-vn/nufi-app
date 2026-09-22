@@ -1,0 +1,109 @@
+---
+title: Using your department's box
+description: For everyone who is not running the box — sign in, put documents in your department's folder, ask, and do the same from home.
+---
+
+Your department has a machine in the office that answers questions from the
+documents in one folder. This page is what you need to use it. Nothing here
+needs a terminal; where a step is your administrator's, it says so.
+
+## What you need from your administrator
+
+- **The address.** In the office it looks like `https://nufi.local:3080`; the
+  first part is the box's name, which your administrator chose.
+- **Your login.** There is no sign-up page — the administrator creates your
+  account and gives you a password. The same login works on every part of the
+  box; you are never asked for a second one.
+- **The drive password**, if the box runs on Ubuntu (user `nufi`). On a Mac,
+  an account on that Mac instead.
+- **A join file**, only if you will use the box from outside the office.
+
+## 1. Trust the box's certificate, once
+
+The box makes its own certificate, so the first time a laptop opens it the
+browser stops with *"Your connection is not private"*. That is not a fault;
+it is what a private certificate looks like from the outside, and it goes
+away for good once your laptop trusts it.
+
+Open this page in the office and install the certificate it offers:
+
+```
+http://nufi.local/
+```
+
+Until then you can click **Advanced → Proceed** — the connection is already
+encrypted, the browser simply cannot tell who signed the certificate. On a
+managed company laptop that button may be disabled and installing a
+certificate may need IT; if so, ask them. If the browser refuses to download
+the file, your administrator can send it to you instead.
+
+## 2. Sign in
+
+Open `https://nufi.local:3080` and sign in with the login you were given. The
+agents, the console and the admin panel on the same box accept the same login
+without asking again.
+
+## 3. Your department's folder
+
+Every department has one folder on the box, shared on the network the way any
+office share is. A document you put in it is knowledge to your department's
+agent about a minute later, and the agent names the file when it answers from
+it. Nothing to upload, no button to press — the folder is the whole
+interface.
+
+| On | Open |
+|---|---|
+| Windows | `\\nufi.local\legal` in Explorer's address bar |
+| Mac | Finder → Go → Connect to Server → `smb://nufi.local/legal` |
+| Linux | `smb://nufi.local/legal` in the file manager |
+
+Replace `legal` with your department. Drop files in; a file still being
+copied or still open in Word is waited for, not read half-way. Delete a file
+and the agent forgets it. Hidden and temporary files are ignored.
+
+The folder is the department's, not yours: what you put there, your whole
+department's agent knows. Keep drafts elsewhere until they are meant to be
+read.
+
+## 4. Ask
+
+Sign in, pick your department's agent, and ask in plain language. An answer
+that comes from your documents says which file it came from. Ask about
+something that is not in the folder and the agent says so — it does not read
+other departments' folders, and it does not guess. Everything runs on the box
+in the office; nothing you ask or file leaves it, unless your administrator
+has pointed the box at a hosted model and told you so.
+
+## From home
+
+The box can be reached from anywhere, once your laptop has joined the box's
+private network. Your administrator does this by sending you a **join file**.
+
+1. Install the Tailscale app from [tailscale.com/download](https://tailscale.com/download)
+   and open it once. Nothing to sign up for — the join file does the rest.
+2. Run the file you were sent: double-click the `.command` file on a Mac,
+   the `.cmd` file on Windows, the `.sh` file on Linux. It trusts the box's
+   certificate, connects, maps your drives and opens the box in your browser.
+3. From now on, away from the office, use the **from-home address** — it looks
+   like `https://nufi.box.nufi.me:3080` — with the same login. Your drive is
+   `\\nufi.box.nufi.me\legal` (Mac: `smb://nufi.box.nufi.me/legal`).
+
+The key inside the join file works once and expires after an hour. If it did
+not work, or you are setting up a second laptop, ask for a new file. Back in
+the office, both addresses work; you do not have to change anything.
+
+If your laptop is already on a company Tailscale network (some employers
+enrol laptops in one), the join file cannot connect it to a second one. Use a
+personal device, or ask your IT team.
+
+## When it does not work
+
+| What you see | What to do |
+|---|---|
+| "Your connection is not private" | Step 1, or click Advanced → Proceed. |
+| The address does not open at all, in the office | Check you are on the office Wi-Fi, not a guest network. Try the box's plain address if you were given one, e.g. `https://192.168.1.25:3080`. |
+| The address does not open, from home | Open the Tailscale app: is it connected? If not, or if it never connected, ask for a new join file. |
+| The drive asks for a password you do not have | Ask your administrator — it is a separate password from your login. |
+| You can open the drive but not write to it | Tell your administrator; it is fixed on the box, not on your laptop. |
+| Your document does not show up in answers | Wait a minute after copying, then ask again naming the file. If it is still missing, ask your administrator to look at the box's log. |
+| The agent answers from the wrong department | It cannot — each agent reads only its own folder. Check which agent you picked. |
