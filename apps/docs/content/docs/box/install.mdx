@@ -9,6 +9,7 @@ description: One command, four questions, a banner. About 25 minutes on a blank 
 |---|---|
 | **Machine** | Ubuntu 24.04 or macOS. On Windows, run this inside WSL2 Ubuntu — the installer stops if you try it anywhere else. |
 | **Docker** | Engine plus Compose v2. On Ubuntu the installer offers to install Docker for you; on macOS install Docker Desktop or OrbStack first. |
+| **git** | Any recent one (2.25 or newer; Ubuntu 24.04 ships 2.43). On macOS the first `git` command offers to install the Command Line Tools if they are missing; on Ubuntu, `sudo apt-get install -y git` if `git --version` says nothing. |
 | **Memory** | On macOS, give the Docker VM at least **12 GB** (Settings → Resources → Memory). The installer warns below 11 GB and carries on. The box itself uses about 3 GB running. |
 | **Disk** | Budget 30 GB. Most of it is the model and the images. |
 
@@ -17,24 +18,29 @@ slower; a machine serving a handful of people at once wants a GPU.
 
 ## Get the box
 
-`nufi-box flows install` needs the routine builder in
-`deploy/platform/scenarios` (not just its `studio/` subfolder — the builder
-imports two modules that live beside it), and `nufi-box schedule list` needs
-the adapter in `deploy/platform/adapters/nufi-cron`. Fetching `deploy/box`
-alone finishes the install with "the routines are not in Studio yet."
+The box is three folders of one repository: `deploy/box`, and beside it
+`deploy/platform/scenarios` — `nufi-box flows install` runs the routine
+builder `studio/build_flows.py`, which imports `run_box` and `run` from the
+folder above it — and `deploy/platform/adapters/nufi-cron`, which `nufi-box
+schedule list` needs. Together they are about 1 MB. A sparse clone fetches
+just those:
 
 ```bash
-curl -fsSL https://codeload.github.com/dudaji-vn/nufi-app/tar.gz/refs/heads/main | tar -xz
-cd nufi-app-main/deploy/box
+git clone --depth 1 --filter=blob:none --sparse https://github.com/dudaji-vn/nufi-app
+cd nufi-app
+git sparse-checkout set deploy/box deploy/platform/scenarios/studio deploy/platform/adapters/nufi-cron
+cd deploy/box
 ```
 
-The archive is the whole repository, about 200 MB; the box needs `deploy/box`
-and two folders beside it (`deploy/platform/scenarios`,
-`deploy/platform/adapters/nufi-cron`), which the installer finds by their
-relative paths — pulling the folders out selectively during extraction is a
-bsdtar (macOS) feature; GNU tar, what Ubuntu actually ships, needs literal
-member names and fails plainly on a glob, so this fetch takes the whole
-archive rather than being right on one platform and wrong on the other.
+This takes a few seconds on any link. Naming `scenarios/studio` in the set
+also brings the files at the root of `scenarios/` (a sparse checkout always
+includes a folder's parents) and leaves out `scenarios/demo`, twenty
+megabytes of videos the box never reads.
+
+Do not download the repository as one archive instead
+(`curl … codeload.github.com … | tar -xz`): it is about 200 MB, of which
+the box uses 1 MB, and on an office link that is ten to twenty minutes with
+nothing printed — `curl -s` is silent while it waits, so it looks stuck.
 
 ## Install
 
