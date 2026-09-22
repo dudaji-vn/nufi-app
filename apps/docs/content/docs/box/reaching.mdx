@@ -1,0 +1,169 @@
+---
+title: On the LAN and from home
+description: The box's name is yours to choose; on the office network it needs nothing else, and from outside the office it needs a coordinator. Both can be on at once.
+---
+
+There are two ways a laptop reaches a box, and they are not either/or. A box
+on the office network works the day it is installed. A box that should also
+answer from home, a hotel or a café gets a second name through a
+coordinator, and keeps the first. Which of the two a person uses is decided
+by where they are sitting, not by anything you configure per person.
+
+This page is for whoever runs the box. The page a member reads is
+[Using your department's box](/docs/box/members).
+
+## The box's name
+
+The installer's first question is the box's name. It is yours to choose, and
+it is worth choosing before the machine is on a network with other boxes:
+
+| The name becomes | Example, for a box named `legal-hn` |
+|---|---|
+| Its address on the office network | `https://legal-hn.local:3080` |
+| Its address from home, once on a coordinator | `https://legal-hn.box.nufi.me:3080` |
+| The name on its certificate, and the row in `nufi-box members` | `legal-hn` |
+
+The rules are the ones a hostname has: lowercase letters, digits and hyphens,
+not starting or ending with a hyphen, at most 63 characters. `nufi` is the
+default and is fine for the only box in a building.
+
+**Two boxes must not share a name.** On one office network, two boxes both
+announcing `nufi.local` means a laptop opens whichever answered first. On one
+coordinator, the second box to join under a name already taken is given the
+name with a random suffix, and the address in every join file it writes is
+wrong. Neither is an error anyone is shown at the time; both are avoided by
+picking distinct names — `nufi` for the office box and `boss-test` for the one
+somebody installs on a laptop to try it, and both run side by side without
+touching each other. Everything else — accounts, drives, certificate, model —
+is the box's own and is never shared between two boxes.
+
+Set the name on the command line to install without being asked:
+
+```bash
+BOX_NAME=legal-hn ./install-box.sh --yes
+```
+
+## On the office network
+
+Nothing to set up. When the installer finishes, the box:
+
+- answers as `<name>.local` on the office network — announced by mDNS (Bonjour
+  on a Mac, Avahi on Ubuntu; the installer installs Avahi on a fresh Ubuntu),
+- also answers on its plain address, `https://<box-ip>:3080`, for a device that
+  cannot resolve `.local` names,
+- serves its certificate at `http://<name>.local/`, which each laptop trusts
+  once ([the first hour](/docs/box/first-hour#1-trust-the-boxs-certificate-once-per-laptop)),
+- shares each department's folder as `\\<name>.local\<department>`.
+
+A member on the office Wi-Fi needs the address, the certificate once, and an
+account you create (`nufi-box user add`). That is the whole path.
+
+What a member's drive login is depends on what the box runs on:
+
+| Box on | The drives are | A member connects as |
+|---|---|---|
+| Ubuntu | a Samba container the installer configured | user `nufi`, password `SAMBA_PASSWORD` from the box's `.env` — give it to members yourself; the banner does not print it |
+| macOS | macOS File Sharing shares the installer created (System Settings → General → Sharing → File Sharing) | a user account of that Mac; add one for members or allow Guest on each share |
+
+`nufi-box doctor` checks that the name is announced and is pointing at this
+machine — the check that catches a second box using the same name.
+
+### When the name does not resolve
+
+| Symptom | What it is |
+|---|---|
+| `https://<box-ip>:3080` works, `https://<name>.local:3080` does not | The device does not do mDNS (older Windows without Bonjour, some Android). Use the address, or add the name to the device's hosts file. |
+| Neither works from a phone | The phone is on a different network — a guest SSID, a second band, an extender with its own subnet. Put it on the same Wi-Fi as the box, or use the from-home path. |
+| The name resolves to a different address than the box's | Another box on this network has the same name. Rename one of them (`BOX_NAME=… ./install-box.sh`) — see above. |
+
+## From outside the office
+
+A laptop off the office network reaches the box through a **coordinator**: a
+small server the box and every member's laptop connect to, which lets them
+find each other and relays their traffic when they cannot talk directly. It
+holds no documents, no model and no chat history — only the list of machines
+allowed onto the mesh — and the model keeps running on the box. Standing one
+up is [its own runbook](https://github.com/dudaji-vn/nufi-app/blob/main/deploy/coordinator/README.md);
+one coordinator serves every box of one organisation.
+
+Three values come off the coordinator, and the box needs all three:
+
+| Value | Where it comes from |
+|---|---|
+| `MESH_SERVER_URL` | `https://<the coordinator's hostname>`, e.g. `https://mesh.nufi.me` |
+| `MESH_AUTH_KEY` | a single-use key the coordinator's admin mints for this box |
+| `MESH_API_KEY` | printed once by the coordinator's `bootstrap.sh`; without it the box joins but cannot invite anyone |
+
+Give them to the box at install time or afterwards:
+
+```bash
+./install-box.sh --yes --mesh https://mesh.nufi.me --auth-key hskey-auth-… --mesh-api-key hskey-api-…
+# or, on a box that is already installed: put the three into .env, then
+./nufi-box mesh up
+```
+
+`mesh up` joins, prints the box's mesh address and name, and makes every
+product answer on that name with the certificate laptops already trust:
+
+```
+  The box is on the mesh.
+
+    address       100.64.0.1
+    name          nufi.box.nufi.me
+    chat          https://nufi.box.nufi.me:3080
+    drives        \\nufi.box.nufi.me\<department>
+```
+
+On Ubuntu the box joins with a container it manages. On a Mac it joins with
+the native Tailscale app: `mesh up` prints the two commands to run, because
+the app asks for the operator's own approval the first time.
+
+Nothing about the box changes when it goes on the mesh — same URLs, same
+certificate, same drives, same login. What changes is that its **from-home
+name** now resolves for any laptop that has joined. Members use the name, not
+the mesh address: a browser given a bare address cannot be shown the right
+certificate.
+
+### Inviting a laptop
+
+```bash
+./nufi-box invite alice --os macos --drives legal,hr   # --os windows|macos|linux
+./nufi-box members
+./nufi-box revoke alice
+```
+
+`invite` writes one file, `data/invites/nufi-join-alice.<ext>`, holding a
+single-use key that expires in an hour. Send it to that person privately —
+email or chat, never a public link. Running it trusts the certificate, joins
+the laptop to the mesh, maps the drives you named and opens chat. `members`
+lists who is joined and when each was last seen; `revoke` removes a laptop
+for good (the person needs a new invite to come back). A laptop already
+enrolled in a corporate Tailscale network cannot join a second one; that
+person joins from a personal device or asks their IT team.
+
+### What a member sees, and what the coordinator carries
+
+Two laptops that can reach each other directly do; the coordinator only helped
+them find each other. When a home router or a hotspot will not allow that,
+traffic goes through the coordinator's relay — encrypted end to end, so the
+relay forwards bytes it cannot read. Chat is a few kilobytes per question
+either way. Copying a large document onto a drive is the one thing that feels
+the difference.
+
+The box must be **on** for any of this to work. A Mac that goes to sleep takes
+the box with it; set it not to sleep on power. If the coordinator is down, no
+new laptop can join and laptops that were being relayed lose the box, while
+laptops with a direct path keep it for a while.
+
+## Which path, when
+
+| Who | Where | Uses |
+|---|---|---|
+| Everyone in the office | office Wi-Fi or Ethernet | `https://<name>.local:3080`, nothing else |
+| A member working from home | anywhere with internet | the join file once, then `https://<name>.box.<domain>:3080` |
+| The same member back in the office | office Wi-Fi | either name works; the office one is a hop shorter |
+| A second box someone installs to try it | the same office | a different name, and it can join the same coordinator |
+| A second company | their own network | their own coordinator; boxes and members of one never see the other's |
+
+Both paths are on at once for every member who has joined. Nobody has to
+switch anything when they change desks.
