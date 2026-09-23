@@ -18,6 +18,14 @@ printf '%s' "$CA_B64" | base64 -D > "$TMP_CA"
 echo "Trusting the box's certificate (you may be asked for your password)..."
 security add-trusted-cert -r trustRoot -k ~/Library/Keychains/login.keychain-db "$TMP_CA"
 
+COORD_CA_B64="@COORD_CA_B64@"
+if [ -n "$COORD_CA_B64" ]; then
+  TMP_COORD_CA="$(mktemp -t nufi-coord-ca).crt"
+  printf '%s' "$COORD_CA_B64" | base64 -D > "$TMP_COORD_CA"
+  echo "Trusting the coordinator's certificate (admin password may be requested)..."
+  sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "$TMP_COORD_CA"
+fi
+
 echo "Connecting to the NuFi mesh..."
 # Do NOT add --advertise-tags here: headscale v0.29.3 rejects a pre-auth-key
 # registration that carries RequestTags, regardless of tagOwners. The

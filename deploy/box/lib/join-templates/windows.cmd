@@ -17,6 +17,13 @@ echo @CA_B64@>"%TEMP%\nufi-box-ca.b64"
 certutil -decode "%TEMP%\nufi-box-ca.b64" "%TEMP%\nufi-box-ca.crt" >nul
 certutil -addstore -f Root "%TEMP%\nufi-box-ca.crt" >nul
 
+if not "@COORD_CA_B64@"=="" (
+  echo Trusting the coordinator's certificate...
+  echo @COORD_CA_B64@>"%TEMP%\nufi-coord-ca.b64"
+  certutil -decode "%TEMP%\nufi-coord-ca.b64" "%TEMP%\nufi-coord-ca.crt" >nul
+  certutil -addstore -f Root "%TEMP%\nufi-coord-ca.crt" >nul
+)
+
 echo Connecting to the NuFi mesh...
 rem Do NOT add --advertise-tags here: headscale v0.29.3 rejects a pre-auth-key
 rem registration that carries RequestTags, regardless of tagOwners. The
