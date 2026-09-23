@@ -191,10 +191,28 @@ cat <<EOF
 
   MESH_SERVER_URL: https://$MESH_SERVER_HOST
   MagicDNS base:   $MESH_BASE_DOMAIN
+EOF
+
+if [ "$TLS_MODE" = "internal" ]; then
+  cat <<EOF
+
+  On-prem / air-gap mode (internal CA) — no public DNS, no internet needed:
+    1. Trust data/coordinator-ca.crt on every box and client that joins
+       (the box's MESH_CA_FILE; invite files carry it to laptops).
+    2. Make $MESH_SERVER_HOST resolve on the closed network (a DNS record on the
+       site server, or /etc/hosts) to the machine running this coordinator.
+    3. $MESH_BASE_DOMAIN is answered by headscale itself (MagicDNS) once a node joins.
+EOF
+else
+  cat <<EOF
 
   DNS facts:
     1. Create an A record for $MESH_SERVER_HOST pointing at this VPS's public IP.
     2. $MESH_BASE_DOMAIN must not be a suffix of $MESH_SERVER_HOST (already true).
+EOF
+fi
+
+cat <<EOF
 
   Give the box's installer MESH_SERVER_URL above and the MESH_API_KEY printed
   when it was minted (only shown once; rotate with: ./bootstrap.sh --rotate-key).

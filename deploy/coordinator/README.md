@@ -217,14 +217,18 @@ TLS_MODE=acme      Caddy requests a public certificate from Let's Encrypt
                     for MESH_SERVER_HOST. Needs the DNS record above and
                     ports 80+443 reachable from the internet. ACME_EMAIL
                     is required (Let's Encrypt's expiry-notice contact).
-                    This is the field mode.
+                    Use this when the coordinator is reachable over the
+                    public internet.
 
-TLS_MODE=internal  Caddy's own internal CA. No public DNS needed.
-                    bootstrap.sh exports the root certificate to
-                    data/coordinator-ca.crt — trust it on whatever needs to
-                    reach this coordinator (the local Docker lab, a Lima/VM
-                    box under test). Used for development, not for the real
-                    field deployment.
+TLS_MODE=internal  Caddy's own internal CA — no public DNS, no internet, no
+                    external certificate authority. bootstrap.sh exports the
+                    root certificate to data/coordinator-ca.crt; every box and
+                    client that joins trusts that one file (the box's
+                    MESH_CA_FILE; invite files carry it to laptops). This is
+                    the on-prem / air-gap field mode — a closed-network or
+                    fully offline site (e.g. a government deployment) runs the
+                    coordinator on its own hardware and depends on nothing
+                    outside the site. The local lab uses it too.
 ```
 
 A box joining an `internal` coordinator needs that root in
@@ -453,7 +457,7 @@ both stacks down after (pass `--keep` to leave them up).
 |---|---|
 | `bootstrap.sh` dies with `MESH_BASE_DOMAIN … must not be a suffix of MESH_SERVER_HOST` | headscale requires the MagicDNS base domain to differ from the server hostname. `mesh.nufi.me` + `box.nufi.me` is fine; `mesh.nufi.me` + `nufi.me` is not. |
 | `headscale/caddy did not become healthy in time` | `docker compose logs caddy` first. In `acme` mode the usual cause is the A record not resolving yet, or port 80 closed — Caddy cannot finish the HTTP-01 challenge and has no certificate to serve. |
-| The certificate is untrusted from outside | `TLS_MODE=internal` was used. That mode is for the lab and for a VM under test; a real coordinator wants `acme`. Change `TLS_MODE` in `.env` and re-run `./bootstrap.sh`. |
+| The certificate is untrusted from outside | Expected with `TLS_MODE=internal` — the internal CA is trusted by distributing `data/coordinator-ca.crt` to each box/client (the box's `MESH_CA_FILE`; invite files carry it), not by a public root. Switch to `TLS_MODE=acme` only if this coordinator must be reached over the public internet. |
 | A STUN probe gets no answer, but `tailscale netcheck` on a joined node says `UDP: true` | The probe was a generic STUN client. headscale's STUN answers only Tailscale-shaped requests (`SOFTWARE=tailnode` + `FINGERPRINT`); use `./stun-probe.py <host>`, which sends that shape. |
 | A box or laptop joins, but every packet is relayed and throughput is poor | `3478/udp` is not reachable, so no client can discover its own public address and no direct path can form. Check the VPS firewall and the provider's own network ACL. The mesh still works — it is just all going through this VPS. |
 | `nufi-box invite` on the box fails with `401` | Its `MESH_API_KEY` is wrong, expired, or was rotated here without the box being updated. `headscale apikeys list` shows what this coordinator holds. |
