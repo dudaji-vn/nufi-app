@@ -36,7 +36,13 @@ endpoints:
       forcePrompt: false
       summarize: false
   agents:
-    capabilities: ["file_search", "tools", "actions"]
+    # No "actions": an action lets an agent POST to an arbitrary external URL,
+    # which is a data-egress path off the box. Department assistants answer from
+    # the drives (file_search) and need none. Dropping the capability keeps box
+    # data on the box — the AI-path side of the mesh-only data-sovereignty rule.
+    # (A strict air-gap deployment also drops "tools" and blocks container egress
+    # at the network; those are separate, larger steps.)
+    capabilities: ["file_search", "tools"]
 
 fileConfig:
   endpoints:
