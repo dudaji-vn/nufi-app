@@ -197,6 +197,7 @@ class App:
         # change behind our back, but an upgraded image restarts the container,
         # which is exactly when a reconcile is due.
         self._pinned = set()
+        self._shared = set()
 
     def _request(self, method, path, body=None, headers=None, browser=False, auth=True,
                  retry_auth=True):
@@ -344,6 +345,11 @@ class App:
         self._pinned.add(agent_id)
 
     def share_agent(self, team_id, agent_id, agent_oid):
+        # Memoised per process like reconcile_agent: the share is applied once
+        # (whether the agent was just created or is being reconciled from a
+        # cached state), never on every 20s scan. Idempotent regardless.
+        if agent_id in self._shared:
+            return
         if self.cfg.share == "team":
             try:
                 self._request("POST", f"/api/teams/{team_id}/agents/{agent_id}", {})
@@ -354,6 +360,7 @@ class App:
             self._request("PUT", f"/api/permissions/agent/{agent_oid}", {
                 "updated": [], "removed": [], "public": True, "publicAccessRoleId": "agent_viewer",
             }, browser=True)
+        self._shared.add(agent_id)
 
     # --- files -------------------------------------------------------------
     def upload(self, path, agent_id):
@@ -440,6 +447,12 @@ class Ingester:
             if d.get("agent_id"):
                 self.app.reconcile_agent(d["agent_id"],
                                          agent_instructions(display_name(dept)))
+                # Re-apply the share for the same reason reconcile_agent runs
+                # here: an agent created before this fix (or under a different
+                # NUFI_INGEST_SHARE) otherwise keeps its old visibility forever.
+                # share_agent memoises, so a freshly created agent is not
+                # re-shared and this costs nothing on a long-lived department.
+                self.app.share_agent(d.get("team_id"), d["agent_id"], d["agent_oid"])
             return d
         name = display_name(dept)
         team_id = self.app.find_or_create_team(name) if self.cfg.share == "team" else None

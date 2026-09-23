@@ -382,7 +382,7 @@ services:
       NUFI_MODEL: ${NUFI_MODEL}
       NUFI_PROVIDER: NuFi
       NUFI_INGEST_INTERVAL: "20"
-      NUFI_INGEST_SHARE: team
+      NUFI_INGEST_SHARE: public
     volumes:
       - ${NUFI_DATA_DIR}/drives:/drives:ro
       - ingest-state:/state
