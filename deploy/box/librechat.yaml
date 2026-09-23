@@ -14,12 +14,18 @@ interface:
   multiConvo: true
   temporaryChat: true
   agents: true
-  customConsole:
-    externalUrl: ${CONSOLE_URL}
-    openNewTab: true
-  customAgents:
-    externalUrl: ${AGENTS_URL}
-    openNewTab: true
+  # customConsole / customAgents are the product-switcher doors to the box's
+  # Console and Agent Studio, served at ${BOX_HOST}:3001. Disabled: that host
+  # (e.g. nufi.local) does not resolve for a mesh member reaching the box from
+  # another network, so the nav entry was a dead link cross-network, and the
+  # console's SSO is pinned to that one hostname anyway. Re-enable for a LAN-only
+  # box, or after the coordinator-hostname / OIDC-issuer rework lands.
+  # customConsole:
+  #   externalUrl: ${CONSOLE_URL}
+  #   openNewTab: true
+  # customAgents:
+  #   externalUrl: ${AGENTS_URL}
+  #   openNewTab: true
 
 endpoints:
   custom:
