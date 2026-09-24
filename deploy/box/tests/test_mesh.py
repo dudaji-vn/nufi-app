@@ -563,3 +563,33 @@ def test_a_join_file_is_never_rendered_without_a_key(tmp_path):
     assert r.returncode != 0
     assert "MESH_JOIN_AUTH_KEY" in r.stderr
     assert not (tmp_path / "join.sh").exists()
+
+
+# --- the invite tells a member past the unsigned-file security warning -------
+
+def test_invite_macos_tells_the_member_how_to_pass_gatekeeper(tmp_path, fake_headscale):
+    envf, _ = make_env(tmp_path, fake_headscale)
+    r = cli("invite", "gina", "--os", "macos", env={"NUFI_BOX_ENV": str(envf)})
+    assert r.returncode == 0, r.stdout + r.stderr
+    out = r.stdout
+    assert "right-click" in out.lower()
+    assert "Open" in out
+    assert "unidentified developer" in out
+    assert "nufi-join-gina.command" in out
+
+
+def test_invite_windows_tells_the_member_how_to_pass_smartscreen(tmp_path, fake_headscale):
+    envf, _ = make_env(tmp_path, fake_headscale)
+    r = cli("invite", "hank", "--os", "windows", env={"NUFI_BOX_ENV": str(envf)})
+    assert r.returncode == 0, r.stdout + r.stderr
+    out = r.stdout
+    assert "More info" in out
+    assert "Run anyway" in out
+    assert "nufi-join-hank.cmd" in out
+
+
+def test_invite_linux_tells_the_member_to_bash_the_file(tmp_path, fake_headscale):
+    envf, _ = make_env(tmp_path, fake_headscale)
+    r = cli("invite", "iris", "--os", "linux", env={"NUFI_BOX_ENV": str(envf)})
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "bash nufi-join-iris.sh" in r.stdout
