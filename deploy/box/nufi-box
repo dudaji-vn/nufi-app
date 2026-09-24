@@ -61,6 +61,12 @@ COMPOSE="docker compose -f $HERE/docker-compose.yml"
 # box joins with the native app instead (see mesh_up_native).
 [ "$OS" = "Linux" ] && [ -n "${MESH_SERVER_URL:-}" ] \
   && COMPOSE="$COMPOSE -f $HERE/docker-compose.mesh.yml --profile mesh"
+# A box that hosts its own coordinator (install-box.sh --self-host-coordinator)
+# resolves that coordinator's name to loopback on the mesh node
+# (docker-compose.mesh-selfhost.yml), layered right after the mesh file so
+# `mesh up/status/down`, `logs tailscale` and `down` all see it.
+[ "$OS" = "Linux" ] && [ "${NUFI_SELF_HOST_COORD:-0}" = "1" ] && [ -n "${MESH_SERVER_URL:-}" ] \
+  && COMPOSE="$COMPOSE -f $HERE/docker-compose.mesh-selfhost.yml"
 # Works and its egress proxy are one profile, switched on by the installer's
 # --with-works (NUFI_WORKS=1). Without this line a works box's `restart` would
 # bring up everything but the two services the flag was for.
@@ -86,6 +92,9 @@ nufi-box <verb>
   mesh up | status | down
                       join this box to the coordinator so it can be reached
                       from home, show where it is on the mesh, or leave
+  coordinator up | status | down
+                      on a --self-host-coordinator box: bring up this box's own
+                      coordinator (no external VPS), show it, or stop it
   invite NAME [--os windows|macos|linux] [--drives a,b]
                       write a one-file join for a new laptop, from home
   members             list the laptops currently joined to the mesh
@@ -363,6 +372,16 @@ case "${1:-}" in
       mesh_delete "$1"
     fi ;;
   # --- end the mesh ---
+  # --- the coordinator this box hosts itself (no external VPS) ---
+  coordinator)
+    shift
+    case "${1:-}" in
+      up|status|down) COORD_VERB="$1" ;;
+      "") echo "coordinator: say what to do — up, status or down" >&2; usage; exit 2 ;;
+      *) echo "coordinator: unknown subcommand: $1 (use up, status or down)" >&2; exit 2 ;;
+    esac
+    . "$HERE/lib/coordinator.sh"
+    "coordinator_$COORD_VERB" ;;
   # --- the department routines in Studio ---
   flows)
     shift

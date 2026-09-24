@@ -1979,3 +1979,39 @@ def test_redact_py_treats_creds_iv_as_a_secret():
         assert "deadbeefcafef00d" not in r.stdout, r.stdout
     finally:
         os.unlink(envf)
+
+
+# --- nufi-box coordinator up | status | down (a box that self-hosts its own
+#     coordinator, no external VPS) -------------------------------------------
+
+def test_help_lists_the_coordinator_verb():
+    r = cli("--help")
+    assert r.returncode == 0
+    assert "coordinator up | status | down" in r.stdout
+
+
+def test_coordinator_requires_and_validates_a_subcommand(tmp_path):
+    env = mesh_env(tmp_path)
+    assert cli("coordinator", NUFI_BOX_ENV=env).returncode == 2
+    assert cli("coordinator", "frobnicate", NUFI_BOX_ENV=env).returncode == 2
+
+
+def test_coordinator_up_refuses_when_the_box_does_not_self_host(tmp_path):
+    # A plain external-mesh (or LAN-only) box never set NUFI_SELF_HOST_COORD.
+    env = mesh_env(tmp_path)
+    r = cli("coordinator", "up", NUFI_BOX_ENV=env, NUFI_BOX_FAKE_OS="Linux")
+    assert r.returncode == 2
+    assert "--self-host-coordinator" in r.stderr
+
+
+def test_coordinator_up_plans_the_local_bootstrap_when_self_hosting(tmp_path):
+    env = mesh_env(tmp_path, NUFI_SELF_HOST_COORD="1",
+                   MESH_SERVER_HOST="coordinator.internal", MESH_BASE_DOMAIN="box.internal")
+    r = cli("coordinator", "up", NUFI_BOX_ENV=env, NUFI_BOX_FAKE_OS="Linux")
+    assert r.returncode == 0, r.stderr
+    out = r.stdout
+    assert "bootstrap.sh" in out
+    assert "TLS_MODE=internal" in out
+    assert "docker-compose.selfhost.yml" in out
+    assert "--tags tag:box" in out
+    assert "MESH_AUTH_KEY" in out

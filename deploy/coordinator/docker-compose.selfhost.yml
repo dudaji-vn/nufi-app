@@ -1,0 +1,21 @@
+# Port map for co-hosting the coordinator ON a NuFi box, whose own Caddy
+# already holds host :80. With TLS_MODE=internal there is no ACME HTTP-01
+# challenge, so the coordinator never needs the HOST :80 publish — the control
+# API and DERP-over-HTTPS ride :443 (free on a box, which binds 80/3080/300x/
+# 7860/4000 but never 443) and STUN rides 3478/udp (also free). `ports:` lists
+# merge by concatenation across compose files, so this uses the compose-spec
+# `!override` merge tag to drop the base `80:80` publish outright instead of
+# adding a second, conflicting one:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.selfhost.yml ...
+#
+# which is what `nufi-box coordinator up` / `install-box.sh
+# --self-host-coordinator` run (via COORDINATOR_COMPOSE_EXTRA). Caddy's
+# healthcheck still targets container-local http://127.0.0.1:80/healthz, which
+# the in-container :80 listener keeps answering — only the HOST publish is
+# dropped, not the listener. Committed (not gitignored) — it is the co-host
+# port map, like docker-compose.lab-ports.yml, not a secret.
+services:
+  caddy:
+    ports: !override
+      - "443:443"

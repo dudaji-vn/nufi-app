@@ -846,6 +846,39 @@ copy that coordinator's `data/coordinator-ca.crt` onto the box and point
 trust the control server and `invite` will fail on
 `unable to get local issuer certificate`.
 
+### Self-host the coordinator on this box (no external VPS)
+
+The runbook above joins the box to a **separate** coordinator on a VPS. For a
+site that must have **no external dependency at all** — an air-gapped or
+high-security deployment — the box can run its own coordinator on the same
+machine, so a single appliance is entirely self-contained.
+
+Fetch `deploy/coordinator` next to `deploy/box` (the default box fetch does not
+include it), then install with one flag:
+
+```bash
+./install-box.sh --yes --self-host-coordinator
+```
+
+This is **Ubuntu only** — the box's mesh node needs the host's own network
+namespace, which Docker Desktop cannot give a Mac. The installer brings up the
+coordinator (`deploy/coordinator`, `TLS_MODE=internal`) co-located with the box
+on ports **443** and **3478/udp** — the box's own Caddy keeps 80 and the
+product ports — mints this box's own `tag:box` key, trusts the coordinator's
+internal CA, and joins the box to itself. Every key is **generated on first
+boot**; nothing secret ships in git or the image.
+
+There is no `--mesh` to give and no key to paste: `--self-host-coordinator` and
+`--mesh` are mutually exclusive, and the coordinator's names default to
+`coordinator.internal` / `box.internal` (override with `MESH_SERVER_HOST` /
+`MESH_BASE_DOMAIN`). Day two, `nufi-box coordinator up | status | down` brings
+the coordinator up (safe to repeat), shows it, or stops it; the box joins with
+`nufi-box mesh up` exactly as any mesh box does.
+
+Members are invited the same way (`nufi-box invite`); the coordinator they
+reach is this box, so every laptop must resolve `coordinator.internal` to the
+box on the closed network (a site DNS record, or `/etc/hosts`).
+
 ### For the admin: inviting a laptop
 
 ```bash

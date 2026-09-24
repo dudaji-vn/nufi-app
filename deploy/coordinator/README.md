@@ -275,6 +275,18 @@ directory and uses its own compose project, `nufi-lab`.
 `lab/day-at-home.sh` goes one step further and points that same NAT'd member
 at a real box in a VM.
 
+### Co-hosted on a NuFi box (self-hosted coordinator)
+
+`docker-compose.selfhost.yml` is the field analog of the lab-ports file: it
+runs this same coordinator **on a NuFi box**, so a single machine has no
+external dependency at all — the government / air-gap case. Internal TLS means
+no ACME, so it drops the host `:80` publish (the box's own Caddy holds 80) and
+keeps `:443` + `3478/udp`, both free on a box. The box drives it for you —
+`install-box.sh --self-host-coordinator` and `nufi-box coordinator up` (see the
+box README, "Self-host the coordinator on this box"); you do not run
+`bootstrap.sh` by hand. `deploy/coordinator` must be fetched next to
+`deploy/box` for this.
+
 ## 7. Day two
 
 ### Rotating the API key

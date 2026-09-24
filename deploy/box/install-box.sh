@@ -6,7 +6,7 @@
 #              [--no-pull] [--emulate-amd64] [--no-trust]
 #              [--registry HOST[:PORT][/path]]
 #              [--mesh URL --auth-key KEY [--mesh-api-key KEY]]
-#              [--with-works]
+#              [--with-works] [--self-host-coordinator]
 #
 # Asks four questions (box name, admin email, departments, inference profile),
 # generates every secret here, renders the LiteLLM config, starts the stack,
@@ -36,6 +36,11 @@
 #                    Not needed for a public (ACME) coordinator.
 #   --with-works     NUFI Works on this box (Ubuntu only): installs gVisor as a
 #                    Docker runtime and starts Works behind https://<box>:3003.
+#   --self-host-coordinator
+#                    run this box's OWN mesh coordinator on the same machine
+#                    (Ubuntu only, deploy/coordinator, TLS_MODE=internal): a
+#                    self-contained appliance with no external VPS. Mints its
+#                    own keys on first boot; mutually exclusive with --mesh.
 #
 # NUFI_BOX_COMPOSE_EXTRA — space-separated extra compose files to layer last,
 # for a machine that needs a site-local tweak (a port map when something else
@@ -77,7 +82,8 @@ while [ $# -gt 0 ]; do
     --mesh-api-key=*) MESH_API_KEY="${1#--mesh-api-key=}"; [ -n "$MESH_API_KEY" ] || die "--mesh-api-key needs a value" ;;
     --mesh-ca) [ $# -ge 2 ] || die "--mesh-ca needs a file path"; MESH_CA_SRC="$2"; shift ;;
     --mesh-ca=*) MESH_CA_SRC="${1#--mesh-ca=}"; [ -n "$MESH_CA_SRC" ] || die "--mesh-ca needs a file path" ;;
-    -h|--help) sed -n '2,35p' "$0"; exit 0 ;;
+    --self-host-coordinator) NUFI_SELF_HOST_COORD=1 ;;
+    -h|--help) sed -n '2,43p' "$0"; exit 0 ;;
   esac
   shift
 done
@@ -122,6 +128,18 @@ say "Checking prerequisites on $OS/$ARCH"
 # already rejected. Say so in the words the person will search for.
 if [ "$WITH_WORKS" = 1 ] && [ "$OS" != "Linux" ]; then
   die "--with-works needs Ubuntu: Works sandboxes run under gVisor, which Docker Desktop cannot host. Install the box without it here, or with it on the Linux machine that will be the box."
+fi
+# --self-host-coordinator, refused before a byte is written (and before the
+# Darwin branch installs anything), for the same reasons and in the same words
+# a person will search for. The co-hosted coordinator's box mesh node needs the
+# host's own network namespace — Docker Desktop's is the Linux VM's — so it is
+# Ubuntu-only; and self-hosting a coordinator while also joining an external
+# one (--mesh) is two answers to one question. MESH_SERVER_URL here is only
+# what THIS invocation's --mesh set (the .env merge is below), which is exactly
+# the same-run conflict to catch.
+if [ "${NUFI_SELF_HOST_COORD:-0}" = 1 ]; then
+  [ "$OS" = "Linux" ] || die "--self-host-coordinator needs Ubuntu: the box's mesh node needs the host's own network namespace, which Docker Desktop cannot give a Mac. Self-host on the Linux machine that will be the box."
+  [ -z "${MESH_SERVER_URL:-}" ] || die "--self-host-coordinator and --mesh are mutually exclusive: either this box runs its own coordinator (no external VPS), or it joins an external one — not both."
 fi
 have openssl || die "openssl is required"
 # Two packages the box's own commands need, installed here so a day-one box
@@ -223,6 +241,11 @@ REUSE_VARS="BOX_NAME ADMIN_EMAIL DEPARTMENTS INFERENCE_PROFILE INFERENCE_MODEL I
 # operator's, and they are in the join files already handed to members —
 # a re-install must not blank them. They are reused but never asked for.
 REUSE_VARS="$REUSE_VARS BOX_MESH_IP BOX_MESH_HOST"
+# A self-hosted-coordinator box records the flag and the two names its own
+# coordinator was bootstrapped with, so a bare re-run keeps hosting the same
+# coordinator instead of reverting to a LAN-only box. Set by
+# --self-host-coordinator (and defaulted just below), never asked for.
+REUSE_VARS="$REUSE_VARS NUFI_SELF_HOST_COORD MESH_SERVER_HOST MESH_BASE_DOMAIN"
 # NUFI_SMB_UID/GID are a durable answer in the same sense: they say who the
 # department drives on disk belong to. Recomputing them from `id -u` on every
 # run would mean a second admin re-running the installer — which this README
@@ -258,10 +281,29 @@ MESH_API_KEY="${MESH_API_KEY:-}"
 MESH_CA_FILE="${MESH_CA_FILE:-/etc/ssl/certs/ca-certificates.crt}"
 BOX_MESH_IP="${BOX_MESH_IP:-}"
 BOX_MESH_HOST="${BOX_MESH_HOST:-}"
+# A box that hosts its own coordinator (deploy/coordinator) on the same machine
+# — the government / air-gap case, no external VPS at all. The flag and the two
+# names are kept across re-runs (REUSE_VARS above). The base domain must not be
+# a suffix of the server host (headscale's MagicDNS rule, which bootstrap.sh
+# enforces), which coordinator.internal / box.internal satisfy. MESH_SERVER_URL
+# is derived here, so the mesh plumbing below (and nufi-box) treats a self-host
+# box like any other mesh box — it just points at itself.
+NUFI_SELF_HOST_COORD="${NUFI_SELF_HOST_COORD:-0}"
+MESH_SERVER_HOST="${MESH_SERVER_HOST:-}"
+MESH_BASE_DOMAIN="${MESH_BASE_DOMAIN:-}"
+if [ "$NUFI_SELF_HOST_COORD" = 1 ]; then
+  MESH_SERVER_HOST="${MESH_SERVER_HOST:-coordinator.internal}"
+  MESH_BASE_DOMAIN="${MESH_BASE_DOMAIN:-box.internal}"
+  MESH_SERVER_URL="https://$MESH_SERVER_HOST"
+fi
 # One without the other is always a mistake, and the failure it causes is slow:
 # the container comes up, tailscaled has nothing to log in with, and the box
 # looks joined until somebody tries to reach it from home.
-if [ -n "$MESH_SERVER_URL" ] && [ -z "$MESH_AUTH_KEY" ]; then
+# A self-hosted-coordinator box has no auth key to give: its own coordinator
+# has not been bootstrapped yet, and `nufi-box coordinator up` mints the box's
+# tag:box key as part of that. So this "--mesh needs --auth-key" refusal is for
+# the external-coordinator case only.
+if [ "$NUFI_SELF_HOST_COORD" != 1 ] && [ -n "$MESH_SERVER_URL" ] && [ -z "$MESH_AUTH_KEY" ]; then
   die "--mesh needs --auth-key: ask the coordinator for this box's pre-auth key. On the coordinator: headscale users list -o json for the box user's numeric id (v0.29.3's --user does not take a name), then headscale preauthkeys create --user <id> --tags tag:box — deploy/coordinator/README.md \"Hand it to a box\""
 fi
 if [ -z "$MESH_SERVER_URL" ] && [ -n "$MESH_AUTH_KEY" ]; then
@@ -527,6 +569,9 @@ MESH_SERVER_URL=$MESH_SERVER_URL
 MESH_AUTH_KEY=$MESH_AUTH_KEY
 MESH_API_KEY=$MESH_API_KEY
 MESH_CA_FILE=$MESH_CA_FILE
+NUFI_SELF_HOST_COORD=$NUFI_SELF_HOST_COORD
+MESH_SERVER_HOST=$MESH_SERVER_HOST
+MESH_BASE_DOMAIN=$MESH_BASE_DOMAIN
 BOX_MESH_IP=$BOX_MESH_IP
 BOX_MESH_HOST=$BOX_MESH_HOST
 EOF
@@ -763,7 +808,12 @@ if [ "$OS" = "Linux" ]; then
   # The mesh node comes up with the rest of the stack, so one `pull` fetches
   # its image too. macOS gets no container: Docker Desktop's host network is
   # the Linux VM's, so it could never give the Mac a mesh address.
-  [ -n "$MESH_SERVER_URL" ] && COMPOSE="$COMPOSE -f docker-compose.mesh.yml --profile mesh"
+  # A self-hosting box is the exception: its coordinator is not up yet and its
+  # tag:box key is minted only by `nufi-box coordinator up` below, so bringing
+  # the node up now would be the "tailscaled has nothing to log in with" hazard.
+  # It joins later, in the mesh step, once the coordinator exists.
+  [ -n "$MESH_SERVER_URL" ] && [ "$NUFI_SELF_HOST_COORD" != 1 ] \
+    && COMPOSE="$COMPOSE -f docker-compose.mesh.yml --profile mesh"
   [ "$NUFI_WORKS" = 1 ] && COMPOSE="$COMPOSE --profile works"
 fi
 for f in ${NUFI_BOX_COMPOSE_EXTRA:-}; do
@@ -962,6 +1012,25 @@ if [ "$NUFI_WORKS" = 1 ]; then
     rm -f "$_works_env"
   else
     "$BOX_HOME/nufi-box" works install || warn "Works is up but not registered yet; run: nufi-box works install"
+  fi
+fi
+
+# ---------- this box's own coordinator (no external VPS) ------------------------------
+# A --self-host-coordinator box brings up deploy/coordinator on THIS machine
+# and mints its own tag:box pre-auth key BEFORE the mesh join below — delegated
+# to `nufi-box coordinator up` so the bootstrap, the CA copy, the key mint and
+# the .env writes all live in one place (lib/coordinator.sh). Ordering matters:
+# the coordinator must exist and the key must be minted before the node joins.
+# The dry run points nufi-box at a throwaway .env, exactly like the mesh step.
+if [ "$NUFI_SELF_HOST_COORD" = 1 ]; then
+  say "Bringing up this box's own coordinator (no external VPS)"
+  if [ "$DRY" = 1 ]; then
+    _coord_env="$(mktemp)"
+    render_env > "$_coord_env"
+    NUFI_BOX_DRY_RUN=1 NUFI_BOX_FAKE_OS="$OS" NUFI_BOX_ENV="$_coord_env" "$BOX_HOME/nufi-box" coordinator up || true
+    rm -f "$_coord_env"
+  else
+    "$BOX_HOME/nufi-box" coordinator up || die "the box is up but its coordinator did not come up — see: nufi-box coordinator up (and that deploy/coordinator is fetched next to deploy/box)"
   fi
 fi
 

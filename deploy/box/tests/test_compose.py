@@ -124,7 +124,8 @@ def test_only_caddy_publishes_web_ports():
 def test_env_example_covers_every_variable():
     text = "\n".join((BOX / f).read_text()
                      for f in ("docker-compose.yml", "docker-compose.linux.yml",
-                               "docker-compose.gpu.yml", "docker-compose.mesh.yml")
+                               "docker-compose.gpu.yml", "docker-compose.mesh.yml",
+                               "docker-compose.mesh-selfhost.yml")
                      if (BOX / f).exists())
     used = set(re.findall(r"\$\{([A-Z0-9_]+)(?::-[^}]*)?\}", text))
     declared = set(re.findall(r"^([A-Z0-9_]+)=", (BOX / ".env.example").read_text(), re.M))
@@ -289,6 +290,53 @@ def test_the_base_box_has_no_tailscale_container():
     the file layered the `mesh` profile is what turns it on."""
     assert "tailscale" not in render()["services"]
     assert "tailscale" not in render("docker-compose.yml", "docker-compose.mesh.yml")["services"]
+
+
+def _extra_host_ip(svc, host):
+    """`docker compose config` emits extra_hosts as a list of "host=ip" (seen
+    here on compose v2.39) or "host:ip", and older versions as a {host: ip}
+    map — accept every form."""
+    hosts = svc.get("extra_hosts")
+    if isinstance(hosts, dict):
+        return hosts.get(host)
+    for entry in hosts or []:
+        for sep in ("=", ":"):
+            if sep in entry and entry.rsplit(sep, 1)[0] == host:
+                return entry.rsplit(sep, 1)[1]
+    return None
+
+
+def test_the_selfhost_mesh_overlay_points_the_node_at_the_local_coordinator():
+    """When the box hosts its own coordinator, the mesh node (host network
+    namespace) must resolve the coordinator's certificate name to loopback so
+    it reaches the co-located control server — docker-compose.mesh-selfhost.yml."""
+    svc = render("docker-compose.yml", "docker-compose.mesh.yml",
+                 "docker-compose.mesh-selfhost.yml", profiles=("mesh",),
+                 MESH_SERVER_HOST="coordinator.internal")["services"]["tailscale"]
+    assert svc["network_mode"] == "host"
+    assert _extra_host_ip(svc, "coordinator.internal") == "127.0.0.1", svc.get("extra_hosts")
+
+
+def test_the_selfhost_overlay_only_adds_extra_hosts():
+    """Non-destabilizing: layering the self-host overlay changes nothing about
+    the mesh node except adding the one loopback host entry."""
+    common = dict(profiles=("mesh",), MESH_SERVER_HOST="coordinator.internal",
+                  MESH_AUTH_KEY="tskey-x", MESH_SERVER_URL="https://coordinator.internal")
+    base = render("docker-compose.yml", "docker-compose.mesh.yml", **common)["services"]["tailscale"]
+    over = render("docker-compose.yml", "docker-compose.mesh.yml",
+                  "docker-compose.mesh-selfhost.yml", **common)["services"]["tailscale"]
+    base.pop("extra_hosts", None)
+    over.pop("extra_hosts", None)
+    assert over == base
+
+
+def test_the_selfhost_overlay_adds_no_service_without_the_mesh_profile():
+    """The overlay is always layered on docker-compose.mesh.yml; like that
+    file, its node is gated on the `mesh` profile — the full stack without the
+    profile still adds no container."""
+    assert "tailscale" not in render("docker-compose.yml", "docker-compose.mesh.yml",
+                                     "docker-compose.mesh-selfhost.yml",
+                                     MESH_SERVER_HOST="coordinator.internal")["services"]
 
 
 def test_caddy_can_read_the_generated_mesh_sites():
