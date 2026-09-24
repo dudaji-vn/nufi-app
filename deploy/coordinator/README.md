@@ -487,6 +487,18 @@ then using each other over HTTPS and SMB, with the relay forced. `lab/run.sh`
 and `lab/day-at-home.sh` are that proof and print their own PASS/FAIL tables;
 `lab/README.md` records the measured runs.
 
+Two smaller Docker proofs cover the on-prem field modes and tear down after.
+`airgap.sh` runs an internal-TLS coordinator and a member on an
+egress-disabled network (`internal: true`): the node reaches nothing outside,
+yet joins and trusts only the internal CA. `selfhost-e2e.sh` runs this
+coordinator with `docker-compose.selfhost.yml` — the co-host map a NuFi box
+uses when it hosts its own coordinator — and proves the chain the box depends
+on: it stays healthy with the host `:80` publish dropped, publishes `:443` and
+not `:80` at runtime, mints a `tag:box` key the way the box's
+`lib/coordinator.sh` does (users list → numeric id → `preauthkeys create
+--tags tag:box`), and a node joins tagged `tag:box`. Both print their own
+PASS/FAIL rows.
+
 **On 22 September 2026 it was run on a real VPS**, and everything the lab
 could not exercise held. The server: a 1 vCPU / 4 GB Hostinger KVM in Kuala
 Lumpur, Ubuntu 24.04, 57 ms from the development machine. `mesh.nufi.me` is
