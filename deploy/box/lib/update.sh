@@ -57,7 +57,15 @@ UPDATE_CODELOAD_BASE="https://codeload.github.com/dudaji-vn/nufi-app/tar.gz"
 # to delete through it, but the symlink entry itself. `/data` (no slash)
 # matches a directory, a symlink, or a file at that path, whichever it is.
 _update_protect_paths() {
-  UPDATE_PROTECT=(--exclude=/.env --exclude=/caddy/mesh.caddy --exclude=/.previous/ --exclude=/data)
+  # /config/headscale.yaml and /Caddyfile.rendered protect a co-hosted
+  # coordinator's rendered (gitignored) config from a --delete copy: the
+  # release never ships them, bootstrap re-renders them, and the box tree has
+  # no file at either path, so both are harmless for the deploy/box copy and
+  # keep the coordinator copy from clobbering them mid-run. /data already
+  # protects the coordinator's own data/ (its headscale DB), the same way it
+  # protects the box's.
+  UPDATE_PROTECT=(--exclude=/.env --exclude=/caddy/mesh.caddy --exclude=/.previous/ --exclude=/data \
+    --exclude=/config/headscale.yaml --exclude=/Caddyfile.rendered)
   _dd="${NUFI_DATA_DIR:-$HERE/data}"
   _here_l="$HERE"
   _here_p="$(cd "$HERE" 2>/dev/null && pwd -P)" || _here_p="$_here_l"
@@ -219,6 +227,14 @@ _update_apply() {
   _update_copy "$_src_top/deploy/box" "$HERE" --exclude=/litellm/config.yaml || return 1
   _update_copy "$_src_top/deploy/platform/scenarios" "$_platform/scenarios" || return 1
   _update_copy "$_src_top/deploy/platform/adapters/nufi-cron" "$_platform/adapters/nufi-cron" || return 1
+  # A --self-host-coordinator box has deploy/coordinator fetched beside
+  # deploy/box (it is NOT in the box's own fetch set), so update it too — or
+  # `nufi-box coordinator up` after an update would run stale coordinator
+  # files. Gated: a plain box never fetched it, and its runtime state (data/,
+  # .env, rendered config) is protected by UPDATE_PROTECT above.
+  if [ "${NUFI_SELF_HOST_COORD:-0}" = 1 ]; then
+    _update_copy "$_src_top/deploy/coordinator" "$_coordinator" || return 1
+  fi
 }
 
 # update_run REF YES — fetch, snapshot, apply, re-install, check; roll back
@@ -250,6 +266,7 @@ update_run() {
   fi
 
   _platform="$(dirname "$HERE")/platform"
+  _coordinator="$(dirname "$HERE")/coordinator"
   _update_protect_paths
 
   echo "Fetching $_label"
@@ -297,6 +314,12 @@ print(tarfile.open(sys.argv[1]).next().name.split("/")[0])
   fi
   if [ "$DRY" = 1 ] || [ -d "$_platform/adapters/nufi-cron" ]; then
     _update_copy "$_platform/adapters/nufi-cron" "$HERE/.previous/platform/adapters/nufi-cron"
+  fi
+  # A self-host box's coordinator is snapshotted too, so a rollback puts back
+  # the coordinator code that matched the box before the update (its data/ and
+  # keys are protected, and never rolled back — same as the box's data).
+  if [ "${NUFI_SELF_HOST_COORD:-0}" = 1 ] && { [ "$DRY" = 1 ] || [ -d "$_coordinator" ]; }; then
+    _update_copy "$_coordinator" "$HERE/.previous/coordinator"
   fi
   _update_snapshot_images "$HERE/.previous/images.txt"
   # Last: this file existing is the whole test `update --rollback` makes
@@ -350,6 +373,7 @@ update_rollback() {
   fi
 
   _platform="$(dirname "$HERE")/platform"
+  _coordinator="$(dirname "$HERE")/coordinator"
   _update_protect_paths
 
   echo "Rolling back to what was here before the last update"
@@ -359,6 +383,11 @@ update_rollback() {
   fi
   if [ "$DRY" = 1 ] || [ -d "$HERE/.previous/platform/adapters/nufi-cron" ]; then
     _update_copy "$HERE/.previous/platform/adapters/nufi-cron" "$_platform/adapters/nufi-cron"
+  fi
+  # Put back a self-host box's coordinator code if it was snapshotted (its
+  # data/ and keys were protected and were never touched).
+  if [ -d "$HERE/.previous/coordinator" ] || { [ "$DRY" = 1 ] && [ "${NUFI_SELF_HOST_COORD:-0}" = 1 ]; }; then
+    _update_copy "$HERE/.previous/coordinator" "$_coordinator"
   fi
   run rm -f "${NUFI_DATA_DIR:-$HERE/data}/updated-from"
 

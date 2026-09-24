@@ -2015,3 +2015,79 @@ def test_coordinator_up_plans_the_local_bootstrap_when_self_hosting(tmp_path):
     assert "docker-compose.selfhost.yml" in out
     assert "--tags tag:box" in out
     assert "MESH_AUTH_KEY" in out
+
+
+# --- update refreshes a self-host box's coordinator (and only a self-host one) ---
+
+def _run_update_apply(here, src_top, self_host):
+    """Source lib/update.sh and call _update_apply directly (like
+    _run_update_copy), with NUFI_SELF_HOST_COORD set — so the coordinator
+    branch is exercised without the full curl/tar/docker end-to-end."""
+    lib = str(BOX / "lib" / "update.sh")
+    script = (
+        'HERE="$1"; src_top="$2"; NUFI_SELF_HOST_COORD="$3"\n'
+        'DRY=0; NUFI_DATA_DIR="$HERE/data"\n'
+        'run() { "$@"; }\n'
+        'die() { echo "$*" >&2; exit 2; }\n'
+        'source "$0"\n'
+        '_platform="$(dirname "$HERE")/platform"\n'
+        '_coordinator="$(dirname "$HERE")/coordinator"\n'
+        '_update_protect_paths\n'
+        '_update_apply "$src_top"\n'
+    )
+    return subprocess.run([BASH, "-c", script, lib, str(here), str(src_top), self_host],
+                          capture_output=True, text=True)
+
+
+def _seed_update_apply_scene(tmp_path):
+    """A release src_top with all four dirs, a box HERE + platform siblings,
+    and a coordinator sibling with runtime state that must survive."""
+    src = tmp_path / "src"
+    (src / "deploy" / "box").mkdir(parents=True)
+    (src / "deploy" / "box" / "marker.txt").write_text("BOX-NEW\n")
+    (src / "deploy" / "platform" / "scenarios").mkdir(parents=True)
+    (src / "deploy" / "platform" / "adapters" / "nufi-cron").mkdir(parents=True)
+    (src / "deploy" / "coordinator" / "config").mkdir(parents=True)
+    (src / "deploy" / "coordinator" / "docker-compose.yml").write_text("COORD-NEW\n")
+    (src / "deploy" / "coordinator" / "config" / "policy.hujson").write_text("policy-new\n")
+
+    here = tmp_path / "box"; here.mkdir()
+    (here / "data").mkdir()
+    (tmp_path / "platform" / "scenarios").mkdir(parents=True)
+    (tmp_path / "platform" / "adapters" / "nufi-cron").mkdir(parents=True)
+
+    coord = tmp_path / "coordinator"; (coord / "config").mkdir(parents=True)
+    (coord / "data").mkdir()
+    (coord / "docker-compose.yml").write_text("COORD-OLD\n")
+    (coord / "OLD_ONLY.txt").write_text("old\n")
+    (coord / "data" / "headscale.db").write_text("DBDATA\n")     # must survive
+    (coord / ".env").write_text("MESH_API_KEY=secret\n")          # must survive
+    (coord / "Caddyfile.rendered").write_text("rendered\n")       # must survive
+    (coord / "config" / "headscale.yaml").write_text("rendered-config\n")  # must survive
+    return src, here, coord
+
+
+def test_update_refreshes_the_coordinator_on_a_self_host_box(tmp_path):
+    src, here, coord = _seed_update_apply_scene(tmp_path)
+    # src_top is the extracted archive top that contains deploy/…
+    r = _run_update_apply(here, src, "1")
+    assert r.returncode == 0, r.stdout + r.stderr
+    # new coordinator code landed…
+    assert (coord / "docker-compose.yml").read_text() == "COORD-NEW\n"
+    assert (coord / "config" / "policy.hujson").read_text() == "policy-new\n"
+    # …a file only the old tree had is gone (a real --delete)…
+    assert not (coord / "OLD_ONLY.txt").exists()
+    # …but the runtime state the box must keep survived (protected):
+    assert (coord / "data" / "headscale.db").read_text() == "DBDATA\n"   # the headscale DB
+    assert (coord / ".env").read_text() == "MESH_API_KEY=secret\n"        # its keys
+    assert (coord / "Caddyfile.rendered").read_text() == "rendered\n"
+    assert (coord / "config" / "headscale.yaml").read_text() == "rendered-config\n"
+
+
+def test_update_leaves_the_coordinator_alone_on_a_plain_box(tmp_path):
+    src, here, coord = _seed_update_apply_scene(tmp_path)
+    r = _run_update_apply(here, src, "0")
+    assert r.returncode == 0, r.stdout + r.stderr
+    # a plain box never fetched deploy/coordinator — update must not touch it
+    assert (coord / "docker-compose.yml").read_text() == "COORD-OLD\n"
+    assert (coord / "OLD_ONLY.txt").exists()

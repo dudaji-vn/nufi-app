@@ -915,6 +915,10 @@ Members are invited the same way (`nufi-box invite`); the coordinator they
 reach is this box, so every laptop must resolve `coordinator.internal` to the
 box on the closed network (a site DNS record, or `/etc/hosts`).
 
+`nufi-box update` keeps `deploy/coordinator` current along with the box (its
+`data/`, `.env` and rendered config are left untouched, and a rollback puts the
+coordinator code back too) — you fetch it beside `deploy/box` once, at install.
+
 ### For the admin: inviting a laptop
 
 ```bash
