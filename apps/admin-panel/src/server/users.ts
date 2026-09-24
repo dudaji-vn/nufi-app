@@ -1,8 +1,8 @@
 /**
  * Server functions for user management.
  *
- * Calls the LibreChat Admin API (/api/admin/users) for list, search, and delete.
- * Create user is not yet wired.
+ * Calls the LibreChat Admin API (/api/admin/users) for list, search, create,
+ * and delete. Create returns a one-time password for the admin to hand over.
  */
 
 import { z } from 'zod';
@@ -40,8 +40,16 @@ export const createUserFn = createServerFn({ method: 'POST' })
       role: z.nativeEnum(SystemRoles),
     }),
   )
-  .handler(async (): Promise<{ user: TUser }> => {
-    throw new Error('Not implemented: createUserFn');
+  .handler(async ({ data }): Promise<{ user: TUser; password: string }> => {
+    const response = await apiFetch('/api/admin/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+      await extractApiError(response, 'Failed to create user');
+    }
+    return (await response.json()) as { user: TUser; password: string };
   });
 
 export const deleteUserFn = createServerFn({ method: 'POST' })
