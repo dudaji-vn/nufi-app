@@ -947,10 +947,17 @@ mean.
 1. Install the official Tailscale app first — the join file checks for it
    and prints the download link (`https://tailscale.com/download`) if it is
    missing.
-2. Run the file the admin sent you: double-click the `.command` file on a
-   Mac, the `.sh` file on Linux, or the `.cmd` file on Windows. It trusts
-   the box's certificate, connects to the mesh, maps the drives you were
-   given, and opens chat.
+2. Run the file the admin sent you. It is a small script, not a signed app,
+   so your OS will warn it is from an unidentified developer — this is
+   expected; get past it with the one gesture for your system:
+   - **macOS** (`.command`): right-click the file → **Open**, then **Open**
+     again in the dialog. (A plain double-click only offers "Move to Trash.")
+   - **Windows** (`.cmd`): double-click it; if SmartScreen says "Windows
+     protected your PC," click **More info → Run anyway**.
+   - **Linux** (`.sh`): run `bash nufi-join-<you>.sh` in a terminal.
+
+   It then trusts the box's certificate, connects to the mesh, maps the
+   drives you were given, and opens chat.
 3. The key inside the file is single-use — if it does not work, ask the
    admin to run `nufi-box invite` again for you.
 
@@ -1031,6 +1038,13 @@ built yet:
   offline path for *updating* a box with no network at all. (A first *install*
   can now come from media — see [A fully air-gapped
   box](#a-fully-air-gapped-box-no-lan-registry-at-all).)
+- **A signed client installer.** The join file `nufi-box invite` writes is a
+  script, and a script cannot be code-signed or notarized — so a member's OS
+  always warns that it is from an unidentified developer. The invite tells them
+  the one gesture to run it anyway (right-click → Open on macOS, More info →
+  Run anyway on Windows), but removing the warning outright needs the join
+  packaged as a signed `.pkg` / `.exe`, which requires an Apple Developer ID
+  and a Windows code-signing certificate — neither is set up yet.
 - **Dudaji reaching into your box.** `nufi-box support` (see [When something
   is wrong](#when-something-is-wrong)) is the local half only — it packages
   what the box already knows about itself into a file you send. It opens no

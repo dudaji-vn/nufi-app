@@ -380,7 +380,22 @@ mesh_invite() {
     "BOX_MESH_HOST=$BOX_MESH_HOST" "CA_B64=$ca_b64" \
     "COORD_CA_B64=$coord_ca_b64" "DRIVES=$drives_block"
   echo "Wrote $out"
-  echo "Send it to $name (email or chat — not a public link): \"Run this file, then open https://${BOX_MESH_HOST}:3080 — the key inside works once.\""
+  # The join file is a script, and a script cannot be code-signed or notarized,
+  # so every OS flags a downloaded one as coming from an unidentified developer.
+  # A member who just double-clicks hits a dead-end warning and calls the admin
+  # (this bit us in a demo). Tell them the one gesture that runs it anyway, per
+  # OS. Removing the warning entirely needs a signed .pkg/.exe — a separate,
+  # larger build; see README "Signed installers".
+  local fname run_hint
+  fname="$(basename "$out")"
+  case "$os" in
+    macos)   run_hint="right-click $fname and choose Open — macOS warns it is from an unidentified developer, click Open to confirm" ;;
+    windows) run_hint="double-click $fname; if Windows SmartScreen says \"Windows protected your PC\", click More info then Run anyway" ;;
+    linux)   run_hint="run it: bash $fname" ;;
+    *)       run_hint="run $fname" ;;
+  esac
+  echo "Send it to $name (email or chat — not a public link):"
+  echo "  \"$run_hint, then open https://${BOX_MESH_HOST}:3080 — the key inside works once.\""
 }
 
 # ---------- the box as a mesh node (Task 6) --------------------------------
