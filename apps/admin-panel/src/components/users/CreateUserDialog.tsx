@@ -13,12 +13,13 @@ export function CreateUserDialog({ open, onClose }: t.CreateUserDialogProps) {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<SystemRoles>(SystemRoles.USER);
   const [error, setError] = useState('');
+  const [createdPassword, setCreatedPassword] = useState<string | null>(null);
 
   const mutation = useMutation({
     mutationFn: () => createUserFn({ data: { name, email, role } }),
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
-      resetAndClose();
+      setCreatedPassword(result.password);
     },
     onError: (err: Error) => setError(err.message),
   });
@@ -28,6 +29,7 @@ export function CreateUserDialog({ open, onClose }: t.CreateUserDialogProps) {
     setEmail('');
     setRole(SystemRoles.USER);
     setError('');
+    setCreatedPassword(null);
     onClose();
   };
 
@@ -48,13 +50,28 @@ export function CreateUserDialog({ open, onClose }: t.CreateUserDialogProps) {
     <FormDialog
       open={open}
       title={localize('com_users_add')}
-      submitLabel={localize('com_users_add')}
-      submitDisabled={!name.trim() || !email.trim()}
+      submitLabel={createdPassword != null ? localize('com_ui_done') : localize('com_users_add')}
+      submitDisabled={createdPassword != null ? false : !name.trim() || !email.trim()}
       saving={mutation.isPending}
       error={error}
-      onSubmit={doSubmit}
+      onSubmit={createdPassword != null ? resetAndClose : doSubmit}
       onClose={resetAndClose}
     >
+      {createdPassword != null ? (
+        <div className="flex flex-col gap-2">
+          <p className="text-sm text-foreground">{localize('com_users_created_title')}</p>
+          <label className="text-sm font-medium text-foreground">
+            {localize('com_users_temp_password')}
+          </label>
+          <code className="select-all rounded-lg border border-border bg-muted px-3 py-2 font-mono text-sm text-foreground">
+            {createdPassword}
+          </code>
+          <p className="text-xs text-muted-foreground">
+            {localize('com_users_temp_password_hint')}
+          </p>
+        </div>
+      ) : (
+        <>
       <div className="flex flex-col gap-1.5">
         <label htmlFor="user-name" className="text-sm font-medium text-foreground">
           {localize('com_access_col_name')}
@@ -96,6 +113,8 @@ export function CreateUserDialog({ open, onClose }: t.CreateUserDialogProps) {
           <option value={SystemRoles.ADMIN}>{SystemRoles.ADMIN}</option>
         </select>
       </div>
+        </>
+      )}
     </FormDialog>
   );
 }
