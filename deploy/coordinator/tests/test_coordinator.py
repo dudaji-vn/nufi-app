@@ -112,6 +112,36 @@ def test_lab_ports_override_replaces_not_appends():
     assert hs_ports == {(3478, 13478, "udp")}
 
 
+def test_selfhost_overlay_drops_host_port_80_and_keeps_443():
+    # Co-hosting on a box whose Caddy already binds host :80: internal TLS
+    # means no ACME, so the coordinator drops its host :80 publish outright
+    # (via `!override`, not append) and keeps only :443, which is free on a
+    # box. STUN 3478/udp is free too and stays as-is.
+    cfg = render("docker-compose.yml", "docker-compose.selfhost.yml")
+    caddy_ports = {(int(p["target"]), int(p["published"])) for p in cfg["services"]["caddy"]["ports"]}
+    assert caddy_ports == {(443, 443)}
+    hs_ports = {(int(p["target"]), int(p["published"]), p["protocol"]) for p in cfg["services"]["headscale"]["ports"]}
+    assert hs_ports == {(3478, 3478, "udp")}
+
+
+def test_selfhost_overlay_keeps_the_internal_healthz_probe():
+    # Dropping the HOST publish of :80 must not break Caddy's healthcheck,
+    # which hits the container-local listener, not the host port.
+    cfg = render("docker-compose.yml", "docker-compose.selfhost.yml")
+    test = cfg["services"]["caddy"]["healthcheck"]["test"]
+    assert any("127.0.0.1:80/healthz" in part for part in test), test
+
+
+def test_selfhost_overlay_is_committed_not_gitignored():
+    # It is the co-host port map (like docker-compose.lab-ports.yml), not a
+    # secret — git must track it, or a fetched box would never see it.
+    r = subprocess.run(
+        ["git", "check-ignore", "docker-compose.selfhost.yml"],
+        cwd=COORD, capture_output=True, text=True,
+    )
+    assert r.returncode == 1, f"selfhost overlay is gitignored: {r.stdout!r}"
+
+
 def test_env_example_declares_every_variable_bootstrap_needs():
     lines = (COORD / ".env.example").read_text().splitlines()
     declared = {line.split("=", 1)[0]: line for line in lines if "=" in line and not line.startswith("#")}

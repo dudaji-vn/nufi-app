@@ -1108,3 +1108,72 @@ def test_the_fetched_set_is_enough_to_run_the_routine_builder(tmp_path):
     for text, name in ((install_mdx, "install.mdx"), (readme, "README.md")):
         for d in ("deploy/box", "deploy/platform/scenarios", "deploy/platform/adapters/nufi-cron"):
             assert d in text, "%s is missing %s from its fetch instructions" % (name, d)
+
+
+# --- --self-host-coordinator: the box runs its own coordinator, no external VPS ---
+
+def test_self_host_coordinator_plans_the_local_bootstrap():
+    out = dry("--self-host-coordinator", NUFI_BOX_FAKE_OS="Linux")
+    # the answers the box records for its own coordinator
+    assert "NUFI_SELF_HOST_COORD=1" in out
+    assert "MESH_SERVER_HOST=coordinator.internal" in out
+    assert "MESH_BASE_DOMAIN=box.internal" in out
+    assert "MESH_SERVER_URL=https://coordinator.internal" in out
+    # and the plan delegates to deploy/coordinator's bootstrap on internal TLS
+    # with the co-host port overlay
+    assert "bootstrap.sh" in out
+    assert "TLS_MODE=internal" in out
+    assert "docker-compose.selfhost.yml" in out
+    assert "--tags tag:box" in out
+
+
+def test_self_host_coordinator_bootstraps_before_it_joins():
+    out = dry("--self-host-coordinator", NUFI_BOX_FAKE_OS="Linux")
+    assert "own coordinator" in out
+    assert "Joining the mesh" in out
+    assert out.index("own coordinator") < out.index("Joining the mesh"), out
+
+
+def test_self_host_coordinator_does_not_start_the_node_before_the_key_exists():
+    # The initial box `up -d` must not carry the mesh profile: the key does not
+    # exist yet. The node joins later, in the coordinator/mesh steps.
+    out = dry("--self-host-coordinator", NUFI_BOX_FAKE_OS="Linux")
+    up_lines = [l for l in out.splitlines() if l.rstrip().endswith("up -d")]
+    assert up_lines, out
+    for l in up_lines:
+        assert "--profile mesh" not in l, l
+        assert "docker-compose.mesh.yml" not in l, l
+
+
+def test_self_host_coordinator_is_ubuntu_only():
+    r = install("--self-host-coordinator", NUFI_BOX_FAKE_OS="Darwin")
+    assert r.returncode != 0
+    assert "Ubuntu" in r.stderr and "Docker Desktop" in r.stderr, r.stderr
+    assert ".env written" not in r.stdout
+
+
+def test_self_host_coordinator_and_external_mesh_are_mutually_exclusive():
+    r = install("--self-host-coordinator", "--mesh", "https://mesh.example",
+                "--auth-key", "tskey-x", NUFI_BOX_FAKE_OS="Linux")
+    assert r.returncode != 0
+    assert "mutually exclusive" in r.stderr, r.stderr
+
+
+def test_a_plain_box_still_does_not_self_host():
+    out = dry(NUFI_BOX_FAKE_OS="Linux")
+    assert "NUFI_SELF_HOST_COORD=0" in out
+    assert re.search(r"^MESH_SERVER_URL=$", out, re.M), out
+    assert "bootstrap.sh" not in out
+    assert "docker-compose.selfhost.yml" not in out
+    assert "docker-compose.mesh-selfhost.yml" not in out
+
+
+def test_a_self_host_rerun_keeps_the_coordinator_answers(tmp_path):
+    envf = tmp_path / ".env"
+    envf.write_text("NUFI_SELF_HOST_COORD=1\nMESH_SERVER_HOST=coordinator.internal\n"
+                    "MESH_BASE_DOMAIN=box.internal\nBOX_HOST=nufi.local\n")
+    out = dry(NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_ENV=str(envf))
+    assert "NUFI_SELF_HOST_COORD=1" in out
+    assert "MESH_SERVER_HOST=coordinator.internal" in out
+    assert "MESH_BASE_DOMAIN=box.internal" in out
+    assert "MESH_SERVER_URL=https://coordinator.internal" in out

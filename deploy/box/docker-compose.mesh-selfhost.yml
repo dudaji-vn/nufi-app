@@ -1,0 +1,20 @@
+# Layered ON TOP of docker-compose.mesh.yml, only when this box self-hosts its
+# own coordinator on the same machine (`install-box.sh --self-host-coordinator`
+# / NUFI_SELF_HOST_COORD=1). The mesh node runs in the host network namespace
+# and dials MESH_SERVER_URL (= https://${MESH_SERVER_HOST}); when the
+# coordinator lives on THIS host it answers on 127.0.0.1:443, so the node must
+# resolve that hostname — the internal-CA certificate's only SAN — to loopback.
+# extra_hosts is the compose-native form of the `--add-host "$HOST:$ip"` hint
+# deploy/coordinator/airgap.sh already uses to make a host-network node reach
+# an internal-CA coordinator by its exact certificate name. Purely additive to
+# the mesh node; every other setting is inherited from docker-compose.mesh.yml,
+# and `profiles: [mesh]` keeps this from defining a bare, imageless container
+# when the mesh profile is off.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.mesh.yml \
+#     -f docker-compose.mesh-selfhost.yml --profile mesh up -d tailscale
+services:
+  tailscale:
+    profiles: [mesh]
+    extra_hosts:
+      - "${MESH_SERVER_HOST}:127.0.0.1"
