@@ -29,6 +29,11 @@ PUSH_REGISTRY ?= localhost:$(REGISTRY_PORT)
 # digest / exact release here; served from the mirror under $(TAG).
 RAG_IMAGE ?= ghcr.io/danny-avila/librechat-rag-api-dev-lite@sha256:f9f34c8ed6884b0ff9b17387e6174fed737dba29f21622ecb75604d82bc47bf8
 SAMBA_IMAGE ?= ghcr.io/servercontainers/samba:a3.24.1-s4.23.8-r0
+# The self-hosted coordinator (deploy/coordinator) pulls headscale from ghcr.io
+# too, so a --self-host-coordinator box behind the LAN registry needs it mirrored
+# next to the NuFi images. Pinned to the exact release in
+# deploy/coordinator/docker-compose.yml; served from the mirror under $(TAG).
+HEADSCALE_IMAGE ?= ghcr.io/juanfont/headscale:v0.29.3
 CHAT_TAG ?= arm64-dev
 ADMIN_TAG ?= arm64-dev
 STUDIO_TAG ?= box-main
@@ -81,3 +86,4 @@ registry-push:
 	docker tag ghcr.io/$(OWNER)/nufi-works:$(TAG) $(PUSH_REGISTRY)/nufi-works:$(TAG) && docker push $(PUSH_REGISTRY)/nufi-works:$(TAG)
 	docker pull -q $(RAG_IMAGE) && docker tag $(RAG_IMAGE) $(PUSH_REGISTRY)/librechat-rag-api-dev-lite:$(TAG) && docker push $(PUSH_REGISTRY)/librechat-rag-api-dev-lite:$(TAG)
 	docker pull -q $(SAMBA_IMAGE) && docker tag $(SAMBA_IMAGE) $(PUSH_REGISTRY)/samba:$(TAG) && docker push $(PUSH_REGISTRY)/samba:$(TAG)
+	docker pull -q $(HEADSCALE_IMAGE) && docker tag $(HEADSCALE_IMAGE) $(PUSH_REGISTRY)/headscale:$(TAG) && docker push $(PUSH_REGISTRY)/headscale:$(TAG)

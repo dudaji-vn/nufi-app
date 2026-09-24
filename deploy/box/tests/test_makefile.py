@@ -61,8 +61,9 @@ def test_registry_push_pushes_every_nufi_image_over_loopback():
     out = make_n("registry-push", REGISTRY="172.10.10.30:5001")
     for image in NUFI_IMAGES:
         assert f"docker push localhost:5001/{image}:" in out, image
-    # every NuFi image plus the two ghcr-hosted third-party ones
-    assert out.count("docker push ") == len(NUFI_IMAGES) + 2
+    # every NuFi image plus the three ghcr-hosted third-party ones
+    # (RAG, Samba, and — for a self-hosted coordinator — headscale)
+    assert out.count("docker push ") == len(NUFI_IMAGES) + 3
     assert "docker push 172.10.10.30:5001" not in out
 
 
@@ -101,6 +102,10 @@ def test_registry_push_also_mirrors_the_ghcr_hosted_third_party_images():
     out = make_n("registry-push", REGISTRY="172.10.10.30:5001")
     assert "docker push localhost:5001/librechat-rag-api-dev-lite:main" in out
     assert "docker push localhost:5001/samba:main" in out
+    # a --self-host-coordinator box also pulls headscale (deploy/coordinator)
+    # from ghcr, so it is mirrored next to RAG/Samba
+    assert "docker push localhost:5001/headscale:main" in out
     # pinned upstream, tagged in the mirror
     assert "librechat-rag-api-dev-lite@sha256:" in out
     assert "ghcr.io/servercontainers/samba:a3.24.1-s4.23.8-r0" in out
+    assert "ghcr.io/juanfont/headscale:v0.29.3" in out

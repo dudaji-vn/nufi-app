@@ -74,13 +74,19 @@ coordinator_up() {
   [ -n "${MESH_SERVER_HOST:-}" ] || die "MESH_SERVER_HOST is not set (install-box.sh --self-host-coordinator sets it)"
   [ -n "${MESH_BASE_DOMAIN:-}" ] || die "MESH_BASE_DOMAIN is not set (install-box.sh --self-host-coordinator sets it)"
 
-  local d ca_dst
+  local d ca_dst hs_env
   d="$(coordinator_dir)"
   ca_dst="${NUFI_DATA_DIR:-$HERE/data}/mesh-coordinator-ca.crt"
+  # A --registry box mirrors headscale into its LAN registry (install-box.sh
+  # derives NUFI_HEADSCALE_IMAGE); hand it to the coordinator as
+  # COORD_HEADSCALE_IMAGE so its `up -d` pulls from the mirror, not ghcr.io.
+  # Empty (a plain self-host box) leaves the coordinator's own pinned default.
+  hs_env=""
+  [ -n "${NUFI_HEADSCALE_IMAGE:-}" ] && hs_env="COORD_HEADSCALE_IMAGE=$NUFI_HEADSCALE_IMAGE "
 
   if [ "$DRY" = 1 ]; then
-    printf '  $ TLS_MODE=internal MESH_SERVER_HOST=%s MESH_BASE_DOMAIN=%s COORDINATOR_COMPOSE_EXTRA=docker-compose.selfhost.yml %s/bootstrap.sh\n' \
-      "$MESH_SERVER_HOST" "$MESH_BASE_DOMAIN" "$d"
+    printf '  $ TLS_MODE=internal MESH_SERVER_HOST=%s MESH_BASE_DOMAIN=%s %sCOORDINATOR_COMPOSE_EXTRA=docker-compose.selfhost.yml %s/bootstrap.sh\n' \
+      "$MESH_SERVER_HOST" "$MESH_BASE_DOMAIN" "$hs_env" "$d"
     printf '  $ cp %s/data/coordinator-ca.crt %s\n' "$d" "$ca_dst"
     coordinator_mint_box_key
     printf '  $ envfile_set %s MESH_CA_FILE %s\n' "$ENVF" "$ca_dst"
@@ -91,6 +97,7 @@ coordinator_up() {
 
   local out box_key api_key
   out="$(TLS_MODE=internal MESH_SERVER_HOST="$MESH_SERVER_HOST" MESH_BASE_DOMAIN="$MESH_BASE_DOMAIN" \
+    COORD_HEADSCALE_IMAGE="${NUFI_HEADSCALE_IMAGE:-}" \
     COORDINATOR_COMPOSE_EXTRA=docker-compose.selfhost.yml "$d/bootstrap.sh" 2>&1)"
   printf '%s\n' "$out"
 

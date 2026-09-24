@@ -61,6 +61,23 @@ def test_images_are_pinned():
         assert not svc["image"].endswith(":latest")
 
 
+def test_headscale_image_can_be_overridden_for_a_lan_registry():
+    # An air-gapped self-host box mirrors headscale into its LAN registry and
+    # passes COORD_HEADSCALE_IMAGE so `up -d` pulls from there, not ghcr.io.
+    cfg = render(env_overrides={"COORD_HEADSCALE_IMAGE": "10.0.0.5:5000/headscale:main"})
+    assert cfg["services"]["headscale"]["image"] == "10.0.0.5:5000/headscale:main"
+    # caddy is deliberately NOT parameterized — it is the same Docker-Hub image
+    # the box's own caddy uses, which registry-push never mirrors.
+    assert cfg["services"]["caddy"]["image"] == "caddy:2.10.0-alpine"
+
+
+def test_headscale_image_defaults_to_the_pinned_release_when_unset():
+    # Empty is what a plain self-host box passes: the compose `:-` default then
+    # applies, so a standalone VPS and a non-registry box are unchanged.
+    cfg = render(env_overrides={"COORD_HEADSCALE_IMAGE": ""})
+    assert cfg["services"]["headscale"]["image"] == "ghcr.io/juanfont/headscale:v0.29.3"
+
+
 def test_every_service_follows_the_house_rules():
     cfg = render()
     for name, svc in cfg["services"].items():

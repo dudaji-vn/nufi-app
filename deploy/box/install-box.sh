@@ -326,6 +326,10 @@ fi
 if [ "$NUFI_REGISTRY" != "ghcr.io/dudaji-vn" ]; then
   NUFI_RAG_IMAGE="${NUFI_RAG_IMAGE:-$NUFI_REGISTRY/librechat-rag-api-dev-lite:${NUFI_RAG_TAG:-main}}"
   NUFI_SAMBA_IMAGE="${NUFI_SAMBA_IMAGE:-$NUFI_REGISTRY/samba:${NUFI_SAMBA_TAG:-main}}"
+  # A --self-host-coordinator box also runs headscale (deploy/coordinator, a
+  # ghcr image like RAG/Samba); point it at the mirror too. Harmless on a box
+  # that does not self-host — the value is only read by lib/coordinator.sh.
+  NUFI_HEADSCALE_IMAGE="${NUFI_HEADSCALE_IMAGE:-$NUFI_REGISTRY/headscale:${NUFI_HEADSCALE_TAG:-main}}"
 fi
 
 # ---------- the four questions ------------------------------------------------
@@ -538,6 +542,7 @@ DOCKER_GID=${DOCKER_GID:-}
 NUFI_EMULATE_AMD64=$NUFI_EMULATE_AMD64
 NUFI_RAG_IMAGE=${NUFI_RAG_IMAGE:-ghcr.io/danny-avila/librechat-rag-api-dev-lite@sha256:f9f34c8ed6884b0ff9b17387e6174fed737dba29f21622ecb75604d82bc47bf8}
 NUFI_SAMBA_IMAGE=${NUFI_SAMBA_IMAGE:-ghcr.io/servercontainers/samba:a3.24.1-s4.23.8-r0}
+NUFI_HEADSCALE_IMAGE=${NUFI_HEADSCALE_IMAGE:-}
 INFERENCE_PROFILE=$INFERENCE_PROFILE
 INFERENCE_BASE_URL=$INFERENCE_BASE_URL
 INFERENCE_API_KEY=$INFERENCE_API_KEY
