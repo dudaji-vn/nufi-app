@@ -1,4 +1,5 @@
 import { Types } from 'mongoose';
+import { randomBytes } from 'crypto';
 import { PrincipalType, SystemRoles } from 'librechat-data-provider';
 import { logger, isValidObjectIdString } from '@librechat/data-schemas';
 import type {
@@ -40,10 +41,25 @@ export interface AdminUsersDeps {
     principalType: PrincipalType;
     principalId: string | Types.ObjectId;
   }) => Promise<void>;
+  registerUser: (
+    user: {
+      email: string;
+      password: string;
+      confirm_password: string;
+      name: string;
+      username: string;
+    },
+    additionalData: { emailVerified?: boolean; role?: string },
+  ) => Promise<{ status: number; message?: string }>;
+  findUser: (
+    searchCriteria: FilterQuery<IUser>,
+    fieldsToSelect?: string | string[] | null,
+  ) => Promise<IUser | null>;
 }
 
 export function createAdminUsersHandlers(deps: AdminUsersDeps) {
-  const { findUsers, countUsers, deleteUserById, deleteConfig, deleteAclEntries } = deps;
+  const { findUsers, countUsers, deleteUserById, deleteConfig, deleteAclEntries, registerUser, findUser } =
+    deps;
 
   async function listUsersHandler(req: ServerRequest, res: Response) {
     try {
@@ -176,9 +192,47 @@ export function createAdminUsersHandlers(deps: AdminUsersDeps) {
     }
   }
 
+  async function createUserHandler(req: ServerRequest, res: Response) {
+    try {
+      const body = (req.body ?? {}) as { name?: string; email?: string; role?: string };
+      const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+      if (!email || !/.+@.+\..+/.test(email)) {
+        return res.status(400).json({ error: 'A valid email is required.' });
+      }
+
+      const existing = await findUser({ email }, '_id');
+      if (existing) {
+        return res.status(409).json({ error: 'A user with that email already exists.' });
+      }
+
+      const role = body.role === SystemRoles.ADMIN ? SystemRoles.ADMIN : SystemRoles.USER;
+      const local = email.split('@')[0] || 'user';
+      const name = typeof body.name === 'string' && body.name.trim() ? body.name.trim() : local;
+      const username = local.replace(/[^a-zA-Z0-9_.-]/g, '').slice(0, 40) || 'user';
+      const password = randomBytes(9).toString('base64url');
+
+      const result = await registerUser(
+        { email, password, confirm_password: password, name, username },
+        { emailVerified: true, role },
+      );
+      if (result.status !== 200) {
+        return res
+          .status(result.status || 400)
+          .json({ error: result.message || 'Could not create the user.' });
+      }
+
+      const user = await findUser({ email }, '_id name username email role emailVerified createdAt');
+      return res.status(201).json({ user, password });
+    } catch (error) {
+      logger.error('[adminUsers] createUser error:', error);
+      return res.status(500).json({ error: 'Failed to create user' });
+    }
+  }
+
   return {
     listUsers: listUsersHandler,
     searchUsers: searchUsersHandler,
+    createUser: createUserHandler,
     deleteUser: deleteUserHandler,
   };
 }
