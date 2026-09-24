@@ -109,3 +109,80 @@ def test_registry_push_also_mirrors_the_ghcr_hosted_third_party_images():
     assert "librechat-rag-api-dev-lite@sha256:" in out
     assert "ghcr.io/servercontainers/samba:a3.24.1-s4.23.8-r0" in out
     assert "ghcr.io/juanfont/headscale:v0.29.3" in out
+
+
+# --- offline-media bundle: `make save` (a site with NO LAN registry at all) ---
+
+def test_save_bundles_every_nufi_image_at_the_dest_tag_a_default_install_pulls():
+    # Same source->dest as registry-push: the box asks for what its .env names
+    # (main, box-main for studio), so the saved ref must be that, not the build tag.
+    out = make_n("save")
+    for image, tag in _tags_a_default_install_pulls().items():
+        assert f"ghcr.io/dudaji-vn/{image}:{tag}" in out, f"{image}:{tag}"
+
+
+def test_save_covers_every_nufi_image_the_mirror_covers():
+    # Pin `save` to the same compose-derived list as registry-push, so a new
+    # NuFi image cannot be mirrored-but-not-bundled (or vice versa).
+    out = make_n("save")
+    for image in NUFI_IMAGES:
+        assert f"ghcr.io/dudaji-vn/{image}:" in out, image
+
+
+def test_save_retags_the_build_tags_like_registry_push():
+    out = make_n("save")
+    assert "docker tag ghcr.io/dudaji-vn/nufichat:arm64-dev ghcr.io/dudaji-vn/nufichat:main" in out
+    assert "docker tag ghcr.io/dudaji-vn/nufichat-admin-panel:arm64-dev ghcr.io/dudaji-vn/nufichat-admin-panel:main" in out
+    assert "docker tag ghcr.io/dudaji-vn/nufi-studio:box-main ghcr.io/dudaji-vn/nufi-studio:box-main" in out
+
+
+def test_save_writes_one_tarball_by_default():
+    out = make_n("save")
+    assert "docker save -o nufi-box-images.tar" in out
+    assert out.count("docker save") == 1          # single tarball, not per-image
+
+
+def test_save_tar_path_is_overridable():
+    assert "docker save -o /mnt/usb/box.tar" in make_n("save", SAVE_TAR="/mnt/usb/box.tar")
+
+
+def test_save_includes_third_party_at_their_compose_default_refs():
+    out = make_n("save")
+    assert "caddy:2.10.0-alpine" in out
+    assert "mongo:4.4" in out
+    assert "pgvector/pgvector:pg16" in out
+    assert "ollama/ollama:0.33.3" in out
+    assert "ghcr.io/servercontainers/samba:a3.24.1-s4.23.8-r0" in out
+    assert "ghcr.io/juanfont/headscale:v0.29.3" in out          # self-host coordinator
+    assert "librechat-rag-api-dev-lite@sha256:" in out          # RAG pinned by digest on the way in
+
+
+def test_save_carries_rag_loadable_by_tag():
+    # A plain digest ref does not survive `docker load` on the box's image store,
+    # so RAG is retagged to a :main alias of the pinned digest and that is saved.
+    out = make_n("save")
+    assert "docker tag ghcr.io/danny-avila/librechat-rag-api-dev-lite@sha256:" in out
+    assert "ghcr.io/danny-avila/librechat-rag-api-dev-lite:main" in out
+
+
+def test_save_never_pushes_or_rewrites_to_a_registry():
+    # `save` is fully offline: it must not push, and must not rename third-party
+    # images under $(NUFI_REGISTRY)/... the way the mirror does.
+    out = make_n("save", REGISTRY="172.10.10.30:5001")
+    assert "docker push" not in out
+    assert "172.10.10.30:5001" not in out
+
+
+def test_third_party_pins_match_the_compose_defaults():
+    # Anti-drift: the Makefile pins can't fall behind the compose files.
+    compose = ((BOX / "docker-compose.yml").read_text()
+               + (BOX / "docker-compose.linux.yml").read_text())
+    for ref in ("caddy:2.10.0-alpine", "mongo:4.4",
+                "pgvector/pgvector:pg16", "ollama/ollama:0.33.3"):
+        assert ref in compose, ref                 # still the compose default
+        assert ref in make_n("save"), ref          # and the bundle carries it
+
+
+def test_load_reads_the_default_tarball_and_honors_the_override():
+    assert "docker load -i nufi-box-images.tar" in make_n("load")
+    assert "docker load -i /mnt/usb/box.tar" in make_n("load", SAVE_TAR="/mnt/usb/box.tar")

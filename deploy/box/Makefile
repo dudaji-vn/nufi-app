@@ -34,11 +34,21 @@ SAMBA_IMAGE ?= ghcr.io/servercontainers/samba:a3.24.1-s4.23.8-r0
 # next to the NuFi images. Pinned to the exact release in
 # deploy/coordinator/docker-compose.yml; served from the mirror under $(TAG).
 HEADSCALE_IMAGE ?= ghcr.io/juanfont/headscale:v0.29.3
+# The offline-media bundle (`make save`) also needs the box's Docker-Hub images,
+# which registry-push never mirrors. Pinned to the exact refs a plain --no-pull
+# box names in its compose (docker-compose.yml / docker-compose.linux.yml /
+# ../coordinator) — a box with no --registry reads THESE, not $(NUFI_REGISTRY)/…
+# tests/test_makefile.py asserts these stay equal to the compose defaults.
+SAVE_TAR ?= nufi-box-images.tar
+CADDY_IMAGE ?= caddy:2.10.0-alpine
+MONGO_IMAGE ?= mongo:4.4
+PGVECTOR_IMAGE ?= pgvector/pgvector:pg16
+OLLAMA_IMAGE ?= ollama/ollama:0.33.3
 CHAT_TAG ?= arm64-dev
 ADMIN_TAG ?= arm64-dev
 STUDIO_TAG ?= box-main
 
-.PHONY: images test config registry-up registry-push
+.PHONY: images test config registry-up registry-push save load
 images:
 	docker buildx build --platform $(PLATFORMS) --push -t ghcr.io/$(OWNER)/nufi-litellm:$(TAG) $(ROOT)/deploy/platform/litellm
 	docker buildx build --platform $(PLATFORMS) --push -t ghcr.io/$(OWNER)/nufi-ingest:$(TAG) $(ROOT)/deploy/platform/adapters/nufi-ingest
@@ -87,3 +97,48 @@ registry-push:
 	docker pull -q $(RAG_IMAGE) && docker tag $(RAG_IMAGE) $(PUSH_REGISTRY)/librechat-rag-api-dev-lite:$(TAG) && docker push $(PUSH_REGISTRY)/librechat-rag-api-dev-lite:$(TAG)
 	docker pull -q $(SAMBA_IMAGE) && docker tag $(SAMBA_IMAGE) $(PUSH_REGISTRY)/samba:$(TAG) && docker push $(PUSH_REGISTRY)/samba:$(TAG)
 	docker pull -q $(HEADSCALE_IMAGE) && docker tag $(HEADSCALE_IMAGE) $(PUSH_REGISTRY)/headscale:$(TAG) && docker push $(PUSH_REGISTRY)/headscale:$(TAG)
+
+# One tarball of every image a box (+ self-host coordinator) runs, tagged at the
+# refs install-box.sh --no-pull looks for after `docker load`, for a site with NO
+# LAN registry at all. Explicit per-image lines (like registry-push) so
+# `make -n save` shows every retag/pull/save. The NuFi images are retagged from
+# this machine's build tags to the dest tags a default .env names (main, box-main
+# for studio); the third-party ones are pulled at their compose defaults. RAG is
+# saved under a :main alias of its pinned digest so it survives `docker load` on
+# the box's (classic) image store — the same trick registry-push uses. On an
+# Apple-Silicon Mac building for an amd64 box, `docker pull --platform linux/amd64`
+# the amd64-only images first (nufi-works, mongo, ollama), as registry-push notes.
+save:
+	docker tag ghcr.io/$(OWNER)/nufichat:$(CHAT_TAG) ghcr.io/$(OWNER)/nufichat:$(TAG)
+	docker tag ghcr.io/$(OWNER)/nufichat-admin-panel:$(ADMIN_TAG) ghcr.io/$(OWNER)/nufichat-admin-panel:$(TAG)
+	docker tag ghcr.io/$(OWNER)/nufi-studio:$(STUDIO_TAG) ghcr.io/$(OWNER)/nufi-studio:box-$(TAG)
+	docker pull -q $(RAG_IMAGE) && docker tag $(RAG_IMAGE) ghcr.io/danny-avila/librechat-rag-api-dev-lite:$(TAG)
+	docker pull -q $(SAMBA_IMAGE)
+	docker pull -q $(HEADSCALE_IMAGE)
+	docker pull -q $(CADDY_IMAGE)
+	docker pull -q $(MONGO_IMAGE)
+	docker pull -q $(PGVECTOR_IMAGE)
+	docker pull -q $(OLLAMA_IMAGE)
+	docker save -o $(SAVE_TAR) \
+	  ghcr.io/$(OWNER)/nufichat:$(TAG) \
+	  ghcr.io/$(OWNER)/nufichat-admin-panel:$(TAG) \
+	  ghcr.io/$(OWNER)/nufi-console:$(TAG) \
+	  ghcr.io/$(OWNER)/nufi-litellm:$(TAG) \
+	  ghcr.io/$(OWNER)/nufi-ingest:$(TAG) \
+	  ghcr.io/$(OWNER)/nufi-studio:box-$(TAG) \
+	  ghcr.io/$(OWNER)/nufi-cron:$(TAG) \
+	  ghcr.io/$(OWNER)/nufi-works-egress:$(TAG) \
+	  ghcr.io/$(OWNER)/nufi-works:$(TAG) \
+	  ghcr.io/$(OWNER)/nufi-sandbox:$(TAG) \
+	  ghcr.io/danny-avila/librechat-rag-api-dev-lite:$(TAG) \
+	  $(SAMBA_IMAGE) \
+	  $(HEADSCALE_IMAGE) \
+	  $(CADDY_IMAGE) \
+	  $(MONGO_IMAGE) \
+	  $(PGVECTOR_IMAGE) \
+	  $(OLLAMA_IMAGE)
+
+# Box side (air-gapped machine): load the whole set, then install-box.sh --no-pull.
+load:
+	docker load -i $(SAVE_TAR)
+

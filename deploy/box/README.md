@@ -166,9 +166,9 @@ General → AirDrop & Handoff), and the registry would silently lose the port.
 entry, so Docker Desktop needs no change and no restart. The push also
 renames the images to the tags a default install asks for (`main`, and
 `box-main` for studio), whatever they are tagged locally, and it mirrors the
-two third-party images that live on ghcr.io as well (the RAG API and Samba) —
-without those a box that cannot reach GitHub gets most of the way through an
-install and then stops.
+three third-party images that live on ghcr.io as well (the RAG API, Samba, and
+— for a self-hosted coordinator — headscale) — without those a box that cannot
+reach GitHub gets most of the way through an install and then stops.
 
 On the box:
 
@@ -184,6 +184,42 @@ it is marked insecure. On Linux the installer does this for you: it writes
 (Docker Desktop), the installer only prints the step — add the registry
 yourself under Settings → Docker Engine → `insecure-registries`, then
 Apply & Restart.
+
+### A fully air-gapped box (no LAN registry at all)
+
+The registry above still needs a machine on the box's network. A site that is
+**completely offline** — no internet, not even a LAN mirror — takes its images
+on physical media instead.
+
+On a machine that *can* reach the images (the same one that would run the
+registry), build/pull them, then pack the whole set into one tarball:
+
+```bash
+make -C deploy/box images          # the six built images (skip if already built)
+make -C deploy/box save            # → nufi-box-images.tar (all 17 images, ~25 GB)
+```
+
+`save` writes one tarball tagged at exactly the references a `--no-pull`
+install looks for: the ten NuFi images at `main` (`box-main` for studio), the
+Docker-Hub images (`caddy`, `mongo`, `pgvector`, `ollama`), and the three ghcr
+third-party ones (the RAG API, Samba, and **headscale** — so a
+`--self-host-coordinator` box is covered too). Write it straight to the media
+with `SAVE_TAR=/mnt/usb/nufi-box-images.tar`, and carry it next to the same
+`deploy/box` checkout the registry flow uses. A `sha256sum nufi-box-images.tar`
+on both ends is worth the minute.
+
+On the box, load the set and install without pulling:
+
+```bash
+docker load -i nufi-box-images.tar          # or: make -C deploy/box load
+NUFI_RAG_IMAGE=ghcr.io/danny-avila/librechat-rag-api-dev-lite:main \
+  ./install-box.sh --yes --no-pull          # add --self-host-coordinator / --with-works as needed
+```
+
+The one `NUFI_RAG_IMAGE=` prefix is there because the RAG image is pinned
+upstream by digest, and `docker load` does not carry a digest — the bundle
+stores it under a `:main` alias of that exact digest, so the box names the
+alias instead.
 
 ## 4. Trust the certificate
 
@@ -992,7 +1028,9 @@ built yet:
   `nufi-box update` (see [Updating](#updating)) fetches straight from GitHub
   over TLS, checks the result, and rolls back automatically if it fails —
   but the archive is unsigned, nothing runs it on a schedule, and there is no
-  offline path for a box with no network at all.
+  offline path for *updating* a box with no network at all. (A first *install*
+  can now come from media — see [A fully air-gapped
+  box](#a-fully-air-gapped-box-no-lan-registry-at-all).)
 - **Dudaji reaching into your box.** `nufi-box support` (see [When something
   is wrong](#when-something-is-wrong)) is the local half only — it packages
   what the box already knows about itself into a file you send. It opens no
