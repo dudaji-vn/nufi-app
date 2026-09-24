@@ -18,6 +18,13 @@ echo "Trusting the box's certificate (sudo password may be requested)..."
 sudo cp "$TMP_CA" /usr/local/share/ca-certificates/nufi-box.crt
 sudo update-ca-certificates
 
+COORD_CA_B64="@COORD_CA_B64@"
+if [ -n "$COORD_CA_B64" ]; then
+  echo "Trusting the coordinator's certificate..."
+  printf '%s' "$COORD_CA_B64" | base64 -d | sudo tee /usr/local/share/ca-certificates/nufi-coordinator.crt >/dev/null
+  sudo update-ca-certificates
+fi
+
 echo "Connecting to the NuFi mesh..."
 # Do NOT add --advertise-tags here: headscale v0.29.3 rejects a pre-auth-key
 # registration that carries RequestTags, regardless of tagOwners. The

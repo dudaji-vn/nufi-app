@@ -30,6 +30,10 @@
 #                    the coordinator's headscale API key, so `nufi-box
 #                    invite | members | revoke` can talk to it. Optional:
 #                    without it the box joins but cannot invite anyone.
+#   --mesh-ca FILE   the coordinator's internal-CA root cert, for an on-prem /
+#                    air-gap coordinator (TLS_MODE=internal). Copied into the
+#                    box's data dir so tailscaled trusts the coordinator's TLS.
+#                    Not needed for a public (ACME) coordinator.
 #   --with-works     NUFI Works on this box (Ubuntu only): installs gVisor as a
 #                    Docker runtime and starts Works behind https://<box>:3003.
 #
@@ -71,6 +75,8 @@ while [ $# -gt 0 ]; do
     --auth-key=*) MESH_AUTH_KEY="${1#--auth-key=}"; [ -n "$MESH_AUTH_KEY" ] || die "--auth-key needs a value" ;;
     --mesh-api-key) [ $# -ge 2 ] || die "--mesh-api-key needs a value"; MESH_API_KEY="$2"; shift ;;
     --mesh-api-key=*) MESH_API_KEY="${1#--mesh-api-key=}"; [ -n "$MESH_API_KEY" ] || die "--mesh-api-key needs a value" ;;
+    --mesh-ca) [ $# -ge 2 ] || die "--mesh-ca needs a file path"; MESH_CA_SRC="$2"; shift ;;
+    --mesh-ca=*) MESH_CA_SRC="${1#--mesh-ca=}"; [ -n "$MESH_CA_SRC" ] || die "--mesh-ca needs a file path" ;;
     -h|--help) sed -n '2,35p' "$0"; exit 0 ;;
   esac
   shift
@@ -261,6 +267,14 @@ fi
 if [ -z "$MESH_SERVER_URL" ] && [ -n "$MESH_AUTH_KEY" ]; then
   die "--auth-key without --mesh: name the coordinator too, e.g. --mesh https://mesh.nufi.me"
 fi
+# --mesh-ca: an on-prem / air-gap coordinator's internal-CA root, so tailscaled
+# trusts its TLS. Validated here; copied into the box's data dir just after
+# NUFI_DATA_DIR is known, with MESH_CA_FILE pointed at the copy.
+MESH_CA_SRC="${MESH_CA_SRC:-}"
+if [ -n "$MESH_CA_SRC" ]; then
+  [ -n "$MESH_SERVER_URL" ] || die "--mesh-ca without --mesh: name the coordinator too, e.g. --mesh https://coordinator.local"
+  [ -f "$MESH_CA_SRC" ] || die "--mesh-ca: file not found: $MESH_CA_SRC"
+fi
 # --registry exists for a box that cannot reach ghcr.io. Two of the third-party
 # images live on ghcr.io as well (the RAG API and Samba), so pointing only the
 # NuFi images at the mirror leaves an install that still cannot finish — this
@@ -343,6 +357,15 @@ if [ -n "$_lan_says" ] && [ "$_lan_says" != "$BOX_IP" ]; then
   die "another machine on this network already answers as $BOX_HOST ($_lan_says; this machine is $BOX_IP). Two boxes cannot share a name — give this one another: BOX_NAME=<other> ./install-box.sh"
 fi
 NUFI_DATA_DIR="${NUFI_DATA_DIR:-$BOX_HOME/data}"
+
+# An on-prem / air-gap coordinator's internal-CA root (from --mesh-ca) is copied
+# into the box's own data dir so it persists and the tailscale container's bind
+# mount resolves; MESH_CA_FILE then points at the copy, not the system bundle.
+if [ -n "${MESH_CA_SRC:-}" ]; then
+  run mkdir -p "$NUFI_DATA_DIR"
+  run cp "$MESH_CA_SRC" "$NUFI_DATA_DIR/mesh-coordinator-ca.crt"
+  MESH_CA_FILE="$NUFI_DATA_DIR/mesh-coordinator-ca.crt"
+fi
 
 # ---------- who the department drives belong to ---------------------------------
 # The Samba account members log in as and the person who installed the box have

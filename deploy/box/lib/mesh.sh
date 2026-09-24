@@ -292,6 +292,20 @@ mesh_ca_b64() {
   base64 < "$ca" | tr -d '\n'
 }
 
+# mesh_coord_ca_b64 — base64 (single line) of the coordinator's own CA, but only
+# when it is an internal (on-prem / air-gap) CA rather than the public system
+# bundle. Empty for a public (ACME) coordinator, so the join file trusts nothing
+# extra. This is what lets a laptop's Tailscale verify an internal coordinator's
+# TLS at login time.
+mesh_coord_ca_b64() {
+  local ca="${MESH_CA_FILE:-}"
+  case "$ca" in
+    ""|/etc/ssl/certs/ca-certificates.crt) return 0 ;;
+  esac
+  [ -f "$ca" ] || return 0
+  base64 < "$ca" | tr -d '\n'
+}
+
 # mesh_render_template TEMPLATE OUT KEY=VALUE... — replace @KEY@ placeholders
 # with python3 (values may hold backslashes/newlines that would break sed).
 # A join file holds a live auth key and the box's CA, so it is created with
@@ -340,7 +354,7 @@ with os.fdopen(fd, "w") as f:
 # where it is and what to tell the member.
 mesh_invite() {
   local name="$1" os="$2" drives="$3"
-  local key ca_b64 drives_block ext template out data_dir
+  local key ca_b64 coord_ca_b64 drives_block ext template out data_dir
   data_dir="${NUFI_DATA_DIR:-$HERE/data}"
   ext="$(mesh_join_ext "$os")" || exit 2
   template="$HERE/lib/join-templates/$os.$ext"
@@ -357,12 +371,14 @@ mesh_invite() {
   fi
   key="$(mesh_preauth "$name")" || exit $?
   ca_b64="$(mesh_ca_b64)" || exit $?
+  coord_ca_b64="$(mesh_coord_ca_b64)"
   drives_block="$(mesh_drives_block "$os" "$BOX_MESH_HOST" "$drives")"
   mkdir -p "$data_dir/invites"
   out="$data_dir/invites/nufi-join-$name.$ext"
   MESH_JOIN_AUTH_KEY="$key" mesh_render_template "$template" "$out" \
     "MEMBER=$name" "MESH_SERVER_URL=$MESH_SERVER_URL" \
-    "BOX_MESH_HOST=$BOX_MESH_HOST" "CA_B64=$ca_b64" "DRIVES=$drives_block"
+    "BOX_MESH_HOST=$BOX_MESH_HOST" "CA_B64=$ca_b64" \
+    "COORD_CA_B64=$coord_ca_b64" "DRIVES=$drives_block"
   echo "Wrote $out"
   echo "Send it to $name (email or chat — not a public link): \"Run this file, then open https://${BOX_MESH_HOST}:3080 — the key inside works once.\""
 }
