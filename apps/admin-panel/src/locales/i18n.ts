@@ -2,11 +2,13 @@ import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
 import translationEn from './en/translation.json';
+import translationKo from './ko/translation.json';
 
 export const defaultNS = 'translation';
 
 export const resources = {
   en: { translation: translationEn },
+  ko: { translation: translationKo },
 } as const;
 
 i18n
@@ -16,6 +18,9 @@ i18n
     fallbackLng: {
       default: ['en'],
     },
+    supportedLngs: ['en', 'ko'],
+    load: 'languageOnly',
+    nonExplicitSupportedLngs: true,
     fallbackNS: 'translation',
     ns: ['translation'],
     debug: false,
