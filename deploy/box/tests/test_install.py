@@ -584,6 +584,39 @@ def test_an_explicit_third_party_image_wins_over_the_registry_rewrite():
     assert "NUFI_RAG_IMAGE=my.registry/rag:2" in out
 
 
+# --- air-gap: the self-hosted coordinator's headscale from the LAN registry ---
+
+def test_a_self_host_registry_box_pulls_headscale_from_the_lan_registry():
+    # headscale (deploy/coordinator) is a ghcr image the self-host box now
+    # needs; a --registry box must pull it from the mirror, not ghcr.io. It is
+    # recorded in .env and handed to the coordinator bootstrap as
+    # COORD_HEADSCALE_IMAGE.
+    out = dry("--self-host-coordinator", "--registry", "10.0.0.5:5000", NUFI_BOX_FAKE_OS="Linux")
+    assert "NUFI_HEADSCALE_IMAGE=10.0.0.5:5000/headscale:main" in out
+    assert "COORD_HEADSCALE_IMAGE=10.0.0.5:5000/headscale:main" in out
+
+
+def test_a_self_host_box_without_a_registry_uses_the_pinned_headscale():
+    # No registry → the box passes no override; the coordinator's own pinned
+    # default applies, so the plan carries no COORD_HEADSCALE_IMAGE.
+    out = dry("--self-host-coordinator", NUFI_BOX_FAKE_OS="Linux")
+    assert re.search(r"^NUFI_HEADSCALE_IMAGE=$", out, re.M), out
+    assert "COORD_HEADSCALE_IMAGE" not in out
+
+
+def test_a_registry_box_records_headscale_but_a_non_registry_box_does_not():
+    reg = dry("--registry", "10.0.0.5:5000", NUFI_BOX_FAKE_OS="Linux")
+    assert "NUFI_HEADSCALE_IMAGE=10.0.0.5:5000/headscale:main" in reg
+    bare = dry(NUFI_BOX_FAKE_OS="Linux")
+    assert re.search(r"^NUFI_HEADSCALE_IMAGE=$", bare, re.M), bare
+
+
+def test_an_explicit_headscale_image_wins_over_the_registry_rewrite():
+    out = dry("--registry", "10.0.0.5:5000", NUFI_BOX_FAKE_OS="Linux",
+              NUFI_HEADSCALE_IMAGE="my.registry/headscale:9")
+    assert "NUFI_HEADSCALE_IMAGE=my.registry/headscale:9" in out
+
+
 # --- Task 6: --mesh / --auth-key ----------------------------------------------
 
 def test_mesh_flags_write_the_coordinator_into_env():

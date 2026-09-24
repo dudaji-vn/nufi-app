@@ -17,7 +17,7 @@ services:
   # host port, since NAT'd clients hit it directly, not through Caddy.
   # ---------------------------------------------------------------------------
   headscale:
-    image: ghcr.io/juanfont/headscale:v0.29.3
+    image: ${COORD_HEADSCALE_IMAGE:-ghcr.io/juanfont/headscale:v0.29.3}
     restart: unless-stopped
     command: serve
     volumes:
