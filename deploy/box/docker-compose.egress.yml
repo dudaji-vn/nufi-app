@@ -1,0 +1,48 @@
+# Box-wide egress enforcement (opt-in: install-box.sh --egress-enforce /
+# NUFI_EGRESS_ENFORCE=1). Fail-closed — the works-sandbox pattern applied to the
+# whole box: `box` becomes internal, so no box service has an L3 route out,
+# regardless of whether it honours HTTP_PROXY; the one controlled exit is
+# box-egress, an allowlisting forward proxy (the works-egress image) that is the
+# ONLY member of a second, non-internal bridge, box-egress-net — exactly as
+# works-egress is the only member of works-sandbox with a route out. Layered
+# last, like the mesh / selfhost overlays; a box without the flag never sees
+# this file.
+#
+# Requires the CONTAINER model (INFERENCE_PROFILE=ollama-docker): once `box` is
+# sealed, host.docker.internal (the host-gateway ollama) is unreachable, so the
+# installer refuses the host-ollama and external-inference profiles under this
+# flag. The published web ports keep answering — port publishing is inbound
+# DNAT, orthogonal to the internal-network outbound block — and intra-box
+# service-to-service traffic is unaffected (already proven by works-sandbox).
+# See README "Sealing the box: egress enforcement" and the deferred e2e proof.
+networks:
+  box:
+    internal: true
+  box-egress-net:
+    driver: bridge
+
+services:
+  box-egress:
+    image: ${NUFI_REGISTRY:-ghcr.io/dudaji-vn}/nufi-works-egress:${NUFI_WORKS_EGRESS_TAG:-main}
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
+    environment:
+      # The box allowlist feeds the works-egress image's existing var; empty by
+      # default = air-gap (nothing reachable). Bare hostnames, comma-separated,
+      # validated by the image's render.sh (no scheme / path / port / glob /
+      # address).
+      WORKS_EGRESS_ALLOW: ${NUFI_EGRESS_ALLOW:-}
+      BOX_HOST: ${BOX_HOST}
+    healthcheck:
+      # The image ships no HEALTHCHECK; the same 403 probe works-egress uses — a
+      # refusal is the one answer that proves the filter is actually loaded.
+      test: ["CMD-SHELL", "http_proxy=http://127.0.0.1:3128 wget -S -T 5 -O /dev/null http://healthcheck.invalid/ 2>&1 | grep -q ' 403 '"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks: [box, box-egress-net]

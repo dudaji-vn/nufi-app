@@ -2091,3 +2091,21 @@ def test_update_leaves_the_coordinator_alone_on_a_plain_box(tmp_path):
     # a plain box never fetched deploy/coordinator — update must not touch it
     assert (coord / "docker-compose.yml").read_text() == "COORD-OLD\n"
     assert (coord / "OLD_ONLY.txt").exists()
+
+
+# --- nufi-box up reads back the egress seal (a restart must not un-seal) ------
+
+def test_up_layers_the_egress_overlay_when_the_env_says_the_box_enforces(tmp_path):
+    envf = tmp_path / ".env"
+    envf.write_text("NUFI_DATA_DIR=%s\nBOX_NAME=nufi\nBOX_HOST=nufi.local\nNUFI_EGRESS_ENFORCE=1\n" % tmp_path)
+    r = cli("up", NUFI_BOX_ENV=str(envf), NUFI_BOX_FAKE_OS="Linux")
+    assert r.returncode == 0, r.stderr
+    assert "docker-compose.egress.yml" in r.stdout
+
+
+def test_up_leaves_the_egress_overlay_out_on_a_plain_box(tmp_path):
+    envf = tmp_path / ".env"
+    envf.write_text("NUFI_DATA_DIR=%s\nBOX_NAME=nufi\nBOX_HOST=nufi.local\nNUFI_EGRESS_ENFORCE=0\n" % tmp_path)
+    r = cli("up", NUFI_BOX_ENV=str(envf), NUFI_BOX_FAKE_OS="Linux")
+    assert r.returncode == 0, r.stderr
+    assert "docker-compose.egress.yml" not in r.stdout

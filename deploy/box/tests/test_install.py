@@ -1210,3 +1210,43 @@ def test_a_self_host_rerun_keeps_the_coordinator_answers(tmp_path):
     assert "MESH_SERVER_HOST=coordinator.internal" in out
     assert "MESH_BASE_DOMAIN=box.internal" in out
     assert "MESH_SERVER_URL=https://coordinator.internal" in out
+
+
+# --- --egress-enforce: seal the box network (opt-in, Ubuntu, container model) ---
+
+def test_egress_enforce_layers_the_overlay_and_records_it_in_env():
+    out = dry("--egress-enforce", NUFI_BOX_FAKE_OS="Linux", INFERENCE_PROFILE="ollama-docker")
+    assert "docker-compose.egress.yml" in out
+    assert "NUFI_EGRESS_ENFORCE=1" in out
+    # a plain Linux box does not seal
+    plain = dry(NUFI_BOX_FAKE_OS="Linux")
+    assert "docker-compose.egress.yml" not in plain
+    assert "NUFI_EGRESS_ENFORCE=0" in plain
+
+
+def test_egress_enforce_needs_ubuntu():
+    r = install("--egress-enforce", NUFI_BOX_FAKE_OS="Darwin")
+    assert r.returncode != 0
+    assert "Ubuntu" in r.stderr, r.stderr
+    assert ".env written" not in r.stdout
+
+
+def test_egress_enforce_refuses_host_ollama():
+    r = install("--egress-enforce", NUFI_BOX_FAKE_OS="Linux", INFERENCE_PROFILE="ollama")
+    assert r.returncode != 0
+    assert "host.docker.internal" in r.stderr and "ollama-docker" in r.stderr, r.stderr
+
+
+def test_egress_enforce_refuses_external_inference():
+    for profile in ("remote", "cloud"):
+        r = install("--egress-enforce", NUFI_BOX_FAKE_OS="Linux", INFERENCE_PROFILE=profile)
+        assert r.returncode != 0, profile
+        assert "external inference" in r.stderr, (profile, r.stderr)
+
+
+def test_egress_enforce_writes_the_allow_list_default_empty():
+    out = dry("--egress-enforce", NUFI_BOX_FAKE_OS="Linux", INFERENCE_PROFILE="ollama-docker")
+    assert re.search(r"^NUFI_EGRESS_ALLOW=$", out, re.M), out
+    out = dry("--egress-enforce", NUFI_BOX_FAKE_OS="Linux", INFERENCE_PROFILE="ollama-docker",
+              NUFI_EGRESS_ALLOW="pypi.org")
+    assert "NUFI_EGRESS_ALLOW=pypi.org" in out
