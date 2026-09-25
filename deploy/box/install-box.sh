@@ -6,7 +6,7 @@
 #              [--no-pull] [--emulate-amd64] [--no-trust]
 #              [--registry HOST[:PORT][/path]]
 #              [--mesh URL --auth-key KEY [--mesh-api-key KEY]]
-#              [--with-works] [--self-host-coordinator]
+#              [--with-works] [--self-host-coordinator] [--egress-enforce]
 #
 # Asks four questions (box name, admin email, departments, inference profile),
 # generates every secret here, renders the LiteLLM config, starts the stack,
@@ -41,6 +41,10 @@
 #                    (Ubuntu only, deploy/coordinator, TLS_MODE=internal): a
 #                    self-contained appliance with no external VPS. Mints its
 #                    own keys on first boot; mutually exclusive with --mesh.
+#   --egress-enforce seal the box network (Ubuntu only): no box service can
+#                    reach the internet — the fail-closed air-gap posture. Needs
+#                    the container model (ollama-docker); an allowlist opens
+#                    specific hosts (NUFI_EGRESS_ALLOW, empty by default).
 #
 # NUFI_BOX_COMPOSE_EXTRA — space-separated extra compose files to layer last,
 # for a machine that needs a site-local tweak (a port map when something else
@@ -54,7 +58,7 @@ warn() { printf '\033[1;33m !!\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31m xx\033[0m %s\n' "$*" >&2; exit 1; }
 run()  { if [ "$DRY" = 1 ]; then printf '  $ %s\n' "$*"; else "$@"; fi; }
 
-YES=0; DRY=0; SRC=""; NO_PULL=0; NO_TRUST=0; WITH_WORKS=0
+YES=0; DRY=0; SRC=""; NO_PULL=0; NO_TRUST=0; WITH_WORKS=0; EGRESS_ENFORCE=0
 # The flags this run was given, requoted, so the docker-group re-exec in the
 # Linux prerequisites below can repeat this command exactly. Captured here
 # because the loop that follows consumes "$@".
@@ -83,7 +87,8 @@ while [ $# -gt 0 ]; do
     --mesh-ca) [ $# -ge 2 ] || die "--mesh-ca needs a file path"; MESH_CA_SRC="$2"; shift ;;
     --mesh-ca=*) MESH_CA_SRC="${1#--mesh-ca=}"; [ -n "$MESH_CA_SRC" ] || die "--mesh-ca needs a file path" ;;
     --self-host-coordinator) NUFI_SELF_HOST_COORD=1 ;;
-    -h|--help) sed -n '2,43p' "$0"; exit 0 ;;
+    --egress-enforce) EGRESS_ENFORCE=1 ;;
+    -h|--help) sed -n '2,49p' "$0"; exit 0 ;;
   esac
   shift
 done
@@ -140,6 +145,14 @@ fi
 if [ "${NUFI_SELF_HOST_COORD:-0}" = 1 ]; then
   [ "$OS" = "Linux" ] || die "--self-host-coordinator needs Ubuntu: the box's mesh node needs the host's own network namespace, which Docker Desktop cannot give a Mac. Self-host on the Linux machine that will be the box."
   [ -z "${MESH_SERVER_URL:-}" ] || die "--self-host-coordinator and --mesh are mutually exclusive: either this box runs its own coordinator (no external VPS), or it joins an external one — not both."
+fi
+# --egress-enforce, refused on a Mac before the Darwin branch installs anything
+# (same reason as --with-works): sealing the box network makes the host-gateway
+# model host unreachable, and Docker Desktop cannot give a Mac the container one
+# that replaces it. The container-model / external-inference checks come later,
+# once INFERENCE_PROFILE is resolved.
+if [ "${EGRESS_ENFORCE:-0}" = 1 ] && [ "$OS" != "Linux" ]; then
+  die "--egress-enforce needs Ubuntu: sealing the box network makes host.docker.internal unreachable, and Docker Desktop cannot host the container model that replaces it. Enforce egress on the Linux machine that will be the box."
 fi
 have openssl || die "openssl is required"
 # Two packages the box's own commands need, installed here so a day-one box
@@ -467,6 +480,20 @@ else sec INGEST_PASSWORD "gen_hex 16"; fi
 # Works: on when this run asked for it, or when a previous run did (a re-run
 # without the flag must not switch a department's Works off).
 NUFI_WORKS="${NUFI_WORKS:-0}"; [ "$WITH_WORKS" = 1 ] && NUFI_WORKS=1
+# Egress enforcement: the flag turns it on, a re-run keeps whatever .env had
+# (REUSE_VARS carries NUFI_EGRESS_ENFORCE/ALLOW). Validated here, once
+# INFERENCE_PROFILE is known — sealing the box network only works with the
+# container model; the host-gateway and external profiles are refused with a
+# searchable reason. Reached on Linux only (the Mac case died at the early
+# guard above).
+NUFI_EGRESS_ENFORCE="${NUFI_EGRESS_ENFORCE:-0}"; [ "$EGRESS_ENFORCE" = 1 ] && NUFI_EGRESS_ENFORCE=1
+NUFI_EGRESS_ALLOW="${NUFI_EGRESS_ALLOW:-}"
+if [ "$NUFI_EGRESS_ENFORCE" = 1 ]; then
+  case "$INFERENCE_PROFILE" in
+    ollama) die "--egress-enforce needs the container model: host.docker.internal is unreachable once the box network is sealed. Re-run with INFERENCE_PROFILE=ollama-docker (the on-box model), which is reached inside the network." ;;
+    remote|cloud) die "--egress-enforce does not support external inference yet: reaching an outside gateway needs the egress proxy to route it, which is not in this build. Keep inference local (ollama-docker), or install without --egress-enforce." ;;
+  esac
+fi
 if [ "$NUFI_WORKS" = 1 ]; then
   WORKS_PUBLIC_URL="https://$BOX_HOST:3003"
   # The gid that owns the socket, so the works container's uid 1000 can open
@@ -529,6 +556,8 @@ NUFI_INGEST_TAG=${NUFI_INGEST_TAG:-main}
 NUFI_CRON_TAG=${NUFI_CRON_TAG:-main}
 NUFI_WORKS_EGRESS_TAG=${NUFI_WORKS_EGRESS_TAG:-main}
 WORKS_EGRESS_ALLOW=${WORKS_EGRESS_ALLOW:-}
+NUFI_EGRESS_ENFORCE=$NUFI_EGRESS_ENFORCE
+NUFI_EGRESS_ALLOW=$NUFI_EGRESS_ALLOW
 NUFI_WORKS=$NUFI_WORKS
 NUFI_WORKS_TAG=${NUFI_WORKS_TAG:-main}
 NUFI_SANDBOX_TAG=${NUFI_SANDBOX_TAG:-main}
@@ -820,6 +849,10 @@ if [ "$OS" = "Linux" ]; then
   [ -n "$MESH_SERVER_URL" ] && [ "$NUFI_SELF_HOST_COORD" != 1 ] \
     && COMPOSE="$COMPOSE -f docker-compose.mesh.yml --profile mesh"
   [ "$NUFI_WORKS" = 1 ] && COMPOSE="$COMPOSE --profile works"
+  # Sealing the box network is the last layer, so it applies over every service
+  # the layers above added (works-egress included). Linux only, container model
+  # only — both already enforced above.
+  [ "$NUFI_EGRESS_ENFORCE" = 1 ] && COMPOSE="$COMPOSE -f docker-compose.egress.yml"
 fi
 for f in ${NUFI_BOX_COMPOSE_EXTRA:-}; do
   [ -f "$f" ] || die "NUFI_BOX_COMPOSE_EXTRA: no such file: $f"

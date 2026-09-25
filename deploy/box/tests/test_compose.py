@@ -125,7 +125,7 @@ def test_env_example_covers_every_variable():
     text = "\n".join((BOX / f).read_text()
                      for f in ("docker-compose.yml", "docker-compose.linux.yml",
                                "docker-compose.gpu.yml", "docker-compose.mesh.yml",
-                               "docker-compose.mesh-selfhost.yml")
+                               "docker-compose.mesh-selfhost.yml", "docker-compose.egress.yml")
                      if (BOX / f).exists())
     used = set(re.findall(r"\$\{([A-Z0-9_]+)(?::-[^}]*)?\}", text))
     declared = set(re.findall(r"^([A-Z0-9_]+)=", (BOX / ".env.example").read_text(), re.M))
@@ -507,3 +507,83 @@ def test_the_console_opens_the_works_door_only_when_the_box_has_one():
 def test_caddy_publishes_the_works_port():
     ports = {int(p["published"]) for p in render()["services"]["caddy"]["ports"]}
     assert 3003 in ports, ports
+
+
+# --- box-wide egress enforcement (docker-compose.egress.yml, --egress-enforce) ---
+
+def _nets(svc):
+    n = svc.get("networks") or {}
+    return set(n.keys()) if isinstance(n, dict) else set(n)
+
+
+def test_the_egress_overlay_makes_the_box_network_internal():
+    cfg = render("docker-compose.yml", "docker-compose.egress.yml")
+    assert cfg["networks"]["box"]["internal"] is True
+
+
+def test_a_plain_box_keeps_the_box_network_route_out():
+    # Non-destabilizing: without the overlay the box network is never sealed,
+    # with or without the other layers.
+    assert render()["networks"]["box"].get("internal") is not True
+    cfg = render("docker-compose.yml", "docker-compose.linux.yml", profiles=("linux",))
+    assert cfg["networks"]["box"].get("internal") is not True
+
+
+def test_the_egress_overlay_adds_one_proxy_on_a_second_bridge():
+    cfg = render("docker-compose.yml", "docker-compose.egress.yml")
+    svc = cfg["services"]["box-egress"]
+    assert _nets(svc) == {"box", "box-egress-net"}
+    assert cfg["networks"]["box-egress-net"].get("internal") is not True  # the one route out
+    assert "ports" not in svc                                             # never published
+    assert "/nufi-works-egress:" in svc["image"]                         # reuses the works-egress image
+
+
+def test_the_only_service_with_a_route_out_under_enforcement_is_the_egress_proxy():
+    # box is internal; the sole member of the non-internal box-egress-net is the
+    # proxy. tailscale is network_mode: host (off box entirely), so the mesh node
+    # is not a second door here.
+    cfg = render("docker-compose.yml", "docker-compose.linux.yml", "docker-compose.mesh.yml",
+                 "docker-compose.egress.yml", profiles=("linux", "mesh", "works"),
+                 MESH_SERVER_URL="https://mesh.example", MESH_AUTH_KEY="tskey-x")
+    out = sorted(n for n, s in cfg["services"].items() if "box-egress-net" in _nets(s))
+    assert out == ["box-egress"], out
+
+
+def test_the_egress_proxy_carries_the_box_allowlist():
+    empty = render("docker-compose.yml", "docker-compose.egress.yml")["services"]["box-egress"]
+    assert empty["environment"]["WORKS_EGRESS_ALLOW"] == ""
+    allow = render("docker-compose.yml", "docker-compose.egress.yml",
+                   NUFI_EGRESS_ALLOW="pypi.org")["services"]["box-egress"]
+    assert allow["environment"]["WORKS_EGRESS_ALLOW"] == "pypi.org"
+
+
+def test_enforcement_does_not_move_the_published_web_ports():
+    # Feasibility #1 (static portion): publishing is declared unchanged. Caddy
+    # keeps the web ports and stays their only publisher.
+    cfg = render("docker-compose.yml", "docker-compose.egress.yml")
+    pub = {int(p["target"]) for p in cfg["services"]["caddy"].get("ports", [])}
+    assert {80, 3080, 4000} <= pub, pub
+    for name, svc in cfg["services"].items():
+        if name == "caddy":
+            continue
+        for p in svc.get("ports", []):
+            assert int(p["target"]) not in (80, 3080, 3001, 3002, 7860, 4000), (name, p)
+
+
+def test_enforcement_keeps_every_service_on_the_box_network():
+    # Feasibility #3 (static portion): intra-box services all still attach to box.
+    cfg = render("docker-compose.yml", "docker-compose.egress.yml")
+    for name, svc in cfg["services"].items():
+        if svc.get("network_mode") == "host":
+            continue
+        assert "box" in _nets(svc), name
+
+
+def test_the_egress_proxy_follows_the_house_rules():
+    svc = render("docker-compose.yml", "docker-compose.egress.yml")["services"]["box-egress"]
+    assert svc["restart"] == "unless-stopped"
+    assert "healthcheck" in svc
+    assert not svc["image"].endswith(":latest")
+    reg = render("docker-compose.yml", "docker-compose.egress.yml",
+                 NUFI_REGISTRY="10.0.0.5:5000")["services"]["box-egress"]
+    assert reg["image"].startswith("10.0.0.5:5000/")

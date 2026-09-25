@@ -659,6 +659,45 @@ other measure.
 Nothing here runs an agent yet: the sandboxes themselves arrive with the next
 piece, which installs the provider and registers the environment.
 
+### Sealing the box: egress enforcement
+
+The sandbox posture above — a fail-closed network whose only exit is an
+allowlisting proxy — is the whole box's posture too when you install with
+`--egress-enforce` (Ubuntu only):
+
+```bash
+./install-box.sh --yes --egress-enforce      # add --self-host-coordinator for a full appliance
+```
+
+It flips the `box` network to `internal: true`, so **no box service has a route
+to the internet** — regardless of whether any of them would otherwise honour an
+`HTTP_PROXY`; the guarantee is the network, not the application. The one
+controlled exit is `box-egress`, the same allowlisting proxy `works-egress` is,
+and the allow list is empty by default — **air-gap: nothing outside is
+reachable.** Open specific hosts the same way as the sandbox list:
+
+```
+NUFI_EGRESS_ALLOW=some-host.example
+```
+
+Because sealing the box makes `host.docker.internal` (the host-gateway model)
+unreachable, `--egress-enforce` **requires the container model**
+(`ollama-docker`) and refuses the host-Ollama and external-inference profiles.
+The published web ports keep answering — publishing is inbound, unaffected by
+the outbound seal — so the box stays reachable on the LAN and the mesh, and
+intra-box traffic (chat → gateway → model, ingest → chat) is untouched.
+
+What this does and does not cover, plainly: the seal drops **every IP packet a
+box service sends outside its network** — the real guarantee in the air-gap
+default. It does **not** stop exfiltration through a host you have added to the
+allow list (including DNS tricks to an allowed resolver), it is a network
+boundary and not a capability one (the Works container holds the Docker socket,
+which is its own trust decision), and the host itself and the mesh node
+(`network_mode: host`) sit outside the box network and are governed by the
+coordinator's ACLs, not by this flip. The static tests prove the topology; a
+running-box proof that a packet is actually dropped is the deferred end-to-end
+check.
+
 ### NUFI Works on the box
 
 `install-box.sh --with-works` (Ubuntu only) adds NUFI Works at

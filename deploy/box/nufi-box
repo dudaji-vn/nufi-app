@@ -71,6 +71,12 @@ COMPOSE="docker compose -f $HERE/docker-compose.yml"
 # --with-works (NUFI_WORKS=1). Without this line a works box's `restart` would
 # bring up everything but the two services the flag was for.
 [ "${NUFI_WORKS:-0}" = "1" ] && COMPOSE="$COMPOSE --profile works"
+# The egress seal is part of an enforcing box's stack, layered last so it
+# applies over every service. Without this line a day-two `restart` would bring
+# the box back up UNSEALED — the same silent-downgrade hazard the gpu.yml line
+# above guards against.
+[ "$OS" = "Linux" ] && [ "${NUFI_EGRESS_ENFORCE:-0}" = "1" ] \
+  && COMPOSE="$COMPOSE -f $HERE/docker-compose.egress.yml"
 # Same check the installer makes (install-box.sh): docker compose treats a
 # missing -f as an empty override and starts a stack without whatever the
 # site-local file was there to change -- a port map, a mount, a memory cap.
