@@ -1096,6 +1096,26 @@ def test_a_rerun_keeps_works_on_without_the_flag(tmp_path):
     assert "NUFI_WORKS=1" in out
 
 
+def test_owner_console_flag_enables_the_profile_and_a_password():
+    out = dry("--owner-console")
+    assert "--profile owner-console" in out
+    assert "NUFI_OWNER_CONSOLE=1" in out
+    assert re.search(r"^BOX_OWNER_PASSWORD=\S+", out, re.M)
+    assert re.search(r"^BOX_OWNER_SESSION_SECRET=\S+", out, re.M)
+    assert "Owner console:" in out and ":3009" in out
+
+
+def test_without_the_flag_there_is_no_owner_console():
+    # "Off by default" = the profile is not added, NUFI_OWNER_CONSOLE stays 0, and
+    # the banner is silent. The secrets ARE still generated (every box gets them,
+    # like ADMIN_PASSWORD / WORKS_AUTH_SECRET), so do NOT assert their absence.
+    out = dry()
+    assert "--profile owner-console" not in out
+    assert "NUFI_OWNER_CONSOLE=1" not in out
+    assert "NUFI_OWNER_CONSOLE=0" in out
+    assert "Owner console:" not in out
+
+
 def test_a_rerun_keeps_a_custom_update_source(tmp_path):
     """NUFI_BOX_SOURCE (nufi-box update's own mirror override) has to be in
     render_env's fixed key list, or a re-run's `render_env > .env` silently

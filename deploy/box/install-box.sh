@@ -7,6 +7,7 @@
 #              [--registry HOST[:PORT][/path]]
 #              [--mesh URL --auth-key KEY [--mesh-api-key KEY]]
 #              [--with-works] [--self-host-coordinator] [--egress-enforce]
+#              [--owner-console]
 #
 # Asks four questions (box name, admin email, departments, inference profile),
 # generates every secret here, renders the LiteLLM config, starts the stack,
@@ -45,6 +46,10 @@
 #                    reach the internet — the fail-closed air-gap posture. Needs
 #                    the container model (ollama-docker); an allowlist opens
 #                    specific hosts (NUFI_EGRESS_ALLOW, empty by default).
+#   --owner-console  turn on the Box Owner Console (Caddy :3009): a small
+#                    dashboard for the box owner, separate from the admin
+#                    panel. Generates BOX_OWNER_PASSWORD, printed in the
+#                    banner once the box is up.
 #
 # NUFI_BOX_COMPOSE_EXTRA — space-separated extra compose files to layer last,
 # for a machine that needs a site-local tweak (a port map when something else
@@ -88,7 +93,8 @@ while [ $# -gt 0 ]; do
     --mesh-ca=*) MESH_CA_SRC="${1#--mesh-ca=}"; [ -n "$MESH_CA_SRC" ] || die "--mesh-ca needs a file path" ;;
     --self-host-coordinator) NUFI_SELF_HOST_COORD=1 ;;
     --egress-enforce) EGRESS_ENFORCE=1 ;;
-    -h|--help) sed -n '2,49p' "$0"; exit 0 ;;
+    --owner-console) NUFI_OWNER_CONSOLE=1 ;;
+    -h|--help) sed -n '2,54p' "$0"; exit 0 ;;
   esac
   shift
 done
@@ -276,6 +282,10 @@ REUSE_VARS="$REUSE_VARS NUFI_SMB_UID NUFI_SMB_GID"
 # an operator's .env edit would have survived exactly one update, gone the
 # moment this script next rewrote .env.
 REUSE_VARS="$REUSE_VARS NUFI_BOX_SOURCE"
+# NUFI_OWNER_CONSOLE and its two secrets: a re-install without --owner-console
+# must not blank a console a previous run turned on, or generate a fresh
+# password an already-invited owner no longer knows.
+REUSE_VARS="$REUSE_VARS NUFI_OWNER_CONSOLE BOX_OWNER_PASSWORD BOX_OWNER_SESSION_SECRET"
 for v in $REUSE_VARS; do eval "_caller_$v=\${$v:-}"; done
 if [ -f "$NUFI_BOX_ENV" ]; then
   ok ".env exists; keeping its answers and secrets"
@@ -465,6 +475,10 @@ sec POSTGRES_PASSWORD "gen_hex 16"; sec MONGO_PASSWORD "gen_hex 16"
 sec ADMIN_PASSWORD "gen_hex 8"
 sec LANGFLOW_SECRET_KEY "gen_fernet"; sec STUDIO_SUPERUSER_PASSWORD "gen_hex 12"
 sec ADMIN_SESSION_SECRET "gen_hex 32"; sec SAMBA_PASSWORD "gen_hex 8"
+# Generated unconditionally, like every secret above, regardless of whether
+# --owner-console is on: a later .env flip-on then already has them.
+sec BOX_OWNER_PASSWORD "gen_hex 8"
+sec BOX_OWNER_SESSION_SECRET "gen_hex 32"
 sec WORKS_AUTH_SECRET "gen_hex 32"; sec WORKS_OIDC_SECRET "gen_hex 32"
 # The ingest daemon runs as the admin by default. Whoever creates a department
 # team owns it, and the daemon is the only thing that ever creates one — so if
@@ -494,6 +508,12 @@ if [ "$NUFI_EGRESS_ENFORCE" = 1 ]; then
     remote|cloud) die "--egress-enforce does not support external inference yet: reaching an outside gateway needs the egress proxy to route it, which is not in this build. Keep inference local (ollama-docker), or install without --egress-enforce." ;;
   esac
 fi
+# Owner console: on when this run asked for it, or when a previous run did (a
+# re-run without the flag must not switch it back off — NUFI_OWNER_CONSOLE is
+# in REUSE_VARS below). The image tag defaults like the other NUFI_*_TAG
+# values in render_env.
+NUFI_OWNER_CONSOLE="${NUFI_OWNER_CONSOLE:-0}"
+NUFI_OWNER_CONSOLE_TAG="${NUFI_OWNER_CONSOLE_TAG:-main}"
 if [ "$NUFI_WORKS" = 1 ]; then
   WORKS_PUBLIC_URL="https://$BOX_HOST:3003"
   # The gid that owns the socket, so the works container's uid 1000 can open
@@ -598,6 +618,10 @@ LANGFLOW_SECRET_KEY=$LANGFLOW_SECRET_KEY
 STUDIO_SUPERUSER_PASSWORD=$STUDIO_SUPERUSER_PASSWORD
 STUDIO_API_KEY=$STUDIO_API_KEY
 ADMIN_SESSION_SECRET=$ADMIN_SESSION_SECRET
+NUFI_OWNER_CONSOLE=$NUFI_OWNER_CONSOLE
+NUFI_OWNER_CONSOLE_TAG=$NUFI_OWNER_CONSOLE_TAG
+BOX_OWNER_PASSWORD=$BOX_OWNER_PASSWORD
+BOX_OWNER_SESSION_SECRET=$BOX_OWNER_SESSION_SECRET
 SAMBA_PASSWORD=$SAMBA_PASSWORD
 MESH_SERVER_URL=$MESH_SERVER_URL
 MESH_AUTH_KEY=$MESH_AUTH_KEY
@@ -854,6 +878,9 @@ if [ "$OS" = "Linux" ]; then
   # only — both already enforced above.
   [ "$NUFI_EGRESS_ENFORCE" = 1 ] && COMPOSE="$COMPOSE -f docker-compose.egress.yml"
 fi
+# The owner console is a plain web service (no host networking), so it runs on
+# any box, unlike the Linux-only layers above.
+[ "$NUFI_OWNER_CONSOLE" = 1 ] && COMPOSE="$COMPOSE --profile owner-console"
 for f in ${NUFI_BOX_COMPOSE_EXTRA:-}; do
   [ -f "$f" ] || die "NUFI_BOX_COMPOSE_EXTRA: no such file: $f"
   COMPOSE="$COMPOSE -f $f"
@@ -1099,9 +1126,11 @@ cat <<EOF
   Agents:      https://$BOX_HOST:3001/choose
   Console:     https://$BOX_HOST:3001
   Admin panel: https://$BOX_HOST:3002
+$( [ "$NUFI_OWNER_CONSOLE" = 1 ] && printf '\n  Owner console: https://%s:3009   (owner password below)\n' "$BOX_HOST" )
   Certificate: http://$BOX_HOST/   ← laptops trust it once
 
   Admin login: $ADMIN_EMAIL / $ADMIN_PASSWORD
+$( [ "$NUFI_OWNER_CONSOLE" = 1 ] && printf '  Owner login:   password %s  (owner console at :3009)\n' "$BOX_OWNER_PASSWORD" )
   Drives:      $NUFI_DATA_DIR/drives/<department>  → become that department's knowledge
 
   Routines:    https://$BOX_HOST:7860  → sign in as $ADMIN_EMAIL with the
