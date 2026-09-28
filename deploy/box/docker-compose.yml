@@ -291,6 +291,23 @@ services:
       start_period: 20s
     networks: [box]
 
+  owner-console:
+    logging: *box-logging
+    image: ${NUFI_REGISTRY:-ghcr.io/dudaji-vn}/nufi-owner-console:${NUFI_OWNER_CONSOLE_TAG:-main}
+    profiles: [owner-console]
+    restart: unless-stopped
+    environment:
+      PORT: 8890
+      BOX_OWNER_PASSWORD: ${BOX_OWNER_PASSWORD:-}
+      BOX_OWNER_SESSION_SECRET: ${BOX_OWNER_SESSION_SECRET:-}
+    healthcheck:
+      test: ["CMD-SHELL", "bun -e \"fetch('http://127.0.0.1:8890/healthz').then(r=>{if(!r.ok)throw 1}).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks: [box]
+
   studio:
     logging: *box-logging
     image: ${NUFI_REGISTRY:-ghcr.io/dudaji-vn}/nufi-studio:${NUFI_STUDIO_TAG}

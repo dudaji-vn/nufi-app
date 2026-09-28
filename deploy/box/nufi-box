@@ -71,6 +71,9 @@ COMPOSE="docker compose -f $HERE/docker-compose.yml"
 # --with-works (NUFI_WORKS=1). Without this line a works box's `restart` would
 # bring up everything but the two services the flag was for.
 [ "${NUFI_WORKS:-0}" = "1" ] && COMPOSE="$COMPOSE --profile works"
+# The owner console is opt-in per box (install-box.sh --with-owner-console,
+# NUFI_OWNER_CONSOLE=1); OS-agnostic since the console runs on mac and linux.
+[ "${NUFI_OWNER_CONSOLE:-0}" = "1" ] && COMPOSE="$COMPOSE --profile owner-console"
 # The egress seal is part of an enforcing box's stack, layered last so it
 # applies over every service. Without this line a day-two `restart` would bring
 # the box back up UNSEALED — the same silent-downgrade hazard the gpu.yml line

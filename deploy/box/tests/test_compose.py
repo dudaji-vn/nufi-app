@@ -133,6 +133,20 @@ def test_env_example_covers_every_variable():
     assert not missing, f"used in compose but absent from .env.example: {sorted(missing)}"
 
 
+def test_owner_console_is_off_by_default_and_socket_free_when_on():
+    # Off by default: no flag, no service — the plain box is unchanged.
+    assert "owner-console" not in render()["services"]
+    # On with the profile: present, on the box network, no published ports,
+    # and never mounting the Docker socket (the appliance security boundary).
+    svc = render(profiles=("owner-console",),
+                 BOX_OWNER_PASSWORD="pw", BOX_OWNER_SESSION_SECRET="s" * 40)["services"]
+    assert "owner-console" in svc
+    oc = svc["owner-console"]
+    assert set(oc.get("networks", {})) == {"box"}
+    assert not oc.get("ports")
+    assert all("docker.sock" not in str(v) for v in oc.get("volumes", []))
+
+
 def test_litellm_mounts_box_config_and_policy():
     svc = render()["services"]["litellm-proxy"]
     targets = {v["target"] for v in svc["volumes"]}
