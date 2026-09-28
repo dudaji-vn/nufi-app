@@ -144,7 +144,26 @@ def test_owner_console_is_off_by_default_and_socket_free_when_on():
     oc = svc["owner-console"]
     assert set(oc.get("networks", {})) == {"box"}
     assert not oc.get("ports")
-    assert all("docker.sock" not in str(v) for v in oc.get("volumes", []))
+    # Socket-free AND secret-free at the filesystem level: no bind mounts at all,
+    # so neither the Docker socket nor the box's .env is exposed to the console.
+    assert not oc.get("volumes")
+
+
+def test_owner_console_gets_non_secret_box_facts_but_no_secrets():
+    # The status dashboard reads box facts from the environment (not a mounted
+    # .env), so the console never sees the box's secrets. These non-secret facts
+    # must be wired; no secret (JWT/Mongo/LiteLLM/etc.) may appear in its env.
+    oc = render(profiles=("owner-console",),
+                BOX_OWNER_PASSWORD="pw", BOX_OWNER_SESSION_SECRET="s" * 40)["services"]["owner-console"]
+    env = oc.get("environment", {})
+    for key in ("BOX_NAME", "BOX_HOST", "BOX_IP", "DEPARTMENTS", "NUFI_WORKS",
+                "MESH_SERVER_URL", "NUFI_SELF_HOST_COORD", "BOX_MESH_IP", "BOX_MESH_HOST"):
+        assert key in env, key
+    # The two owner secrets it legitimately needs are the only secret-shaped
+    # keys; no other box secret leaks in.
+    for leaked in ("JWT_SECRET", "MONGO_PASSWORD", "POSTGRES_PASSWORD",
+                   "LITELLM_MASTER_KEY", "CREDS_KEY", "MESH_API_KEY"):
+        assert leaked not in env, leaked
 
 
 def test_litellm_mounts_box_config_and_policy():

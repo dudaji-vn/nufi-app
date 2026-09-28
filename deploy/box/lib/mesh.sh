@@ -690,6 +690,21 @@ mesh_box_name_is_free_or_die() {
   fi
 }
 
+# owner_console_refresh — after a mesh join/leave, re-create the owner console
+# so its status dashboard reflects the new BOX_MESH_* values. The console reads
+# mesh facts from its environment (never the box's .env / secrets), so a join or
+# leave is only visible once the container is re-created with the new env.
+# No-op unless this box runs the console (NUFI_OWNER_CONSOLE=1); $COMPOSE already
+# carries `--profile owner-console` in that case.
+owner_console_refresh() {
+  [ "${NUFI_OWNER_CONSOLE:-0}" = "1" ] || return 0
+  if [ "$DRY" = 1 ]; then
+    printf '  $ %s up -d owner-console   # refresh the console mesh status\n' "$COMPOSE"
+    return 0
+  fi
+  run $COMPOSE up -d owner-console
+}
+
 # mesh_up — join the coordinator and serve everything on the mesh address too.
 mesh_up() {
   local ip host
@@ -735,6 +750,7 @@ mesh_up() {
 
   Invite a laptop:  nufi-box invite <name> --os macos|windows|linux
 EOF
+  owner_console_refresh
 }
 
 # mesh_status — where the box is on the mesh, and what tailscaled thinks.
@@ -759,5 +775,6 @@ mesh_down() {
   mesh_write_addresses "" ""
   run cp "$HERE/caddy/mesh.caddy.empty" "$HERE/caddy/mesh.caddy"
   mesh_reload_caddy
+  owner_console_refresh
   echo "The box is off the mesh; it still answers on the LAN."
 }

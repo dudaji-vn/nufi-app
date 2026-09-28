@@ -38,13 +38,62 @@ describe('owner-console app', () => {
     expect(setCookie).toMatch(/SameSite=Lax/i);
   });
 
-  test('GET / with a valid cookie renders the dashboard', async () => {
-    const app = createApp(ENV);
+  // A logged-in session for the dashboard tests, with injected health so the
+  // route renders deterministically without probing real services.
+  const dashEnv = {
+    ...ENV,
+    BOX_NAME: 'nufi',
+    BOX_HOST: 'nufi.local',
+    BOX_IP: '192.168.1.10',
+    DEPARTMENTS: 'legal,hr',
+    MESH_SERVER_URL: 'https://coordinator.internal',
+    NUFI_SELF_HOST_COORD: '1',
+    BOX_MESH_IP: '100.64.0.1',
+    BOX_MESH_HOST: 'nufi.box.internal',
+  };
+  const health = [
+    { name: 'Chat', ok: true, status: 200, ms: 12 },
+    { name: 'Gateway', ok: false, error: 'AbortError', ms: 3000 },
+  ];
+  const loggedIn = async (env = dashEnv, deps = { checkHealth: async () => health }) => {
+    const app = createApp(env, deps);
     const login = await app.request(form('hunter2'));
     const cookie = (login.headers.get('set-cookie') ?? '').split(';')[0];
+    return { app, cookie };
+  };
+
+  test('GET / with a valid cookie renders the status dashboard', async () => {
+    const { app, cookie } = await loggedIn();
     const r = await app.request('/', { headers: { cookie } });
     expect(r.status).toBe(200);
-    expect(await r.text()).toContain('Signed in');
+    const html = await r.text();
+    expect(html).toContain('nufi');                 // box name
+    expect(html).toContain('Services');
+    expect(html).toContain('Chat');                 // a healthy service
+    expect(html).toContain('up · 12ms');
+    expect(html).toContain('Gateway');              // an unreachable service
+    expect(html).toContain('unreachable');
+    expect(html).toContain('100.64.0.1');           // mesh address
+    expect(html).toContain('self-hosted on this box');
+    expect(html).toContain('legal');                // a department
+  });
+
+  test('a LAN-only box shows no mesh address', async () => {
+    const { app, cookie } = await loggedIn(
+      { ...ENV, BOX_NAME: 'nufi', BOX_HOST: 'nufi.local' },
+      { checkHealth: async () => health },
+    );
+    const r = await app.request('/', { headers: { cookie } });
+    const html = await r.text();
+    expect(html).toContain('LAN-only');
+    expect(html).not.toContain('100.64');
+  });
+
+  test('the dashboard route never renders without a valid session', async () => {
+    const app = createApp(dashEnv, { checkHealth: async () => health });
+    const r = await app.request('/');               // no cookie
+    expect(r.status).toBe(303);
+    expect(r.headers.get('location')).toBe('/login');
   });
 
   test('fails closed when no owner password is configured', async () => {
