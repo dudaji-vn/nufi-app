@@ -55,7 +55,10 @@ async function api(
 async function userId(cfg: MeshConfig, name: string, fetchImpl: typeof fetch): Promise<string> {
   const data = await api(cfg, 'GET', `/api/v1/user?name=${encodeURIComponent(name)}`, undefined, fetchImpl);
   const users = (data.users as Array<{ id?: string | number; name?: string }>) ?? [];
-  const user = users.find((u) => u.name === name) ?? users[0];
+  // Fail closed: require an EXACT name match. Never fall back to users[0] — on a
+  // shared/public coordinator that would mint the box's key against an arbitrary
+  // user if headscale ever returned an unfiltered list.
+  const user = users.find((u) => u.name === name);
   if (!user || user.id === undefined) throw new MeshError(`the coordinator has no user '${name}'`);
   return String(user.id);
 }

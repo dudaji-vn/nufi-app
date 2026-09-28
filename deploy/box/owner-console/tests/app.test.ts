@@ -104,6 +104,16 @@ describe('owner-console app', () => {
     expect(r.status).toBe(303);                 // still bounced to /login, never in
   });
 
+  test('the dashboard offers no invite button when the console lacks the coordinator API key', async () => {
+    // serverUrl set but no MESH_API_KEY: minting is impossible, so show the
+    // precise reason, not a button that only fails.
+    const env = { ...ENV, BOX_NAME: 'nufi', MESH_SERVER_URL: 'https://coordinator.internal' };
+    const { app, cookie } = await loggedIn(env, { checkHealth: async () => health });
+    const html = await (await app.request('/', { headers: { cookie } })).text();
+    expect(html).toContain('no coordinator API key');
+    expect(html).not.toContain('Generate an invite link');
+  });
+
   test('POST /invite without a session redirects to /login', async () => {
     const app = createApp(dashEnv, { checkHealth: async () => health, mint: async () => 'k' });
     const r = await app.request('/invite', { method: 'POST' });

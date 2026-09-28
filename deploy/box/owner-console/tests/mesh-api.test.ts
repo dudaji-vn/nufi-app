@@ -51,6 +51,22 @@ describe('mintMemberKey', () => {
     await mintMemberKey(CFG, Date.now, f).catch((e) => expect(String(e.message)).toContain('MESH_API_KEY'));
   });
 
+  test('fails closed when no user exactly matches (never mints against users[0])', async () => {
+    // A coordinator that returns an unfiltered list without 'box' must NOT mint
+    // against an arbitrary user — resolution requires an exact name match.
+    const f = ((url: string) => {
+      if (String(url).includes('/api/v1/user')) {
+        return Promise.resolve(new Response(JSON.stringify({ users: [{ id: 1, name: 'someone-else' }] }), { status: 200 }));
+      }
+      return Promise.resolve(new Response('{}', { status: 200 }));
+    }) as unknown as typeof fetch;
+    await mintMemberKey(CFG, Date.now, f).catch((e) => {
+      expect(e).toBeInstanceOf(MeshError);
+      expect(String(e.message)).toContain("no user 'box'");
+    });
+    expect(mintMemberKey(CFG, Date.now, f)).rejects.toThrow(MeshError);
+  });
+
   test('a connection failure becomes an unreachable MeshError', async () => {
     const f = (() => Promise.reject(new Error('ECONNREFUSED'))) as unknown as typeof fetch;
     await mintMemberKey(CFG, Date.now, f).catch((e) => {

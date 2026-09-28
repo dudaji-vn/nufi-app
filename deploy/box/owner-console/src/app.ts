@@ -42,11 +42,13 @@ export function createApp(env: AppEnv = process.env, deps: Deps = {}): Hono {
   const now = deps.now ?? (() => new Date());
   const app = new Hono();
 
+  const canInvite = meshConfig(env) !== null;
+
   const authed = (c: { req: { header: (n: string) => string | undefined } }) =>
     configured && verifySession(secret, getCookie(c as never, COOKIE));
 
   const render = async (invite?: InviteResult) =>
-    dashboard(boxInfo(env), await checkHealth(), now(), invite);
+    dashboard(boxInfo(env), await checkHealth(), now(), invite, canInvite);
 
   app.get('/healthz', (c) => c.text('ok'));
 

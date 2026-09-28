@@ -67,15 +67,20 @@ function meshPanel(info: BoxInfo): string {
     <p class="sub">${esc(m.host)} · via ${esc(m.serverUrl)}${m.selfHost ? ' · self-hosted on this box' : ''}</p>`;
 }
 
-function invitePanel(info: BoxInfo, invite?: InviteResult): string {
-  // Inviting a member needs the box to be on a mesh; if it is not, say so
-  // instead of offering a button that can only fail.
-  const canInvite = Boolean(info.mesh.serverUrl);
-  const form = canInvite
-    ? `<form method="post" action="/invite" style="flex-direction:row;margin-top:.5rem">
+function invitePanel(info: BoxInfo, invite: InviteResult | undefined, canInvite: boolean): string {
+  // Only offer the button when a mint can actually succeed (the console has both
+  // a coordinator URL and an API key). Otherwise say precisely why not, rather
+  // than a button that can only fail.
+  let form: string;
+  if (canInvite) {
+    form = `<form method="post" action="/invite" style="flex-direction:row;margin-top:.5rem">
          <button type="submit">Generate an invite link</button>
-       </form>`
-    : `<p class="sub">Join a coordinator first (<code>nufi-box mesh up</code>) to invite members.</p>`;
+       </form>`;
+  } else if (info.mesh.serverUrl) {
+    form = `<p class="sub">This console has no coordinator API key (<code>MESH_API_KEY</code>) to mint invites.</p>`;
+  } else {
+    form = `<p class="sub">Join a coordinator first (<code>nufi-box mesh up</code>) to invite members.</p>`;
+  }
   let result = '';
   if (invite && 'link' in invite) {
     result = `<p class="sub" style="margin-top:.75rem">Share this link with the member — it works once and expires in an hour:</p>
@@ -90,7 +95,13 @@ function invitePanel(info: BoxInfo, invite?: InviteResult): string {
 // invite action, and the departments whose drives feed the assistants. `now`
 // is passed in so the view is a pure function of its inputs (tested without a
 // clock); `invite` renders the result of a just-submitted POST /invite.
-export function dashboard(info: BoxInfo, health: Health[], now: Date, invite?: InviteResult): string {
+export function dashboard(
+  info: BoxInfo,
+  health: Health[],
+  now: Date,
+  invite?: InviteResult,
+  canInvite = false,
+): string {
   const departments = info.departments.length
     ? info.departments.map((d) => `<code>${esc(d)}</code>`).join(' · ')
     : '<span class="sub">none configured</span>';
@@ -106,7 +117,7 @@ export function dashboard(info: BoxInfo, health: Health[], now: Date, invite?: I
   <div class="grid">${meshPanel(info)}</div>
 
   <h2>Members</h2>
-  ${invitePanel(info, invite)}
+  ${invitePanel(info, invite, canInvite)}
 
   <h2>Departments</h2>
   <p>${departments}</p>
