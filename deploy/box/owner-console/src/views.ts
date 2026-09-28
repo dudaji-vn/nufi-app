@@ -33,6 +33,55 @@ const shell = (title: string, body: string, wide = false) => `<!doctype html>
   code{font-size:.9em}
 </style></head><body>${body}</body></html>`;
 
+// The member-facing join page. No login — the invite token is the credential,
+// and it arrives in the URL #fragment (read here client-side, never sent to the
+// server on the GET). The member picks their OS and downloads the connector;
+// the token is POSTed to /connect/connector only when they do.
+export function connectPage(): string {
+  const runHints = {
+    macos: 'macOS: if it says the file is from an unidentified developer, right-click it and choose Open.',
+    windows: 'Windows: if SmartScreen says "Windows protected your PC", click More info then Run anyway.',
+    linux: 'Linux: run it with  bash <the downloaded file>.',
+  };
+  const script = `
+  const tok = new URLSearchParams(location.hash.slice(1)).get('token');
+  const msg = document.getElementById('msg');
+  const picker = document.getElementById('picker');
+  const hints = ${JSON.stringify(runHints)};
+  if (!tok) { picker.hidden = true; msg.textContent = 'This link is missing its invite — ask the box owner for a new one.'; msg.className = 'err'; }
+  async function get(os) {
+    msg.className = 'sub'; msg.textContent = 'Preparing your connector…';
+    const member = (document.getElementById('member').value || '').trim();
+    const bodyData = new URLSearchParams({ token: tok, os, member });
+    try {
+      const r = await fetch('/connect/connector', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: bodyData });
+      if (!r.ok) { msg.className = 'err'; msg.textContent = await r.text(); return; }
+      const cd = r.headers.get('content-disposition') || '';
+      const m = cd.match(/filename="([^"]+)"/);
+      const name = m ? m[1] : 'nufi-join.' + (os === 'macos' ? 'command' : os === 'windows' ? 'cmd' : 'sh');
+      const blob = await r.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+      msg.className = 'sub'; msg.textContent = 'Downloaded ' + name + '. ' + hints[os];
+    } catch (e) { msg.className = 'err'; msg.textContent = 'Could not reach the box. Are you on its network?'; }
+  }
+  for (const b of document.querySelectorAll('[data-os]')) b.addEventListener('click', () => get(b.dataset.os));
+  `;
+  return shell('Join the NuFi box', `
+  <h1>Join the NuFi box</h1>
+  <p>Pick your computer and download the one-time connector, then run it. It installs the mesh client, trusts the box, and connects you.</p>
+  <div id="picker">
+    <label>Your name (optional)<input id="member" placeholder="e.g. Ivy" autocomplete="off"></label>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:1rem">
+      <button type="button" data-os="macos">macOS</button>
+      <button type="button" data-os="windows">Windows</button>
+      <button type="button" data-os="linux">Linux</button>
+    </div>
+  </div>
+  <p id="msg" class="sub" style="margin-top:1.25rem">The connector works once and expires — if it fails, ask for a fresh link.</p>
+  <script>${script}</script>`);
+}
+
 export function loginPage(error?: string): string {
   return shell('NuFi box · owner', `
   <h1>NuFi box owner</h1>

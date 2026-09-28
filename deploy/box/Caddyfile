@@ -61,6 +61,13 @@
 	log
 	root * /srv/landing
 	file_server
+	# The member-facing join page, on plain HTTP so a laptop that has not yet
+	# trusted the box CA can open it. Only /connect* (the page + its connector
+	# POST) is proxied; the owner console's authed routes stay on TLS :3009.
+	# 502s harmlessly when the owner-console profile is off.
+	handle /connect* {
+		reverse_proxy owner-console:8890
+	}
 	handle /healthz {
 		respond "ok" 200
 	}

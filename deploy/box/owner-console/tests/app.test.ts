@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'bun:test';
+import { join } from 'node:path';
 import { createApp } from '../src/app';
+import { signInvite } from '../src/invite';
+
+const TEMPLATES = join(import.meta.dir, '../../lib/join-templates');
 
 const ENV = { BOX_OWNER_PASSWORD: 'hunter2', BOX_OWNER_SESSION_SECRET: 'x'.repeat(64) };
 const form = (password: string) =>
@@ -131,7 +135,7 @@ describe('owner-console app', () => {
     });
     expect(r.status).toBe(200);
     const html = await r.text();
-    expect(html).toContain('https://nufi.local:3009/connect?token=');
+    expect(html).toContain('https://nufi.local:3009/connect#token=');
     expect(html).toContain('works once and expires');
     expect(html).not.toContain('k-member-xyz');    // the raw key is inside the token, never shown
   });
@@ -143,6 +147,75 @@ describe('owner-console app', () => {
     const r = await app.request('/invite', { method: 'POST', headers: { cookie } });
     expect(r.status).toBe(200);
     expect(await r.text()).toContain('not on a mesh yet');
+  });
+
+  // --- member-facing /connect (no login) -----------------------------------
+  const connectDeps = {
+    checkHealth: async () => health,
+    templatesDir: TEMPLATES,
+    boxCaB64: async () => 'Ym94Y2E=',
+    coordCaB64: () => 'Y29vcmRjYQ==',
+  };
+
+  test('GET /connect is public, shows the OS picker, and carries no token', async () => {
+    const app = createApp(dashEnv, connectDeps);
+    const r = await app.request('/connect');       // no cookie
+    expect(r.status).toBe(200);
+    const html = await r.text();
+    expect(html).toContain('data-os="macos"');
+    expect(html).toContain('data-os="windows"');
+    expect(html).toContain('data-os="linux"');
+    expect(html).not.toContain('token=');           // token lives in the fragment, read client-side
+  });
+
+  test('POST /connect/connector returns a downloadable per-OS join file for a valid token', async () => {
+    const app = createApp(dashEnv, connectDeps);
+    const token = signInvite(dashEnv.BOX_OWNER_SESSION_SECRET, { key: 'k-join-xyz', serverUrl: 'https://coordinator.internal' });
+    const r = await app.request('/connect/connector', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },   // NO cookie: this is public
+      body: new URLSearchParams({ token, os: 'linux', member: 'Ivy Nguyen' }),
+    });
+    expect(r.status).toBe(200);
+    expect(r.headers.get('content-disposition')).toContain('filename="nufi-join-ivy-nguyen.sh"');
+    const body = await r.text();
+    expect(body).toContain('k-join-xyz');           // the key the laptop joins with
+    expect(body).toContain('https://coordinator.internal');
+    expect(body).toContain('gio mount');            // a department drive line
+    expect(body).not.toMatch(/@[A-Z_]+@/);          // every placeholder filled
+  });
+
+  test('POST /connect/connector rejects an invalid/expired token', async () => {
+    const app = createApp(dashEnv, connectDeps);
+    const r = await app.request('/connect/connector', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ token: 'not-a-real-token', os: 'linux', member: 'x' }),
+    });
+    expect(r.status).toBe(400);
+  });
+
+  test('POST /connect/connector rejects an unknown OS', async () => {
+    const app = createApp(dashEnv, connectDeps);
+    const token = signInvite(dashEnv.BOX_OWNER_SESSION_SECRET, { key: 'k', serverUrl: 'https://c' });
+    const r = await app.request('/connect/connector', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ token, os: 'beos', member: 'x' }),
+    });
+    expect(r.status).toBe(400);
+  });
+
+  test('a session token cannot be used as an invite at /connect/connector (audience split)', async () => {
+    const { signSession } = await import('../src/auth');
+    const app = createApp(dashEnv, connectDeps);
+    const sessionToken = signSession(dashEnv.BOX_OWNER_SESSION_SECRET);
+    const r = await app.request('/connect/connector', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ token: sessionToken, os: 'linux', member: 'x' }),
+    });
+    expect(r.status).toBe(400);                     // rejected: not an invite-aud token
   });
 
   test('POST /invite surfaces an unreachable coordinator with the egress hint', async () => {
