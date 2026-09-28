@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { signSession, verifyPassword, verifySession } from '../src/auth';
+import { signInvite } from '../src/invite';
 
 const SECRET = 'x'.repeat(64);
 
@@ -55,5 +56,11 @@ describe('session token', () => {
     const badToken = parts[0] + '.' + 'abc'; // Replace signature with short string
     expect(() => verifySession(SECRET, badToken)).not.toThrow();
     expect(verifySession(SECRET, badToken)).toBeNull();
+  });
+  test('does NOT accept a member invite token as an owner session (audience split)', () => {
+    // A member is handed an invite token signed with this same secret; used as
+    // the owner cookie it must NOT authenticate — else it is privilege escalation.
+    const invite = signInvite(SECRET, { key: 'k', serverUrl: 'https://coordinator.internal' });
+    expect(verifySession(SECRET, invite)).toBeNull();
   });
 });
