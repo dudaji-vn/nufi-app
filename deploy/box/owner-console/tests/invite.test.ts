@@ -32,8 +32,8 @@ describe('invite token', () => {
 });
 
 describe('connectLink', () => {
-  test('builds a /connect?token= link on the given origin', () => {
-    expect(connectLink('https://nufi.local:3009', 'tok en')).toBe('https://nufi.local:3009/connect?token=tok%20en');
-    expect(connectLink('https://nufi.local:3009/', 'abc')).toBe('https://nufi.local:3009/connect?token=abc');
+  test('builds a /connect#token= fragment link on the given origin', () => {
+    expect(connectLink('https://nufi.local:3009', 'tok en')).toBe('https://nufi.local:3009/connect#token=tok%20en');
+    expect(connectLink('https://nufi.local:3009/', 'abc')).toBe('https://nufi.local:3009/connect#token=abc');
   });
 });

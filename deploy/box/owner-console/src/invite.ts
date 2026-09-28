@@ -30,7 +30,10 @@ export function verifyInvite(
 }
 
 // The shareable link, built from the request's own origin so it is correct on
-// the LAN name, the IP, or the mesh name without the box being told which.
+// the LAN name, the IP, or the mesh name without the box being told which. The
+// token rides in the URL #fragment, not the query string, so it never reaches
+// the server's access logs, the browser's Referer, or a proxy log — the
+// /connect page reads it client-side and POSTs it to fetch the connector.
 export function connectLink(origin: string, token: string): string {
-  return `${origin.replace(/\/$/, '')}/connect?token=${encodeURIComponent(token)}`;
+  return `${origin.replace(/\/$/, '')}/connect#token=${encodeURIComponent(token)}`;
 }

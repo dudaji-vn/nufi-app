@@ -39,6 +39,15 @@ def test_the_owner_console_site_uses_box_tls_and_the_console_upstream():
     assert "reverse_proxy owner-console:8890" in site
 
 
+def test_connect_is_served_on_plain_http_for_pre_trust_laptops():
+    # The member-facing /connect page must be reachable over plain :80, so a
+    # laptop that has not yet trusted the box CA can open the invite link.
+    http = re.search(r"^:80 \{.*?\n\}", CADDYFILE, re.S | re.M).group(0)
+    assert "@connect path /connect /connect/*" in http   # tight matcher, not a broad /connect* prefix
+    assert "handle @connect {" in http
+    assert "reverse_proxy owner-console:8890" in http
+
+
 def test_the_certificate_is_downloadable_by_its_public_name():
     assert "handle /nufi-box-ca.crt {" in CADDYFILE
     assert "rewrite * /root.crt" in CADDYFILE

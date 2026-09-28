@@ -186,6 +186,20 @@ def test_owner_console_can_mint_invites_reachably():
     assert any("coordinator.internal" in h and "host-gateway" in h for h in joined)
 
 
+def test_owner_console_image_ships_the_connector_templates():
+    # The /connect connector fills the SAME templates `nufi-box invite` uses
+    # (deploy/box/lib/join-templates), copied into the image via a named build
+    # context so the two never drift and the container's context stays small.
+    dockerfile = (BOX / "owner-console" / "Dockerfile").read_text()
+    assert "COPY --from=templates" in dockerfile
+    assert "join-templates" in dockerfile
+    assert "JOIN_TEMPLATES_DIR=/app/join-templates" in dockerfile
+    repo = BOX.parent.parent
+    box_images = (repo / ".github" / "workflows" / "box-images.yml").read_text()
+    assert "templates=deploy/box/lib/join-templates" in box_images
+    assert "build-contexts: ${{ matrix.buildcontexts }}" in box_images
+
+
 def test_litellm_mounts_box_config_and_policy():
     svc = render()["services"]["litellm-proxy"]
     targets = {v["target"] for v in svc["volumes"]}

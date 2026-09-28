@@ -10,6 +10,7 @@ on:
       - 'deploy/box/works-egress/**'
       - 'deploy/box/sandbox/**'
       - 'deploy/box/owner-console/**'
+      - 'deploy/box/lib/join-templates/**'
       - 'apps/nufi-agent/**'
       - '.github/workflows/box-images.yml'
     tags: ['nufi-box-v*']
@@ -54,6 +55,9 @@ jobs:
             context: deploy/box/owner-console
             file: deploy/box/owner-console/Dockerfile
             tagprefix: ''
+            # The member-connector templates, shared with `nufi-box invite`,
+            # supplied as a named build context (the Dockerfile COPY --from it).
+            buildcontexts: 'templates=deploy/box/lib/join-templates'
           - name: nufi-studio
             context: apps/nufi-agent
             file: apps/nufi-agent/nufi/Dockerfile
@@ -80,6 +84,7 @@ jobs:
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.file }}
+          build-contexts: ${{ matrix.buildcontexts }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
