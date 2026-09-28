@@ -35,7 +35,7 @@ MESH_HS_USER="${MESH_HS_USER:-box}"
 # on the command itself rather than trusted to have been exported, so this
 # function is correct however it was sourced.
 mesh_api() {
-  local method="$1" path="$2" data="${3:-}" tmp cfg code ca=""
+  local method="$1" path="$2" data="${3:-}" tmp cfg code ca="" resolve=""
   [ -n "${MESH_SERVER_URL:-}" ] || { echo "MESH_SERVER_URL is not set in .env" >&2; exit 2; }
   [ -n "${MESH_API_KEY:-}" ] || { echo "MESH_API_KEY is not set in .env" >&2; exit 2; }
   # A coordinator on its own internal CA (the Docker lab, a dev VPS before it
@@ -46,6 +46,27 @@ mesh_api() {
   # than either answer. Naming the host's own bundle (the default) changes
   # nothing; a path that is not there is ignored rather than fatal.
   [ -n "${MESH_CA_FILE:-}" ] && [ -f "${MESH_CA_FILE}" ] && ca="$MESH_CA_FILE"
+  # A box that self-hosts its own coordinator (install-box.sh
+  # --self-host-coordinator, NUFI_SELF_HOST_COORD=1) reaches it on THIS host's
+  # loopback: docker-compose.selfhost.yml publishes the coordinator's 443 here,
+  # and its internal-CA certificate's only SAN is MESH_SERVER_HOST. The mesh
+  # NODE already gets that name→127.0.0.1 from docker-compose.mesh-selfhost.yml's
+  # extra_hosts, but THIS curl runs on the host, which has no /etc/hosts entry —
+  # so it dies "Could not resolve host: <MESH_SERVER_HOST>" and every host-side
+  # call (the mesh-up name check, invite, members, revoke) fails on a box that
+  # is otherwise up. Hand curl an explicit resolve for the coordinator's own
+  # host:port instead of asking the operator to edit /etc/hosts. Only for the
+  # co-hosted case: an external coordinator has real DNS and a public cert and
+  # must resolve normally.
+  if [ "${NUFI_SELF_HOST_COORD:-0}" = "1" ]; then
+    local rest rhost rport
+    rest="${MESH_SERVER_URL#*://}"; rest="${rest%%/*}"
+    case "$rest" in
+      *:*) rhost="${rest%%:*}"; rport="${rest##*:}" ;;
+      *)   rhost="$rest"; case "$MESH_SERVER_URL" in http://*) rport=80 ;; *) rport=443 ;; esac ;;
+    esac
+    resolve="$rhost:$rport:127.0.0.1"
+  fi
   tmp="$(mktemp)"
   cfg="$(mktemp)"
   MESH_API_KEY="$MESH_API_KEY" python3 -c '
@@ -54,7 +75,7 @@ import os, sys
 def q(s):
     return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
-method, url, data, out, ca = sys.argv[1:6]
+method, url, data, out, ca, resolve = sys.argv[1:7]
 key = os.environ["MESH_API_KEY"]   # never argv: /proc/<pid>/cmdline is world-readable
 lines = [
     "silent", "show-error",
@@ -67,11 +88,13 @@ lines = [
 ]
 if ca:
     lines.append("cacert = " + q(ca))
+if resolve:
+    lines.append("resolve = " + q(resolve))
 if data:
     lines.append("header = " + q("Content-Type: application/json"))
     lines.append("data = " + q(data))
 sys.stdout.write("\n".join(lines) + "\n")
-' "$method" "${MESH_SERVER_URL}${path}" "$data" "$tmp" "$ca" > "$cfg"
+' "$method" "${MESH_SERVER_URL}${path}" "$data" "$tmp" "$ca" "$resolve" > "$cfg"
   code="$(curl -K "$cfg")"
   rm -f "$cfg"
   case "$code" in
