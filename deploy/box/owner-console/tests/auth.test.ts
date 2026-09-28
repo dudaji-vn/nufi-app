@@ -37,4 +37,23 @@ describe('session token', () => {
     expect(verifySession(SECRET, undefined)).toBeNull();
     expect(verifySession('', signSession(SECRET))).toBeNull();
   });
+  test('does not throw for a dot-less token', () => {
+    expect(() => verifySession(SECRET, 'nodot')).not.toThrow();
+    expect(verifySession(SECRET, 'nodot')).toBeNull();
+  });
+  test('does not throw for an empty string token', () => {
+    expect(() => verifySession(SECRET, '')).not.toThrow();
+    expect(verifySession(SECRET, '')).toBeNull();
+  });
+  test('does not throw for a token with empty signature segment', () => {
+    expect(() => verifySession(SECRET, 'body.')).not.toThrow();
+    expect(verifySession(SECRET, 'body.')).toBeNull();
+  });
+  test('does not throw for a token with wrong-length signature', () => {
+    const validToken = signSession(SECRET);
+    const parts = validToken.split('.');
+    const badToken = parts[0] + '.' + 'abc'; // Replace signature with short string
+    expect(() => verifySession(SECRET, badToken)).not.toThrow();
+    expect(verifySession(SECRET, badToken)).toBeNull();
+  });
 });

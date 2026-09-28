@@ -31,7 +31,11 @@ describe('owner-console app', () => {
     const r = await createApp(ENV).request(form('hunter2'));
     expect(r.status).toBe(303);
     expect(r.headers.get('location')).toBe('/');
-    expect(r.headers.get('set-cookie')).toContain('nufi_owner=');
+    const setCookie = r.headers.get('set-cookie');
+    expect(setCookie).toContain('nufi_owner=');
+    expect(setCookie).toMatch(/HttpOnly/i);
+    expect(setCookie).toMatch(/Secure/i);
+    expect(setCookie).toMatch(/SameSite=Lax/i);
   });
 
   test('GET / with a valid cookie renders the dashboard', async () => {
