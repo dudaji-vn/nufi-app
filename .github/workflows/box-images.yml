@@ -9,6 +9,7 @@ on:
       - 'deploy/platform/adapters/nufi-cron/**'
       - 'deploy/box/works-egress/**'
       - 'deploy/box/sandbox/**'
+      - 'deploy/box/owner-console/**'
       - 'apps/nufi-agent/**'
       - '.github/workflows/box-images.yml'
     tags: ['nufi-box-v*']
@@ -48,6 +49,10 @@ jobs:
           - name: nufi-sandbox
             context: deploy/box/sandbox
             file: deploy/box/sandbox/Dockerfile
+            tagprefix: ''
+          - name: nufi-owner-console
+            context: deploy/box/owner-console
+            file: deploy/box/owner-console/Dockerfile
             tagprefix: ''
           - name: nufi-studio
             context: apps/nufi-agent
