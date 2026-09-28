@@ -1,17 +1,29 @@
 import { Hono } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { signSession, verifyPassword, verifySession } from './auth';
-import { dashboardShell, loginPage } from './views';
+import { boxInfo } from './boxinfo';
+import { checkAll, probesForEnv, type Health } from './health';
+import { dashboard, loginPage } from './views';
 
 const COOKIE = 'nufi_owner';
 const NOT_CONFIGURED = 'The owner password is not configured on this box.';
 
-export function createApp(
-  env: { BOX_OWNER_PASSWORD?: string; BOX_OWNER_SESSION_SECRET?: string } = process.env,
-): Hono {
+type AppEnv = {
+  BOX_OWNER_PASSWORD?: string;
+  BOX_OWNER_SESSION_SECRET?: string;
+  [key: string]: string | undefined;
+};
+
+// `checkHealth` and `now` are injectable so the dashboard route is tested
+// without real network calls or a real clock; production uses the defaults.
+type Deps = { checkHealth?: () => Promise<Health[]>; now?: () => Date };
+
+export function createApp(env: AppEnv = process.env, deps: Deps = {}): Hono {
   const password = env.BOX_OWNER_PASSWORD ?? '';
   const secret = env.BOX_OWNER_SESSION_SECRET ?? '';
   const configured = Boolean(password && secret);
+  const checkHealth = deps.checkHealth ?? (() => checkAll(probesForEnv(env)));
+  const now = deps.now ?? (() => new Date());
   const app = new Hono();
 
   app.get('/healthz', (c) => c.text('ok'));
@@ -34,9 +46,10 @@ export function createApp(
     return c.redirect('/login', 303);
   });
 
-  app.get('/', (c) => {
+  app.get('/', async (c) => {
     if (!configured || !verifySession(secret, getCookie(c, COOKIE))) return c.redirect('/login', 303);
-    return c.html(dashboardShell());
+    const health = await checkHealth();
+    return c.html(dashboard(boxInfo(env), health, now()));
   });
 
   return app;

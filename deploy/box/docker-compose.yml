@@ -300,6 +300,19 @@ services:
       PORT: 8890
       BOX_OWNER_PASSWORD: ${BOX_OWNER_PASSWORD:-}
       BOX_OWNER_SESSION_SECRET: ${BOX_OWNER_SESSION_SECRET:-}
+      # Non-secret box facts the status dashboard shows. Passed as env, not a
+      # mounted .env, so the console never sees the box's secrets. Mesh facts
+      # are captured at container start; `nufi-box mesh up|down` re-creates this
+      # service so a join/leave is reflected.
+      BOX_NAME: ${BOX_NAME:-}
+      BOX_HOST: ${BOX_HOST:-}
+      BOX_IP: ${BOX_IP:-}
+      DEPARTMENTS: ${DEPARTMENTS:-}
+      NUFI_WORKS: ${NUFI_WORKS:-0}
+      MESH_SERVER_URL: ${MESH_SERVER_URL:-}
+      NUFI_SELF_HOST_COORD: ${NUFI_SELF_HOST_COORD:-0}
+      BOX_MESH_IP: ${BOX_MESH_IP:-}
+      BOX_MESH_HOST: ${BOX_MESH_HOST:-}
     healthcheck:
       test: ["CMD-SHELL", "bun -e \"fetch('http://127.0.0.1:8890/healthz').then(r=>{if(!r.ok)throw 1}).catch(()=>process.exit(1))\""]
       interval: 15s
