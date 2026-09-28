@@ -28,9 +28,15 @@ def test_an_address_without_sni_still_gets_a_certificate():
 
 
 def test_every_product_port_is_served():
-    for port in (3080, 3001, 3002, 3003, 7860, 4000):
+    for port in (3080, 3001, 3002, 3003, 7860, 4000, 3009):
         assert re.search(rf"^\{{\$BOX_HOST\}}:{port}, ", CADDYFILE, re.M), port
     assert ":80 {" in CADDYFILE
+
+
+def test_the_owner_console_site_uses_box_tls_and_the_console_upstream():
+    site = re.search(r"^\{\$BOX_HOST\}:3009, .*?\n\}", CADDYFILE, re.S | re.M).group(0)
+    assert "import box_tls" in site
+    assert "reverse_proxy owner-console:8890" in site
 
 
 def test_the_certificate_is_downloadable_by_its_public_name():

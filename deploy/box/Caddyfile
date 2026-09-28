@@ -121,6 +121,14 @@
 	reverse_proxy litellm-proxy:4000
 }
 
+# The box owner console (status, invites, drives). Opt-in: the service only
+# runs under the owner-console profile, so on a box without it this site has no
+# upstream and simply 502s — the port is never advertised.
+{$BOX_HOST}:3009, {$BOX_IP}:3009, localhost:3009 {
+	import box_tls
+	reverse_proxy owner-console:8890
+}
+
 # The same six TLS sites again on the box's mesh address and MagicDNS name, once
 # it has joined a coordinator. `nufi-box mesh up` generates caddy/mesh.caddy
 # with the literal addresses and reloads Caddy; `mesh down` empties it again.
