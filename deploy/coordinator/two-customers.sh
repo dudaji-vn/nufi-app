@@ -105,7 +105,7 @@ docker rm -f crossnode >/dev/null 2>&1 || true
 
 say "The two admin key stores are independent (a credential for one is not the other's)"
 PFX_A="$(apikey_prefix nufi-cust-a)"; PFX_B="$(apikey_prefix nufi-cust-b)"
-[ -n "$PFX_A" ] && [ -n "$PFX_B" ] && ok "A holds key $PFX_A…, B holds key $PFX_B… (each minted its own)" || { bad "could not read both API key prefixes"; FAIL=1; }
+[ -n "$PFX_A" ] && [ -n "$PFX_B" ] && ok "A holds key ${PFX_A}..., B holds key ${PFX_B}... (each minted its own)" || { bad "could not read both API key prefixes"; FAIL=1; }
 if [ -n "$PFX_A" ] && [ "$PFX_A" != "$PFX_B" ]; then ok "A's API key is not B's — neither coordinator honours the other's"; else bad "the two coordinators share an API key prefix"; FAIL=1; fi
 # And B's store does not contain A's key: list every prefix B knows, assert A's is absent.
 B_HAS_A="$(hs nufi-cust-b apikeys list -o json 2>/dev/null | python3 -c 'import sys,json;d=sys.stdin.read().strip();L=json.loads(d) if d else [];print("yes" if any((k.get("prefix") or "")==sys.argv[1] for k in L) else "no")' "$PFX_A")"
