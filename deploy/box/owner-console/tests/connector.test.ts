@@ -40,20 +40,28 @@ describe('renderConnector', () => {
     });
   }
 
-  test('windows maps drives with net use from Z down', () => {
+  test('windows maps drives with net use from Z down, UNC path quoted', () => {
     const c = renderConnector(base('windows'), TEMPLATES);
-    expect(c.body).toContain('net use Z: \\\\nufi.box.internal\\legal /persistent:yes');
-    expect(c.body).toContain('net use Y: \\\\nufi.box.internal\\hr /persistent:yes');
+    expect(c.body).toContain('net use Z: "\\\\nufi.box.internal\\legal" /persistent:yes');
+    expect(c.body).toContain('net use Y: "\\\\nufi.box.internal\\hr" /persistent:yes');
   });
 
-  test('macos maps drives with open smb://', () => {
+  test('macos maps drives with open smb://, single-quoted', () => {
     const c = renderConnector(base('macos'), TEMPLATES);
-    expect(c.body).toContain('open "smb://nufi.box.internal/legal"');
+    expect(c.body).toContain("open 'smb://nufi.box.internal/legal'");
   });
 
-  test('linux maps drives with gio mount', () => {
+  test('linux maps drives with gio mount, single-quoted', () => {
     const c = renderConnector(base('linux'), TEMPLATES);
-    expect(c.body).toContain('gio mount "smb://nufi.box.internal/legal"');
+    expect(c.body).toContain("gio mount 'smb://nufi.box.internal/legal'");
+  });
+
+  test('a department name with a space or shell metachars is quoted, not evaluated', () => {
+    const macos = renderConnector({ ...base('macos'), departments: ['Human Resources'] }, TEMPLATES);
+    expect(macos.body).toContain("open 'smb://nufi.box.internal/Human Resources'");
+    const evil = renderConnector({ ...base('linux'), departments: ['a$(touch pwned)'] }, TEMPLATES);
+    expect(evil.body).toContain("'smb://nufi.box.internal/a$(touch pwned)'"); // inside single quotes -> literal
+    expect(evil.body).not.toContain('gio mount "');                          // never double-quoted
   });
 
   test('no departments -> a clear "no drives" line, not a broken @DRIVES@', () => {

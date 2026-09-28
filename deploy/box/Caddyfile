@@ -62,10 +62,15 @@
 	root * /srv/landing
 	file_server
 	# The member-facing join page, on plain HTTP so a laptop that has not yet
-	# trusted the box CA can open it. Only /connect* (the page + its connector
-	# POST) is proxied; the owner console's authed routes stay on TLS :3009.
-	# 502s harmlessly when the owner-console profile is off.
-	handle /connect* {
+	# trusted the box CA can open it. Only /connect and /connect/* (the page +
+	# its connector POST) are proxied — a tight matcher so it can't shadow a
+	# landing asset like /connectivity; the owner console's authed routes stay
+	# on TLS :3009. 502s harmlessly when the owner-console profile is off.
+	# Threat model: the one-time key and connector cross the LAN unencrypted
+	# here and are MITM-able by a hostile on-network actor — inherent to CA
+	# bootstrap, bounded by the trusted-LAN appliance model and single-use/1h keys.
+	@connect path /connect /connect/*
+	handle @connect {
 		reverse_proxy owner-console:8890
 	}
 	handle /healthz {

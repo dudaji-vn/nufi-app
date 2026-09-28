@@ -34,9 +34,17 @@ export function safeMember(name: string): string {
   return s || 'member';
 }
 
+// POSIX single-quote: wrap in '' and escape any embedded quote, so a department
+// name never breaks out into command substitution ($(), backticks) or word
+// splitting in the generated mac/linux script.
+const sq = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
+
 // Per-OS drive-mapping lines, mirroring lib/mesh.sh's mesh_drives_block: one
 // `net use` / `open smb://` / `gio mount` per department. Windows letters count
-// down from Z so they rarely collide with the laptop's own C:/D:.
+// down from Z so they rarely collide with the laptop's own C:/D:. Department
+// names are box-owner config (not member input), but they carry spaces and are
+// quoted here so a name like "Human Resources" neither breaks the line nor
+// evaluates as shell.
 function driveLines(os: OS, host: string, departments: string[]): string {
   if (!host || departments.length === 0) return 'echo "No drives were configured for this invite."';
   const letters = 'ZYXWVUTSRQPONMLKJIHGFEDCBA';
@@ -44,10 +52,10 @@ function driveLines(os: OS, host: string, departments: string[]): string {
     .map((d, i) => {
       if (os === 'windows') {
         if (i >= 26) return `echo "Too many drives to letter automatically -- map \\\\${host}\\${d} by hand"`;
-        return `net use ${letters[i]}: \\\\${host}\\${d} /persistent:yes`;
+        return `net use ${letters[i]}: "\\\\${host}\\${d}" /persistent:yes`;
       }
-      if (os === 'macos') return `open "smb://${host}/${d}"`;
-      return `gio mount "smb://${host}/${d}" || echo "could not mount ${d} automatically -- open smb://${host}/${d} from your file manager"`;
+      if (os === 'macos') return `open ${sq(`smb://${host}/${d}`)}`;
+      return `gio mount ${sq(`smb://${host}/${d}`)} || echo "could not mount this drive automatically -- open smb://${host}/${d} from your file manager"`;
     })
     .join('\n');
 }
@@ -70,7 +78,7 @@ export function renderConnector(input: ConnectorInput, templatesDir: string): Co
   for (const [k, v] of Object.entries(subs)) body = body.split(`@${k}@`).join(v);
   return {
     filename: `nufi-join-${member}.${EXT[input.os]}`,
-    contentType: input.os === 'windows' ? 'application/bat' : 'application/x-shellscript',
+    contentType: input.os === 'windows' ? 'application/octet-stream' : 'application/x-shellscript',
     body,
   };
 }
