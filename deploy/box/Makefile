@@ -34,6 +34,12 @@ SAMBA_IMAGE ?= ghcr.io/servercontainers/samba:a3.24.1-s4.23.8-r0
 # next to the NuFi images. Pinned to the exact release in
 # deploy/coordinator/docker-compose.yml; served from the mirror under $(TAG).
 HEADSCALE_IMAGE ?= ghcr.io/juanfont/headscale:v0.29.3
+# headscale's other half: the box's OWN mesh node runs the tailscale client
+# (docker-compose.mesh.yml), so an air-gapped --mesh / --self-host-coordinator
+# box needs this in the offline bundle too — without it `nufi-box mesh up`'s
+# `docker compose up -d tailscale` tries to pull with no internet and the box
+# never joins its own mesh. Pinned to the exact ref in docker-compose.mesh.yml.
+TAILSCALE_IMAGE ?= tailscale/tailscale:v1.102.3
 # The offline-media bundle (`make save`) also needs the box's Docker-Hub images,
 # which registry-push never mirrors. Pinned to the exact refs a plain --no-pull
 # box names in its compose (docker-compose.yml / docker-compose.linux.yml /
@@ -115,6 +121,7 @@ save:
 	docker pull -q $(RAG_IMAGE) && docker tag $(RAG_IMAGE) ghcr.io/danny-avila/librechat-rag-api-dev-lite:$(TAG)
 	docker pull -q $(SAMBA_IMAGE)
 	docker pull -q $(HEADSCALE_IMAGE)
+	docker pull -q $(TAILSCALE_IMAGE)
 	docker pull -q $(CADDY_IMAGE)
 	docker pull -q $(MONGO_IMAGE)
 	docker pull -q $(PGVECTOR_IMAGE)
@@ -133,6 +140,7 @@ save:
 	  ghcr.io/danny-avila/librechat-rag-api-dev-lite:$(TAG) \
 	  $(SAMBA_IMAGE) \
 	  $(HEADSCALE_IMAGE) \
+	  $(TAILSCALE_IMAGE) \
 	  $(CADDY_IMAGE) \
 	  $(MONGO_IMAGE) \
 	  $(PGVECTOR_IMAGE) \

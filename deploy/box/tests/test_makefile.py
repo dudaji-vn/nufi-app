@@ -154,6 +154,7 @@ def test_save_includes_third_party_at_their_compose_default_refs():
     assert "ollama/ollama:0.33.3" in out
     assert "ghcr.io/servercontainers/samba:a3.24.1-s4.23.8-r0" in out
     assert "ghcr.io/juanfont/headscale:v0.29.3" in out          # self-host coordinator
+    assert "tailscale/tailscale:v1.102.3" in out                # the box's own mesh node
     assert "librechat-rag-api-dev-lite@sha256:" in out          # RAG pinned by digest on the way in
 
 
@@ -174,13 +175,45 @@ def test_save_never_pushes_or_rewrites_to_a_registry():
 
 
 def test_third_party_pins_match_the_compose_defaults():
-    # Anti-drift: the Makefile pins can't fall behind the compose files.
+    # Anti-drift: the Makefile pins can't fall behind the compose files. Read
+    # the mesh overlay too — tailscale lives only there, and leaving it out is
+    # how it slipped the pin check until 2026-09-28.
     compose = ((BOX / "docker-compose.yml").read_text()
-               + (BOX / "docker-compose.linux.yml").read_text())
+               + (BOX / "docker-compose.linux.yml").read_text()
+               + (BOX / "docker-compose.mesh.yml").read_text())
     for ref in ("caddy:2.10.0-alpine", "mongo:4.4",
-                "pgvector/pgvector:pg16", "ollama/ollama:0.33.3"):
+                "pgvector/pgvector:pg16", "ollama/ollama:0.33.3",
+                "tailscale/tailscale:v1.102.3"):
         assert ref in compose, ref                 # still the compose default
         assert ref in make_n("save"), ref          # and the bundle carries it
+
+
+def test_save_carries_every_third_party_image_named_in_any_box_compose():
+    # The class-level guard behind the tailscale miss: enumerate every fully
+    # pinned (non-variable) third-party image ref across ALL of the box's own
+    # compose overlays — base, linux drives, and both mesh files — and assert
+    # each one lands in the offline bundle. A third-party image added to a
+    # future overlay can no longer be bundled-by-omission: if compose can bring
+    # it up, `make save` must carry it, or a --no-pull box dies with no internet.
+    files = ("docker-compose.yml", "docker-compose.linux.yml",
+             "docker-compose.mesh.yml", "docker-compose.mesh-selfhost.yml")
+    refs = set()
+    for f in files:
+        # image: <ref> where <ref> is a literal (does not start with $ or {),
+        # i.e. a fully pinned third-party image — our own images carry a
+        # ${NUFI_*_TAG} and are covered by the NUFI_IMAGES tests above.
+        refs |= set(re.findall(r"image:\s*([^\s${][^\s]*)", (BOX / f).read_text()))
+    third_party = sorted(r for r in refs if not r.startswith("ghcr.io/dudaji-vn/"))
+    assert third_party, refs                       # the enumeration actually found some
+    out = make_n("save")
+    # Check the `docker save` command specifically, not the whole recipe: each
+    # image is also `docker pull`-ed earlier, so a plain `ref in out` passes
+    # even when the ref is missing from the bundle. `save` is the last command,
+    # so everything from it to the end is its (backslash-continued) image list.
+    assert out.count("docker save") == 1
+    save_cmd = out[out.index("docker save"):]
+    for ref in third_party:
+        assert ref in save_cmd, ref
 
 
 def test_load_reads_the_default_tarball_and_honors_the_override():
