@@ -313,6 +313,21 @@ services:
       NUFI_SELF_HOST_COORD: ${NUFI_SELF_HOST_COORD:-0}
       BOX_MESH_IP: ${BOX_MESH_IP:-}
       BOX_MESH_HOST: ${BOX_MESH_HOST:-}
+      # The one credential the console holds: the coordinator API key, to mint a
+      # member's pre-auth key when the owner generates an invite link. Node/Bun
+      # trust the coordinator's certificate through NODE_EXTRA_CA_CERTS — the
+      # mounted internal CA for a self-hosted coordinator, or the system bundle
+      # (the default mount, a no-op) for a public one.
+      MESH_API_KEY: ${MESH_API_KEY:-}
+      NODE_EXTRA_CA_CERTS: /mesh-ca.crt
+    volumes:
+      - ${MESH_CA_FILE:-/etc/ssl/certs/ca-certificates.crt}:/mesh-ca.crt:ro
+    # A self-hosted coordinator answers on THIS host's published :443 under its
+    # certificate name; from a bridge-network container that name must resolve to
+    # the host gateway (mirrors mesh_api's host-side --resolve to 127.0.0.1).
+    # Unused when the coordinator is external (its URL is not coordinator.internal).
+    extra_hosts:
+      - "coordinator.internal:host-gateway"
     healthcheck:
       test: ["CMD-SHELL", "bun -e \"fetch('http://127.0.0.1:8890/healthz').then(r=>{if(!r.ok)throw 1}).catch(()=>process.exit(1))\""]
       interval: 15s

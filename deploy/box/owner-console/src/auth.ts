@@ -1,4 +1,5 @@
-import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
+import { signToken, verifyToken } from './token';
 
 // Constant-time password check. Hash both sides to a fixed 32 bytes first, so
 // timingSafeEqual never sees unequal lengths (it throws on those) and the
@@ -11,15 +12,12 @@ export function verifyPassword(input: string, expected: string): boolean {
   return timingSafeEqual(a, b);
 }
 
-const b64url = (b: Buffer) => b.toString('base64url');
-
-// A session token is `<body>.<sig>` where body is base64url({exp}) and sig is
-// the HMAC-SHA256 of body under the box's session secret. No server-side store.
+// The owner session is a signed token — the cookie value. It carries an
+// audience so it can never be confused with an invite token signed under the
+// same secret: a member's invite token, replayed as a session cookie, must NOT
+// authenticate as the owner.
 export function signSession(secret: string, ttlSeconds = 8 * 3600, now = Date.now()): string {
-  const exp = Math.floor(now / 1000) + ttlSeconds;
-  const body = b64url(Buffer.from(JSON.stringify({ exp })));
-  const sig = b64url(createHmac('sha256', secret).update(body).digest());
-  return `${body}.${sig}`;
+  return signToken(secret, { aud: 'session' }, ttlSeconds, now);
 }
 
 export function verifySession(
@@ -27,20 +25,6 @@ export function verifySession(
   token: string | undefined,
   now = Date.now(),
 ): { exp: number } | null {
-  if (!secret || !token) return null;
-  const dot = token.lastIndexOf('.');
-  if (dot < 0) return null;
-  const body = token.slice(0, dot);
-  const sig = token.slice(dot + 1);
-  const expected = b64url(createHmac('sha256', secret).update(body).digest());
-  const s = Buffer.from(sig);
-  const e = Buffer.from(expected);
-  if (s.length !== e.length || !timingSafeEqual(s, e)) return null;
-  try {
-    const payload = JSON.parse(Buffer.from(body, 'base64url').toString());
-    if (typeof payload.exp !== 'number' || payload.exp < Math.floor(now / 1000)) return null;
-    return payload as { exp: number };
-  } catch {
-    return null;
-  }
+  const payload = verifyToken(secret, token, now);
+  return payload && payload.aud === 'session' ? { exp: payload.exp as number } : null;
 }

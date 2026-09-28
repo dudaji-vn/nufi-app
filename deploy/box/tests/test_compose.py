@@ -144,26 +144,46 @@ def test_owner_console_is_off_by_default_and_socket_free_when_on():
     oc = svc["owner-console"]
     assert set(oc.get("networks", {})) == {"box"}
     assert not oc.get("ports")
-    # Socket-free AND secret-free at the filesystem level: no bind mounts at all,
-    # so neither the Docker socket nor the box's .env is exposed to the console.
-    assert not oc.get("volumes")
+    # Socket-free: the only bind mount is the coordinator CA (read-only) — never
+    # the Docker socket and never the box's .env.
+    vols = [str(v.get("source", v)) if isinstance(v, dict) else str(v) for v in oc.get("volumes", [])]
+    assert all("docker.sock" not in v for v in vols)
+    assert all(not v.endswith("/.env") and "/.env:" not in v for v in vols)
 
 
-def test_owner_console_gets_non_secret_box_facts_but_no_secrets():
+def test_owner_console_gets_non_secret_box_facts_and_only_the_mesh_api_key():
     # The status dashboard reads box facts from the environment (not a mounted
-    # .env), so the console never sees the box's secrets. These non-secret facts
-    # must be wired; no secret (JWT/Mongo/LiteLLM/etc.) may appear in its env.
+    # .env), so the console never sees the box's secrets. The one credential it
+    # legitimately holds is MESH_API_KEY (to mint a member's invite key); no
+    # other box secret may appear in its env.
     oc = render(profiles=("owner-console",),
                 BOX_OWNER_PASSWORD="pw", BOX_OWNER_SESSION_SECRET="s" * 40)["services"]["owner-console"]
     env = oc.get("environment", {})
     for key in ("BOX_NAME", "BOX_HOST", "BOX_IP", "DEPARTMENTS", "NUFI_WORKS",
                 "MESH_SERVER_URL", "NUFI_SELF_HOST_COORD", "BOX_MESH_IP", "BOX_MESH_HOST"):
         assert key in env, key
-    # The two owner secrets it legitimately needs are the only secret-shaped
-    # keys; no other box secret leaks in.
     for leaked in ("JWT_SECRET", "MONGO_PASSWORD", "POSTGRES_PASSWORD",
-                   "LITELLM_MASTER_KEY", "CREDS_KEY", "MESH_API_KEY"):
+                   "LITELLM_MASTER_KEY", "CREDS_KEY", "ADMIN_SESSION_SECRET", "SAMBA_PASSWORD"):
         assert leaked not in env, leaked
+
+
+def test_owner_console_can_mint_invites_reachably():
+    # Sub-task 03 wiring: the coordinator API key, the CA trust env, the CA bind
+    # mount (read-only), and the extra_hosts entry that lets a bridge-network
+    # container reach a self-hosted coordinator on the host's published :443.
+    oc = render(profiles=("owner-console",),
+                BOX_OWNER_PASSWORD="pw", BOX_OWNER_SESSION_SECRET="s" * 40)["services"]["owner-console"]
+    env = oc.get("environment", {})
+    assert "MESH_API_KEY" in env
+    assert env.get("NODE_EXTRA_CA_CERTS") == "/mesh-ca.crt"
+    vols = [v if isinstance(v, str) else f"{v.get('source')}:{v.get('target')}:{'ro' if v.get('read_only') else 'rw'}"
+            for v in oc.get("volumes", [])]
+    assert any("/mesh-ca.crt" in v for v in vols)
+    assert any(v.endswith(":ro") or (isinstance(vo, dict) and vo.get("read_only"))
+               for v, vo in zip(vols, oc.get("volumes", [])))
+    hosts = oc.get("extra_hosts", [])
+    joined = hosts if isinstance(hosts, list) else [f"{k}:{v}" for k, v in hosts.items()]
+    assert any("coordinator.internal" in h and "host-gateway" in h for h in joined)
 
 
 def test_litellm_mounts_box_config_and_policy():

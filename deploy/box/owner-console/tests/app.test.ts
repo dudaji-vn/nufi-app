@@ -47,6 +47,7 @@ describe('owner-console app', () => {
     BOX_IP: '192.168.1.10',
     DEPARTMENTS: 'legal,hr',
     MESH_SERVER_URL: 'https://coordinator.internal',
+    MESH_API_KEY: 'k-api',
     NUFI_SELF_HOST_COORD: '1',
     BOX_MESH_IP: '100.64.0.1',
     BOX_MESH_HOST: 'nufi.box.internal',
@@ -101,5 +102,60 @@ describe('owner-console app', () => {
     expect((await app.request(form('anything'))).status).toBe(401);
     const r = await app.request('/');
     expect(r.status).toBe(303);                 // still bounced to /login, never in
+  });
+
+  test('the dashboard offers no invite button when the console lacks the coordinator API key', async () => {
+    // serverUrl set but no MESH_API_KEY: minting is impossible, so show the
+    // precise reason, not a button that only fails.
+    const env = { ...ENV, BOX_NAME: 'nufi', MESH_SERVER_URL: 'https://coordinator.internal' };
+    const { app, cookie } = await loggedIn(env, { checkHealth: async () => health });
+    const html = await (await app.request('/', { headers: { cookie } })).text();
+    expect(html).toContain('no coordinator API key');
+    expect(html).not.toContain('Generate an invite link');
+  });
+
+  test('POST /invite without a session redirects to /login', async () => {
+    const app = createApp(dashEnv, { checkHealth: async () => health, mint: async () => 'k' });
+    const r = await app.request('/invite', { method: 'POST' });
+    expect(r.status).toBe(303);
+    expect(r.headers.get('location')).toBe('/login');
+  });
+
+  test('POST /invite mints a key and returns a /connect share link on the request origin', async () => {
+    const app = createApp(dashEnv, { checkHealth: async () => health, mint: async () => 'k-member-xyz' });
+    const login = await app.request(form('hunter2'));
+    const cookie = (login.headers.get('set-cookie') ?? '').split(';')[0];
+    const r = await app.request('/invite', {
+      method: 'POST',
+      headers: { cookie, host: 'nufi.local:3009', 'x-forwarded-proto': 'https' },
+    });
+    expect(r.status).toBe(200);
+    const html = await r.text();
+    expect(html).toContain('https://nufi.local:3009/connect?token=');
+    expect(html).toContain('works once and expires');
+    expect(html).not.toContain('k-member-xyz');    // the raw key is inside the token, never shown
+  });
+
+  test('POST /invite on a LAN-only box explains it must join a mesh first', async () => {
+    const app = createApp({ ...ENV, BOX_NAME: 'nufi' }, { checkHealth: async () => health, mint: async () => 'k' });
+    const login = await app.request(form('hunter2'));
+    const cookie = (login.headers.get('set-cookie') ?? '').split(';')[0];
+    const r = await app.request('/invite', { method: 'POST', headers: { cookie } });
+    expect(r.status).toBe(200);
+    expect(await r.text()).toContain('not on a mesh yet');
+  });
+
+  test('POST /invite surfaces an unreachable coordinator with the egress hint', async () => {
+    const { MeshError } = await import('../src/mesh-api');
+    const app = createApp(dashEnv, {
+      checkHealth: async () => health,
+      mint: async () => { throw new MeshError('coordinator unreachable: ECONNREFUSED'); },
+    });
+    const login = await app.request(form('hunter2'));
+    const cookie = (login.headers.get('set-cookie') ?? '').split(';')[0];
+    const r = await app.request('/invite', { method: 'POST', headers: { cookie } });
+    const html = await r.text();
+    expect(html).toContain('Invite failed');
+    expect(html).toContain('egress allow-list');
   });
 });

@@ -1,6 +1,9 @@
 import type { Health } from './health';
 import type { BoxInfo } from './boxinfo';
 
+// The result of a POST /invite, rendered back into the dashboard.
+export type InviteResult = { link: string } | { error: string };
+
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -64,10 +67,41 @@ function meshPanel(info: BoxInfo): string {
     <p class="sub">${esc(m.host)} · via ${esc(m.serverUrl)}${m.selfHost ? ' · self-hosted on this box' : ''}</p>`;
 }
 
-// The owner dashboard: box identity, live service health, mesh status, and the
-// departments whose drives feed the assistants. `now` is passed in so the view
-// is a pure function of its inputs (tested without a clock).
-export function dashboard(info: BoxInfo, health: Health[], now: Date): string {
+function invitePanel(info: BoxInfo, invite: InviteResult | undefined, canInvite: boolean): string {
+  // Only offer the button when a mint can actually succeed (the console has both
+  // a coordinator URL and an API key). Otherwise say precisely why not, rather
+  // than a button that can only fail.
+  let form: string;
+  if (canInvite) {
+    form = `<form method="post" action="/invite" style="flex-direction:row;margin-top:.5rem">
+         <button type="submit">Generate an invite link</button>
+       </form>`;
+  } else if (info.mesh.serverUrl) {
+    form = `<p class="sub">This console has no coordinator API key (<code>MESH_API_KEY</code>) to mint invites.</p>`;
+  } else {
+    form = `<p class="sub">Join a coordinator first (<code>nufi-box mesh up</code>) to invite members.</p>`;
+  }
+  let result = '';
+  if (invite && 'link' in invite) {
+    result = `<p class="sub" style="margin-top:.75rem">Share this link with the member — it works once and expires in an hour:</p>
+      <input readonly value="${esc(invite.link)}" onclick="this.select()" style="width:100%;margin-top:.4rem">`;
+  } else if (invite && 'error' in invite) {
+    result = `<p class="err">${esc(invite.error)}</p>`;
+  }
+  return form + result;
+}
+
+// The owner dashboard: box identity, live service health, mesh status, the
+// invite action, and the departments whose drives feed the assistants. `now`
+// is passed in so the view is a pure function of its inputs (tested without a
+// clock); `invite` renders the result of a just-submitted POST /invite.
+export function dashboard(
+  info: BoxInfo,
+  health: Health[],
+  now: Date,
+  invite?: InviteResult,
+  canInvite = false,
+): string {
   const departments = info.departments.length
     ? info.departments.map((d) => `<code>${esc(d)}</code>`).join(' · ')
     : '<span class="sub">none configured</span>';
@@ -81,6 +115,9 @@ export function dashboard(info: BoxInfo, health: Health[], now: Date): string {
 
   <h2>Mesh</h2>
   <div class="grid">${meshPanel(info)}</div>
+
+  <h2>Members</h2>
+  ${invitePanel(info, invite, canInvite)}
 
   <h2>Departments</h2>
   <p>${departments}</p>
