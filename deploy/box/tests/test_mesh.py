@@ -593,3 +593,40 @@ def test_invite_linux_tells_the_member_to_bash_the_file(tmp_path, fake_headscale
     r = cli("invite", "iris", "--os", "linux", env={"NUFI_BOX_ENV": str(envf)})
     assert r.returncode == 0, r.stdout + r.stderr
     assert "bash nufi-join-iris.sh" in r.stdout
+
+
+# --- self-host coordinator: host-side curl resolves the loopback name ------
+# A box installed with --self-host-coordinator (NUFI_SELF_HOST_COORD=1) runs
+# the coordinator on THIS host and reaches it at MESH_SERVER_HOST → 127.0.0.1.
+# The mesh NODE gets that mapping from docker-compose.mesh-selfhost.yml, but
+# these curl calls run on the host, which has no /etc/hosts entry — so mesh_api
+# must hand curl an explicit `resolve`. Without it, `nufi-box mesh up`'s name
+# check / invite / members / revoke all die "Could not resolve host" on a box
+# that is otherwise up (observed on a real Ubuntu VM install, 2026-09-28).
+
+def test_self_host_coordinator_curl_resolves_the_name_to_loopback(tmp_path, fake_headscale):
+    # The URL names coordinator.internal (as the installer writes it), which does
+    # not resolve anywhere; the fake listens on 127.0.0.1. Only the self-host
+    # resolve line can bridge the two, so a green `members` proves it fired.
+    envf, _ = make_env(
+        tmp_path, fake_headscale,
+        MESH_SERVER_URL="http://coordinator.internal:%d" % fake_headscale.server_port,
+        NUFI_SELF_HOST_COORD="1",
+    )
+    r = cli("members", env={"NUFI_BOX_ENV": str(envf)})
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "bob" in r.stdout and "alice" in r.stdout
+    assert any(m[0] == "GET" and m[1] == "/api/v1/node" for m in fake_headscale.requests)
+
+
+def test_without_self_host_a_non_resolving_name_is_not_rewritten(tmp_path, fake_headscale):
+    # The gate: with self-host OFF, mesh_api adds no resolve line, so an
+    # unresolvable name (.invalid never resolves, RFC 6761) never reaches the
+    # loopback fake — the call fails and the fake sees no request.
+    envf, _ = make_env(
+        tmp_path, fake_headscale,
+        MESH_SERVER_URL="http://coordinator.invalid:%d" % fake_headscale.server_port,
+    )
+    r = cli("members", env={"NUFI_BOX_ENV": str(envf)})
+    assert r.returncode != 0
+    assert not any(m[1] == "/api/v1/node" for m in fake_headscale.requests)
