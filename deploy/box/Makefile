@@ -100,6 +100,7 @@ registry-push:
 	docker tag ghcr.io/$(OWNER)/nufi-works-egress:$(TAG) $(PUSH_REGISTRY)/nufi-works-egress:$(TAG) && docker push $(PUSH_REGISTRY)/nufi-works-egress:$(TAG)
 	docker tag ghcr.io/$(OWNER)/nufi-sandbox:$(TAG) $(PUSH_REGISTRY)/nufi-sandbox:$(TAG) && docker push $(PUSH_REGISTRY)/nufi-sandbox:$(TAG)
 	docker tag ghcr.io/$(OWNER)/nufi-works:$(TAG) $(PUSH_REGISTRY)/nufi-works:$(TAG) && docker push $(PUSH_REGISTRY)/nufi-works:$(TAG)
+	docker tag ghcr.io/$(OWNER)/nufi-owner-console:$(TAG) $(PUSH_REGISTRY)/nufi-owner-console:$(TAG) && docker push $(PUSH_REGISTRY)/nufi-owner-console:$(TAG)
 	docker pull -q $(RAG_IMAGE) && docker tag $(RAG_IMAGE) $(PUSH_REGISTRY)/librechat-rag-api-dev-lite:$(TAG) && docker push $(PUSH_REGISTRY)/librechat-rag-api-dev-lite:$(TAG)
 	docker pull -q $(SAMBA_IMAGE) && docker tag $(SAMBA_IMAGE) $(PUSH_REGISTRY)/samba:$(TAG) && docker push $(PUSH_REGISTRY)/samba:$(TAG)
 	docker pull -q $(HEADSCALE_IMAGE) && docker tag $(HEADSCALE_IMAGE) $(PUSH_REGISTRY)/headscale:$(TAG) && docker push $(PUSH_REGISTRY)/headscale:$(TAG)
@@ -137,6 +138,7 @@ save:
 	  ghcr.io/$(OWNER)/nufi-works-egress:$(TAG) \
 	  ghcr.io/$(OWNER)/nufi-works:$(TAG) \
 	  ghcr.io/$(OWNER)/nufi-sandbox:$(TAG) \
+	  ghcr.io/$(OWNER)/nufi-owner-console:$(TAG) \
 	  ghcr.io/danny-avila/librechat-rag-api-dev-lite:$(TAG) \
 	  $(SAMBA_IMAGE) \
 	  $(HEADSCALE_IMAGE) \

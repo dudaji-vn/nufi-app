@@ -25,7 +25,8 @@ TAG_KEY = {"nufichat": "NUFI_CHAT_TAG", "nufichat-admin-panel": "NUFI_ADMIN_TAG"
            "nufi-console": "NUFI_CONSOLE_TAG", "nufi-litellm": "NUFI_LITELLM_TAG",
            "nufi-ingest": "NUFI_INGEST_TAG", "nufi-studio": "NUFI_STUDIO_TAG",
            "nufi-cron": "NUFI_CRON_TAG", "nufi-works-egress": "NUFI_WORKS_EGRESS_TAG",
-           "nufi-sandbox": "NUFI_SANDBOX_TAG", "nufi-works": "NUFI_WORKS_TAG"}
+           "nufi-sandbox": "NUFI_SANDBOX_TAG", "nufi-works": "NUFI_WORKS_TAG",
+           "nufi-owner-console": "NUFI_OWNER_CONSOLE_TAG"}
 
 
 def test_the_compose_file_names_every_image_the_mirror_knows():
@@ -214,6 +215,14 @@ def test_save_carries_every_third_party_image_named_in_any_box_compose():
     save_cmd = out[out.index("docker save"):]
     for ref in third_party:
         assert ref in save_cmd, ref
+
+
+def test_save_and_mirror_carry_the_owner_console_image():
+    out = make_n("save")
+    save_cmd = out[out.index("docker save"):]
+    assert "ghcr.io/dudaji-vn/nufi-owner-console:" in save_cmd
+    push = make_n("registry-push", REGISTRY="172.10.10.30:5001")
+    assert "docker push localhost:5001/nufi-owner-console:" in push
 
 
 def test_load_reads_the_default_tarball_and_honors_the_override():

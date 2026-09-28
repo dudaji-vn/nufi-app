@@ -40,6 +40,12 @@ jobs:
       # stops being true, instead of every compose test erroring one by one.
       - name: Check the compose CLI is present
         run: docker compose version
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
+      - name: Owner console handlers
+        run: bun install --frozen-lockfile && bun test
+        working-directory: deploy/box/owner-console
       # install-box.sh and nufi-box are bash 3.2 scripts driven in --dry-run;
       # the compose and Caddyfile tests only read files. Nothing here starts a
       # container, so the whole suite is a few seconds.
