@@ -76,7 +76,22 @@ describe('renderConnector — Linux (agent flow, installs the NuFi agent from th
     expect(c.body).toContain('--hostname "ivy-nguyen"');
     expect(c.body).toContain('/register');            // opens sign-up after joining
     expect(c.body).not.toContain('tailscale.com');
-    expect(c.body).not.toContain('Ym94Y2E=');         // agent fetches the box CA itself; not embedded
+  });
+
+  test('trusts the box CA so the sign-up page opens without a cert warning (parity with mac/Win)', () => {
+    const c = renderConnector(base('linux'), TEMPLATES).body;
+    expect(c).toContain('BOX_CA_B64="Ym94Y2E="');           // the box CA IS embedded and installed
+    expect(c).toContain('/usr/local/share/ca-certificates/nufi-box.crt');
+    expect(c).toContain('update-ca-certificates');
+    // absent box CA (public/edge case) leaves the guard empty, not a literal
+    const noBoxCa = renderConnector({ ...base('linux'), boxCaB64: '' }, TEMPLATES).body;
+    expect(noBoxCa).toContain('BOX_CA_B64=""');
+  });
+
+  test('maps the department drives after joining (best effort)', () => {
+    const c = renderConnector(base('linux'), TEMPLATES).body;
+    expect(c).toContain("gio mount 'smb://nufi.box.internal/legal'");
+    expect(c).toContain("gio mount 'smb://nufi.box.internal/hr'");
   });
 
   test('detects the client architecture', () => {
@@ -92,5 +107,16 @@ describe('renderConnector — Linux (agent flow, installs the NuFi agent from th
     expect(withCa).toContain('CA_ARG="--ca');
     const noCa = renderConnector({ ...base('linux'), coordCaB64: '' }, TEMPLATES).body;
     expect(noCa).toContain('CA_B64=""');              // guarded: no --ca when empty
+  });
+
+  test('shell-escapes owner/coordinator values landing in a double-quoted context', () => {
+    const evil = renderConnector(
+      { ...base('linux'), serverUrl: 'https://x"; touch /tmp/pwned; echo "', key: 'k$(id)' },
+      TEMPLATES,
+    ).body;
+    // the injected quote/`$(` must be neutralised, not left live before sudo
+    expect(evil).not.toContain('"; touch /tmp/pwned; echo "');
+    expect(evil).toContain('\\"');                    // the embedded " was escaped
+    expect(evil).toContain('k\\$(id)');               // the $ was escaped, not expanded
   });
 });
