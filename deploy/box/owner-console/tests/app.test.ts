@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'bun:test';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp } from '../src/app';
 import { signInvite } from '../src/invite';
@@ -251,6 +253,19 @@ describe('owner-console app', () => {
     boxCaB64: async () => 'Ym94Y2E=',
     coordCaB64: () => 'Y29vcmRjYQ==',
   };
+
+  test('GET /agent serves an allow-listed bundle, 404s anything else', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'agentdist-'));
+    writeFileSync(join(dir, 'nufibox-agent-linux-amd64.tar.gz'), 'FAKE-TARBALL');
+    const app = createApp(dashEnv, { checkHealth: async () => health, agentDistDir: dir });
+    const ok = await app.request('/agent/nufibox-agent-linux-amd64.tar.gz');   // public, no cookie
+    expect(ok.status).toBe(200);
+    expect(ok.headers.get('content-disposition')).toContain('nufibox-agent-linux-amd64.tar.gz');
+    expect(await ok.text()).toBe('FAKE-TARBALL');
+    expect((await app.request('/agent/nufibox-agent-linux-arm64.tar.gz')).status).toBe(404); // allow-listed but absent
+    expect((await app.request('/agent/nufibox-agent-linux-x86.tar.gz')).status).toBe(404);   // bad arch
+    expect((await app.request('/agent/evil.sh')).status).toBe(404);                          // not allow-listed
+  });
 
   test('GET /connect is public, shows the OS picker, and carries no token', async () => {
     const app = createApp(dashEnv, connectDeps);

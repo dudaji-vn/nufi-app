@@ -29,7 +29,13 @@ type Deps = {
   coordCaB64?: () => string;
   listMembers?: () => Promise<MembersData>;
   revoke?: (cfg: MeshConfig, id: string) => Promise<void>;
+  agentDistDir?: string;
 };
+
+// The NufiBox Agent bundles the box ships for a member to install — one per
+// client arch. The name is allow-listed so the path can never escape the dist
+// directory.
+const AGENT_FILE = /^nufibox-agent-linux-(amd64|arm64)\.tar\.gz$/;
 
 function originOf(c: { req: { header: (n: string) => string | undefined } }): string {
   const proto = c.req.header('x-forwarded-proto') ?? 'https';
@@ -166,6 +172,20 @@ export function createApp(env: AppEnv = process.env, deps: Deps = {}): Hono {
       return c.html(await render({ error: `Revoke failed: ${detail}.` }));
     }
     return c.redirect('/', 303); // gone from the list on the reloaded dashboard
+  });
+
+  // The de-branded NufiBox Agent, served for a member to install — public and
+  // reachable on plain :80 (like /connect), so a laptop that has not trusted the
+  // box CA yet can fetch it. Not secret: it is the client binaries + wrapper.
+  const agentDistDir = deps.agentDistDir ?? env.AGENT_DIST_DIR ?? '/app/agent-dist';
+  app.get('/agent/:file', async (c) => {
+    const file = c.req.param('file');
+    if (!AGENT_FILE.test(file)) return c.text('not found', 404);
+    const f = Bun.file(`${agentDistDir}/${file}`);
+    if (!(await f.exists())) return c.text('not found', 404);
+    return new Response(f.stream(), {
+      headers: { 'content-type': 'application/gzip', 'content-disposition': `attachment; filename="${file}"` },
+    });
   });
 
   // --- member-facing, NO login (the invite token is the credential) ---------
