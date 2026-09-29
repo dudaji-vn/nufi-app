@@ -6,8 +6,8 @@ import { boxInfo } from './boxinfo';
 import { isOS, renderConnector } from './connector';
 import { checkAll, probesForEnv, type Health } from './health';
 import { connectLink, signInvite, verifyInvite } from './invite';
-import { MeshError, meshConfig, mintMemberKey, type MeshConfig } from './mesh-api';
-import { connectPage, dashboard, loginPage, type InviteResult } from './views';
+import { MeshError, listNodes, meshConfig, mintMemberKey, revokeNode, type MeshConfig } from './mesh-api';
+import { connectPage, dashboard, loginPage, type InviteResult, type MembersData } from './views';
 
 const COOKIE = 'nufi_owner';
 const NOT_CONFIGURED = 'The owner password is not configured on this box.';
@@ -27,6 +27,8 @@ type Deps = {
   templatesDir?: string;
   boxCaB64?: () => Promise<string>;
   coordCaB64?: () => string;
+  listMembers?: () => Promise<MembersData>;
+  revoke?: (cfg: MeshConfig, id: string) => Promise<void>;
 };
 
 function originOf(c: { req: { header: (n: string) => string | undefined } }): string {
@@ -77,8 +79,23 @@ export function createApp(env: AppEnv = process.env, deps: Deps = {}): Hono {
   const authed = (c: { req: { header: (n: string) => string | undefined } }) =>
     configured && verifySession(secret, getCookie(c as never, COOKIE));
 
-  const render = async (invite?: InviteResult) =>
-    dashboard(boxInfo(env), await checkHealth(), now(), invite, canInvite);
+  // The current mesh members, best-effort: undefined when the box is not on a
+  // mesh, an error string when the coordinator can't be reached, else the list.
+  const listMembersSafe = async (): Promise<MembersData> => {
+    if (deps.listMembers) return deps.listMembers();
+    const cfg = meshConfig(env);
+    if (!cfg) return undefined;
+    try {
+      return await listNodes(cfg);
+    } catch (e) {
+      return { error: e instanceof MeshError ? e.message : 'coordinator unreachable' };
+    }
+  };
+
+  const render = async (invite?: InviteResult) => {
+    const [health, members] = await Promise.all([checkHealth(), listMembersSafe()]);
+    return dashboard(boxInfo(env), health, now(), invite, canInvite, members);
+  };
 
   app.get('/healthz', (c) => c.text('ok'));
 
@@ -119,6 +136,24 @@ export function createApp(env: AppEnv = process.env, deps: Deps = {}): Hono {
         : '';
       return c.html(await render({ error: `Invite failed: ${detail}.${hint}` }));
     }
+  });
+
+  // Remove one member by node id (day-two). Session-guarded; the destructive
+  // confirm is a client-side guard on the form.
+  app.post('/revoke', async (c) => {
+    if (!authed(c)) return c.redirect('/login', 303);
+    const cfg = meshConfig(env);
+    if (!cfg) return c.html(await render());
+    const body = await c.req.parseBody();
+    const id = typeof body.id === 'string' ? body.id : '';
+    if (!id) return c.redirect('/', 303);
+    try {
+      await (deps.revoke ? deps.revoke(cfg, id) : revokeNode(cfg, id));
+    } catch (e) {
+      const detail = e instanceof MeshError ? e.message : 'could not reach the coordinator';
+      return c.html(await render({ error: `Revoke failed: ${detail}.` }));
+    }
+    return c.redirect('/', 303); // gone from the list on the reloaded dashboard
   });
 
   // --- member-facing, NO login (the invite token is the credential) ---------

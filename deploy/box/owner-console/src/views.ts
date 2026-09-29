@@ -1,8 +1,13 @@
 import type { Health } from './health';
 import type { BoxInfo } from './boxinfo';
+import type { Node } from './mesh-api';
 
 // The result of a POST /invite, rendered back into the dashboard.
 export type InviteResult = { link: string } | { error: string };
+
+// The mesh members to render: the node list, an error string if the coordinator
+// could not be reached, or undefined when the box is not on a mesh at all.
+export type MembersData = Node[] | { error: string } | undefined;
 
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -140,21 +145,60 @@ function invitePanel(info: BoxInfo, invite: InviteResult | undefined, canInvite:
   return form + result;
 }
 
+// The current mesh members. The box's own node (tag:box, or its name) is shown
+// without a Revoke button — you cannot cut the box off its own mesh from here.
+function membersPanel(members: MembersData, boxName: string): string {
+  if (members === undefined) return '';
+  if ('error' in members) return `<p class="sub">Member list unavailable — ${esc(members.error)}</p>`;
+  const others = members.filter((n) => !(n.tags.includes('tag:box') || n.name === boxName));
+  if (others.length === 0) return '<p class="sub" style="margin-top:.75rem">No members yet — generate an invite link above.</p>';
+  const rows = members
+    .map((n) => {
+      const isBox = n.tags.includes('tag:box') || n.name === boxName;
+      const pill = n.online ? '<span class="pill ok">online</span>' : '<span class="pill">offline</span>';
+      const ip = n.ips[0] ? ` · ${esc(n.ips[0])}` : '';
+      const action = isBox
+        ? '<span class="sub">this box</span>'
+        : `<form method="post" action="/revoke" data-revoke data-name="${esc(n.name)}" style="margin:0;display:inline">
+             <input type="hidden" name="id" value="${esc(n.id)}"><button type="submit">Revoke</button>
+           </form>`;
+      return `<div class="row"><span><span class="name">${esc(n.name || '(unnamed)')}</span><span class="sub">${ip}</span></span>
+        <span style="display:flex;gap:.6rem;align-items:center">${pill}${action}</span></div>`;
+    })
+    .join('');
+  return `<div class="grid" style="margin-top:.75rem">${rows}</div>`;
+}
+
+// How members reach each department's drive over SMB. Samba binds every address
+// the box has, so the mesh name (when joined) and the LAN name both work; show
+// the reachable one.
+function drivesPanel(info: BoxInfo): string {
+  if (info.departments.length === 0) return '<p class="sub">No departments configured.</p>';
+  const host = info.mesh.joined && info.mesh.host ? info.mesh.host : info.host;
+  const rows = info.departments
+    .map((d) => `<div class="row"><span class="name">${esc(d)}</span>
+      <code class="sub">\\\\${esc(host)}\\${esc(d)} · smb://${esc(host)}/${esc(d)}</code></div>`)
+    .join('');
+  return `<div class="grid">${rows}</div>`;
+}
+
 // The owner dashboard: box identity, live service health, mesh status, the
-// invite action, and the departments whose drives feed the assistants. `now`
-// is passed in so the view is a pure function of its inputs (tested without a
-// clock); `invite` renders the result of a just-submitted POST /invite.
+// invite action + current members, and the department drives. `now` is passed
+// in so the view is a pure function of its inputs (tested without a clock);
+// `invite` renders a just-submitted POST /invite; `members` the mesh node list.
 export function dashboard(
   info: BoxInfo,
   health: Health[],
   now: Date,
   invite?: InviteResult,
   canInvite = false,
+  members?: MembersData,
 ): string {
-  const departments = info.departments.length
-    ? info.departments.map((d) => `<code>${esc(d)}</code>`).join(' · ')
-    : '<span class="sub">none configured</span>';
   const stamp = now.toISOString().slice(11, 19);
+  const revokeScript = `
+  for (const f of document.querySelectorAll('form[data-revoke]')) f.addEventListener('submit', (e) => {
+    if (!confirm('Remove ' + f.dataset.name + '? They lose access to the box until invited again.')) e.preventDefault();
+  });`;
   return shell('NuFi box · owner', `
   <h1>${esc(info.name || 'NuFi box')}</h1>
   <p class="sub">${esc(info.host)}${info.ip ? ` · ${esc(info.ip)}` : ''}</p>
@@ -167,12 +211,14 @@ export function dashboard(
 
   <h2>Members</h2>
   ${invitePanel(info, invite, canInvite)}
+  ${membersPanel(members, info.name)}
 
-  <h2>Departments</h2>
-  <p>${departments}</p>
+  <h2>Department drives</h2>
+  ${drivesPanel(info)}
 
   <div class="foot">
     <span class="sub">checked ${stamp} UTC · <a href="/">refresh</a></span>
     <form method="post" action="/logout" style="margin:0"><button type="submit">Sign out</button></form>
-  </div>`, true);
+  </div>
+  <script>${revokeScript}</script>`, true);
 }

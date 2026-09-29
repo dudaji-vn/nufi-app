@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { meshConfig, mintMemberKey, MeshError } from '../src/mesh-api';
+import { listNodes, meshConfig, mintMemberKey, revokeNode, MeshError } from '../src/mesh-api';
 
 const CFG = { serverUrl: 'https://coordinator.internal', apiKey: 'k' };
 
@@ -73,5 +73,44 @@ describe('mintMemberKey', () => {
       expect(e).toBeInstanceOf(MeshError);
       expect(String(e.message)).toContain('unreachable');
     });
+  });
+});
+
+describe('listNodes', () => {
+  test('maps the coordinator node list to a tidy shape', async () => {
+    const f = (() => Promise.resolve(new Response(JSON.stringify({
+      nodes: [
+        { id: 1, name: 'nufi', ipAddresses: ['100.64.0.1'], online: true, lastSeen: '2026-09-29T00:00:00Z', tags: ['tag:box'] },
+        { id: 2, name: 'ivy', ipAddresses: ['100.64.0.5'], online: false, lastSeen: '2026-09-28T00:00:00Z', tags: ['tag:member'] },
+      ],
+    }), { status: 200 }))) as unknown as typeof fetch;
+    const nodes = await listNodes(CFG, f);
+    expect(nodes).toHaveLength(2);
+    expect(nodes[0]).toEqual({ id: '1', name: 'nufi', ips: ['100.64.0.1'], online: true, lastSeen: '2026-09-29T00:00:00Z', tags: ['tag:box'] });
+    expect(nodes[1].id).toBe('2');
+    expect(nodes[1].tags).toEqual(['tag:member']);
+    expect(nodes[1].online).toBe(false);
+  });
+
+  test('an empty tailnet is an empty list, not a throw', async () => {
+    const f = (() => Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))) as unknown as typeof fetch;
+    expect(await listNodes(CFG, f)).toEqual([]);
+  });
+});
+
+describe('revokeNode', () => {
+  test('DELETEs the node by id', async () => {
+    const calls: string[] = [];
+    const f = ((url: string, init: { method?: string }) => {
+      calls.push(`${init.method} ${url}`);
+      return Promise.resolve(new Response('{}', { status: 200 }));
+    }) as unknown as typeof fetch;
+    await revokeNode(CFG, '2', f);
+    expect(calls).toEqual(['DELETE https://coordinator.internal/api/v1/node/2']);
+  });
+
+  test('a 401/403 surfaces as a MeshError', async () => {
+    const f = (() => Promise.resolve(new Response('no', { status: 403 }))) as unknown as typeof fetch;
+    expect(revokeNode(CFG, '2', f)).rejects.toThrow(MeshError);
   });
 });
