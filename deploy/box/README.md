@@ -846,6 +846,34 @@ same certificate, the same drives, the same login. What changes is that the
 box's name now resolves from anywhere its members are, instead of only on the
 office LAN.
 
+### Deployment modes: how far the box reaches
+
+How members reach the box is a deployment choice with one unavoidable
+trade-off: a box can be reachable from anywhere, or it can depend on nothing
+outside the site, but not both. Three postures cover the range.
+
+- **LAN only.** Do not put the box on a mesh at all. Members reach it from the
+  office network by its `.local` name or IP; nothing the box does leaves the
+  site, and there is no coordinator to run. This is the default after a plain
+  install (sections 1–5) — the strongest isolation, and the right choice when
+  everyone who needs the box is on one network.
+- **Self-hosted coordinator, on the box.** The box runs its own coordinator
+  (`--self-host-coordinator`, below), so the appliance is self-contained: no
+  external service, no separate VPS, no public certificate authority. Members
+  reach it wherever the box's own network reaches — a closed site network whose
+  DNS (or each laptop's `/etc/hosts`) points `coordinator.internal` at the box.
+  Remote access is bounded by that network, not by the public internet.
+- **A separate, reachable coordinator.** A small coordinator the members'
+  laptops can reach — run by the operator at their own address (a host in their
+  DMZ, say), or a shared one — lets a laptop reach the box from an LTE hotspot
+  or a hotel. `--mesh <url>` points the box at *any* coordinator; the box is not
+  tied to a particular server. This is the only posture that gives
+  reach-from-anywhere, and the price is that the coordinator must itself be
+  reachable and kept running.
+
+The two mechanisms — a separate coordinator, or one self-hosted on the box —
+are written up next; "LAN only" needs no setup beyond not running `mesh up`.
+
 ### Putting the box on the mesh
 
 The coordinator (`deploy/coordinator`) is a small VPS running headscale. It
@@ -1008,6 +1036,41 @@ mean.
 join file will not work: Tailscale logs into one control server at a time,
 and a corporate MDM profile usually locks that choice. Ask your IT team, or
 join from a personal device instead.
+
+### Trust on first join, and what it assumes
+
+A laptop's very first contact with the box happens over plain HTTP, before it
+trusts the box's certificate: downloading the CA (section 4), and — with the
+console connector — downloading the connector and the agent it installs. This
+is trust-on-first-use, the same bootstrap any private certificate authority
+has, and it rests on one assumption worth stating plainly for a security
+review.
+
+On that first hop, the LAN between the laptop and the box is trusted. A machine
+positioned between the two could alter what is downloaded, before the CA is in
+place to authenticate it. What bounds this is the site's own control of that
+network — the same control that lets it run a private CA at all — not anything
+in the protocol. Once the CA is trusted, every later exchange with the box is
+authenticated and encrypted, and this concern is gone.
+
+Two properties narrow the window, and one common assumption about them is
+wrong:
+
+- Pre-auth keys are single-use and expire in an hour. This bounds a *stolen
+  key* — it cannot be replayed to enrol a second machine. It does **not** make
+  the first download safe: an attacker substituting a payload never needs the
+  key.
+- The console connector checks the agent's SHA-256 against a digest the box
+  baked in at build time, before it runs the agent as root. This protects the
+  *agent download* whenever the connector itself arrived over a trusted channel
+  — after the CA is trusted, or handed over out-of-band. It cannot, on its own,
+  protect the very first cold fetch, because a machine in the middle of that hop
+  could alter the connector along with everything else.
+
+For the highest-assurance sites, close the first hop rather than rely on the
+protocol: run the first join on a network segment you control, or hand the
+member the CA (and, if you use it, the connector) out-of-band — so the first
+authenticated exchange does not depend on the LAN being clean.
 
 ## 9. Troubleshooting
 
