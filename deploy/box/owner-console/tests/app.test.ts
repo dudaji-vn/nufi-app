@@ -151,20 +151,66 @@ describe('owner-console app', () => {
     expect(r.headers.get('location')).toBe('/login');
   });
 
-  test('POST /revoke removes the node by id and reloads the dashboard', async () => {
+  const revokeApp = (onRevoke: (id: string) => void, listErr = false) =>
+    loggedIn(dashEnv, {
+      checkHealth: async () => health,
+      listMembers: async () => (listErr ? { error: 'coordinator unreachable' } : members),
+      revoke: async (_cfg, id) => { onRevoke(id); },
+    });
+
+  test('POST /revoke removes a member node by id and reloads the dashboard', async () => {
     let revoked = '';
+    const { app, cookie } = await revokeApp((id) => { revoked = id; });
+    const r = await app.request('/revoke', {
+      method: 'POST',
+      headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ id: '2' }),          // ivy, a member
+    });
+    expect(revoked).toBe('2');
+    expect(r.status).toBe(303);
+    expect(r.headers.get('location')).toBe('/');
+  });
+
+  test('POST /revoke refuses to remove the box\'s own node, even by crafted id', async () => {
+    let revoked = '';
+    const { app, cookie } = await revokeApp((id) => { revoked = id; });
+    const r = await app.request('/revoke', {
+      method: 'POST',
+      headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ id: '1' }),          // the box node (tag:box)
+    });
+    expect(revoked).toBe('');                          // revokeNode was NOT called
+    expect(r.status).toBe(200);
+    expect(await r.text()).toContain("box's own node can't be revoked");
+  });
+
+  test('POST /revoke with no id is a no-op redirect, not a delete', async () => {
+    let revoked = '';
+    const { app, cookie } = await revokeApp((id) => { revoked = id; });
+    const r = await app.request('/revoke', {
+      method: 'POST',
+      headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({}),
+    });
+    expect(revoked).toBe('');
+    expect(r.status).toBe(303);
+    expect(r.headers.get('location')).toBe('/');
+  });
+
+  test('POST /revoke surfaces a coordinator failure as an error notice', async () => {
+    const { MeshError } = await import('../src/mesh-api');
     const { app, cookie } = await loggedIn(dashEnv, {
       checkHealth: async () => health,
-      revoke: async (_cfg, id) => { revoked = id; },
+      listMembers: async () => members,
+      revoke: async () => { throw new MeshError('coordinator unreachable'); },
     });
     const r = await app.request('/revoke', {
       method: 'POST',
       headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ id: '2' }),
     });
-    expect(revoked).toBe('2');
-    expect(r.status).toBe(303);
-    expect(r.headers.get('location')).toBe('/');
+    expect(r.status).toBe(200);
+    expect(await r.text()).toContain('Revoke failed');
   });
 
   test('POST /invite without a session redirects to /login', async () => {

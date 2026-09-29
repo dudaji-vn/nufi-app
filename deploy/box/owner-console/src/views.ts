@@ -150,19 +150,24 @@ function invitePanel(info: BoxInfo, invite: InviteResult | undefined, canInvite:
 function membersPanel(members: MembersData, boxName: string): string {
   if (members === undefined) return '';
   if ('error' in members) return `<p class="sub">Member list unavailable — ${esc(members.error)}</p>`;
-  const others = members.filter((n) => !(n.tags.includes('tag:box') || n.name === boxName));
-  if (others.length === 0) return '<p class="sub" style="margin-top:.75rem">No members yet — generate an invite link above.</p>';
+  // The box's own node is identified by tag OR name (defence in depth against a
+  // headscale tag-field change), computed once and used for both the filter and
+  // the per-row action.
+  const isBox = (n: Node) => n.tags.includes('tag:box') || n.name === boxName;
+  if (members.filter((n) => !isBox(n)).length === 0) {
+    return '<p class="sub" style="margin-top:.75rem">No members yet — generate an invite link above.</p>';
+  }
   const rows = members
     .map((n) => {
-      const isBox = n.tags.includes('tag:box') || n.name === boxName;
       const pill = n.online ? '<span class="pill ok">online</span>' : '<span class="pill">offline</span>';
       const ip = n.ips[0] ? ` · ${esc(n.ips[0])}` : '';
-      const action = isBox
+      const seen = !n.online && n.lastSeen ? ` · last seen ${esc(n.lastSeen.slice(0, 10))}` : '';
+      const action = isBox(n)
         ? '<span class="sub">this box</span>'
         : `<form method="post" action="/revoke" data-revoke data-name="${esc(n.name)}" style="margin:0;display:inline">
              <input type="hidden" name="id" value="${esc(n.id)}"><button type="submit">Revoke</button>
            </form>`;
-      return `<div class="row"><span><span class="name">${esc(n.name || '(unnamed)')}</span><span class="sub">${ip}</span></span>
+      return `<div class="row"><span><span class="name">${esc(n.name || '(unnamed)')}</span><span class="sub">${ip}${seen}</span></span>
         <span style="display:flex;gap:.6rem;align-items:center">${pill}${action}</span></div>`;
     })
     .join('');

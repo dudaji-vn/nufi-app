@@ -148,6 +148,18 @@ export function createApp(env: AppEnv = process.env, deps: Deps = {}): Hono {
     const id = typeof body.id === 'string' ? body.id : '';
     if (!id) return c.redirect('/', 303);
     try {
+      // Enforce the "you cannot cut the box off its own mesh" invariant at the
+      // endpoint, not just in the view: refuse to revoke the box's own node
+      // even for a crafted/replayed POST. When the member list can be read, look
+      // the id up and reject the box node (by tag OR name, so a headscale tag-
+      // field change alone can't defeat it).
+      const members = await listMembersSafe();
+      if (Array.isArray(members)) {
+        const target = members.find((n) => n.id === id);
+        if (target && (target.tags.includes('tag:box') || target.name === boxInfo(env).name)) {
+          return c.html(await render({ error: "The box's own node can't be revoked here." }));
+        }
+      }
       await (deps.revoke ? deps.revoke(cfg, id) : revokeNode(cfg, id));
     } catch (e) {
       const detail = e instanceof MeshError ? e.message : 'could not reach the coordinator';
