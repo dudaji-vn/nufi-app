@@ -278,21 +278,24 @@ describe('owner-console app', () => {
     expect(html).not.toContain('token=');           // token lives in the fragment, read client-side
   });
 
-  test('POST /connect/connector returns a downloadable per-OS join file for a valid token', async () => {
+  test('POST /connect/connector returns the Linux agent installer for a valid token', async () => {
     const app = createApp(dashEnv, connectDeps);
     const token = signInvite(dashEnv.BOX_OWNER_SESSION_SECRET, { key: 'k-join-xyz', serverUrl: 'https://coordinator.internal' });
     const r = await app.request('/connect/connector', {
       method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },   // NO cookie: this is public
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',   // NO cookie: this is public
+        host: 'nufi.local', 'x-forwarded-proto': 'http',       // the box origin the member reached
+      },
       body: new URLSearchParams({ token, os: 'linux', member: 'Ivy Nguyen' }),
     });
     expect(r.status).toBe(200);
     expect(r.headers.get('content-disposition')).toContain('filename="nufi-join-ivy-nguyen.sh"');
     const body = await r.text();
-    expect(body).toContain('k-join-xyz');           // the key the laptop joins with
-    expect(body).toContain('https://coordinator.internal');
-    expect(body).toContain('gio mount');            // a department drive line
-    expect(body).not.toMatch(/@[A-Z_]+@/);          // every placeholder filled
+    expect(body).toContain('k-join-xyz');                          // the key the laptop joins with
+    expect(body).toContain('http://nufi.local/agent/nufibox-agent-linux-$ARCH.tar.gz'); // agent from the box
+    expect(body).toContain('nufibox-agent/install.sh');
+    expect(body).not.toContain('tailscale.com');                  // no external Tailscale download
   });
 
   test('POST /connect/connector rejects an invalid/expired token', async () => {

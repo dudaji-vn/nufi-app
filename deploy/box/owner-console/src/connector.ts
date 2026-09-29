@@ -21,6 +21,7 @@ export type ConnectorInput = {
   departments: string[];
   boxCaB64: string; // base64 of the box's Caddy CA
   coordCaB64: string; // base64 of the coordinator CA, or '' for a public coordinator
+  boxUrl?: string; // the origin the member reached the box on, for the agent download (linux)
 };
 
 // A member name doubles as a Tailscale hostname and the download filename, so
@@ -62,7 +63,39 @@ function driveLines(os: OS, host: string, departments: string[]): string {
 
 export type Connector = { filename: string; contentType: string; body: string };
 
+// Linux members get the NufiBox Agent flow: the connector downloads the
+// de-branded agent bundle FROM THE BOX (not tailscale.com) and installs+enrols
+// it. Everything it interpolates (key, URL, CAs) comes from the verified invite
+// token / box config, never member input; the member name is safeMember'd. The
+// download uses the same origin the member reached /connect on (so it works on
+// the box's LAN name or IP, over plain :80 before the CA is trusted).
+function agentConnectorLinux(input: ConnectorInput): Connector {
+  const member = safeMember(input.member);
+  const boxUrl = (input.boxUrl ?? '').replace(/\/$/, '');
+  const body = `#!/bin/bash
+# NuFi box -- join for ${member}. Installs the NuFi agent from the box and joins.
+# No Tailscale download: the de-branded client is served by the box itself.
+set -e
+echo "NuFi box -- joining as ${member}"
+ARCH="$(dpkg --print-architecture 2>/dev/null || uname -m)"
+case "$ARCH" in x86_64|amd64) ARCH=amd64;; aarch64|arm64) ARCH=arm64;; *) echo "unsupported architecture: $ARCH"; exit 2;; esac
+TMP="$(mktemp -d)"
+echo "Downloading the NuFi agent..."
+curl -fsSL "${boxUrl}/agent/nufibox-agent-linux-$ARCH.tar.gz" -o "$TMP/agent.tgz"
+tar -xzf "$TMP/agent.tgz" -C "$TMP"
+CA_ARG=""
+CA_B64="${input.coordCaB64}"
+if [ -n "$CA_B64" ]; then printf '%s' "$CA_B64" | base64 -d > "$TMP/coord-ca.crt"; CA_ARG="--ca $TMP/coord-ca.crt"; fi
+echo "Installing and joining (you may be asked for your password)..."
+sudo "$TMP/nufibox-agent/install.sh" enroll --server "${input.serverUrl}" --auth-key "${input.key}" $CA_ARG --hostname "${member}"
+echo "Opening NuFi -- sign up (or sign in) to start chatting..."
+xdg-open "https://${input.boxMeshHost}:3080/register" 2>/dev/null || echo "Open https://${input.boxMeshHost}:3080/register in your browser."
+`;
+  return { filename: `nufi-join-${member}.sh`, contentType: 'application/x-shellscript', body };
+}
+
 export function renderConnector(input: ConnectorInput, templatesDir: string): Connector {
+  if (input.os === 'linux') return agentConnectorLinux(input);
   const member = safeMember(input.member);
   const template = readFileSync(join(templatesDir, `${input.os}.${EXT[input.os]}`), 'utf8');
   const subs: Record<string, string> = {

@@ -212,6 +212,7 @@ export function createApp(env: AppEnv = process.env, deps: Deps = {}): Hono {
       departments: info.departments,
       boxCaB64: await boxCaB64(),
       coordCaB64: coordCaB64(),
+      boxUrl: originOf(c), // where the member reached us, for the agent download (linux)
     }, templatesDir);
     return new Response(connector.body, {
       headers: {
