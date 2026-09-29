@@ -1,0 +1,89 @@
+#!/bin/bash
+# nufibox-agent — the NuFi box mesh client.
+#
+# The point of this wrapper: a member installs ONE thing (this, with a
+# de-branded tailscaled bundled alongside it — see build-agent.sh) and joins the
+# box's mesh with an invite's pre-auth key. No separate Tailscale download, and
+# the member never sees or configures "Tailscale". The engine underneath is
+# tailscale (BSD-3), shipped here under nufibox names, a private state dir, and
+# `--no-logs-no-support` so it never phones home.
+#
+#   nufibox-agent enroll --server <url> --auth-key <key> [--ca <file>] [--hostname <name>]
+#   nufibox-agent up | down | status
+#
+# NUFIBOX_AGENT_DRY_RUN=1 prints the commands instead of running them, so the
+# join logic is testable without root or a live daemon.
+set -euo pipefail
+
+STATE_DIR="${NUFIBOX_STATE_DIR:-/var/lib/nufibox}"
+RUN_DIR="${NUFIBOX_RUN_DIR:-/run/nufibox}"
+SOCK="${NUFIBOX_SOCK:-$RUN_DIR/nufibox.sock}"
+# The bundled, de-branded binaries (build-agent.sh installs them next to this
+# script or on PATH). Overridable for tests.
+TSD="${NUFIBOX_TAILSCALED:-nufibox-tailscaled}"
+TS="${NUFIBOX_TAILSCALE:-nufibox-tailscale}"
+CA_DST="${NUFIBOX_CA_DST:-/usr/local/share/ca-certificates/nufibox-mesh.crt}"
+DRY="${NUFIBOX_AGENT_DRY_RUN:-0}"
+
+die() { echo "nufibox-agent: $*" >&2; exit 1; }
+run() { if [ "$DRY" = 1 ]; then printf '  $ %s\n' "$*"; else "$@"; fi; }
+ts() { run "$TS" --socket="$SOCK" "$@"; }
+
+# Trust the box/coordinator CA so tailscaled can verify an internal-CA
+# coordinator and so chat/drives over HTTPS do not warn. A public-cert
+# coordinator passes no --ca and this is skipped.
+trust_ca() {
+  local ca="$1"
+  [ -n "$ca" ] || return 0
+  [ "$DRY" = 1 ] || [ -f "$ca" ] || die "--ca file not found: $ca"
+  run cp "$ca" "$CA_DST"
+  run update-ca-certificates
+}
+
+# Bring the daemon up. Kernel networking (TS_USERSPACE=false equivalent) needs a
+# tun device; the systemd unit build-agent.sh ships runs it as a service, but a
+# direct `up` starts it in the background too so `enroll` works on its own.
+daemon_up() {
+  run install -d -m 0755 "$STATE_DIR" "$RUN_DIR"
+  if [ "$DRY" = 1 ]; then
+    printf '  $ %s --state=%s/nufibox.state --socket=%s --tun=nufibox0 --no-logs-no-support &\n' \
+      "$TSD" "$STATE_DIR" "$SOCK"
+    return 0
+  fi
+  # Prefer the packaged service; fall back to a direct spawn.
+  if systemctl list-unit-files 2>/dev/null | grep -q '^nufibox-agent\.service'; then
+    run systemctl enable --now nufibox-agent
+  elif ! "$TS" --socket="$SOCK" status >/dev/null 2>&1; then
+    "$TSD" --state="$STATE_DIR/nufibox.state" --socket="$SOCK" --tun=nufibox0 --no-logs-no-support >/dev/null 2>&1 &
+    sleep 2
+  fi
+}
+
+cmd_enroll() {
+  local server="" key="" ca="" host="${HOSTNAME:-nufibox}"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --server) server="$2"; shift 2 ;;
+      --auth-key) key="$2"; shift 2 ;;
+      --ca) ca="$2"; shift 2 ;;
+      --hostname) host="$2"; shift 2 ;;
+      *) die "unknown enroll option: $1" ;;
+    esac
+  done
+  [ -n "$server" ] || die "enroll needs --server <coordinator URL>"
+  [ -n "$key" ] || die "enroll needs --auth-key <pre-auth key from the invite>"
+  trust_ca "$ca"
+  daemon_up
+  # Do NOT pass --advertise-tags: headscale v0.29.3 rejects RequestTags on a
+  # pre-auth-key registration; the tag:member tag comes from the key itself.
+  ts up --login-server="$server" --auth-key="$key" --hostname="$host" --accept-dns
+  [ "$DRY" = 1 ] || echo "Joined the NuFi mesh as $host."
+}
+
+case "${1:-}" in
+  enroll) shift; cmd_enroll "$@" ;;
+  up)     daemon_up; ts up ;;
+  down)   ts down ;;
+  status) ts status ;;
+  *) die "usage: nufibox-agent enroll --server <url> --auth-key <key> [--ca <file>] [--hostname <name>] | up | down | status" ;;
+esac
