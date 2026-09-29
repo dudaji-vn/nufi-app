@@ -22,6 +22,11 @@ export type ConnectorInput = {
   boxCaB64: string; // base64 of the box's Caddy CA
   coordCaB64: string; // base64 of the coordinator CA, or '' for a public coordinator
   boxUrl?: string; // the origin the member reached the box on, for the agent download (linux)
+  // SHA-256 (hex) of each agent tarball, baked at image-build time. Embedded in
+  // the linux connector so it verifies the download before running it as root.
+  // '' for an arch when the box could not read the digest — the check is then
+  // skipped for that arch (the built image always ships both).
+  agentSha256?: { amd64?: string; arm64?: string };
 };
 
 // A member name doubles as a Tailscale hostname and the download filename, so
@@ -85,6 +90,9 @@ function agentConnectorLinux(input: ConnectorInput): Connector {
   const key = dq(input.key);
   const meshHost = dq(input.boxMeshHost);
   const drives = driveLines('linux', input.boxMeshHost, input.departments);
+  // Digests are hex ([0-9a-f]) — safe inside "…" as-is; '' when unknown.
+  const shaAmd64 = input.agentSha256?.amd64 ?? '';
+  const shaArm64 = input.agentSha256?.arm64 ?? '';
   // boxCaB64 / coordCaB64 are base64 ([A-Za-z0-9+/=]) — safe inside "…" as-is.
   const body = `#!/bin/bash
 # NuFi box -- join for ${member}. Installs the NuFi agent from the box and joins.
@@ -96,6 +104,17 @@ case "$ARCH" in x86_64|amd64) ARCH=amd64;; aarch64|arm64) ARCH=arm64;; *) echo "
 TMP="$(mktemp -d)"
 echo "Downloading the NuFi agent..."
 curl -fsS "${boxUrl}/agent/nufibox-agent-linux-$ARCH.tar.gz" -o "$TMP/agent.tgz"
+# Verify the download against the digest the box baked in at build time, BEFORE
+# we run anything from it as root. Defence in depth for the box-CA-trusted
+# delivery path: a tampered tarball is refused rather than installed.
+case "$ARCH" in amd64) WANT_SHA="${shaAmd64}";; arm64) WANT_SHA="${shaArm64}";; *) WANT_SHA="";; esac
+if [ -n "$WANT_SHA" ]; then
+  GOT_SHA="$(sha256sum "$TMP/agent.tgz" | awk '{print $1}')"
+  if [ "$GOT_SHA" != "$WANT_SHA" ]; then
+    echo "SECURITY: the NuFi agent download failed its integrity check -- refusing to install. Ask the box owner for a fresh invite." >&2
+    exit 3
+  fi
+fi
 tar -xzf "$TMP/agent.tgz" -C "$TMP"
 BOX_CA_B64="${input.boxCaB64}"
 if [ -n "$BOX_CA_B64" ]; then

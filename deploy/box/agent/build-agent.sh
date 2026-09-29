@@ -34,4 +34,8 @@ chmod +x "$stage/bin/"* "$stage/install.sh"
 mkdir -p "$OUT"
 out="$OUT/nufibox-agent-linux-${ARCH}.tar.gz"
 tar -C "$work" -czf "$out" nufibox-agent
-echo "==> wrote $out ($(du -h "$out" | cut -f1))"
+# Bake the tarball's SHA-256 next to it, at build time. The box embeds this in
+# the member's connector so the connector can verify the download BEFORE it
+# runs the installer as root — integrity for the box-CA-trusted delivery path.
+sha256sum "$out" | awk '{print $1}' > "$out.sha256"
+echo "==> wrote $out ($(du -h "$out" | cut -f1)), sha256 $(cat "$out.sha256")"

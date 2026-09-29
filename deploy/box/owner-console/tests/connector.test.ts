@@ -15,6 +15,10 @@ const base = (os: ConnectorInput['os']): ConnectorInput => ({
   boxCaB64: 'Ym94Y2E=',
   coordCaB64: 'Y29vcmRjYQ==',
   boxUrl: 'http://nufi.local',
+  agentSha256: {
+    amd64: 'a'.repeat(64),
+    arm64: 'b'.repeat(64),
+  },
 });
 
 describe('safeMember', () => {
@@ -86,6 +90,24 @@ describe('renderConnector — Linux (agent flow, installs the NuFi agent from th
     // absent box CA (public/edge case) leaves the guard empty, not a literal
     const noBoxCa = renderConnector({ ...base('linux'), boxCaB64: '' }, TEMPLATES).body;
     expect(noBoxCa).toContain('BOX_CA_B64=""');
+  });
+
+  test('verifies the downloaded tarball sha256 before running it as root', () => {
+    const c = renderConnector(base('linux'), TEMPLATES).body;
+    // both arches' expected digests are embedded, chosen by detected $ARCH
+    expect(c).toContain(`amd64) WANT_SHA="${'a'.repeat(64)}"`);
+    expect(c).toContain(`arm64) WANT_SHA="${'b'.repeat(64)}"`);
+    expect(c).toContain('sha256sum "$TMP/agent.tgz"');
+    // the check runs BEFORE the tarball is extracted/installed
+    expect(c.indexOf('WANT_SHA')).toBeLessThan(c.indexOf('tar -xzf'));
+    expect(c.indexOf('GOT_SHA" != "$WANT_SHA')).toBeLessThan(c.indexOf('install.sh'));
+    expect(c).toContain('exit 3');                    // refuse on mismatch
+  });
+
+  test('an arch with no baked digest skips the check (graceful), not a literal', () => {
+    const c = renderConnector({ ...base('linux'), agentSha256: { amd64: '', arm64: '' } }, TEMPLATES).body;
+    expect(c).toContain('amd64) WANT_SHA="";;');      // empty -> `if [ -n "$WANT_SHA" ]` skips
+    expect(c).toContain('arm64) WANT_SHA="";;');
   });
 
   test('maps the department drives after joining (best effort)', () => {
