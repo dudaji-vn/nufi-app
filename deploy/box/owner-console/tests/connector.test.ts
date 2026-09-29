@@ -64,6 +64,13 @@ describe('renderConnector', () => {
     expect(evil.body).not.toContain('gio mount "');                          // never double-quoted
   });
 
+  test('lands the member on the sign-up page (join + account in one flow)', () => {
+    for (const os of ['macos', 'windows', 'linux'] as const) {
+      const c = renderConnector(base(os), TEMPLATES);
+      expect(c.body).toContain('https://nufi.box.internal:3080/register');
+    }
+  });
+
   test('no departments -> a clear "no drives" line, not a broken @DRIVES@', () => {
     const c = renderConnector({ ...base('linux'), departments: [] }, TEMPLATES);
     expect(c.body).toContain('No drives were configured');

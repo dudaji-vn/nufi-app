@@ -35,7 +35,10 @@ sudo tailscale login --login-server=@MESH_SERVER_URL@ --auth-key=@AUTH_KEY@ --ho
 echo "Mapping your department drives (best effort)..."
 @DRIVES@
 
-echo "Opening chat..."
-xdg-open "https://@BOX_MESH_HOST@:3080" 2>/dev/null || echo "Open https://@BOX_MESH_HOST@:3080 in your browser."
+# Land straight on the sign-up page so joining the mesh and getting a NuFi
+# account are one flow. On an invite-only box (registration off) NuFi redirects
+# /register to the sign-in page, so this is safe either way.
+echo "Opening NuFi -- sign up (or sign in) to start chatting..."
+xdg-open "https://@BOX_MESH_HOST@:3080/register" 2>/dev/null || echo "Open https://@BOX_MESH_HOST@:3080/register in your browser."
 
 echo "Done. This key was single-use -- it will not work again."
