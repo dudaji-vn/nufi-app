@@ -200,6 +200,18 @@ def test_owner_console_image_ships_the_connector_templates():
     assert "build-contexts: ${{ matrix.buildcontexts }}" in box_images
 
 
+def test_owner_console_image_bakes_and_serves_the_agent_bundles():
+    # The box serves the NufiBox Agent offline (both client arches), so the fetch
+    # from pkgs.tailscale.com happens at IMAGE build, not on the member's machine.
+    dockerfile = (BOX / "owner-console" / "Dockerfile").read_text()
+    assert "COPY --from=agentbuild /dist ./agent-dist" in dockerfile
+    assert "AGENT_DIST_DIR=/app/agent-dist" in dockerfile
+    assert "build-agent.sh" in dockerfile
+    repo = BOX.parent.parent
+    box_images = (repo / ".github" / "workflows" / "box-images.yml").read_text()
+    assert "agent=deploy/box/agent" in box_images
+
+
 def test_litellm_mounts_box_config_and_policy():
     svc = render()["services"]["litellm-proxy"]
     targets = {v["target"] for v in svc["volumes"]}
