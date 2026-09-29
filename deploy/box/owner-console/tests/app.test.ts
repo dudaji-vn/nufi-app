@@ -252,6 +252,7 @@ describe('owner-console app', () => {
     templatesDir: TEMPLATES,
     boxCaB64: async () => 'Ym94Y2E=',
     coordCaB64: () => 'Y29vcmRjYQ==',
+    agentSha256: () => ({ amd64: 'a'.repeat(64), arm64: 'b'.repeat(64) }),
   };
 
   test('GET /agent serves an allow-listed bundle, 404s anything else', async () => {
@@ -296,6 +297,25 @@ describe('owner-console app', () => {
     expect(body).toContain('http://nufi.local/agent/nufibox-agent-linux-$ARCH.tar.gz'); // agent from the box
     expect(body).toContain('nufibox-agent/install.sh');
     expect(body).not.toContain('tailscale.com');                  // no external Tailscale download
+    expect(body).toContain(`amd64) WANT_SHA="${'a'.repeat(64)}"`); // baked digest flows into the connector
+  });
+
+  test('reads the baked .sha256 files from the dist dir; a garbled digest is dropped', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'agentsha-'));
+    const good = 'a'.repeat(64);
+    writeFileSync(join(dir, 'nufibox-agent-linux-amd64.tar.gz.sha256'), `${good}  nufibox-agent-linux-amd64.tar.gz\n`);
+    writeFileSync(join(dir, 'nufibox-agent-linux-arm64.tar.gz.sha256'), 'not-a-valid-hex-digest\n');
+    // no injected agentSha256 -> exercises the real file reader + hex guard
+    const app = createApp(dashEnv, { checkHealth: async () => health, templatesDir: TEMPLATES, agentDistDir: dir });
+    const token = signInvite(dashEnv.BOX_OWNER_SESSION_SECRET, { key: 'k', serverUrl: 'https://coordinator.internal' });
+    const r = await app.request('/connect/connector', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', host: 'nufi.local', 'x-forwarded-proto': 'http' },
+      body: new URLSearchParams({ token, os: 'linux', member: 'x' }),
+    });
+    const body = await r.text();
+    expect(body).toContain(`amd64) WANT_SHA="${good}"`);          // valid hex read from file
+    expect(body).toContain('arm64) WANT_SHA="";;');               // garbled -> dropped, check skipped
   });
 
   test('POST /connect/connector rejects an invalid/expired token', async () => {

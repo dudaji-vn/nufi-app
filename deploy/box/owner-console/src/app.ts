@@ -30,6 +30,7 @@ type Deps = {
   listMembers?: () => Promise<MembersData>;
   revoke?: (cfg: MeshConfig, id: string) => Promise<void>;
   agentDistDir?: string;
+  agentSha256?: () => { amd64: string; arm64: string };
 };
 
 // The NufiBox Agent bundles the box ships for a member to install — one per
@@ -46,6 +47,19 @@ function originOf(c: { req: { header: (n: string) => string | undefined } }): st
 const b64OfFile = (path: string): string => {
   try {
     return Buffer.from(readFileSync(path)).toString('base64');
+  } catch {
+    return '';
+  }
+};
+
+// The first whitespace-delimited token of a `.sha256` file (plain hex, or the
+// `<hash>  <file>` form), lowercased; '' if unreadable. Only a well-formed
+// 64-char hex digest is returned, so a garbled file can never inject into the
+// generated script.
+const shaOfFile = (path: string): string => {
+  try {
+    const tok = (readFileSync(path, 'utf8').trim().split(/\s+/)[0] ?? '').toLowerCase();
+    return /^[0-9a-f]{64}$/.test(tok) ? tok : '';
   } catch {
     return '';
   }
@@ -178,6 +192,11 @@ export function createApp(env: AppEnv = process.env, deps: Deps = {}): Hono {
   // reachable on plain :80 (like /connect), so a laptop that has not trusted the
   // box CA yet can fetch it. Not secret: it is the client binaries + wrapper.
   const agentDistDir = deps.agentDistDir ?? env.AGENT_DIST_DIR ?? '/app/agent-dist';
+  // The digests baked beside each agent tarball at image-build time (build-agent.sh).
+  const agentSha256 = deps.agentSha256 ?? (() => ({
+    amd64: shaOfFile(`${agentDistDir}/nufibox-agent-linux-amd64.tar.gz.sha256`),
+    arm64: shaOfFile(`${agentDistDir}/nufibox-agent-linux-arm64.tar.gz.sha256`),
+  }));
   app.get('/agent/:file', async (c) => {
     const file = c.req.param('file');
     if (!AGENT_FILE.test(file)) return c.text('not found', 404);
@@ -213,6 +232,7 @@ export function createApp(env: AppEnv = process.env, deps: Deps = {}): Hono {
       boxCaB64: await boxCaB64(),
       coordCaB64: coordCaB64(),
       boxUrl: originOf(c), // where the member reached us, for the agent download (linux)
+      agentSha256: agentSha256(), // verify the agent download before it runs as root (linux)
     }, templatesDir);
     return new Response(connector.body, {
       headers: {
