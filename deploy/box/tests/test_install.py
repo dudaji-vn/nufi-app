@@ -157,14 +157,16 @@ def test_rerun_keeps_previous_answers_but_explicit_overrides_win():
 
 
 def test_no_pull_skips_the_pull_but_still_starts_the_stack():
-    out = dry("--no-pull", NUFI_BOX_FAKE_OS="Darwin")
+    # --no-owner-console: this test asserts the minimal compose plan; the console
+    # is on by default and adds --profile owner-console, which is orthogonal here.
+    out = dry("--no-pull", "--no-owner-console", NUFI_BOX_FAKE_OS="Darwin")
     assert "compose -f docker-compose.yml pull" not in out
     assert "--no-pull: using the images already on this machine" in out
     assert "compose -f docker-compose.yml up -d" in out
 
 
 def test_emulate_amd64_layers_the_platform_file_and_records_it_in_env():
-    out = dry("--emulate-amd64", NUFI_BOX_FAKE_OS="Darwin")
+    out = dry("--emulate-amd64", "--no-owner-console", NUFI_BOX_FAKE_OS="Darwin")
     assert "-f docker-compose.yml -f docker-compose.emulate.yml up -d" in out
     # written to .env so `nufi-box up` keeps the platform on day two
     assert "NUFI_EMULATE_AMD64=1" in out
@@ -237,7 +239,7 @@ def test_bare_src_says_what_is_missing_instead_of_exiting_silently():
 def test_extra_compose_files_are_layered_last_and_must_exist(tmp_path):
     extra = tmp_path / "local-ports.yml"
     extra.write_text("services: {}\n")
-    out = dry("--emulate-amd64", NUFI_BOX_FAKE_OS="Darwin",
+    out = dry("--emulate-amd64", "--no-owner-console", NUFI_BOX_FAKE_OS="Darwin",
               NUFI_BOX_COMPOSE_EXTRA=str(extra))
     assert f"-f docker-compose.emulate.yml -f {extra} up -d" in out
     r = install(NUFI_BOX_FAKE_OS="Darwin", NUFI_BOX_COMPOSE_EXTRA="/nope/missing.yml")
@@ -1105,11 +1107,19 @@ def test_owner_console_flag_enables_the_profile_and_a_password():
     assert "Owner console:" in out and ":3009" in out
 
 
-def test_without_the_flag_there_is_no_owner_console():
-    # "Off by default" = the profile is not added, NUFI_OWNER_CONSOLE stays 0, and
-    # the banner is silent. The secrets ARE still generated (every box gets them,
-    # like ADMIN_PASSWORD / WORKS_AUTH_SECRET), so do NOT assert their absence.
+def test_owner_console_is_on_by_default():
+    # The console is the box's no-CLI management surface, so a plain install
+    # gets it: the profile is added, NUFI_OWNER_CONSOLE=1, and the banner names it.
     out = dry()
+    assert "--profile owner-console" in out
+    assert "NUFI_OWNER_CONSOLE=1" in out
+    assert "Owner console:" in out and ":3009" in out
+
+
+def test_no_owner_console_flag_turns_it_off():
+    # --no-owner-console opts out: no profile, NUFI_OWNER_CONSOLE=0, silent banner.
+    # The secrets are still generated (every box gets them, like ADMIN_PASSWORD).
+    out = dry("--no-owner-console")
     assert "--profile owner-console" not in out
     assert "NUFI_OWNER_CONSOLE=1" not in out
     assert "NUFI_OWNER_CONSOLE=0" in out

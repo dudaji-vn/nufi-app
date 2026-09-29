@@ -7,7 +7,7 @@
 #              [--registry HOST[:PORT][/path]]
 #              [--mesh URL --auth-key KEY [--mesh-api-key KEY]]
 #              [--with-works] [--self-host-coordinator] [--egress-enforce]
-#              [--owner-console]
+#              [--no-owner-console]
 #
 # Asks four questions (box name, admin email, departments, inference profile),
 # generates every secret here, renders the LiteLLM config, starts the stack,
@@ -46,9 +46,10 @@
 #                    reach the internet — the fail-closed air-gap posture. Needs
 #                    the container model (ollama-docker); an allowlist opens
 #                    specific hosts (NUFI_EGRESS_ALLOW, empty by default).
-#   --owner-console  turn on the Box Owner Console (Caddy :3009): a small
-#                    dashboard for the box owner, separate from the admin
-#                    panel. Generates BOX_OWNER_PASSWORD, printed in the
+#   --no-owner-console  turn OFF the Box Owner Console (on by default): the
+#                    small no-CLI dashboard on Caddy :3009 for the box owner,
+#                    separate from the admin panel. When on (default), the
+#                    installer generates BOX_OWNER_PASSWORD, printed in the
 #                    banner once the box is up.
 #
 # NUFI_BOX_COMPOSE_EXTRA — space-separated extra compose files to layer last,
@@ -94,7 +95,8 @@ while [ $# -gt 0 ]; do
     --self-host-coordinator) NUFI_SELF_HOST_COORD=1 ;;
     --egress-enforce) EGRESS_ENFORCE=1 ;;
     --owner-console) NUFI_OWNER_CONSOLE=1 ;;
-    -h|--help) sed -n '2,54p' "$0"; exit 0 ;;
+    --no-owner-console) NUFI_OWNER_CONSOLE=0 ;;
+    -h|--help) sed -n '2,55p' "$0"; exit 0 ;;
   esac
   shift
 done
@@ -508,11 +510,12 @@ if [ "$NUFI_EGRESS_ENFORCE" = 1 ]; then
     remote|cloud) die "--egress-enforce does not support external inference yet: reaching an outside gateway needs the egress proxy to route it, which is not in this build. Keep inference local (ollama-docker), or install without --egress-enforce." ;;
   esac
 fi
-# Owner console: on when this run asked for it, or when a previous run did (a
-# re-run without the flag must not switch it back off — NUFI_OWNER_CONSOLE is
-# in REUSE_VARS below). The image tag defaults like the other NUFI_*_TAG
-# values in render_env.
-NUFI_OWNER_CONSOLE="${NUFI_OWNER_CONSOLE:-0}"
+# Owner console: ON by default — it is the box's no-CLI management surface, so a
+# plain install gets it. `--no-owner-console` turns it off; a previous run's
+# choice is kept on a re-run (NUFI_OWNER_CONSOLE is in REUSE_VARS below, so a
+# box turned off stays off and a box left on stays on). The image tag defaults
+# like the other NUFI_*_TAG values in render_env.
+NUFI_OWNER_CONSOLE="${NUFI_OWNER_CONSOLE:-1}"
 NUFI_OWNER_CONSOLE_TAG="${NUFI_OWNER_CONSOLE_TAG:-main}"
 if [ "$NUFI_WORKS" = 1 ]; then
   WORKS_PUBLIC_URL="https://$BOX_HOST:3003"
