@@ -1,0 +1,15 @@
+[Unit]
+Description=NuFi box mesh agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# The bundled, de-branded tailscaled: its own state, socket and tun so it never
+# collides with anything else, and --no-logs-no-support so it never phones home.
+ExecStart=/usr/local/bin/nufibox-tailscaled --state=/var/lib/nufibox/nufibox.state --socket=/run/nufibox/nufibox.sock --tun=nufibox0 --no-logs-no-support
+RuntimeDirectory=nufibox
+StateDirectory=nufibox
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
