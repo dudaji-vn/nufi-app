@@ -36,7 +36,10 @@ echo "Connecting to the NuFi mesh..."
 echo "Mapping your department drives..."
 @DRIVES@
 
-echo "Opening chat..."
-open "https://@BOX_MESH_HOST@:3080"
+# Land straight on the sign-up page so joining the mesh and getting a NuFi
+# account are one flow. On an invite-only box (registration off) NuFi redirects
+# /register to the sign-in page, so this is safe either way.
+echo "Opening NuFi -- sign up (or sign in) to start chatting..."
+open "https://@BOX_MESH_HOST@:3080/register"
 
 echo "Done. This key was single-use -- it will not work again."

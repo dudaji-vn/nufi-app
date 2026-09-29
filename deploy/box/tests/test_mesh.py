@@ -235,7 +235,7 @@ def test_invite_macos_posts_preauthkey_and_writes_the_join_file(tmp_path, fake_h
     assert "/Applications/Tailscale.app/Contents/MacOS/Tailscale" in content
     assert "smb://nufi.box.lab/legal" in content
     assert "smb://nufi.box.lab/hr" in content
-    assert "https://nufi.box.lab:3080" in content
+    assert "https://nufi.box.lab:3080/register" in content
     assert "single-use" in content
     # the headscale node name must match NAME, or `nufi-box revoke ivy`
     # has nothing to resolve — the laptop's OS hostname is not "ivy".

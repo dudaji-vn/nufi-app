@@ -34,8 +34,11 @@ rem `nufi-box invite` minted it), not from a flag on this login command.
 echo Mapping your department drives...
 @DRIVES@
 
-echo Opening chat...
-start "" "https://@BOX_MESH_HOST@:3080"
+rem Land straight on the sign-up page so joining the mesh and getting a NuFi
+rem account are one flow. On an invite-only box (registration off) NuFi redirects
+rem /register to the sign-in page, so this is safe either way.
+echo Opening NuFi -- sign up (or sign in) to start chatting...
+start "" "https://@BOX_MESH_HOST@:3080/register"
 
 echo Done. This key was single-use -- it will not work again.
 endlocal
