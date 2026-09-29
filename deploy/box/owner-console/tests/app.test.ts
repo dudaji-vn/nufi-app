@@ -118,6 +118,101 @@ describe('owner-console app', () => {
     expect(html).not.toContain('Generate an invite link');
   });
 
+  // --- members list + revoke + drives (sub-task 05) -------------------------
+  const members = [
+    { id: '1', name: 'nufi', ips: ['100.64.0.1'], online: true, lastSeen: '', tags: ['tag:box'] },
+    { id: '2', name: 'ivy', ips: ['100.64.0.5'], online: false, lastSeen: '', tags: ['tag:member'] },
+  ];
+
+  test('the dashboard lists members and drive paths; the box node has no Revoke', async () => {
+    const { app, cookie } = await loggedIn(dashEnv, { checkHealth: async () => health, listMembers: async () => members });
+    const html = await (await app.request('/', { headers: { cookie } })).text();
+    expect(html).toContain('ivy');
+    expect(html).toContain('100.64.0.5');
+    expect(html).toContain('this box');                          // the box node, not revocable
+    expect(html).toContain('value="2"');                         // a Revoke form targets the member by id
+    expect(html).not.toContain('value="1"');                     // never a Revoke form for the box node
+    expect(html).toContain('smb://nufi.box.internal/legal');     // a department drive path
+  });
+
+  test('the dashboard shows a clear notice when the member list is unavailable', async () => {
+    const { app, cookie } = await loggedIn(dashEnv, {
+      checkHealth: async () => health,
+      listMembers: async () => ({ error: 'coordinator unreachable' }),
+    });
+    const html = await (await app.request('/', { headers: { cookie } })).text();
+    expect(html).toContain('Member list unavailable');
+  });
+
+  test('POST /revoke without a session redirects to /login', async () => {
+    const app = createApp(dashEnv, { checkHealth: async () => health });
+    const r = await app.request('/revoke', { method: 'POST' });
+    expect(r.status).toBe(303);
+    expect(r.headers.get('location')).toBe('/login');
+  });
+
+  const revokeApp = (onRevoke: (id: string) => void, listErr = false) =>
+    loggedIn(dashEnv, {
+      checkHealth: async () => health,
+      listMembers: async () => (listErr ? { error: 'coordinator unreachable' } : members),
+      revoke: async (_cfg, id) => { onRevoke(id); },
+    });
+
+  test('POST /revoke removes a member node by id and reloads the dashboard', async () => {
+    let revoked = '';
+    const { app, cookie } = await revokeApp((id) => { revoked = id; });
+    const r = await app.request('/revoke', {
+      method: 'POST',
+      headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ id: '2' }),          // ivy, a member
+    });
+    expect(revoked).toBe('2');
+    expect(r.status).toBe(303);
+    expect(r.headers.get('location')).toBe('/');
+  });
+
+  test('POST /revoke refuses to remove the box\'s own node, even by crafted id', async () => {
+    let revoked = '';
+    const { app, cookie } = await revokeApp((id) => { revoked = id; });
+    const r = await app.request('/revoke', {
+      method: 'POST',
+      headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ id: '1' }),          // the box node (tag:box)
+    });
+    expect(revoked).toBe('');                          // revokeNode was NOT called
+    expect(r.status).toBe(200);
+    expect(await r.text()).toContain("box's own node can't be revoked");
+  });
+
+  test('POST /revoke with no id is a no-op redirect, not a delete', async () => {
+    let revoked = '';
+    const { app, cookie } = await revokeApp((id) => { revoked = id; });
+    const r = await app.request('/revoke', {
+      method: 'POST',
+      headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({}),
+    });
+    expect(revoked).toBe('');
+    expect(r.status).toBe(303);
+    expect(r.headers.get('location')).toBe('/');
+  });
+
+  test('POST /revoke surfaces a coordinator failure as an error notice', async () => {
+    const { MeshError } = await import('../src/mesh-api');
+    const { app, cookie } = await loggedIn(dashEnv, {
+      checkHealth: async () => health,
+      listMembers: async () => members,
+      revoke: async () => { throw new MeshError('coordinator unreachable'); },
+    });
+    const r = await app.request('/revoke', {
+      method: 'POST',
+      headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ id: '2' }),
+    });
+    expect(r.status).toBe(200);
+    expect(await r.text()).toContain('Revoke failed');
+  });
+
   test('POST /invite without a session redirects to /login', async () => {
     const app = createApp(dashEnv, { checkHealth: async () => health, mint: async () => 'k' });
     const r = await app.request('/invite', { method: 'POST' });

@@ -63,6 +63,38 @@ async function userId(cfg: MeshConfig, name: string, fetchImpl: typeof fetch): P
   return String(user.id);
 }
 
+export type Node = {
+  id: string;
+  name: string;
+  ips: string[];
+  online: boolean;
+  lastSeen: string;
+  tags: string[];
+};
+
+// The nodes the coordinator knows — the box itself (tag:box) and every member
+// laptop (tag:member). Mirrors `nufi-box members` (GET /api/v1/node). v0.29.3
+// lists key-derived tags under `tags` (not forcedTags/validTags).
+export async function listNodes(cfg: MeshConfig, fetchImpl: typeof fetch = fetch): Promise<Node[]> {
+  const data = await api(cfg, 'GET', '/api/v1/node', undefined, fetchImpl);
+  const nodes = (data.nodes as Array<Record<string, unknown>>) ?? [];
+  return nodes.map((n) => ({
+    id: String(n.id ?? ''),
+    name: String(n.name ?? n.givenName ?? ''),
+    ips: (n.ipAddresses as string[]) ?? [],
+    online: Boolean(n.online),
+    lastSeen: String(n.lastSeen ?? ''),
+    tags: (n.tags ?? n.validTags ?? n.forcedTags ?? []) as string[],
+  }));
+}
+
+// Remove one node by id (DELETE /api/v1/node/{id}) — that laptop can no longer
+// reach the box until invited again. By id, not name: headscale allows two
+// nodes to share a name, so a name would be ambiguous (lib/mesh.sh refuses it).
+export async function revokeNode(cfg: MeshConfig, id: string, fetchImpl: typeof fetch = fetch): Promise<void> {
+  await api(cfg, 'DELETE', `/api/v1/node/${encodeURIComponent(id)}`, undefined, fetchImpl);
+}
+
 // Mint a single-use, non-ephemeral tag:member pre-auth key valid one hour — the
 // key a laptop uses to join the box's mesh. Mirrors lib/mesh.sh's mesh_preauth.
 export async function mintMemberKey(
