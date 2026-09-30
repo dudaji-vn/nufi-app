@@ -3,7 +3,7 @@ import type { BoxInfo } from './boxinfo';
 import type { Node } from './mesh-api';
 
 // The result of a POST /invite, rendered back into the dashboard.
-export type InviteResult = { link: string } | { error: string };
+export type InviteResult = { link: string; fleet?: boolean } | { error: string };
 
 // The mesh members to render: the node list, an error string if the coordinator
 // could not be reached, or undefined when the box is not on a mesh at all.
@@ -153,9 +153,13 @@ function invitePanel(info: BoxInfo, invite: InviteResult | undefined, canInvite:
   // than a button that can only fail.
   let form: string;
   if (canInvite) {
-    form = `<form method="post" action="/invite" style="flex-direction:row;margin-top:.5rem">
-         <button type="submit">Generate an invite link</button>
-       </form>`;
+    // Two ways to invite: one link for one laptop (single-use, one hour), or a
+    // fleet link one code many machines enrol with over a deployment window.
+    form = `<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.5rem">
+         <form method="post" action="/invite"><button type="submit">Generate an invite link</button></form>
+         <form method="post" action="/invite"><input type="hidden" name="fleet" value="yes">
+           <button type="submit" class="secondary">Fleet invite (many machines)</button></form>
+       </div>`;
   } else if (info.mesh.serverUrl) {
     form = `<p class="sub">This console has no coordinator API key (<code>MESH_API_KEY</code>) to mint invites.</p>`;
   } else {
@@ -163,7 +167,10 @@ function invitePanel(info: BoxInfo, invite: InviteResult | undefined, canInvite:
   }
   let result = '';
   if (invite && 'link' in invite) {
-    result = `<p class="sub" style="margin-top:.75rem">Share this link with the member — it works once and expires in an hour:</p>
+    const note = invite.fleet
+      ? 'Share this fleet link for a bulk rollout — the same code enrols many machines, and it works for 7 days:'
+      : 'Share this link with the member — it works once and expires in an hour:';
+    result = `<p class="sub" style="margin-top:.75rem">${note}</p>
       <input readonly value="${esc(invite.link)}" onclick="this.select()" style="width:100%;margin-top:.4rem">`;
   } else if (invite && 'error' in invite) {
     result = `<p class="err">${esc(invite.error)}</p>`;

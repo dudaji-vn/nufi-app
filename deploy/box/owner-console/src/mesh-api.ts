@@ -95,18 +95,25 @@ export async function revokeNode(cfg: MeshConfig, id: string, fetchImpl: typeof 
   await api(cfg, 'DELETE', `/api/v1/node/${encodeURIComponent(id)}`, undefined, fetchImpl);
 }
 
-// Mint a single-use, non-ephemeral tag:member pre-auth key valid one hour — the
-// key a laptop uses to join the box's mesh. Mirrors lib/mesh.sh's mesh_preauth.
-export async function mintMemberKey(
+// How long a fleet enrolment key (and its share link) stays valid: a deployment
+// window, not a single sitting. Seven days.
+export const FLEET_TTL_MS = 7 * 24 * 3600_000;
+export const FLEET_TTL_SECONDS = FLEET_TTL_MS / 1000;
+
+// Mint a non-ephemeral tag:member pre-auth key. Single-use + one hour for a
+// normal invite; reusable + a deployment window for a fleet invite. Mirrors
+// lib/mesh.sh's mesh_preauth.
+async function mintKey(
   cfg: MeshConfig,
-  now: () => number = Date.now,
-  fetchImpl: typeof fetch = fetch,
+  opts: { reusable: boolean; ttlMs: number },
+  now: () => number,
+  fetchImpl: typeof fetch,
 ): Promise<string> {
   const uid = await userId(cfg, 'box', fetchImpl);
-  const expiration = new Date(now() + 3600_000).toISOString();
+  const expiration = new Date(now() + opts.ttlMs).toISOString();
   const data = await api(cfg, 'POST', '/api/v1/preauthkey', {
     user: uid,
-    reusable: false,
+    reusable: opts.reusable,
     ephemeral: false,
     expiration,
     aclTags: ['tag:member'],
@@ -114,4 +121,23 @@ export async function mintMemberKey(
   const key = (data.preAuthKey as { key?: string } | undefined)?.key;
   if (!key) throw new MeshError('the coordinator returned no pre-auth key');
   return key;
+}
+
+// A single-use, one-hour tag:member key — the key one laptop uses to join.
+export function mintMemberKey(
+  cfg: MeshConfig,
+  now: () => number = Date.now,
+  fetchImpl: typeof fetch = fetch,
+): Promise<string> {
+  return mintKey(cfg, { reusable: false, ttlMs: 3600_000 }, now, fetchImpl);
+}
+
+// A REUSABLE tag:member key valid for a deployment window — one enrolment code
+// many machines join with (fleet / MDM rollout), instead of one invite each.
+export function mintFleetKey(
+  cfg: MeshConfig,
+  now: () => number = Date.now,
+  fetchImpl: typeof fetch = fetch,
+): Promise<string> {
+  return mintKey(cfg, { reusable: true, ttlMs: FLEET_TTL_MS }, now, fetchImpl);
 }
