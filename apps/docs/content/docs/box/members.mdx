@@ -77,7 +77,24 @@ has pointed the box at a hosted model and told you so.
 ## From home
 
 The box can be reached from anywhere, once your laptop has joined the box's
-private network. Your administrator does this by sending you a **join file**.
+private network. Your administrator sends you one of two things — a **link** or
+a **join file** — and either way you end up in the same place.
+
+### If you were sent a link
+
+Open it on the office network and pick your computer. It installs a small NuFi
+app that connects you; there is nothing else to download.
+
+- **Mac** — download and install the app, then paste the one command it shows
+  into Terminal. The app is signed, so there is no "unidentified developer"
+  warning. That trusts the box, connects, and opens the box in your browser.
+- **Linux** — run the downloaded file: `bash nufi-join-<you>.sh`. It fetches the
+  app from the box, trusts the box, connects, and maps your drives.
+- **Windows** — run the downloaded file. For now the Windows app uses Tailscale,
+  so install it from [tailscale.com/download](https://tailscale.com/download)
+  first if you are asked.
+
+### If you were sent a join file
 
 1. Install the Tailscale app from [tailscale.com/download](https://tailscale.com/download)
    and open it once. Nothing to sign up for — the join file does the rest. The
@@ -87,17 +104,22 @@ private network. Your administrator does this by sending you a **join file**.
 2. Run the file you were sent: double-click the `.command` file on a Mac,
    the `.cmd` file on Windows, the `.sh` file on Linux. It trusts the box's
    certificate, connects, maps your drives and opens the box in your browser.
-3. From now on, away from the office, use the **from-home address** — it looks
-   like `https://nufi.box.nufi.me:3080` — with the same login. Your drive is
-   `\\nufi.box.nufi.me\legal` (Mac: `smb://nufi.box.nufi.me/legal`).
 
-The key inside the join file works once and expires after an hour. If it did
-not work, or you are setting up a second laptop, ask for a new file. Back in
-the office, both addresses work; you do not have to change anything.
+### Then, from anywhere
 
-If your laptop is already on a company Tailscale network (some employers
-enrol laptops in one), the join file cannot connect it to a second one. Use a
-personal device, or ask your IT team.
+Away from the office, use the **from-home address** — it looks like
+`https://nufi.box.nufi.me:3080` — with the same login. Your drive is
+`\\nufi.box.nufi.me\legal` (Mac: `smb://nufi.box.nufi.me/legal`).
+
+The key inside the link or file works once and expires after an hour. If it did
+not work, or you are setting up a second laptop, ask for a new one. Back in the
+office, both addresses work; you do not have to change anything.
+
+If your laptop is already on a company Tailscale network (some employers enrol
+laptops in one), the **join file** — and the Windows link — cannot connect it to
+a second one; use a personal device or ask your IT team. The **Mac and Linux
+link** does not have this limit: it runs its own private connection, separate
+from any company Tailscale.
 
 ## When it does not work
 
