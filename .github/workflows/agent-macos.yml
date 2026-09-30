@@ -1,21 +1,22 @@
 name: agent-macos
 
 # Build the de-branded NufiBox Agent for macOS as a SIGNED + NOTARIZED universal
-# .pkg, and publish it as a release asset the box image can bake in (D2). The
-# whole Apple contact — signing, notarization — happens HERE at build time; the
+# .pkg, and publish it as a release asset the box image can bake in (D2).
+#
+# Runs on a SELF-HOSTED macOS runner (Dudaji's signing Mac): the Developer ID
+# signing keys never leave that machine — they are used in place from the
+# keychain, never exported to a CI secret. Notarization uses the stored
+# notarytool profile `nufibox-notary`. All Apple contact is at build time; the
 # box and the member's Mac never talk to Apple, and the stapled ticket verifies
-# offline (air-gap safe).
+# offline.
 #
-# Runs only on demand or on an `agent-macos-v*` tag — macOS runners are metered,
-# and notarization is slow, so this is not on every commit.
+# The runner must run in the signing user's GUI session (start it with
+# `./run.sh`, not as a background LaunchDaemon) so the login keychain is unlocked
+# and codesign / pkgbuild / notarytool can reach the identities and the profile.
+# See deploy/box/agent/README-signing.md.
 #
-# Required repository secrets (see deploy/box/agent/README-signing.md):
-#   APPLE_DEV_ID_APP_P12        base64 of the "Developer ID Application" identity (.p12)
-#   APPLE_DEV_ID_INSTALLER_P12  base64 of the "Developer ID Installer" identity (.p12)
-#   APPLE_P12_PASSWORD          the password used when exporting those .p12 files
-#   APPLE_NOTARY_KEY_P8         base64 of the App Store Connect API key (.p8)
-#   APPLE_NOTARY_KEY_ID         the API key's Key ID
-#   APPLE_NOTARY_ISSUER_ID      the API key's Issuer ID
+# Triggers are dispatch/tag only — NEVER add pull_request: untrusted PR code must
+# not run on a self-hosted runner that holds signing keys.
 
 on:
   workflow_dispatch:
@@ -32,56 +33,21 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: [self-hosted, macOS]
     timeout-minutes: 60
     env:
       TS_VERSION: ${{ github.event.inputs.ts_version || '1.102.3' }}
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.27'
-
-      - name: Import Developer ID signing certificates
-        env:
-          APPLE_DEV_ID_APP_P12: ${{ secrets.APPLE_DEV_ID_APP_P12 }}
-          APPLE_DEV_ID_INSTALLER_P12: ${{ secrets.APPLE_DEV_ID_INSTALLER_P12 }}
-          APPLE_P12_PASSWORD: ${{ secrets.APPLE_P12_PASSWORD }}
-        run: |
-          set -euo pipefail
-          KEYCHAIN="$RUNNER_TEMP/nufibox-signing.keychain-db"
-          KPW="$(openssl rand -base64 24)"
-          security create-keychain -p "$KPW" "$KEYCHAIN"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN"
-          security unlock-keychain -p "$KPW" "$KEYCHAIN"
-          for var in APPLE_DEV_ID_APP_P12 APPLE_DEV_ID_INSTALLER_P12; do
-            f="$RUNNER_TEMP/$var.p12"
-            printf '%s' "${!var}" | base64 -d > "$f"
-            security import "$f" -k "$KEYCHAIN" -P "$APPLE_P12_PASSWORD" \
-              -T /usr/bin/codesign -T /usr/bin/pkgbuild -T /usr/bin/productbuild
-            rm -f "$f"
-          done
-          # let the signing tools use the private keys without an interactive prompt
-          security set-key-partition-list -S apple-tool:,apple: -k "$KPW" "$KEYCHAIN" >/dev/null
-          # our keychain holds the identities; make it the one the signing tools
-          # search (system roots for chain validation are consulted separately).
-          security list-keychains -d user -s "$KEYCHAIN"
-          security default-keychain -s "$KEYCHAIN"
-          security find-identity -v -p codesigning "$KEYCHAIN"
-
       - name: Build, sign, notarize, staple
-        env:
-          NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
-          NOTARY_ISSUER: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
-          APPLE_NOTARY_KEY_P8: ${{ secrets.APPLE_NOTARY_KEY_P8 }}
         run: |
           set -euo pipefail
-          key="$RUNNER_TEMP/notary.p8"
-          printf '%s' "$APPLE_NOTARY_KEY_P8" | base64 -d > "$key"
-          export NOTARY_KEY="$key"
+          export PATH="/opt/homebrew/bin:$PATH"   # brew Go + gh on the signing Mac
+          # No cert import and no notary key: the Developer ID identities are in
+          # this machine's keychain and NOTARY_PROFILE (default nufibox-notary)
+          # is stored here. build-agent-macos.sh signs, notarizes and staples.
           bash deploy/box/agent/build-agent-macos.sh
-          rm -f "$key"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -97,6 +63,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          export PATH="/opt/homebrew/bin:$PATH"
           TAG="agent-macos-v${TS_VERSION}"
           cd deploy/box/agent/dist
           if gh release view "$TAG" >/dev/null 2>&1; then
@@ -104,6 +71,6 @@ jobs:
           else
             gh release create "$TAG" \
               --title "NufiBox Agent (macOS) $TS_VERSION" \
-              --notes "De-branded, signed + notarized NufiBox Agent .pkg for macOS (universal arm64+amd64). Built by the agent-macos workflow; the stapled ticket verifies offline." \
+              --notes "De-branded, signed + notarized NufiBox Agent .pkg for macOS (universal arm64+amd64). Built by the agent-macos workflow on the self-hosted signing Mac; the stapled ticket verifies offline." \
               nufibox-agent-macos.pkg nufibox-agent-macos.pkg.sha256
           fi
