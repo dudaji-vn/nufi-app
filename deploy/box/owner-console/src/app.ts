@@ -6,7 +6,7 @@ import { boxInfo } from './boxinfo';
 import { isOS, macosPlan, renderConnector } from './connector';
 import { checkAll, probesForEnv, type Health } from './health';
 import { connectLink, signInvite, verifyInvite } from './invite';
-import { MeshError, listNodes, meshConfig, mintMemberKey, revokeNode, type MeshConfig } from './mesh-api';
+import { FLEET_TTL_SECONDS, MeshError, listNodes, meshConfig, mintFleetKey, mintMemberKey, revokeNode, type MeshConfig } from './mesh-api';
 import { connectPage, dashboard, loginPage, type InviteResult, type MembersData } from './views';
 
 const COOKIE = 'nufi_owner';
@@ -23,6 +23,7 @@ type AppEnv = {
 type Deps = {
   checkHealth?: () => Promise<Health[]>;
   mint?: (cfg: MeshConfig) => Promise<string>;
+  mintFleet?: (cfg: MeshConfig) => Promise<string>;
   now?: () => Date;
   templatesDir?: string;
   boxCaB64?: () => Promise<string>;
@@ -72,6 +73,7 @@ export function createApp(env: AppEnv = process.env, deps: Deps = {}): Hono {
   const canInvite = meshConfig(env) !== null;
   const checkHealth = deps.checkHealth ?? (() => checkAll(probesForEnv(env)));
   const mint = deps.mint ?? ((cfg: MeshConfig) => mintMemberKey(cfg));
+  const mintFleet = deps.mintFleet ?? ((cfg: MeshConfig) => mintFleetKey(cfg));
   const now = deps.now ?? (() => new Date());
   const templatesDir = deps.templatesDir ?? env.JOIN_TEMPLATES_DIR ?? '/app/join-templates';
 
@@ -144,10 +146,15 @@ export function createApp(env: AppEnv = process.env, deps: Deps = {}): Hono {
     if (!authed(c)) return c.redirect('/login', 303);
     const cfg = meshConfig(env);
     if (!cfg) return c.html(await render({ error: 'This box is not on a mesh yet — run `nufi-box mesh up` first.' }));
+    const body = await c.req.parseBody();
+    const fleet = body.fleet === 'yes';
     try {
-      const key = await mint(cfg);
-      const token = signInvite(secret, { key, serverUrl: cfg.serverUrl });
-      return c.html(await render({ link: connectLink(originOf(c), token) }));
+      // A fleet invite mints a REUSABLE key and a link that lives the whole
+      // deployment window; a normal invite is single-use and one hour.
+      const key = fleet ? await mintFleet(cfg) : await mint(cfg);
+      const ttl = fleet ? FLEET_TTL_SECONDS : 3600;
+      const token = signInvite(secret, { key, serverUrl: cfg.serverUrl }, ttl);
+      return c.html(await render({ link: connectLink(originOf(c), token), fleet }));
     } catch (e) {
       const unreachable = e instanceof MeshError && /unreachable/.test(e.message);
       const detail = e instanceof MeshError ? e.message : 'could not reach the coordinator';

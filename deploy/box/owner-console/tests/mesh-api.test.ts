@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { listNodes, meshConfig, mintMemberKey, revokeNode, MeshError } from '../src/mesh-api';
+import { listNodes, meshConfig, mintFleetKey, mintMemberKey, revokeNode, FLEET_TTL_MS, MeshError } from '../src/mesh-api';
 
 const CFG = { serverUrl: 'https://coordinator.internal', apiKey: 'k' };
 
@@ -43,6 +43,19 @@ describe('mintMemberKey', () => {
     expect(body.reusable).toBe(false);
     expect(body.ephemeral).toBe(false);
     expect(typeof body.expiration).toBe('string');
+  });
+
+  test('a fleet key is REUSABLE, tag:member, and valid for the deployment window', async () => {
+    const posts: unknown[] = [];
+    const t0 = 1_000_000;
+    const key = await mintFleetKey(CFG, () => t0, fakeHeadscale(posts));
+    expect(key).toBe('k-member-abc');
+    const body = posts[0] as Record<string, unknown>;
+    expect(body.aclTags).toEqual(['tag:member']);
+    expect(body.reusable).toBe(true);            // many machines enrol with one code
+    expect(body.ephemeral).toBe(false);
+    // expiry is the fleet window out from now, not one hour
+    expect(new Date(body.expiration as string).getTime()).toBe(t0 + FLEET_TTL_MS);
   });
 
   test('a 401/403 becomes a clear MeshError naming the api key', async () => {

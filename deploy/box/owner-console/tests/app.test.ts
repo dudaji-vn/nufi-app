@@ -237,6 +237,30 @@ describe('owner-console app', () => {
     expect(html).not.toContain('k-member-xyz');    // the raw key is inside the token, never shown
   });
 
+  test('POST /invite with fleet=1 mints a reusable key and returns a fleet link', async () => {
+    let single = 0, fleet = 0;
+    const app = createApp(dashEnv, {
+      checkHealth: async () => health,
+      mint: async () => { single++; return 'k-single'; },
+      mintFleet: async () => { fleet++; return 'k-fleet'; },
+    });
+    const login = await app.request(form('hunter2'));
+    const cookie = (login.headers.get('set-cookie') ?? '').split(';')[0];
+    const r = await app.request('/invite', {
+      method: 'POST',
+      headers: { cookie, host: 'nufi.local:3009', 'x-forwarded-proto': 'https', 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ fleet: 'yes' }),
+    });
+    expect(r.status).toBe(200);
+    const html = await r.text();
+    expect(fleet).toBe(1);                          // used the reusable minter
+    expect(single).toBe(0);                         // not the single-use one
+    expect(html).toContain('https://nufi.local:3009/connect#token=');
+    expect(html).toContain('enrols many machines');  // the fleet copy
+    expect(html).toContain('7 days');
+    expect(html).not.toContain('k-fleet');           // raw key stays inside the token
+  });
+
   test('POST /invite on a LAN-only box explains it must join a mesh first', async () => {
     const app = createApp({ ...ENV, BOX_NAME: 'nufi' }, { checkHealth: async () => health, mint: async () => 'k' });
     const login = await app.request(form('hunter2'));
