@@ -1182,13 +1182,19 @@ built yet:
   offline path for *updating* a box with no network at all. (A first *install*
   can now come from media — see [A fully air-gapped
   box](#a-fully-air-gapped-box-no-lan-registry-at-all).)
-- **A signed client installer.** The join file `nufi-box invite` writes is a
-  script, and a script cannot be code-signed or notarized — so a member's OS
-  always warns that it is from an unidentified developer. The invite tells them
-  the one gesture to run it anyway (right-click → Open on macOS, More info →
-  Run anyway on Windows), but removing the warning outright needs the join
-  packaged as a signed `.pkg` / `.exe`, which requires an Apple Developer ID
-  and a Windows code-signing certificate — neither is set up yet.
+- **A signed client installer for Windows.** macOS is done: the console's
+  share-link (section 8) installs the de-branded NuFi Agent as a **signed,
+  notarized `.pkg`**, so a Mac member gets no Gatekeeper warning, never downloads
+  Tailscale, and never sees its name. Signing runs at build time on Dudaji's own
+  Mac (the `agent-macos` workflow on a self-hosted runner); the signing key never
+  leaves that machine and the same signed artifact serves every box, so a
+  customer never needs their own certificate. Linux likewise installs the
+  de-branded agent (no signing needed there). The CLI `nufi-box invite` join file
+  is still a plain script and still warns — the share-link flow is the signed one.
+  **Windows** is the remaining gap: its de-branded binaries cross-compile, but
+  packaging them into a signed `.msi` needs a Windows machine and an EV or Azure
+  Trusted Signing certificate, neither of which is set up
+  (`deploy/box/agent/README-windows.md`).
 - **Dudaji reaching into your box.** `nufi-box support` (see [When something
   is wrong](#when-something-is-wrong)) is the local half only — it packages
   what the box already knows about itself into a file you send. It opens no
