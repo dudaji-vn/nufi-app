@@ -17,6 +17,40 @@ description: One command, four questions, a banner. About 25 minutes on a blank 
 A GPU is optional. Without one the box answers from the CPU, which works and is
 slower; a machine serving a handful of people at once wants a GPU.
 
+## On Windows, work inside WSL2
+
+The box is a Linux server, so on Windows you run everything **inside a WSL2
+Ubuntu shell** — never in PowerShell or Command Prompt. Those cannot run the
+installer: typing `./install-box.sh` in PowerShell does not install anything, it
+just opens the `.sh` file in an editor (if you see VS Code start, that is the
+sign you are in the wrong shell).
+
+1. In an **administrator** PowerShell, install WSL2 with Ubuntu, then reboot if
+   asked:
+   ```powershell
+   wsl --install -d Ubuntu
+   ```
+2. Open **Ubuntu** from the Start menu and finish its first-run user setup. From
+   now on, every command below runs in this Ubuntu shell.
+3. Give that shell Docker — either enable Docker Desktop's WSL integration
+   (Settings → Resources → WSL integration → turn on your Ubuntu distro), or
+   install Docker Engine inside WSL2:
+   ```bash
+   curl -fsSL https://get.docker.com | sh
+   sudo usermod -aG docker $USER   # then close and reopen the Ubuntu shell
+   ```
+4. Clone into your WSL2 home (`cd ~` first), **not** a Windows path under
+   `/mnt/c/…`: a checkout made on the Windows side can carry CRLF line endings
+   that break the shell scripts, and `/mnt/c` is slow.
+
+Then follow **Get the box** and **Install** below exactly as on a native Ubuntu
+machine. Two limits to know: WSL2 puts the box behind a NAT like a virtual
+machine, so other devices on the office network cannot reach it on the LAN
+without a `netsh interface portproxy` forward (the from-home mesh works
+regardless); and `--with-works`, `--self-host-coordinator` and `--egress-enforce`
+need a real Ubuntu host, so they are not available under WSL2. For a box the
+whole office reaches on the LAN, install on a machine running Ubuntu directly.
+
 ## Get the box
 
 The box is three folders of one repository: `deploy/box`, and beside it
