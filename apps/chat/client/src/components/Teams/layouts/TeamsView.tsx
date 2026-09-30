@@ -3,6 +3,7 @@ import { Spinner } from '@librechat/client';
 import { PermissionTypes, Permissions, SystemRoles } from 'librechat-data-provider';
 import { useGetRole } from '~/data-provider';
 import { useLocalize, useHasAccess } from '~/hooks';
+import OpenSidebar from '~/components/Chat/Menus/OpenSidebar';
 import TeamDetail from '~/components/Teams/TeamDetail';
 import MyInvitesInbox from '~/components/Teams/MyInvitesInbox';
 import TeamsList from '~/components/Teams/TeamsList';
@@ -34,6 +35,9 @@ export default function TeamsView() {
   return (
     <div className="flex h-full w-full flex-col overflow-y-auto bg-presentation">
       <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6">
+        <div className="mb-2 flex items-center md:hidden">
+          <OpenSidebar />
+        </div>
         {teamId != null ? (
           <TeamDetail teamId={teamId} />
         ) : (
