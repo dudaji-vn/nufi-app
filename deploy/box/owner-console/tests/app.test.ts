@@ -255,17 +255,32 @@ describe('owner-console app', () => {
     agentSha256: () => ({ amd64: 'a'.repeat(64), arm64: 'b'.repeat(64) }),
   };
 
-  test('GET /agent serves an allow-listed bundle, 404s anything else', async () => {
+  test('GET /agent serves an allow-listed bundle (linux tarball + macOS pkg), 404s anything else', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'agentdist-'));
     writeFileSync(join(dir, 'nufibox-agent-linux-amd64.tar.gz'), 'FAKE-TARBALL');
+    writeFileSync(join(dir, 'nufibox-agent-macos.pkg'), 'FAKE-PKG');
     const app = createApp(dashEnv, { checkHealth: async () => health, agentDistDir: dir });
     const ok = await app.request('/agent/nufibox-agent-linux-amd64.tar.gz');   // public, no cookie
     expect(ok.status).toBe(200);
     expect(ok.headers.get('content-disposition')).toContain('nufibox-agent-linux-amd64.tar.gz');
     expect(await ok.text()).toBe('FAKE-TARBALL');
+    const pkg = await app.request('/agent/nufibox-agent-macos.pkg');
+    expect(pkg.status).toBe(200);
+    expect(pkg.headers.get('content-type')).toBe('application/octet-stream');
+    expect(await pkg.text()).toBe('FAKE-PKG');
     expect((await app.request('/agent/nufibox-agent-linux-arm64.tar.gz')).status).toBe(404); // allow-listed but absent
     expect((await app.request('/agent/nufibox-agent-linux-x86.tar.gz')).status).toBe(404);   // bad arch
+    expect((await app.request('/agent/nufibox-agent-macos.pkg.sha256')).status).toBe(404);   // sha not served here
     expect((await app.request('/agent/evil.sh')).status).toBe(404);                          // not allow-listed
+  });
+
+  test('GET /agent/mesh-ca.crt serves the coordinator CA when self-hosted, 404s otherwise', async () => {
+    const withCa = createApp(dashEnv, { checkHealth: async () => health, coordCaB64: () => Buffer.from('-----BEGIN CERTIFICATE-----\nX\n-----END CERTIFICATE-----').toString('base64') });
+    const r = await withCa.request('/agent/mesh-ca.crt');
+    expect(r.status).toBe(200);
+    expect(await r.text()).toContain('BEGIN CERTIFICATE');
+    const noCa = createApp(dashEnv, { checkHealth: async () => health, coordCaB64: () => '' });
+    expect((await noCa.request('/agent/mesh-ca.crt')).status).toBe(404);        // public coordinator: nothing to serve
   });
 
   test('GET /connect is public, shows the OS picker, and carries no token', async () => {
@@ -298,6 +313,29 @@ describe('owner-console app', () => {
     expect(body).toContain('nufibox-agent/install.sh');
     expect(body).not.toContain('tailscale.com');                  // no external Tailscale download
     expect(body).toContain(`amd64) WANT_SHA="${'a'.repeat(64)}"`); // baked digest flows into the connector
+  });
+
+  test('POST /connect/connector returns a JSON plan (pkg + enrol command) for macOS', async () => {
+    const app = createApp(dashEnv, connectDeps);
+    const token = signInvite(dashEnv.BOX_OWNER_SESSION_SECRET, { key: 'k-join-xyz', serverUrl: 'https://coordinator.internal' });
+    const r = await app.request('/connect/connector', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        host: 'nufi.local', 'x-forwarded-proto': 'http',
+      },
+      body: new URLSearchParams({ token, os: 'macos', member: 'Ivy Nguyen' }),
+    });
+    expect(r.status).toBe(200);
+    expect(r.headers.get('content-type')).toContain('application/json');   // a plan, not a file download
+    const plan = await r.json();
+    expect(plan.pkgUrl).toBe('http://nufi.local/agent/nufibox-agent-macos.pkg');
+    expect(plan.enroll).toContain('nufibox-agent enroll');
+    expect(plan.enroll).toContain("--auth-key 'k-join-xyz'");
+    expect(plan.enroll).toContain("--hostname 'ivy-nguyen'");
+    expect(plan.enroll).toContain('security add-trusted-cert');             // trusts the box CA too
+    expect(plan.enroll).toContain("curl -fsS 'http://nufi.local/agent/mesh-ca.crt'"); // connectDeps has a coord CA
+    expect(plan.chatUrl).toContain('/register');
   });
 
   test('reads the baked .sha256 files from the dist dir; a garbled digest is dropped', async () => {

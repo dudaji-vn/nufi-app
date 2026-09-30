@@ -135,6 +135,36 @@ xdg-open "https://${meshHost}:3080/register" 2>/dev/null || echo "Open https://$
   return { filename: `nufi-join-${member}.sh`, contentType: 'application/x-shellscript', body };
 }
 
+// macOS members don't get a script (an unsigned .command re-triggers Gatekeeper,
+// defeating the signed agent). Instead the /connect page shows two steps: install
+// the SIGNED, NOTARIZED .pkg the box serves (no warning), then paste ONE enrol
+// command into Terminal. Everything interpolated comes from the verified invite
+// token / box config, never member input; values are single-quoted for the shell
+// and the member name is safeMember'd. A self-hosted (internal-CA) box has the
+// command fetch the coordinator CA from the box first; a public coordinator needs
+// none, so the command is a clean one-liner.
+export type MacPlan = { pkgUrl: string; enroll: string; chatUrl: string };
+
+export function macosPlan(input: ConnectorInput): MacPlan {
+  const member = safeMember(input.member);
+  const boxUrl = (input.boxUrl ?? '').replace(/\/$/, '');
+  const pkgUrl = `${boxUrl}/agent/nufibox-agent-macos.pkg`;
+  const chatUrl = `https://${input.boxMeshHost}:3080/register`;
+  const parts: string[] = [
+    // trust the box's Caddy CA so chat opens with no warning (parity with linux/win)
+    `curl -fsS ${sq(`${boxUrl}/nufi-box-ca.crt`)} -o /tmp/nufi-box-ca.crt`,
+    `sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain /tmp/nufi-box-ca.crt`,
+  ];
+  let caArg = '';
+  if (input.coordCaB64) {
+    // a self-hosted (internal-CA) coordinator: fetch its CA so the agent trusts it
+    parts.push(`curl -fsS ${sq(`${boxUrl}/agent/mesh-ca.crt`)} -o /tmp/nufi-ca.crt`);
+    caArg = ' --ca /tmp/nufi-ca.crt';
+  }
+  parts.push(`sudo nufibox-agent enroll --server ${sq(input.serverUrl)} --auth-key ${sq(input.key)}${caArg} --hostname ${sq(member)}`);
+  return { pkgUrl, enroll: parts.join(' && '), chatUrl };
+}
+
 export function renderConnector(input: ConnectorInput, templatesDir: string): Connector {
   if (input.os === 'linux') return agentConnectorLinux(input);
   const member = safeMember(input.member);

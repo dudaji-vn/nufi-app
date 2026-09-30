@@ -12,3 +12,6 @@ deploy/platform/scenarios/demo/*.webm
 
 # Subagent-driven-development scratch (ledger, briefs, review packages)
 .superpowers/
+
+# self-hosted GitHub Actions runner (never commit)
+/actions-runner/

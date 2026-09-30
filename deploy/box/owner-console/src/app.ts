@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { signSession, verifyPassword, verifySession } from './auth';
 import { boxInfo } from './boxinfo';
-import { isOS, renderConnector } from './connector';
+import { isOS, macosPlan, renderConnector } from './connector';
 import { checkAll, probesForEnv, type Health } from './health';
 import { connectLink, signInvite, verifyInvite } from './invite';
 import { MeshError, listNodes, meshConfig, mintMemberKey, revokeNode, type MeshConfig } from './mesh-api';
@@ -33,10 +33,10 @@ type Deps = {
   agentSha256?: () => { amd64: string; arm64: string };
 };
 
-// The NufiBox Agent bundles the box ships for a member to install — one per
-// client arch. The name is allow-listed so the path can never escape the dist
-// directory.
-const AGENT_FILE = /^nufibox-agent-linux-(amd64|arm64)\.tar\.gz$/;
+// The NufiBox Agent bundles the box ships for a member to install — the Linux
+// tarballs (one per arch) and the signed macOS .pkg. The name is allow-listed so
+// the path can never escape the dist directory.
+const AGENT_FILE = /^nufibox-agent-(linux-(amd64|arm64)\.tar\.gz|macos\.pkg)$/;
 
 function originOf(c: { req: { header: (n: string) => string | undefined } }): string {
   const proto = c.req.header('x-forwarded-proto') ?? 'https';
@@ -199,11 +199,18 @@ export function createApp(env: AppEnv = process.env, deps: Deps = {}): Hono {
   }));
   app.get('/agent/:file', async (c) => {
     const file = c.req.param('file');
+    // The coordinator CA, for the macOS enrol command on a self-hosted box. Not
+    // secret (a CA public cert); empty (404) on a public-coordinator box.
+    if (file === 'mesh-ca.crt') {
+      const pem = Buffer.from(coordCaB64(), 'base64').toString('utf8');
+      return pem ? new Response(pem, { headers: { 'content-type': 'application/x-pem-file' } }) : c.text('not found', 404);
+    }
     if (!AGENT_FILE.test(file)) return c.text('not found', 404);
     const f = Bun.file(`${agentDistDir}/${file}`);
     if (!(await f.exists())) return c.text('not found', 404);
+    const type = file.endsWith('.pkg') ? 'application/octet-stream' : 'application/gzip';
     return new Response(f.stream(), {
-      headers: { 'content-type': 'application/gzip', 'content-disposition': `attachment; filename="${file}"` },
+      headers: { 'content-type': type, 'content-disposition': `attachment; filename="${file}"` },
     });
   });
 
@@ -222,6 +229,16 @@ export function createApp(env: AppEnv = process.env, deps: Deps = {}): Hono {
     const invite = verifyInvite(secret, token);
     if (!invite) return c.text('this invite link is invalid or has expired — ask for a new one', 400);
     const info = boxInfo(env);
+    // macOS: no downloadable script (an unsigned .command re-triggers Gatekeeper).
+    // Return a plan the page renders as steps — install the signed .pkg, then paste
+    // one enrol command.
+    if (os === 'macos') {
+      return c.json(macosPlan({
+        os, member, key: invite.key, serverUrl: invite.serverUrl,
+        boxMeshHost: info.mesh.host, departments: info.departments,
+        boxCaB64: '', coordCaB64: coordCaB64(), boxUrl: originOf(c),
+      }));
+    }
     const connector = renderConnector({
       os,
       member,
