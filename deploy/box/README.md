@@ -1037,6 +1037,34 @@ join file will not work: Tailscale logs into one control server at a time,
 and a corporate MDM profile usually locks that choice. Ask your IT team, or
 join from a personal device instead.
 
+### Inviting from the console (the share-link flow)
+
+The commands above are the CLI path. The owner console (the box's own web UI on
+`:3009`) offers the same thing as a **share link**, which is usually easier for a
+member — no file to send — and on Linux and macOS it installs the **de-branded
+NuFi Agent**, so the member never downloads Tailscale and never sees its name.
+
+- **Owner** — in the console's *Invite a member* panel, click **Generate an
+  invite link** (one laptop; single-use, one hour) or **Fleet invite (many
+  machines)** (a reusable code for a bulk or MDM rollout, good for seven days).
+  Send the link the way you would a join file — to the person, not a public
+  channel.
+- **Member** — open the link on the box's network. The `/connect` page asks for
+  the OS, then:
+  - **macOS** — download and install the NuFi Agent (a signed, notarized `.pkg`,
+    so no Gatekeeper warning), then paste the one command it shows into Terminal.
+    That command trusts the box, joins the mesh, and the page links to sign-up.
+  - **Linux** — run the downloaded connector (`bash nufi-join-<you>.sh`); it
+    fetches the agent from the box, verifies its checksum, trusts the box, joins,
+    and maps the drives.
+  - **Windows** — run the downloaded connector; today it still uses the official
+    Tailscale app (the native Windows agent is not built yet), so install
+    Tailscale first if it prompts.
+
+The link carries only a one-time key (or, for a fleet link, a reusable one) and
+the coordinator URL — nothing else. The "trust on first join" note below applies
+to this flow too.
+
 ### Trust on first join, and what it assumes
 
 A laptop's very first contact with the box happens over plain HTTP, before it
