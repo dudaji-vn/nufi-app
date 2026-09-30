@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Users, Trash2 } from 'lucide-react';
+import { ArrowLeft, Users, Trash2, Pencil } from 'lucide-react';
 import {
   Button,
   Spinner,
@@ -22,6 +22,7 @@ import InvitesTab from './InvitesTab';
 import KnowledgeTab from './KnowledgeTab';
 import SharedTab from './SharedTab';
 import GroupsTab from './GroupsTab';
+import EditTeamDialog from './EditTeamDialog';
 
 const roleLabelKey: Record<TeamRole, TranslationKeys> = {
   owner: 'com_ui_role_owner',
@@ -113,16 +114,36 @@ export default function TeamDetail({ teamId }: TeamDetailProps) {
           {isLoading ? (
             <Spinner className="text-text-secondary" aria-label={localize('com_ui_loading')} />
           ) : (
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-semibold text-text-primary">{data?.team.name}</h1>
-              <span className="rounded-full bg-surface-tertiary px-2 py-0.5 text-xs font-medium text-text-secondary">
-                {localize(roleLabelKey[callerRole])}
-              </span>
+            <div className="flex flex-col">
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-semibold text-text-primary">{data?.team.name}</h1>
+                <span className="rounded-full bg-surface-tertiary px-2 py-0.5 text-xs font-medium text-text-secondary">
+                  {localize(roleLabelKey[callerRole])}
+                </span>
+              </div>
+              {data?.team.description != null && data.team.description !== '' && (
+                <p className="text-sm text-text-secondary">{data.team.description}</p>
+              )}
             </div>
           )}
         </div>
-        {!isLoading && callerRole === 'owner' && (
-          <div className="ml-auto">
+        {!isLoading && callerRole === 'owner' && data?.team && (
+          <div className="ml-auto flex items-center gap-2">
+            <EditTeamDialog
+              teamId={teamId}
+              initialName={data.team.name}
+              initialDescription={data.team.description}
+            >
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 text-text-secondary"
+                aria-label={localize('com_ui_edit_team')}
+              >
+                <Pencil className="size-4" aria-hidden="true" />
+                {localize('com_ui_edit')}
+              </Button>
+            </EditTeamDialog>
             <DeleteTeamButton teamId={teamId} />
           </div>
         )}
