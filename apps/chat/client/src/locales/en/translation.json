@@ -1619,6 +1619,8 @@
   "com_ui_team_change_role": "Change role",
   "com_ui_team_created": "Team created",
   "com_ui_team_description": "Description",
+  "com_ui_edit_team": "Edit Team",
+  "com_ui_team_updated": "Team updated",
   "com_ui_team_invite_email": "Email address",
   "com_ui_team_invite_email_placeholder": "name@example.com",
   "com_ui_team_invite_member": "Invite member",

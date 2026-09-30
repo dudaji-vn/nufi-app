@@ -505,7 +505,7 @@ export const teamMembers = (teamId: string) => `${teamsRoot}/${encodeURIComponen
 export const teamMember = (teamId: string, userId: string) =>
   `${teamsRoot}/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}`;
 export const teamMemberRole = (teamId: string, userId: string) =>
-  `${teamsRoot}/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}/role`;
+  `${teamsRoot}/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}`;
 export const teamTransfer = (teamId: string) =>
   `${teamsRoot}/${encodeURIComponent(teamId)}/transfer`;
 

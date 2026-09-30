@@ -1,7 +1,7 @@
 /**
  * @jest-environment jsdom
  */
-import { buildLoginRedirectUrl } from '../src/api-endpoints';
+import { buildLoginRedirectUrl, teamMember, teamMemberRole } from '../src/api-endpoints';
 
 describe('buildLoginRedirectUrl', () => {
   afterEach(() => {
@@ -70,5 +70,23 @@ describe('buildLoginRedirectUrl', () => {
     const result = buildLoginRedirectUrl('/c/loginhistory', '', '');
     expect(result).toContain('redirect_to=');
     expect(decodeURIComponent(result.split('redirect_to=')[1])).toBe('/c/loginhistory');
+  });
+});
+
+describe('teams member endpoints', () => {
+  // Regression for BUG_TEAM_002: the change-role client URL must match the
+  // server route `PATCH /api/teams/:id/members/:userId` — a stray `/role`
+  // suffix made every role change 404.
+  it('teamMemberRole targets the member route with no /role suffix', () => {
+    expect(teamMemberRole('t1', 'u1')).toBe('/api/teams/t1/members/u1');
+    expect(teamMemberRole('t1', 'u1')).not.toContain('/role');
+  });
+
+  it('teamMemberRole matches teamMember (same URL, PATCH vs DELETE distinguishes them)', () => {
+    expect(teamMemberRole('t1', 'u1')).toBe(teamMember('t1', 'u1'));
+  });
+
+  it('encodes ids', () => {
+    expect(teamMemberRole('t/1', 'u 1')).toBe('/api/teams/t%2F1/members/u%201');
   });
 });
