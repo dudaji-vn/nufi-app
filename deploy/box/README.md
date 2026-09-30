@@ -32,8 +32,13 @@ login, created during install, that works across all four products.
 | macOS | Homebrew | OrbStack (or Docker Desktop) and Ollama, both via `brew` |
 | Windows 10/11 | WSL2 with an Ubuntu distro; run the script **inside** that Ubuntu shell | same as the Ubuntu row, from inside WSL2 |
 
-Running the script directly on Windows (not inside WSL2 Ubuntu) fails with
-`unsupported OS`.
+Run the script **inside the WSL2 Ubuntu shell**, not in PowerShell or Command
+Prompt — those cannot execute a `.sh`, so `./install-box.sh` there installs
+nothing and just opens the file in an editor (a VS Code window starting is the
+tell). See the WSL2 walkthrough in [the install
+guide](/docs/box/install#on-windows-work-inside-wsl2). `--with-works`,
+`--self-host-coordinator` and `--egress-enforce` need a real Ubuntu host and are
+not available under WSL2.
 
 Hardware: 32 GB RAM, 500 GB free disk, wired Ethernet. A GPU is not required
 but is strongly recommended — a 7B model on CPU only is slow enough to
