@@ -8,6 +8,12 @@ COPY --from=agent . /agent-src
 RUN cd /agent-src \
  && OUT=/dist ARCH=amd64 ./build-agent.sh \
  && OUT=/dist ARCH=arm64 ./build-agent.sh
+# The SIGNED, NOTARIZED macOS .pkg is built on the self-hosted signing Mac (the
+# `agent-macos` workflow) and can't be produced here on Linux. box-images fetches
+# it from the release into the agent context (deploy/box/agent/dist) before the
+# build; copy it in if present. Best-effort: without it, /agent/nufibox-agent-
+# macos.pkg simply 404s until a signed release exists.
+RUN cp /agent-src/dist/nufibox-agent-macos.pkg /dist/ 2>/dev/null || true
 
 FROM oven/bun:1.4.2-alpine
 WORKDIR /app
