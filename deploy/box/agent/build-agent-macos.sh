@@ -11,7 +11,13 @@
 #   ./build-agent-macos.sh                 # build + sign + notarize + staple
 #   NOTARIZE=0 ./build-agent-macos.sh      # build + sign only (skip notarize)
 #
-# Env overrides: TS_VERSION, APP_ID, INSTALLER_ID, NOTARY_PROFILE, OUT.
+# Env overrides: TS_VERSION, APP_ID, INSTALLER_ID, OUT.
+# Notarization auth (pick one):
+#   - local:  NOTARY_PROFILE (a stored notarytool keychain profile; default nufibox-notary)
+#   - CI:     NOTARY_KEY (path to an App Store Connect API .p8) + NOTARY_KEY_ID + NOTARY_ISSUER
+# The signing identities must be reachable by name in the keychain search list
+# (locally they are in the login keychain; in CI the workflow imports them into a
+# temporary keychain first).
 set -euo pipefail
 
 TS_VERSION="${TS_VERSION:-1.102.3}"
@@ -101,8 +107,15 @@ if [ "$NOTARIZE" != 1 ]; then
 fi
 
 # --- notarize + staple ------------------------------------------------------
+# Auth: an App Store Connect API key (CI) if provided, else the stored keychain
+# profile (local dev).
+if [ -n "${NOTARY_KEY:-}" ] && [ -n "${NOTARY_KEY_ID:-}" ] && [ -n "${NOTARY_ISSUER:-}" ]; then
+  NOTARY_AUTH=(--key "$NOTARY_KEY" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER")
+else
+  NOTARY_AUTH=(--keychain-profile "$NOTARY_PROFILE")
+fi
 echo "==> submitting to Apple notary service (this waits for the verdict)"
-xcrun notarytool submit "$PKG" --keychain-profile "$NOTARY_PROFILE" --wait
+xcrun notarytool submit "$PKG" "${NOTARY_AUTH[@]}" --wait
 echo "==> stapling the notarization ticket (so it verifies OFFLINE — air-gap safe)"
 xcrun stapler staple "$PKG"
 
@@ -110,4 +123,5 @@ echo "==> verification"
 xcrun stapler validate "$PKG"
 pkgutil --check-signature "$PKG" | head -8
 spctl -a -vvv -t install "$PKG" 2>&1 || true
-echo "==> done: $PKG"
+shasum -a 256 "$PKG" | awk '{print $1}' > "$PKG.sha256"
+echo "==> done: $PKG (sha256 $(cat "$PKG.sha256"))"
