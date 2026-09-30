@@ -114,7 +114,7 @@ const CreatePromptForm = ({
     <FormProvider {...methods}>
       <form onSubmit={handleSubmit(onSubmit)} className="w-full px-4 py-2">
         <h1 className="sr-only">{localize('com_ui_create_prompt_page')}</h1>
-        <div className="mb-2 flex items-center justify-between gap-2 sm:hidden">
+        <div className="mb-2 flex items-center justify-between gap-2 md:hidden">
           <OpenSidebar />
           <CategorySelector />
         </div>

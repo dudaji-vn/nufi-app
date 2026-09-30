@@ -4,11 +4,17 @@
 export function insertTextAtCursor(element: HTMLTextAreaElement, textToInsert: string) {
   element.focus();
 
-  // Use the browser's built-in undoable actions if possible
-  if (window.getSelection() && document.queryCommandSupported('insertText')) {
+  // execCommand needs the element to actually hold focus. When the composer is
+  // inside an `inert` subtree (small screen with the sidebar open), focus() is a
+  // silent no-op and execCommand would target nothing — fall back to a manual
+  // splice so the prompt still lands in the input.
+  if (
+    document.activeElement === element &&
+    window.getSelection() &&
+    document.queryCommandSupported('insertText')
+  ) {
     document.execCommand('insertText', false, textToInsert);
   } else {
-    console.warn('insertTextAtCursor: document.execCommand is not supported');
     const startPos = element.selectionStart;
     const endPos = element.selectionEnd;
     const beforeText = element.value.substring(0, startPos);

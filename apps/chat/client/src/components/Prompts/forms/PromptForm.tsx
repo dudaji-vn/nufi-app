@@ -76,7 +76,7 @@ const VersionsPanel = React.memo(
               className={cn(
                 'w-full gap-1.5 transition-all duration-200',
                 isProductionVersion &&
-                  'border border-border-success bg-surface-success text-text-success hover:bg-surface-success/80',
+                  'hover:bg-surface-success/80 border border-border-success bg-surface-success text-text-success',
               )}
               onClick={() => {
                 if (!selectedPrompt) {
@@ -463,7 +463,7 @@ const PromptForm = ({ promptId: promptIdProp }: { promptId?: string }) => {
               <div className="flex-1 overflow-hidden px-4">
                 {/* Mobile Actions Row */}
                 {!isLoadingGroup && group && (
-                  <div className="mb-3 mt-2 flex items-center justify-between gap-2 sm:hidden">
+                  <div className="mb-3 mt-2 flex items-center justify-between gap-2 md:hidden">
                     <OpenSidebar />
                     <HeaderActions
                       group={group}
