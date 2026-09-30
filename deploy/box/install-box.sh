@@ -215,7 +215,13 @@ if [ "$DRY" = 0 ]; then
           sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
           sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list >/dev/null
         sudo apt-get update -qq && sudo apt-get install -y -qq nvidia-container-toolkit
-        sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker
+        sudo nvidia-ctk runtime configure --runtime=docker
+        # Guard the restart: on WSL2 or with Docker Desktop's WSL integration
+        # there is no docker.service, so `systemctl restart docker` fails and
+        # under `set -e` would kill the whole install. Warn and carry on — the
+        # box still runs (on CPU until Docker is restarted to load the runtime).
+        sudo systemctl restart docker 2>/dev/null \
+          || warn "NVIDIA runtime configured, but Docker was not restarted (no docker.service — Docker Desktop or WSL2 without systemd). Restart Docker yourself to use the GPU in containers; the box otherwise runs on CPU."
       fi
       ;;
     *) die "unsupported OS: $OS (Windows: run this inside WSL2 Ubuntu)" ;;
