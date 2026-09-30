@@ -1,5 +1,5 @@
 import { atom } from 'recoil';
-import { SettingsViews, LocalStorageKeys } from 'librechat-data-provider';
+import { SettingsViews, LocalStorageKeys, ForkOptions } from 'librechat-data-provider';
 import { atomWithLocalStorage } from '~/store/utils';
 import type { TOptionSettings } from '~/common';
 
@@ -35,7 +35,7 @@ const localStorageAtoms = {
   autoExpandTools: atomWithLocalStorage(LocalStorageKeys.AUTO_EXPAND_TOOLS, false),
   saveDrafts: atomWithLocalStorage('saveDrafts', true),
   showScrollButton: atomWithLocalStorage('showScrollButton', true),
-  forkSetting: atomWithLocalStorage('forkSetting', ''),
+  forkSetting: atomWithLocalStorage('forkSetting', ForkOptions.DIRECT_PATH),
   splitAtTarget: atomWithLocalStorage('splitAtTarget', false),
   rememberDefaultFork: atomWithLocalStorage(LocalStorageKeys.REMEMBER_FORK_OPTION, false),
   saveBadgesState: atomWithLocalStorage('saveBadgesState', false),

@@ -283,6 +283,11 @@ router.post('/chat/abort', async (req, res) => {
         endpoint: jobData.endpoint,
         model: jobData.model,
         unfinished: true,
+        // Set finish_reason so the client shows the "Continue" button on a
+        // manually stopped response — the client gates Continue on
+        // finish_reason && finish_reason !== 'stop' (see useGenerationsByLatest),
+        // matching the legacy abortMiddleware convention.
+        finish_reason: 'incomplete',
         error: false,
         isCreatedByUser: false,
         user: userId,
