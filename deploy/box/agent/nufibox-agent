@@ -2,27 +2,45 @@
 # nufibox-agent — the NuFi box mesh client.
 #
 # The point of this wrapper: a member installs ONE thing (this, with a
-# de-branded tailscaled bundled alongside it — see build-agent.sh) and joins the
-# box's mesh with an invite's pre-auth key. No separate Tailscale download, and
-# the member never sees or configures "Tailscale". The engine underneath is
-# tailscale (BSD-3), shipped here under nufibox names, a private state dir, and
-# `--no-logs-no-support` so it never phones home.
+# de-branded tailscaled bundled alongside it — see build-agent.sh / the macOS
+# .pkg) and joins the box's mesh with an invite's pre-auth key. No separate
+# Tailscale download, and the member never sees or configures "Tailscale". The
+# engine underneath is tailscale (BSD-3), shipped here under nufibox names, a
+# private state dir, and `--no-logs-no-support` so it never phones home.
 #
 #   nufibox-agent enroll --server <url> --auth-key <key> [--ca <file>] [--hostname <name>]
 #   nufibox-agent up | down | status
 #
-# NUFIBOX_AGENT_DRY_RUN=1 prints the commands instead of running them, so the
-# join logic is testable without root or a live daemon.
+# Runs on Linux (systemd + a named tun + update-ca-certificates) and macOS
+# (launchd + utun + the System keychain). NUFIBOX_FAKE_OS overrides the detected
+# OS and NUFIBOX_AGENT_DRY_RUN=1 prints the commands instead of running them, so
+# the join logic is testable on either platform without root or a live daemon.
 set -euo pipefail
 
-STATE_DIR="${NUFIBOX_STATE_DIR:-/var/lib/nufibox}"
-RUN_DIR="${NUFIBOX_RUN_DIR:-/run/nufibox}"
+OS="${NUFIBOX_FAKE_OS:-$(uname -s)}"
+case "$OS" in
+  Darwin)
+    STATE_DIR_DEFAULT="/Library/NufiBox"
+    RUN_DIR_DEFAULT="/Library/NufiBox"
+    TUN_DEFAULT="utun"                 # darwin requires the utun naming; the kernel picks utunN
+    ;;
+  *)
+    STATE_DIR_DEFAULT="/var/lib/nufibox"
+    RUN_DIR_DEFAULT="/run/nufibox"
+    TUN_DEFAULT="nufibox0"             # our own interface, not tailscale0
+    ;;
+esac
+
+STATE_DIR="${NUFIBOX_STATE_DIR:-$STATE_DIR_DEFAULT}"
+RUN_DIR="${NUFIBOX_RUN_DIR:-$RUN_DIR_DEFAULT}"
 SOCK="${NUFIBOX_SOCK:-$RUN_DIR/nufibox.sock}"
-# The bundled, de-branded binaries (build-agent.sh installs them next to this
-# script or on PATH). Overridable for tests.
+TUN="${NUFIBOX_TUN:-$TUN_DEFAULT}"
+# The bundled, de-branded binaries (build-agent.sh / the pkg install them next to
+# this script or on PATH). Overridable for tests.
 TSD="${NUFIBOX_TAILSCALED:-nufibox-tailscaled}"
 TS="${NUFIBOX_TAILSCALE:-nufibox-tailscale}"
-CA_DST="${NUFIBOX_CA_DST:-/usr/local/share/ca-certificates/nufibox-mesh.crt}"
+CA_DST="${NUFIBOX_CA_DST:-/usr/local/share/ca-certificates/nufibox-mesh.crt}"   # linux only
+PLIST="${NUFIBOX_PLIST:-/Library/LaunchDaemons/vn.dudaji.nufibox-agent.plist}"  # macos only
 DRY="${NUFIBOX_AGENT_DRY_RUN:-0}"
 
 die() { echo "nufibox-agent: $*" >&2; exit 1; }
@@ -36,27 +54,43 @@ trust_ca() {
   local ca="$1"
   [ -n "$ca" ] || return 0
   [ "$DRY" = 1 ] || [ -f "$ca" ] || die "--ca file not found: $ca"
-  run cp "$ca" "$CA_DST"
-  run update-ca-certificates
+  case "$OS" in
+    Darwin) run security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "$ca" ;;
+    *)      run cp "$ca" "$CA_DST"; run update-ca-certificates ;;
+  esac
 }
 
-# Bring the daemon up. Kernel networking (TS_USERSPACE=false equivalent) needs a
-# tun device; the systemd unit build-agent.sh ships runs it as a service, but a
-# direct `up` starts it in the background too so `enroll` works on its own.
+# Bring the daemon up. Kernel networking needs a tun device, so the daemon runs
+# as root: the packaged service (systemd on Linux, launchd on macOS) owns it, but
+# a direct `up` starts it in the background too so `enroll` works on its own.
 daemon_up() {
   run install -d -m 0755 "$STATE_DIR" "$RUN_DIR"
   if [ "$DRY" = 1 ]; then
-    printf '  $ %s --state=%s/nufibox.state --socket=%s --tun=nufibox0 --no-logs-no-support &\n' \
-      "$TSD" "$STATE_DIR" "$SOCK"
+    printf '  $ %s --state=%s/nufibox.state --socket=%s --tun=%s --no-logs-no-support &\n' \
+      "$TSD" "$STATE_DIR" "$SOCK" "$TUN"
     return 0
   fi
-  # Prefer the packaged service; fall back to a direct spawn.
-  if systemctl list-unit-files 2>/dev/null | grep -q '^nufibox-agent\.service'; then
-    run systemctl enable --now nufibox-agent
-  elif ! "$TS" --socket="$SOCK" status >/dev/null 2>&1; then
-    "$TSD" --state="$STATE_DIR/nufibox.state" --socket="$SOCK" --tun=nufibox0 --no-logs-no-support >/dev/null 2>&1 &
-    sleep 2
-  fi
+  case "$OS" in
+    Darwin)
+      if launchctl print system/vn.dudaji.nufibox-agent >/dev/null 2>&1; then
+        : # already loaded
+      elif [ -f "$PLIST" ]; then
+        run launchctl load -w "$PLIST"
+        sleep 2
+      elif ! "$TS" --socket="$SOCK" status >/dev/null 2>&1; then
+        "$TSD" --state="$STATE_DIR/nufibox.state" --socket="$SOCK" --tun="$TUN" --no-logs-no-support >/dev/null 2>&1 &
+        sleep 2
+      fi
+      ;;
+    *)
+      if systemctl list-unit-files 2>/dev/null | grep -q '^nufibox-agent\.service'; then
+        run systemctl enable --now nufibox-agent
+      elif ! "$TS" --socket="$SOCK" status >/dev/null 2>&1; then
+        "$TSD" --state="$STATE_DIR/nufibox.state" --socket="$SOCK" --tun="$TUN" --no-logs-no-support >/dev/null 2>&1 &
+        sleep 2
+      fi
+      ;;
+  esac
 }
 
 cmd_enroll() {

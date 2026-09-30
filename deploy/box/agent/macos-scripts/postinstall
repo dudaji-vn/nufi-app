@@ -1,0 +1,14 @@
+#!/bin/bash
+# Runs as root when the NufiBox Agent .pkg is installed. Creates the state dir
+# the daemon needs and (re)loads the LaunchDaemon. Enrolment (the per-member
+# key) is a separate step — `nufibox-agent enroll …` — never baked into the pkg.
+set -e
+
+install -d -m 0755 /Library/NufiBox
+
+PLIST=/Library/LaunchDaemons/vn.dudaji.nufibox-agent.plist
+# Reload cleanly whether or not a previous version was loaded.
+launchctl bootout system "$PLIST" 2>/dev/null || true
+launchctl bootstrap system "$PLIST" 2>/dev/null || launchctl load -w "$PLIST" 2>/dev/null || true
+
+exit 0
