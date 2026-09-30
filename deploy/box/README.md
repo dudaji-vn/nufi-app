@@ -1066,11 +1066,21 @@ wrong:
   — after the CA is trusted, or handed over out-of-band. It cannot, on its own,
   protect the very first cold fetch, because a machine in the middle of that hop
   could alter the connector along with everything else.
+- The enrolment instructions themselves cross that same hop: the Linux/Windows
+  connector, and — on macOS — the command the `/connect` page shows you to paste
+  into Terminal, both carry the one-time key and both run with `sudo`. A
+  man-in-the-middle on the first hop could therefore read that key in transit, or
+  rewrite the pasted command to run something else as root on the joining
+  machine. The signed, notarized macOS `.pkg` guarantees the *app* is genuine,
+  but not the *command* delivered alongside it. This is the same exposure on
+  every platform, and it is why the mitigation below is about the network, not
+  the payload.
 
 For the highest-assurance sites, close the first hop rather than rely on the
 protocol: run the first join on a network segment you control, or hand the
-member the CA (and, if you use it, the connector) out-of-band — so the first
-authenticated exchange does not depend on the LAN being clean.
+member the CA (and, if you use it, the connector or the enrol command)
+out-of-band — so the first authenticated exchange does not depend on the LAN
+being clean.
 
 ## 9. Troubleshooting
 
