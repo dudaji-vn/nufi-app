@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>vn.dudaji.nufibox-agent</string>
+  <!-- The bundled, de-branded tailscaled: its own state, socket and utun so it
+       never collides with anything else, and --no-logs-no-support so it never
+       phones home. Runs as root (launchd system domain) to open utun. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/nufibox-tailscaled</string>
+    <string>--state=/Library/NufiBox/nufibox.state</string>
+    <string>--socket=/Library/NufiBox/nufibox.sock</string>
+    <string>--tun=utun</string>
+    <string>--no-logs-no-support</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardErrorPath</key>
+  <string>/Library/NufiBox/agent.log</string>
+  <key>StandardOutPath</key>
+  <string>/Library/NufiBox/agent.log</string>
+</dict>
+</plist>
