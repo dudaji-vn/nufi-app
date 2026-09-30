@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
-import { renderConnector, safeMember, type ConnectorInput } from '../src/connector';
+import { macosPlan, renderConnector, safeMember, type ConnectorInput } from '../src/connector';
 
 // The real CLI templates — the point is that the console fills THESE, not a copy.
 const TEMPLATES = join(import.meta.dir, '../../lib/join-templates');
@@ -29,43 +29,72 @@ describe('safeMember', () => {
   });
 });
 
-describe('renderConnector — macOS/Windows (template flow, requires Tailscale)', () => {
-  for (const os of ['macos', 'windows'] as const) {
-    test(`${os}: fills every placeholder and embeds the key, URL, host, CAs`, () => {
-      const c = renderConnector(base(os), TEMPLATES);
-      expect(c.body).not.toMatch(/@[A-Z_]+@/);           // no placeholder left
-      expect(c.body).toContain('k-member-secret');
-      expect(c.body).toContain('https://coordinator.internal');
-      expect(c.body).toContain('nufi.box.internal');
-      expect(c.body).toContain('ivy-nguyen');
-      expect(c.body).toContain('Ym94Y2E=');              // box CA
-      expect(c.body).toContain('Y29vcmRjYQ==');          // coordinator CA
-      expect(c.filename).toBe(`nufi-join-ivy-nguyen.${os === 'macos' ? 'command' : 'cmd'}`);
-    });
-  }
+describe('renderConnector — Windows (template flow)', () => {
+  test('fills every placeholder and embeds the key, URL, host, CAs', () => {
+    const c = renderConnector(base('windows'), TEMPLATES);
+    expect(c.body).not.toMatch(/@[A-Z_]+@/);           // no placeholder left
+    expect(c.body).toContain('k-member-secret');
+    expect(c.body).toContain('https://coordinator.internal');
+    expect(c.body).toContain('nufi.box.internal');
+    expect(c.body).toContain('ivy-nguyen');
+    expect(c.body).toContain('Ym94Y2E=');              // box CA
+    expect(c.body).toContain('Y29vcmRjYQ==');          // coordinator CA
+    expect(c.filename).toBe('nufi-join-ivy-nguyen.cmd');
+  });
 
-  test('windows maps drives with net use from Z down, UNC path quoted', () => {
+  test('maps drives with net use from Z down, UNC path quoted', () => {
     const c = renderConnector(base('windows'), TEMPLATES);
     expect(c.body).toContain('net use Z: "\\\\nufi.box.internal\\legal" /persistent:yes');
     expect(c.body).toContain('net use Y: "\\\\nufi.box.internal\\hr" /persistent:yes');
   });
 
-  test('macos maps drives with open smb://, single-quoted; a space/metachar is quoted', () => {
-    expect(renderConnector(base('macos'), TEMPLATES).body).toContain("open 'smb://nufi.box.internal/legal'");
-    const hr = renderConnector({ ...base('macos'), departments: ['Human Resources'] }, TEMPLATES);
-    expect(hr.body).toContain("open 'smb://nufi.box.internal/Human Resources'");
+  test('lands the member on the sign-up page', () => {
+    expect(renderConnector(base('windows'), TEMPLATES).body).toContain('https://nufi.box.internal:3080/register');
   });
 
-  test('both land the member on the sign-up page', () => {
-    for (const os of ['macos', 'windows'] as const) {
-      expect(renderConnector(base(os), TEMPLATES).body).toContain('https://nufi.box.internal:3080/register');
-    }
-  });
-
-  test('a public coordinator (empty coord CA) leaves the placeholder empty, not literal', () => {
-    const c = renderConnector({ ...base('macos'), coordCaB64: '' }, TEMPLATES);
+  test('a public coordinator (empty coord CA) leaves no literal placeholder', () => {
+    const c = renderConnector({ ...base('windows'), coordCaB64: '' }, TEMPLATES);
     expect(c.body).not.toContain('@COORD_CA_B64@');
-    expect(c.body).toContain('COORD_CA_B64=""');
+  });
+});
+
+describe('macosPlan (signed .pkg + one-line enrol, no Gatekeeper warning)', () => {
+  test('serves the signed pkg from the box and a paste-once enrol command', () => {
+    const p = macosPlan(base('macos'));
+    expect(p.pkgUrl).toBe('http://nufi.local/agent/nufibox-agent-macos.pkg');   // from the box origin
+    expect(p.chatUrl).toBe('https://nufi.box.internal:3080/register');
+    expect(p.enroll).toContain('nufibox-agent enroll');
+    expect(p.enroll).toContain("--server 'https://coordinator.internal'");
+    expect(p.enroll).toContain("--auth-key 'k-member-secret'");
+    expect(p.enroll).toContain("--hostname 'ivy-nguyen'");
+    expect(p.enroll).not.toContain('tailscale.com');
+    expect(p.enroll).not.toContain('.command');                                  // not a downloadable script
+  });
+
+  test('trusts the box CA so chat opens without a warning (parity with linux/win)', () => {
+    const p = macosPlan(base('macos'));
+    expect(p.enroll).toContain("curl -fsS 'http://nufi.local/nufi-box-ca.crt'");
+    expect(p.enroll).toContain('security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain');
+    // box CA is trusted before the join
+    expect(p.enroll.indexOf('add-trusted-cert')).toBeLessThan(p.enroll.indexOf('nufibox-agent enroll'));
+  });
+
+  test('a self-hosted coordinator fetches the coord CA and passes --ca; a public one does not', () => {
+    const selfHost = macosPlan(base('macos'));
+    expect(selfHost.enroll).toContain("curl -fsS 'http://nufi.local/agent/mesh-ca.crt'");
+    expect(selfHost.enroll).toContain('--ca /tmp/nufi-ca.crt');
+    const pub = macosPlan({ ...base('macos'), coordCaB64: '' });
+    expect(pub.enroll).not.toContain('/agent/mesh-ca.crt');
+    expect(pub.enroll).not.toContain('--ca ');
+  });
+
+  test('shell-quotes owner/coordinator values so a stray char cannot break the paste', () => {
+    const evil = macosPlan({ ...base('macos'), serverUrl: "https://x'; rm -rf /; echo '", key: 'k' });
+    // the dangerous chars survive only INSIDE single-quotes: the embedded quote is
+    // escaped to '\'' and the whole value stays a single quoted --server argument,
+    // so ; and rm never execute.
+    expect(evil.enroll).toContain("--server 'https://x'\\''; rm -rf /; echo '\\'''");
+    expect(evil.enroll).not.toContain("--server https://x");    // never an unquoted, splittable value
   });
 });
 

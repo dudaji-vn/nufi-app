@@ -44,7 +44,6 @@ const shell = (title: string, body: string, wide = false) => `<!doctype html>
 // the token is POSTed to /connect/connector only when they do.
 export function connectPage(): string {
   const runHints = {
-    macos: 'macOS: if it says the file is from an unidentified developer, right-click it and choose Open.',
     windows: 'Windows: if SmartScreen says "Windows protected your PC", click More info then Run anyway.',
     linux: 'Linux: run it with  bash <the downloaded file>.',
   };
@@ -52,29 +51,49 @@ export function connectPage(): string {
   const tok = new URLSearchParams(location.hash.slice(1)).get('token');
   const msg = document.getElementById('msg');
   const picker = document.getElementById('picker');
+  const steps = document.getElementById('steps');
   const hints = ${JSON.stringify(runHints)};
   if (!tok) { picker.hidden = true; msg.textContent = 'This link is missing its invite — ask the box owner for a new one.'; msg.className = 'err'; }
+  function renderMac(plan) {
+    msg.className = 'sub'; msg.textContent = 'Three steps to join:';
+    steps.hidden = false;
+    steps.innerHTML =
+      '<ol>' +
+      '<li>Download and install the app, then double-click it (it is signed — no warning): ' +
+        '<a id="pkg" download>NuFi Agent for macOS</a></li>' +
+      '<li>Open <b>Terminal</b>, paste this and press Return: ' +
+        '<div class="cmd"><code id="cmd"></code><button type="button" id="copy">Copy</button></div></li>' +
+      '<li>Open NuFi and sign in: <a id="chat"></a></li>' +
+      '</ol>';
+    document.getElementById('pkg').href = plan.pkgUrl;
+    document.getElementById('cmd').textContent = plan.enroll;
+    const chat = document.getElementById('chat'); chat.href = plan.chatUrl; chat.textContent = plan.chatUrl;
+    document.getElementById('copy').addEventListener('click', async function () {
+      try { await navigator.clipboard.writeText(plan.enroll); this.textContent = 'Copied'; setTimeout(() => { this.textContent = 'Copy'; }, 1500); } catch (e) {}
+    });
+  }
   async function get(os) {
-    msg.className = 'sub'; msg.textContent = 'Preparing your connector…';
+    msg.className = 'sub'; msg.textContent = 'Preparing…'; steps.hidden = true; steps.innerHTML = '';
     const member = (document.getElementById('member').value || '').trim();
     const bodyData = new URLSearchParams({ token: tok, os, member });
     try {
       const r = await fetch('/connect/connector', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: bodyData });
       if (!r.ok) { msg.className = 'err'; msg.textContent = await r.text(); return; }
+      if ((r.headers.get('content-type') || '').includes('application/json')) { renderMac(await r.json()); return; }
       const cd = r.headers.get('content-disposition') || '';
       const m = cd.match(/filename="([^"]+)"/);
-      const name = m ? m[1] : 'nufi-join.' + (os === 'macos' ? 'command' : os === 'windows' ? 'cmd' : 'sh');
+      const name = m ? m[1] : 'nufi-join.' + (os === 'windows' ? 'cmd' : 'sh');
       const blob = await r.blob();
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove();
-      msg.className = 'sub'; msg.textContent = 'Downloaded ' + name + '. ' + hints[os];
+      msg.className = 'sub'; msg.textContent = 'Downloaded ' + name + '. ' + (hints[os] || '');
     } catch (e) { msg.className = 'err'; msg.textContent = 'Could not reach the box. Are you on its network?'; }
   }
   for (const b of document.querySelectorAll('[data-os]')) b.addEventListener('click', () => get(b.dataset.os));
   `;
   return shell('Join the NuFi box', `
   <h1>Join the NuFi box</h1>
-  <p>Pick your computer and download the one-time connector, then run it. It installs the mesh client, trusts the box, and connects you.</p>
+  <p>Pick your computer and follow the steps. It installs the mesh client, trusts the box, and connects you.</p>
   <div id="picker">
     <label>Your name (optional)<input id="member" placeholder="e.g. Ivy" autocomplete="off"></label>
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:1rem">
@@ -83,7 +102,14 @@ export function connectPage(): string {
       <button type="button" data-os="linux">Linux</button>
     </div>
   </div>
-  <p id="msg" class="sub" style="margin-top:1.25rem">The connector works once and expires — if it fails, ask for a fresh link.</p>
+  <div id="steps" hidden style="margin-top:1.25rem"></div>
+  <p id="msg" class="sub" style="margin-top:1.25rem">The link works once and expires — if it fails, ask for a fresh one.</p>
+  <style>
+    #steps ol { padding-left: 1.2rem; line-height: 1.7; }
+    #steps .cmd { display:flex; gap:.5rem; align-items:flex-start; margin-top:.4rem; }
+    #steps code { display:block; flex:1; white-space:pre-wrap; word-break:break-all; background:#0b1020; color:#d6e2ff; padding:.6rem .7rem; border-radius:.4rem; font-size:.82rem; }
+    #steps button { flex:0 0 auto; }
+  </style>
   <script>${script}</script>`);
 }
 
