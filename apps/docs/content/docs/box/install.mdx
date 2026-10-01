@@ -44,12 +44,33 @@ sign you are in the wrong shell).
    that break the shell scripts, and `/mnt/c` is slow.
 
 Then follow **Get the box** and **Install** below exactly as on a native Ubuntu
-machine. Two limits to know: WSL2 puts the box behind a NAT like a virtual
-machine, so other devices on the office network cannot reach it on the LAN
-without a `netsh interface portproxy` forward (the from-home mesh works
-regardless); and `--with-works`, `--self-host-coordinator` and `--egress-enforce`
-need a real Ubuntu host, so they are not available under WSL2. For a box the
-whole office reaches on the LAN, install on a machine running Ubuntu directly.
+machine, with a few WSL2 limits to know. WSL2 puts the box behind a NAT like a
+virtual machine, so other devices on the office network cannot reach it on the
+LAN without a `netsh interface portproxy` forward (the from-home mesh works
+regardless). `--with-works`, `--self-host-coordinator` and `--egress-enforce`
+need a real Ubuntu host, so they are not available under WSL2.
+
+And **port 445 — the department drives (SMB) — is already taken by Windows' own
+file sharing**, so Docker cannot bind it and the install stops with `ports are
+not available: exposing port TCP 0.0.0.0:445`. The box itself does not need that
+port (ingestion and the agents read the drive folders directly); it is only how a
+member's computer mounts `\\<box>\<department>`, which WSL2's NAT makes awkward
+anyway. Two ways past it:
+
+- **Skip the member mount (simplest for a test):** before installing, point Samba
+  at a free host port so it stops fighting Windows — in `deploy/box`, run
+  `sed -i 's/"445:445"/"1445:445"/' docker-compose.linux.yml` — then install.
+  Chat, the console and ingestion all work; only mounting the drives from another
+  computer over SMB does not.
+- **Keep the drives:** free port 445 by turning off Windows' own SMB server, in an
+  **administrator** PowerShell — `Stop-Service LanmanServer -Force; Set-Service
+  LanmanServer -StartupType Disabled` — then **reboot** (the kernel holds 445
+  until then) and install. This disables Windows file sharing on that machine;
+  re-enable it later with `Set-Service LanmanServer -StartupType Automatic;
+  Start-Service LanmanServer`.
+
+For a box the whole office reaches on the LAN, install on a machine running Ubuntu
+directly.
 
 ## Get the box
 
