@@ -69,6 +69,15 @@ anyway. Two ways past it:
   re-enable it later with `Set-Service LanmanServer -StartupType Automatic;
   Start-Service LanmanServer`.
 
+And **files the box writes live in the WSL2 Linux filesystem**, which Windows
+File Explorer does not show by default — the clone, the `.env`, and the join
+files `nufi-box invite` writes under `data/invites/` are all there. To open one
+from Windows, run `explorer.exe` from the Ubuntu shell pointed at the folder —
+for an invite, `cd ~/nufi-app/deploy/box/data/invites && explorer.exe .` opens
+it in File Explorer. Or, in File Explorer, browse to the **Linux** entry in the
+sidebar (address bar `\\wsl.localhost\Ubuntu\`). `nufi-box invite` prints this
+reminder itself when it runs under WSL2.
+
 For a box the whole office reaches on the LAN, install on a machine running Ubuntu
 directly.
 

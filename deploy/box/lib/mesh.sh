@@ -403,6 +403,15 @@ mesh_invite() {
     "BOX_MESH_HOST=$BOX_MESH_HOST" "CA_B64=$ca_b64" \
     "COORD_CA_B64=$coord_ca_b64" "DRIVES=$drives_block"
   echo "Wrote $out"
+  # On Windows the box runs under WSL2, where data/ lives in the Linux
+  # filesystem — File Explorer does not show it by default, so a non-technical
+  # admin cannot find the file to send (a real tester hit exactly this). When
+  # we are inside WSL, say how to open the folder from Windows.
+  if [ -n "${WSL_DISTRO_NAME:-}" ] || grep -qi microsoft /proc/version 2>/dev/null; then
+    echo "  On Windows, open its folder in File Explorer:"
+    echo "    (cd \"$data_dir/invites\" && explorer.exe .)"
+    echo "  or in File Explorer go to  Linux > ${WSL_DISTRO_NAME:-your Ubuntu distro}."
+  fi
   # The join file is a script, and a script cannot be code-signed or notarized,
   # so every OS flags a downloaded one as coming from an unidentified developer.
   # A member who just double-clicks hits a dead-end warning and calls the admin
