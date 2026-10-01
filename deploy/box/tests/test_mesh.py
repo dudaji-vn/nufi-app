@@ -305,6 +305,25 @@ def test_invite_prints_the_path_and_a_sentence_to_send(tmp_path, fake_headscale)
     assert "erin" in r.stdout
 
 
+def test_invite_under_wsl_says_how_to_find_the_file_from_windows(tmp_path, fake_headscale):
+    # On WSL2 the file lands in the Linux filesystem, invisible to File
+    # Explorer by default — a real tester could not find it. The invite names
+    # the Windows gesture only when it detects WSL.
+    envf, _ = make_env(tmp_path, fake_headscale)
+    r = cli("invite", "ivy", "--os", "macos",
+            env={"NUFI_BOX_ENV": str(envf), "WSL_DISTRO_NAME": "Ubuntu"})
+    assert r.returncode == 0, r.stderr
+    assert "explorer.exe" in r.stdout
+    assert "Ubuntu" in r.stdout
+
+
+def test_invite_off_wsl_says_nothing_about_explorer(tmp_path, fake_headscale):
+    envf, _ = make_env(tmp_path, fake_headscale)
+    r = cli("invite", "jade", "--os", "macos", env={"NUFI_BOX_ENV": str(envf)})
+    assert r.returncode == 0, r.stderr
+    assert "explorer.exe" not in r.stdout
+
+
 def test_invite_without_box_mesh_host_dies_with_the_hint(tmp_path, fake_headscale):
     envf, _ = make_env(tmp_path, fake_headscale, BOX_MESH_HOST="")
     r = cli("invite", "frank", "--os", "macos", env={"NUFI_BOX_ENV": str(envf)})
