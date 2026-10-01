@@ -125,6 +125,38 @@ nothing printed — `curl -s` is silent while it waits, so it looks stuck.
 `ollama` and `ollama-docker` ask which model; the default is `qwen2.5:7b`.
 `remote` and `cloud` ask for a base URL and a key.
 
+### Changing the model later
+
+There is no settings screen for this, and you do not edit `.env` by hand —
+the model name is also baked into the gateway's rendered config, so an
+`.env` edit alone would leave the two out of step. Instead re-run the
+installer with the answers you want to change passed as environment
+variables in front of it. It rewrites `.env`, re-renders the gateway config
+and restarts the stack; the box keeps its name, accounts and all ingested
+data (nothing is reinstalled).
+
+To move a box onto a hosted model — useful when the machine is too slow to
+answer from its own CPU — point it at any provider that speaks the OpenAI
+API:
+
+```bash
+INFERENCE_PROFILE=cloud \
+INFERENCE_BASE_URL="https://api.openai.com/v1" \
+INFERENCE_API_KEY="<provider key>" \
+INFERENCE_MODEL="<model id the provider serves>" \
+./install-box.sh --yes
+```
+
+`cloud` is the one profile where text leaves the building. The embeddings
+model keeps running locally; you do not pass anything for it.
+
+To instead stay local but lighter — the quickest win on a weak machine — keep
+the profile and only drop to a smaller model:
+
+```bash
+INFERENCE_MODEL="qwen2.5:3b" ./install-box.sh --yes
+```
+
 ## How long it takes
 
 Measured, not estimated:
