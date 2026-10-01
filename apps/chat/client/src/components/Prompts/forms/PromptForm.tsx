@@ -510,7 +510,7 @@ const PromptForm = ({ promptId: promptIdProp }: { promptId?: string }) => {
                           </Button>
                         )}
                       </div>
-                      <div className="hidden shrink-0 sm:block">
+                      <div className="hidden shrink-0 md:block">
                         <HeaderActions
                           group={group}
                           canEdit={canEdit}

@@ -153,7 +153,7 @@ const CreatePromptForm = ({
                 </div>
               )}
             />
-            <div className="hidden sm:block">
+            <div className="hidden md:block">
               <CategorySelector />
             </div>
           </div>
