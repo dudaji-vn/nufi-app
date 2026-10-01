@@ -95,6 +95,11 @@ allowed onto the mesh — and the model keeps running on the box. Standing one
 up is [its own runbook](https://github.com/dudaji-vn/nufi-app/blob/main/deploy/coordinator/README.md);
 one coordinator serves every box of one organisation.
 
+There are two ways to provide it, and the rest of this section is the first:
+a small **separate server** the box and every laptop dial out to. A site that
+may have no outside server at all can instead have the box
+[run its own coordinator](#the-coordinator-can-run-on-the-box-itself).
+
 Three values come off the coordinator, and the box needs all three:
 
 | Value | Where it comes from |
@@ -156,6 +161,11 @@ Windows refuses the network driver, and neither can be approved without IT.
 Test on the actual device before you rely on it; a personal laptop or phone is
 the reliable fallback.
 
+Prefer a web page to the command line? The same invite, the members list and
+revoke are a click each in the **[Owner Console](/docs/box/console)** — the
+box's no-terminal management page, on by default at `:3009`. It hands you a
+share link to send instead of a file.
+
 ### What a member sees, and what the coordinator carries
 
 Two laptops that can reach each other directly do; the coordinator only helped
@@ -170,6 +180,36 @@ the box with it; set it not to sleep on power. If the coordinator is down, no
 new laptop can join and laptops that were being relayed lose the box, while
 laptops with a direct path keep it for a while.
 
+### The coordinator can run on the box itself
+
+Everything above uses a separate coordinator the box dials out to. A site that
+must have **no outside dependency at all** — an air-gapped network, or one
+where nothing may leave the building — can have the box run the coordinator
+itself. The coordinator is not part of the box's own folder, so fetch it
+alongside, then install with one flag:
+
+```bash
+git sparse-checkout add deploy/coordinator        # add it to an existing sparse clone
+./install-box.sh --yes --self-host-coordinator
+```
+
+There is no `MESH_SERVER_URL` to set and no key to paste: the box bootstraps
+its own coordinator, mints its own key and joins itself. It uses the internal
+names `coordinator.internal` and `<name>.box.internal` on an internal
+certificate — no public hostname, no Let's Encrypt (override the names with
+`MESH_SERVER_HOST` / `MESH_BASE_DOMAIN`). Day two, `nufi-box coordinator up |
+status | down` starts it (safe to repeat), shows it, or stops it.
+
+Two limits come with it. It is **Ubuntu only** — the box's mesh node needs the
+host's own network, which Docker Desktop cannot give a Mac — and
+`--self-host-coordinator` and `--mesh` are mutually exclusive: a box either
+runs its own coordinator or joins an external one, never both. And because the
+only coordinator in reach is this box, **every laptop must resolve
+`coordinator.internal` to the box** — through the office DNS, or a line in each
+laptop's hosts file. That fits a controlled site where the box keeps a fixed,
+reachable address; a box that people reach from anywhere on the open internet
+still wants a separate coordinator with a public name.
+
 ## Which path, when
 
 | Who | Where | Uses |
@@ -179,6 +219,7 @@ laptops with a direct path keep it for a while.
 | The same member back in the office | office Wi-Fi | either name works; the office one is a hop shorter |
 | A second box someone installs to try it | the same office | a different name, and it can join the same coordinator |
 | A second company | their own network | their own coordinator; boxes and members of one never see the other's |
+| An air-gapped or no-internet site | a controlled network | the box's own coordinator (`--self-host-coordinator`), every laptop resolving `coordinator.internal` to the box |
 
 Both paths are on at once for every member who has joined. Nobody has to
 switch anything when they change desks.
