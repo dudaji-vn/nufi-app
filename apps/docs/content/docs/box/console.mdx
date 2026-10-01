@@ -1,0 +1,71 @@
+---
+title: The Owner Console
+description: A small web page for running the box without the terminal — invite a member as a link, see who is joined and revoke them, and read health and drive paths. On by default.
+---
+
+Everything on this box can be run from the command line with `nufi-box`. It
+also ships a small web page — the **Owner Console** — that does the day-to-day
+management without a terminal. It is on by default; a plain install has it.
+
+The console reads status over the network and talks to the coordinator. It
+never touches the documents, the model or the chat history, and it has no
+shell on the box.
+
+## Signing in
+
+The console answers on the box's own address, port **3009**:
+
+| Where | Address |
+|---|---|
+| On the office network | `https://<name>.local:3009` |
+| From home, once the box is on a coordinator | `https://<name>.box.<domain>:3009` |
+
+It has one password, generated at install and printed in the banner — it is
+`BOX_OWNER_PASSWORD` in the box's `.env`. This is the owner's management
+password, separate from the `admin@` login people use for chat. Write it down
+when the box is installed; the banner is the one time it is shown.
+
+## Invite a member — a link, not a file
+
+The console's main job is bringing a laptop onto the box from home. One click:
+
+1. The console mints a single-use key that expires in an hour.
+2. It gives you a **`/connect` link** to copy.
+3. Send that link to the person privately — chat or email, never a public
+   channel.
+
+They open it, pick their operating system, download a one-click connector and
+run it; that trusts the box, joins their laptop and opens the box in their
+browser. Their side is written up in
+[Using your department's box](/docs/box/members#from-home).
+
+This is the same thing as `nufi-box invite` on the
+[command line](/docs/box/reaching#inviting-a-laptop), handed over as a link
+instead of a file — usually the easier of the two to send.
+
+## See who is joined, and revoke
+
+The console lists every laptop on the mesh — its name, address, whether it is
+online, and when it was last seen — with a **Revoke** button beside each. Revoke
+removes a laptop for good; the person needs a fresh invite to come back. The
+box's own entry has no Revoke button: the one node the console will not cut off
+is the box itself.
+
+## Status and drives
+
+The same page shows each product's health at a glance and, per department, the
+drive path a member types to reach that folder — the office path on the office
+network, the from-home path once the box is on a coordinator.
+
+## Turning it off
+
+The console is on by default. To manage the box only from the command line,
+install with:
+
+```bash
+./install-box.sh --yes --no-owner-console
+```
+
+A box installed without it exposes nothing on `:3009`; everything the console
+does has a `nufi-box` equivalent — see
+[On the LAN and from home](/docs/box/reaching#inviting-a-laptop).

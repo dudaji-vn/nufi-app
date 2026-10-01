@@ -161,29 +161,10 @@ Windows refuses the network driver, and neither can be approved without IT.
 Test on the actual device before you rely on it; a personal laptop or phone is
 the reliable fallback.
 
-### Inviting without the CLI — the Owner Console
-
-Every command above has a web equivalent. The box ships a small management
-page, the **Owner Console**, on by default at `https://<name>.local:3009`.
-The installer generates its password and prints it in the banner (it is
-`BOX_OWNER_PASSWORD` in `.env`); the owner signs in with that one password —
-no terminal, and the console never touches the documents or the model.
-
-From it the owner:
-
-- **invites a laptop as a share link, not a file.** One click mints the same
-  single-use, one-hour key and hands back a `/connect` link to copy into chat
-  or email. The person opens it, picks their operating system and downloads a
-  one-click connector — the member's half is
-  [Using your department's box](/docs/box/members#from-home).
-- **sees who is joined** — name, address, online, last seen — and **revokes** a
-  laptop with a button. The box's own entry cannot be revoked.
-- reads each product's health and every department's drive path.
-
-The console answers wherever the box does, so from home it is
-`https://<name>.box.<domain>:3009` with the same password. Turn it off with
-`./install-box.sh --no-owner-console` to manage the box only from the command
-line.
+Prefer a web page to the command line? The same invite, the members list and
+revoke are a click each in the **[Owner Console](/docs/box/console)** — the
+box's no-terminal management page, on by default at `:3009`. It hands you a
+share link to send instead of a file.
 
 ### What a member sees, and what the coordinator carries
 
