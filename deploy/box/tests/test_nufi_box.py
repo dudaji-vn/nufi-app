@@ -190,6 +190,20 @@ def test_doctor_asks_the_box_about_ollama_not_this_shell(tmp_path):
         assert "exec -T rag_api" in line, line
 
 
+def test_doctor_tests_the_db_passwords_against_the_live_dbs(tmp_path):
+    """A data volume from an earlier install keeps its original password; a
+    re-clone writes a new POSTGRES_PASSWORD/MONGO_PASSWORD, and the mismatch
+    crashes rag_api/librechat with 'password authentication failed' — which
+    reads like a broken image. doctor names the cause by checking the .env
+    password against the live DBs."""
+    envf = tmp_path / ".env"
+    envf.write_text("NUFI_DATA_DIR=%s\n" % tmp_path)
+    r = cli("doctor", NUFI_BOX_ENV=str(envf))
+    assert r.returncode == 0, r.stderr
+    assert "postgres accepts POSTGRES_PASSWORD" in r.stdout, r.stdout
+    assert "mongodb accepts MONGO_PASSWORD" in r.stdout, r.stdout
+
+
 # --- day two must layer the same compose files the installer did ---
 
 def test_up_layers_the_gpu_file_when_the_env_says_the_box_has_a_gpu(tmp_path):
