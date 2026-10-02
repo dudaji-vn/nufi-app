@@ -240,6 +240,35 @@ case "${1:-}" in
     # containers, and host.docker.internal is a name only they have.
     chk $COMPOSE exec -T rag_api python -c \
       "import os,urllib.request;urllib.request.urlopen(os.environ['OLLAMA_BASE_URL'].rstrip('/')+'/api/tags').read()"
+    # A Postgres/Mongo data volume keeps the password it was first created with.
+    # A re-clone makes a fresh POSTGRES_PASSWORD/MONGO_PASSWORD in .env, so a
+    # volume left from an earlier install no longer authenticates: rag_api and
+    # librechat crash with "password authentication failed", which reads like a
+    # broken image rather than a stale volume. Test the .env password against
+    # the live DB. Postgres is reached by its service name, never 127.0.0.1 —
+    # the loopback and the unix socket are `trust`, so only a real network
+    # connection exercises the password (the path rag_api itself takes). The
+    # password is never echoed (not a `chk`, which would print its arguments).
+    if [ "$DRY" = 1 ]; then
+      printf '  $ check postgres accepts POSTGRES_PASSWORD from .env\n'
+    elif _pg="$($COMPOSE exec -T -e PGPASSWORD="${POSTGRES_PASSWORD:-}" postgres psql -h postgres -U nufi -d postgres -tAc 'select 1' 2>&1)"; then
+      echo " ok  postgres accepts the password in .env"
+    else
+      case "$_pg" in
+        *"password authentication failed"*) echo " !!  postgres rejects the password in .env — a data volume left from an earlier install. Wipe it and reinstall: nufi-box down; docker volume rm nufi-box_postgres-data; ./install-box.sh --yes"; fail=1 ;;
+        *) echo " !!  postgres is not answering — run: nufi-box logs postgres"; fail=1 ;;
+      esac
+    fi
+    if [ "$DRY" = 1 ]; then
+      printf '  $ check mongodb accepts MONGO_PASSWORD from .env\n'
+    elif _mg="$($COMPOSE exec -T mongodb mongo --quiet -u nufi -p "${MONGO_PASSWORD:-}" --authenticationDatabase admin --eval 'db.runCommand({ping:1})' 2>&1)"; then
+      echo " ok  mongodb accepts the password in .env"
+    else
+      case "$_mg" in
+        *"Authentication failed"*) echo " !!  mongodb rejects the password in .env — a data volume left from an earlier install. Wipe it and reinstall: nufi-box down; docker volume rm nufi-box_mongodb-data; ./install-box.sh --yes"; fail=1 ;;
+        *) echo " !!  mongodb is not answering — run: nufi-box logs mongodb"; fail=1 ;;
+      esac
+    fi
     chk test -d "${NUFI_DATA_DIR:-$HERE/data}/drives"
     # Not a curl: a caddy/mesh.caddy written by an older box only bites at the
     # next Caddy restart, so a box can be answering perfectly right now and be
