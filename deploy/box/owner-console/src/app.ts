@@ -10,9 +10,8 @@ import { usersRoutes, type UsersDeps } from './api/users';
 import { boxInfo } from './boxinfo';
 import { isOS, macosPlan, renderConnector } from './connector';
 import { checkAll, probesForEnv, type Health } from './health';
-import { connectLink, signInvite, verifyInvite } from './invite';
-import { FLEET_TTL_SECONDS, MeshError, listNodes, meshConfig, mintFleetKey, mintMemberKey, revokeNode, type MeshConfig } from './mesh-api';
-import { connectPage, dashboard, loginPage, type InviteResult, type MembersData } from './views';
+import { verifyInvite } from './invite';
+import { connectPage, loginPage } from './views';
 
 const COOKIE = 'nufi_owner';
 const NOT_CONFIGURED = 'The owner password is not configured on this box.';
@@ -27,14 +26,9 @@ type AppEnv = {
 // or clock; production uses the defaults.
 type Deps = {
   checkHealth?: () => Promise<Health[]>;
-  mint?: (cfg: MeshConfig) => Promise<string>;
-  mintFleet?: (cfg: MeshConfig) => Promise<string>;
-  now?: () => Date;
   templatesDir?: string;
   boxCaB64?: () => Promise<string>;
   coordCaB64?: () => string;
-  listMembers?: () => Promise<MembersData>;
-  revoke?: (cfg: MeshConfig, id: string) => Promise<void>;
   agentDistDir?: string;
   agentSha256?: () => { amd64: string; arm64: string };
   exec?: Partial<ControlDeps>;
@@ -77,11 +71,7 @@ export function createApp(env: AppEnv = process.env, deps: Deps = {}): Hono {
   const password = env.BOX_OWNER_PASSWORD ?? '';
   const secret = env.BOX_OWNER_SESSION_SECRET ?? '';
   const configured = Boolean(password && secret);
-  const canInvite = meshConfig(env) !== null;
   const checkHealth = deps.checkHealth ?? (() => checkAll(probesForEnv(env)));
-  const mint = deps.mint ?? ((cfg: MeshConfig) => mintMemberKey(cfg));
-  const mintFleet = deps.mintFleet ?? ((cfg: MeshConfig) => mintFleetKey(cfg));
-  const now = deps.now ?? (() => new Date());
   const templatesDir = deps.templatesDir ?? env.JOIN_TEMPLATES_DIR ?? '/app/join-templates';
 
   // The box's own Caddy CA is public (served on :80), so fetch it rather than
@@ -114,24 +104,6 @@ export function createApp(env: AppEnv = process.env, deps: Deps = {}): Hono {
   const authed = (c: { req: { header: (n: string) => string | undefined } }) =>
     configured && verifySession(secret, getCookie(c as never, COOKIE));
 
-  // The current mesh members, best-effort: undefined when the box is not on a
-  // mesh, an error string when the coordinator can't be reached, else the list.
-  const listMembersSafe = async (): Promise<MembersData> => {
-    if (deps.listMembers) return deps.listMembers();
-    const cfg = meshConfig(env);
-    if (!cfg) return undefined;
-    try {
-      return await listNodes(cfg);
-    } catch (e) {
-      return { error: e instanceof MeshError ? e.message : 'coordinator unreachable' };
-    }
-  };
-
-  const render = async (invite?: InviteResult) => {
-    const [health, members] = await Promise.all([checkHealth(), listMembersSafe()]);
-    return dashboard(boxInfo(env), health, now(), invite, canInvite, members);
-  };
-
   app.get('/healthz', (c) => c.text('ok'));
 
   // Every /api/* route needs an owner session, except the public ping.
@@ -151,8 +123,7 @@ export function createApp(env: AppEnv = process.env, deps: Deps = {}): Hono {
 
   app.route('/api', usersRoutes({ env, secret, origin: originOf, boxCaB64, coordCaB64, templatesDir, agentSha256 }, deps.users));
 
-  // The React SPA (built to web/dist). Served alongside the legacy server-rendered
-  // pages until they are cut over; unknown /api/* is a real 404, unknown /assets/*
+  // The React SPA (built to web/dist). Served at / and /app; unknown /api/* is a real 404, unknown /assets/*
   // is a 404, and any other unmatched GET falls back to index.html (client routes).
   const distDir = resolve(env.WEB_DIST_DIR ?? join(import.meta.dir, '../web/dist'));
   const spaIndex = () => {
@@ -168,6 +139,12 @@ export function createApp(env: AppEnv = process.env, deps: Deps = {}): Hono {
   app.get('/app', (c) => spaIndex() ?? c.notFound());
   app.get('/app/*', (c) => spaIndex() ?? c.notFound());
 
+  // The owner console: the SPA at / (and /app). Unauthenticated -> the login page.
+  app.get('/', (c) => {
+    if (!authed(c)) return c.redirect('/login', 303);
+    return spaIndex() ?? c.redirect('/app', 303);
+  });
+
   app.get('/login', (c) => c.html(loginPage(configured ? undefined : NOT_CONFIGURED)));
 
   app.post('/login', async (c) => {
@@ -182,64 +159,6 @@ export function createApp(env: AppEnv = process.env, deps: Deps = {}): Hono {
   app.post('/logout', (c) => {
     deleteCookie(c, COOKIE, { path: '/' });
     return c.redirect('/login', 303);
-  });
-
-  app.get('/', async (c) => {
-    if (!authed(c)) return c.redirect('/login', 303);
-    return c.html(await render());
-  });
-
-  app.post('/invite', async (c) => {
-    if (!authed(c)) return c.redirect('/login', 303);
-    const cfg = meshConfig(env);
-    if (!cfg) return c.html(await render({ error: 'This box is not on a mesh yet — run `nufi-box mesh up` first.' }));
-    const body = await c.req.parseBody();
-    const fleet = body.fleet === 'yes';
-    try {
-      // A fleet invite mints a REUSABLE key and a link that lives the whole
-      // deployment window; a normal invite is single-use and one hour.
-      const key = fleet ? await mintFleet(cfg) : await mint(cfg);
-      const ttl = fleet ? FLEET_TTL_SECONDS : 3600;
-      const token = signInvite(secret, { key, serverUrl: cfg.serverUrl }, ttl);
-      return c.html(await render({ link: connectLink(originOf(c), token), fleet }));
-    } catch (e) {
-      const unreachable = e instanceof MeshError && /unreachable/.test(e.message);
-      const detail = e instanceof MeshError ? e.message : 'could not reach the coordinator';
-      const hint = unreachable
-        ? ' If this box runs with --egress-enforce, the coordinator must be on the egress allow-list.'
-        : '';
-      return c.html(await render({ error: `Invite failed: ${detail}.${hint}` }));
-    }
-  });
-
-  // Remove one member by node id (day-two). Session-guarded; the destructive
-  // confirm is a client-side guard on the form.
-  app.post('/revoke', async (c) => {
-    if (!authed(c)) return c.redirect('/login', 303);
-    const cfg = meshConfig(env);
-    if (!cfg) return c.html(await render());
-    const body = await c.req.parseBody();
-    const id = typeof body.id === 'string' ? body.id : '';
-    if (!id) return c.redirect('/', 303);
-    try {
-      // Enforce the "you cannot cut the box off its own mesh" invariant at the
-      // endpoint, not just in the view: refuse to revoke the box's own node
-      // even for a crafted/replayed POST. When the member list can be read, look
-      // the id up and reject the box node (by tag OR name, so a headscale tag-
-      // field change alone can't defeat it).
-      const members = await listMembersSafe();
-      if (Array.isArray(members)) {
-        const target = members.find((n) => n.id === id);
-        if (target && (target.tags.includes('tag:box') || target.name === boxInfo(env).name)) {
-          return c.html(await render({ error: "The box's own node can't be revoked here." }));
-        }
-      }
-      await (deps.revoke ? deps.revoke(cfg, id) : revokeNode(cfg, id));
-    } catch (e) {
-      const detail = e instanceof MeshError ? e.message : 'could not reach the coordinator';
-      return c.html(await render({ error: `Revoke failed: ${detail}.` }));
-    }
-    return c.redirect('/', 303); // gone from the list on the reloaded dashboard
   });
 
   // The de-branded NufiBox Agent, served for a member to install — public and
