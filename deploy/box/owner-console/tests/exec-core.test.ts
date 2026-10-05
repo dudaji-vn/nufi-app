@@ -18,11 +18,17 @@ describe('exec-core allowlist', () => {
   test('read argv exact', () => {
     expect(buildReadArgv('status')).toEqual([...C, 'ps']);
     expect(buildReadArgv('logs librechat')).toEqual([...C, 'logs', '--no-color', '--tail=200', 'librechat']);
+    expect(buildReadArgv('logs')).toEqual([...C, 'logs', '--no-color', '--tail=200']);
+    expect(buildReadArgv('logs ollama')).toEqual([...C, 'logs', '--no-color', '--tail=200', 'ollama']);
+    expect(buildReadArgv('logs postgres')).toEqual([...C, 'logs', '--no-color', '--tail=200', 'postgres']);
     expect(buildReadArgv('doctor')).toBeNull();
+    expect(buildReadArgv('support')).toBeNull();
   });
   test('off-list read rejected', () => {
     expect(() => buildReadArgv('logs librechat; id')).toThrow(BadRequest);
     expect(() => buildReadArgv('ls')).toThrow(BadRequest);
+    for (const c of ['logs badsvc', 'down', 'restore', 'logs; rm', 'status && x', 'logs  ollama', 'logs ollama '])
+      expect(() => buildReadArgv(c)).toThrow(BadRequest);
   });
   test('auditLine format', () => {
     const d = new Date('2026-01-01T00:00:00Z');

@@ -1,7 +1,7 @@
 // Pure exec allowlist: no fs, no spawn. Single source of truth shared by the
 // console (src/exec.ts) and the owner-exec sidecar.
 export const SERVICES = ['librechat', 'litellm-proxy', 'rag_api', 'ollama', 'caddy', 'mongodb', 'postgres', 'studio'] as const;
-export const READ_CMDS = ['status', 'logs', 'logs librechat', 'doctor', 'support'] as const;
+export const READ_CMDS = ['status', 'logs', 'doctor', 'support'] as const;
 export const ACTIONS = ['start', 'restart', 'stop'] as const;
 
 export type Action = (typeof ACTIONS)[number];
@@ -28,15 +28,20 @@ export function buildControlArgv(action: string, service: string): string[] {
   return [...COMPOSE, action, service];
 }
 
+const LOGS = [...COMPOSE, 'logs', '--no-color', '--tail=200'];
+
 export function buildReadArgv(cmd: string): string[] | null {
+  if (typeof cmd === 'string' && cmd.startsWith('logs ')) {
+    const svc = cmd.slice(5);
+    if (!isIn(SERVICES, svc)) throw new BadRequest('invalid command');
+    return [...LOGS, svc];
+  }
   if (!isIn(READ_CMDS, cmd)) throw new BadRequest('invalid command');
   switch (cmd) {
     case 'status':
       return [...COMPOSE, 'ps'];
     case 'logs':
-      return [...COMPOSE, 'logs', '--no-color', '--tail=200'];
-    case 'logs librechat':
-      return [...COMPOSE, 'logs', '--no-color', '--tail=200', 'librechat'];
+      return [...LOGS];
     default:
       return null; // doctor / support: informational only, never executed
   }
