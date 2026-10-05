@@ -6,6 +6,7 @@ import type { FileRow } from '../api';
 import { useUi } from '../store';
 import { Files, formatSize } from './files';
 import { Breadcrumb } from './files/breadcrumb';
+import { FileTable, filterRows, sortRows } from './files/file-table';
 
 afterEach(cleanup);
 
@@ -32,11 +33,10 @@ test('empty state shows the Figma copy', () => {
   expect(screen.getByText(/your uploaded files will be listed here/i)).toBeTruthy();
 });
 
-test('renders a row per file with human size and a download link', () => {
+test('renders a row per file with human size', () => {
   mockFiles([f({}), f({ name: 'b c.pdf', size: 5 * 1024 * 1024 })]);
   render(<Files />);
-  expect(screen.getByText('a.txt').closest('a')?.getAttribute('href')).toBe('/api/files/eng/a.txt');
-  expect(screen.getByText('b c.pdf').closest('a')?.getAttribute('href')).toBe('/api/files/eng/b%20c.pdf');
+  expect(screen.getByText('a.txt')).toBeTruthy();
   expect(screen.getByText('2.0 KB')).toBeTruthy();
   expect(screen.getByText('5.0 MB')).toBeTruthy();
 });
@@ -83,11 +83,25 @@ test('clicking a folder row navigates into it', () => {
   expect(screen.getByRole('navigation', { name: 'Breadcrumb' }).textContent).toBe('Files›docs');
 });
 
-test('file links encode each segment of the nested path', () => {
+test('Download builds an encoded nested URL', () => {
   useUi.setState({ filePath: 'a b/c' });
   mockFiles([f({ name: 'x y.txt' })]);
+  let href = '';
+  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+    href = this.getAttribute('href') ?? '';
+  });
   render(<Files />);
-  expect(screen.getByText('x y.txt').closest('a')?.getAttribute('href')).toBe('/api/files/eng/a%20b/c/x%20y.txt');
+  fireEvent.click(screen.getByLabelText('Actions for x y.txt'));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Download' }));
+  expect(href).toBe('/api/files/eng/a%20b/c/x%20y.txt');
+});
+
+test('opening a folder clears the search box', () => {
+  mockFiles([f({ name: 'docs', kind: 'dir' })]);
+  render(<Files />);
+  fireEvent.change(screen.getByLabelText('Search files'), { target: { value: 'doc' } });
+  fireEvent.click(screen.getByText('docs'));
+  expect((screen.getByLabelText('Search files') as HTMLInputElement).value).toBe('');
 });
 
 test('changing department resets the folder', () => {
@@ -140,4 +154,75 @@ test('file mutations call the API and invalidate the folder listing', async () =
   await call(() => result.current.del.mutateAsync('a/x y'), '/api/files?dept=eng&path=a%2Fx%20y', 'DELETE');
   await call(() => result.current.access.mutateAsync({ itemPath: 'a/x', access: 'public' }), '/api/files/access', 'PUT', { dept: 'eng', path: 'a/x', access: 'public' });
   vi.unstubAllGlobals();
+});
+
+const rowsFixture = [
+  f({ name: 'b.txt', size: 10, access: 'public', modifiedAt: '2026-10-03T00:00:00Z' }),
+  f({ name: 'a.txt', size: 30, access: 'private', modifiedAt: '2026-10-01T00:00:00Z' }),
+  f({ name: 'z', kind: 'dir', size: 0, access: 'private' }),
+];
+const order = () => screen.getAllByTestId(/^file-row-/).map((r) => r.getAttribute('data-testid')!.slice(9));
+const table = (over: Partial<Parameters<typeof FileTable>[0]> = {}) => {
+  const onOpen = vi.fn();
+  const onAction = vi.fn();
+  render(<FileTable rows={rowsFixture} search="" onOpen={onOpen} onAction={onAction} {...over} />);
+  return { onOpen, onAction };
+};
+
+test('badge shows Private and Public', () => {
+  table();
+  expect(screen.getByTestId('access-badge-a.txt').textContent).toBe('Private');
+  expect(screen.getByTestId('access-badge-b.txt').textContent).toBe('Public');
+});
+
+test('sortRows orders by key and keeps folders first', () => {
+  expect(sortRows(rowsFixture, 'name', 'asc').map((r) => r.name)).toEqual(['z', 'a.txt', 'b.txt']);
+  expect(sortRows(rowsFixture, 'name', 'desc').map((r) => r.name)).toEqual(['z', 'b.txt', 'a.txt']);
+  expect(sortRows(rowsFixture, 'size', 'desc').map((r) => r.name)).toEqual(['z', 'a.txt', 'b.txt']);
+  expect(sortRows(rowsFixture, 'modifiedAt', 'desc')[1].name).toBe('b.txt');
+});
+
+test('filterRows by access and kind', () => {
+  expect(filterRows(rowsFixture, { owner: 'all', access: 'public', kind: 'all' }).map((r) => r.name)).toEqual(['b.txt']);
+  expect(filterRows(rowsFixture, { owner: 'all', access: 'all', kind: 'dir' }).map((r) => r.name)).toEqual(['z']);
+});
+
+test('clicking the Name header toggles sort order', () => {
+  table();
+  expect(order()).toEqual(['z', 'a.txt', 'b.txt']);
+  fireEvent.click(screen.getByRole('button', { name: /^Name/ }));
+  expect(order()).toEqual(['z', 'b.txt', 'a.txt']);
+});
+
+test('accessibility filter Private hides public rows', () => {
+  table();
+  fireEvent.change(screen.getByLabelText('Filter by accessibility'), { target: { value: 'private' } });
+  expect(screen.queryByTestId('file-row-b.txt')).toBeNull();
+  expect(screen.getByTestId('file-row-a.txt')).toBeTruthy();
+});
+
+test('context menu lists five items, Create Agent disabled, and fires actions', () => {
+  const { onAction } = table();
+  fireEvent.click(screen.getByLabelText('Actions for a.txt'));
+  const items = screen.getAllByRole('menuitem');
+  expect(items.map((i) => i.textContent)).toEqual(['Accessibility', 'Create Agent', 'Rename', 'Download', 'Delete']);
+  expect(items[1].getAttribute('aria-disabled')).toBe('true');
+  fireEvent.click(items[1]);
+  expect(onAction).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
+  expect(onAction).toHaveBeenLastCalledWith('rename', rowsFixture[1]);
+  fireEvent.click(screen.getByLabelText('Actions for a.txt'));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+  expect(onAction).toHaveBeenLastCalledWith('delete', rowsFixture[1]);
+  fireEvent.click(screen.getByLabelText('Actions for a.txt'));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Accessibility' }));
+  expect(onAction).toHaveBeenLastCalledWith('access', rowsFixture[1]);
+});
+
+test('a folder row has no Download and its name opens it', () => {
+  const { onOpen } = table();
+  fireEvent.click(screen.getByLabelText('Actions for z'));
+  expect(screen.queryByRole('menuitem', { name: 'Download' })).toBeNull();
+  fireEvent.click(screen.getByText('z'));
+  expect(onOpen).toHaveBeenCalledWith(rowsFixture[2]);
 });

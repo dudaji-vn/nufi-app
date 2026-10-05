@@ -3,24 +3,13 @@ import { useUi } from '../store';
 import { Breadcrumb } from './files/breadcrumb';
 import { useFiles, useStatus, useUpload, type FileRow } from '../api';
 import { Button } from '../ui/button';
-import { Table, type Col } from '../ui/table';
+import { FileTable, formatSize, type FileAction } from './files/file-table';
 import { useToast } from '../ui/toast';
 
 const errText = (e: unknown, fallback: string) => (e as { error?: string }).error ?? fallback;
 
-export function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ['KB', 'MB', 'GB', 'TB'];
-  let v = bytes / 1024;
-  let i = 0;
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024;
-    i++;
-  }
-  return `${v.toFixed(1)} ${units[i]}`;
-}
+export { formatSize };
 
-const fmtDate = (s: string) => (Number.isNaN(Date.parse(s)) ? '—' : new Date(s).toLocaleString());
 const muted = { color: 'var(--gray-1)' } as const;
 
 export function Files() {
@@ -49,40 +38,26 @@ export function Files() {
   const rel = (name: string) => (filePath ? `${filePath}/${name}` : name);
   const href = (name: string) =>
     `/api/files/${encodeURIComponent(dept ?? '')}/${rel(name).split('/').map(encodeURIComponent).join('/')}`;
-  const columns: Col<FileRow>[] = [
-    { key: 'name', label: 'Name', render: (r) =>
-        r.kind === 'file' ? (
-          <a href={href(r.name)}>{r.name}</a>
-        ) : (
-          <button type="button" onClick={() => setFilePath(rel(r.name))} style={{ all: 'unset', cursor: 'pointer', color: 'var(--navy-2)' }}>
-            {r.name}
-          </button>
-        ),
-    },
-    { key: 'kind', label: 'Kind' },
-    { key: 'size', label: 'Size', render: (r) => (r.kind === 'file' ? formatSize(r.size) : '—') },
-    { key: 'uploadedAt', label: 'Uploaded', render: (r) => fmtDate(r.uploadedAt) },
-    { key: 'modifiedAt', label: 'Modified', render: (r) => fmtDate(r.modifiedAt) },
-    { key: 'owner', label: 'Owner (not yet available)', render: () => <span aria-disabled="true" style={muted}>—</span> },
-    { key: 'access', label: 'Accessibility (not yet available)', render: () => <span aria-disabled="true" style={muted}>—</span> },
-  ];
+  const open = (row: FileRow) => {
+    setQuery('');
+    setFilePath(rel(row.name));
+  };
+  // Seam for Task 7: access/rename/delete open modals here; download is wired.
+  const onAction = (action: FileAction, row: FileRow) => {
+    if (action === 'download') {
+      const a = document.createElement('a');
+      a.href = href(row.name);
+      a.download = row.name;
+      a.click();
+    }
+  };
 
   let body;
   if (!dept) body = <p style={muted}>No departments configured.</p>;
   else if (isPending) body = <p role="status">Loading…</p>;
   else if (error) body = <p role="alert">Could not load files: {errText(error, 'unknown error')}</p>;
   else {
-    const q = query.trim().toLowerCase();
-    const rows = q ? data.filter((r) => r.name.toLowerCase().includes(q)) : data;
-    body = (
-      <Table
-        columns={columns}
-        rows={rows}
-        rowKey={(r) => r.name}
-        rowTestId={(r) => `file-row-${r.name}`}
-        empty={data.length === 0 ? 'Your uploaded files will be listed here' : 'No files match your search'}
-      />
-    );
+    body = <FileTable rows={data} search={query} onOpen={open} onAction={onAction} />;
   }
 
   return (

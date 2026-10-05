@@ -1,0 +1,12 @@
+.file-table__name { display: inline-flex; align-items: center; gap: 8px; }
+.file-table__icon { color: var(--gray-1); flex: none; }
+.file-table__link, .file-table__sort, .file-table__more { all: unset; cursor: pointer; }
+.file-table__link { color: var(--navy-2); }
+.file-table__link:hover { text-decoration: underline; }
+.file-table__sort { font-weight: inherit; }
+.file-table__more { padding: 2px 8px; border-radius: 4px; }
+.file-table__link:focus-visible, .file-table__sort:focus-visible, .file-table__more:focus-visible {
+  outline: 2px solid var(--info);
+  outline-offset: 2px;
+}
+.file-table__filter { display: block; margin-top: 4px; font-size: 12px; }

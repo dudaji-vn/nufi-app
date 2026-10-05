@@ -1,10 +1,10 @@
-const link = { all: 'unset', cursor: 'pointer', color: 'var(--navy-2)' } as const;
+import './file-table.css';
 
 export function Breadcrumb({ path, onNavigate }: { path: string; onNavigate: (path: string) => void }) {
   const parts = path ? path.split('/') : [];
   return (
     <nav aria-label="Breadcrumb" style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
-      <button type="button" style={link} onClick={() => onNavigate('')}>
+      <button type="button" className="file-table__link" onClick={() => onNavigate('')}>
         Files
       </button>
       {parts.map((p, i) => {
@@ -15,7 +15,7 @@ export function Breadcrumb({ path, onNavigate }: { path: string; onNavigate: (pa
             {i === parts.length - 1 ? (
               <span aria-current="page">{p}</span>
             ) : (
-              <button type="button" style={link} onClick={() => onNavigate(prefix)}>
+              <button type="button" className="file-table__link" onClick={() => onNavigate(prefix)}>
                 {p}
               </button>
             )}
