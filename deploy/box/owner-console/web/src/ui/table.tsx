@@ -8,11 +8,13 @@ export function Table<R extends Record<string, unknown>>({
   rows,
   empty = 'No data',
   rowKey,
+  rowTestId,
 }: {
   columns: Col<R>[];
   rows: R[];
   empty?: ReactNode;
   rowKey?: (row: R, index: number) => string | number;
+  rowTestId?: (row: R) => string;
 }) {
   return (
     <table className="ui-table">
@@ -34,7 +36,7 @@ export function Table<R extends Record<string, unknown>>({
           </tr>
         ) : (
           rows.map((row, i) => (
-            <tr key={rowKey ? rowKey(row, i) : i}>
+            <tr key={rowKey ? rowKey(row, i) : i} data-testid={rowTestId?.(row)}>
               {columns.map((c) => (
                 <td key={c.key}>{c.render ? c.render(row) : (row[c.key] as ReactNode)}</td>
               ))}

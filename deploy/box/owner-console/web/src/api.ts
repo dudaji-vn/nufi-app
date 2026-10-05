@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 export type Health = { name: string; ok: boolean; status?: number; ms: number; error?: string };
 export type StatusResponse = { box: Record<string, unknown> & { name: string }; services: Health[] };
@@ -31,6 +31,12 @@ export async function post<T>(path: string, payload: unknown): Promise<T> {
   return body as T;
 }
 
+export type UserOs = 'macos' | 'windows' | 'linux';
+export type UserRow = {
+  id: string; name: string; os: UserOs; keyId: string; token: string; createdAt: string;
+  activation: 'pending' | 'activated' | 'expired'; expiresAt?: string; nodeIp?: string; online?: boolean;
+};
+export async function del<T>(path: string): Promise<T> { const r = await fetch(path, { method: 'DELETE', credentials: 'same-origin' }); unauthorized(r); const body = await r.json().catch(() => ({})); if (!r.ok) throw { error: (body as { error?: string }).error ?? `HTTP ${r.status}` }; return body as T; }
 export const useStatus = () =>
   useQuery({ queryKey: ['status'], queryFn: () => get<StatusResponse>('/api/status'), retry: false });
 
@@ -75,3 +81,34 @@ export async function streamConsole(cmd: string, onLine: (line: string) => void)
   }
   if (buf.trim()) frame(buf);
 }
+
+export const useUsers = () => useQuery({ queryKey: ['users'], queryFn: () => get<UserRow[]>('/api/users'), retry: false });
+const useRefreshUsers = () => { const qc = useQueryClient(); return () => qc.invalidateQueries({ queryKey: ['users'] }); };
+export const useAddUser = () => { const refresh = useRefreshUsers(); return useMutation({ mutationFn: (req: { name: string; os: UserOs }) => post<UserRow>('/api/users', req), onSuccess: refresh }); };
+export const useDeleteUser = () => { const refresh = useRefreshUsers(); return useMutation({ mutationFn: (id: string) => del<unknown>('/api/users/' + encodeURIComponent(id)), onSuccess: refresh }); };
+export const useRegenerate = () => { const refresh = useRefreshUsers(); return useMutation({ mutationFn: (id: string) => post<UserRow>('/api/users/' + encodeURIComponent(id) + '/regenerate', {}), onSuccess: refresh }); };
+export const useImportUsers = () => {
+  const refresh = useRefreshUsers();
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const r = await fetch('/api/users/import', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'text/csv' }, body: file });
+      unauthorized(r);
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) throw { error: (body as { error?: string }).error ?? `HTTP ${r.status}` };
+      return { added: (body as UserRow[]).length, skipped: Number(r.headers.get('X-Skipped') ?? 0) };
+    },
+    onSuccess: refresh,
+  });
+};
+export async function exportUsersCsv(ids: string[]): Promise<void> {
+  const r = await fetch('/api/users/export', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ids }) });
+  unauthorized(r);
+  if (!r.ok) { const body = await r.json().catch(() => ({})); throw { error: (body as { error?: string }).error ?? `HTTP ${r.status}` }; }
+  const url = URL.createObjectURL(await r.blob());
+  const a = document.createElement('a');
+  a.href = url; a.download = 'users.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+export const connectorUrl = (u: Pick<UserRow, 'id' | 'os'>) => `/api/users/${encodeURIComponent(u.id)}/connector?os=${u.os}`;
+export const inviteLink = (token: string) => `${window.location.origin}/connect#token=${encodeURIComponent(token)}`;
