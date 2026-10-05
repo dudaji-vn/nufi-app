@@ -112,3 +112,22 @@ export async function exportUsersCsv(ids: string[]): Promise<void> {
 }
 export const connectorUrl = (u: Pick<UserRow, 'id' | 'os'>) => `/api/users/${encodeURIComponent(u.id)}/connector?os=${u.os}`;
 export const inviteLink = (token: string) => `${window.location.origin}/connect#token=${encodeURIComponent(token)}`;
+
+export type FileRow = { name: string; kind: 'file' | 'dir'; size: number; uploadedAt: string; modifiedAt: string };
+export const useFiles = (dept: string | undefined) =>
+  useQuery({ queryKey: ['files', dept], queryFn: () => get<FileRow[]>('/api/files?dept=' + encodeURIComponent(dept!)), enabled: !!dept, retry: false });
+export const useUpload = (dept: string | undefined) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const form = new FormData();
+      form.append('file', file);
+      const r = await fetch('/api/files?dept=' + encodeURIComponent(dept ?? ''), { method: 'POST', credentials: 'same-origin', body: form });
+      unauthorized(r);
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) throw { error: (body as { error?: string }).error ?? `HTTP ${r.status}` };
+      return body as unknown;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['files', dept] }),
+  });
+};

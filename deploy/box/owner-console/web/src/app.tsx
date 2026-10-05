@@ -1,3 +1,4 @@
+import { Files } from './tabs/files';
 import { General } from './tabs/general';
 import { Users } from './tabs/users';
 import { useUi, type TabId } from './store';
@@ -16,7 +17,7 @@ export function App() {
       <Tabs tabs={TABS} active={tab} onChange={(id) => setTab(id as TabId)} />
       {tab === 'general' && <General />}
       {tab === 'users' && <Users />}
-      {tab === 'files' && <p>File Sharing — coming soon</p>}
+      {tab === 'files' && <Files />}
     </main>
   );
 }
