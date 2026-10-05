@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Stdlib tests for nufi-ingest Public/Private accessibility enforcement."""
+import dataclasses
 import json
 import logging
 import pathlib
@@ -45,9 +46,9 @@ class AccessFnTests(unittest.TestCase):
             d = pathlib.Path(t)
             self.assertEqual(I.load_access(d), {})
             (d / I.ACCESS_FILE).write_text("{nope")
-            self.assertEqual(I.load_access(d), {})
+            self.assertIsNone(I.load_access(d))
             (d / I.ACCESS_FILE).write_text("[1]")
-            self.assertEqual(I.load_access(d), {})
+            self.assertIsNone(I.load_access(d))
             (d / I.ACCESS_FILE).write_text(json.dumps({"entries": {
                 "ok": {"access": "private"}, "bad": {"access": "admin"},
                 "__proto__": {"access": "nope"}, "str": "private"}}))
@@ -110,6 +111,27 @@ class ScanTests(unittest.TestCase):
         self.ing.scan()
         self.assertEqual(self.names(), ["pub.txt", "sec.txt"])
         self.assertEqual(self.app.deletes, [])
+
+    def test_corrupt_access_file_fails_closed(self):
+        self.set_access({"sub": {"access": "private"}})
+        self.ing.scan()
+        self.assertEqual(self.names(), ["pub.txt"])
+        (self.dept / I.ACCESS_FILE).write_text("{corrupt")
+        (self.dept / "new.txt").write_text("new")
+        self.ing.scan()
+        self.assertEqual(self.names(), ["pub.txt"])
+        self.assertNotIn("file_id", self.ing.state["files"]["eng/sub/sec.txt"])
+        self.assertEqual(self.app.deletes, [])
+
+    def test_private_flip_hides_without_settle_delay(self):
+        self.ing.cfg = dataclasses.replace(self.ing.cfg, settle_scans=2)
+        self.ing.scan()
+        self.ing.scan()
+        self.assertEqual(self.names(), ["pub.txt", "sec.txt"])
+        fid = self.ing.state["files"]["eng/sub/sec.txt"]["file_id"]
+        self.set_access({"sub": {"access": "private"}})
+        self.ing.scan()
+        self.assertEqual(self.app.deletes, [fid])
 
     def test_removed_private_file_needs_no_delete(self):
         self.set_access({"sub": {"access": "private"}})

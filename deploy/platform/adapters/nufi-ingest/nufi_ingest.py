@@ -56,16 +56,19 @@ WINDOW_SECONDS = 15 * 60
 def load_access(dept_dir):
     """Read a department's access entries ({rel path in dept: {"access": ...}}).
 
-    Absent, corrupt or malformed all mean "no entries" (everything Public):
-    this must never raise, or one bad file would stop the whole scan.
+    Absent means no entries (everything Public). A file that is present but
+    unusable (unreadable, corrupt, malformed) returns None so the caller fails
+    CLOSED instead of publishing files the owner made Private. Never raises.
     """
     try:
         data = json.loads((pathlib.Path(dept_dir) / ACCESS_FILE).read_text())
-    except (OSError, ValueError):
+    except FileNotFoundError:
         return {}
+    except (OSError, ValueError):
+        return None
     entries = data.get("entries") if isinstance(data, dict) else None
     if not isinstance(entries, dict):
-        return {}
+        return None
     out = {}
     for key, val in entries.items():
         if isinstance(val, dict) and val.get("access") in ("public", "private"):
@@ -568,19 +571,32 @@ class Ingester:
                 self.save()
         # additions and changes
         access_cache = {}
+        warned = set()
         for rel, (path, dept, size, mtime) in listing.items():
             if dept not in access_cache:
                 access_cache[dept] = load_access(pathlib.Path(self.cfg.drives_dir) / dept)
+            if access_cache[dept] is None:
+                # fail closed: no uploads and no flips until the file is readable
+                if dept not in warned:
+                    warned.add(dept)
+                    LOG.warning("%s: unusable %s; skipping additions/changes this scan",
+                                dept, ACCESS_FILE)
+                continue
             acc = effective_access(access_cache[dept], rel.split("/", 1)[1])
             rec = self.state["files"].get(rel)
             # a record from before accessibility existed was always Public
             if (rec and rec["size"] == size and rec["mtime"] == mtime
                     and rec.get("access", "public") == acc):
                 continue
-            if not self._stable(rel, size, mtime):
+            hide_now = acc == "private" and rec and rec.get("file_id")
+            # the settle gate is for half-written files; hiding needs no settle
+            if not hide_now and not self._stable(rel, size, mtime):
                 continue
             d = self.ensure_department(dept)
-            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            if acc == "private" and rec and rec.get("sha256"):
+                digest = rec["sha256"]      # only deleting; no need to re-hash
+            else:
+                digest = hashlib.sha256(path.read_bytes()).hexdigest()
             if acc == "private":
                 # Private files stay on the drive but never enter the chat's RAG
                 if rec and rec.get("file_id"):
