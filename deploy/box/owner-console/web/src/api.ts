@@ -10,12 +10,17 @@ function unauthorized(r: Response) {
   if (r.status === 401) window.location.assign('/login');
 }
 
+// Throw the server's {error} (or an HTTP status fallback) for a failed response.
+async function fail(r: Response): Promise<never> {
+  const body = await r.json().catch(() => ({}));
+  throw { error: (body as { error?: string }).error ?? `HTTP ${r.status}` };
+}
+
 export async function get<T>(path: string): Promise<T> {
   const r = await fetch(path, { credentials: 'same-origin' });
   unauthorized(r);
-  const body = await r.json().catch(() => ({}));
-  if (!r.ok) throw { error: (body as { error?: string }).error ?? `HTTP ${r.status}` };
-  return body as T;
+  if (!r.ok) return fail(r);
+  return (await r.json().catch(() => ({}))) as T;
 }
 
 export async function post<T>(path: string, payload: unknown): Promise<T> {
@@ -26,9 +31,8 @@ export async function post<T>(path: string, payload: unknown): Promise<T> {
     body: JSON.stringify(payload),
   });
   unauthorized(r);
-  const body = await r.json().catch(() => ({}));
-  if (!r.ok) throw { error: (body as { error?: string }).error ?? `HTTP ${r.status}` };
-  return body as T;
+  if (!r.ok) return fail(r);
+  return (await r.json().catch(() => ({}))) as T;
 }
 
 export type UserOs = 'macos' | 'windows' | 'linux';
@@ -36,7 +40,12 @@ export type UserRow = {
   id: string; name: string; os: UserOs; keyId: string; token: string; createdAt: string;
   activation: 'pending' | 'activated' | 'expired'; expiresAt?: string; nodeIp?: string; online?: boolean;
 };
-export async function del<T>(path: string): Promise<T> { const r = await fetch(path, { method: 'DELETE', credentials: 'same-origin' }); unauthorized(r); const body = await r.json().catch(() => ({})); if (!r.ok) throw { error: (body as { error?: string }).error ?? `HTTP ${r.status}` }; return body as T; }
+export async function del<T>(path: string): Promise<T> {
+  const r = await fetch(path, { method: 'DELETE', credentials: 'same-origin' });
+  unauthorized(r);
+  if (!r.ok) return fail(r);
+  return (await r.json().catch(() => ({}))) as T;
+}
 export const useStatus = () =>
   useQuery({ queryKey: ['status'], queryFn: () => get<StatusResponse>('/api/status'), retry: false });
 
@@ -53,10 +62,7 @@ export async function streamConsole(cmd: string, onLine: (line: string) => void)
     body: JSON.stringify({ cmd }),
   });
   unauthorized(r);
-  if (!r.ok || !r.body) {
-    const body = await r.json().catch(() => ({}));
-    throw { error: (body as { error?: string }).error ?? `HTTP ${r.status}` };
-  }
+  if (!r.ok || !r.body) return fail(r);
   const reader = r.body.getReader();
   const dec = new TextDecoder();
   let buf = '';
@@ -93,8 +99,8 @@ export const useImportUsers = () => {
     mutationFn: async (file: File) => {
       const r = await fetch('/api/users/import', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'text/csv' }, body: file });
       unauthorized(r);
+      if (!r.ok) return fail(r);
       const body = await r.json().catch(() => ({}));
-      if (!r.ok) throw { error: (body as { error?: string }).error ?? `HTTP ${r.status}` };
       return { added: (body as UserRow[]).length, skipped: Number(r.headers.get('X-Skipped') ?? 0) };
     },
     onSuccess: refresh,
@@ -103,7 +109,7 @@ export const useImportUsers = () => {
 export async function exportUsersCsv(ids: string[]): Promise<void> {
   const r = await fetch('/api/users/export', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ids }) });
   unauthorized(r);
-  if (!r.ok) { const body = await r.json().catch(() => ({})); throw { error: (body as { error?: string }).error ?? `HTTP ${r.status}` }; }
+  if (!r.ok) return fail(r);
   const url = URL.createObjectURL(await r.blob());
   const a = document.createElement('a');
   a.href = url; a.download = 'users.csv';
@@ -124,9 +130,8 @@ export const useUpload = (dept: string | undefined) => {
       form.append('file', file);
       const r = await fetch('/api/files?dept=' + encodeURIComponent(dept ?? ''), { method: 'POST', credentials: 'same-origin', body: form });
       unauthorized(r);
-      const body = await r.json().catch(() => ({}));
-      if (!r.ok) throw { error: (body as { error?: string }).error ?? `HTTP ${r.status}` };
-      return body as unknown;
+      if (!r.ok) return fail(r);
+      return (await r.json().catch(() => ({}))) as unknown;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['files', dept] }),
   });
