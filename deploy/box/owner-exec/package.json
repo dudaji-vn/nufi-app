@@ -1,0 +1,8 @@
+{
+  "name": "nufi-owner-exec",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "hono": "4.13.9"
+  }
+}
