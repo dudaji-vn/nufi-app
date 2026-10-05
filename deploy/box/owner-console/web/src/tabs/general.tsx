@@ -3,13 +3,13 @@ import { Console } from './general/console';
 import { Controls } from './general/controls';
 import { ServiceCard } from './general/service-card';
 
-// The four Figma cards, each backed by the health probe(s) that stand for it.
-// Database has no probe of its own: chat (MongoDB-backed) is its stand-in.
+// The four Figma cards, each backed by the health probe(s) that stand for it
+// (matched by probe name; Database is a Postgres TCP probe, AI model is Ollama).
 const CARDS = [
   { id: 'web-server', label: 'Web Server', probes: ['Console'] },
-  { id: 'database', label: 'Database', probes: ['Chat'] },
+  { id: 'database', label: 'Database', probes: ['Database'] },
   { id: 'chat', label: 'chat', probes: ['Chat'] },
-  { id: 'ai-model', label: 'AI model', probes: ['Gateway'] },
+  { id: 'ai-model', label: 'AI model', probes: ['AI model'] },
 ];
 
 export function General() {
