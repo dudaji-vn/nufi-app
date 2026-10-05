@@ -139,7 +139,7 @@
 .ui-menu { position: relative; display: inline-block; }
 .ui-menu__trigger { display: inline-flex; cursor: pointer; }
 .ui-menu__panel {
-  position: absolute; right: 0; top: calc(100% + 4px); z-index: 150; min-width: 180px;
+  position: fixed; z-index: 150; min-width: 180px;
   background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius);
   box-shadow: var(--shadow-lg); padding: 4px; display: flex; flex-direction: column;
 }

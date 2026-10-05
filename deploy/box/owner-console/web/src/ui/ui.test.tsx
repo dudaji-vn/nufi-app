@@ -208,3 +208,16 @@ test('Avatar shows first initial', () => {
   render(<Avatar name="sun" />);
   expect(screen.getByText('S')).toBeTruthy();
 });
+
+test('ContextMenu panel is position:fixed so overflow ancestors cannot clip it', () => {
+  render(
+    <div style={{ overflow: 'hidden' }}>
+      <ContextMenu items={[{ label: 'A', onSelect: vi.fn() }, { label: 'A', onSelect: vi.fn() }]}>
+        <button type="button">more</button>
+      </ContextMenu>
+    </div>,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'more' }));
+  expect(screen.getByRole('menu').style.position).toBe('fixed');
+  expect(screen.getAllByRole('menuitem')).toHaveLength(2);
+});

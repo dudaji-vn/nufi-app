@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import './ui.css';
+
+const MENU_WIDTH = 180;
 
 export type ContextMenuItem = {
   label: string;
@@ -12,6 +14,22 @@ export type ContextMenuItem = {
 export function ContextMenu({ items, children }: { items: ContextMenuItem[]; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLSpanElement>(null);
+  const [pos, setPos] = useState<CSSProperties>({});
+  const toggle = () => {
+    if (open) return setOpen(false);
+    // position:fixed from the trigger rect so no overflow ancestor can clip the panel
+    const r = root.current?.getBoundingClientRect();
+    if (r) {
+      const estHeight = items.length * 36 + 8;
+      const up = r.bottom + 4 + estHeight > window.innerHeight && r.top - 4 - estHeight >= 0;
+      const alignLeft = r.right - MENU_WIDTH < 0;
+      setPos({
+        ...(up ? { bottom: window.innerHeight - r.top + 4 } : { top: r.bottom + 4 }),
+        ...(alignLeft ? { left: r.left } : { right: window.innerWidth - r.right }),
+      });
+    }
+    setOpen(true);
+  };
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
@@ -27,14 +45,14 @@ export function ContextMenu({ items, children }: { items: ContextMenuItem[]; chi
   }, [open]);
   return (
     <span className="ui-menu" ref={root}>
-      <span className="ui-menu__trigger" onClick={() => setOpen((o) => !o)}>
+      <span className="ui-menu__trigger" onClick={toggle}>
         {children}
       </span>
       {open && (
-        <div className="ui-menu__panel" role="menu">
-          {items.map((it) => (
+        <div className="ui-menu__panel" role="menu" style={{ position: 'fixed', ...pos }}>
+          {items.map((it, i) => (
             <button
-              key={it.label}
+              key={i}
               type="button"
               role="menuitem"
               aria-disabled={it.disabled || undefined}
