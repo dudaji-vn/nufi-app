@@ -23,6 +23,7 @@ volumes:
   studio-data:
   ingest-state:
   cron-state:
+  owner-console-state:
   # Works' instance state (PAPERCLIP_HOME): plugin records, adapter registrations, logs.
   works-data:
 
@@ -58,6 +59,7 @@ services:
       - "3001:3001"
       - "3002:3002"
       - "3003:3003"
+      - "3009:3009"
       - "7860:7860"
       - "4000:4000"
     volumes:
@@ -320,8 +322,22 @@ services:
       # (the default mount, a no-op) for a public one.
       MESH_API_KEY: ${MESH_API_KEY:-}
       NODE_EXTRA_CA_CERTS: /mesh-ca.crt
+      NUFI_DRIVES_DIR: /drives
+      NUFI_STATE_DIR: /state
     volumes:
       - ${MESH_CA_FILE:-/etc/ssl/certs/ca-certificates.crt}:/mesh-ca.crt:ro
+      # Read-write on purpose: the console's allowlisted Start/Restart/Stop and
+      # System Console run `docker compose` against the box (src/exec.ts).
+      - /var/run/docker.sock:/var/run/docker.sock
+      # The department drives, READ-WRITE: the console uploads member files here.
+      # (Other services mount :ro; the console is the writer.)
+      - ${NUFI_DATA_DIR}/drives:/drives
+      # Durable console state: the user store (users.json) + the exec audit log.
+      - owner-console-state:/state
+    # The image runs as USER bun, but the socket is root:docker; without the
+    # host's docker gid the allowlisted control/console exec fails "permission
+    # denied". DOCKER_GID is read from the socket by install-box.sh.
+    group_add: ["${DOCKER_GID:-999}"]
     # A self-hosted coordinator answers on THIS host's published :443 under its
     # certificate name; from a bridge-network container that name must resolve to
     # the host gateway (mirrors mesh_api's host-side --resolve to 127.0.0.1).

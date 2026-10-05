@@ -5,6 +5,9 @@ import { join } from 'node:path';
 import { createApp } from '../src/app';
 import { signInvite } from '../src/invite';
 
+const spaDist = mkdtempSync(join(tmpdir(), 'appspa-'));
+writeFileSync(join(spaDist, 'index.html'), '<!doctype html><div id="root"></div>');
+
 const TEMPLATES = join(import.meta.dir, '../../lib/join-templates');
 
 const ENV = { BOX_OWNER_PASSWORD: 'hunter2', BOX_OWNER_SESSION_SECRET: 'x'.repeat(64) };
@@ -44,8 +47,6 @@ describe('owner-console app', () => {
     expect(setCookie).toMatch(/SameSite=Lax/i);
   });
 
-  // A logged-in session for the dashboard tests, with injected health so the
-  // route renders deterministically without probing real services.
   const dashEnv = {
     ...ENV,
     BOX_NAME: 'nufi',
@@ -62,45 +63,24 @@ describe('owner-console app', () => {
     { name: 'Chat', ok: true, status: 200, ms: 12 },
     { name: 'Gateway', ok: false, error: 'AbortError', ms: 3000 },
   ];
-  const loggedIn = async (env = dashEnv, deps = { checkHealth: async () => health }) => {
-    const app = createApp(env, deps);
-    const login = await app.request(form('hunter2'));
-    const cookie = (login.headers.get('set-cookie') ?? '').split(';')[0];
-    return { app, cookie };
-  };
 
-  test('GET / with a valid cookie renders the status dashboard', async () => {
-    const { app, cookie } = await loggedIn();
+  test('GET / with a valid cookie serves the SPA (or falls back to /app)', async () => {
+    const app = createApp({ ...dashEnv, WEB_DIST_DIR: spaDist }, { checkHealth: async () => health });
+    const cookie = (await app.request(form('hunter2'))).headers.get('set-cookie')!.split(';')[0];
     const r = await app.request('/', { headers: { cookie } });
     expect(r.status).toBe(200);
-    const html = await r.text();
-    expect(html).toContain('nufi');                 // box name
-    expect(html).toContain('Services');
-    expect(html).toContain('Chat');                 // a healthy service
-    expect(html).toContain('up · 12ms');
-    expect(html).toContain('Gateway');              // an unreachable service
-    expect(html).toContain('unreachable');
-    expect(html).toContain('100.64.0.1');           // mesh address
-    expect(html).toContain('self-hosted on this box');
-    expect(html).toContain('legal');                // a department
+    expect(await r.text()).toContain('id="root"');
+    const bare = createApp({ ...dashEnv, WEB_DIST_DIR: join(spaDist, 'missing') });
+    const cookie2 = (await bare.request(form('hunter2'))).headers.get('set-cookie')!.split(';')[0];
+    const r2 = await bare.request('/', { headers: { cookie: cookie2 } });
+    expect(r2.status).toBe(303);
+    expect(r2.headers.get('location')).toBe('/app');
   });
 
-  test('a LAN-only box shows no mesh address', async () => {
-    const { app, cookie } = await loggedIn(
-      { ...ENV, BOX_NAME: 'nufi', BOX_HOST: 'nufi.local' },
-      { checkHealth: async () => health },
-    );
-    const r = await app.request('/', { headers: { cookie } });
-    const html = await r.text();
-    expect(html).toContain('LAN-only');
-    expect(html).not.toContain('100.64');
-  });
-
-  test('the dashboard route never renders without a valid session', async () => {
+  test('the legacy dashboard routes are gone', async () => {
     const app = createApp(dashEnv, { checkHealth: async () => health });
-    const r = await app.request('/');               // no cookie
-    expect(r.status).toBe(303);
-    expect(r.headers.get('location')).toBe('/login');
+    expect((await app.request('/invite', { method: 'POST' })).status).toBe(404);
+    expect((await app.request('/revoke', { method: 'POST' })).status).toBe(404);
   });
 
   test('fails closed when no owner password is configured', async () => {
@@ -108,166 +88,6 @@ describe('owner-console app', () => {
     expect((await app.request(form('anything'))).status).toBe(401);
     const r = await app.request('/');
     expect(r.status).toBe(303);                 // still bounced to /login, never in
-  });
-
-  test('the dashboard offers no invite button when the console lacks the coordinator API key', async () => {
-    // serverUrl set but no MESH_API_KEY: minting is impossible, so show the
-    // precise reason, not a button that only fails.
-    const env = { ...ENV, BOX_NAME: 'nufi', MESH_SERVER_URL: 'https://coordinator.internal' };
-    const { app, cookie } = await loggedIn(env, { checkHealth: async () => health });
-    const html = await (await app.request('/', { headers: { cookie } })).text();
-    expect(html).toContain('no coordinator API key');
-    expect(html).not.toContain('Generate an invite link');
-  });
-
-  // --- members list + revoke + drives (sub-task 05) -------------------------
-  const members = [
-    { id: '1', name: 'nufi', ips: ['100.64.0.1'], online: true, lastSeen: '', tags: ['tag:box'] },
-    { id: '2', name: 'ivy', ips: ['100.64.0.5'], online: false, lastSeen: '', tags: ['tag:member'] },
-  ];
-
-  test('the dashboard lists members and drive paths; the box node has no Revoke', async () => {
-    const { app, cookie } = await loggedIn(dashEnv, { checkHealth: async () => health, listMembers: async () => members });
-    const html = await (await app.request('/', { headers: { cookie } })).text();
-    expect(html).toContain('ivy');
-    expect(html).toContain('100.64.0.5');
-    expect(html).toContain('this box');                          // the box node, not revocable
-    expect(html).toContain('value="2"');                         // a Revoke form targets the member by id
-    expect(html).not.toContain('value="1"');                     // never a Revoke form for the box node
-    expect(html).toContain('smb://nufi.box.internal/legal');     // a department drive path
-  });
-
-  test('the dashboard shows a clear notice when the member list is unavailable', async () => {
-    const { app, cookie } = await loggedIn(dashEnv, {
-      checkHealth: async () => health,
-      listMembers: async () => ({ error: 'coordinator unreachable' }),
-    });
-    const html = await (await app.request('/', { headers: { cookie } })).text();
-    expect(html).toContain('Member list unavailable');
-  });
-
-  test('POST /revoke without a session redirects to /login', async () => {
-    const app = createApp(dashEnv, { checkHealth: async () => health });
-    const r = await app.request('/revoke', { method: 'POST' });
-    expect(r.status).toBe(303);
-    expect(r.headers.get('location')).toBe('/login');
-  });
-
-  const revokeApp = (onRevoke: (id: string) => void, listErr = false) =>
-    loggedIn(dashEnv, {
-      checkHealth: async () => health,
-      listMembers: async () => (listErr ? { error: 'coordinator unreachable' } : members),
-      revoke: async (_cfg, id) => { onRevoke(id); },
-    });
-
-  test('POST /revoke removes a member node by id and reloads the dashboard', async () => {
-    let revoked = '';
-    const { app, cookie } = await revokeApp((id) => { revoked = id; });
-    const r = await app.request('/revoke', {
-      method: 'POST',
-      headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ id: '2' }),          // ivy, a member
-    });
-    expect(revoked).toBe('2');
-    expect(r.status).toBe(303);
-    expect(r.headers.get('location')).toBe('/');
-  });
-
-  test('POST /revoke refuses to remove the box\'s own node, even by crafted id', async () => {
-    let revoked = '';
-    const { app, cookie } = await revokeApp((id) => { revoked = id; });
-    const r = await app.request('/revoke', {
-      method: 'POST',
-      headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ id: '1' }),          // the box node (tag:box)
-    });
-    expect(revoked).toBe('');                          // revokeNode was NOT called
-    expect(r.status).toBe(200);
-    expect(await r.text()).toContain("box's own node can't be revoked");
-  });
-
-  test('POST /revoke with no id is a no-op redirect, not a delete', async () => {
-    let revoked = '';
-    const { app, cookie } = await revokeApp((id) => { revoked = id; });
-    const r = await app.request('/revoke', {
-      method: 'POST',
-      headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({}),
-    });
-    expect(revoked).toBe('');
-    expect(r.status).toBe(303);
-    expect(r.headers.get('location')).toBe('/');
-  });
-
-  test('POST /revoke surfaces a coordinator failure as an error notice', async () => {
-    const { MeshError } = await import('../src/mesh-api');
-    const { app, cookie } = await loggedIn(dashEnv, {
-      checkHealth: async () => health,
-      listMembers: async () => members,
-      revoke: async () => { throw new MeshError('coordinator unreachable'); },
-    });
-    const r = await app.request('/revoke', {
-      method: 'POST',
-      headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ id: '2' }),
-    });
-    expect(r.status).toBe(200);
-    expect(await r.text()).toContain('Revoke failed');
-  });
-
-  test('POST /invite without a session redirects to /login', async () => {
-    const app = createApp(dashEnv, { checkHealth: async () => health, mint: async () => 'k' });
-    const r = await app.request('/invite', { method: 'POST' });
-    expect(r.status).toBe(303);
-    expect(r.headers.get('location')).toBe('/login');
-  });
-
-  test('POST /invite mints a key and returns a /connect share link on the request origin', async () => {
-    const app = createApp(dashEnv, { checkHealth: async () => health, mint: async () => 'k-member-xyz' });
-    const login = await app.request(form('hunter2'));
-    const cookie = (login.headers.get('set-cookie') ?? '').split(';')[0];
-    const r = await app.request('/invite', {
-      method: 'POST',
-      headers: { cookie, host: 'nufi.local:3009', 'x-forwarded-proto': 'https' },
-    });
-    expect(r.status).toBe(200);
-    const html = await r.text();
-    expect(html).toContain('https://nufi.local:3009/connect#token=');
-    expect(html).toContain('works once and expires');
-    expect(html).not.toContain('k-member-xyz');    // the raw key is inside the token, never shown
-  });
-
-  test('POST /invite with fleet=1 mints a reusable key and returns a fleet link', async () => {
-    let single = 0, fleet = 0;
-    const app = createApp(dashEnv, {
-      checkHealth: async () => health,
-      mint: async () => { single++; return 'k-single'; },
-      mintFleet: async () => { fleet++; return 'k-fleet'; },
-    });
-    const login = await app.request(form('hunter2'));
-    const cookie = (login.headers.get('set-cookie') ?? '').split(';')[0];
-    const r = await app.request('/invite', {
-      method: 'POST',
-      headers: { cookie, host: 'nufi.local:3009', 'x-forwarded-proto': 'https', 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ fleet: 'yes' }),
-    });
-    expect(r.status).toBe(200);
-    const html = await r.text();
-    expect(fleet).toBe(1);                          // used the reusable minter
-    expect(single).toBe(0);                         // not the single-use one
-    expect(html).toContain('https://nufi.local:3009/connect#token=');
-    expect(html).toContain('enrols many machines');  // the fleet copy
-    expect(html).toContain('7 days');
-    expect(html).not.toContain('k-fleet');           // raw key stays inside the token
-  });
-
-  test('POST /invite on a LAN-only box explains it must join a mesh first', async () => {
-    const app = createApp({ ...ENV, BOX_NAME: 'nufi' }, { checkHealth: async () => health, mint: async () => 'k' });
-    const login = await app.request(form('hunter2'));
-    const cookie = (login.headers.get('set-cookie') ?? '').split(';')[0];
-    const r = await app.request('/invite', { method: 'POST', headers: { cookie } });
-    expect(r.status).toBe(200);
-    expect(await r.text()).toContain('not on a mesh yet');
   });
 
   // --- member-facing /connect (no login) -----------------------------------
@@ -411,19 +231,5 @@ describe('owner-console app', () => {
       body: new URLSearchParams({ token: sessionToken, os: 'linux', member: 'x' }),
     });
     expect(r.status).toBe(400);                     // rejected: not an invite-aud token
-  });
-
-  test('POST /invite surfaces an unreachable coordinator with the egress hint', async () => {
-    const { MeshError } = await import('../src/mesh-api');
-    const app = createApp(dashEnv, {
-      checkHealth: async () => health,
-      mint: async () => { throw new MeshError('coordinator unreachable: ECONNREFUSED'); },
-    });
-    const login = await app.request(form('hunter2'));
-    const cookie = (login.headers.get('set-cookie') ?? '').split(';')[0];
-    const r = await app.request('/invite', { method: 'POST', headers: { cookie } });
-    const html = await r.text();
-    expect(html).toContain('Invite failed');
-    expect(html).toContain('egress allow-list');
   });
 });

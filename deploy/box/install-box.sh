@@ -525,12 +525,18 @@ NUFI_OWNER_CONSOLE="${NUFI_OWNER_CONSOLE:-1}"
 NUFI_OWNER_CONSOLE_TAG="${NUFI_OWNER_CONSOLE_TAG:-main}"
 if [ "$NUFI_WORKS" = 1 ]; then
   WORKS_PUBLIC_URL="https://$BOX_HOST:3003"
-  # The gid that owns the socket, so the works container's uid 1000 can open
-  # it. Read from the socket itself: the docker group's number is not the
-  # same on every distribution.
-  if [ "$DRY" = 1 ]; then DOCKER_GID="${DOCKER_GID:-999}"; else DOCKER_GID="$(stat -c %g /var/run/docker.sock)"; fi
 else
   WORKS_PUBLIC_URL=""
+fi
+# The gid that owns the socket, so the works / owner-console containers (uid
+# 1000) can open it. Read from the socket itself: the docker group's number is
+# not the same on every distribution.
+if [ "$NUFI_WORKS" = 1 ]; then
+  if [ "$DRY" = 1 ]; then DOCKER_GID="${DOCKER_GID:-999}"; else DOCKER_GID="$(stat -c %g /var/run/docker.sock)"; fi
+elif [ "$NUFI_OWNER_CONSOLE" = 1 ] && [ "$DRY" != 1 ]; then
+  # Best-effort for the owner console alone: an unreadable socket leaves it
+  # empty, and compose falls back to 999.
+  DOCKER_GID="$(stat -c %g /var/run/docker.sock 2>/dev/null || true)"
 fi
 # Compose does NOT expand \n inside a double-quoted .env value (verified with
 # `docker compose config` on 2.39.2): X="a\nb" renders as the four characters

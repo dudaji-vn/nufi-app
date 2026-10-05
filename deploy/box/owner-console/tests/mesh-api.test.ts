@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { listNodes, meshConfig, mintFleetKey, mintMemberKey, revokeNode, FLEET_TTL_MS, MeshError } from '../src/mesh-api';
+import { expireKey, listKeys, listNodes, mintMemberKeyWithId, meshConfig, mintFleetKey, mintMemberKey, revokeNode, FLEET_TTL_MS, MeshError } from '../src/mesh-api';
 
 const CFG = { serverUrl: 'https://coordinator.internal', apiKey: 'k' };
 
@@ -13,7 +13,7 @@ function fakeHeadscale(posts: unknown[] = []) {
     }
     if (u.endsWith('/api/v1/preauthkey') && init.method === 'POST') {
       posts.push(JSON.parse(init.body as string));
-      return Promise.resolve(new Response(JSON.stringify({ preAuthKey: { key: 'k-member-abc' } }), { status: 200 }));
+      return Promise.resolve(new Response(JSON.stringify({ preAuthKey: { id: '55', key: 'k-member-abc' } }), { status: 200 }));
     }
     return Promise.resolve(new Response('not found', { status: 404 }));
   }) as unknown as typeof fetch;
@@ -125,5 +125,45 @@ describe('revokeNode', () => {
   test('a 401/403 surfaces as a MeshError', async () => {
     const f = (() => Promise.resolve(new Response('no', { status: 403 }))) as unknown as typeof fetch;
     expect(revokeNode(CFG, '2', f)).rejects.toThrow(MeshError);
+  });
+});
+
+describe('key id plumbing', () => {
+  const json = (o: unknown) => Promise.resolve(new Response(JSON.stringify(o), { status: 200 }));
+  test('mintMemberKeyWithId returns {id,key}', async () => {
+    expect(await mintMemberKeyWithId(CFG, Date.now, fakeHeadscale())).toEqual({ id: '55', key: 'k-member-abc' });
+  });
+  test('mint with no key id throws', async () => {
+    const f = ((url: string) => String(url).includes('/user?')
+      ? json({ users: [{ id: 7, name: 'box' }] })
+      : json({ preAuthKey: { key: 'x' } })) as unknown as typeof fetch;
+    await expect(mintMemberKeyWithId(CFG, Date.now, f)).rejects.toBeInstanceOf(MeshError);
+  });
+  test('listKeys maps preAuthKeys and drops id-less', async () => {
+    const f = ((url: string) => String(url).includes('/user?')
+      ? json({ users: [{ id: 7, name: 'box' }] })
+      : String(url).includes('/preauthkey?user=7')
+        ? json({ preAuthKeys: [{ id: 3, used: true, expiration: 'E' }, { used: false }, { id: '', used: false }, { id: '4' }] })
+        : Promise.resolve(new Response('', { status: 404 }))) as unknown as typeof fetch;
+    expect(await listKeys(CFG, f)).toEqual([
+      { id: '3', used: true, expiration: 'E' },
+      { id: '4', used: false, expiration: '' },
+    ]);
+  });
+  test('listNodes sets preAuthKeyId from preAuthKey.id, undefined when absent', async () => {
+    const f = (() => json({ nodes: [{ id: 1, name: 'a', preAuthKey: { id: 9 } }, { id: 2, name: 'b' }] })) as unknown as typeof fetch;
+    const n = await listNodes(CFG, f);
+    expect(n[0].preAuthKeyId).toBe('9');
+    expect(n[1].preAuthKeyId).toBeUndefined();
+  });
+  test('expireKey POSTs user id + key secret', async () => {
+    const posts: unknown[] = [];
+    const f = ((url: string, init: { method?: string; body?: string }) => {
+      if (String(url).includes('/user?')) return json({ users: [{ id: 7, name: 'box' }] });
+      if (String(url).endsWith('/preauthkey/expire')) { posts.push(JSON.parse(init.body as string)); return json({}); }
+      return Promise.resolve(new Response('', { status: 404 }));
+    }) as unknown as typeof fetch;
+    await expireKey(CFG, 'sek', f);
+    expect(posts).toEqual([{ user: '7', key: 'sek' }]);
   });
 });
