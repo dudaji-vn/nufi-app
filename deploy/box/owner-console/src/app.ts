@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { join, normalize, resolve, sep } from 'node:path';
 import { Hono } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { signSession, verifyPassword, verifySession } from './auth';
@@ -120,6 +121,25 @@ export function createApp(env: AppEnv = process.env, deps: Deps = {}): Hono {
   };
 
   app.get('/healthz', (c) => c.text('ok'));
+
+  app.get('/api/ping', (c) => c.json({ ok: true }));
+
+  // The React SPA (built to web/dist). Served alongside the legacy server-rendered
+  // pages until they are cut over; unknown /api/* is a real 404, unknown /assets/*
+  // is a 404, and any other unmatched GET falls back to index.html (client routes).
+  const distDir = resolve(env.WEB_DIST_DIR ?? join(import.meta.dir, '../web/dist'));
+  const spaIndex = () => {
+    const f = join(distDir, 'index.html');
+    return existsSync(f) ? new Response(Bun.file(f), { headers: { 'content-type': 'text/html; charset=utf-8' } }) : null;
+  };
+  app.get('/assets/*', (c) => {
+    const rel = normalize(decodeURIComponent(new URL(c.req.url).pathname).replace(/^\/+/, ''));
+    const f = resolve(distDir, rel);
+    if (!f.startsWith(distDir + sep) || !existsSync(f) || !statSync(f).isFile()) return c.notFound();
+    return new Response(Bun.file(f), { headers: { 'cache-control': 'public, max-age=31536000, immutable' } });
+  });
+  app.get('/app', (c) => spaIndex() ?? c.notFound());
+  app.get('/app/*', (c) => spaIndex() ?? c.notFound());
 
   app.get('/login', (c) => c.html(loginPage(configured ? undefined : NOT_CONFIGURED)));
 

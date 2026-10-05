@@ -15,11 +15,21 @@ RUN cd /agent-src \
 # macos.pkg simply 404s until a signed release exists.
 RUN cp /agent-src/dist/nufibox-agent-macos.pkg /dist/ 2>/dev/null || true
 
+# Build the React SPA (web/) to web/dist; the runtime stage copies only dist.
+FROM oven/bun:1.4.2-alpine AS webbuild
+WORKDIR /web
+COPY web/package.json web/bun.lock* ./
+RUN bun install
+COPY web ./
+RUN bun run build
+
 FROM oven/bun:1.4.2-alpine
 WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile --production
 COPY src ./src
+COPY entrypoint.sh ./entrypoint.sh
+COPY --from=webbuild /web/dist ./web/dist
 # The member-connector templates, shared VERBATIM with `nufi-box invite`
 # (single source of truth: deploy/box/lib/join-templates). Provided as a named
 # build context so this Dockerfile's own context stays deploy/box/owner-console.
@@ -32,4 +42,4 @@ COPY --from=agentbuild /dist ./agent-dist
 ENV PORT=8890 JOIN_TEMPLATES_DIR=/app/join-templates AGENT_DIST_DIR=/app/agent-dist
 EXPOSE 8890
 USER bun
-CMD ["bun", "run", "src/server.ts"]
+ENTRYPOINT ["/bin/sh", "/app/entrypoint.sh"]

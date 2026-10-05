@@ -167,6 +167,15 @@ def test_owner_console_gets_non_secret_box_facts_and_only_the_mesh_api_key():
         assert leaked not in env, leaked
 
 
+def test_caddy_publishes_owner_console_port():
+    # Caddyfile serves the owner console on TLS :3009; without publishing it the
+    # console is unreachable from the LAN (it has no ports of its own).
+    caddy = render(profiles=("owner-console",),
+                   BOX_OWNER_PASSWORD="pw", BOX_OWNER_SESSION_SECRET="s" * 40)["services"]["caddy"]
+    published = {str(p.get("published")) for p in caddy.get("ports", [])}
+    assert "3009" in published
+
+
 def test_owner_console_can_mint_invites_reachably():
     # Sub-task 03 wiring: the coordinator API key, the CA trust env, the CA bind
     # mount (read-only), and the extra_hosts entry that lets a bridge-network
