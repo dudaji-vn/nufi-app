@@ -1,4 +1,6 @@
 import { useRef, useState } from 'react';
+import { useUi } from '../store';
+import { Breadcrumb } from './files/breadcrumb';
 import { useFiles, useStatus, useUpload, type FileRow } from '../api';
 import { Button } from '../ui/button';
 import { Table, type Col } from '../ui/table';
@@ -26,7 +28,9 @@ export function Files() {
   const depts = (status.data?.box.departments as string[] | undefined) ?? [];
   const [picked, setPicked] = useState<string>();
   const dept = picked && depts.includes(picked) ? picked : depts[0];
-  const { data, isPending, error } = useFiles(dept);
+  const filePath = useUi((s) => s.filePath);
+  const setFilePath = useUi((s) => s.setFilePath);
+  const { data, isPending, error } = useFiles(dept, filePath);
   const upload = useUpload(dept);
   const toast = useToast();
   const [query, setQuery] = useState('');
@@ -42,9 +46,19 @@ export function Files() {
     if (input.current) input.current.value = '';
   };
 
-  const href = (name: string) => `/api/files/${encodeURIComponent(dept ?? '')}/${encodeURIComponent(name)}`;
+  const rel = (name: string) => (filePath ? `${filePath}/${name}` : name);
+  const href = (name: string) =>
+    `/api/files/${encodeURIComponent(dept ?? '')}/${rel(name).split('/').map(encodeURIComponent).join('/')}`;
   const columns: Col<FileRow>[] = [
-    { key: 'name', label: 'Name', render: (r) => (r.kind === 'file' ? <a href={href(r.name)}>{r.name}</a> : r.name) },
+    { key: 'name', label: 'Name', render: (r) =>
+        r.kind === 'file' ? (
+          <a href={href(r.name)}>{r.name}</a>
+        ) : (
+          <button type="button" onClick={() => setFilePath(rel(r.name))} style={{ all: 'unset', cursor: 'pointer', color: 'var(--navy-2)' }}>
+            {r.name}
+          </button>
+        ),
+    },
     { key: 'kind', label: 'Kind' },
     { key: 'size', label: 'Size', render: (r) => (r.kind === 'file' ? formatSize(r.size) : '—') },
     { key: 'uploadedAt', label: 'Uploaded', render: (r) => fmtDate(r.uploadedAt) },
@@ -74,7 +88,10 @@ export function Files() {
   return (
     <div data-testid="files">
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
-        <select aria-label="Department" value={dept ?? ''} disabled={depts.length === 0} onChange={(e) => setPicked(e.target.value)}>
+        <select aria-label="Department" value={dept ?? ''} disabled={depts.length === 0} onChange={(e) => {
+            setPicked(e.target.value);
+            setFilePath('');
+          }}>
           {depts.map((d) => (
             <option key={d} value={d}>
               {d}
@@ -94,6 +111,8 @@ export function Files() {
         </Button>
         <input ref={input} type="file" hidden aria-label="File to upload" onChange={(e) => send(e.target.files?.[0])} />
       </div>
+
+      <Breadcrumb path={filePath} onNavigate={setFilePath} />
 
       <div
         data-testid="drop-zone"
