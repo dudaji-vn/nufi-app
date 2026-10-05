@@ -13,4 +13,8 @@ COPY owner-exec/src ./src
 ENV EXEC_SOCK=/sock/exec.sock NUFI_STATE_DIR=/state
 # Runs as root by design: it holds the docker socket; the allowlist is the control.
 RUN mkdir -p /sock /state
-ENTRYPOINT ["bun", "run", "src/server.ts"]
+# Absolute path: the compose service sets working_dir: /box (so the sidecar's
+# `docker compose` finds the box files), which would otherwise make a relative
+# entry resolve under /box and fail "Module not found". ESM imports resolve by
+# file path, so handler.ts still finds ../../owner-console/src/exec-core.
+ENTRYPOINT ["bun", "run", "/app/owner-exec/src/server.ts"]
