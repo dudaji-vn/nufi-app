@@ -315,7 +315,7 @@ services:
       # COMPOSE_FILE names the active layers (the installer sets
       # NUFI_EXEC_COMPOSE_FILE to its -f set, ':'-separated; default base only).
       COMPOSE_FILE: ${NUFI_EXEC_COMPOSE_FILE:-docker-compose.yml}
-      COMPOSE_PROFILES: ${NUFI_EXEC_COMPOSE_PROFILES:-owner-console,linux,gpu,mesh,works}
+      COMPOSE_PROFILES: ${NUFI_EXEC_COMPOSE_PROFILES:-linux,gpu,mesh,works}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - owner-exec-sock:/sock
