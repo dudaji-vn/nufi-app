@@ -134,3 +134,19 @@ test('an oversized upload is rejected with 413 and nothing written', async () =>
   expect(r.status).toBe(413);
   expect(existsSync(join(root, 'legal', 'big.bin'))).toBe(false);
 });
+
+test('a symlinked department directory is refused on list, download and upload', async () => {
+  const outside = mkdtempSync(join(tmpdir(), 'outside-'));
+  try {
+    writeFileSync(join(outside, 'passwd'), 'root:x');
+    symlinkSync(outside, join(root, 'hr'));
+    expect((await get('/api/files?dept=hr')).status).toBe(400);
+    const d = await get('/api/files/hr/passwd');
+    expect(d.status).toBe(400);
+    expect(await d.text()).not.toContain('root:x');
+    expect((await upload('hr', 'pwn.txt')).status).toBe(400);
+    expect(readdirSync(outside)).toEqual(['passwd']);
+  } finally {
+    rmSync(outside, { recursive: true, force: true });
+  }
+});

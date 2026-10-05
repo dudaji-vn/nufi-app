@@ -17,11 +17,13 @@ const entry = (p: string) => lstat(p).catch(() => null);
 // Every path is validated BEFORE any filesystem call, then defended again after
 // resolve(). dept must be an exact member of the box's department set; name must
 // be a single plain path segment.
-function deptDir(env: Env, dept: string | undefined): string {
+async function deptDir(env: Env, dept: string | undefined): Promise<string> {
   if (!dept || !boxInfo(env).departments.includes(dept)) throw new Bad('unknown department');
   const root = resolve(env.NUFI_DRIVES_DIR ?? '/drives');
   const dir = resolve(root, dept);
   if (!dir.startsWith(root + sep)) throw new Bad('invalid department');
+  // resolve() is lexical: a symlinked dept dir would still pass the prefix check.
+  if ((await entry(dir))?.isSymbolicLink()) throw new Bad('invalid department');
   return dir;
 }
 
@@ -46,7 +48,7 @@ export function filesRoutes(env: Env): Hono {
 
   r.get('/files', async (c) => {
     try {
-      const dir = deptDir(env, c.req.query('dept'));
+      const dir = await deptDir(env, c.req.query('dept'));
       let names: string[];
       try {
         names = await readdir(dir);
@@ -76,7 +78,7 @@ export function filesRoutes(env: Env): Hono {
 
   r.post('/files', async (c) => {
     try {
-      const dir = deptDir(env, c.req.query('dept'));
+      const dir = await deptDir(env, c.req.query('dept'));
       const declared = Number(c.req.header('content-length') ?? 0);
       if (declared > MAX_UPLOAD + 1024 * 1024) throw new TooLarge();
       const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>);
@@ -85,8 +87,6 @@ export function filesRoutes(env: Env): Hono {
       if (file.size > MAX_UPLOAD) throw new TooLarge();
       const name = safeName(file.name);
       const path = filePath(dir, name);
-      const dirStat = await entry(dir);
-      if (dirStat?.isSymbolicLink()) throw new Bad('invalid department');
       // Overwrites a same-name file; refuses to write through a symlink.
       if ((await entry(path))?.isSymbolicLink()) throw new Bad('refusing to write through a symlink');
       await mkdir(dir, { recursive: true });
@@ -101,7 +101,7 @@ export function filesRoutes(env: Env): Hono {
 
   r.get('/files/:dept/:name', async (c) => {
     try {
-      const dir = deptDir(env, c.req.param('dept'));
+      const dir = await deptDir(env, c.req.param('dept'));
       const name = safeName(c.req.param('name'));
       const path = filePath(dir, name);
       const s = await entry(path);
