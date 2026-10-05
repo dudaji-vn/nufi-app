@@ -2,7 +2,7 @@
 // (single source of truth, also used by the owner-console); no shell, no raw input.
 import { Hono } from 'hono';
 
-import { auditLine, BadRequest, buildControlArgv, buildReadArgv } from '../../owner-console/src/exec-core';
+import { auditLine, BadRequest, BOX_SERVICE, buildBoxArgv, buildControlArgv, buildReadArgv } from '../../owner-console/src/exec-core';
 
 export interface ExecDeps {
   spawn: typeof Bun.spawn;
@@ -39,8 +39,9 @@ export function createApp(deps: ExecDeps): Hono {
 
   app.post('/control', async (c) => {
     const { action, service } = await body(c);
-    const argv = buildControlArgv(String(action), String(service)); // throws BadRequest
-    const line = audit(String(action), String(service));
+    const whole = service === undefined || service === null || service === BOX_SERVICE;
+    const argv = whole ? buildBoxArgv(String(action)) : buildControlArgv(String(action), String(service)); // throws BadRequest
+    const line = audit(String(action), whole ? BOX_SERVICE : String(service));
     const proc = deps.spawn({ cmd: argv, stdout: 'ignore', stderr: 'ignore' });
     const code = await proc.exited;
     return c.json({ ok: code === 0, audit: line });

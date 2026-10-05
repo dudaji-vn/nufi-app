@@ -28,6 +28,14 @@ export function buildControlArgv(action: string, service: string): string[] {
   return [...COMPOSE, action, service];
 }
 
+// Whole-box control: no service, acts on every container in the compose project.
+export function buildBoxArgv(action: string): string[] {
+  if (!isIn(ACTIONS, action)) throw new BadRequest('invalid action');
+  return [...COMPOSE, action];
+}
+
+export const BOX_SERVICE = '__box__';
+
 const LOGS = [...COMPOSE, 'logs', '--no-color', '--tail=200'];
 
 export function buildReadArgv(cmd: string): string[] | null {

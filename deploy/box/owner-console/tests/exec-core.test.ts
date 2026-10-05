@@ -36,3 +36,13 @@ describe('exec-core allowlist', () => {
     expect(auditLine(d, 'status')).toBe('2026-01-01T00:00:00.000Z · status');
   });
 });
+
+import { buildBoxArgv } from '../src/exec-core';
+describe('buildBoxArgv', () => {
+  test('whole-box argv has no service', () => {
+    expect(buildBoxArgv('restart')).toEqual([...C, 'restart']);
+  });
+  test('invalid action -> BadRequest', () => {
+    expect(() => buildBoxArgv('down')).toThrow(BadRequest);
+  });
+});

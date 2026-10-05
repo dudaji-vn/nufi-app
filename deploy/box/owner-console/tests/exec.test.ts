@@ -90,3 +90,22 @@ describe('runReadCommand (sidecar client)', () => {
     expect([...READ_CMDS]).toEqual(['status', 'logs', 'doctor', 'support']);
   });
 });
+
+import { controlBox } from '../src/exec';
+describe('controlBox', () => {
+  test('POSTs /control with the box shape', async () => {
+    const m = mk(json({ ok: true, audit: 'a' }));
+    await controlBox('restart', m.deps);
+    expect(JSON.parse(m.calls[0]!.init.body)).toEqual({ action: 'restart', service: '__box__' });
+  });
+  test('controlService(..., __box__) routes to the box path', async () => {
+    const m = mk(json({ ok: true, audit: 'a' }));
+    await controlService('stop', '__box__', m.deps);
+    expect(JSON.parse(m.calls[0]!.init.body)).toEqual({ action: 'stop', service: '__box__' });
+  });
+  test('invalid action -> BadRequest before fetch', async () => {
+    const m = mk(json({}));
+    await expect(controlBox('down', m.deps)).rejects.toBeInstanceOf(BadRequest);
+    expect(m.calls).toHaveLength(0);
+  });
+});

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { createServer } from 'node:net';
-import { checkAll, probe, probesForEnv, type Probe } from '../src/health';
+import { checkAll, parseChatVersion, parseOllamaModel, probe, probesForEnv, type Probe } from '../src/health';
 import { makeApp, ownerCookie } from './helpers';
 
 // A fetch that never resolves until the AbortController fires — used to prove
@@ -158,5 +158,30 @@ describe('GET /api/status with real probes down', () => {
     expect(names).toContain('AI model');
     expect(names).toContain('Web Server');
     expect(services.find((s: { name: string }) => s.name === 'Database').ok).toBe(false);
+  });
+});
+
+describe('probe detail', () => {
+  const p: Probe = { name: 'AI model', url: 'http://l/h', detail: { url: 'http://o/tags', parse: parseOllamaModel } };
+  const f = (detail: () => Response) =>
+    (async (url: string) => (url === 'http://l/h' ? new Response('', { status: 200 }) : detail())) as unknown as typeof fetch;
+  test('detail appears when the detail fetch succeeds', async () => {
+    const r = await probe(p, 1000, f(() => new Response(JSON.stringify({ models: [{ name: 'qwen3', size: 4_500_000_000 }] }))));
+    expect(r.ok).toBe(true);
+    expect(r.detail).toBe('qwen3 · 4.5 GB');
+  });
+  test('detail absent when the detail fetch fails; card stays ok', async () => {
+    for (const d of [() => new Response('', { status: 500 }), () => { throw new Error('x'); }, () => new Response('not json')]) {
+      const r = await probe(p, 1000, f(d));
+      expect(r.ok).toBe(true);
+      expect(r.detail).toBeUndefined();
+    }
+  });
+  test('chat version parsed; probesForEnv wires details', () => {
+    expect(parseChatVersion({ version: 'v0.8.6' })).toBe('v0.8.6');
+    expect(parseChatVersion({})).toBeUndefined();
+    const ps = probesForEnv({ CHAT_URL: 'http://c:1/', OLLAMA_URL: 'http://o:2' });
+    expect(ps.find((x) => x.name === 'Chat')!.detail!.url).toBe('http://c:1/api/config');
+    expect(ps.find((x) => x.name === 'AI model')!.detail!.url).toBe('http://o:2/api/tags');
   });
 });

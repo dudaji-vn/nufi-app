@@ -1,7 +1,7 @@
 // Thin client of the owner-exec sidecar. The console no longer spawns anything:
 // it pre-validates against the shared allowlist (defense in depth; the sidecar
 // re-validates and owns spawn + audit) and calls the sidecar over a unix socket.
-import { type Action, BadRequest, buildControlArgv, buildReadArgv } from './exec-core';
+import { type Action, BadRequest, BOX_SERVICE, buildBoxArgv, buildControlArgv, buildReadArgv } from './exec-core';
 
 export * from './exec-core';
 
@@ -40,8 +40,18 @@ export async function controlService(
   service: string,
   deps: ExecDeps = defaultDeps(),
 ): Promise<{ ok: boolean; audit: string }> {
+  if (service === BOX_SERVICE) return controlBox(action, deps);
   buildControlArgv(action, service); // pre-validate; throws BadRequest before any fetch
   const res = await call(deps, '/control', { action, service });
+  return (await res.json()) as { ok: boolean; audit: string };
+}
+
+export async function controlBox(
+  action: Action | string,
+  deps: ExecDeps = defaultDeps(),
+): Promise<{ ok: boolean; audit: string }> {
+  buildBoxArgv(action); // pre-validate; throws BadRequest before any fetch
+  const res = await call(deps, '/control', { action, service: BOX_SERVICE });
   return (await res.json()) as { ok: boolean; audit: string };
 }
 
