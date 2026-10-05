@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-export type Health = { name: string; ok: boolean; status?: number; ms: number; error?: string };
+export type Health = { name: string; ok: boolean; status?: number; ms: number; error?: string; detail?: string };
 export type StatusResponse = { box: Record<string, unknown> & { name: string }; services: Health[] };
 export type ControlAction = 'start' | 'restart' | 'stop';
 export type ControlRequest = { action: ControlAction; service: string };
