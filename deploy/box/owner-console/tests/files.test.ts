@@ -342,3 +342,18 @@ test('deleting a private item leaves no stale access entry', async () => {
   const acc = JSON.parse(readFileSync(join(root, 'legal', '.nufi-access.json'), 'utf8'));
   expect(Object.keys(acc.entries)).toEqual([]);
 });
+
+test('a corrupt access file fails closed: list errors, access change is refused and the file is untouched', async () => {
+  const f = join(root, 'legal', '.nufi-access.json');
+  writeFileSync(f, '{not json');
+  const r = await get('/api/files?dept=legal');
+  expect(r.status).toBe(409);
+  expect((await r.json()).error).toContain('corrupt');
+  const put = await app.request('/api/files/access', {
+    method: 'PUT',
+    headers: { cookie: ownerCookie(), 'content-type': 'application/json' },
+    body: JSON.stringify({ dept: 'legal', path: 'a.pdf', access: 'private' }),
+  });
+  expect(put.status).toBe(409);
+  expect(readFileSync(f, 'utf8')).toBe('{not json');
+});

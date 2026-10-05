@@ -1,7 +1,7 @@
 import { lstat, mkdir, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve, sep } from 'node:path';
 import { Hono } from 'hono';
-import { copySubtree, effectiveAccess, readAccess, removeSubtree, setEntry } from '../access';
+import { CorruptAccessError, copySubtree, effectiveAccess, readAccess, removeSubtree, setEntry } from '../access';
 import { boxInfo } from '../boxinfo';
 
 type Env = Record<string, string | undefined>;
@@ -74,6 +74,8 @@ export function filesRoutes(env: Env): Hono {
     if (e instanceof TooLarge) return c.json({ error: 'file too large (max 100 MB)' }, 413);
     if (e instanceof Bad) return c.json({ error: e.message }, 400);
     if (e instanceof Missing) return c.json({ error: 'not found' }, 404);
+    if (e instanceof CorruptAccessError)
+      return c.json({ error: 'the accessibility file for this department is corrupt and must be fixed' }, 409);
     if (e instanceof Conflict) return c.json({ error: e.message }, 409);
     return c.json({ error: fallback }, 500);
   };

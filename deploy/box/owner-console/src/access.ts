@@ -17,28 +17,47 @@ function lookup(a: AccessFile, k: string): Access | undefined {
   return v === 'public' || v === 'private' ? v : undefined;
 }
 
-export async function readAccess(driveDir: string): Promise<AccessFile> {
-  try {
-    const parsed = JSON.parse(await readFile(accessPath(driveDir), 'utf8'));
-    if (
-      parsed &&
-      typeof parsed === 'object' &&
-      !Array.isArray(parsed) &&
-      parsed.entries &&
-      typeof parsed.entries === 'object' &&
-      !Array.isArray(parsed.entries)
-    ) {
-      const entries: AccessFile['entries'] = Object.create(null);
-      for (const k of Object.keys(parsed.entries)) {
-        const v = parsed.entries[k]?.access;
-        if (v === 'public' || v === 'private') entries[k] = { access: v };
-      }
-      return { version: 1, entries };
-    }
-  } catch {
-    // absent or corrupt: fall through to the empty default
+export class CorruptAccessError extends Error {
+  constructor(driveDir: string, cause?: unknown) {
+    super(`accessibility file for ${driveDir} is corrupt`, { cause });
+    this.name = 'CorruptAccessError';
   }
-  return empty();
+}
+
+// Absent file -> empty (legitimately all-public). Present but unreadable/unparseable -> throws,
+// so no caller can treat a corrupt file as "everything public" or overwrite it.
+export async function readAccess(driveDir: string): Promise<AccessFile> {
+  let text: string;
+  try {
+    text = await readFile(accessPath(driveDir), 'utf8');
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return empty();
+    throw new CorruptAccessError(driveDir, e);
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (e) {
+    throw new CorruptAccessError(driveDir, e);
+  }
+  const p = parsed as { entries?: unknown } | null;
+  if (
+    !p ||
+    typeof p !== 'object' ||
+    Array.isArray(p) ||
+    !p.entries ||
+    typeof p.entries !== 'object' ||
+    Array.isArray(p.entries)
+  ) {
+    throw new CorruptAccessError(driveDir);
+  }
+  const src = p.entries as Record<string, { access?: unknown } | null>;
+  const entries: AccessFile['entries'] = Object.create(null);
+  for (const k of Object.keys(src)) {
+    const v = src[k]?.access;
+    if (v === 'public' || v === 'private') entries[k] = { access: v };
+  }
+  return { version: 1, entries };
 }
 
 async function write(driveDir: string, a: AccessFile): Promise<void> {

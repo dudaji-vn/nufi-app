@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtemp, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   accessPath,
+  CorruptAccessError,
+  copySubtree,
+  moveSubtree,
   effectiveAccess,
   moveSubtree,
   readAccess,
@@ -56,13 +59,21 @@ describe('persistence', () => {
   test('absent file gives empty default', async () => {
     expect(await readAccess(dir)).toEqual({ version: 1, entries: {} });
   });
-  test('corrupt file gives empty default', async () => {
-    await writeFile(accessPath(dir), '{not json');
-    expect(await readAccess(dir)).toEqual({ version: 1, entries: {} });
-    await writeFile(accessPath(dir), '[1,2]');
-    expect(await readAccess(dir)).toEqual({ version: 1, entries: {} });
-    await writeFile(accessPath(dir), '"x"');
-    expect(await readAccess(dir)).toEqual({ version: 1, entries: {} });
+  test('corrupt or non-object file throws CorruptAccessError', async () => {
+    for (const body of ['{not json', '[1,2]', '"x"']) {
+      await writeFile(accessPath(dir), body);
+      await expect(readAccess(dir)).rejects.toBeInstanceOf(CorruptAccessError);
+    }
+  });
+  test('mutators on a corrupt file throw and never write', async () => {
+    const bad = '{not json';
+    await writeFile(accessPath(dir), bad);
+    await expect(setEntry(dir, 'a', 'private')).rejects.toBeInstanceOf(CorruptAccessError);
+    await expect(removeSubtree(dir, 'a')).rejects.toBeInstanceOf(CorruptAccessError);
+    await expect(moveSubtree(dir, 'a', 'b')).rejects.toBeInstanceOf(CorruptAccessError);
+    await expect(copySubtree(dir, 'a', 'b')).rejects.toBeInstanceOf(CorruptAccessError);
+    expect(await readFile(accessPath(dir), 'utf8')).toBe(bad);
+    expect(await readdir(dir)).toEqual(['.nufi-access.json']);
   });
   test('setEntry round-trips and keeps others', async () => {
     await setEntry(dir, 'a/b.pdf', 'private');
@@ -85,10 +96,10 @@ describe('persistence', () => {
     await Promise.all(Array.from({ length: 20 }, (_, i) => setEntry(dir, `f${i}`, 'private')));
     expect(Object.keys((await readAccess(dir)).entries).length).toBe(20);
   });
-  test('empty file, null, and non-object entries give empty default', async () => {
+  test('empty file, null, and non-object entries are corrupt', async () => {
     for (const body of ['', 'null', '{"version":1,"entries":5}', '{"version":1,"entries":[]}', '{"version":1}']) {
       await writeFile(accessPath(dir), body);
-      expect(await readAccess(dir)).toEqual({ version: 1, entries: {} });
+      await expect(readAccess(dir)).rejects.toBeInstanceOf(CorruptAccessError);
     }
   });
   test('invalid entries are dropped on read', async () => {
