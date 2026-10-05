@@ -7,6 +7,7 @@ export function Radio({
   onChange,
   label,
   hint,
+  disabled,
 }: {
   name: string;
   value: string;
@@ -14,6 +15,7 @@ export function Radio({
   onChange: (v: string) => void;
   label: string;
   hint?: string;
+  disabled?: boolean;
 }) {
   return (
     <label className="ui-radio">
@@ -23,6 +25,7 @@ export function Radio({
         name={name}
         value={value}
         checked={checked}
+        disabled={disabled}
         onChange={() => onChange(value)}
       />
       <span className="ui-radio__text">

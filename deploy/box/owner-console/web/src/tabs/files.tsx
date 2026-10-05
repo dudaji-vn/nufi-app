@@ -1,7 +1,11 @@
 import { useRef, useState } from 'react';
 import { useUi } from '../store';
 import { Breadcrumb } from './files/breadcrumb';
-import { useFiles, useStatus, useUpload, type FileRow } from '../api';
+import { useDeleteFile, useFiles, useMkdir, useRename, useSetAccess, useStatus, useUpload, type FileRow } from '../api';
+import { AccessModal } from './files/access-modal';
+import { DeleteDialog } from './files/delete-dialog';
+import { NewFolderModal } from './files/new-folder-modal';
+import { RenameModal } from './files/rename-modal';
 import { Button } from '../ui/button';
 import { FileTable, formatSize, type FileAction } from './files/file-table';
 import { useToast } from '../ui/toast';
@@ -22,6 +26,11 @@ export function Files() {
   const { data, isPending, error } = useFiles(dept, filePath);
   const upload = useUpload(dept);
   const toast = useToast();
+  const setAccess = useSetAccess(dept, filePath);
+  const rename = useRename(dept, filePath);
+  const deleteFile = useDeleteFile(dept, filePath);
+  const mkdir = useMkdir(dept, filePath);
+  const [modal, setModal] = useState<{ kind: 'access' | 'rename' | 'delete' | 'newFolder'; row?: FileRow } | null>(null);
   const [query, setQuery] = useState('');
   const [over, setOver] = useState(false);
   const input = useRef<HTMLInputElement>(null);
@@ -42,14 +51,22 @@ export function Files() {
     setQuery('');
     setFilePath(rel(row.name));
   };
-  // Seam for Task 7: access/rename/delete open modals here; download is wired.
+  const close = () => setModal(null);
+  const run = (mutation: { mutate: (v: never, o: { onSuccess: () => void; onError: (e: unknown) => void }) => void }, v: unknown, ok: string) =>
+    mutation.mutate(v as never, {
+      onSuccess: () => {
+        toast.push(ok, 'ok');
+        close();
+      },
+      onError: (e) => toast.push(errText(e, 'Action failed'), 'bad'),
+    });
   const onAction = (action: FileAction, row: FileRow) => {
     if (action === 'download') {
       const a = document.createElement('a');
       a.href = href(row.name);
       a.download = row.name;
       a.click();
-    }
+    } else setModal({ kind: action, row });
   };
 
   let body;
@@ -84,6 +101,9 @@ export function Files() {
         <Button data-testid="upload-file" disabled={!dept || upload.isPending} onClick={() => input.current?.click()}>
           Upload
         </Button>
+        <Button variant="secondary" disabled={!dept} onClick={() => setModal({ kind: 'newFolder' })}>
+          New Folder
+        </Button>
         <input ref={input} type="file" hidden aria-label="File to upload" onChange={(e) => send(e.target.files?.[0])} />
       </div>
 
@@ -114,6 +134,17 @@ export function Files() {
       </div>
 
       {body}
+
+      {modal?.kind === 'access' && modal.row && (
+        <AccessModal key={modal.row.name} open row={modal.row} onClose={close} onSave={(access) => run(setAccess, { itemPath: rel(modal.row!.name), access }, 'Accessibility updated')} />
+      )}
+      {modal?.kind === 'rename' && modal.row && (
+        <RenameModal key={modal.row.name} open row={modal.row} onClose={close} onSave={(newName) => run(rename, { itemPath: rel(modal.row!.name), newName }, 'Renamed')} />
+      )}
+      {modal?.kind === 'delete' && modal.row && (
+        <DeleteDialog open row={modal.row} onClose={close} onConfirm={() => run(deleteFile, rel(modal.row!.name), `Deleted ${modal.row!.name}`)} />
+      )}
+      {modal?.kind === 'newFolder' && <NewFolderModal open onClose={close} onCreate={(name) => run(mkdir, name, 'Folder created')} />}
     </div>
   );
 }

@@ -25,6 +25,9 @@ beforeEach(() => {
   useUi.setState({ filePath: '' });
   vi.spyOn(api, 'useStatus').mockReturnValue({ data: { box: { name: 'b', departments: ['eng', 'ops'] }, services: [] } } as never);
   vi.spyOn(api, 'useUpload').mockReturnValue({ mutate, isPending: false } as never);
+  for (const h of ['useSetAccess', 'useRename', 'useDeleteFile', 'useMkdir'] as const) {
+    vi.spyOn(api, h).mockReturnValue({ mutate, isPending: false } as never);
+  }
 });
 
 test('empty state shows the Figma copy', () => {
@@ -225,4 +228,62 @@ test('a folder row has no Download and its name opens it', () => {
   expect(screen.queryByRole('menuitem', { name: 'Download' })).toBeNull();
   fireEvent.click(screen.getByText('z'));
   expect(onOpen).toHaveBeenCalledWith(rowsFixture[2]);
+});
+
+const openAction = (name: string, item: string) => {
+  fireEvent.click(screen.getByLabelText(`Actions for ${name}`));
+  fireEvent.click(screen.getByRole('menuitem', { name: item }));
+};
+
+test('Accessibility modal: Specific Users disabled; Private + Save sets access', () => {
+  useUi.setState({ filePath: 'docs' });
+  mockFiles([f({ name: 'a.txt', access: 'public' })]);
+  render(<Files />);
+  openAction('a.txt', 'Accessibility');
+  expect(screen.getByRole('dialog', { name: 'Accessibility a.txt' })).toBeTruthy();
+  expect((screen.getByRole('radio', { name: /Specific Users/ }) as HTMLInputElement).disabled).toBe(true);
+  expect((screen.getByRole('radio', { name: /Public/ }) as HTMLInputElement).checked).toBe(true);
+  fireEvent.click(screen.getByRole('radio', { name: /Private/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+  expect(mutate).toHaveBeenCalledWith({ itemPath: 'docs/a.txt', access: 'private' }, expect.anything());
+});
+
+test('Rename modal submits the new name', () => {
+  mockFiles([f({ name: 'a.txt' })]);
+  render(<Files />);
+  openAction('a.txt', 'Rename');
+  const input = screen.getByLabelText('Name') as HTMLInputElement;
+  expect(input.value).toBe('a.txt');
+  fireEvent.change(input, { target: { value: 'b.txt' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+  expect(mutate).toHaveBeenCalledWith({ itemPath: 'a.txt', newName: 'b.txt' }, expect.anything());
+});
+
+test('Delete dialog for a folder shows the cascade copy and deletes', () => {
+  mockFiles([f({ name: 'docs', kind: 'dir' })]);
+  render(<Files />);
+  openAction('docs', 'Delete');
+  expect(screen.getByText('Delete folder "docs"')).toBeTruthy();
+  expect(screen.getByText(/All files of this folder will also be deleted/)).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+  expect(mutate).toHaveBeenCalledWith('docs', expect.anything());
+});
+
+test('Delete dialog for a file is a simple confirm', () => {
+  mockFiles([f({ name: 'a.txt' })]);
+  render(<Files />);
+  openAction('a.txt', 'Delete');
+  expect(screen.getByText('Delete a.txt?')).toBeTruthy();
+  expect(screen.queryByText(/All files of this folder/)).toBeNull();
+});
+
+test('New Folder creates with the entered name and Cancel closes', () => {
+  mockFiles([]);
+  render(<Files />);
+  fireEvent.click(screen.getByRole('button', { name: 'New Folder' }));
+  fireEvent.change(screen.getByLabelText('Folder name'), { target: { value: 'reports' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+  expect(mutate).toHaveBeenCalledWith('reports', expect.anything());
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(screen.queryByRole('dialog')).toBeNull();
 });
