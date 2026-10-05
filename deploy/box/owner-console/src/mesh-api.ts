@@ -70,6 +70,9 @@ export type Node = {
   online: boolean;
   lastSeen: string;
   tags: string[];
+  // The pre-auth key this node joined with (headscale v0.29 node.preAuthKey.id);
+  // how the users API tells which invite was activated. Absent for a node with none.
+  preAuthKeyId?: string;
 };
 
 // The nodes the coordinator knows — the box itself (tag:box) and every member
@@ -85,6 +88,10 @@ export async function listNodes(cfg: MeshConfig, fetchImpl: typeof fetch = fetch
     online: Boolean(n.online),
     lastSeen: String(n.lastSeen ?? ''),
     tags: (n.tags ?? n.validTags ?? n.forcedTags ?? []) as string[],
+    preAuthKeyId: (() => {
+      const id = (n.preAuthKey as { id?: string | number } | undefined)?.id;
+      return id === undefined || id === null ? undefined : String(id);
+    })(),
   }));
 }
 
@@ -108,7 +115,7 @@ async function mintKey(
   opts: { reusable: boolean; ttlMs: number },
   now: () => number,
   fetchImpl: typeof fetch,
-): Promise<string> {
+): Promise<{ id: string; key: string }> {
   const uid = await userId(cfg, 'box', fetchImpl);
   const expiration = new Date(now() + opts.ttlMs).toISOString();
   const data = await api(cfg, 'POST', '/api/v1/preauthkey', {
@@ -118,9 +125,9 @@ async function mintKey(
     expiration,
     aclTags: ['tag:member'],
   }, fetchImpl);
-  const key = (data.preAuthKey as { key?: string } | undefined)?.key;
-  if (!key) throw new MeshError('the coordinator returned no pre-auth key');
-  return key;
+  const pk = data.preAuthKey as { id?: string | number; key?: string } | undefined;
+  if (!pk?.key) throw new MeshError('the coordinator returned no pre-auth key');
+  return { id: String(pk.id ?? ''), key: pk.key };
 }
 
 // A single-use, one-hour tag:member key — the key one laptop uses to join.
@@ -129,6 +136,16 @@ export function mintMemberKey(
   now: () => number = Date.now,
   fetchImpl: typeof fetch = fetch,
 ): Promise<string> {
+  return mintKey(cfg, { reusable: false, ttlMs: 3600_000 }, now, fetchImpl).then((k) => k.key);
+}
+
+// Same key, but with headscale's key id too — the users API stores the id so it
+// can later tell whether a node joined with this key.
+export function mintMemberKeyWithId(
+  cfg: MeshConfig,
+  now: () => number = Date.now,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ id: string; key: string }> {
   return mintKey(cfg, { reusable: false, ttlMs: 3600_000 }, now, fetchImpl);
 }
 
@@ -139,5 +156,15 @@ export function mintFleetKey(
   now: () => number = Date.now,
   fetchImpl: typeof fetch = fetch,
 ): Promise<string> {
-  return mintKey(cfg, { reusable: true, ttlMs: FLEET_TTL_MS }, now, fetchImpl);
+  return mintKey(cfg, { reusable: true, ttlMs: FLEET_TTL_MS }, now, fetchImpl).then((k) => k.key);
+}
+
+export type PreAuthKey = { id: string; used: boolean; expiration: string };
+
+// The box user's pre-auth keys — used to tell a pending invite from an expired one.
+export async function listKeys(cfg: MeshConfig, fetchImpl: typeof fetch = fetch): Promise<PreAuthKey[]> {
+  const uid = await userId(cfg, 'box', fetchImpl);
+  const data = await api(cfg, 'GET', `/api/v1/preauthkey?user=${encodeURIComponent(uid)}`, undefined, fetchImpl);
+  const keys = (data.preAuthKeys as Array<Record<string, unknown>>) ?? [];
+  return keys.map((k) => ({ id: String(k.id ?? ''), used: Boolean(k.used), expiration: String(k.expiration ?? '') }));
 }

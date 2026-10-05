@@ -5,6 +5,7 @@ import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { signSession, verifyPassword, verifySession } from './auth';
 import { controlRoutes, type ControlDeps } from './api/control';
 import { buildStatus } from './api/status';
+import { usersRoutes, type UsersDeps } from './api/users';
 import { boxInfo } from './boxinfo';
 import { isOS, macosPlan, renderConnector } from './connector';
 import { checkAll, probesForEnv, type Health } from './health';
@@ -36,6 +37,7 @@ type Deps = {
   agentDistDir?: string;
   agentSha256?: () => { amd64: string; arm64: string };
   exec?: Partial<ControlDeps>;
+  users?: Partial<UsersDeps>;
 };
 
 // The NufiBox Agent bundles the box ships for a member to install — the Linux
@@ -100,6 +102,12 @@ export function createApp(env: AppEnv = process.env, deps: Deps = {}): Hono {
   const coordCaB64 = deps.coordCaB64 ?? (() =>
     env.NUFI_SELF_HOST_COORD === '1' ? b64OfFile(env.NODE_EXTRA_CA_CERTS ?? '/mesh-ca.crt') : '');
 
+  const agentDistDir = deps.agentDistDir ?? env.AGENT_DIST_DIR ?? '/app/agent-dist';
+  // The digests baked beside each agent tarball at image-build time (build-agent.sh).
+  const agentSha256 = deps.agentSha256 ?? (() => ({
+    amd64: shaOfFile(`${agentDistDir}/nufibox-agent-linux-amd64.tar.gz.sha256`),
+    arm64: shaOfFile(`${agentDistDir}/nufibox-agent-linux-arm64.tar.gz.sha256`),
+  }));
   const app = new Hono();
 
   const authed = (c: { req: { header: (n: string) => string | undefined } }) =>
@@ -137,6 +145,8 @@ export function createApp(env: AppEnv = process.env, deps: Deps = {}): Hono {
   app.get('/api/status', async (c) => c.json(await buildStatus(() => boxInfo(env), checkHealth)));
 
   app.route('/api', controlRoutes(deps.exec));
+
+  app.route('/api', usersRoutes({ env, secret, origin: originOf, boxCaB64, coordCaB64, templatesDir, agentSha256 }, deps.users));
 
   // The React SPA (built to web/dist). Served alongside the legacy server-rendered
   // pages until they are cut over; unknown /api/* is a real 404, unknown /assets/*
@@ -232,12 +242,6 @@ export function createApp(env: AppEnv = process.env, deps: Deps = {}): Hono {
   // The de-branded NufiBox Agent, served for a member to install — public and
   // reachable on plain :80 (like /connect), so a laptop that has not trusted the
   // box CA yet can fetch it. Not secret: it is the client binaries + wrapper.
-  const agentDistDir = deps.agentDistDir ?? env.AGENT_DIST_DIR ?? '/app/agent-dist';
-  // The digests baked beside each agent tarball at image-build time (build-agent.sh).
-  const agentSha256 = deps.agentSha256 ?? (() => ({
-    amd64: shaOfFile(`${agentDistDir}/nufibox-agent-linux-amd64.tar.gz.sha256`),
-    arm64: shaOfFile(`${agentDistDir}/nufibox-agent-linux-arm64.tar.gz.sha256`),
-  }));
   app.get('/agent/:file', async (c) => {
     const file = c.req.param('file');
     // The coordinator CA, for the macOS enrol command on a self-hosted box. Not
