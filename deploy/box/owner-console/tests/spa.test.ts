@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { makeApp } from './helpers';
+import { makeApp, ownerCookie } from './helpers';
 
 let dist = '';
 beforeAll(() => {
@@ -38,7 +38,7 @@ describe('SPA serving', () => {
     const spa = await app.request('/app/members/42');
     expect(spa.status).toBe(200);
     expect(await spa.text()).toContain('id="root"');
-    expect((await app.request('/api/nope')).status).toBe(404);
+    expect((await app.request('/api/nope', { headers: { cookie: ownerCookie() } })).status).toBe(404);
     expect((await app.request('/assets/missing.js')).status).toBe(404);
   });
 
