@@ -205,4 +205,19 @@ describe('users routes', () => {
     expect(lines[1]).toContain("'=Ann,");
     expect(lines[1]).toContain('/connect#token=');
   });
+
+  test('export honors selected ids; no body or empty ids exports all', async () => {
+    const a = app();
+    const r = await call(a, 'POST', '/api/users/import', 'name,os\nAnn,windows\nBob,linux\n', true);
+    const [ann, bob] = await r.json();
+    const only = await (await call(a, 'POST', '/api/users/export', { ids: [ann.id] })).text();
+    expect(only).toContain('Ann,');
+    expect(only).not.toContain('Bob,');
+    expect(only.trim().split('\n')).toHaveLength(2);
+    expect(bob.id).not.toBe(ann.id);
+    for (const body of [undefined, {}, { ids: [] }]) {
+      const all = await (await call(a, 'POST', '/api/users/export', body)).text();
+      expect(all.trim().split('\n')).toHaveLength(3);
+    }
+  });
 });

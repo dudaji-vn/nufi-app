@@ -124,7 +124,7 @@ export function createApp(env: AppEnv = process.env, deps: Deps = {}): Hono {
   app.route('/api', usersRoutes({ env, secret, origin: originOf, boxCaB64, coordCaB64, templatesDir, agentSha256 }, deps.users));
 
   // The React SPA (built to web/dist). Served at / and /app; unknown /api/* is a real 404, unknown /assets/*
-  // is a 404, and any other unmatched GET falls back to index.html (client routes).
+  // is a 404; only /app and /app/* fall back to index.html (client routes), any other unmatched path 404s.
   const distDir = resolve(env.WEB_DIST_DIR ?? join(import.meta.dir, '../web/dist'));
   const spaIndex = () => {
     const f = join(distDir, 'index.html');

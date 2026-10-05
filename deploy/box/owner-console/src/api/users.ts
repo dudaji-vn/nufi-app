@@ -211,7 +211,11 @@ export function usersRoutes(ctx: UsersCtx, deps: Partial<UsersDeps> = {}): Hono 
 
   r.post('/users/export', async (c) => {
     const origin = ctx.origin(c);
-    const lines = ['name,link', ...(await d.listUsers()).map((u) => `${csvCell(u.name)},${csvCell(connectLink(origin, u.token))}`)];
+    const body = (await c.req.json().catch(() => null)) as { ids?: unknown } | null;
+    const ids = body && Array.isArray(body.ids) ? body.ids : [];
+    const users = await d.listUsers();
+    const picked = ids.length ? users.filter((u) => ids.includes(u.id)) : users;
+    const lines = ['name,link', ...picked.map((u) => `${csvCell(u.name)},${csvCell(connectLink(origin, u.token))}`)];
     return new Response(lines.join('\n') + '\n', {
       headers: { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': 'attachment; filename="nufi-users.csv"' },
     });
