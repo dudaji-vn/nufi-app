@@ -309,3 +309,36 @@ test('a folder own Private entry moves with it; a rename that cannot happen leav
   const top = await (await get('/api/files?dept=legal')).json();
   expect(top.find((x: { name: string }) => x.name === 'sub2').access).toBe('private');
 });
+
+const setAcc = (body: unknown) => j('PUT', '/api/files/access', body);
+
+test('set access: file private shows in list; folder private is inherited by children', async () => {
+  seedSub();
+  expect((await setAcc({ dept: 'legal', path: 'a.pdf', access: 'private' })).status).toBe(200);
+  const top = await (await get('/api/files?dept=legal')).json();
+  expect(top.find((x: { name: string }) => x.name === 'a.pdf').access).toBe('private');
+  expect((await setAcc({ dept: 'legal', path: 'sub', access: 'private' })).status).toBe(200);
+  const rows = await (await get('/api/files?dept=legal&path=sub')).json();
+  expect(rows[0]).toMatchObject({ name: 'a.pdf', access: 'private' });
+});
+
+test('set access rejects bad input', async () => {
+  expect((await setAcc({ dept: 'legal', path: 'a.pdf', access: 'secret' })).status).toBe(400);
+  expect((await setAcc({ dept: 'legal', path: 'nope.pdf', access: 'private' })).status).toBe(404);
+  expect((await setAcc({ dept: 'legal', path: '.nufi-access.json', access: 'private' })).status).toBe(400);
+  expect((await setAcc({ dept: 'legal', path: 'sub/.hidden', access: 'private' })).status).toBe(400);
+  expect((await setAcc({ dept: 'legal', path: '', access: 'private' })).status).toBe(400);
+  expect((await setAcc({ dept: 'nope', path: 'a.pdf', access: 'private' })).status).toBe(400);
+});
+
+test('set access requires owner auth', async () => {
+  const r = await app.request('/api/files/access', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ dept: 'legal', path: 'a.pdf', access: 'private' }) });
+  expect(r.status).toBe(401);
+});
+
+test('deleting a private item leaves no stale access entry', async () => {
+  await setAcc({ dept: 'legal', path: 'a.pdf', access: 'private' });
+  expect((await j('DELETE', '/api/files?dept=legal&path=a.pdf')).status).toBe(200);
+  const acc = JSON.parse(readFileSync(join(root, 'legal', '.nufi-access.json'), 'utf8'));
+  expect(Object.keys(acc.entries)).toEqual([]);
+});

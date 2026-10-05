@@ -1,7 +1,7 @@
 import { lstat, mkdir, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve, sep } from 'node:path';
 import { Hono } from 'hono';
-import { copySubtree, effectiveAccess, readAccess, removeSubtree } from '../access';
+import { copySubtree, effectiveAccess, readAccess, removeSubtree, setEntry } from '../access';
 import { boxInfo } from '../boxinfo';
 
 type Env = Record<string, string | undefined>;
@@ -214,6 +214,23 @@ export function filesRoutes(env: Env): Hono {
       return c.json({ ok: true, name: b.newName });
     } catch (e) {
       return fail(c, e, 'rename failed');
+    }
+  });
+
+  r.put('/files/access', async (c) => {
+    try {
+      const b = await jsonBody(c);
+      const root = await deptDir(env, b.dept as string | undefined);
+      if (b.access !== 'public' && b.access !== 'private') throw new Bad('invalid access');
+      if (typeof b.path !== 'string' || !b.path) throw new Bad('invalid path'); // per file/folder, never the dept root
+      const target = await resolveRel(root, b.path);
+      const s = await entry(target);
+      if (!s) throw new Missing();
+      if (s.isSymbolicLink()) throw new Bad('invalid path');
+      await setEntry(root, b.path, b.access);
+      return c.json({ ok: true });
+    } catch (e) {
+      return fail(c, e, 'could not set access');
     }
   });
 
