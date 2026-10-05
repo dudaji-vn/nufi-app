@@ -46,8 +46,45 @@ IGNORED_PREFIXES = (".", "~$", "._")
 # would have been ignored for free, and is not used -- a folder hidden in Finder
 # and over Samba is a report nobody can see.
 ROUTINE_OUTPUT_DIR = "_routines"
+# Written by the owner console next to a department's files; dot-named, so
+# _listing() never treats it as a document to embed.
+ACCESS_FILE = ".nufi-access.json"
 UPLOADS_PER_WINDOW = 40          # app default is 50 per 15 min per user
 WINDOW_SECONDS = 15 * 60
+
+
+def load_access(dept_dir):
+    """Read a department's access entries ({rel path in dept: {"access": ...}}).
+
+    Absent, corrupt or malformed all mean "no entries" (everything Public):
+    this must never raise, or one bad file would stop the whole scan.
+    """
+    try:
+        data = json.loads((pathlib.Path(dept_dir) / ACCESS_FILE).read_text())
+    except (OSError, ValueError):
+        return {}
+    entries = data.get("entries") if isinstance(data, dict) else None
+    if not isinstance(entries, dict):
+        return {}
+    out = {}
+    for key, val in entries.items():
+        if isinstance(val, dict) and val.get("access") in ("public", "private"):
+            out[key] = {"access": val["access"]}
+    return out
+
+
+def effective_access(entries, rel_in_dept):
+    """Own entry wins, else the deepest ancestor folder's, else public.
+
+    Mirrors owner-console/src/access.ts effectiveAccess.
+    """
+    path = rel_in_dept
+    while path:
+        ent = entries.get(path)
+        if ent is not None:
+            return ent["access"]
+        path = path.rpartition("/")[0]
+    return "public"
 
 
 @dataclass
@@ -519,8 +556,9 @@ class Ingester:
                 dept = rel.split("/", 1)[0]
                 agent = self.state["departments"].get(dept, {}).get("agent_id")
                 try:
-                    self.app.delete(rec["file_id"], rec["filepath"], agent)
-                    LOG.info("removed %s (%s)", rel, rec["file_id"])
+                    if rec.get("file_id"):      # private files were never uploaded
+                        self.app.delete(rec["file_id"], rec["filepath"], agent)
+                    LOG.info("removed %s (%s)", rel, rec.get("file_id"))
                 except AppError as e:
                     # keep the state record so the next scan retries the delete
                     # instead of orphaning the server-side file/embedding
@@ -529,19 +567,39 @@ class Ingester:
                 del self.state["files"][rel]
                 self.save()
         # additions and changes
+        access_cache = {}
         for rel, (path, dept, size, mtime) in listing.items():
+            if dept not in access_cache:
+                access_cache[dept] = load_access(pathlib.Path(self.cfg.drives_dir) / dept)
+            acc = effective_access(access_cache[dept], rel.split("/", 1)[1])
             rec = self.state["files"].get(rel)
-            if rec and rec["size"] == size and rec["mtime"] == mtime:
+            # a record from before accessibility existed was always Public
+            if (rec and rec["size"] == size and rec["mtime"] == mtime
+                    and rec.get("access", "public") == acc):
                 continue
             if not self._stable(rel, size, mtime):
                 continue
             d = self.ensure_department(dept)
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
-            if rec and rec.get("sha256") == digest:
-                rec.update({"size": size, "mtime": mtime})
+            if acc == "private":
+                # Private files stay on the drive but never enter the chat's RAG
+                if rec and rec.get("file_id"):
+                    try:
+                        self.app.delete(rec["file_id"], rec["filepath"], d["agent_id"])
+                    except AppError as e:
+                        LOG.error("delete private %s failed: %s", rel, e)
+                        continue
+                self.state["files"][rel] = {"size": size, "mtime": mtime, "sha256": digest,
+                                            "access": "private", "embedded": False}
+                self.save()
+                self._pending.pop(rel, None)
+                LOG.info("%s is private; not in chat", rel)
+                continue
+            if rec and rec.get("file_id") and rec.get("sha256") == digest:
+                rec.update({"size": size, "mtime": mtime, "access": "public"})
                 self.save()
                 continue
-            if rec:
+            if rec and rec.get("file_id"):
                 try:
                     self.app.delete(rec["file_id"], rec["filepath"], d["agent_id"])
                 except AppError as e:
@@ -556,7 +614,8 @@ class Ingester:
                 LOG.error("upload %s failed: %s", rel, e)
                 continue
             self.state["files"][rel] = {"file_id": file_id, "filepath": filepath, "size": size,
-                                        "mtime": mtime, "sha256": digest, "embedded": embedded}
+                                        "mtime": mtime, "sha256": digest, "access": "public",
+                                        "embedded": embedded}
             self.save()
             LOG.info("%s %s → %s (embedded=%s)",
                      "updated" if rec else "added", rel, file_id, embedded)
