@@ -8,7 +8,14 @@ export function accessPath(driveDir: string): string {
   return `${driveDir}/.nufi-access.json`;
 }
 
-const empty = (): AccessFile => ({ version: 1, entries: {} });
+const empty = (): AccessFile => ({ version: 1, entries: Object.create(null) });
+
+// Own, well-formed entry or undefined (prototype keys and bad values are "no entry").
+function lookup(a: AccessFile, k: string): Access | undefined {
+  if (!Object.hasOwn(a.entries, k)) return undefined;
+  const v = a.entries[k]?.access;
+  return v === 'public' || v === 'private' ? v : undefined;
+}
 
 export async function readAccess(driveDir: string): Promise<AccessFile> {
   try {
@@ -21,7 +28,12 @@ export async function readAccess(driveDir: string): Promise<AccessFile> {
       typeof parsed.entries === 'object' &&
       !Array.isArray(parsed.entries)
     ) {
-      return { version: 1, entries: parsed.entries };
+      const entries: AccessFile['entries'] = Object.create(null);
+      for (const k of Object.keys(parsed.entries)) {
+        const v = parsed.entries[k]?.access;
+        if (v === 'public' || v === 'private') entries[k] = { access: v };
+      }
+      return { version: 1, entries };
     }
   } catch {
     // absent or corrupt: fall through to the empty default
@@ -49,15 +61,15 @@ export function writeAccess(driveDir: string, a: AccessFile): Promise<void> {
 }
 
 export function effectiveAccess(a: AccessFile, relPath: string): Access {
-  const own = a.entries[relPath];
-  if (own) return own.access;
+  const own = lookup(a, relPath);
+  if (own) return own;
   let p = relPath;
   for (;;) {
     const i = p.lastIndexOf('/');
     if (i < 0) return 'public';
     p = p.slice(0, i);
-    const e = a.entries[p];
-    if (e) return e.access;
+    const e = lookup(a, p);
+    if (e) return e;
   }
 }
 
