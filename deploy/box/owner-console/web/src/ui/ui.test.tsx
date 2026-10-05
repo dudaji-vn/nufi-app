@@ -2,7 +2,13 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest';
 import { Badge } from './badge';
 import { Button } from './button';
+import { Avatar } from './avatar';
 import { Card } from './card';
+import { Checkbox } from './checkbox';
+import { ContextMenu } from './context-menu';
+import { Input } from './input';
+import { Radio } from './radio';
+import { Select } from './select';
 import { Modal } from './modal';
 import { Table } from './table';
 import { Tabs } from './tabs';
@@ -115,4 +121,103 @@ test('Toast push shows a message', () => {
   });
   const t = screen.getByText('Saved');
   expect(t.closest('[role="status"]')).toBeTruthy();
+});
+
+test('ContextMenu opens, selects and closes', () => {
+  const onSelect = vi.fn();
+  render(
+    <ContextMenu items={[{ label: 'Rename', onSelect }]}>
+      <button type="button">more</button>
+    </ContextMenu>,
+  );
+  expect(screen.queryByRole('menuitem', { name: 'Rename' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'more' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
+  expect(onSelect).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole('menuitem', { name: 'Rename' })).toBeNull();
+});
+
+test('ContextMenu disabled item does not fire; Escape and outside click close', () => {
+  const onSelect = vi.fn();
+  render(
+    <div>
+      <ContextMenu items={[{ label: 'Delete', danger: true, disabled: true, onSelect }]}>
+        <button type="button">more</button>
+      </ContextMenu>
+      <p>outside</p>
+    </div>,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'more' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+  expect(onSelect).not.toHaveBeenCalled();
+  expect(screen.getByRole('menuitem', { name: 'Delete' })).toBeTruthy();
+  fireEvent.keyDown(window, { key: 'Escape' });
+  expect(screen.queryByRole('menu')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'more' }));
+  fireEvent.mouseDown(screen.getByText('outside'));
+  expect(screen.queryByRole('menu')).toBeNull();
+});
+
+test('Radio reflects checked, shows hint, reports value', () => {
+  const onChange = vi.fn();
+  render(<Radio name="a" value="big" checked label="Big" hint="Larger text" onChange={onChange} />);
+  const r = screen.getByRole('radio') as HTMLInputElement;
+  expect(r.checked).toBe(true);
+  expect(screen.getByText('Big')).toBeTruthy();
+  expect(screen.getByText('Larger text')).toBeTruthy();
+  cleanup();
+  render(<Radio name="a" value="big" checked={false} label="Big" onChange={onChange} />);
+  fireEvent.click(screen.getByRole('radio'));
+  expect(onChange).toHaveBeenCalledWith('big');
+});
+
+test('Checkbox toggles with new boolean', () => {
+  const onChange = vi.fn();
+  render(<Checkbox checked={false} onChange={onChange} label="All" />);
+  fireEvent.click(screen.getByRole('checkbox', { name: 'All' }));
+  expect(onChange).toHaveBeenCalledWith(true);
+});
+
+test('Select renders options and reports value', () => {
+  const onChange = vi.fn();
+  render(
+    <Select
+      value="a"
+      onChange={onChange}
+      options={[
+        { value: 'a', label: 'Alpha' },
+        { value: 'b', label: 'Beta' },
+      ]}
+    />,
+  );
+  expect(screen.getAllByRole('option')).toHaveLength(2);
+  fireEvent.change(screen.getByRole('combobox'), { target: { value: 'b' } });
+  expect(onChange).toHaveBeenCalledWith('b');
+});
+
+test('Input forwards props', () => {
+  const onChange = vi.fn();
+  render(<Input value="hi" onChange={onChange} placeholder="Name" />);
+  const i = screen.getByPlaceholderText('Name') as HTMLInputElement;
+  expect(i.value).toBe('hi');
+  fireEvent.change(i, { target: { value: 'yo' } });
+  expect(onChange).toHaveBeenCalled();
+});
+
+test('Avatar shows first initial', () => {
+  render(<Avatar name="sun" />);
+  expect(screen.getByText('S')).toBeTruthy();
+});
+
+test('ContextMenu panel is position:fixed so overflow ancestors cannot clip it', () => {
+  render(
+    <div style={{ overflow: 'hidden' }}>
+      <ContextMenu items={[{ label: 'A', onSelect: vi.fn() }, { label: 'A', onSelect: vi.fn() }]}>
+        <button type="button">more</button>
+      </ContextMenu>
+    </div>,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'more' }));
+  expect(screen.getByRole('menu').style.position).toBe('fixed');
+  expect(screen.getAllByRole('menuitem')).toHaveLength(2);
 });

@@ -46,8 +46,56 @@ IGNORED_PREFIXES = (".", "~$", "._")
 # would have been ignored for free, and is not used -- a folder hidden in Finder
 # and over Samba is a report nobody can see.
 ROUTINE_OUTPUT_DIR = "_routines"
+# Written by the owner console next to a department's files; dot-named, so
+# _listing() never treats it as a document to embed.
+ACCESS_FILE = ".nufi-access.json"
 UPLOADS_PER_WINDOW = 40          # app default is 50 per 15 min per user
 WINDOW_SECONDS = 15 * 60
+# How many scans a removed Private file's hash is remembered, so a move that
+# is not atomic on the share (gone one scan, back a later one) is still caught.
+TOMBSTONE_SCANS = 5
+
+
+def load_access(dept_dir):
+    """Read a department's access entries ({rel path in dept: {"access": ...}}).
+
+    Absent means no entries (everything Public). A file that is present but
+    unusable (unreadable, corrupt, malformed) returns None so the caller fails
+    CLOSED instead of publishing files the owner made Private. Never raises.
+    """
+    try:
+        data = json.loads((pathlib.Path(dept_dir) / ACCESS_FILE).read_text())
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError):
+        return None
+    entries = data.get("entries") if isinstance(data, dict) else None
+    if not isinstance(entries, dict):
+        return None
+    out = {}
+    for key, val in entries.items():
+        if isinstance(val, dict) and val.get("access") in ("public", "private"):
+            out[key] = {"access": val["access"]}
+    return out
+
+
+def find_access(entries, rel_in_dept):
+    """The explicit access that applies (own entry, else deepest ancestor), or None."""
+    path = rel_in_dept
+    while path:
+        ent = entries.get(path)
+        if ent is not None:
+            return ent["access"]
+        path = path.rpartition("/")[0]
+    return None
+
+
+def effective_access(entries, rel_in_dept):
+    """Own entry wins, else the deepest ancestor folder's, else public.
+
+    Mirrors owner-console/src/access.ts effectiveAccess.
+    """
+    return find_access(entries, rel_in_dept) or "public"
 
 
 @dataclass
@@ -512,6 +560,16 @@ class Ingester:
         for dept_dir in self._department_dirs():
             self.ensure_department(dept_dir.name)
         listing = self._listing()
+        access_cache = {d.name: load_access(d) for d in self._department_dirs()}
+        # age out private-file tombstones (a file really deleted just fades
+        # away) -- but not while any access file is unusable: the fix may be
+        # what lets a moved file's hold be honoured, so the clock stops.
+        tombs = self.state.setdefault("private_tombstones", {})
+        if all(v is not None for v in access_cache.values()):
+            for h in list(tombs):
+                tombs[h]["scans_left"] -= 1
+                if tombs[h]["scans_left"] <= 0:
+                    del tombs[h]
         # removals
         for rel in list(self.state["files"]):
             if rel not in listing:
@@ -519,29 +577,83 @@ class Ingester:
                 dept = rel.split("/", 1)[0]
                 agent = self.state["departments"].get(dept, {}).get("agent_id")
                 try:
-                    self.app.delete(rec["file_id"], rec["filepath"], agent)
-                    LOG.info("removed %s (%s)", rel, rec["file_id"])
+                    if rec.get("file_id"):      # private files were never uploaded
+                        self.app.delete(rec["file_id"], rec["filepath"], agent)
+                    LOG.info("removed %s (%s)", rel, rec.get("file_id"))
                 except AppError as e:
                     # keep the state record so the next scan retries the delete
                     # instead of orphaning the server-side file/embedding
                     LOG.error("delete %s failed: %s", rel, e)
                     continue
+                if rec.get("access") == "private" and not rec.get("file_id") and rec.get("sha256"):
+                    # may be an out-of-band move on the share: keep its content
+                    # private if it reappears at a path with no access entry
+                    tombs[rec["sha256"]] = {"scans_left": TOMBSTONE_SCANS}
                 del self.state["files"][rel]
                 self.save()
         # additions and changes
+        warned = set()
         for rel, (path, dept, size, mtime) in listing.items():
-            rec = self.state["files"].get(rel)
-            if rec and rec["size"] == size and rec["mtime"] == mtime:
+            if access_cache[dept] is None:
+                # fail closed: no uploads and no flips until the file is readable
+                if dept not in warned:
+                    warned.add(dept)
+                    LOG.warning("%s: unusable %s; skipping additions/changes this scan",
+                                dept, ACCESS_FILE)
                 continue
-            if not self._stable(rel, size, mtime):
+            rel_in_dept = rel.split("/", 1)[1]
+            explicit = find_access(access_cache[dept], rel_in_dept)
+            rec = self.state["files"].get(rel)
+            # A hold (set when the content matched a Private file) is sticky;
+            # only an explicit entry at this path (own or ancestor) overrides it.
+            held = explicit is None and bool(rec and rec.get("held"))
+            digest = None
+            if rec is None and explicit is None:
+                # copy/move of a Private file: match its content against removed
+                # Private files (tombstones) and live Private records
+                digest = hashlib.sha256(path.read_bytes()).hexdigest()
+                live = any(r.get("access") == "private" and r.get("sha256") == digest
+                           for k, r in self.state["files"].items() if k != rel)
+                if digest in tombs or live:
+                    tombs.pop(digest, None)
+                    held = True
+                    LOG.info("%s matches a Private file; holding it private", rel)
+            acc = explicit if explicit is not None else ("private" if held else "public")
+            # a record from before accessibility existed was always Public
+            if (rec and rec["size"] == size and rec["mtime"] == mtime
+                    and rec.get("access", "public") == acc):
+                continue
+            # the settle gate is for half-written files that are about to be
+            # uploaded; hiding a file (private) needs no settle
+            if acc != "private" and not self._stable(rel, size, mtime):
                 continue
             d = self.ensure_department(dept)
-            digest = hashlib.sha256(path.read_bytes()).hexdigest()
-            if rec and rec.get("sha256") == digest:
-                rec.update({"size": size, "mtime": mtime})
+            if digest is None:
+                if acc == "private" and rec and rec.get("sha256"):
+                    digest = rec["sha256"]      # only deleting; no need to re-hash
+                else:
+                    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            if acc == "private":
+                # Private files stay on the drive but never enter the chat's RAG
+                if rec and rec.get("file_id"):
+                    try:
+                        self.app.delete(rec["file_id"], rec["filepath"], d["agent_id"])
+                    except AppError as e:
+                        LOG.error("delete private %s failed: %s", rel, e)
+                        continue
+                self.state["files"][rel] = {"size": size, "mtime": mtime, "sha256": digest,
+                                            "access": "private", "embedded": False}
+                if held:
+                    self.state["files"][rel]["held"] = True
+                self.save()
+                self._pending.pop(rel, None)
+                LOG.info("%s is private; not in chat", rel)
+                continue
+            if rec and rec.get("file_id") and rec.get("sha256") == digest:
+                rec.update({"size": size, "mtime": mtime, "access": "public"})
                 self.save()
                 continue
-            if rec:
+            if rec and rec.get("file_id"):
                 try:
                     self.app.delete(rec["file_id"], rec["filepath"], d["agent_id"])
                 except AppError as e:
@@ -556,7 +668,8 @@ class Ingester:
                 LOG.error("upload %s failed: %s", rel, e)
                 continue
             self.state["files"][rel] = {"file_id": file_id, "filepath": filepath, "size": size,
-                                        "mtime": mtime, "sha256": digest, "embedded": embedded}
+                                        "mtime": mtime, "sha256": digest, "access": "public",
+                                        "embedded": embedded}
             self.save()
             LOG.info("%s %s → %s (embedded=%s)",
                      "updated" if rec else "added", rel, file_id, embedded)

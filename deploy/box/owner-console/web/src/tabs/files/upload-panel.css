@@ -1,0 +1,15 @@
+.upload-panel {
+  position: fixed; right: 16px; bottom: 16px; width: 320px; max-width: calc(100vw - 32px);
+  background: var(--surface); border: 1px solid var(--gray-3); border-radius: 8px;
+  box-shadow: 0 4px 16px var(--gray-3); z-index: 50;
+}
+.upload-panel__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; font-weight: 600; }
+.upload-panel__list { list-style: none; margin: 0; padding: 0 12px 8px; max-height: 240px; overflow: auto; }
+.upload-panel__row { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; align-items: center; padding: 6px 0; }
+.upload-panel__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.upload-panel__bar { grid-column: 1 / -1; height: 4px; border-radius: 2px; background: var(--gray-3); overflow: hidden; }
+.upload-panel__fill { height: 100%; background: var(--navy-2); }
+.upload-panel__err { grid-column: 1 / -1; font-size: 12px; color: var(--bad); }
+.upload-panel__btn { all: unset; cursor: pointer; padding: 2px 6px; border-radius: 4px; color: var(--gray-1); }
+.upload-panel__btn:focus-visible { outline: 2px solid var(--info); outline-offset: 2px; }
+.upload-panel__foot { padding: 0 12px 10px; }

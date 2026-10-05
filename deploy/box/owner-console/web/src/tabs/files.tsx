@@ -1,24 +1,20 @@
 import { useRef, useState } from 'react';
-import { useFiles, useStatus, useUpload, type FileRow } from '../api';
+import { useUi } from '../store';
+import { Breadcrumb } from './files/breadcrumb';
+import { useDeleteFile, useFiles, useMkdir, useRename, useSetAccess, useStatus, type FileRow } from '../api';
+import { AccessModal } from './files/access-modal';
+import { DeleteDialog } from './files/delete-dialog';
+import { NewFolderModal } from './files/new-folder-modal';
+import { RenameModal } from './files/rename-modal';
 import { Button } from '../ui/button';
-import { Table, type Col } from '../ui/table';
+import { FileTable, formatSize, type FileAction } from './files/file-table';
 import { useToast } from '../ui/toast';
+import { UploadPanel, useUploader } from './files/upload-panel';
 
 const errText = (e: unknown, fallback: string) => (e as { error?: string }).error ?? fallback;
 
-export function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ['KB', 'MB', 'GB', 'TB'];
-  let v = bytes / 1024;
-  let i = 0;
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024;
-    i++;
-  }
-  return `${v.toFixed(1)} ${units[i]}`;
-}
+export { formatSize };
 
-const fmtDate = (s: string) => (Number.isNaN(Date.parse(s)) ? '—' : new Date(s).toLocaleString());
 const muted = { color: 'var(--gray-1)' } as const;
 
 export function Files() {
@@ -26,55 +22,65 @@ export function Files() {
   const depts = (status.data?.box.departments as string[] | undefined) ?? [];
   const [picked, setPicked] = useState<string>();
   const dept = picked && depts.includes(picked) ? picked : depts[0];
-  const { data, isPending, error } = useFiles(dept);
-  const upload = useUpload(dept);
+  const filePath = useUi((s) => s.filePath);
+  const setFilePath = useUi((s) => s.setFilePath);
+  const { data, isPending, error } = useFiles(dept, filePath);
+  const uploader = useUploader(dept, filePath);
   const toast = useToast();
+  const setAccess = useSetAccess(dept, filePath);
+  const rename = useRename(dept, filePath);
+  const deleteFile = useDeleteFile(dept, filePath);
+  const mkdir = useMkdir(dept, filePath);
+  const [modal, setModal] = useState<{ kind: 'access' | 'rename' | 'delete' | 'newFolder'; row?: FileRow } | null>(null);
   const [query, setQuery] = useState('');
   const [over, setOver] = useState(false);
   const input = useRef<HTMLInputElement>(null);
 
-  const send = (file: File | undefined) => {
-    if (!file) return;
-    upload.mutate(file, {
-      onSuccess: () => toast.push(`Uploaded ${file.name}`, 'ok'),
-      onError: (e) => toast.push(errText(e, 'Upload failed'), 'bad'),
-    });
+  const send = (list: FileList | null | undefined) => {
+    if (list && list.length) uploader.enqueue(Array.from(list));
     if (input.current) input.current.value = '';
   };
 
-  const href = (name: string) => `/api/files/${encodeURIComponent(dept ?? '')}/${encodeURIComponent(name)}`;
-  const columns: Col<FileRow>[] = [
-    { key: 'name', label: 'Name', render: (r) => (r.kind === 'file' ? <a href={href(r.name)}>{r.name}</a> : r.name) },
-    { key: 'kind', label: 'Kind' },
-    { key: 'size', label: 'Size', render: (r) => (r.kind === 'file' ? formatSize(r.size) : '—') },
-    { key: 'uploadedAt', label: 'Uploaded', render: (r) => fmtDate(r.uploadedAt) },
-    { key: 'modifiedAt', label: 'Modified', render: (r) => fmtDate(r.modifiedAt) },
-    { key: 'owner', label: 'Owner (not yet available)', render: () => <span aria-disabled="true" style={muted}>—</span> },
-    { key: 'access', label: 'Accessibility (not yet available)', render: () => <span aria-disabled="true" style={muted}>—</span> },
-  ];
+  const rel = (name: string) => (filePath ? `${filePath}/${name}` : name);
+  const href = (name: string) =>
+    `/api/files/${encodeURIComponent(dept ?? '')}/${rel(name).split('/').map(encodeURIComponent).join('/')}`;
+  const open = (row: FileRow) => {
+    setQuery('');
+    setFilePath(rel(row.name));
+  };
+  const close = () => setModal(null);
+  const run = (mutation: { mutate: (v: never, o: { onSuccess: () => void; onError: (e: unknown) => void }) => void }, v: unknown, ok: string) =>
+    mutation.mutate(v as never, {
+      onSuccess: () => {
+        toast.push(ok, 'ok');
+        close();
+      },
+      onError: (e) => toast.push(errText(e, 'Action failed'), 'bad'),
+    });
+  const onAction = (action: FileAction, row: FileRow) => {
+    if (action === 'download') {
+      const a = document.createElement('a');
+      a.href = href(row.name);
+      a.download = row.name;
+      a.click();
+    } else setModal({ kind: action, row });
+  };
 
   let body;
   if (!dept) body = <p style={muted}>No departments configured.</p>;
   else if (isPending) body = <p role="status">Loading…</p>;
   else if (error) body = <p role="alert">Could not load files: {errText(error, 'unknown error')}</p>;
   else {
-    const q = query.trim().toLowerCase();
-    const rows = q ? data.filter((r) => r.name.toLowerCase().includes(q)) : data;
-    body = (
-      <Table
-        columns={columns}
-        rows={rows}
-        rowKey={(r) => r.name}
-        rowTestId={(r) => `file-row-${r.name}`}
-        empty={data.length === 0 ? 'Your uploaded files will be listed here' : 'No files match your search'}
-      />
-    );
+    body = <FileTable rows={data} search={query} onOpen={open} onAction={onAction} />;
   }
 
   return (
     <div data-testid="files">
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
-        <select aria-label="Department" value={dept ?? ''} disabled={depts.length === 0} onChange={(e) => setPicked(e.target.value)}>
+        <select aria-label="Department" value={dept ?? ''} disabled={depts.length === 0} onChange={(e) => {
+            setPicked(e.target.value);
+            setFilePath('');
+          }}>
           {depts.map((d) => (
             <option key={d} value={d}>
               {d}
@@ -89,11 +95,16 @@ export function Files() {
           onChange={(e) => setQuery(e.target.value)}
           style={{ flex: 1, minWidth: 160 }}
         />
-        <Button data-testid="upload-file" disabled={!dept || upload.isPending} onClick={() => input.current?.click()}>
+        <Button data-testid="upload-file" disabled={!dept} onClick={() => input.current?.click()}>
           Upload
         </Button>
-        <input ref={input} type="file" hidden aria-label="File to upload" onChange={(e) => send(e.target.files?.[0])} />
+        <Button variant="secondary" disabled={!dept} onClick={() => setModal({ kind: 'newFolder' })}>
+          New Folder
+        </Button>
+        <input ref={input} type="file" hidden multiple aria-label="File to upload" onChange={(e) => send(e.target.files)} />
       </div>
+
+      <Breadcrumb path={filePath} onNavigate={setFilePath} />
 
       <div
         data-testid="drop-zone"
@@ -105,7 +116,7 @@ export function Files() {
         onDrop={(e) => {
           e.preventDefault();
           setOver(false);
-          if (dept) send(e.dataTransfer.files[0]);
+          if (dept) send(e.dataTransfer.files);
         }}
         style={{
           border: `2px dashed ${over ? 'var(--navy-2)' : 'var(--gray-3)'}`,
@@ -116,10 +127,25 @@ export function Files() {
           color: 'var(--gray-1)',
         }}
       >
-        Drag and drop a file here to upload
+        Drag and drop files here to upload
       </div>
 
       {body}
+
+      {uploader.items.length > 0 && (
+        <UploadPanel items={uploader.items} onCancel={uploader.cancel} onCancelAll={uploader.cancelAll} onDismiss={uploader.clear} />
+      )}
+
+      {modal?.kind === 'access' && modal.row && (
+        <AccessModal key={modal.row.name} open row={modal.row} onClose={close} onSave={(access) => run(setAccess, { itemPath: rel(modal.row!.name), access }, 'Accessibility updated')} />
+      )}
+      {modal?.kind === 'rename' && modal.row && (
+        <RenameModal key={modal.row.name} open row={modal.row} onClose={close} onSave={(newName) => run(rename, { itemPath: rel(modal.row!.name), newName }, 'Renamed')} />
+      )}
+      {modal?.kind === 'delete' && modal.row && (
+        <DeleteDialog open row={modal.row} onClose={close} onConfirm={() => run(deleteFile, rel(modal.row!.name), `Deleted ${modal.row!.name}`)} />
+      )}
+      {modal?.kind === 'newFolder' && <NewFolderModal open onClose={close} onCreate={(name) => run(mkdir, name, 'Folder created')} />}
     </div>
   );
 }

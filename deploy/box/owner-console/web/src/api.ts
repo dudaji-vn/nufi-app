@@ -119,20 +119,46 @@ export async function exportUsersCsv(ids: string[]): Promise<void> {
 export const connectorUrl = (u: Pick<UserRow, 'id' | 'os'>) => `/api/users/${encodeURIComponent(u.id)}/connector?os=${u.os}`;
 export const inviteLink = (token: string) => `${window.location.origin}/connect#token=${encodeURIComponent(token)}`;
 
-export type FileRow = { name: string; kind: 'file' | 'dir'; size: number; uploadedAt: string; modifiedAt: string };
-export const useFiles = (dept: string | undefined) =>
-  useQuery({ queryKey: ['files', dept], queryFn: () => get<FileRow[]>('/api/files?dept=' + encodeURIComponent(dept!)), enabled: !!dept, retry: false });
-export const useUpload = (dept: string | undefined) => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (file: File) => {
-      const form = new FormData();
-      form.append('file', file);
-      const r = await fetch('/api/files?dept=' + encodeURIComponent(dept ?? ''), { method: 'POST', credentials: 'same-origin', body: form });
-      unauthorized(r);
-      if (!r.ok) return fail(r);
-      return (await r.json().catch(() => ({}))) as unknown;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['files', dept] }),
+export type FileRow = { name: string; kind: 'file' | 'dir'; size: number; uploadedAt: string; modifiedAt: string; access: 'public' | 'private' };
+export type Access = FileRow['access'];
+const enc = encodeURIComponent;
+export async function put<T>(path: string, payload: unknown): Promise<T> {
+  const r = await fetch(path, {
+    method: 'PUT',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
   });
+  unauthorized(r);
+  if (!r.ok) return fail(r);
+  return (await r.json().catch(() => ({}))) as T;
+}
+export const useFiles = (dept?: string, path?: string) =>
+  useQuery({
+    queryKey: ['files', dept, path],
+    queryFn: () => get<FileRow[]>(`/api/files?dept=${enc(dept!)}&path=${enc(path ?? '')}`),
+    enabled: !!dept,
+    retry: false,
+  });
+// `path` is the folder currently listed (cache key); each mutate fn takes the
+// specific item's rel path (or the new folder name) plus the value.
+const useRefreshFiles = (dept?: string, path?: string) => {
+  const qc = useQueryClient();
+  return () => qc.invalidateQueries({ queryKey: ['files', dept, path] });
+};
+export const useMkdir = (dept?: string, path?: string) => {
+  const refresh = useRefreshFiles(dept, path);
+  return useMutation({ mutationFn: (name: string) => post<unknown>('/api/files/folder', { dept, path: path ?? '', name }), onSuccess: refresh });
+};
+export const useRename = (dept?: string, path?: string) => {
+  const refresh = useRefreshFiles(dept, path);
+  return useMutation({ mutationFn: (v: { itemPath: string; newName: string }) => post<unknown>('/api/files/rename', { dept, path: v.itemPath, newName: v.newName }), onSuccess: refresh });
+};
+export const useDeleteFile = (dept?: string, path?: string) => {
+  const refresh = useRefreshFiles(dept, path);
+  return useMutation({ mutationFn: (itemPath: string) => del<unknown>(`/api/files?dept=${enc(dept ?? '')}&path=${enc(itemPath)}`), onSuccess: refresh });
+};
+export const useSetAccess = (dept?: string, path?: string) => {
+  const refresh = useRefreshFiles(dept, path);
+  return useMutation({ mutationFn: (v: { itemPath: string; access: Access }) => put<unknown>('/api/files/access', { dept, path: v.itemPath, access: v.access }), onSuccess: refresh });
 };
