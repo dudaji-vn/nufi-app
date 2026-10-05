@@ -3,7 +3,10 @@ import { beforeEach, expect, test, vi } from 'vitest';
 import * as api from '../api';
 import { General } from './general';
 
-beforeEach(() => vi.restoreAllMocks());
+beforeEach(() => {
+  vi.restoreAllMocks();
+  vi.spyOn(api, 'useControl').mockReturnValue({ mutate: vi.fn(), isPending: false } as never);
+});
 
 test('renders four service cards with Running badges', () => {
   vi.spyOn(api, 'useStatus').mockReturnValue({

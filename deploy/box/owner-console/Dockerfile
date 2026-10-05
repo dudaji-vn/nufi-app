@@ -25,6 +25,9 @@ RUN bun run build
 
 FROM oven/bun:1.4.2-alpine
 WORKDIR /app
+# docker CLI + compose plugin: the console's allowlisted control shells out to
+# `docker compose` over the mounted socket.
+RUN apk add --no-cache docker-cli docker-cli-compose
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile --production
 COPY src ./src

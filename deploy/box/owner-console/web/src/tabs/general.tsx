@@ -1,4 +1,6 @@
 import { useStatus } from '../api';
+import { Console } from './general/console';
+import { Controls } from './general/controls';
 import { ServiceCard } from './general/service-card';
 
 // The four Figma cards, each backed by the health probe(s) that stand for it.
@@ -15,7 +17,9 @@ export function General() {
   if (isPending) return <p role="status">Loading…</p>;
   if (error) return <p role="alert">Could not load status: {(error as { error?: string }).error ?? 'unknown error'}</p>;
   return (
-    <div className="general-grid" data-testid="general">
+    <div data-testid="general">
+      <Controls />
+      <div className="general-grid">
       {CARDS.map((c) => (
         <ServiceCard
           key={c.id}
@@ -24,6 +28,8 @@ export function General() {
           ok={c.probes.every((p) => data.services.find((s) => s.name === p)?.ok === true)}
         />
       ))}
+      </div>
+      <Console />
     </div>
   );
 }

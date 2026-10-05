@@ -133,21 +133,24 @@ def test_env_example_covers_every_variable():
     assert not missing, f"used in compose but absent from .env.example: {sorted(missing)}"
 
 
-def test_owner_console_is_off_by_default_and_socket_free_when_on():
+def test_owner_console_is_off_by_default_and_mounts_the_docker_socket_when_on():
     # Off by default: no flag, no service — the plain box is unchanged.
     assert "owner-console" not in render()["services"]
     # On with the profile: present, on the box network, no published ports,
-    # and never mounting the Docker socket (the appliance security boundary).
+    # and mounting the Docker socket read-write for its allowlisted control.
     svc = render(profiles=("owner-console",),
                  BOX_OWNER_PASSWORD="pw", BOX_OWNER_SESSION_SECRET="s" * 40)["services"]
     assert "owner-console" in svc
     oc = svc["owner-console"]
     assert set(oc.get("networks", {})) == {"box"}
     assert not oc.get("ports")
-    # Socket-free: the only bind mount is the coordinator CA (read-only) — never
-    # the Docker socket and never the box's .env.
+    # Control needs the Docker socket (read-write — no :ro); the box's .env is
+    # still never mounted.
     vols = [str(v.get("source", v)) if isinstance(v, dict) else str(v) for v in oc.get("volumes", [])]
-    assert all("docker.sock" not in v for v in vols)
+    sock = [v for v in oc.get("volumes", []) if "docker.sock" in str(v.get("source", v) if isinstance(v, dict) else v)]
+    assert len(sock) == 1
+    assert not (isinstance(sock[0], dict) and sock[0].get("read_only"))
+    assert not str(sock[0]).endswith(":ro")
     assert all(not v.endswith("/.env") and "/.env:" not in v for v in vols)
 
 

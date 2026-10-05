@@ -3,6 +3,7 @@ import { join, normalize, resolve, sep } from 'node:path';
 import { Hono } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { signSession, verifyPassword, verifySession } from './auth';
+import { controlRoutes, type ControlDeps } from './api/control';
 import { buildStatus } from './api/status';
 import { boxInfo } from './boxinfo';
 import { isOS, macosPlan, renderConnector } from './connector';
@@ -34,6 +35,7 @@ type Deps = {
   revoke?: (cfg: MeshConfig, id: string) => Promise<void>;
   agentDistDir?: string;
   agentSha256?: () => { amd64: string; arm64: string };
+  exec?: Partial<ControlDeps>;
 };
 
 // The NufiBox Agent bundles the box ships for a member to install — the Linux
@@ -133,6 +135,8 @@ export function createApp(env: AppEnv = process.env, deps: Deps = {}): Hono {
   app.get('/api/ping', (c) => c.json({ ok: true }));
 
   app.get('/api/status', async (c) => c.json(await buildStatus(() => boxInfo(env), checkHealth)));
+
+  app.route('/api', controlRoutes(deps.exec));
 
   // The React SPA (built to web/dist). Served alongside the legacy server-rendered
   // pages until they are cut over; unknown /api/* is a real 404, unknown /assets/*
