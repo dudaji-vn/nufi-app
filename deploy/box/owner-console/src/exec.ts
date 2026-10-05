@@ -5,18 +5,9 @@
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-export const SERVICES = ['librechat', 'litellm-proxy', 'rag_api', 'ollama', 'caddy', 'mongodb', 'postgres', 'studio'] as const;
-export const READ_CMDS = ['status', 'logs', 'logs librechat', 'doctor', 'support'] as const;
-const ACTIONS = ['start', 'restart', 'stop'] as const;
+import { type Action, auditLine, buildControlArgv, buildReadArgv } from './exec-core';
 
-export type Action = (typeof ACTIONS)[number];
-
-export class BadRequest extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'BadRequest';
-  }
-}
+export * from './exec-core';
 
 export interface ExecDeps {
   spawn: typeof Bun.spawn;
@@ -30,37 +21,12 @@ const defaultDeps = (): ExecDeps => ({
   now: () => new Date(),
 });
 
-const COMPOSE = ['docker', 'compose', '-p', 'nufi-box'] as const;
-
-const isIn = <T extends readonly string[]>(set: T, v: unknown): v is T[number] =>
-  typeof v === 'string' && set.includes(v);
-
 // Appends and throws on failure: an action that cannot be audited is not run.
 function audit(deps: ExecDeps, what: string, service?: string): string {
-  const line = [deps.now().toISOString(), what, ...(service ? [service] : [])].join(' · ');
+  const line = auditLine(deps.now(), what, service);
   mkdirSync(deps.stateDir, { recursive: true });
   appendFileSync(join(deps.stateDir, 'audit.log'), line + '\n');
   return line;
-}
-
-export function buildControlArgv(action: string, service: string): string[] {
-  if (!isIn(ACTIONS, action)) throw new BadRequest('invalid action');
-  if (!isIn(SERVICES, service)) throw new BadRequest('invalid service');
-  return [...COMPOSE, action, service];
-}
-
-export function buildReadArgv(cmd: string): string[] | null {
-  if (!isIn(READ_CMDS, cmd)) throw new BadRequest('invalid command');
-  switch (cmd) {
-    case 'status':
-      return [...COMPOSE, 'ps'];
-    case 'logs':
-      return [...COMPOSE, 'logs', '--no-color', '--tail=200'];
-    case 'logs librechat':
-      return [...COMPOSE, 'logs', '--no-color', '--tail=200', 'librechat'];
-    default:
-      return null; // doctor / support: informational only, never executed
-  }
 }
 
 export async function controlService(
