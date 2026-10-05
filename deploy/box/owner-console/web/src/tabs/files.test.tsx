@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render as rtlRender, renderHook, screen, waitFor } from '@testing-library/react';
+import type { ReactElement } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import * as api from '../api';
 import type { FileRow } from '../api';
@@ -9,6 +10,33 @@ import { Breadcrumb } from './files/breadcrumb';
 import { FileTable, filterRows, sortRows } from './files/file-table';
 
 afterEach(cleanup);
+
+let qc: QueryClient;
+const render = (ui: ReactElement) => rtlRender(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
+
+class FakeXhr {
+  static all: FakeXhr[] = [];
+  method = '';
+  url = '';
+  status = 201;
+  responseText = '{}';
+  withCredentials = false;
+  body: FormData | null = null;
+  upload: { onprogress: ((e: { lengthComputable: boolean; loaded: number; total: number }) => void) | null } = { onprogress: null };
+  onload: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  abort = vi.fn();
+  constructor() {
+    FakeXhr.all.push(this);
+  }
+  open(m: string, u: string) {
+    this.method = m;
+    this.url = u;
+  }
+  send(b: FormData) {
+    this.body = b;
+  }
+}
 
 const f = (o: Partial<FileRow>): FileRow => ({
   name: 'a.txt', kind: 'file', size: 2048, uploadedAt: '2026-10-01T00:00:00Z', modifiedAt: '2026-10-02T00:00:00Z', access: 'private', ...o,
@@ -24,7 +52,9 @@ beforeEach(() => {
   mutate.mockReset();
   useUi.setState({ filePath: '' });
   vi.spyOn(api, 'useStatus').mockReturnValue({ data: { box: { name: 'b', departments: ['eng', 'ops'] }, services: [] } } as never);
-  vi.spyOn(api, 'useUpload').mockReturnValue({ mutate, isPending: false } as never);
+  qc = new QueryClient();
+  FakeXhr.all = [];
+  vi.stubGlobal('XMLHttpRequest', FakeXhr);
   for (const h of ['useSetAccess', 'useRename', 'useDeleteFile', 'useMkdir'] as const) {
     vi.spyOn(api, h).mockReturnValue({ mutate, isPending: false } as never);
   }
@@ -52,12 +82,61 @@ test('search filters rows by name', () => {
   expect(screen.queryByText('beta.txt')).toBeNull();
 });
 
-test('dropping a file uploads it', () => {
+const drop = (...files: File[]) => fireEvent.drop(screen.getByTestId('drop-zone'), { dataTransfer: { files } });
+
+test('dropping two files shows two rows; completing them marks both done', () => {
   mockFiles([]);
   render(<Files />);
-  const file = new File(['x'], 'x.txt');
-  fireEvent.drop(screen.getByTestId('drop-zone'), { dataTransfer: { files: [file] } });
-  expect(mutate).toHaveBeenCalledWith(file, expect.anything());
+  drop(new File(['x'], 'x.txt'), new File(['y'], 'y.txt'));
+  expect(screen.getAllByTestId('upload-row')).toHaveLength(2);
+  expect(screen.getByText('Uploading (0/2 items)')).toBeTruthy();
+  act(() => FakeXhr.all.forEach((x) => x.onload?.()));
+  expect(screen.getAllByLabelText('Done')).toHaveLength(2);
+  expect(screen.getByText('Uploading (2/2 items)')).toBeTruthy();
+  expect(FakeXhr.all[0]!.withCredentials).toBe(true);
+  expect((FakeXhr.all[0]!.body!.get('file') as File).name).toBe('x.txt');
+});
+
+test('upload progress updates the bar', () => {
+  mockFiles([]);
+  render(<Files />);
+  drop(new File(['x'], 'x.txt'));
+  act(() => FakeXhr.all[0]!.upload.onprogress?.({ lengthComputable: true, loaded: 1, total: 4 }));
+  expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('25');
+});
+
+test('uploads go into the current folder and invalidate that folder', () => {
+  mockFiles([]);
+  useUi.setState({ filePath: 'docs/q3' });
+  const spy = vi.spyOn(qc, 'invalidateQueries');
+  render(<Files />);
+  drop(new File(['x'], 'x.txt'));
+  expect(FakeXhr.all[0]!.method).toBe('POST');
+  expect(FakeXhr.all[0]!.url).toBe('/api/files?dept=eng&path=docs%2Fq3');
+  act(() => FakeXhr.all[0]!.onload?.());
+  expect(spy).toHaveBeenCalledWith({ queryKey: ['files', 'eng', 'docs/q3'] });
+});
+
+test('Cancel all aborts in-flight uploads', () => {
+  mockFiles([]);
+  render(<Files />);
+  drop(new File(['x'], 'x.txt'), new File(['y'], 'y.txt'));
+  fireEvent.click(screen.getByText('Cancel all'));
+  expect(FakeXhr.all.every((x) => x.abort.mock.calls.length === 1)).toBe(true);
+  expect(screen.getAllByText('Cancelled')).toHaveLength(2);
+});
+
+test('per-row cancel aborts only that upload; a failed upload shows its error', () => {
+  mockFiles([]);
+  render(<Files />);
+  drop(new File(['x'], 'x.txt'), new File(['y'], 'y.txt'));
+  fireEvent.click(screen.getByLabelText('Cancel x.txt'));
+  expect(FakeXhr.all[0]!.abort).toHaveBeenCalled();
+  expect(FakeXhr.all[1]!.abort).not.toHaveBeenCalled();
+  FakeXhr.all[1]!.status = 413;
+  FakeXhr.all[1]!.responseText = '{"error":"too big"}';
+  act(() => FakeXhr.all[1]!.onload?.());
+  expect(screen.getByText('too big')).toBeTruthy();
 });
 
 test('shows loading and error states', () => {

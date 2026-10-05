@@ -162,17 +162,3 @@ export const useSetAccess = (dept?: string, path?: string) => {
   const refresh = useRefreshFiles(dept, path);
   return useMutation({ mutationFn: (v: { itemPath: string; access: Access }) => put<unknown>('/api/files/access', { dept, path: v.itemPath, access: v.access }), onSuccess: refresh });
 };
-export const useUpload = (dept: string | undefined) => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (file: File) => {
-      const form = new FormData();
-      form.append('file', file);
-      const r = await fetch('/api/files?dept=' + encodeURIComponent(dept ?? ''), { method: 'POST', credentials: 'same-origin', body: form });
-      unauthorized(r);
-      if (!r.ok) return fail(r);
-      return (await r.json().catch(() => ({}))) as unknown;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['files', dept] }),
-  });
-};

@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { useUi } from '../store';
 import { Breadcrumb } from './files/breadcrumb';
-import { useDeleteFile, useFiles, useMkdir, useRename, useSetAccess, useStatus, useUpload, type FileRow } from '../api';
+import { useDeleteFile, useFiles, useMkdir, useRename, useSetAccess, useStatus, type FileRow } from '../api';
 import { AccessModal } from './files/access-modal';
 import { DeleteDialog } from './files/delete-dialog';
 import { NewFolderModal } from './files/new-folder-modal';
@@ -9,6 +9,7 @@ import { RenameModal } from './files/rename-modal';
 import { Button } from '../ui/button';
 import { FileTable, formatSize, type FileAction } from './files/file-table';
 import { useToast } from '../ui/toast';
+import { UploadPanel, useUploader } from './files/upload-panel';
 
 const errText = (e: unknown, fallback: string) => (e as { error?: string }).error ?? fallback;
 
@@ -24,7 +25,7 @@ export function Files() {
   const filePath = useUi((s) => s.filePath);
   const setFilePath = useUi((s) => s.setFilePath);
   const { data, isPending, error } = useFiles(dept, filePath);
-  const upload = useUpload(dept);
+  const uploader = useUploader(dept, filePath);
   const toast = useToast();
   const setAccess = useSetAccess(dept, filePath);
   const rename = useRename(dept, filePath);
@@ -35,12 +36,8 @@ export function Files() {
   const [over, setOver] = useState(false);
   const input = useRef<HTMLInputElement>(null);
 
-  const send = (file: File | undefined) => {
-    if (!file) return;
-    upload.mutate(file, {
-      onSuccess: () => toast.push(`Uploaded ${file.name}`, 'ok'),
-      onError: (e) => toast.push(errText(e, 'Upload failed'), 'bad'),
-    });
+  const send = (list: FileList | null | undefined) => {
+    if (list && list.length) uploader.enqueue(Array.from(list));
     if (input.current) input.current.value = '';
   };
 
@@ -98,13 +95,13 @@ export function Files() {
           onChange={(e) => setQuery(e.target.value)}
           style={{ flex: 1, minWidth: 160 }}
         />
-        <Button data-testid="upload-file" disabled={!dept || upload.isPending} onClick={() => input.current?.click()}>
+        <Button data-testid="upload-file" disabled={!dept} onClick={() => input.current?.click()}>
           Upload
         </Button>
         <Button variant="secondary" disabled={!dept} onClick={() => setModal({ kind: 'newFolder' })}>
           New Folder
         </Button>
-        <input ref={input} type="file" hidden aria-label="File to upload" onChange={(e) => send(e.target.files?.[0])} />
+        <input ref={input} type="file" hidden multiple aria-label="File to upload" onChange={(e) => send(e.target.files)} />
       </div>
 
       <Breadcrumb path={filePath} onNavigate={setFilePath} />
@@ -119,7 +116,7 @@ export function Files() {
         onDrop={(e) => {
           e.preventDefault();
           setOver(false);
-          if (dept) send(e.dataTransfer.files[0]);
+          if (dept) send(e.dataTransfer.files);
         }}
         style={{
           border: `2px dashed ${over ? 'var(--navy-2)' : 'var(--gray-3)'}`,
@@ -130,10 +127,14 @@ export function Files() {
           color: 'var(--gray-1)',
         }}
       >
-        Drag and drop a file here to upload
+        Drag and drop files here to upload
       </div>
 
       {body}
+
+      {uploader.items.length > 0 && (
+        <UploadPanel items={uploader.items} onCancel={uploader.cancel} onCancelAll={uploader.cancelAll} onDismiss={uploader.clear} />
+      )}
 
       {modal?.kind === 'access' && modal.row && (
         <AccessModal key={modal.row.name} open row={modal.row} onClose={close} onSave={(access) => run(setAccess, { itemPath: rel(modal.row!.name), access }, 'Accessibility updated')} />
