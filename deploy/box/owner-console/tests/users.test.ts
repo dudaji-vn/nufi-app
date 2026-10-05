@@ -65,6 +65,7 @@ let nodes: Node[];
 let keys: PreAuthKey[];
 let minted = 0;
 let revoked: string[];
+let expired: string[];
 const users = {
   listNodes: async () => nodes,
   listKeys: async () => keys,
@@ -74,8 +75,9 @@ const users = {
     return { id: 'new' + minted, key: 'secret-key-' + minted };
   },
   revokeNode: async (_c: unknown, id: string) => { revoked.push(id); },
+  expireKey: async (_c: unknown, k: string) => { expired.push(k); },
 };
-beforeEach(() => { nodes = []; keys = []; minted = 0; revoked = []; });
+beforeEach(() => { nodes = []; keys = []; minted = 0; revoked = []; expired = []; });
 
 const app = (env = MESH, u: object = users) => makeApp(env, { users: u });
 const call = (a: ReturnType<typeof app>, method: string, path: string, body?: unknown, raw = false) =>
@@ -132,6 +134,31 @@ describe('users routes', () => {
     expect((await call(a, 'DELETE', '/api/users/nope')).status).toBe(404);
   });
 
+  test('DELETE and regenerate expire the old key secret; DELETE survives an expire failure', async () => {
+    const secret = TEST_ENV.BOX_OWNER_SESSION_SECRET;
+    const tok = (k: string) => signInvite(secret, { key: k, serverUrl: 'https://hs.example' }, 3600);
+    const a = app();
+    const u = await addUser({ name: 'X', os: 'linux', keyId: 'kx', token: tok('secret-x') });
+    await call(a, 'POST', `/api/users/${u.id}/regenerate`);
+    expect(expired).toEqual(['secret-x']);
+    const u2 = await addUser({ name: 'Y', os: 'linux', keyId: 'ky', token: tok('secret-y') });
+    expect((await call(a, 'DELETE', `/api/users/${u2.id}`)).status).toBe(200);
+    expect(expired).toEqual(['secret-x', 'secret-y']);
+    const boom = app(MESH, { ...users, expireKey: async () => { throw new MeshError('nope'); } });
+    const u3 = await addUser({ name: 'Z', os: 'linux', keyId: 'kz', token: tok('secret-z') });
+    expect((await call(boom, 'DELETE', `/api/users/${u3.id}`)).status).toBe(200);
+    expect((await listUsers()).some((x) => x.id === u3.id)).toBe(false);
+  });
+
+  test('a failed revoke returns 503 and keeps the record', async () => {
+    const u = await addUser({ name: 'Keep', os: 'linux', keyId: 'kk', token: 't' });
+    nodes = [node('5', 'kk')];
+    const bad = app(MESH, { ...users, revokeNode: async () => { throw new MeshError('coordinator unreachable'); } });
+    expect((await call(bad, 'DELETE', `/api/users/${u.id}`)).status).toBe(503);
+    expect((await listUsers()).map((x) => x.id)).toEqual([u.id]);
+    expect(expired).toEqual([]);
+  });
+
   test('regenerate swaps keyId and token', async () => {
     const a = app();
     const u = await addUser({ name: 'Zed', os: 'linux', keyId: 'old', token: 'oldtoken' });
@@ -164,10 +191,10 @@ describe('users routes', () => {
 
   test('import CSV adds rows (skipping malformed); export lists name,link', async () => {
     const a = app();
-    const r = await call(a, 'POST', '/api/users/import', 'name,os\nAnn,windows\nbroken-row\nBob,linux\n', true);
+    const r = await call(a, 'POST', '/api/users/import', 'name,os\n=Ann,windows\nbroken-row\nBob,linux\n', true);
     expect(r.status).toBe(200);
     const rows = await r.json();
-    expect(rows.map((x: { name: string }) => x.name)).toEqual(['Ann', 'Bob']);
+    expect(rows.map((x: { name: string }) => x.name)).toEqual(['=Ann', 'Bob']);
     expect(r.headers.get('x-skipped')).toBe('1');
     const e = await call(a, 'POST', '/api/users/export');
     expect(e.headers.get('content-type')).toContain('text/csv');
@@ -175,7 +202,7 @@ describe('users routes', () => {
     const lines = (await e.text()).trim().split('\n');
     expect(lines[0]).toBe('name,link');
     expect(lines).toHaveLength(3);
-    expect(lines[1]).toContain('Ann,');
+    expect(lines[1]).toContain("'=Ann,");
     expect(lines[1]).toContain('/connect#token=');
   });
 });

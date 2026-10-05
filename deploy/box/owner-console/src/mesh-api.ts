@@ -127,7 +127,10 @@ async function mintKey(
   }, fetchImpl);
   const pk = data.preAuthKey as { id?: string | number; key?: string } | undefined;
   if (!pk?.key) throw new MeshError('the coordinator returned no pre-auth key');
-  return { id: String(pk.id ?? ''), key: pk.key };
+  if (pk.id === undefined || pk.id === null || String(pk.id) === '') {
+    throw new MeshError('the coordinator returned a pre-auth key with no id');
+  }
+  return { id: String(pk.id), key: pk.key };
 }
 
 // A single-use, one-hour tag:member key — the key one laptop uses to join.
@@ -166,5 +169,14 @@ export async function listKeys(cfg: MeshConfig, fetchImpl: typeof fetch = fetch)
   const uid = await userId(cfg, 'box', fetchImpl);
   const data = await api(cfg, 'GET', `/api/v1/preauthkey?user=${encodeURIComponent(uid)}`, undefined, fetchImpl);
   const keys = (data.preAuthKeys as Array<Record<string, unknown>>) ?? [];
-  return keys.map((k) => ({ id: String(k.id ?? ''), used: Boolean(k.used), expiration: String(k.expiration ?? '') }));
+  return keys
+    .filter((k) => k.id !== undefined && k.id !== null && String(k.id) !== '')
+    .map((k) => ({ id: String(k.id), used: Boolean(k.used), expiration: String(k.expiration ?? '') }));
+}
+
+// Expire a pre-auth key so its invite link stops working at once. headscale takes
+// the key SECRET plus the user (not the key id). Callers treat this as best-effort.
+export async function expireKey(cfg: MeshConfig, keySecret: string, fetchImpl: typeof fetch = fetch): Promise<void> {
+  const uid = await userId(cfg, 'box', fetchImpl);
+  await api(cfg, 'POST', '/api/v1/preauthkey/expire', { user: uid, key: keySecret }, fetchImpl);
 }

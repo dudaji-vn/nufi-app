@@ -3,7 +3,7 @@ import { boxInfo } from '../boxinfo';
 import { isOS, macosPlan, renderConnector, type OS } from '../connector';
 import { connectLink, signInvite, verifyInvite } from '../invite';
 import {
-  MeshError, listKeys, listNodes, meshConfig, mintMemberKeyWithId, revokeNode,
+  MeshError, expireKey, listKeys, listNodes, meshConfig, mintMemberKeyWithId, revokeNode,
   type MeshConfig, type Node, type PreAuthKey,
 } from '../mesh-api';
 import { addUser, listUsers, removeUser, updateUser, type UserRecord } from '../store';
@@ -50,6 +50,7 @@ export interface UsersDeps {
   removeUser: typeof removeUser;
   mintMemberKeyWithId: (cfg: MeshConfig) => Promise<{ id: string; key: string }>;
   revokeNode: (cfg: MeshConfig, id: string) => Promise<void>;
+  expireKey: (cfg: MeshConfig, keySecret: string) => Promise<void>;
 }
 
 const real: UsersDeps = {
@@ -58,6 +59,7 @@ const real: UsersDeps = {
   listUsers, addUser, updateUser, removeUser,
   mintMemberKeyWithId: (cfg) => mintMemberKeyWithId(cfg),
   revokeNode: (cfg, id) => revokeNode(cfg, id),
+  expireKey: (cfg, k) => expireKey(cfg, k),
 };
 
 // What the connector download needs from the app (same values /connect/connector uses).
@@ -74,7 +76,11 @@ export type UsersCtx = {
 const INVITE_TTL = 3600;
 const NO_MESH = 'This box is not on a mesh yet — run `nufi-box mesh up` first.';
 
-const csvCell = (v: string) => (/[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+// A leading = + - @ would run as a formula in a spreadsheet, so prefix a quote.
+const csvCell = (raw: string) => {
+  const v = /^[=+\-@]/.test(raw) ? `'${raw}` : raw;
+  return /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+};
 const unquote = (v: string) => {
   const t = v.trim();
   return t.length >= 2 && t.startsWith('"') && t.endsWith('"') ? t.slice(1, -1).replace(/""/g, '"') : t;
@@ -105,6 +111,17 @@ export function usersRoutes(ctx: UsersCtx, deps: Partial<UsersDeps> = {}): Hono 
     }
   };
 
+  // Best-effort belt-and-suspenders: expire the record's pre-auth key so the old link dies.
+  // Failure is swallowed — the node revoke is the security-critical step. Live endpoint shape is verified in Task 11.
+  const expireRecordKey = async (cfg: MeshConfig, rec: UserRecord) => {
+    try {
+      const invite = verifyInvite(ctx.secret, rec.token);
+      if (invite) await d.expireKey(cfg, invite.key);
+    } catch {
+      /* best-effort */
+    }
+  };
+
   const rowFor = async (cfg: MeshConfig, id: string) => (await rows(cfg)).find((x) => x.id === id);
 
   r.get('/users', withMesh(async (c, cfg) => c.json(await rows(cfg))));
@@ -127,6 +144,7 @@ export function usersRoutes(ctx: UsersCtx, deps: Partial<UsersDeps> = {}): Hono 
       try {
         const joined = (await d.listNodes(cfg)).find((n) => n.preAuthKeyId !== undefined && n.preAuthKeyId === rec.keyId);
         if (joined) await d.revokeNode(cfg, joined.id);
+        await expireRecordKey(cfg, rec);
       } catch (e) {
         // Keep the record: removing it while the node still has access would orphan that laptop.
         return c.json({ error: e instanceof Error ? e.message : 'revoke failed' }, e instanceof MeshError ? 503 : 500);
@@ -138,8 +156,11 @@ export function usersRoutes(ctx: UsersCtx, deps: Partial<UsersDeps> = {}): Hono 
 
   r.post('/users/:id/regenerate', withMesh(async (c, cfg) => {
     const id = c.req.param('id');
-    if (!(await d.listUsers()).some((u) => u.id === id)) return c.json({ error: 'user not found' }, 404);
-    await d.updateUser(id, await mint(cfg));
+    const rec = (await d.listUsers()).find((u) => u.id === id);
+    if (!rec) return c.json({ error: 'user not found' }, 404);
+    const fresh = await mint(cfg);
+    await d.updateUser(id, fresh);
+    await expireRecordKey(cfg, rec);
     return c.json(await rowFor(cfg, id));
   }));
 
