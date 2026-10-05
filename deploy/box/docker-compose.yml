@@ -24,6 +24,8 @@ volumes:
   ingest-state:
   cron-state:
   owner-console-state:
+  # The unix socket shared by ONLY owner-exec (server) and owner-console (client).
+  owner-exec-sock:
   # Works' instance state (PAPERCLIP_HOME): plugin records, adapter registrations, logs.
   works-data:
 
@@ -293,6 +295,37 @@ services:
       start_period: 20s
     networks: [box]
 
+  # Privileged sidecar: the ONLY owner-console-adjacent container holding the
+  # docker socket. Serves allowlisted `docker compose -p nufi-box ...` commands
+  # over a unix socket on the owner-exec-sock volume. The socket is created
+  # chmod 666 (src/server.ts): the volume, shared by only this service and
+  # owner-console, is the access boundary, so no shared GID is needed.
+  owner-exec:
+    logging: *box-logging
+    image: ${NUFI_REGISTRY:-ghcr.io/dudaji-vn}/nufi-owner-exec:${NUFI_OWNER_CONSOLE_TAG:-main}
+    profiles: [owner-console]
+    restart: unless-stopped
+    networks: [box]
+    working_dir: /box
+    environment:
+      NUFI_STATE_DIR: /state
+      EXEC_SOCK: /sock/exec.sock
+      # `docker compose -p nufi-box start|stop|restart` needs the box's compose
+      # config, not just container labels: the box dir is mounted read-only and
+      # COMPOSE_FILE names the active layers (the installer sets
+      # NUFI_EXEC_COMPOSE_FILE to its -f set, ':'-separated; default base only).
+      COMPOSE_FILE: ${NUFI_EXEC_COMPOSE_FILE:-docker-compose.yml}
+      COMPOSE_PROFILES: ${NUFI_EXEC_COMPOSE_PROFILES:-linux,gpu,mesh,works}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - owner-exec-sock:/sock
+      - owner-console-state:/state
+      # Whole box dir (compose files + .env), read-only: the minimal mount that
+      # lets compose resolve services and interpolation for start/stop/restart.
+      - .:/box:ro
+    # Image runs as root; group_add keeps socket access if it is ever de-rooted.
+    group_add: ["${DOCKER_GID:-999}"]
+
   owner-console:
     logging: *box-logging
     image: ${NUFI_REGISTRY:-ghcr.io/dudaji-vn}/nufi-owner-console:${NUFI_OWNER_CONSOLE_TAG:-main}
@@ -324,20 +357,20 @@ services:
       NODE_EXTRA_CA_CERTS: /mesh-ca.crt
       NUFI_DRIVES_DIR: /drives
       NUFI_STATE_DIR: /state
+      # Privileged commands go to the owner-exec sidecar over this socket; the
+      # web-facing console holds NO docker access itself.
+      EXEC_SOCK: /sock/exec.sock
+      # Shown on the chat status card. Defaults to the chat image tag.
+      NUFI_CHAT_VERSION: ${NUFI_CHAT_VERSION:-${NUFI_CHAT_TAG:-}}
     volumes:
       - ${MESH_CA_FILE:-/etc/ssl/certs/ca-certificates.crt}:/mesh-ca.crt:ro
-      # Read-write on purpose: the console's allowlisted Start/Restart/Stop and
-      # System Console run `docker compose` against the box (src/exec.ts).
-      - /var/run/docker.sock:/var/run/docker.sock
+      # The exec sidecar's socket (read-write: connecting to a unix socket needs it).
+      - owner-exec-sock:/sock
       # The department drives, READ-WRITE: the console uploads member files here.
       # (Other services mount :ro; the console is the writer.)
       - ${NUFI_DATA_DIR}/drives:/drives
       # Durable console state: the user store (users.json) + the exec audit log.
       - owner-console-state:/state
-    # The image runs as USER bun, but the socket is root:docker; without the
-    # host's docker gid the allowlisted control/console exec fails "permission
-    # denied". DOCKER_GID is read from the socket by install-box.sh.
-    group_add: ["${DOCKER_GID:-999}"]
     # A self-hosted coordinator answers on THIS host's published :443 under its
     # certificate name; from a bridge-network container that name must resolve to
     # the host gateway (mirrors mesh_api's host-side --resolve to 127.0.0.1).

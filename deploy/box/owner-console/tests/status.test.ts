@@ -18,3 +18,12 @@ test('GET /api/status without owner cookie is 401', async () => {
 test('GET /api/ping stays public', async () => {
   expect((await makeApp().request('/api/ping')).status).toBe(200);
 });
+
+test('GET /api/status passes detail through and stays 200 without it', async () => {
+  const h = async () => [{ name: 'Chat', ok: true, ms: 5, detail: 'v1' }, { name: 'AI model', ok: true, ms: 6 }];
+  const r = await makeApp({}, { checkHealth: h }).request('/api/status', { headers: { cookie: ownerCookie() } });
+  expect(r.status).toBe(200);
+  const j = await r.json();
+  expect(j.services[0].detail).toBe('v1');
+  expect(j.services[1].detail).toBeUndefined();
+});

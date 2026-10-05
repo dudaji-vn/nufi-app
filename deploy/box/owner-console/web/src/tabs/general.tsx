@@ -16,9 +16,10 @@ export function General() {
   const { data, isPending, error } = useStatus();
   if (isPending) return <p role="status">Loading…</p>;
   if (error) return <p role="alert">Could not load status: {(error as { error?: string }).error ?? 'unknown error'}</p>;
+  const active = CARDS.every((c) => c.probes.every((p) => data.services.find((s) => s.name === p)?.ok === true));
   return (
     <div data-testid="general">
-      <Controls />
+      <Controls active={active} />
       <div className="general-grid">
       {CARDS.map((c) => (
         <ServiceCard
@@ -26,6 +27,7 @@ export function General() {
           id={c.id}
           label={c.label}
           ok={c.probes.every((p) => data.services.find((s) => s.name === p)?.ok === true)}
+          detail={data.services.find((s) => s.name === c.probes[0])?.detail}
         />
       ))}
       </div>

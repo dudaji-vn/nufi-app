@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
-import { BadRequest, controlService, runReadCommand } from '../exec';
+import { BadRequest, BOX_SERVICE, controlService, runReadCommand } from '../exec';
 
 // Injectable so the routes are tested without touching docker.
 export interface ControlDeps {
@@ -18,9 +18,10 @@ export function controlRoutes(deps: Partial<ControlDeps> = {}): Hono {
   const r = new Hono();
 
   r.post('/control', async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { action?: unknown; service?: unknown };
+    const body = (await c.req.json().catch(() => ({}))) as { action?: unknown; service?: unknown; scope?: unknown };
     try {
-      const res = await d.controlService(body.action as never, body.service as string);
+      const service = body.scope === 'box' ? BOX_SERVICE : (body.service as string);
+      const res = await d.controlService(body.action as never, service);
       return c.json(res);
     } catch (e) {
       if (e instanceof BadRequest) return c.json({ error: e.message }, 400);
