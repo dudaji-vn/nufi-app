@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, symlinkSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { makeApp, ownerCookie } from './helpers';
@@ -54,6 +54,8 @@ test('rejects unknown dept and dept traversal', async () => {
   expect((await get('/api/files?dept=nope')).status).toBe(400);
   expect((await get('/api/files')).status).toBe(400);
   expect((await upload('..', 'x.txt')).status).toBe(400);
+  expect(readdirSync(root).sort()).toEqual(['legal']);
+  expect(readdirSync(join(root, 'legal'))).toEqual(['a.pdf']);
   expect((await get('/api/files/..%2f/a.pdf')).status).toBe(400);
 });
 
@@ -87,7 +89,7 @@ test('upload without a file field is a 400', async () => {
 test('download returns the bytes as an attachment', async () => {
   const r = await get('/api/files/legal/a.pdf');
   expect(r.status).toBe(200);
-  expect(r.headers.get('content-disposition')).toBe('attachment; filename="a.pdf"');
+  expect(r.headers.get('content-disposition')).toBe(`attachment; filename="a.pdf"; filename*=UTF-8''a.pdf`);
   expect(await r.text()).toBe('hello-bytes');
 });
 
@@ -96,4 +98,39 @@ test('download refuses traversal and 404s a missing file', async () => {
   expect((await get('/api/files/legal/..%5c..%5cx')).status).toBe(400);
   expect((await get('/api/files/nope/a.pdf')).status).toBe(400);
   expect((await get('/api/files/legal/missing.pdf')).status).toBe(404);
+});
+
+test('upload overwrites a same-name file', async () => {
+  expect((await upload('legal', 'a.pdf', 'v2')).status).toBe(201);
+  expect(readFileSync(join(root, 'legal', 'a.pdf'), 'utf8')).toBe('v2');
+});
+
+test('download of a non-ASCII (Vietnamese/Korean) name works, RFC 5987 header', async () => {
+  for (const n of ['báo-cáo.pdf', '보고서.pdf']) {
+    writeFileSync(join(root, 'legal', n), 'xin-chao');
+    const r = await get(`/api/files/legal/${encodeURIComponent(n)}`);
+    expect(r.status).toBe(200);
+    expect(r.headers.get('content-disposition')).toContain(`filename*=UTF-8''${encodeURIComponent(n)}`);
+    expect(await r.text()).toBe('xin-chao');
+  }
+});
+
+test('symlinks are never followed: hidden from list, 404 on download, refused on upload', async () => {
+  const outside = join(root, 'secret.txt');
+  writeFileSync(outside, 'top-secret');
+  symlinkSync(outside, join(root, 'legal', 'link.txt'));
+  const rows = await (await get('/api/files?dept=legal')).json();
+  expect(rows.map((x: { name: string }) => x.name)).toEqual(['a.pdf']);
+  expect((await get('/api/files/legal/link.txt')).status).toBe(404);
+  expect((await upload('legal', 'link.txt', 'pwned')).status).toBe(400);
+  expect(readFileSync(outside, 'utf8')).toBe('top-secret');
+});
+
+test('an oversized upload is rejected with 413 and nothing written', async () => {
+  const small = makeApp({ NUFI_DRIVES_DIR: root, DEPARTMENTS: 'legal', NUFI_MAX_UPLOAD_BYTES: '10' });
+  const fd = new FormData();
+  fd.set('file', new File(['x'.repeat(11)], 'big.bin'));
+  const r = await small.request('/api/files?dept=legal', { method: 'POST', headers: { cookie: ownerCookie() }, body: fd });
+  expect(r.status).toBe(413);
+  expect(existsSync(join(root, 'legal', 'big.bin'))).toBe(false);
 });
