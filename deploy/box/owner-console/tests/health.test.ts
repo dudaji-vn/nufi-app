@@ -48,9 +48,9 @@ describe('probe', () => {
 });
 
 describe('probesForEnv', () => {
-  test('the five core services plus Database and AI model are always probed', () => {
+  test('the five core services plus Web Server, Database and AI model are always probed', () => {
     const names = probesForEnv({}).map((p) => p.name);
-    expect(names).toEqual(['Chat', 'Console', 'Admin panel', 'Gateway', 'Studio', 'Database', 'AI model']);
+    expect(names).toEqual(['Chat', 'Console', 'Admin panel', 'Gateway', 'Studio', 'Web Server', 'Database', 'AI model']);
   });
 
   test('Works is added only when the works profile is on', () => {
@@ -60,7 +60,8 @@ describe('probesForEnv', () => {
 
   test('probes target container names on internal ports over http', () => {
     const byName = Object.fromEntries(probesForEnv({}).map((p) => [p.name, p.url]));
-    expect(byName['AI model']).toBe('http://ollama:11434/api/tags');
+    expect(byName['AI model']).toBe('http://litellm-proxy:4000/health/liveliness');
+    expect(byName['Web Server']).toBe('http://caddy/healthz');
     expect(byName['Chat']).toBe('http://librechat:3080/health');
     expect(byName['Console']).toBe('http://console:3000/_health');
     expect(byName['Admin panel']).toBe('http://admin-panel:3000/');
@@ -118,15 +119,25 @@ describe('Database (Postgres TCP) probe', () => {
   });
 });
 
-describe('AI model (Ollama) probe', () => {
+describe('AI model (litellm-proxy) + Web Server (caddy) probes', () => {
   const ai = (env = {}) => probesForEnv(env).find((p) => p.name === 'AI model')!;
 
-  test('OLLAMA_URL is configurable', () => {
-    expect(ai({ OLLAMA_URL: 'http://gpu:1234/' }).url).toBe('http://gpu:1234/api/tags');
+  const web = (env = {}) => probesForEnv(env).find((p) => p.name === 'Web Server')!;
+
+  test('LITELLM_URL and CADDY_URL are configurable', () => {
+    expect(ai({ LITELLM_URL: 'http://gw:1234/' }).url).toBe('http://gw:1234/health/liveliness');
+    expect(web({ CADDY_URL: 'http://c:81/healthz' }).url).toBe('http://c:81/healthz');
+  });
+
+  test('caddy: ok on 200, not ok when down', async () => {
+    expect((await probe(web(), 1000, mapFetch({ 'http://caddy/healthz': 200 }))).ok).toBe(true);
+    const down = await probe(web(), 1000, mapFetch({}));
+    expect(down.ok).toBe(false);
+    expect(down.error).toBeTruthy();
   });
 
   test('ok on 200, not ok when unreachable', async () => {
-    const up = await probe(ai(), 1000, mapFetch({ 'http://ollama:11434/api/tags': 200 }));
+    const up = await probe(ai(), 1000, mapFetch({ 'http://litellm-proxy:4000/health/liveliness': 200 }));
     expect(up.ok).toBe(true);
     const down = await probe(ai(), 1000, mapFetch({}));
     expect(down.ok).toBe(false);
@@ -138,13 +149,14 @@ describe('GET /api/status with real probes down', () => {
   test('still returns 200 with every probe present when services are unreachable', async () => {
     // Real checkAll with no injected checkHealth: every default target is
     // unresolvable here, so each probe fails — the route must not.
-    const app = makeApp({ PG_HOST: '127.0.0.1', PG_PORT: '1', OLLAMA_URL: 'http://127.0.0.1:1' });
+    const app = makeApp({ PG_HOST: '127.0.0.1', PG_PORT: '1', LITELLM_URL: 'http://127.0.0.1:1', CADDY_URL: 'http://127.0.0.1:1/healthz' });
     const r = await app.request('/api/status', { headers: { cookie: ownerCookie() } });
     expect(r.status).toBe(200);
     const { services } = await r.json();
     const names = services.map((s: { name: string }) => s.name);
     expect(names).toContain('Database');
     expect(names).toContain('AI model');
+    expect(names).toContain('Web Server');
     expect(services.find((s: { name: string }) => s.name === 'Database').ok).toBe(false);
   });
 });

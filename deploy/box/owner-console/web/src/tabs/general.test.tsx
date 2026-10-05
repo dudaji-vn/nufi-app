@@ -14,7 +14,7 @@ test('renders four service cards with Running badges', () => {
     error: null,
     data: {
       box: { name: 'b' },
-      services: ['Console', 'Chat', 'Database', 'AI model'].map((name) => ({ name, ok: true, ms: 1 })),
+      services: ['Web Server', 'Chat', 'Database', 'AI model'].map((name) => ({ name, ok: true, ms: 1 })),
     },
   } as never);
   render(<General />);

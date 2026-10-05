@@ -22,16 +22,20 @@ const CORE: Probe[] = [
 export function probesForEnv(env: Record<string, string | undefined> = process.env): Probe[] {
   const probes = [...CORE];
   if (env.NUFI_WORKS === '1') probes.push({ name: 'Works', url: 'http://works:3100/' });
-  // Database + AI model back two General-tab cards. Targets are env-configurable
+  // Web Server, Database and AI model back three General-tab cards. Targets are env-configurable
   // so a box with different hostnames is a config change, not code.
+  const caddy = (env.CADDY_URL || 'http://caddy/healthz').replace(/\/+$/, '');
+  probes.push({ name: 'Web Server', url: caddy });
   const port = Number(env.PG_PORT);
   probes.push({
     name: 'Database',
     url: '',
     tcp: { host: env.PG_HOST || 'postgres', port: Number.isInteger(port) && port > 0 ? port : 5432 },
   });
-  const ollama = (env.OLLAMA_URL || 'http://ollama:11434').replace(/\/+$/, '');
-  probes.push({ name: 'AI model', url: `${ollama}/api/tags` });
+  // litellm-proxy is the universal inference front (every profile), unlike the
+  // ollama container, which only exists in the ollama-docker profile.
+  const litellm = (env.LITELLM_URL || 'http://litellm-proxy:4000').replace(/\/+$/, '');
+  probes.push({ name: 'AI model', url: `${litellm}/health/liveliness` });
   return probes;
 }
 
