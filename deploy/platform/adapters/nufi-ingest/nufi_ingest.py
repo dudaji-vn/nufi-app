@@ -51,6 +51,9 @@ ROUTINE_OUTPUT_DIR = "_routines"
 ACCESS_FILE = ".nufi-access.json"
 UPLOADS_PER_WINDOW = 40          # app default is 50 per 15 min per user
 WINDOW_SECONDS = 15 * 60
+# How many scans a removed Private file's hash is remembered, so a move that
+# is not atomic on the share (gone one scan, back a later one) is still caught.
+TOMBSTONE_SCANS = 5
 
 
 def load_access(dept_dir):
@@ -76,18 +79,23 @@ def load_access(dept_dir):
     return out
 
 
-def effective_access(entries, rel_in_dept):
-    """Own entry wins, else the deepest ancestor folder's, else public.
-
-    Mirrors owner-console/src/access.ts effectiveAccess.
-    """
+def find_access(entries, rel_in_dept):
+    """The explicit access that applies (own entry, else deepest ancestor), or None."""
     path = rel_in_dept
     while path:
         ent = entries.get(path)
         if ent is not None:
             return ent["access"]
         path = path.rpartition("/")[0]
-    return "public"
+    return None
+
+
+def effective_access(entries, rel_in_dept):
+    """Own entry wins, else the deepest ancestor folder's, else public.
+
+    Mirrors owner-console/src/access.ts effectiveAccess.
+    """
+    return find_access(entries, rel_in_dept) or "public"
 
 
 @dataclass
@@ -552,6 +560,12 @@ class Ingester:
         for dept_dir in self._department_dirs():
             self.ensure_department(dept_dir.name)
         listing = self._listing()
+        # age out private-file tombstones (a file really deleted just fades away)
+        tombs = self.state.setdefault("private_tombstones", {})
+        for h in list(tombs):
+            tombs[h]["scans_left"] -= 1
+            if tombs[h]["scans_left"] <= 0:
+                del tombs[h]
         # removals
         for rel in list(self.state["files"]):
             if rel not in listing:
@@ -567,6 +581,10 @@ class Ingester:
                     # instead of orphaning the server-side file/embedding
                     LOG.error("delete %s failed: %s", rel, e)
                     continue
+                if rec.get("access") == "private" and not rec.get("file_id") and rec.get("sha256"):
+                    # may be an out-of-band move on the share: keep its content
+                    # private if it reappears at a path with no access entry
+                    tombs[rec["sha256"]] = {"scans_left": TOMBSTONE_SCANS}
                 del self.state["files"][rel]
                 self.save()
         # additions and changes
@@ -582,7 +600,9 @@ class Ingester:
                     LOG.warning("%s: unusable %s; skipping additions/changes this scan",
                                 dept, ACCESS_FILE)
                 continue
-            acc = effective_access(access_cache[dept], rel.split("/", 1)[1])
+            rel_in_dept = rel.split("/", 1)[1]
+            explicit = find_access(access_cache[dept], rel_in_dept)
+            acc = explicit or "public"
             rec = self.state["files"].get(rel)
             # a record from before accessibility existed was always Public
             if (rec and rec["size"] == size and rec["mtime"] == mtime
@@ -597,6 +617,12 @@ class Ingester:
                 digest = rec["sha256"]      # only deleting; no need to re-hash
             else:
                 digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            if rec is None and explicit is None and digest in tombs:
+                # a Private file moved out-of-band: the access file has not
+                # caught up, so fail closed. An explicit entry would win.
+                del tombs[digest]
+                acc = "private"
+                LOG.info("%s matches a removed private file; keeping it private", rel)
             if acc == "private":
                 # Private files stay on the drive but never enter the chat's RAG
                 if rec and rec.get("file_id"):

@@ -133,6 +133,55 @@ class ScanTests(unittest.TestCase):
         self.ing.scan()
         self.assertEqual(self.app.deletes, [fid])
 
+    def _private_then_move(self):
+        self.set_access({"sub/sec.txt": {"access": "private"}})
+        self.ing.scan()
+        self.assertEqual(self.names(), ["pub.txt"])
+        (self.dept / "sub" / "sec.txt").rename(self.dept / "moved.txt")
+
+    def test_moved_private_stays_private(self):
+        self._private_then_move()
+        self.ing.scan()
+        self.assertEqual(self.names(), ["pub.txt"])
+        self.assertEqual(self.ing.state["files"]["eng/moved.txt"]["access"], "private")
+        self.assertEqual(self.ing.state["private_tombstones"], {})
+
+    def test_cross_scan_move_and_expiry(self):
+        self.set_access({"sub/sec.txt": {"access": "private"}})
+        self.ing.scan()
+        (self.dept / "sub" / "sec.txt").rename(self.dept / "hold.txt.tmp")
+        self.ing.scan()
+        self.assertEqual(len(self.ing.state["private_tombstones"]), 1)
+        (self.dept / "hold.txt.tmp").rename(self.dept / "later.txt")
+        self.ing.scan()
+        self.assertEqual(self.names(), ["pub.txt"])
+        # expiry
+        self.set_access({"sub/pub2.txt": {"access": "private"}})
+        (self.dept / "sub" / "pub2.txt").write_text("other")
+        self.ing.scan()
+        (self.dept / "sub" / "pub2.txt").unlink()
+        for _ in range(I.TOMBSTONE_SCANS + 1):
+            self.ing.scan()
+        self.assertEqual(self.ing.state["private_tombstones"], {})
+        (self.dept / "back.txt").write_text("other")
+        self.ing.scan()
+        self.assertIn("back.txt", self.names())
+
+    def test_explicit_entry_beats_tombstone(self):
+        self._private_then_move()
+        self.set_access({"moved.txt": {"access": "public"}})
+        self.ing.scan()
+        self.assertIn("moved.txt", self.names())
+
+    def test_moved_public_file_reuploaded(self):
+        self.ing.scan()
+        fid = self.ing.state["files"]["eng/sub/sec.txt"]["file_id"]
+        (self.dept / "sub" / "sec.txt").rename(self.dept / "moved.txt")
+        self.ing.scan()
+        self.assertEqual(self.app.deletes, [fid])
+        self.assertEqual(self.names().count("moved.txt"), 1)
+        self.assertEqual(self.ing.state["private_tombstones"], {})
+
     def test_removed_private_file_needs_no_delete(self):
         self.set_access({"sub": {"access": "private"}})
         self.ing.scan()
