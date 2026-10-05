@@ -79,3 +79,11 @@ test('whole-box control is accepted via service __box__ and scope box', async ()
   expect((await p({ action: 'restart', scope: 'box' })).status).toBe(200);
   expect(seen).toEqual(['__box__', '__box__']);
 });
+
+test('control without service or scope is 400 and never reaches the box path', async () => {
+  const seen: string[] = [];
+  const a = makeApp({}, { exec: { controlService: (async (_a: string, s: string) => { seen.push(s); if (s !== '__box__' && s !== 'caddy') throw new BadRequest('invalid service'); return { ok: true, audit: 'x' }; }) as never, runReadCommand: exec.runReadCommand } });
+  const r = await a.request('/api/control', { method: 'POST', headers: { 'content-type': 'application/json', cookie: ownerCookie() }, body: JSON.stringify({ action: 'restart' }) });
+  expect(r.status).toBe(400);
+  expect(seen).not.toContain('__box__');
+});

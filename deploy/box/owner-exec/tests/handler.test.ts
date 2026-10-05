@@ -84,10 +84,15 @@ describe('POST /run', () => {
 });
 
 describe('POST /control whole box', () => {
-  test('no service -> box argv, audited as __box__', async () => {
+  test('missing/null service -> 400, no spawn (never whole-box by default)', async () => {
+    const { spawned, post } = setup();
+    expect((await post('/control', { action: 'restart' })).status).toBe(400);
+    expect((await post('/control', { action: 'restart', service: null })).status).toBe(400);
+    expect(spawned).toEqual([]);
+  });
+  test('explicit __box__ restart -> box argv, audited', async () => {
     const { spawned, audits, post } = setup();
-    const res = await post('/control', { action: 'restart' });
-    expect(res.status).toBe(200);
+    expect((await post('/control', { action: 'restart', service: '__box__' })).status).toBe(200);
     expect(spawned).toEqual([['docker', 'compose', '-p', 'nufi-box', 'restart']]);
     expect(audits[0]).toContain('__box__');
   });

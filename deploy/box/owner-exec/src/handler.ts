@@ -39,7 +39,7 @@ export function createApp(deps: ExecDeps): Hono {
 
   app.post('/control', async (c) => {
     const { action, service } = await body(c);
-    const whole = service === undefined || service === null || service === BOX_SERVICE;
+    const whole = service === BOX_SERVICE; // missing/null/other service never means whole-box
     const argv = whole ? buildBoxArgv(String(action)) : buildControlArgv(String(action), String(service)); // throws BadRequest
     const line = audit(String(action), whole ? BOX_SERVICE : String(service));
     const proc = deps.spawn({ cmd: argv, stdout: 'ignore', stderr: 'ignore' });

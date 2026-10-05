@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { createServer } from 'node:net';
-import { checkAll, parseChatVersion, parseOllamaModel, probe, probesForEnv, type Probe } from '../src/health';
+import { checkAll, parseOllamaModel, probe, probesForEnv, type Probe } from '../src/health';
 import { makeApp, ownerCookie } from './helpers';
 
 // A fetch that never resolves until the AbortController fires — used to prove
@@ -177,11 +177,13 @@ describe('probe detail', () => {
       expect(r.detail).toBeUndefined();
     }
   });
-  test('chat version parsed; probesForEnv wires details', () => {
-    expect(parseChatVersion({ version: 'v0.8.6' })).toBe('v0.8.6');
-    expect(parseChatVersion({})).toBeUndefined();
-    const ps = probesForEnv({ CHAT_URL: 'http://c:1/', OLLAMA_URL: 'http://o:2' });
-    expect(ps.find((x) => x.name === 'Chat')!.detail!.url).toBe('http://c:1/api/config');
-    expect(ps.find((x) => x.name === 'AI model')!.detail!.url).toBe('http://o:2/api/tags');
+  test('chat detail is NUFI_CHAT_VERSION when set, absent when not', async () => {
+    const withV = probesForEnv({ NUFI_CHAT_VERSION: 'v0.8.6' }).find((x) => x.name === 'Chat')!;
+    expect((await probe(withV, 1000, mapFetch({ [withV.url]: 200 }))).detail).toBe('v0.8.6');
+    const without = probesForEnv({}).find((x) => x.name === 'Chat')!;
+    expect((await probe(without, 1000, mapFetch({ [without.url]: 200 }))).detail).toBeUndefined();
+  });
+  test('ollama detail url from OLLAMA_URL', () => {
+    expect(probesForEnv({ OLLAMA_URL: 'http://o:2' }).find((x) => x.name === 'AI model')!.detail!.url).toBe('http://o:2/api/tags');
   });
 });

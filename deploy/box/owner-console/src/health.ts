@@ -9,17 +9,12 @@
 // `detail` is an optional best-effort enrichment: a JSON GET whose result is
 // summarised into a short string. Any failure just leaves the card without it.
 export type Detail = { url: string; parse: (json: any) => string | undefined };
-export type Probe = { name: string; url: string; tcp?: { host: string; port: number }; detail?: Detail };
+export type Probe = { name: string; url: string; tcp?: { host: string; port: number }; detail?: Detail; info?: string };
 export type Health = { name: string; ok: boolean; status?: number; ms: number; error?: string; detail?: string };
 
 const humanSize = (n: number): string => {
   const gb = n / 1e9;
   return gb >= 1 ? `${gb.toFixed(1)} GB` : `${Math.round(n / 1e6)} MB`;
-};
-
-export const parseChatVersion = (j: any): string | undefined => {
-  const v = j?.version ?? j?.appVersion ?? j?.app_version;
-  return typeof v === 'string' && v ? v : undefined;
 };
 
 export const parseOllamaModel = (j: any): string | undefined => {
@@ -29,11 +24,7 @@ export const parseOllamaModel = (j: any): string | undefined => {
 };
 
 const CORE: Probe[] = [
-  {
-    name: 'Chat',
-    url: 'http://librechat:3080/health',
-    detail: { url: 'http://librechat:3080/api/config', parse: parseChatVersion },
-  },
+  { name: 'Chat', url: 'http://librechat:3080/health' },
   { name: 'Console', url: 'http://console:3000/_health' },
   { name: 'Admin panel', url: 'http://admin-panel:3000/' },
   { name: 'Gateway', url: 'http://litellm-proxy:4000/health/liveliness' },
@@ -44,12 +35,9 @@ const CORE: Probe[] = [
 // installed with --with-works, surfaced here as NUFI_WORKS=1.
 export function probesForEnv(env: Record<string, string | undefined> = process.env): Probe[] {
   const probes = CORE.map((p) => ({ ...p }));
-  if (env.CHAT_URL) {
-    const chat = probes.find((p) => p.name === 'Chat')!;
-    const base = env.CHAT_URL.replace(/\/+$/, '');
-    chat.url = `${base}/health`;
-    chat.detail = { url: `${base}/api/config`, parse: parseChatVersion };
-  }
+  // LibreChat exposes no version over HTTP; the compose stack passes it as an env var.
+  const chatVersion = env.NUFI_CHAT_VERSION?.trim();
+  if (chatVersion) probes.find((p) => p.name === 'Chat')!.info = chatVersion;
   if (env.NUFI_WORKS === '1') probes.push({ name: 'Works', url: 'http://works:3100/' });
   // Web Server, Database and AI model back three General-tab cards. Targets are env-configurable
   // so a box with different hostnames is a config change, not code.
@@ -133,8 +121,9 @@ export async function probe(
   try {
     const r = await fetchImpl(p.url, { signal: ctrl.signal, redirect: 'manual' });
     const h: Health = { name: p.name, ok: r.ok, status: r.status, ms: Date.now() - started };
+    if (p.info) h.detail = p.info;
     if (r.ok && p.detail) {
-      const d = await readDetail(p.detail, timeoutMs, fetchImpl);
+      const d = await readDetail(p.detail, Math.min(timeoutMs, 1500), fetchImpl);
       if (d) h.detail = d;
     }
     return h;
