@@ -172,6 +172,14 @@ def test_owner_console_persists_state_and_writes_the_drives():
     assert "owner-console-state" in cfg["volumes"]
 
 
+def test_owner_console_joins_the_docker_group_to_open_the_socket():
+    # The image runs as USER bun; the socket is root:docker. Without the host's
+    # docker gid the allowlisted control/console exec is "permission denied".
+    oc = render(profiles=("owner-console",), DOCKER_GID="988",
+                BOX_OWNER_PASSWORD="pw", BOX_OWNER_SESSION_SECRET="s" * 40)["services"]["owner-console"]
+    assert oc["group_add"] == ["988"], oc.get("group_add")
+
+
 def test_owner_console_gets_non_secret_box_facts_and_only_the_mesh_api_key():
     # The status dashboard reads box facts from the environment (not a mounted
     # .env), so the console never sees the box's secrets. The one credential it

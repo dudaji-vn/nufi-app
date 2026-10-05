@@ -334,6 +334,10 @@ services:
       - ${NUFI_DATA_DIR}/drives:/drives
       # Durable console state: the user store (users.json) + the exec audit log.
       - owner-console-state:/state
+    # The image runs as USER bun, but the socket is root:docker; without the
+    # host's docker gid the allowlisted control/console exec fails "permission
+    # denied". DOCKER_GID is read from the socket by install-box.sh.
+    group_add: ["${DOCKER_GID:-999}"]
     # A self-hosted coordinator answers on THIS host's published :443 under its
     # certificate name; from a bridge-network container that name must resolve to
     # the host gateway (mirrors mesh_api's host-side --resolve to 127.0.0.1).

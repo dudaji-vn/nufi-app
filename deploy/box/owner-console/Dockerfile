@@ -19,7 +19,7 @@ RUN cp /agent-src/dist/nufibox-agent-macos.pkg /dist/ 2>/dev/null || true
 FROM oven/bun:1.4.2-alpine AS webbuild
 WORKDIR /web
 COPY web/package.json web/bun.lock* ./
-RUN bun install
+RUN bun install --frozen-lockfile
 COPY web ./
 RUN bun run build
 
