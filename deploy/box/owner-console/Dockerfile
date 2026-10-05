@@ -44,5 +44,12 @@ COPY --from=templates . ./join-templates
 COPY --from=agentbuild /dist ./agent-dist
 ENV PORT=8890 JOIN_TEMPLATES_DIR=/app/join-templates AGENT_DIST_DIR=/app/agent-dist
 EXPOSE 8890
+# /state is a named volume (owner-console-state): the user store (users.json) and
+# the exec audit log live here, written by the `bun` user. A fresh named volume
+# inherits the ownership of the image directory it mounts over, so pre-create
+# /state owned by bun — otherwise it mounts root:root and every write (the store,
+# and the audit line the exec layer writes BEFORE each control/console command,
+# which aborts on failure) fails with EACCES on a real box.
+RUN mkdir -p /state && chown bun:bun /state
 USER bun
 ENTRYPOINT ["/bin/sh", "/app/entrypoint.sh"]
