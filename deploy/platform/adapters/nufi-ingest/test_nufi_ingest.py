@@ -167,6 +167,42 @@ class ScanTests(unittest.TestCase):
         self.ing.scan()
         self.assertIn("back.txt", self.names())
 
+    def test_moved_private_never_uploaded_across_scans(self):
+        self._private_then_move()
+        for _ in range(5):
+            self.ing.scan()
+        self.assertEqual(self.names(), ["pub.txt"])
+        self.assertTrue(self.ing.state["files"]["eng/moved.txt"]["held"])
+
+    def test_held_made_explicitly_public_uploads(self):
+        self._private_then_move()
+        self.ing.scan()
+        self.ing.scan()
+        self.set_access({"moved.txt": {"access": "public"}})
+        self.ing.scan()
+        self.assertIn("moved.txt", self.names())
+
+    def test_copy_of_live_private_is_held(self):
+        self.set_access({"sub/sec.txt": {"access": "private"}})
+        self.ing.scan()
+        (self.dept / "copy.txt").write_text("secret")
+        for _ in range(3):
+            self.ing.scan()
+        self.assertEqual(self.names(), ["pub.txt"])
+        self.assertEqual(self.ing.state["files"]["eng/copy.txt"]["access"], "private")
+
+    def test_tombstone_survives_unusable_access_file(self):
+        self._private_then_move()
+        (self.dept / I.ACCESS_FILE).write_text("{bad")
+        (self.dept / "moved.txt").rename(self.dept / "lost.txt")
+        for _ in range(I.TOMBSTONE_SCANS + 3):
+            self.ing.scan()
+        self.assertEqual(len(self.ing.state["private_tombstones"]), 1)
+        (self.dept / I.ACCESS_FILE).write_text(json.dumps({"entries": {}}))
+        self.ing.scan()
+        self.ing.scan()
+        self.assertEqual(self.names(), ["pub.txt"])
+
     def test_explicit_entry_beats_tombstone(self):
         self._private_then_move()
         self.set_access({"moved.txt": {"access": "public"}})

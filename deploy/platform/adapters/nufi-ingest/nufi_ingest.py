@@ -560,12 +560,16 @@ class Ingester:
         for dept_dir in self._department_dirs():
             self.ensure_department(dept_dir.name)
         listing = self._listing()
-        # age out private-file tombstones (a file really deleted just fades away)
+        access_cache = {d.name: load_access(d) for d in self._department_dirs()}
+        # age out private-file tombstones (a file really deleted just fades
+        # away) -- but not while any access file is unusable: the fix may be
+        # what lets a moved file's hold be honoured, so the clock stops.
         tombs = self.state.setdefault("private_tombstones", {})
-        for h in list(tombs):
-            tombs[h]["scans_left"] -= 1
-            if tombs[h]["scans_left"] <= 0:
-                del tombs[h]
+        if all(v is not None for v in access_cache.values()):
+            for h in list(tombs):
+                tombs[h]["scans_left"] -= 1
+                if tombs[h]["scans_left"] <= 0:
+                    del tombs[h]
         # removals
         for rel in list(self.state["files"]):
             if rel not in listing:
@@ -588,11 +592,8 @@ class Ingester:
                 del self.state["files"][rel]
                 self.save()
         # additions and changes
-        access_cache = {}
         warned = set()
         for rel, (path, dept, size, mtime) in listing.items():
-            if dept not in access_cache:
-                access_cache[dept] = load_access(pathlib.Path(self.cfg.drives_dir) / dept)
             if access_cache[dept] is None:
                 # fail closed: no uploads and no flips until the file is readable
                 if dept not in warned:
@@ -602,27 +603,36 @@ class Ingester:
                 continue
             rel_in_dept = rel.split("/", 1)[1]
             explicit = find_access(access_cache[dept], rel_in_dept)
-            acc = explicit or "public"
             rec = self.state["files"].get(rel)
+            # A hold (set when the content matched a Private file) is sticky;
+            # only an explicit entry at this path (own or ancestor) overrides it.
+            held = explicit is None and bool(rec and rec.get("held"))
+            digest = None
+            if rec is None and explicit is None:
+                # copy/move of a Private file: match its content against removed
+                # Private files (tombstones) and live Private records
+                digest = hashlib.sha256(path.read_bytes()).hexdigest()
+                live = any(r.get("access") == "private" and r.get("sha256") == digest
+                           for k, r in self.state["files"].items() if k != rel)
+                if digest in tombs or live:
+                    tombs.pop(digest, None)
+                    held = True
+                    LOG.info("%s matches a Private file; holding it private", rel)
+            acc = explicit if explicit is not None else ("private" if held else "public")
             # a record from before accessibility existed was always Public
             if (rec and rec["size"] == size and rec["mtime"] == mtime
                     and rec.get("access", "public") == acc):
                 continue
-            hide_now = acc == "private" and rec and rec.get("file_id")
-            # the settle gate is for half-written files; hiding needs no settle
-            if not hide_now and not self._stable(rel, size, mtime):
+            # the settle gate is for half-written files that are about to be
+            # uploaded; hiding a file (private) needs no settle
+            if acc != "private" and not self._stable(rel, size, mtime):
                 continue
             d = self.ensure_department(dept)
-            if acc == "private" and rec and rec.get("sha256"):
-                digest = rec["sha256"]      # only deleting; no need to re-hash
-            else:
-                digest = hashlib.sha256(path.read_bytes()).hexdigest()
-            if rec is None and explicit is None and digest in tombs:
-                # a Private file moved out-of-band: the access file has not
-                # caught up, so fail closed. An explicit entry would win.
-                del tombs[digest]
-                acc = "private"
-                LOG.info("%s matches a removed private file; keeping it private", rel)
+            if digest is None:
+                if acc == "private" and rec and rec.get("sha256"):
+                    digest = rec["sha256"]      # only deleting; no need to re-hash
+                else:
+                    digest = hashlib.sha256(path.read_bytes()).hexdigest()
             if acc == "private":
                 # Private files stay on the drive but never enter the chat's RAG
                 if rec and rec.get("file_id"):
@@ -633,6 +643,8 @@ class Ingester:
                         continue
                 self.state["files"][rel] = {"size": size, "mtime": mtime, "sha256": digest,
                                             "access": "private", "embedded": False}
+                if held:
+                    self.state["files"][rel]["held"] = True
                 self.save()
                 self._pending.pop(rel, None)
                 LOG.info("%s is private; not in chat", rel)
