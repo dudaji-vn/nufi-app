@@ -154,6 +154,24 @@ def test_owner_console_is_off_by_default_and_mounts_the_docker_socket_when_on():
     assert all(not v.endswith("/.env") and "/.env:" not in v for v in vols)
 
 
+def test_owner_console_persists_state_and_writes_the_drives():
+    cfg = render(profiles=("owner-console",),
+                 BOX_OWNER_PASSWORD="pw", BOX_OWNER_SESSION_SECRET="s" * 40)
+    oc = cfg["services"]["owner-console"]
+    assert oc["environment"]["NUFI_DRIVES_DIR"] == "/drives"
+    assert oc["environment"]["NUFI_STATE_DIR"] == "/state"
+    by_target = {v["target"]: v for v in oc["volumes"]}
+    # Drives: the console is the writer, so READ-WRITE (other services mount :ro).
+    drives = by_target["/drives"]
+    assert drives["source"].endswith("/data/drives")
+    assert not drives.get("read_only")
+    # Durable state (users.json + exec audit log): a named volume, not the
+    # container's ephemeral layer.
+    state = by_target["/state"]
+    assert state["type"] == "volume" and state["source"] == "owner-console-state"
+    assert "owner-console-state" in cfg["volumes"]
+
+
 def test_owner_console_gets_non_secret_box_facts_and_only_the_mesh_api_key():
     # The status dashboard reads box facts from the environment (not a mounted
     # .env), so the console never sees the box's secrets. The one credential it

@@ -3,6 +3,7 @@ import { join, normalize, resolve, sep } from 'node:path';
 import { Hono } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { signSession, verifyPassword, verifySession } from './auth';
+import { filesRoutes } from './api/files';
 import { controlRoutes, type ControlDeps } from './api/control';
 import { buildStatus } from './api/status';
 import { usersRoutes, type UsersDeps } from './api/users';
@@ -145,6 +146,8 @@ export function createApp(env: AppEnv = process.env, deps: Deps = {}): Hono {
   app.get('/api/status', async (c) => c.json(await buildStatus(() => boxInfo(env), checkHealth)));
 
   app.route('/api', controlRoutes(deps.exec));
+
+  app.route('/api', filesRoutes(env));
 
   app.route('/api', usersRoutes({ env, secret, origin: originOf, boxCaB64, coordCaB64, templatesDir, agentSha256 }, deps.users));
 
