@@ -90,3 +90,31 @@ export function removeSubtree(driveDir: string, relPath: string): Promise<void> 
     await write(driveDir, a);
   });
 }
+
+function rekey(a: AccessFile, from: string, to: string, keepOld: boolean): void {
+  for (const k of Object.keys(a.entries)) {
+    if (k !== from && !k.startsWith(`${from}/`)) continue;
+    const nk = to + k.slice(from.length);
+    a.entries[nk] = a.entries[k] as { access: Access };
+    if (!keepOld) delete a.entries[k];
+  }
+}
+
+// Re-keys `from` and everything under it to `to` (from/x/y -> to/x/y), atomically.
+export function moveSubtree(driveDir: string, from: string, to: string): Promise<void> {
+  return enqueue(async () => {
+    const a = await readAccess(driveDir);
+    rekey(a, from, to, false);
+    await write(driveDir, a);
+  });
+}
+
+// Like moveSubtree but keeps the old keys: lets a caller protect the new path first,
+// do the filesystem rename, then drop the old keys (a failure never exposes a Private item).
+export function copySubtree(driveDir: string, from: string, to: string): Promise<void> {
+  return enqueue(async () => {
+    const a = await readAccess(driveDir);
+    rekey(a, from, to, true);
+    await write(driveDir, a);
+  });
+}

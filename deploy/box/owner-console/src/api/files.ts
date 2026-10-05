@@ -1,7 +1,7 @@
 import { lstat, mkdir, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve, sep } from 'node:path';
 import { Hono } from 'hono';
-import { effectiveAccess, readAccess, removeSubtree } from '../access';
+import { copySubtree, effectiveAccess, readAccess, removeSubtree } from '../access';
 import { boxInfo } from '../boxinfo';
 
 type Env = Record<string, string | undefined>;
@@ -199,7 +199,18 @@ export function filesRoutes(env: Env): Hono {
       if (!s) throw new Missing();
       if (s.isSymbolicLink()) throw new Bad('invalid path');
       if (await entry(to)) throw new Conflict('already exists');
-      await rename(from, to);
+      // Fail closed: protect the new path first, rename, then drop the old keys. If the
+      // rename throws, the old keys still guard the item and the new ones are rolled back.
+      const oldRel = b.path;
+      const newRel = relOf(oldRel.includes('/') ? oldRel.slice(0, oldRel.lastIndexOf('/')) : '', b.newName as string);
+      await copySubtree(root, oldRel, newRel);
+      try {
+        await rename(from, to);
+      } catch (e) {
+        await removeSubtree(root, newRel).catch(() => undefined);
+        throw e;
+      }
+      await removeSubtree(root, oldRel);
       return c.json({ ok: true, name: b.newName });
     } catch (e) {
       return fail(c, e, 'rename failed');

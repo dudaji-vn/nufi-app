@@ -283,3 +283,29 @@ test('a symlinked intermediate directory is refused on every endpoint', async ()
     rmSync(outside, { recursive: true, force: true });
   }
 });
+
+test('renaming a Private file or a folder with a Private child keeps them private', async () => {
+  seedSub();
+  writeFileSync(join(root, 'legal', '.nufi-access.json'), JSON.stringify({ version: 1, entries: { 'a.pdf': { access: 'private' }, 'sub/a.pdf': { access: 'private' } } }));
+  expect((await j('POST', '/api/files/rename', { dept: 'legal', path: 'a.pdf', newName: 'c.pdf' })).status).toBe(200);
+  const top = await (await get('/api/files?dept=legal')).json();
+  expect(top.find((x: { name: string }) => x.name === 'c.pdf').access).toBe('private');
+  expect((await j('POST', '/api/files/rename', { dept: 'legal', path: 'sub', newName: 'moved' })).status).toBe(200);
+  const rows = await (await get('/api/files?dept=legal&path=moved')).json();
+  expect(rows[0]).toMatchObject({ name: 'a.pdf', access: 'private' });
+  const acc = JSON.parse(readFileSync(join(root, 'legal', '.nufi-access.json'), 'utf8'));
+  expect(Object.keys(acc.entries).sort()).toEqual(['c.pdf', 'moved/a.pdf']);
+});
+
+test('a folder own Private entry moves with it; a rename that cannot happen leaves the old key', async () => {
+  seedSub();
+  writeFileSync(join(root, 'legal', '.nufi-access.json'), JSON.stringify({ version: 1, entries: { sub: { access: 'private' } } }));
+  expect((await j('POST', '/api/files/rename', { dept: 'legal', path: 'sub', newName: 'a.pdf' })).status).toBe(409);
+  let acc = JSON.parse(readFileSync(join(root, 'legal', '.nufi-access.json'), 'utf8'));
+  expect(Object.keys(acc.entries)).toEqual(['sub']);
+  expect((await j('POST', '/api/files/rename', { dept: 'legal', path: 'sub', newName: 'sub2' })).status).toBe(200);
+  acc = JSON.parse(readFileSync(join(root, 'legal', '.nufi-access.json'), 'utf8'));
+  expect(Object.keys(acc.entries)).toEqual(['sub2']);
+  const top = await (await get('/api/files?dept=legal')).json();
+  expect(top.find((x: { name: string }) => x.name === 'sub2').access).toBe('private');
+});

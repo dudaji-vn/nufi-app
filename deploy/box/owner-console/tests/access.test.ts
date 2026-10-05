@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import {
   accessPath,
   effectiveAccess,
+  moveSubtree,
   readAccess,
   removeSubtree,
   setEntry,
@@ -115,5 +116,19 @@ describe('persistence', () => {
     for (const p of ['a', 'abc/x', 'ab']) await setEntry(dir, p, 'private');
     await removeSubtree(dir, 'a');
     expect(Object.keys((await readAccess(dir)).entries).sort()).toEqual(['ab', 'abc/x']);
+  });
+});
+
+describe('moveSubtree', () => {
+  test('re-keys the item and its descendants, leaves siblings with the same prefix alone', async () => {
+    await setEntry(dir, 'a', 'private');
+    await setEntry(dir, 'a/x/y', 'public');
+    await setEntry(dir, 'ab', 'private');
+    await moveSubtree(dir, 'a', 'b');
+    const e = (await readAccess(dir)).entries;
+    expect(Object.keys(e).sort()).toEqual(['ab', 'b', 'b/x/y']);
+    expect(e.b?.access).toBe('private');
+    expect(e['b/x/y']?.access).toBe('public');
+    expect(e.ab?.access).toBe('private');
   });
 });
