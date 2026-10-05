@@ -10,6 +10,7 @@ on:
       - 'deploy/box/works-egress/**'
       - 'deploy/box/sandbox/**'
       - 'deploy/box/owner-console/**'
+      - 'deploy/box/owner-exec/**'
       - 'deploy/box/lib/join-templates/**'
       - 'deploy/box/agent/**'
       - 'apps/nufi-agent/**'
@@ -61,6 +62,10 @@ jobs:
             buildcontexts: |
               templates=deploy/box/lib/join-templates
               agent=deploy/box/agent
+          - name: nufi-owner-exec
+            context: deploy/box
+            file: deploy/box/owner-exec/Dockerfile
+            tagprefix: ''
           - name: nufi-studio
             context: apps/nufi-agent
             file: apps/nufi-agent/nufi/Dockerfile

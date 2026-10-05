@@ -133,25 +133,37 @@ def test_env_example_covers_every_variable():
     assert not missing, f"used in compose but absent from .env.example: {sorted(missing)}"
 
 
-def test_owner_console_is_off_by_default_and_mounts_the_docker_socket_when_on():
-    # Off by default: no flag, no service — the plain box is unchanged.
+def test_owner_console_is_off_by_default_and_holds_no_docker_access():
     assert "owner-console" not in render()["services"]
-    # On with the profile: present, on the box network, no published ports,
-    # and mounting the Docker socket read-write for its allowlisted control.
     svc = render(profiles=("owner-console",),
                  BOX_OWNER_PASSWORD="pw", BOX_OWNER_SESSION_SECRET="s" * 40)["services"]
-    assert "owner-console" in svc
     oc = svc["owner-console"]
     assert set(oc.get("networks", {})) == {"box"}
     assert not oc.get("ports")
-    # Control needs the Docker socket (read-write — no :ro); the box's .env is
-    # still never mounted.
     vols = [str(v.get("source", v)) if isinstance(v, dict) else str(v) for v in oc.get("volumes", [])]
-    sock = [v for v in oc.get("volumes", []) if "docker.sock" in str(v.get("source", v) if isinstance(v, dict) else v)]
-    assert len(sock) == 1
-    assert not (isinstance(sock[0], dict) and sock[0].get("read_only"))
-    assert not str(sock[0]).endswith(":ro")
+    # The web-facing console has NO docker socket and NO docker group.
+    assert not any("docker.sock" in v for v in vols)
+    assert "group_add" not in oc
     assert all(not v.endswith("/.env") and "/.env:" not in v for v in vols)
+    assert oc["environment"]["EXEC_SOCK"] == "/sock/exec.sock"
+
+
+def test_owner_exec_sidecar_holds_the_socket_and_shares_the_exec_sock():
+    cfg = render(profiles=("owner-console",), DOCKER_GID="988",
+                 BOX_OWNER_PASSWORD="pw", BOX_OWNER_SESSION_SECRET="s" * 40)
+    assert "owner-exec" not in render()["services"]
+    ex = cfg["services"]["owner-exec"]
+    oc = cfg["services"]["owner-console"]
+    ex_vols = {v["target"]: v for v in ex["volumes"]}
+    assert "docker.sock" in ex_vols["/var/run/docker.sock"]["source"]
+    assert not ex_vols["/var/run/docker.sock"].get("read_only")
+    assert ex["group_add"] == ["988"]
+    assert ex_vols["/state"]["source"] == "owner-console-state"
+    assert ex_vols["/box"].get("read_only")
+    assert ex["environment"]["COMPOSE_FILE"]
+    assert "owner-exec-sock" in cfg["volumes"]
+    oc_vols = {v["target"]: v for v in oc["volumes"]}
+    assert ex_vols["/sock"]["source"] == oc_vols["/sock"]["source"] == "owner-exec-sock"
 
 
 def test_owner_console_persists_state_and_writes_the_drives():
@@ -170,14 +182,6 @@ def test_owner_console_persists_state_and_writes_the_drives():
     state = by_target["/state"]
     assert state["type"] == "volume" and state["source"] == "owner-console-state"
     assert "owner-console-state" in cfg["volumes"]
-
-
-def test_owner_console_joins_the_docker_group_to_open_the_socket():
-    # The image runs as USER bun; the socket is root:docker. Without the host's
-    # docker gid the allowlisted control/console exec is "permission denied".
-    oc = render(profiles=("owner-console",), DOCKER_GID="988",
-                BOX_OWNER_PASSWORD="pw", BOX_OWNER_SESSION_SECRET="s" * 40)["services"]["owner-console"]
-    assert oc["group_add"] == ["988"], oc.get("group_add")
 
 
 def test_owner_console_gets_non_secret_box_facts_and_only_the_mesh_api_key():

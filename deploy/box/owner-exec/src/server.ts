@@ -19,6 +19,7 @@ mkdirSync(dirname(sock), { recursive: true });
 rmSync(sock, { force: true }); // stale socket from a previous run
 Bun.serve({ unix: sock, fetch: app.fetch, idleTimeout: 0 });
 try {
-  chmodSync(sock, 0o660);
+  // The shared volume is the access boundary; the console runs as uid 1000.
+  chmodSync(sock, 0o666);
 } catch {}
 console.log(`owner-exec listening on ${sock}`);
