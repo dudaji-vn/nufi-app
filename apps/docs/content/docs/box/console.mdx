@@ -1,15 +1,16 @@
 ---
 title: The Owner Console
-description: A small web page for running the box without the terminal — invite a member as a link, see who is joined and revoke them, and read health and drive paths. On by default.
+description: A web page for running the box without the terminal — three tabs to control the box, manage members, and share department files. On by default.
 ---
 
 Everything on this box can be run from the command line with `nufi-box`. It
-also ships a small web page — the **Owner Console** — that does the day-to-day
+also ships a web page — the **Owner Console** — that does the day-to-day
 management without a terminal. It is on by default; a plain install has it.
 
-The console reads status over the network and talks to the coordinator. It
-never touches the documents, the model or the chat history, and it has no
-shell on the box.
+The console answers only to the owner. It has no shell on the box: the commands
+it can run are a fixed, read-only set, and every change it makes — inviting a
+member, setting a file private, restarting the box — goes through the same
+checks `nufi-box` would apply from the command line.
 
 ## Signing in
 
@@ -25,9 +26,30 @@ It has one password, generated at install and printed in the banner — it is
 password, separate from the `admin@` login people use for chat. Write it down
 when the box is installed; the banner is the one time it is shown.
 
-## Invite a member — a link, not a file
+The page opens on the **Administrator Dashboard**, with three tabs — **General**,
+**Users** and **File Sharing**.
 
-The console's main job is bringing a laptop onto the box from home. One click:
+## General — run the box
+
+The first tab shows the box's health at a glance: a card each for the web
+server, the database, the chat app and the AI model, each reading *Running* or
+down, with a line of detail such as the model's name and size or the chat
+version.
+
+One row of controls starts, restarts or stops the **whole box**. Restarting
+takes a minute or two while the AI models reload, and stopping disconnects
+everyone, so both ask you to confirm first; there is nothing to start while the
+box is already running, so that button rests until it is needed.
+
+Below that is a **System Console**: a read-only window onto the box's own
+diagnostics. Type or click one of `status`, `logs`, `logs <service>`, `doctor`
+or `support` and it streams the output. It is not a shell — only that fixed set
+of commands runs, and none of them changes anything.
+
+## Users — invite and manage members
+
+The console's main job is bringing a laptop onto the box from home. Inviting a
+member is one click:
 
 1. The console mints a single-use key that expires in an hour.
 2. It gives you a **`/connect` link** to copy.
@@ -37,25 +59,31 @@ The console's main job is bringing a laptop onto the box from home. One click:
 They open it, pick their operating system, download a one-click connector and
 run it; that trusts the box, joins their laptop and opens the box in their
 browser. Their side is written up in
-[Using your department's box](/docs/box/members#from-home).
-
-This is the same thing as `nufi-box invite` on the
+[Using your department's box](/docs/box/members#from-home). This is the same
+thing as `nufi-box invite` on the
 [command line](/docs/box/reaching#inviting-a-laptop), handed over as a link
-instead of a file — usually the easier of the two to send.
+instead of a file.
 
-## See who is joined, and revoke
+The members table lists everyone you have invited and where each one stands —
+**Pending** (invited, not joined yet), **Activated** (joined), or **Expired**
+(the link lapsed before it was used). Beside each you can copy or download their
+join file, **regenerate** a fresh link when the old one expires, or **remove**
+the member for good — a removed member needs a new invite to come back. To
+onboard a whole team at once, import a list as CSV; export writes the current
+members back out.
 
-The console lists every laptop on the mesh — its name, address, whether it is
-online, and when it was last seen — with a **Revoke** button beside each. Revoke
-removes a laptop for good; the person needs a fresh invite to come back. The
-box's own entry has no Revoke button: the one node the console will not cut off
-is the box itself.
+## File Sharing — the department drives
 
-## Status and drives
+The third tab is a file manager for each department's shared drive. Pick a
+department and you can browse its folders, upload files, make new folders, and
+rename or delete what is there.
 
-The same page shows each product's health at a glance and, per department, the
-drive path a member types to reach that folder — the office path on the office
-network, the from-home path once the box is on a coordinator.
+Each file and folder carries an **accessibility** setting — **Public** or
+**Private**. Public files are the ones the chat can read and cite; a **Private**
+file stays on the drive but is kept out of chat and search entirely. Set a whole
+folder to Private and everything under it follows, unless a file inside sets its
+own. This is how you keep, say, a folder of salary data on the HR drive without
+it ever surfacing in an answer.
 
 ## Turning it off
 

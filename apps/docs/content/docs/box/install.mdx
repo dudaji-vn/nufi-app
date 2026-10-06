@@ -19,6 +19,8 @@ slower; a machine serving a handful of people at once wants a GPU.
 
 ## On Windows, work inside WSL2
 
+*Running Ubuntu or macOS directly? Skip this section — go straight to [Get the box](#get-the-box).*
+
 The box is a Linux server, so on Windows you run everything **inside a WSL2
 Ubuntu shell** — never in PowerShell or Command Prompt. Those cannot run the
 installer: typing `./install-box.sh` in PowerShell does not install anything, it
@@ -34,10 +36,23 @@ sign you are in the wrong shell).
    now on, every command below runs in this Ubuntu shell.
 3. Give that shell Docker — either enable Docker Desktop's WSL integration
    (Settings → Resources → WSL integration → turn on your Ubuntu distro), or
-   install Docker Engine inside WSL2:
+   install Docker Engine inside WSL2. If you install the engine, run the two
+   commands **one at a time**, not as a single paste.
+
+   Install the engine first, and wait for it to finish — it takes a minute or
+   two and prints a lot of output:
    ```bash
    curl -fsSL https://get.docker.com | sh
-   sudo usermod -aG docker $USER   # then close and reopen the Ubuntu shell
+   ```
+   Once it is back at the prompt, add yourself to the `docker` group:
+   ```bash
+   sudo usermod -aG docker $USER
+   ```
+   Now **close the Ubuntu shell and open it again** — the group membership only
+   takes effect in a new shell. Confirm it worked before going on; this should
+   print an empty table, not a "permission denied" error:
+   ```bash
+   docker ps
    ```
 4. Clone into your WSL2 home (`cd ~` first), **not** a Windows path under
    `/mnt/c/…`: a checkout made on the Windows side can carry CRLF line endings
@@ -209,3 +224,9 @@ created mode `0600` and holds every other secret the box has.
 It checks the things that actually break and says what to do about each in
 plain words. Re-running `./install-box.sh` is safe: it keeps the answers already
 on disk unless you override them explicitly.
+
+## Next
+
+- [The first hour](/docs/box/first-hour) — trust the certificate, add a colleague, drop a file, and ask the agent
+- [Using your department's box](/docs/box/members) — the page to hand everyone who is not running the box
+- [The Owner Console](/docs/box/console) — run the box, manage members and share files from a web page, no terminal
