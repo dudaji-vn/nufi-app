@@ -26,7 +26,8 @@ TAG_KEY = {"nufichat": "NUFI_CHAT_TAG", "nufichat-admin-panel": "NUFI_ADMIN_TAG"
            "nufi-ingest": "NUFI_INGEST_TAG", "nufi-studio": "NUFI_STUDIO_TAG",
            "nufi-cron": "NUFI_CRON_TAG", "nufi-works-egress": "NUFI_WORKS_EGRESS_TAG",
            "nufi-sandbox": "NUFI_SANDBOX_TAG", "nufi-works": "NUFI_WORKS_TAG",
-           "nufi-owner-console": "NUFI_OWNER_CONSOLE_TAG"}
+           "nufi-owner-console": "NUFI_OWNER_CONSOLE_TAG",
+           "nufi-owner-exec": "NUFI_OWNER_CONSOLE_TAG"}
 
 
 def test_the_compose_file_names_every_image_the_mirror_knows():

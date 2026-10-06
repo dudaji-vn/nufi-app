@@ -1044,8 +1044,17 @@ fi
 # way through, `ln -sf` fails and `set -e` swallows the banner that says the
 # box is up. The link is a convenience; the box works without it.
 LINK_DIR="$( [ -d /opt/homebrew/bin ] && echo /opt/homebrew/bin || echo /usr/local/bin )"
-run ln -sf "$BOX_HOME/nufi-box" "$LINK_DIR/nufi-box" \
-  || warn "could not link nufi-box into $LINK_DIR; add $BOX_HOME to your PATH or run: sudo ln -sf $BOX_HOME/nufi-box $LINK_DIR/nufi-box"
+# `NB` is the command the banner tells people to type. If the link succeeds,
+# `nufi-box` works from anywhere; if it does not (a non-root user on Ubuntu,
+# where /usr/local/bin is root-owned), the banner must say `./nufi-box` — the
+# form that works from $BOX_HOME — or every command it prints is "command not
+# found" the moment someone copies it.
+if run ln -sf "$BOX_HOME/nufi-box" "$LINK_DIR/nufi-box" 2>/dev/null; then
+  NB="nufi-box"
+else
+  NB="./nufi-box"
+  warn "could not link nufi-box into $LINK_DIR (it is root-owned); the banner uses ./nufi-box — run it from $BOX_HOME. To type nufi-box from anywhere: sudo ln -sf $BOX_HOME/nufi-box $LINK_DIR/nufi-box"
+fi
 
 # ---------- the department routines ---------------------------------------------------
 # The four routines the box is bought for, as flows a person can open and edit:
@@ -1156,12 +1165,12 @@ $( [ "$NUFI_OWNER_CONSOLE" = 1 ] && printf '  Owner login:   password %s  (owner
                them on qwen2.5:1.5b or larger (README §5).
 $( [ "$NUFI_WORKS" = 1 ] && printf '\n  Works:       https://%s:3003  → enter it from the Agents page as %s.\n               Every agent run lands in a gVisor sandbox with no network\n               except the box gateway (README "NUFI Works on the box").\n' "$BOX_HOST" "$ADMIN_EMAIL" )
 
-  Day two:     nufi-box status | logs | drive add <name> | ca-cert | doctor
-               nufi-box flows install | flows list
+  Day two:     $NB status | logs | drive add <name> | ca-cert | doctor
+               $NB flows install | flows list
 EOF
 if [ -n "$MESH_SERVER_URL" ]; then
   cat <<EOF
-  From home:   nufi-box mesh status         (this box on the mesh)
-               nufi-box invite <name>       (a join file for one laptop)
+  From home:   $NB mesh status         (this box on the mesh)
+               $NB invite <name>       (a join file for one laptop)
 EOF
 fi
