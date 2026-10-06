@@ -95,7 +95,7 @@ coordinator_up() {
     return 0
   fi
 
-  local out box_key api_key
+  local out box_key api_key cc
   out="$(TLS_MODE=internal MESH_SERVER_HOST="$MESH_SERVER_HOST" MESH_BASE_DOMAIN="$MESH_BASE_DOMAIN" \
     COORD_HEADSCALE_IMAGE="${NUFI_HEADSCALE_IMAGE:-}" \
     COORDINATOR_COMPOSE_EXTRA=docker-compose.selfhost.yml "$d/bootstrap.sh" 2>&1)"
@@ -104,6 +104,16 @@ coordinator_up() {
   cp "$d/data/coordinator-ca.crt" "$ca_dst"
   box_key="$(coordinator_mint_box_key | tail -1)"
   api_key="$(coordinator_api_key_from_output "$out")"
+  # bootstrap.sh prints `MESH_API_KEY=` ONLY on a fresh mint; a re-run prints
+  # "already minted" and nothing to capture. If .env also has no key (a failed
+  # or partial first run, e.g. before deploy/coordinator was fetched), mint one
+  # now — otherwise `nufi-box invite` stays broken ("MESH_API_KEY is not set")
+  # and re-running the installer never heals it.
+  if [ -z "$api_key" ] && ! grep -q '^MESH_API_KEY=.' "$ENVF" 2>/dev/null; then
+    cc="$(coordinator_compose)"
+    api_key="$($cc exec -T headscale headscale apikeys create --expiration 365d 2>/dev/null | tail -1)"
+    [ -n "$api_key" ] && echo "minted a fresh coordinator API key (the box had none)"
+  fi
 
   . "$HERE/lib/envfile.sh"
   envfile_set "$ENVF" MESH_CA_FILE "$ca_dst"

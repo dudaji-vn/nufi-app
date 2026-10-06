@@ -294,7 +294,10 @@ def test_the_steps_that_fail_on_a_re_run_or_a_locked_down_host_only_warn():
     src = _installer_source()
     assert re.search(r"npm run create-user\b[^\n]*\|\|\s*warn", src), \
         "create-user must not abort the installer when the account exists"
-    assert re.search(r"run ln -sf\b[^\n]*\|\|\s*warn", src), \
+    # The symlink must not abort the install: either `run ln -sf … || warn`, or
+    # guarded in an `if run ln -sf …; then … else warn …` (which also exempts it
+    # from set -e) so a non-root user on Ubuntu still reaches the banner.
+    assert re.search(r"run ln -sf\b[^\n]*(\|\|\s*warn|;\s*then)", src), \
         "the /usr/local/bin symlink must not abort the installer"
     pulls = [ln for ln in src.splitlines()
              if "ollama pull" in ln and not ln.lstrip().startswith("#")]
