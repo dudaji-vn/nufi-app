@@ -185,11 +185,13 @@ laptops with a direct path keep it for a while.
 Everything above uses a separate coordinator the box dials out to. A site that
 must have **no outside dependency at all** — an air-gapped network, or one
 where nothing may leave the building — can have the box run the coordinator
-itself. The coordinator is not part of the box's own folder, so fetch it
-alongside, then install with one flag:
+itself. The coordinator is not part of the box's own folder, so add it to your
+sparse clone and re-run the installer. **Run both commands from the same
+`deploy/box` folder you installed from** — `git` finds the clone from any
+subfolder, and the installer re-reads the answers already on disk:
 
 ```bash
-git sparse-checkout add deploy/coordinator        # add it to an existing sparse clone
+git sparse-checkout add deploy/coordinator
 ./install-box.sh --yes --self-host-coordinator
 ```
 
