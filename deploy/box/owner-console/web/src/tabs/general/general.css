@@ -1,0 +1,75 @@
+/* General tab: status/control bar, the four service cards, the terminal console. */
+
+/* Status + whole-box controls row */
+.gen-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+.status-pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  border: 1px solid var(--rule); border-radius: 999px;
+  padding: 5px 12px; background: var(--surface); margin-right: auto;
+}
+.status-pill__label { color: var(--gray-1); }
+.status-pill__val { font-weight: 700; }
+.status-pill__val--ok { color: var(--ok); }
+.status-pill__val--bad { color: var(--bad); }
+
+/* Four service cards in one responsive row */
+.general-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin: 0 0 20px;
+}
+@media (max-width: 1080px) { .general-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px) { .general-grid { grid-template-columns: 1fr; } }
+
+.svc-card {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.svc-card__icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; border-radius: var(--radius-sm);
+  background: var(--subtle); color: var(--navy);
+}
+.svc-card__row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.svc-card__title { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; color: var(--ink); }
+.svc-card__status { font-weight: 600; font-size: 13px; }
+.svc-card__status--ok { color: var(--ok); }
+.svc-card__status--bad { color: var(--bad); }
+.svc-card__detail { margin: 0; color: var(--gray-1); font-size: 13px; }
+
+/* System Console — a dark terminal */
+.console-head { margin: 0 0 10px; font-size: var(--fs-lg); font-weight: 600; color: var(--ink); }
+.console-term {
+  background: #0b1020;
+  color: #e7ebf3;
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  min-height: 320px;
+  max-height: 460px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+.console-term__out { flex: 1; white-space: pre-wrap; word-break: break-word; }
+.console-term__line--prompt { color: #4ade80; }
+.console-term__line--error { color: #ff6b6b; }
+.console-term__form { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.console-term__prompt { color: #4ade80; flex: none; }
+.console-term__input {
+  flex: 1; min-width: 0; border: none; outline: none; background: transparent;
+  color: #e7ebf3; font-family: inherit; font-size: inherit; caret-color: #4ade80;
+}
+.console-term__input::placeholder { color: #5b6478; }
+
+.console-cmds { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.console-cmds__label { color: var(--gray-1); font-size: 13px; }
+.console-cmds__hint { margin-left: auto; color: var(--gray-2); font-size: 13px; }

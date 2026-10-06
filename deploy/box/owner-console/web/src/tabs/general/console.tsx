@@ -1,10 +1,9 @@
 import { useState, type FormEvent } from 'react';
 import { streamConsole } from '../../api';
 import { Button } from '../../ui/button';
-import { Card } from '../../ui/card';
 
 const CMDS = ['status', 'logs', 'logs librechat', 'doctor', 'support'];
-type Line = { text: string; error?: boolean };
+type Line = { text: string; error?: boolean; prompt?: boolean };
 
 export function Console() {
   const [lines, setLines] = useState<Line[]>([]);
@@ -13,7 +12,7 @@ export function Console() {
 
   const run = async (cmd: string) => {
     setBusy(true);
-    setLines([{ text: `$ nufi-box ${cmd}` }]);
+    setLines([{ text: `root@nufi-box:~# ./nufi-box ${cmd}`, prompt: true }]);
     try {
       await streamConsole(cmd, (l) => setLines((p) => [...p, { text: l }]));
     } catch (e) {
@@ -33,37 +32,48 @@ export function Console() {
 
   return (
     <div data-testid="console">
-      <Card title="System Console">
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-          {CMDS.map((c) => (
-            <Button key={c} variant="secondary" size="sm" disabled={busy} data-testid={`console-chip-${c.replace(' ', '-')}`} onClick={() => run(c)}>
-              {c}
-            </Button>
-          ))}
-        </div>
-        <div
-          data-testid="console-output"
-          style={{ fontFamily: 'var(--mono)', fontSize: 12, minHeight: 160, maxHeight: 320, overflow: 'auto', whiteSpace: 'pre-wrap' }}
-        >
+      <h2 className="console-head">System Console</h2>
+      <div className="console-term">
+        <div className="console-term__out" data-testid="console-output">
           {lines.map((l, i) => (
-            <div key={i} data-testid={l.error ? 'console-error' : undefined} style={l.error ? { color: 'var(--bad)' } : undefined}>
+            <div
+              key={i}
+              data-testid={l.error ? 'console-error' : undefined}
+              className={l.error ? 'console-term__line--error' : l.prompt ? 'console-term__line--prompt' : undefined}
+            >
               {l.text}
             </div>
           ))}
         </div>
-        <form onSubmit={submit} style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8, fontFamily: 'var(--mono)', fontSize: 12 }}>
-          <span aria-hidden="true">root@nufi-box:~#</span>
+        <form className="console-term__form" onSubmit={submit}>
+          <span className="console-term__prompt" aria-hidden="true">root@nufi-box:~#</span>
           <input
+            className="console-term__input"
             aria-label="Command"
             data-testid="console-input"
             placeholder="Enter command"
             value={input}
             disabled={busy}
             onChange={(e) => setInput(e.target.value)}
-            style={{ flex: 1, minWidth: 0, fontFamily: 'inherit', fontSize: 'inherit', border: 'none', outline: 'none', background: 'transparent', color: 'inherit' }}
           />
         </form>
-      </Card>
+      </div>
+      <div className="console-cmds">
+        <span className="console-cmds__label">Available commands:</span>
+        {CMDS.map((c) => (
+          <Button
+            key={c}
+            variant="secondary"
+            size="sm"
+            disabled={busy}
+            data-testid={`console-chip-${c.replace(' ', '-')}`}
+            onClick={() => run(c)}
+          >
+            {c}
+          </Button>
+        ))}
+        <span className="console-cmds__hint">Press ⏎ Enter to execute</span>
+      </div>
     </div>
   );
 }

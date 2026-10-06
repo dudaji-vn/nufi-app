@@ -7,6 +7,7 @@ import { DeleteDialog } from './files/delete-dialog';
 import { NewFolderModal } from './files/new-folder-modal';
 import { RenameModal } from './files/rename-modal';
 import { Button } from '../ui/button';
+import { IconSearch } from '../ui/icons';
 import { FileTable, formatSize, type FileAction } from './files/file-table';
 import { useToast } from '../ui/toast';
 import { UploadPanel, useUploader } from './files/upload-panel';
@@ -77,7 +78,7 @@ export function Files() {
   return (
     <div data-testid="files">
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
-        <select aria-label="Department" value={dept ?? ''} disabled={depts.length === 0} onChange={(e) => {
+        <select className="ui-select" aria-label="Department" value={dept ?? ''} disabled={depts.length === 0} onChange={(e) => {
             setPicked(e.target.value);
             setFilePath('');
           }}>
@@ -87,14 +88,17 @@ export function Files() {
             </option>
           ))}
         </select>
-        <input
-          type="search"
-          aria-label="Search files"
-          placeholder="Search by name"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          style={{ flex: 1, minWidth: 160 }}
-        />
+        <span className="field-search">
+          <span className="field-search__icon"><IconSearch size={16} /></span>
+          <input
+            type="search"
+            className="ui-input"
+            aria-label="Search files"
+            placeholder="Search by name"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </span>
         <Button data-testid="upload-file" disabled={!dept} onClick={() => input.current?.click()}>
           Upload
         </Button>

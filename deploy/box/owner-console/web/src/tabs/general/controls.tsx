@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useControl, type ControlAction } from '../../api';
-import { Badge } from '../../ui/badge';
 import { Button } from '../../ui/button';
 import { Modal } from '../../ui/modal';
+import { IconPower, IconRestart, IconStop } from '../../ui/icons';
 import { useToast } from '../../ui/toast';
 
 // The whole-box target understood by POST /api/control.
@@ -32,21 +32,22 @@ export function Controls({ active }: { active: boolean }) {
   };
 
   return (
-    <div data-testid="controls" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
-      <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center', marginRight: 'auto' }}>
-        Status:
-        <Badge tone={active ? 'ok' : 'bad'}>
-          <span data-testid="status-pill">{active ? 'Active' : 'Degraded'}</span>
-        </Badge>
+    <div className="gen-controls" data-testid="controls">
+      <span className="status-pill">
+        <span className="status-pill__label">Status:</span>
+        <span className={`status-pill__val status-pill__val--${active ? 'ok' : 'bad'}`} data-testid="status-pill">
+          {active ? 'Active' : 'Degraded'}
+        </span>
+        <span className={`dot dot--${active ? 'ok' : 'bad'}`} aria-hidden="true" />
       </span>
-      <Button data-testid="control-start" disabled={control.isPending} onClick={() => fire('start')}>
-        Start Service
+      <Button className="btn-ico" data-testid="control-start" disabled={control.isPending || active} onClick={() => fire('start')}>
+        <IconPower size={16} /> Start Service
       </Button>
-      <Button variant="secondary" data-testid="control-restart" disabled={control.isPending} onClick={() => setConfirm('restart')}>
-        Restart Service
+      <Button className="btn-ico" data-testid="control-restart" disabled={control.isPending} onClick={() => setConfirm('restart')}>
+        <IconRestart size={16} /> Restart Service
       </Button>
-      <Button variant="danger" data-testid="control-stop" disabled={control.isPending} onClick={() => setConfirm('stop')}>
-        Stop Service
+      <Button variant="danger" className="btn-ico" data-testid="control-stop" disabled={control.isPending} onClick={() => setConfirm('stop')}>
+        <IconStop size={16} /> Stop Service
       </Button>
       <Modal
         open={confirm !== null}

@@ -1,0 +1,40 @@
+/* App shell: a white top bar with the NuFi mark + title, then a padded body. */
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--rule);
+}
+.app-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--navy);
+  color: var(--navy);
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0.5px;
+  flex: none;
+}
+.app-title {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  color: var(--ink);
+}
+.app-body {
+  padding: 24px;
+  max-width: 1600px;
+  margin: 0 auto;
+}
+.app-body > .ui-tabs {
+  margin-bottom: 20px;
+}

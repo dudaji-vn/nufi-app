@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { connectorUrl, inviteLink, type UserRow } from '../../api';
 import { Badge, type BadgeTone } from '../../ui/badge';
-import { Button } from '../../ui/button';
+import { IconCopy, IconDownload, IconRestart, IconTrash } from '../../ui/icons';
+// (Button no longer used here: row actions are compact icon buttons.)
 import { Table, type Col } from '../../ui/table';
 import { useToast } from '../../ui/toast';
 
@@ -63,7 +64,7 @@ export function UserTable({
       ),
     },
     { key: 'name', label: 'Name' },
-    { key: 'os', label: 'OS', render: (u) => OS_LABEL[u.os] },
+    { key: 'os', label: 'Operating System', render: (u) => OS_LABEL[u.os] },
     {
       key: 'activation',
       label: 'Activation',
@@ -84,9 +85,9 @@ export function UserTable({
           >
             {inviteLink(u.token)}
           </code>
-          <Button variant="ghost" size="sm" data-testid={`copy-${u.id}`} aria-label={`Copy link for ${u.name}`} onClick={() => copy(u)}>
-            Copy
-          </Button>
+          <button type="button" className="icon-btn" data-testid={`copy-${u.id}`} aria-label={`Copy link for ${u.name}`} title="Copy link" onClick={() => copy(u)}>
+            <IconCopy size={16} />
+          </button>
           {u.expiresAt && (
             <span data-testid={`countdown-${u.id}`} style={{ color: 'var(--gray-1)', fontSize: 'var(--fs-sm)' }}>
               {remaining(u.expiresAt, now)}
@@ -99,16 +100,16 @@ export function UserTable({
       key: 'actions',
       label: 'Actions',
       render: (u) => (
-        <span style={{ display: 'inline-flex', gap: 4 }}>
-          <Button variant="secondary" size="sm" data-testid={`regenerate-${u.id}`} onClick={() => onRegenerate(u)}>
-            Regenerate
-          </Button>
-          <a href={connectorUrl(u)} download data-testid={`download-${u.id}`} className="ui-btn ui-btn--secondary ui-btn--sm">
-            Download
+        <span style={{ display: 'inline-flex', gap: 6 }}>
+          <button type="button" className="icon-btn" data-testid={`regenerate-${u.id}`} aria-label={`Regenerate link for ${u.name}`} title="Regenerate link" onClick={() => onRegenerate(u)}>
+            <IconRestart size={16} />
+          </button>
+          <a href={connectorUrl(u)} download data-testid={`download-${u.id}`} className="icon-btn" aria-label={`Download join file for ${u.name}`} title="Download join file">
+            <IconDownload size={16} />
           </a>
-          <Button variant="danger" size="sm" data-testid={`delete-${u.id}`} onClick={() => onDelete(u)}>
-            Delete
-          </Button>
+          <button type="button" className="icon-btn icon-btn--danger" data-testid={`delete-${u.id}`} aria-label={`Delete ${u.name}`} title="Delete" onClick={() => onDelete(u)}>
+            <IconTrash size={16} />
+          </button>
         </span>
       ),
     },

@@ -3,6 +3,7 @@ import { exportUsersCsv, useDeleteUser, useImportUsers, useRegenerate, useUsers,
 import { Button } from '../ui/button';
 import { Modal } from '../ui/modal';
 import { useToast } from '../ui/toast';
+import { IconPlus, IconSearch, IconUpload } from '../ui/icons';
 import { AddUserModal } from './users/add-user-modal';
 import { UserTable } from './users/user-table';
 
@@ -50,22 +51,25 @@ export function Users() {
   return (
     <div data-testid="users">
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
-        <input
-          type="search"
-          aria-label="Search users"
-          placeholder="Search by name"
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setPage(0);
-          }}
-          style={{ flex: 1, minWidth: 160 }}
-        />
-        <Button data-testid="add-user" onClick={() => setAdding(true)}>
-          Add User
+        <span className="field-search">
+          <span className="field-search__icon"><IconSearch size={16} /></span>
+          <input
+            type="search"
+            className="ui-input"
+            aria-label="Search users"
+            placeholder="Search for user"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setPage(0);
+            }}
+          />
+        </span>
+        <Button className="btn-ico" data-testid="add-user" onClick={() => setAdding(true)}>
+          <IconPlus size={16} /> Add User
         </Button>
-        <Button variant="secondary" data-testid="upload-csv" disabled={imp.isPending} onClick={() => file.current?.click()}>
-          Upload CSV
+        <Button variant="secondary" className="btn-ico" data-testid="upload-csv" disabled={imp.isPending} onClick={() => file.current?.click()}>
+          <IconUpload size={16} /> Upload CSV
         </Button>
         <input ref={file} type="file" accept=".csv,text/csv" hidden aria-label="CSV file" onChange={(e) => onUpload(e.target.files?.[0])} />
       </div>
