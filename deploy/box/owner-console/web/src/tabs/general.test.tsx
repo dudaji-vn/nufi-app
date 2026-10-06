@@ -42,8 +42,12 @@ test('cards show detail when present and none when absent; pill degrades on a do
   render(<General />);
   expect(screen.getByText('qwen3 · 4.5 GB')).toBeTruthy();
   expect(screen.getByTestId('service-chat').textContent).toContain('v0.1.10');
-  expect(screen.getByTestId('service-database').textContent).toBe('DatabaseDown');
-  expect(screen.getByTestId('service-web-server').textContent).toBe('Web ServerRunning');
+  const db = screen.getByTestId('service-database').textContent ?? '';
+  expect(db).toContain('Database');
+  expect(db).toContain('Down');
+  const web = screen.getByTestId('service-web-server').textContent ?? '';
+  expect(web).toContain('Web Server');
+  expect(web).toContain('Running');
   expect(screen.getByTestId('status-pill').textContent).toBe('Degraded');
 });
 

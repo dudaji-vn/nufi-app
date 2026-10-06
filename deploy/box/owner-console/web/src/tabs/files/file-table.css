@@ -9,4 +9,15 @@
   outline: 2px solid var(--info);
   outline-offset: 2px;
 }
-.file-table__filter { display: block; margin-top: 4px; font-size: 12px; }
+.file-table__filter {
+  display: block;
+  margin-top: 6px;
+  font: 400 12px var(--font);
+  color: var(--gray-1);
+  background: var(--surface);
+  border: 1px solid var(--gray-3);
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  cursor: pointer;
+}
+.file-table__filter:focus-visible { outline: 2px solid var(--info); outline-offset: 1px; border-color: var(--info); }

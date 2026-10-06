@@ -34,11 +34,16 @@ test('Stop confirms with the disconnect copy; Cancel does not fire, confirm does
   expect(mutate.mock.calls[0][0]).toEqual({ action: 'stop', service: '__box__' });
 });
 
-test('Start fires without a modal', () => {
-  render(<Controls active />);
+test('Start fires without a modal (when the box is not already active)', () => {
+  render(<Controls active={false} />);
   fireEvent.click(screen.getByTestId('control-start'));
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(mutate.mock.calls[0][0]).toEqual({ action: 'start', service: '__box__' });
+});
+
+test('Start is disabled while the box is already active', () => {
+  render(<Controls active />);
+  expect((screen.getByTestId('control-start') as HTMLButtonElement).disabled).toBe(true);
 });
 
 test('Status pill reflects active vs degraded', () => {

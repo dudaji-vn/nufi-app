@@ -135,6 +135,32 @@
 .ui-avatar--md { width: 32px; height: 32px; font-size: var(--fs-sm); }
 .ui-avatar--sm { width: 24px; height: 24px; font-size: 12px; }
 
+/* Button with a leading icon */
+.btn-ico { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Status dot */
+.dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex: none; }
+.dot--ok { background: var(--ok); }
+.dot--bad { background: var(--bad); }
+
+/* Square icon-only button (table row actions) */
+.icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; padding: 0;
+  border: 1px solid var(--gray-3); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--gray-1); cursor: pointer;
+}
+.icon-btn:hover:not(:disabled) { background: var(--subtle); color: var(--ink); }
+.icon-btn:focus-visible { outline: 2px solid var(--info); outline-offset: 1px; }
+.icon-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.icon-btn--danger { color: var(--bad); border-color: var(--bad-bg); }
+.icon-btn--danger:hover:not(:disabled) { background: var(--bad-bg); color: var(--bad); }
+
+/* Search input with a leading icon */
+.field-search { position: relative; display: inline-flex; align-items: center; flex: 1; min-width: 180px; }
+.field-search__icon { position: absolute; left: 12px; color: var(--gray-2); pointer-events: none; display: inline-flex; }
+.field-search .ui-input { padding-left: 38px; }
+
 /* ContextMenu */
 .ui-menu { position: relative; display: inline-block; }
 .ui-menu__trigger { display: inline-flex; cursor: pointer; }

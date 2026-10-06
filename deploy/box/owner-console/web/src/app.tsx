@@ -1,3 +1,4 @@
+import './app.css';
 import { Files } from './tabs/files';
 import { General } from './tabs/general';
 import { Users } from './tabs/users';
@@ -15,13 +16,17 @@ export function App() {
   const { tab, setTab } = useUi();
   return (
     <>
-    <main>
-      <Tabs tabs={TABS} active={tab} onChange={(id) => setTab(id as TabId)} />
-      {tab === 'general' && <General />}
-      {tab === 'users' && <Users />}
-      {tab === 'files' && <Files />}
-    </main>
-    <Toaster />
+      <header className="app-header">
+        <span className="app-logo" aria-hidden="true">NF</span>
+        <h1 className="app-title">Administrator Dashboard</h1>
+      </header>
+      <main className="app-body">
+        <Tabs tabs={TABS} active={tab} onChange={(id) => setTab(id as TabId)} />
+        {tab === 'general' && <General />}
+        {tab === 'users' && <Users />}
+        {tab === 'files' && <Files />}
+      </main>
+      <Toaster />
     </>
   );
 }
