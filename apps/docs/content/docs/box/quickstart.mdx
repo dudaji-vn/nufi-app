@@ -1,0 +1,42 @@
+---
+title: Quick start
+description: The whole happy path on Ubuntu or macOS — clone, one command, a banner — in four steps.
+---
+
+The fast path for someone on **Ubuntu 24.04 or macOS** who just wants the box
+running. On Windows, do the WSL2 setup in
+[Installing the box](/docs/box/install#on-windows-work-inside-wsl2) first. For
+what every question and flag means, read the full
+[install page](/docs/box/install).
+
+1. **Have Docker.** On Ubuntu the installer offers to install it for you. On
+   macOS, install Docker Desktop or OrbStack first and give its VM at least
+   **12 GB** of memory.
+
+2. **Get the box** — a ~1 MB sparse clone, a few seconds on any link:
+
+   ```bash
+   git clone --depth 1 --filter=blob:none --sparse https://github.com/dudaji-vn/nufi-app
+   cd nufi-app
+   git sparse-checkout set deploy/box deploy/platform/scenarios/studio deploy/platform/adapters/nufi-cron
+   cd deploy/box
+   ```
+
+3. **Install** — one command, every default:
+
+   ```bash
+   ./install-box.sh --yes
+   ```
+
+   About **25 minutes** on a blank machine, most of it download; **~75 seconds**
+   if the images and the model are already there. Drop `--yes` to be asked the
+   four questions (box name, admin email, departments, inference profile)
+   instead.
+
+4. **Read the banner.** It prints the four URLs, the admin login — **write the
+   password down, it is generated once** — and where each department's folder
+   lives.
+
+That is a running box. Next: [the first hour](/docs/box/first-hour) — trust the
+certificate, add a colleague, drop a file into a department folder, and watch
+the agent answer from it.
