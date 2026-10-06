@@ -186,12 +186,14 @@ Everything above uses a separate coordinator the box dials out to. A site that
 must have **no outside dependency at all** — an air-gapped network, or one
 where nothing may leave the building — can have the box run the coordinator
 itself. The coordinator is not part of the box's own folder, so add it to your
-sparse clone and re-run the installer. **Run both commands from the same
-`deploy/box` folder you installed from** — `git` finds the clone from any
-subfolder, and the installer re-reads the answers already on disk:
+sparse clone and re-run the installer. The `git sparse-checkout add` path is
+read **relative to the repo root**, so run it from there — not from
+`deploy/box` — then come back to `deploy/box` to install:
 
 ```bash
+cd ../..                                    # back to the repo root (the nufi-app folder)
 git sparse-checkout add deploy/coordinator
+cd deploy/box
 ./install-box.sh --yes --self-host-coordinator
 ```
 
