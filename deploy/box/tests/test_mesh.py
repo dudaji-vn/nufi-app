@@ -199,6 +199,40 @@ def test_mesh_up_with_the_name_free_goes_on_to_join(tmp_path, fake_headscale):
     assert r.returncode == 0, r.stdout + r.stderr
 
 
+def test_mesh_up_refreshes_the_owner_console_with_the_joined_mesh_host(tmp_path, fake_headscale):
+    """Regression: a first join writes BOX_MESH_HOST to .env, but nufi-box has
+    already sourced .env with `set -a`, so BOX_MESH_HOST is EXPORTED empty.
+    docker compose prefers a shell env var over the .env file, so the
+    `up -d owner-console` that refreshes the console re-created it with the
+    stale empty host and its chat/drive links became `https://:3080`. mesh_up
+    must export the freshly-written address so compose resolves the real one."""
+    # First-install shape: no mesh host yet, and the console is on.
+    envf, _ = make_env(tmp_path, fake_headscale, BOX_MESH_HOST="",
+                       MESH_AUTH_KEY="hskey-auth-x", NUFI_OWNER_CONSOLE="1")
+    bin_ = tmp_path / "bin"; bin_.mkdir()
+    log = tmp_path / "docker.log"
+    owner_env = tmp_path / "owner-console.env"
+    # The stub answers the post-join questions (ip / DNS name) and, when it is
+    # asked to bring the console up, records the BOX_MESH_HOST it was handed —
+    # which is exactly what docker compose would interpolate into the container.
+    (bin_ / "docker").write_text(
+        '#!/bin/sh\nprintf "%s\\n" "$*" >> "$STUB_LOG"\n'
+        'case "$*" in\n'
+        '  *"ip -4"*) echo 100.64.0.1 ;;\n'
+        '  *"status --json"*) echo \'{"Self":{"DNSName":"nufi.box.lab."}}\' ;;\n'
+        '  *"up -d owner-console"*) printf "BOX_MESH_HOST=%s\\n" "$BOX_MESH_HOST" >> "$OWNER_ENV_LOG" ;;\n'
+        'esac\nexit 0\n')
+    (bin_ / "docker").chmod(0o755)
+    r = cli("mesh", "up", env={"NUFI_BOX_ENV": str(envf), "NUFI_BOX_FAKE_OS": "Linux",
+                                "PATH": "%s:%s" % (bin_, os.environ.get("PATH", "/usr/bin:/bin")),
+                                "STUB_LOG": str(log), "OWNER_ENV_LOG": str(owner_env)})
+    assert r.returncode == 0, r.stdout + r.stderr
+    calls = log.read_text() if log.exists() else ""
+    assert "up -d owner-console" in calls, ("the console was never refreshed", calls)
+    assert owner_env.exists(), "the owner-console up never ran"
+    assert owner_env.read_text().strip() == "BOX_MESH_HOST=nufi.box.lab", owner_env.read_text()
+
+
 def test_invite_macos_posts_preauthkey_and_writes_the_join_file(tmp_path, fake_headscale):
     envf, data_dir = make_env(tmp_path, fake_headscale)
     # "ivy" is not one of the fake's two nodes: an invite for a name already

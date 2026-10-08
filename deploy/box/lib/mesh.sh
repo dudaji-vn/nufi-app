@@ -630,6 +630,13 @@ mesh_write_addresses() {
     . "$HERE/lib/envfile.sh"
     envfile_set "$ENVF" BOX_MESH_IP "$1"
     envfile_set "$ENVF" BOX_MESH_HOST "$2"
+    # nufi-box sources .env with `set -a` at startup, so BOX_MESH_IP/HOST are
+    # already EXPORTED (empty, on a first install). docker compose prefers a
+    # shell env var over the .env file, so the `up -d owner-console` in
+    # owner_console_refresh below would re-create the console with the stale
+    # empty value and its chat/drive links would point at `https://:3080`.
+    # Update the exported vars to match what we just wrote so compose sees them.
+    export BOX_MESH_IP="$1" BOX_MESH_HOST="$2"
   fi
 }
 

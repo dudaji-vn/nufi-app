@@ -80,3 +80,19 @@ def test_coordinator_up_omits_the_headscale_override_on_a_plain_self_host_box():
     assert r.returncode == 0, r.stderr
     assert "COORD_HEADSCALE_IMAGE" not in r.stdout
     assert "TLS_MODE=internal" in r.stdout
+
+
+def test_coordinator_up_makes_the_copied_ca_world_readable():
+    # The installer runs under umask 077 (it writes .env), so the plain `cp` of
+    # the coordinator CA lands 0600. The owner-console runs as a DIFFERENT uid
+    # and must read that CA to serve /agent/mesh-ca.crt for the macOS agent
+    # enrol; a 0600 CA makes that endpoint a silent 404 and breaks self-host
+    # onboarding. The plan must chmod the CA (a public cert) world-readable.
+    r = sourced("coordinator_up", dry="1", env={
+        "NUFI_SELF_HOST_COORD": "1",
+        "MESH_SERVER_HOST": "coordinator.internal",
+        "MESH_BASE_DOMAIN": "box.internal",
+    })
+    assert r.returncode == 0, r.stderr
+    assert "chmod 644" in r.stdout
+    assert "mesh-coordinator-ca.crt" in r.stdout

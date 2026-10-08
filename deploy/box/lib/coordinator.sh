@@ -88,6 +88,7 @@ coordinator_up() {
     printf '  $ TLS_MODE=internal MESH_SERVER_HOST=%s MESH_BASE_DOMAIN=%s %sCOORDINATOR_COMPOSE_EXTRA=docker-compose.selfhost.yml %s/bootstrap.sh\n' \
       "$MESH_SERVER_HOST" "$MESH_BASE_DOMAIN" "$hs_env" "$d"
     printf '  $ cp %s/data/coordinator-ca.crt %s\n' "$d" "$ca_dst"
+    printf '  $ chmod 644 %s\n' "$ca_dst"
     coordinator_mint_box_key
     printf '  $ envfile_set %s MESH_CA_FILE %s\n' "$ENVF" "$ca_dst"
     printf '  $ envfile_set %s MESH_AUTH_KEY <box tag:box key>\n' "$ENVF"
@@ -102,6 +103,12 @@ coordinator_up() {
   printf '%s\n' "$out"
 
   cp "$d/data/coordinator-ca.crt" "$ca_dst"
+  # A CA root is a public cert, not a secret, and the owner-console serves it at
+  # /agent/mesh-ca.crt for the macOS agent enrol. The installer runs under
+  # umask 077 (it writes .env), so the cp lands 0600 and owner-console -- a
+  # different uid -- gets EACCES, leaving /agent/mesh-ca.crt a silent 404 and
+  # macOS self-host onboarding broken. Make it world-readable.
+  chmod 644 "$ca_dst" || warn "could not make $ca_dst world-readable; the macOS agent enrol may 404 on /agent/mesh-ca.crt"
   box_key="$(coordinator_mint_box_key | tail -1)"
   api_key="$(coordinator_api_key_from_output "$out")"
   # bootstrap.sh prints `MESH_API_KEY=` ONLY on a fresh mint; a re-run prints
