@@ -1,9 +1,19 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { RecoilRoot } from 'recoil';
+import { useUIMode } from '~/hooks';
 import UIModeIntroBanner from '../UIModeIntroBanner';
 
 function renderWithProviders(ui: React.ReactElement) {
   return render(<RecoilRoot>{ui}</RecoilRoot>);
+}
+
+function ModeSwitcher() {
+  const { setMode } = useUIMode();
+  return (
+    <button type="button" data-testid="go-advanced" onClick={() => setMode('advanced')}>
+      advanced
+    </button>
+  );
 }
 
 describe('UIModeIntroBanner', () => {
@@ -47,11 +57,33 @@ describe('UIModeIntroBanner', () => {
     expect(onHeightChange).toHaveBeenCalledWith(0);
   });
 
-  it('does not report a height when already seen', () => {
+  it('reports a height of 0 when already seen', () => {
     localStorage.setItem('uiModeIntroSeen', JSON.stringify(true));
     const onHeightChange = jest.fn();
     renderWithProviders(<UIModeIntroBanner onHeightChange={onHeightChange} />);
 
-    expect(onHeightChange).not.toHaveBeenCalled();
+    expect(onHeightChange).toHaveBeenCalledWith(0);
+  });
+
+  it('does not show in advanced mode even if not yet seen', () => {
+    localStorage.setItem('uiMode', JSON.stringify('advanced'));
+    const onHeightChange = jest.fn();
+    renderWithProviders(<UIModeIntroBanner onHeightChange={onHeightChange} />);
+
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(onHeightChange).toHaveBeenCalledWith(0);
+  });
+
+  it('hides live when the user switches to advanced', () => {
+    renderWithProviders(
+      <>
+        <UIModeIntroBanner />
+        <ModeSwitcher />
+      </>,
+    );
+    expect(screen.getByRole('status')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('go-advanced'));
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 });
