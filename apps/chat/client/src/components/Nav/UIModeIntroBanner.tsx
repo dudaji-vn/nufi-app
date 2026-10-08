@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useRecoilState } from 'recoil';
-import { useLocalize } from '~/hooks';
+import { useLocalize, useUIMode } from '~/hooks';
 import store from '~/store';
 
 export default function UIModeIntroBanner({
@@ -9,25 +9,26 @@ export default function UIModeIntroBanner({
   onHeightChange?: (height: number) => void;
 }) {
   const localize = useLocalize();
+  const { isBasic } = useUIMode();
   const [seen, setSeen] = useRecoilState(store.uiModeIntroSeen);
   const bannerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (onHeightChange && bannerRef.current) {
-      onHeightChange(bannerRef.current.offsetHeight);
-    }
-  }, [seen, onHeightChange]);
+  // The intro speaks only to Basic mode ("Basic interface enabled …"), so it
+  // must disappear the moment the user is on Advanced — not linger with a now-
+  // false message (and its reserved height) until it happens to be dismissed.
+  const show = !seen && isBasic;
 
-  if (seen) {
+  useEffect(() => {
+    onHeightChange?.(show && bannerRef.current ? bannerRef.current.offsetHeight : 0);
+  }, [show, onHeightChange]);
+
+  if (!show) {
     return null;
   }
 
   const handleDismiss = () => {
     setSeen(true);
-
-    if (onHeightChange) {
-      onHeightChange(0);
-    }
+    onHeightChange?.(0);
   };
 
   return (
