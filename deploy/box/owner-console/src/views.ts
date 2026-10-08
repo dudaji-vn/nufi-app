@@ -31,75 +31,187 @@ const shell = (title: string, body: string, wide = false) => `<!doctype html>
 // and it arrives in the URL #fragment (read here client-side, never sent to the
 // server on the GET). The member picks their OS and downloads the connector;
 // the token is POSTed to /connect/connector only when they do.
+//
+// Self-contained (no shell(), no external fonts/CDN): the box serves this on
+// plain :80 to laptops that may be on an isolated LAN, so everything the page
+// needs is inline. The look follows the owner-console design system (navy +
+// Open Sans + cards); the "NF" mark mirrors web/src/app.tsx.
 export function connectPage(): string {
   const runHints = {
-    windows: 'Windows: if SmartScreen says "Windows protected your PC", click More info then Run anyway.',
-    linux: 'Linux: run it with  bash <the downloaded file>.',
+    windows: 'On Windows, if SmartScreen says "Windows protected your PC", click More info, then Run anyway.',
+    linux: 'On Linux, run it with:  bash <the downloaded file>',
   };
+  const icons = {
+    macos:
+      '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.37 1.43c.06 1.02-.33 2.02-1 2.75-.69.76-1.82 1.35-2.9 1.26-.1-1 .4-2.03 1.03-2.72.71-.78 1.94-1.35 2.87-1.29zM19.5 17.1c-.5 1.16-.74 1.67-1.38 2.69-.9 1.42-2.17 3.2-3.74 3.22-1.4.01-1.76-.9-3.66-.89-1.9.01-2.29.91-3.69.9-1.57-.02-2.77-1.63-3.67-3.05-2.52-4-2.78-8.7-1.23-11.2 1.1-1.78 2.84-2.81 4.47-2.81 1.67 0 2.71.91 4.09.91 1.34 0 2.15-.91 4.08-.91 1.46 0 3 .79 4.11 2.16-3.61 1.98-3.02 7.13.22 8.97z"/></svg>',
+    windows:
+      '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5.1 10.6 4v7.6H3V5.1zm0 13.8L10.6 20v-7.5H3v6.4zM11.6 3.86 21 2.5v9.1h-9.4V3.86zm0 16.28L21 21.5v-9h-9.4v7.64z"/></svg>',
+    linux:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 16h4"/></svg>',
+  };
+  const osButton = (os: 'macos' | 'windows' | 'linux', label: string) =>
+    `<button type="button" class="os" data-os="${os}">${icons[os]}<span class="os-name">${label}</span></button>`;
+
   const script = `
-  const tok = new URLSearchParams(location.hash.slice(1)).get('token');
-  const msg = document.getElementById('msg');
-  const picker = document.getElementById('picker');
-  const steps = document.getElementById('steps');
-  const hints = ${JSON.stringify(runHints)};
-  if (!tok) { picker.hidden = true; msg.textContent = 'This link is missing its invite — ask the box owner for a new one.'; msg.className = 'err'; }
+  var tok = new URLSearchParams(location.hash.slice(1)).get('token');
+  var msg = document.getElementById('msg');
+  var picker = document.getElementById('picker');
+  var steps = document.getElementById('steps');
+  var hints = ${JSON.stringify(runHints)};
+  function setMsg(text, kind) { msg.textContent = text; msg.className = 'note' + (kind ? ' ' + kind : ''); }
+  if (!tok) {
+    picker.hidden = true;
+    setMsg('This link is missing its invite — ask the box owner for a new one.', 'err');
+  } else {
+    var ident = (navigator.platform || '') + ' ' + (navigator.userAgent || '');
+    var guess = /Mac|iP(hone|ad|od)/i.test(ident) ? 'macos'
+      : /Win/i.test(ident) ? 'windows'
+      : /Linux|X11|CrOS/i.test(ident) ? 'linux' : '';
+    if (guess) {
+      var b = document.querySelector('[data-os="' + guess + '"]');
+      if (b) { b.classList.add('detected'); b.insertAdjacentHTML('beforeend', '<span class="tag">Detected</span>'); }
+    }
+  }
   function renderMac(plan) {
-    msg.className = 'sub'; msg.textContent = 'Three steps to join:';
+    setMsg('You are all set once these three steps are done.', '');
     steps.hidden = false;
     steps.innerHTML =
       '<ol>' +
-      '<li>Download and install the app, then double-click it (it is signed — no warning): ' +
-        '<a id="pkg" download>NuFi Agent for macOS</a></li>' +
-      '<li>Open <b>Terminal</b>, paste this and press Return: ' +
-        '<div class="cmd"><code id="cmd"></code><button type="button" id="copy">Copy</button></div></li>' +
-      '<li>Open NuFi and sign in: <a id="chat"></a></li>' +
+        '<li><div><div class="step-t">Install the NuFi Agent</div>' +
+          '<div class="step-d">It is signed by Dudaji, so macOS opens it without a warning. Download it, then double-click to install.</div>' +
+          '<a class="btn" id="pkg" download>Download for macOS</a></div></li>' +
+        '<li><div><div class="step-t">Join the box</div>' +
+          '<div class="step-d">Open <b>Terminal</b>, paste this line and press Return.</div>' +
+          '<div class="cmd"><code id="cmd"></code><button type="button" id="copy">Copy</button></div></div></li>' +
+        '<li><div><div class="step-t">Open NuFi</div>' +
+          '<div class="step-d">Sign in and start chatting.</div>' +
+          '<a class="btn" id="chat" target="_blank" rel="noopener"></a></div></li>' +
       '</ol>';
     document.getElementById('pkg').href = plan.pkgUrl;
     document.getElementById('cmd').textContent = plan.enroll;
-    const chat = document.getElementById('chat'); chat.href = plan.chatUrl; chat.textContent = plan.chatUrl;
-    document.getElementById('copy').addEventListener('click', async function () {
-      try { await navigator.clipboard.writeText(plan.enroll); this.textContent = 'Copied'; setTimeout(() => { this.textContent = 'Copy'; }, 1500); } catch (e) {}
+    var chat = document.getElementById('chat'); chat.href = plan.chatUrl; chat.textContent = 'Open NuFi';
+    var copy = document.getElementById('copy');
+    copy.addEventListener('click', function () {
+      var self = this;
+      navigator.clipboard.writeText(plan.enroll).then(function () {
+        self.textContent = 'Copied'; setTimeout(function () { self.textContent = 'Copy'; }, 1500);
+      }).catch(function () {});
     });
   }
-  async function get(os) {
-    msg.className = 'sub'; msg.textContent = 'Preparing…'; steps.hidden = true; steps.innerHTML = '';
-    const member = (document.getElementById('member').value || '').trim();
-    const bodyData = new URLSearchParams({ token: tok, os, member });
-    try {
-      const r = await fetch('/connect/connector', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: bodyData });
-      if (!r.ok) { msg.className = 'err'; msg.textContent = await r.text(); return; }
-      if ((r.headers.get('content-type') || '').includes('application/json')) { renderMac(await r.json()); return; }
-      const cd = r.headers.get('content-disposition') || '';
-      const m = cd.match(/filename="([^"]+)"/);
-      const name = m ? m[1] : 'nufi-join.' + (os === 'windows' ? 'cmd' : 'sh');
-      const blob = await r.blob();
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove();
-      msg.className = 'sub'; msg.textContent = 'Downloaded ' + name + '. ' + (hints[os] || '');
-    } catch (e) { msg.className = 'err'; msg.textContent = 'Could not reach the box. Are you on its network?'; }
+  function get(os) {
+    setMsg('Preparing your connector…', ''); steps.hidden = true; steps.innerHTML = '';
+    var member = (document.getElementById('member').value || '').trim();
+    var bodyData = new URLSearchParams({ token: tok, os: os, member: member });
+    fetch('/connect/connector', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: bodyData })
+      .then(function (r) {
+        if (!r.ok) { return r.text().then(function (t) { setMsg(t, 'err'); }); }
+        if ((r.headers.get('content-type') || '').indexOf('application/json') !== -1) { return r.json().then(renderMac); }
+        var cd = r.headers.get('content-disposition') || '';
+        var m = cd.match(/filename="([^"]+)"/);
+        var name = m ? m[1] : 'nufi-join.' + (os === 'windows' ? 'cmd' : 'sh');
+        return r.blob().then(function (blob) {
+          var a = document.createElement('a');
+          a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+          setMsg('Downloaded ' + name + '. ' + (hints[os] || ''), 'good');
+        });
+      })
+      .catch(function () { setMsg('Could not reach the box. Are you on its network?', 'err'); });
   }
-  for (const b of document.querySelectorAll('[data-os]')) b.addEventListener('click', () => get(b.dataset.os));
+  var btns = document.querySelectorAll('[data-os]');
+  for (var i = 0; i < btns.length; i++) {
+    btns[i].addEventListener('click', function () { get(this.getAttribute('data-os')); });
+  }
   `;
-  return shell('Join the NuFi box', `
-  <h1>Join the NuFi box</h1>
-  <p>Pick your computer and follow the steps. It installs the mesh client, trusts the box, and connects you.</p>
-  <div id="picker">
-    <label>Your name (optional)<input id="member" placeholder="e.g. Ivy" autocomplete="off"></label>
-    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:1rem">
-      <button type="button" data-os="macos">macOS</button>
-      <button type="button" data-os="windows">Windows</button>
-      <button type="button" data-os="linux">Linux</button>
+
+  return `<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Join the NuFi box</title>
+<style>
+  :root{
+    --navy:#293069;--navy-2:#3c4d8a;--ink:#333;--gray-1:#666;--gray-2:#999;
+    --rule:#e6e6e6;--surface:#fff;--ground:#f6f7f9;--subtle:#f2f2f2;
+    --ok:#1e8740;--bad:#c0392b;
+    --radius-sm:6px;--radius:10px;--radius-lg:14px;
+    --shadow-lg:0 12px 32px rgba(41,48,105,.18);
+    --font:'Open Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+    --mono:Menlo,Monaco,Consolas,'Courier New',monospace;
+    color-scheme:light dark;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{--ink:#e9ebf5;--gray-1:#aeb4cf;--gray-2:#8890b5;--rule:#333a5c;
+      --surface:#1b2039;--ground:#12152a;--subtle:#242a47;--navy:#9fb0e6;--navy-2:#b8c4ef;}
+  }
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100dvh;display:flex;align-items:center;justify-content:center;
+    background:var(--ground);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.55;
+    padding:calc(16px + env(safe-area-inset-top,0px)) 16px calc(16px + env(safe-area-inset-bottom,0px));}
+  .card{width:100%;max-width:27rem;background:var(--surface);border:1px solid var(--rule);
+    border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);padding:1.6rem 1.5rem;}
+  .brand{display:flex;align-items:center;gap:.7rem;margin-bottom:1.3rem}
+  .logo{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;flex:none;
+    border-radius:var(--radius-sm);border:1.5px solid var(--navy);color:var(--navy);
+    font-weight:700;font-size:16px;letter-spacing:.5px}
+  h1{margin:0;font-size:1.3rem;font-weight:700;color:var(--navy)}
+  .lede{margin:0 0 1.3rem;color:var(--gray-1);font-size:.92rem}
+  .field{display:block;font-size:.85rem;color:var(--gray-1);margin:0 0 1.15rem}
+  .field input{display:block;width:100%;margin-top:.35rem;padding:.6rem .7rem;font:inherit;color:var(--ink);
+    background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius)}
+  .field input:focus{outline:none;border-color:var(--navy-2);box-shadow:0 0 0 3px rgba(60,77,138,.18)}
+  .pick-label{font-size:.85rem;color:var(--gray-1);margin:0 0 .55rem}
+  .os-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem}
+  .os{position:relative;display:flex;flex-direction:column;align-items:center;gap:.5rem;padding:.9rem .4rem;
+    cursor:pointer;background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);
+    font:inherit;font-weight:600;color:var(--ink);transition:border-color .12s,background .12s,box-shadow .12s}
+  .os:hover{border-color:var(--navy-2);background:var(--subtle)}
+  .os:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(60,77,138,.25)}
+  .os svg{width:26px;height:26px;color:var(--navy)}
+  .os-name{font-size:.85rem}
+  .os.detected{border-color:var(--navy);box-shadow:inset 0 0 0 1px var(--navy)}
+  .os .tag{position:absolute;top:-.55rem;right:-.3rem;font-size:.6rem;font-weight:700;letter-spacing:.04em;
+    text-transform:uppercase;color:#fff;background:var(--navy);border-radius:999px;padding:.08rem .4rem}
+  .note{margin:1.35rem 0 0;color:var(--gray-2);font-size:.8rem}
+  .note.err{color:var(--bad)}
+  .note.good{color:var(--ok)}
+  #steps{margin-top:1.4rem}
+  #steps ol{list-style:none;counter-reset:s;margin:0;padding:0;display:flex;flex-direction:column;gap:1.15rem}
+  #steps li{counter-increment:s;display:grid;grid-template-columns:1.7rem 1fr;gap:.75rem;align-items:start}
+  #steps li::before{content:counter(s);display:flex;align-items:center;justify-content:center;
+    width:1.7rem;height:1.7rem;border-radius:999px;background:var(--navy);color:#fff;font-size:.82rem;font-weight:700}
+  .step-t{font-weight:700;color:var(--ink)}
+  .step-d{color:var(--gray-1);font-size:.88rem;margin:.15rem 0 .5rem}
+  .btn{display:inline-block;cursor:pointer;text-decoration:none;font:inherit;font-weight:600;
+    color:#fff;background:var(--navy);border:1px solid var(--navy);border-radius:var(--radius);padding:.5rem .9rem}
+  .btn:hover{background:var(--navy-2);border-color:var(--navy-2)}
+  .cmd{display:flex;gap:.4rem;align-items:flex-start}
+  .cmd code{flex:1;display:block;white-space:pre-wrap;word-break:break-all;background:#0d1230;color:#d6e2ff;
+    padding:.6rem .7rem;border-radius:var(--radius-sm);font-family:var(--mono);font-size:.78rem;line-height:1.5}
+  .cmd button{flex:none;cursor:pointer;font:inherit;font-weight:600;color:#fff;background:var(--navy);
+    border:1px solid var(--navy);border-radius:var(--radius-sm);padding:.4rem .7rem}
+  .cmd button:hover{background:var(--navy-2);border-color:var(--navy-2)}
+  @media (max-width:360px){.os-grid{grid-template-columns:1fr}}
+</style>
+</head><body>
+  <main class="card">
+    <div class="brand"><span class="logo" aria-hidden="true">NF</span><h1>Join the NuFi box</h1></div>
+    <p class="lede">Connect this computer to your team's private AI. Pick your system and follow the steps — it installs the mesh client, trusts the box, and signs you in.</p>
+    <div id="picker">
+      <label class="field">Your name (optional)
+        <input id="member" placeholder="e.g. Ivy" autocomplete="off">
+      </label>
+      <p class="pick-label">Choose your computer</p>
+      <div class="os-grid">
+        ${osButton('macos', 'macOS')}
+        ${osButton('windows', 'Windows')}
+        ${osButton('linux', 'Linux')}
+      </div>
     </div>
-  </div>
-  <div id="steps" hidden style="margin-top:1.25rem"></div>
-  <p id="msg" class="sub" style="margin-top:1.25rem">The link works once and expires — if it fails, ask for a fresh one.</p>
-  <style>
-    #steps ol { padding-left: 1.2rem; line-height: 1.7; }
-    #steps .cmd { display:flex; gap:.5rem; align-items:flex-start; margin-top:.4rem; }
-    #steps code { display:block; flex:1; white-space:pre-wrap; word-break:break-all; background:#0b1020; color:#d6e2ff; padding:.6rem .7rem; border-radius:.4rem; font-size:.82rem; }
-    #steps button { flex:0 0 auto; }
-  </style>
-  <script>${script}</script>`);
+    <div id="steps" hidden></div>
+    <p id="msg" class="note">This link works once and expires — if it fails, ask for a fresh one.</p>
+  </main>
+  <script>${script}</script>
+</body></html>`;
 }
 
 export function loginPage(error?: string): string {
