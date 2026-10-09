@@ -5,6 +5,7 @@ import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { signSession, verifyPassword, verifySession } from './auth';
 import { filesRoutes } from './api/files';
 import { controlRoutes, type ControlDeps } from './api/control';
+import { configRoutes, type ConfigDeps } from './api/config';
 import { buildStatus } from './api/status';
 import { usersRoutes, type UsersDeps } from './api/users';
 import { boxInfo } from './boxinfo';
@@ -33,6 +34,7 @@ type Deps = {
   agentSha256?: () => { amd64: string; arm64: string };
   exec?: Partial<ControlDeps>;
   users?: Partial<UsersDeps>;
+  config?: Partial<ConfigDeps>;
 };
 
 // The NufiBox Agent bundles the box ships for a member to install — the Linux
@@ -118,6 +120,7 @@ export function createApp(env: AppEnv = process.env, deps: Deps = {}): Hono {
   app.get('/api/status', async (c) => c.json(await buildStatus(() => boxInfo(env), checkHealth)));
 
   app.route('/api', controlRoutes(deps.exec));
+  app.route('/api', configRoutes(deps.config));
 
   app.route('/api', filesRoutes(env));
 

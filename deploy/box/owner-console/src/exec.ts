@@ -1,7 +1,16 @@
 // Thin client of the owner-exec sidecar. The console no longer spawns anything:
 // it pre-validates against the shared allowlist (defense in depth; the sidecar
 // re-validates and owns spawn + audit) and calls the sidecar over a unix socket.
-import { type Action, BadRequest, BOX_SERVICE, buildBoxArgv, buildControlArgv, buildReadArgv } from './exec-core';
+import {
+  type Action,
+  type ConfigView,
+  BadRequest,
+  BOX_SERVICE,
+  buildBoxArgv,
+  buildControlArgv,
+  buildReadArgv,
+  validateConfigPatch,
+} from './exec-core';
 
 export * from './exec-core';
 
@@ -52,6 +61,21 @@ export async function controlBox(
 ): Promise<{ ok: boolean; audit: string }> {
   buildBoxArgv(action); // pre-validate; throws BadRequest before any fetch
   const res = await call(deps, '/control', { action, service: BOX_SERVICE });
+  return (await res.json()) as { ok: boolean; audit: string };
+}
+
+export async function readConfig(deps: ExecDeps = defaultDeps()): Promise<ConfigView> {
+  const res = await deps.fetchImpl('http://x/config', { method: 'GET', unix: deps.sock });
+  if (!res.ok) throw new Error(`exec sidecar error (${res.status})`);
+  return (await res.json()) as ConfigView;
+}
+
+export async function applyConfig(
+  patch: unknown,
+  deps: ExecDeps = defaultDeps(),
+): Promise<{ ok: boolean; audit: string }> {
+  const validated = validateConfigPatch(patch); // pre-validate; throws BadRequest before any fetch
+  const res = await call(deps, '/reconfigure', validated);
   return (await res.json()) as { ok: boolean; audit: string };
 }
 

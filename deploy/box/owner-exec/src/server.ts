@@ -1,10 +1,12 @@
-import { appendFileSync, chmodSync, mkdirSync, rmSync } from 'node:fs';
+import { appendFileSync, chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 import { createApp } from './handler';
 
 const stateDir = process.env.NUFI_STATE_DIR || '/state';
 const sock = process.env.EXEC_SOCK || '/sock/exec.sock';
+// litellm/config.yaml, bind-mounted read-write at its own path (compose sets it).
+const configPath = process.env.NUFI_CONFIG_PATH || '/config/config.yaml';
 
 const app = createApp({
   spawn: Bun.spawn,
@@ -13,6 +15,9 @@ const app = createApp({
     mkdirSync(stateDir, { recursive: true });
     appendFileSync(join(stateDir, 'audit.log'), line + '\n');
   },
+  configPath,
+  readFile: (path) => readFileSync(path, 'utf8'),
+  writeFile: (path, data) => writeFileSync(path, data),
 });
 
 mkdirSync(dirname(sock), { recursive: true });

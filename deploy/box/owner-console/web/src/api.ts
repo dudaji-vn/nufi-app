@@ -52,6 +52,18 @@ export const useStatus = () =>
 export const useControl = () =>
   useMutation({ mutationFn: (req: ControlRequest) => post<{ ok: boolean; audit: string }>('/api/control', req) });
 
+// The live, UI-editable model endpoint (litellm/config.yaml, not .env).
+export type ConfigView = { aiBaseUrl: string; aiModel: string };
+export const useConfig = () =>
+  useQuery({ queryKey: ['config'], queryFn: () => get<ConfigView>('/api/config'), retry: false });
+export const useApplyConfig = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (req: ConfigView) => post<{ ok: boolean; audit: string }>('/api/config', req),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['config'] }),
+  });
+};
+
 // POST /api/console and call onLine for each SSE `data:` line as it arrives.
 // Rejects with {error} on a non-2xx response or an `error` event.
 export async function streamConsole(cmd: string, onLine: (line: string) => void): Promise<void> {

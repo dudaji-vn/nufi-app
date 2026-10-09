@@ -806,9 +806,9 @@ fi
 # ---------- rendered files -----------------------------------------------------
 say "Rendering litellm/config.yaml and the drive folders"
 if [ "$DRY" = 1 ]; then
-  printf '  $ sed -e s|@NUFI_MODEL@|%s| -e s|@INFERENCE_MODEL@|%s| litellm/config.yaml.tmpl > litellm/config.yaml\n' "$NUFI_MODEL" "$INFERENCE_MODEL"
+  printf '  $ sed -e s|@NUFI_MODEL@|%s| -e s|@INFERENCE_MODEL@|%s| -e s|@INFERENCE_BASE_URL@|%s| litellm/config.yaml.tmpl > litellm/config.yaml\n' "$NUFI_MODEL" "$INFERENCE_MODEL" "$INFERENCE_BASE_URL"
 else
-  sed -e "s|@NUFI_MODEL@|$NUFI_MODEL|" -e "s|@INFERENCE_MODEL@|$INFERENCE_MODEL|" litellm/config.yaml.tmpl > litellm/config.yaml
+  sed -e "s|@NUFI_MODEL@|$NUFI_MODEL|" -e "s|@INFERENCE_MODEL@|$INFERENCE_MODEL|" -e "s|@INFERENCE_BASE_URL@|$INFERENCE_BASE_URL|" litellm/config.yaml.tmpl > litellm/config.yaml
 fi
 for d in $(printf '%s' "$DEPARTMENTS" | tr ',' ' '); do run mkdir -p "$NUFI_DATA_DIR/drives/$d"; done
 

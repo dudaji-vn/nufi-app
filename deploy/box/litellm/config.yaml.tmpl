@@ -3,7 +3,7 @@ model_list:
   - model_name: @NUFI_MODEL@
     litellm_params:
       model: openai/@INFERENCE_MODEL@
-      api_base: os.environ/INFERENCE_BASE_URL
+      api_base: @INFERENCE_BASE_URL@
       api_key: os.environ/INFERENCE_API_KEY
       input_cost_per_token: 0
       output_cost_per_token: 0

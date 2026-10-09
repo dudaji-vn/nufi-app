@@ -310,6 +310,8 @@ services:
     environment:
       NUFI_STATE_DIR: /state
       EXEC_SOCK: /sock/exec.sock
+      # The read-write litellm config the Config modal edits (its own mount).
+      NUFI_CONFIG_PATH: /config/config.yaml
       # `docker compose -p nufi-box start|stop|restart` needs the box's compose
       # config, not just container labels: the box dir is mounted read-only and
       # COMPOSE_FILE names the active layers (the installer sets
@@ -323,6 +325,11 @@ services:
       # Whole box dir (compose files + .env), read-only: the minimal mount that
       # lets compose resolve services and interpolation for start/stop/restart.
       - .:/box:ro
+      # litellm/config.yaml, read-WRITE, so the Config modal can change the model
+      # endpoint (AI Base Location + Model Name) live. Mounted at its OWN path,
+      # NOT nested under /box:ro (a RW file inside a RO bind mount is EROFS). It
+      # is a model-config file, not .env — no box secret is reachable through it.
+      - ./litellm/config.yaml:/config/config.yaml:rw
     # Image runs as root; group_add keeps socket access if it is ever de-rooted.
     group_add: ["${DOCKER_GID:-999}"]
 
