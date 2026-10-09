@@ -46,18 +46,21 @@
 .ui-badge--neutral { background: var(--subtle); color: var(--gray-1); }
 
 /* Tabs */
-.ui-tabs { display: inline-flex; gap: 4px; padding: 4px; background: var(--subtle); border-radius: var(--radius); }
+/* Figma: no enclosing grey track — inactive tabs are plain text, the active
+   tab is a white pill with a soft shadow sitting on the page. */
+.ui-tabs { display: inline-flex; gap: 6px; }
 .ui-tab {
   font: 600 var(--fs-sm) var(--font);
-  border: 0;
+  border: 1px solid transparent;
   background: transparent;
   color: var(--gray-1);
   padding: 8px 18px;
-  border-radius: var(--radius-sm);
+  border-radius: 10px;
   cursor: pointer;
 }
+.ui-tab:hover { color: var(--ink); }
 .ui-tab:focus-visible { outline: 2px solid var(--info); }
-.ui-tab--active { background: var(--surface); color: var(--navy); box-shadow: var(--shadow); }
+.ui-tab--active { background: var(--surface); color: var(--navy); box-shadow: var(--shadow); border-color: var(--rule); }
 
 /* Table */
 .ui-table {

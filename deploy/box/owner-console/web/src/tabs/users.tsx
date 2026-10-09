@@ -27,6 +27,7 @@ export function Users() {
   const [pageSize, setPageSize] = useState(10);
   const [osFilter, setOsFilter] = useState('all');
   const [actFilter, setActFilter] = useState('all');
+  const [methodFilter, setMethodFilter] = useState('all');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState(false);
   const [deleting, setDeleting] = useState<UserRow | null>(null);
@@ -39,6 +40,8 @@ export function Users() {
   let filtered = q ? data.filter((u) => u.name.toLowerCase().includes(q)) : data;
   if (osFilter !== 'all') filtered = filtered.filter((u) => u.os === osFilter);
   if (actFilter !== 'all') filtered = filtered.filter((u) => u.activation === actFilter);
+  // Legacy users have no addingMethod — they render (and filter) as 'private'.
+  if (methodFilter !== 'all') filtered = filtered.filter((u) => (u.addingMethod ?? 'private') === methodFilter);
   const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const cur = Math.min(page, pages - 1);
   const visible = filtered.slice(cur * pageSize, (cur + 1) * pageSize);
@@ -108,8 +111,10 @@ export function Users() {
         selected={selected}
         osFilter={osFilter}
         actFilter={actFilter}
+        methodFilter={methodFilter}
         onOsFilter={(v) => { setOsFilter(v); setPage(0); }}
         onActFilter={(v) => { setActFilter(v); setPage(0); }}
+        onMethodFilter={(v) => { setMethodFilter(v); setPage(0); }}
         onToggle={toggle}
         onRegenerate={(u) =>
           regen.mutate(u.id, {

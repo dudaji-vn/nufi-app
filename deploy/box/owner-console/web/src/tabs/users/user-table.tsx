@@ -53,8 +53,10 @@ export function UserTable({
   selected,
   osFilter,
   actFilter,
+  methodFilter,
   onOsFilter,
   onActFilter,
+  onMethodFilter,
   onToggle,
   onRegenerate,
   onDelete,
@@ -63,8 +65,10 @@ export function UserTable({
   selected: Set<string>;
   osFilter: string;
   actFilter: string;
+  methodFilter: string;
   onOsFilter: (v: string) => void;
   onActFilter: (v: string) => void;
+  onMethodFilter: (v: string) => void;
   onToggle: (id: string) => void;
   onRegenerate: (u: UserRow) => void;
   onDelete: (u: UserRow) => void;
@@ -131,6 +135,18 @@ export function UserTable({
     {
       key: 'token',
       label: 'Access Key',
+      header: (
+        <ColFilter
+          label="Access Key"
+          value={methodFilter}
+          onChange={onMethodFilter}
+          options={[
+            { value: 'all', label: 'All' },
+            { value: 'private', label: 'Local link' },
+            { value: 'public', label: 'Join file' },
+          ]}
+        />
+      ),
       render: (u) => {
         // Public = a downloadable join file to send; Private (default) = a LAN link.
         if (u.addingMethod === 'public') {
