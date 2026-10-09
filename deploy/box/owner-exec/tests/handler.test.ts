@@ -2,11 +2,28 @@ import { describe, expect, test } from 'bun:test';
 
 import { createApp, type ExecDeps } from '../src/handler';
 
-function setup(opts: { auditThrows?: boolean; stdout?: string } = {}) {
+const CONFIG_YAML =
+  'model_list:\n' +
+  '  - model_name: qwen2.5-7b\n' +
+  '    litellm_params:\n' +
+  '      model: openai/qwen2.5:7b\n' +
+  '      api_base: http://host.docker.internal:11434/v1\n' +
+  '      api_key: os.environ/INFERENCE_API_KEY\n';
+
+function setup(opts: { auditThrows?: boolean; stdout?: string; files?: Record<string, string> } = {}) {
   const spawned: string[][] = [];
   const audits: string[] = [];
+  const files: Record<string, string> = { '/config/config.yaml': CONFIG_YAML, ...opts.files };
   const deps: ExecDeps = {
     now: () => new Date('2026-10-05T00:00:00Z'),
+    configPath: '/config/config.yaml',
+    readFile: (path) => {
+      if (!(path in files)) throw new Error(`ENOENT ${path}`);
+      return files[path];
+    },
+    writeFile: (path, data) => {
+      files[path] = data;
+    },
     auditAppend: (line) => {
       if (opts.auditThrows) throw new Error('disk full');
       audits.push(line);
@@ -22,7 +39,8 @@ function setup(opts: { auditThrows?: boolean; stdout?: string } = {}) {
   const app = createApp(deps);
   const post = (path: string, body: unknown) =>
     app.request(path, { method: 'POST', body: JSON.stringify(body), headers: { 'content-type': 'application/json' } });
-  return { spawned, audits, post };
+  const getJson = (path: string) => app.request(path);
+  return { spawned, audits, files, post, getJson };
 }
 
 describe('POST /control', () => {
@@ -105,5 +123,43 @@ describe('POST /control whole box', () => {
     const { spawned, post } = setup();
     expect((await post('/control', { action: 'down' })).status).toBe(400);
     expect(spawned).toEqual([]);
+  });
+});
+
+describe('GET /config and POST /reconfigure', () => {
+  test('GET /config reads the model + base from litellm/config.yaml', async () => {
+    const { getJson } = setup();
+    const res = await getJson('/config');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ aiModel: 'qwen2.5:7b', aiBaseUrl: 'http://host.docker.internal:11434/v1' });
+  });
+
+  test('POST /reconfigure rewrites the config, audits, and re-creates litellm-proxy', async () => {
+    const { spawned, audits, files, post } = setup();
+    const res = await post('/reconfigure', { aiBaseUrl: 'http://10.0.0.9:8000/v1', aiModel: 'llama-3-70b-instruct' });
+    expect(res.status).toBe(200);
+    const j = (await res.json()) as { ok: boolean; audit: string };
+    expect(j.ok).toBe(true);
+    expect(j.audit).toBe(audits[0]);
+    const out = files['/config/config.yaml'];
+    expect(out).toContain('model: openai/llama-3-70b-instruct');
+    expect(out).toContain('api_base: http://10.0.0.9:8000/v1');
+    expect(out).toContain('api_key: os.environ/INFERENCE_API_KEY'); // untouched
+    expect(out).toContain('model_name: qwen2.5-7b'); // alias untouched
+    expect(spawned).toEqual([['docker', 'compose', '-p', 'nufi-box', 'restart', 'litellm-proxy']]);
+  });
+
+  test('a non-http base URL is 400 — no write, no spawn', async () => {
+    const { spawned, files, post } = setup();
+    const before = files['/config/config.yaml'];
+    expect((await post('/reconfigure', { aiBaseUrl: 'ftp://x', aiModel: 'm' })).status).toBe(400);
+    expect(files['/config/config.yaml']).toBe(before);
+    expect(spawned).toEqual([]);
+  });
+
+  test('.env is never read or written', async () => {
+    const { files, post } = setup();
+    await post('/reconfigure', { aiBaseUrl: 'http://10.0.0.9:8000/v1', aiModel: 'm' });
+    expect(Object.keys(files).some((p) => p.endsWith('/.env'))).toBe(false);
   });
 });

@@ -2,12 +2,30 @@
 // (single source of truth, also used by the owner-console); no shell, no raw input.
 import { Hono } from 'hono';
 
-import { auditLine, BadRequest, BOX_SERVICE, buildBoxArgv, buildControlArgv, buildReadArgv } from '../../owner-console/src/exec-core';
+import {
+  applyConfigToYaml,
+  auditLine,
+  BadRequest,
+  BOX_SERVICE,
+  buildBoxArgv,
+  buildControlArgv,
+  buildReadArgv,
+  buildReconfigureArgv,
+  configViewFromYaml,
+  validateConfigPatch,
+} from '../../owner-console/src/exec-core';
 
 export interface ExecDeps {
   spawn: typeof Bun.spawn;
   auditAppend: (line: string) => void; // must throw on failure: unaudited = not run
   now: () => Date;
+  // litellm/config.yaml, bind-mounted read-WRITE at its OWN path (NOT nested
+  // under the read-only /box mount — a RW file inside a RO bind mount is EROFS).
+  // It is the ONLY file this layer writes; .env holds the box's secrets and is
+  // mounted nowhere.
+  configPath: string;
+  readFile: (path: string) => string;
+  writeFile: (path: string, data: string) => void;
 }
 
 const INFO = (cmd: string) =>
@@ -43,6 +61,26 @@ export function createApp(deps: ExecDeps): Hono {
     const argv = whole ? buildBoxArgv(String(action)) : buildControlArgv(String(action), String(service)); // throws BadRequest
     const line = audit(String(action), whole ? BOX_SERVICE : String(service));
     const proc = deps.spawn({ cmd: argv, stdout: 'ignore', stderr: 'ignore' });
+    const code = await proc.exited;
+    return c.json({ ok: code === 0, audit: line });
+  });
+
+  // Read the live model endpoint (AI Base Location + Model Name) from the one
+  // box config file that is not .env: litellm/config.yaml.
+  app.get('/config', (c) => {
+    const yaml = deps.readFile(deps.configPath);
+    return c.json(configViewFromYaml(yaml));
+  });
+
+  // Apply the Config modal: rewrite the model + api_base in litellm/config.yaml
+  // and restart litellm-proxy so it re-reads the mounted file. .env is never
+  // touched (it is mounted into nothing).
+  app.post('/reconfigure', async (c) => {
+    const patch = validateConfigPatch(await body(c)); // throws BadRequest
+    const updated = applyConfigToYaml(deps.readFile(deps.configPath), patch); // throws BadRequest if unrecognised
+    const line = audit('reconfigure');
+    deps.writeFile(deps.configPath, updated);
+    const proc = deps.spawn({ cmd: buildReconfigureArgv(), stdout: 'ignore', stderr: 'ignore' });
     const code = await proc.exited;
     return c.json({ ok: code === 0, audit: line });
   });

@@ -73,3 +73,8 @@
 .console-cmds { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
 .console-cmds__label { color: var(--gray-1); font-size: 13px; }
 .console-cmds__hint { margin-left: auto; color: var(--gray-2); font-size: 13px; }
+
+/* Config modal form */
+.config-form { display: flex; flex-direction: column; gap: 1rem; }
+.config-field { display: flex; flex-direction: column; gap: 0.35rem; font-size: var(--fs-sm); font-weight: 600; color: var(--ink); }
+.config-note { margin: 0; font-size: 13px; font-weight: 400; line-height: 1.5; color: var(--gray-1); }

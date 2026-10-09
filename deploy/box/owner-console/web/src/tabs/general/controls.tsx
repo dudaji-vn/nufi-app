@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { useControl, type ControlAction } from '../../api';
 import { Button } from '../../ui/button';
 import { Modal } from '../../ui/modal';
-import { IconPower, IconRestart, IconStop } from '../../ui/icons';
+import { IconGear, IconPower, IconRestart, IconStop } from '../../ui/icons';
 import { useToast } from '../../ui/toast';
+import { ConfigModal } from './config';
 
 // The whole-box target understood by POST /api/control.
 export const BOX = '__box__';
@@ -18,6 +19,7 @@ const BODY: Record<'restart' | 'stop', string> = {
 
 export function Controls({ active }: { active: boolean }) {
   const [confirm, setConfirm] = useState<'restart' | 'stop' | null>(null);
+  const [configOpen, setConfigOpen] = useState(false);
   const control = useControl();
   const toast = useToast();
 
@@ -49,6 +51,10 @@ export function Controls({ active }: { active: boolean }) {
       <Button variant="danger" className="btn-ico" data-testid="control-stop" disabled={control.isPending} onClick={() => setConfirm('stop')}>
         <IconStop size={16} /> Stop Service
       </Button>
+      <Button variant="secondary" className="btn-ico" data-testid="control-config" onClick={() => setConfigOpen(true)}>
+        <IconGear size={16} /> Config
+      </Button>
+      <ConfigModal open={configOpen} onClose={() => setConfigOpen(false)} />
       <Modal
         open={confirm !== null}
         title={confirm ? TITLE[confirm] : ''}

@@ -54,3 +54,75 @@ export function buildReadArgv(cmd: string): string[] | null {
       return null; // doctor / support: informational only, never executed
   }
 }
+
+// --- live box config (Config modal) ------------------------------------------
+// The one box setting the owner can change from the UI and have applied live:
+// which model endpoint the box talks to (AI Base Location + Model Name). It is
+// edited in litellm/config.yaml — the one box config file that is NOT .env, so
+// a container may be given write access to it without ever touching the box's
+// secrets (.env, which holds every key/password, is mounted into NOTHING, by
+// design). Other knobs (sign-up, departments, …) live only in .env and so are
+// not live-editable from the UI; they stay a host-side change.
+//
+// exec-core owns the validation + the pure YAML read/write so the console, the
+// sidecar and the tests share one source of truth; the privileged file write
+// and the litellm recreate happen in the sidecar.
+export const RECONFIGURE_SERVICES = ['litellm-proxy'] as const;
+
+export type ConfigView = {
+  aiBaseUrl: string;
+  aiModel: string;
+};
+
+export type ConfigPatch = {
+  aiBaseUrl: string;
+  aiModel: string;
+};
+
+// http(s), no whitespace or quotes (it lands unquoted in the YAML).
+const URL_RE = /^https?:\/\/[^\s'"]+$/;
+// model ids like `qwen2.5:7b`, `llama-3-70b-instruct`, `openai/gpt-4o-mini`.
+const MODEL_RE = /^[A-Za-z0-9._:/-]{1,128}$/;
+
+export function validateConfigPatch(input: unknown): ConfigPatch {
+  const o = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
+  const aiBaseUrl = typeof o.aiBaseUrl === 'string' ? o.aiBaseUrl.trim() : '';
+  const aiModel = typeof o.aiModel === 'string' ? o.aiModel.trim() : '';
+  if (!URL_RE.test(aiBaseUrl)) throw new BadRequest('AI Base Location must be an http(s) URL');
+  if (!MODEL_RE.test(aiModel)) throw new BadRequest('Model Name has invalid characters');
+  return { aiBaseUrl, aiModel };
+}
+
+// The litellm model line is `model: openai/<id>`; api_base is `api_base: <url>`.
+// A box rendered by the current installer may still have `api_base:
+// os.environ/INFERENCE_BASE_URL` (read from env) — treat that as "not shown".
+const MODEL_RE_LINE = /^(\s*)model:\s*openai\/(.+?)\s*$/m;
+const BASE_RE_LINE = /^(\s*)api_base:\s*(.+?)\s*$/m;
+
+export function configViewFromYaml(yamlText: string): ConfigView {
+  const model = yamlText.match(MODEL_RE_LINE);
+  const base = yamlText.match(BASE_RE_LINE);
+  const baseVal = base ? base[2] : '';
+  return {
+    aiModel: model ? model[2] : '',
+    aiBaseUrl: baseVal.startsWith('os.environ/') ? '' : baseVal,
+  };
+}
+
+// Apply the patch to litellm/config.yaml: rewrite the model + api_base lines in
+// place, leaving api_key (os.environ) and everything else untouched. Throws if
+// the file has no model line to edit (a config we do not recognise).
+export function applyConfigToYaml(yamlText: string, patch: ConfigPatch): string {
+  if (!MODEL_RE_LINE.test(yamlText)) throw new BadRequest('litellm config has no model line to update');
+  let out = yamlText.replace(MODEL_RE_LINE, `$1model: openai/${patch.aiModel}`);
+  if (BASE_RE_LINE.test(out)) out = out.replace(BASE_RE_LINE, `$1api_base: ${patch.aiBaseUrl}`);
+  return out;
+}
+
+// `restart` (not `up -d`): the model + api_base live in the mounted
+// litellm/config.yaml, whose CONTENT we just rewrote. `up -d` only re-creates a
+// service when its compose CONFIG changes, so it would no-op on a file-content
+// change; a restart stops and starts the process, which re-reads the mount.
+export function buildReconfigureArgv(): string[] {
+  return [...COMPOSE, 'restart', ...RECONFIGURE_SERVICES];
+}
