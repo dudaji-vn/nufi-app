@@ -214,12 +214,71 @@ export function connectPage(): string {
 </body></html>`;
 }
 
+// The owner sign-in page. Self-contained + styled to the owner-console design
+// system (navy + Open Sans + the "NF" mark), matching the Figma "Admin Access
+// Key" frame: a centred card, the logo, a secret-key field with a show/hide eye.
 export function loginPage(error?: string): string {
-  return shell('NuFi box · owner', `
-  <h1>NuFi box owner</h1>
-  <form method="post" action="/login">
-    <label>Owner password<input type="password" name="password" autofocus required></label>
-    <button type="submit">Sign in</button>
-  </form>
-  ${error ? `<p class="err">${esc(error)}</p>` : ''}`);
+  return `<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>NuFi box · Administrator Dashboard</title>
+<style>
+  :root{
+    --navy:#293069;--navy-2:#3c4d8a;--ink:#333;--gray-1:#666;--gray-2:#999;
+    --rule:#e6e6e6;--surface:#fff;--ground:#f6f7f9;--subtle:#f2f2f2;--bad:#c0392b;
+    --radius:10px;--radius-lg:14px;--shadow-lg:0 12px 32px rgba(41,48,105,.14);
+    --font:'Open Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+    color-scheme:light;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100dvh;display:flex;align-items:center;justify-content:center;
+    background:var(--ground);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.5;
+    padding:calc(16px + env(safe-area-inset-top,0px)) 16px calc(16px + env(safe-area-inset-bottom,0px));}
+  .card{width:100%;max-width:25rem;background:var(--surface);border:1px solid var(--rule);
+    border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);padding:2.25rem 2rem;text-align:center;}
+  .logo{display:inline-flex;align-items:center;justify-content:center;margin:0 auto .4rem;}
+  .logo svg{height:42px;width:auto;display:block;}
+  h1{margin:1.1rem 0 .3rem;font-size:1.15rem;font-weight:700;letter-spacing:.06em;color:var(--ink);text-transform:uppercase;}
+  .sub{margin:0 0 1.5rem;color:var(--gray-1);font-size:.9rem;}
+  form{display:block;text-align:left;}
+  .field{position:relative;display:block;}
+  .field input{width:100%;padding:.7rem 2.6rem .7rem .8rem;font:inherit;color:var(--ink);background:var(--surface);
+    border:1px solid var(--rule);border-radius:var(--radius);}
+  .field input:focus{outline:none;border-color:var(--navy-2);box-shadow:0 0 0 3px rgba(60,77,138,.16);}
+  .eye{position:absolute;top:50%;right:.5rem;transform:translateY(-50%);display:inline-flex;align-items:center;
+    justify-content:center;width:2rem;height:2rem;border:0;background:transparent;color:var(--gray-2);cursor:pointer;border-radius:8px;}
+  .eye:hover{color:var(--navy);}
+  .btn{width:100%;margin-top:1rem;padding:.7rem;font:inherit;font-weight:600;color:#fff;background:var(--navy);
+    border:1px solid var(--navy);border-radius:var(--radius);cursor:pointer;}
+  .btn:hover{background:var(--navy-2);border-color:var(--navy-2);}
+  .err{margin:1rem 0 0;color:var(--bad);font-size:.85rem;text-align:center;}
+</style>
+</head><body>
+  <main class="card">
+    <span class="logo" aria-hidden="true"><svg viewBox="0 0 427.28 183.69" role="img" aria-label="NuFi"><path fill="#3c4d8a" d="M217.81,128.96v53.15c-5.62-.03-11.04-.9-16.16-2.48-11.58-3.54-21.61-10.7-28.75-20.18l-.07-.07-23.53-22.75-5.27-5.09-18.28-17.67-10.53-10.18-5.79-5.6-6.8-6.57-.42-.41-15.8-15.27-7.74-7.49-8.39-8.11V.19c5.61.04,11.02.91,16.14,2.49,11.57,3.54,21.57,10.66,28.72,20.08l.02.03s.03.04.04.07c0,0,.01,0,.01.01h0s.01-.01.01-.01l22,22.76,6.8,7.03,15.19,15.72,13.62,14.08,3.6,3.73,4.79,4.95,2.13,2.21,18.28,18.91h0s1.57,1.63,1.57,1.63l14.59,15.08Z"/><path fill="#293069" d="M288.07,68.37v69.03c-1.8,8.11-5.36,15.58-10.26,21.99-4.95,6.47-11.28,11.88-18.55,15.8-8.24,4.44-17.71,6.96-27.77,6.96-.34,0-.69,0-1.03-.01v-113.05s.04.01.07.01c-.02-.1-.04-.21-.07-.31v-23.18h0c1.77-8.43,5.45-16.15,10.55-22.76,4.9-6.34,11.11-11.64,18.25-15.52,8.37-4.55,18.02-7.15,28.29-7.15.15,0,.32,0,.47.01v68.17h.04Z"/><path fill="#293069" d="M57.57,22.86V.19c-.15-.01-.3-.01-.45-.01-10.3,0-19.97,2.73-28.31,7.51h-.07c-6.73,3.84-12.58,9.01-17.24,15.16-5.01,6.61-8.59,14.35-10.34,22.76-.73,3.51-1.12,7.13-1.17,10.85v125.69h57.61V22.86h-.04Z"/><rect fill="#e99a97" x="335.09" y="96.66" width="57.7" height="56.68"/><rect fill="#3c4d8a" x="300.61" width="126.67" height="56.71"/></svg></span>
+    <h1>Administrator Dashboard</h1>
+    <p class="sub">Enter the admin secret key to access the dashboard.</p>
+    <form method="post" action="/login">
+      <label class="field">
+        <input id="pw" type="password" name="password" placeholder="Enter secret key" autofocus required autocomplete="current-password">
+        <button type="button" class="eye" id="toggle" aria-label="Show secret key">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+      </button>
+      </label>
+      <button type="submit" class="btn">Sign in</button>
+    </form>
+    ${error ? `<p class="err">${esc(error)}</p>` : ''}
+  </main>
+  <script>
+  (function(){
+    var pw=document.getElementById('pw'),t=document.getElementById('toggle');
+    t.addEventListener('click',function(){
+      var show=pw.type==='password';pw.type=show?'text':'password';
+      t.setAttribute('aria-label',show?'Hide secret key':'Show secret key');
+      pw.focus();
+    });
+  })();
+  </script>
+</body></html>`;
 }

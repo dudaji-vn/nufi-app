@@ -9,6 +9,7 @@ import {
   buildBoxArgv,
   buildControlArgv,
   buildReadArgv,
+  buildRemoteWorkArgv,
   validateConfigPatch,
 } from './exec-core';
 
@@ -62,6 +63,24 @@ export async function controlBox(
   buildBoxArgv(action); // pre-validate; throws BadRequest before any fetch
   const res = await call(deps, '/control', { action, service: BOX_SERVICE });
   return (await res.json()) as { ok: boolean; audit: string };
+}
+
+// "Allow remote work" toggle: start/stop the box's tailscale (mesh) container.
+export async function setRemoteWork(
+  on: boolean,
+  deps: ExecDeps = defaultDeps(),
+): Promise<{ ok: boolean; audit: string }> {
+  buildRemoteWorkArgv(on); // pre-validate; throws BadRequest before any fetch
+  const res = await call(deps, '/remote-work', { on });
+  return (await res.json()) as { ok: boolean; audit: string };
+}
+
+// The real remote-work state (is the mesh container running), read from the
+// sidecar — unlike mesh.joined, which is only what .env held at container start.
+export async function readRemoteWork(deps: ExecDeps = defaultDeps()): Promise<{ on: boolean }> {
+  const res = await deps.fetchImpl('http://x/remote-work', { method: 'GET', unix: deps.sock });
+  if (!res.ok) throw new Error(`exec sidecar error (${res.status})`);
+  return (await res.json()) as { on: boolean };
 }
 
 export async function readConfig(deps: ExecDeps = defaultDeps()): Promise<ConfigView> {

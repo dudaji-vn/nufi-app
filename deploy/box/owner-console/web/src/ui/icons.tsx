@@ -80,6 +80,27 @@ export const IconGear = (p: P) => (
   </Svg>
 );
 
+export const IconClose = (p: P) => (
+  <Svg {...p}>
+    <path d="M18 6 6 18M6 6l12 12" />
+  </Svg>
+);
+
+export const IconMore = (p: P) => (
+  <Svg {...p}>
+    <circle cx="12" cy="5" r="1.4" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="19" r="1.4" fill="currentColor" stroke="none" />
+  </Svg>
+);
+
+export const IconLogout = (p: P) => (
+  <Svg {...p}>
+    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+    <path d="M16 17l5-5-5-5M21 12H9" />
+  </Svg>
+);
+
 export const IconSearch = (p: P) => (
   <Svg {...p}>
     <circle cx="11" cy="11" r="7" />

@@ -7,10 +7,13 @@ import {
   auditLine,
   BadRequest,
   BOX_SERVICE,
-  buildBoxArgv,
+  buildBoxContainerArgv,
   buildControlArgv,
+  buildListContainersArgv,
   buildReadArgv,
   buildReconfigureArgv,
+  buildRemoteWorkArgv,
+  buildRemoteWorkStatusArgv,
   configViewFromYaml,
   validateConfigPatch,
 } from '../../owner-console/src/exec-core';
@@ -57,9 +60,44 @@ export function createApp(deps: ExecDeps): Hono {
 
   app.post('/control', async (c) => {
     const { action, service } = await body(c);
-    const whole = service === BOX_SERVICE; // missing/null/other service never means whole-box
-    const argv = whole ? buildBoxArgv(String(action)) : buildControlArgv(String(action), String(service)); // throws BadRequest
-    const line = audit(String(action), whole ? BOX_SERVICE : String(service));
+    const a = String(action);
+
+    // Whole-box: act on the project's containers directly, so a STOP/RESTART
+    // keeps the console plane (caddy + owner-console + owner-exec) running and
+    // the UI can still turn the box back on. START brings everything back.
+    if (service === BOX_SERVICE) {
+      const listProc = deps.spawn({ cmd: buildListContainersArgv(a !== 'start'), stdout: 'pipe', stderr: 'ignore' });
+      const names = (await new Response(listProc.stdout as ReadableStream<Uint8Array>).text().catch(() => '')).split('\n');
+      await listProc.exited;
+      const argv = buildBoxContainerArgv(a, names); // throws BadRequest on a bad action
+      const line = audit(a, BOX_SERVICE);
+      if (argv.length <= 2) return c.json({ ok: true, audit: line }); // nothing to act on
+      const proc = deps.spawn({ cmd: argv, stdout: 'ignore', stderr: 'ignore' });
+      const code = await proc.exited;
+      return c.json({ ok: code === 0, audit: line });
+    }
+
+    const argv = buildControlArgv(a, String(service)); // throws BadRequest
+    const line = audit(a, String(service));
+    const proc = deps.spawn({ cmd: argv, stdout: 'ignore', stderr: 'ignore' });
+    const code = await proc.exited;
+    return c.json({ ok: code === 0, audit: line });
+  });
+
+  // The real remote-work state: is the tailscale container running? (Read-only.)
+  app.get('/remote-work', async (c) => {
+    const proc = deps.spawn({ cmd: buildRemoteWorkStatusArgv(), stdout: 'pipe', stderr: 'ignore' });
+    const out = await new Response(proc.stdout as ReadableStream<Uint8Array>).text().catch(() => '');
+    const code = await proc.exited;
+    return c.json({ on: code === 0 && out.trim() === 'true' });
+  });
+
+  // "Allow remote work" toggle: start/stop the tailscale (mesh) container by
+  // name. No shell, no input beyond a boolean; the argv is fixed by exec-core.
+  app.post('/remote-work', async (c) => {
+    const { on } = await body(c);
+    const argv = buildRemoteWorkArgv(on === true); // throws BadRequest if not boolean-ish → here always boolean
+    const line = audit(on === true ? 'remote-work on' : 'remote-work off');
     const proc = deps.spawn({ cmd: argv, stdout: 'ignore', stderr: 'ignore' });
     const code = await proc.exited;
     return c.json({ ok: code === 0, audit: line });

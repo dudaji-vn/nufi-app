@@ -369,6 +369,9 @@ services:
       EXEC_SOCK: /sock/exec.sock
       # Shown on the chat status card. Defaults to the chat image tag.
       NUFI_CHAT_VERSION: ${NUFI_CHAT_VERSION:-${NUFI_CHAT_TAG:-}}
+      # The chat model name, so the AI Model card shows it (not the embeddings
+      # model ollama lists first). Read-only hint; the live value is config.yaml.
+      INFERENCE_MODEL: ${INFERENCE_MODEL:-}
     volumes:
       - ${MESH_CA_FILE:-/etc/ssl/certs/ca-certificates.crt}:/mesh-ca.crt:ro
       # The exec sidecar's socket (read-write: connecting to a unix socket needs it).

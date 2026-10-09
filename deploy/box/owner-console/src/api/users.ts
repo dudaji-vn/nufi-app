@@ -1,6 +1,6 @@
 import { Hono, type Context } from 'hono';
 import { boxInfo } from '../boxinfo';
-import { isOS, macosPlan, renderConnector, type OS } from '../connector';
+import { isOS, macosPlan, renderConnector, safeMember, type OS } from '../connector';
 import { connectLink, signInvite, verifyInvite } from '../invite';
 import {
   MeshError, expireKey, listKeys, listNodes, meshConfig, mintMemberKeyWithId, revokeNode,
@@ -13,6 +13,10 @@ export type UserRow = UserRecord & {
   expiresAt?: string;
   nodeIp?: string;
   online?: boolean;
+  // A LAN-shareable /connect link built from the box's canonical host on plain
+  // :80 (see memberBase), so a member on another machine can open it — unlike a
+  // link carrying whatever host the owner happened to open the console with.
+  inviteUrl?: string;
 };
 
 export type UsersListDeps = {
@@ -94,6 +98,21 @@ export function usersRoutes(ctx: UsersCtx, deps: Partial<UsersDeps> = {}): Hono 
   const rows = (cfg: MeshConfig) =>
     usersList({ listNodes: () => d.listNodes(cfg), listKeys: () => d.listKeys(cfg), listUsers: d.listUsers });
 
+  // Where a member reaches the box: plain HTTP :80 at the box's canonical LAN
+  // host (its IP, else its configured hostname). The box Caddyfile serves
+  // /connect and /agent/* on :80 precisely for a laptop that has NOT yet
+  // trusted the box CA — the join file's `curl` of the agent can't click
+  // through a TLS warning, so it must be plain :80, not the owner's TLS :3009
+  // console origin (also a host only the owner's machine resolves).
+  const memberBase = (c: Context): string => {
+    let host = ctx.env.BOX_IP || ctx.env.BOX_HOST || '';
+    if (!host) {
+      try { host = new URL(ctx.origin(c)).hostname; } catch { host = 'localhost'; }
+    }
+    return `http://${host}`;
+  };
+  const withInvite = (c: Context, row: UserRow): UserRow => ({ ...row, inviteUrl: connectLink(memberBase(c), row.token) });
+
   const mint = async (cfg: MeshConfig) => {
     const { id, key } = await d.mintMemberKeyWithId(cfg);
     return { keyId: id, token: signInvite(ctx.secret, { key, serverUrl: cfg.serverUrl }, INVITE_TTL) };
@@ -124,15 +143,16 @@ export function usersRoutes(ctx: UsersCtx, deps: Partial<UsersDeps> = {}): Hono 
 
   const rowFor = async (cfg: MeshConfig, id: string) => (await rows(cfg)).find((x) => x.id === id);
 
-  r.get('/users', withMesh(async (c, cfg) => c.json(await rows(cfg))));
+  r.get('/users', withMesh(async (c, cfg) => c.json((await rows(cfg)).map((row) => withInvite(c, row)))));
 
   r.post('/users', withMesh(async (c, cfg) => {
-    const body = (await c.req.json().catch(() => ({}))) as { name?: unknown; os?: unknown };
+    const body = (await c.req.json().catch(() => ({}))) as { name?: unknown; os?: unknown; method?: unknown };
     const name = typeof body.name === 'string' ? body.name.trim() : '';
     if (!name) return c.json({ error: 'name is required' }, 400);
     if (!isOS(body.os)) return c.json({ error: 'unknown operating system' }, 400);
-    const rec = await d.addUser({ name, os: body.os, ...(await mint(cfg)) });
-    return c.json((await rowFor(cfg, rec.id)) ?? rec);
+    const addingMethod = body.method === 'public' ? 'public' : 'private';
+    const rec = await d.addUser({ name, os: body.os, addingMethod, ...(await mint(cfg)) });
+    return c.json(withInvite(c, ((await rowFor(cfg, rec.id)) ?? rec) as UserRow));
   }));
 
   r.delete('/users/:id', async (c) => {
@@ -161,7 +181,8 @@ export function usersRoutes(ctx: UsersCtx, deps: Partial<UsersDeps> = {}): Hono 
     const fresh = await mint(cfg);
     await d.updateUser(id, fresh);
     await expireRecordKey(cfg, rec);
-    return c.json(await rowFor(cfg, id));
+    const row = await rowFor(cfg, id);
+    return c.json(row ? withInvite(c, row) : row);
   }));
 
   r.get('/users/:id/connector', async (c) => {
@@ -176,9 +197,33 @@ export function usersRoutes(ctx: UsersCtx, deps: Partial<UsersDeps> = {}): Hono 
     const input = {
       os, member: rec.name, key: invite.key, serverUrl: invite.serverUrl,
       boxMeshHost: info.mesh.host, departments: info.departments,
-      boxCaB64: '', coordCaB64: ctx.coordCaB64(), boxUrl: ctx.origin(c),
+      boxCaB64: '', coordCaB64: ctx.coordCaB64(), boxUrl: memberBase(c),
     };
-    if (os === 'macos') return c.json(macosPlan(input));
+    // macOS can't ship a one-click script (macOS blocks unsigned scripts), so
+    // the downloadable "join file" is a short, readable instructions .txt — the
+    // signed .pkg URL + the one enrol line to paste. (The member /connect PAGE
+    // renders these same steps from the JSON plan; this is the owner's download
+    // to send someone.)
+    if (os === 'macos') {
+      const plan = macosPlan(input);
+      const body =
+        `NuFi — join for ${rec.name} (macOS)\n` +
+        `==================================================\n\n` +
+        `macOS needs two quick steps (it blocks unsigned one-click scripts;\n` +
+        `the installer below is signed, so there is no security warning).\n\n` +
+        `1) Install the NuFi agent — download and open this installer:\n` +
+        `   ${plan.pkgUrl}\n\n` +
+        `2) Open Terminal, paste this ONE line and press Enter:\n\n` +
+        `   ${plan.enroll}\n\n` +
+        `3) Open NuFi and sign in (or sign up):\n` +
+        `   ${plan.chatUrl}\n`;
+      return new Response(body, {
+        headers: {
+          'content-type': 'text/plain; charset=utf-8',
+          'content-disposition': `attachment; filename="nufi-join-${safeMember(rec.name)}-macos.txt"`,
+        },
+      });
+    }
     const connector = renderConnector(
       { ...input, boxCaB64: await ctx.boxCaB64(), agentSha256: ctx.agentSha256() },
       ctx.templatesDir,
@@ -206,11 +251,11 @@ export function usersRoutes(ctx: UsersCtx, deps: Partial<UsersDeps> = {}): Hono 
       added.push((await d.addUser({ name, os, ...(await mint(cfg)) })).id);
     }
     const all = await rows(cfg);
-    return c.json(all.filter((x) => added.includes(x.id)), 200, { 'x-skipped': String(skipped) });
+    return c.json(all.filter((x) => added.includes(x.id)).map((row) => withInvite(c, row)), 200, { 'x-skipped': String(skipped) });
   }));
 
   r.post('/users/export', async (c) => {
-    const origin = ctx.origin(c);
+    const origin = memberBase(c); // LAN-shareable links in the exported CSV, same as the table
     const body = (await c.req.json().catch(() => null)) as { ids?: unknown } | null;
     const ids = body && Array.isArray(body.ids) ? body.ids : [];
     const users = await d.listUsers();

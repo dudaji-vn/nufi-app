@@ -10,6 +10,14 @@ beforeEach(() => {
   vi.restoreAllMocks();
   mutate.mockReset();
   vi.spyOn(api, 'useControl').mockReturnValue({ mutate, isPending: false } as never);
+  // Controls now also mounts the ⋮ menu (useStatus) and the Config modal
+  // (useConfig/useApplyConfig); stub them so the component renders without a
+  // QueryClient.
+  vi.spyOn(api, 'useStatus').mockReturnValue({ data: { box: { name: 'b', mesh: { joined: false } } } } as never);
+  vi.spyOn(api, 'useConfig').mockReturnValue({ data: undefined, isPending: false } as never);
+  vi.spyOn(api, 'useApplyConfig').mockReturnValue({ mutate: vi.fn(), isPending: false } as never);
+  vi.spyOn(api, 'useRemoteWork').mockReturnValue({ mutate: vi.fn(), isPending: false } as never);
+  vi.spyOn(api, 'useRemoteWorkStatus').mockReturnValue({ data: { on: true } } as never);
 });
 
 test('Restart opens the confirm modal; confirming fires the whole-box mutation', () => {
