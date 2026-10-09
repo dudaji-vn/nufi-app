@@ -6,6 +6,7 @@ import { Select } from '../ui/select';
 import { useToast } from '../ui/toast';
 import { IconClose, IconDownload, IconPlus, IconSearch, IconUpload } from '../ui/icons';
 import { AddUserModal } from './users/add-user-modal';
+import { HelpMenu } from './users/help-menu';
 import { UserTable } from './users/user-table';
 
 const PAGE_SIZES = [
@@ -87,6 +88,7 @@ export function Users() {
           <IconUpload size={16} /> Upload CSV
         </Button>
         <input ref={file} type="file" accept=".csv,text/csv" hidden aria-label="CSV file" onChange={(e) => onUpload(e.target.files?.[0])} />
+        <HelpMenu />
       </div>
 
       {selected.size > 0 && (

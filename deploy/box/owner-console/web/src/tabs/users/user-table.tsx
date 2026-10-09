@@ -6,7 +6,8 @@ import { IconCopy, IconDownload, IconRestart, IconTrash } from '../../ui/icons';
 import { Table, type Col } from '../../ui/table';
 import { useToast } from '../../ui/toast';
 
-const TONE: Record<UserRow['activation'], BadgeTone> = { activated: 'ok', pending: 'warn', expired: 'bad' };
+// Pending is a neutral grey (Figma), not a yellow warning.
+const TONE: Record<UserRow['activation'], BadgeTone> = { activated: 'ok', pending: 'neutral', expired: 'bad' };
 const LABEL: Record<UserRow['activation'], string> = { activated: 'Activated', pending: 'Pending', expired: 'Expired' };
 const OS_LABEL: Record<UserRow['os'], string> = { macos: 'macOS', windows: 'Windows', linux: 'Linux' };
 

@@ -41,7 +41,7 @@ test('each activation state shows its label and tone', () => {
     row({ id: 'e', name: 'E', activation: 'expired' }),
   ]);
   render(<Users />);
-  const cases: [string, string, string][] = [['a', 'Activated', 'ok'], ['p', 'Pending', 'warn'], ['e', 'Expired', 'bad']];
+  const cases: [string, string, string][] = [['a', 'Activated', 'ok'], ['p', 'Pending', 'neutral'], ['e', 'Expired', 'bad']];
   for (const [id, label, tone] of cases) {
     const el = screen.getByTestId(`activation-${id}`).firstElementChild as HTMLElement;
     expect(el.textContent).toBe(label);
@@ -68,6 +68,18 @@ test('Add User opens the modal and submits name + os + method', () => {
   fireEvent.click(screen.getByTestId('add-user-submit'));
   // method defaults to 'private' (the LAN link); the modal always sends it.
   expect(mutate).toHaveBeenCalledWith({ name: 'Lan', os: 'linux', method: 'private' }, expect.anything());
+});
+
+test('the help (?) menu opens the bulk-ops guide', () => {
+  mockUsers([]);
+  render(<Users />);
+  expect(screen.queryByTestId('help-panel')).toBeNull();
+  fireEvent.click(screen.getByTestId('help-menu'));
+  const panel = screen.getByTestId('help-panel');
+  expect(panel.textContent).toContain('Bulk add users by upload CSV');
+  expect(panel.textContent).toContain('Export CSV');
+  expect(panel.textContent).toContain('Export ZIP');
+  expect(screen.getByTestId('download-template')).toBeTruthy();
 });
 
 test('search filters rows by name', () => {
