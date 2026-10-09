@@ -179,3 +179,5 @@
 .ui-menu__item--danger:hover:not(.ui-menu__item--disabled) { background: var(--bad-bg); }
 .ui-menu__item--disabled { color: var(--gray-2); cursor: not-allowed; }
 .ui-menu__icon { display: inline-flex; }
+
+.btn-ico--square { padding-left: 10px; padding-right: 10px; }

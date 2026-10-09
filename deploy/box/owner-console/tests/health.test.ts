@@ -170,6 +170,13 @@ describe('probe detail', () => {
     expect(r.ok).toBe(true);
     expect(r.detail).toBe('qwen3 · 4.5 GB');
   });
+  test('parseOllamaModel prefers the configured chat model over the first (embeddings)', () => {
+    const tags = { models: [{ name: 'bge-m3:latest', size: 1_200_000_000 }, { name: 'qwen2.5:0.5b', size: 400_000_000 }] };
+    expect(parseOllamaModel(tags)).toBe('bge-m3:latest · 1.2 GB'); // no preference = first
+    expect(parseOllamaModel(tags, 'qwen2.5:0.5b')).toBe('qwen2.5:0.5b · 400 MB'); // exact match wins
+    expect(parseOllamaModel(tags, 'qwen2.5')).toBe('qwen2.5:0.5b · 400 MB'); // match by base name
+    expect(parseOllamaModel(tags, 'nope')).toBe('bge-m3:latest · 1.2 GB'); // no match -> first
+  });
   test('detail absent when the detail fetch fails; card stays ok', async () => {
     for (const d of [() => new Response('', { status: 500 }), () => { throw new Error('x'); }, () => new Response('not json')]) {
       const r = await probe(p, 1000, f(d));
