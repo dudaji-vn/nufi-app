@@ -39,6 +39,9 @@ export type UserOs = 'macos' | 'windows' | 'linux';
 export type UserRow = {
   id: string; name: string; os: UserOs; keyId: string; token: string; createdAt: string;
   addingMethod?: 'public' | 'private';
+  // LAN-shareable /connect link from the box (its canonical host); falls back to
+  // inviteLink(token) for older payloads that don't carry it.
+  inviteUrl?: string;
   activation: 'pending' | 'activated' | 'expired'; expiresAt?: string; nodeIp?: string; online?: boolean;
 };
 export async function del<T>(path: string): Promise<T> {

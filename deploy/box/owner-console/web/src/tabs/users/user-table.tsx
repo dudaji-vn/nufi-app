@@ -78,7 +78,7 @@ export function UserTable({
   const toast = useToast();
 
   const copy = (u: UserRow) => {
-    navigator.clipboard.writeText(inviteLink(u.token)).then(
+    navigator.clipboard.writeText(u.inviteUrl ?? inviteLink(u.token)).then(
       () => toast.push('Invite link copied', 'ok'),
       () => toast.push('Could not copy link', 'bad'),
     );
@@ -159,10 +159,11 @@ export function UserTable({
         }
         const label = u.expiresAt ? remaining(u.expiresAt, now) : '';
         const expired = label === 'Expired';
+        const link = u.inviteUrl ?? inviteLink(u.token);
         return (
           <span style={{ display: 'inline-flex', gap: 10, alignItems: 'center' }}>
-            <a href={inviteLink(u.token)} title={inviteLink(u.token)} target="_blank" rel="noopener" className="access-link">
-              {inviteLink(u.token)}
+            <a href={link} title={link} target="_blank" rel="noopener" className="access-link">
+              {link}
             </a>
             {label && (
               <span

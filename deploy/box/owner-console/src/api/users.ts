@@ -13,6 +13,10 @@ export type UserRow = UserRecord & {
   expiresAt?: string;
   nodeIp?: string;
   online?: boolean;
+  // A LAN-shareable /connect link built from the box's canonical host (see
+  // canonicalBase), so a member on another machine can open it — unlike a link
+  // carrying whatever host the owner happened to open the console with.
+  inviteUrl?: string;
 };
 
 export type UsersListDeps = {
@@ -94,6 +98,22 @@ export function usersRoutes(ctx: UsersCtx, deps: Partial<UsersDeps> = {}): Hono 
   const rows = (cfg: MeshConfig) =>
     usersList({ listNodes: () => d.listNodes(cfg), listKeys: () => d.listKeys(cfg), listUsers: d.listUsers });
 
+  // A share link a LAN member can actually open: the box's canonical LAN host
+  // (its IP, else its configured hostname) on the SAME scheme+port the console
+  // is reached on. The owner's window.location is not usable — it may be
+  // localhost, or a name (nufi.local) only the owner's machine resolves.
+  const canonicalBase = (c: Context): string => {
+    try {
+      const u = new URL(ctx.origin(c));
+      const host = ctx.env.BOX_IP || ctx.env.BOX_HOST;
+      if (host) u.hostname = host;
+      return `${u.protocol}//${u.host}`;
+    } catch {
+      return ctx.origin(c);
+    }
+  };
+  const withInvite = (c: Context, row: UserRow): UserRow => ({ ...row, inviteUrl: connectLink(canonicalBase(c), row.token) });
+
   const mint = async (cfg: MeshConfig) => {
     const { id, key } = await d.mintMemberKeyWithId(cfg);
     return { keyId: id, token: signInvite(ctx.secret, { key, serverUrl: cfg.serverUrl }, INVITE_TTL) };
@@ -124,7 +144,7 @@ export function usersRoutes(ctx: UsersCtx, deps: Partial<UsersDeps> = {}): Hono 
 
   const rowFor = async (cfg: MeshConfig, id: string) => (await rows(cfg)).find((x) => x.id === id);
 
-  r.get('/users', withMesh(async (c, cfg) => c.json(await rows(cfg))));
+  r.get('/users', withMesh(async (c, cfg) => c.json((await rows(cfg)).map((row) => withInvite(c, row)))));
 
   r.post('/users', withMesh(async (c, cfg) => {
     const body = (await c.req.json().catch(() => ({}))) as { name?: unknown; os?: unknown; method?: unknown };
@@ -133,7 +153,7 @@ export function usersRoutes(ctx: UsersCtx, deps: Partial<UsersDeps> = {}): Hono 
     if (!isOS(body.os)) return c.json({ error: 'unknown operating system' }, 400);
     const addingMethod = body.method === 'public' ? 'public' : 'private';
     const rec = await d.addUser({ name, os: body.os, addingMethod, ...(await mint(cfg)) });
-    return c.json((await rowFor(cfg, rec.id)) ?? rec);
+    return c.json(withInvite(c, ((await rowFor(cfg, rec.id)) ?? rec) as UserRow));
   }));
 
   r.delete('/users/:id', async (c) => {
@@ -162,7 +182,8 @@ export function usersRoutes(ctx: UsersCtx, deps: Partial<UsersDeps> = {}): Hono 
     const fresh = await mint(cfg);
     await d.updateUser(id, fresh);
     await expireRecordKey(cfg, rec);
-    return c.json(await rowFor(cfg, id));
+    const row = await rowFor(cfg, id);
+    return c.json(row ? withInvite(c, row) : row);
   }));
 
   r.get('/users/:id/connector', async (c) => {
@@ -207,11 +228,11 @@ export function usersRoutes(ctx: UsersCtx, deps: Partial<UsersDeps> = {}): Hono 
       added.push((await d.addUser({ name, os, ...(await mint(cfg)) })).id);
     }
     const all = await rows(cfg);
-    return c.json(all.filter((x) => added.includes(x.id)), 200, { 'x-skipped': String(skipped) });
+    return c.json(all.filter((x) => added.includes(x.id)).map((row) => withInvite(c, row)), 200, { 'x-skipped': String(skipped) });
   }));
 
   r.post('/users/export', async (c) => {
-    const origin = ctx.origin(c);
+    const origin = canonicalBase(c); // LAN-shareable links in the exported CSV, same as the table
     const body = (await c.req.json().catch(() => null)) as { ids?: unknown } | null;
     const ids = body && Array.isArray(body.ids) ? body.ids : [];
     const users = await d.listUsers();
