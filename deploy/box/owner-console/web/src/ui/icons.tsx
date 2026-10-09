@@ -80,6 +80,12 @@ export const IconGear = (p: P) => (
   </Svg>
 );
 
+export const IconClose = (p: P) => (
+  <Svg {...p}>
+    <path d="M18 6 6 18M6 6l12 12" />
+  </Svg>
+);
+
 export const IconMore = (p: P) => (
   <Svg {...p}>
     <circle cx="12" cy="5" r="1.4" fill="currentColor" stroke="none" />

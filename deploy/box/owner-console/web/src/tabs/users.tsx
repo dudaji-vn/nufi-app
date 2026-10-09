@@ -4,7 +4,7 @@ import { Button } from '../ui/button';
 import { Modal } from '../ui/modal';
 import { Select } from '../ui/select';
 import { useToast } from '../ui/toast';
-import { IconDownload, IconPlus, IconSearch, IconUpload } from '../ui/icons';
+import { IconClose, IconDownload, IconPlus, IconSearch, IconUpload } from '../ui/icons';
 import { AddUserModal } from './users/add-user-modal';
 import { UserTable } from './users/user-table';
 
@@ -86,14 +86,14 @@ export function Users() {
         <div data-testid="bulk-bar" className="bulk-bar">
           <span className="bulk-count">Selected: {selected.size}</span>
           <span className="bulk-actions">
-            <Button variant="secondary" size="sm" className="btn-ico" data-testid="export-csv" onClick={() => exportUsersCsv([...selected]).catch((e) => toast.push(errText(e, 'Export failed'), 'bad'))}>
-              <IconDownload size={15} /> Export .CSV
+            <Button variant="secondary" className="btn-ico" data-testid="export-csv" onClick={() => exportUsersCsv([...selected]).catch((e) => toast.push(errText(e, 'Export failed'), 'bad'))}>
+              <IconDownload size={16} /> Export .CSV
             </Button>
-            <Button variant="secondary" size="sm" className="btn-ico" data-testid="export-zip" onClick={() => exportUsersZip(selectedRows).catch((e) => toast.push(errText(e, 'Export failed'), 'bad'))}>
-              <IconDownload size={15} /> Export .zip
+            <Button variant="secondary" className="btn-ico" data-testid="export-zip" onClick={() => exportUsersZip(selectedRows).catch((e) => toast.push(errText(e, 'Export failed'), 'bad'))}>
+              <IconDownload size={16} /> Export .zip
             </Button>
-            <Button variant="ghost" size="sm" data-testid="deselect" onClick={() => setSelected(new Set())}>
-              ✕ Deselect
+            <Button variant="ghost" className="btn-ico" data-testid="deselect" onClick={() => setSelected(new Set())}>
+              <IconClose size={16} /> Deselect
             </Button>
           </span>
         </div>
