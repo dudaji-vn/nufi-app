@@ -9,18 +9,27 @@
   outline: 2px solid var(--info);
   outline-offset: 2px;
 }
-.file-table__filter {
-  display: block;
-  margin-top: 6px;
-  font: 400 12px var(--font);
-  color: var(--gray-1);
-  background: var(--surface);
-  border: 1px solid var(--gray-3);
-  border-radius: var(--radius-sm);
-  padding: 3px 8px;
-  cursor: pointer;
+/* File Sharing toolbar + breadcrumb (Figma) */
+.files-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+.files-bar .field-search { flex: 1 1 320px; }
+.files-bar .ui-select { min-width: 120px; flex: none; }
+
+.files-crumb { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; color: var(--ink); }
+.files-crumb__ico { color: var(--navy); flex: none; }
+.files-crumb__root { all: unset; cursor: pointer; font-weight: 700; color: var(--ink); }
+.files-crumb__root:hover { color: var(--navy); }
+
+/* The whole list is the drop target now (no separate dashed box). */
+.files-drop { position: relative; border-radius: var(--radius-lg); transition: box-shadow 0.15s; }
+.files-drop--over { box-shadow: inset 0 0 0 2px var(--navy-2); }
+.files-drop__hint {
+  position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center;
+  background: rgba(41, 48, 105, 0.06); border-radius: var(--radius-lg); font-weight: 700; color: var(--navy); pointer-events: none;
 }
-.file-table__filter:focus-visible { outline: 2px solid var(--info); outline-offset: 1px; border-color: var(--info); }
+
+/* Accessibility cell: icon + label, not a coloured badge */
+.access-cell { display: inline-flex; align-items: center; gap: 7px; font-weight: 600; color: var(--ok); }
+.access-cell--private { color: var(--gray-1); }
 
 .files-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 56px 16px; color: var(--gray-2); }
 .files-empty svg { color: var(--gray-3); }

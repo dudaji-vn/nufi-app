@@ -1,10 +1,28 @@
 import { useState } from 'react';
 import type { FileRow } from '../../api';
 import { Avatar } from '../../ui/avatar';
-import { Badge } from '../../ui/badge';
+import { ColFilter, SortHeader } from '../../ui/col-filter';
 import { ContextMenu } from '../../ui/context-menu';
 import '../../ui/ui.css';
 import './file-table.css';
+
+// Accessibility shown as an icon + label (Figma), not a coloured badge.
+const AccessCell = ({ access }: { access: FileRow['access'] }) =>
+  access === 'public' ? (
+    <span className="access-cell">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M17 21v-2a4 4 0 0 0-3-3.87M9 21v-2a4 4 0 0 1 3-3.87M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" />
+      </svg>
+      Public
+    </span>
+  ) : (
+    <span className="access-cell access-cell--private">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" />
+      </svg>
+      Private
+    </span>
+  );
 
 export type SortKey = 'name' | 'size' | 'uploadedAt' | 'modifiedAt';
 export type SortDir = 'asc' | 'desc';
@@ -85,16 +103,11 @@ export function FileTable({
     sort.dir,
   );
 
-  const header = (key: SortKey, label: string) => (
+  const toggle = (key: SortKey) =>
+    setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }));
+  const sortTh = (key: SortKey, label: string) => (
     <th scope="col" aria-sort={sort.key === key ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
-      <button
-        type="button"
-        className="file-table__sort"
-        onClick={() => setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }))}
-      >
-        {label}
-        {sort.key === key && <span aria-hidden="true"> {sort.dir === 'asc' ? '▲' : '▼'}</span>}
-      </button>
+      <SortHeader label={label} active={sort.key === key} dir={sort.dir} onToggle={() => toggle(key)} />
     </th>
   );
 
@@ -102,48 +115,19 @@ export function FileTable({
     <table className="ui-table">
       <thead>
         <tr>
-          {header('name', 'Name')}
+          {sortTh('name', 'Name')}
           <th scope="col">
-            Owner
-            <select
-              aria-label="Filter by owner"
-              className="file-table__filter"
-              value={filters.owner}
-              onChange={(e) => setFilters({ ...filters, owner: e.target.value as Filters['owner'] })}
-            >
-              <option value="all">All</option>
-              <option value="admin">Admin</option>
-            </select>
+            <ColFilter label="Owner" value={filters.owner} onChange={(v) => setFilters({ ...filters, owner: v as Filters['owner'] })} options={[{ value: 'all', label: 'All' }, { value: 'admin', label: 'Admin' }]} />
           </th>
           <th scope="col">
-            Accessibility
-            <select
-              aria-label="Filter by accessibility"
-              className="file-table__filter"
-              value={filters.access}
-              onChange={(e) => setFilters({ ...filters, access: e.target.value as Filters['access'] })}
-            >
-              <option value="all">All</option>
-              <option value="public">Public</option>
-              <option value="private">Private</option>
-            </select>
+            <ColFilter label="Accessibility" value={filters.access} onChange={(v) => setFilters({ ...filters, access: v as Filters['access'] })} options={[{ value: 'all', label: 'All' }, { value: 'public', label: 'Public' }, { value: 'private', label: 'Private' }]} />
           </th>
           <th scope="col">
-            Kind
-            <select
-              aria-label="Filter by kind"
-              className="file-table__filter"
-              value={filters.kind}
-              onChange={(e) => setFilters({ ...filters, kind: e.target.value as Filters['kind'] })}
-            >
-              <option value="all">All</option>
-              <option value="file">File</option>
-              <option value="dir">Folder</option>
-            </select>
+            <ColFilter label="Kind" value={filters.kind} onChange={(v) => setFilters({ ...filters, kind: v as Filters['kind'] })} options={[{ value: 'all', label: 'All' }, { value: 'file', label: 'File' }, { value: 'dir', label: 'Folder' }]} />
           </th>
-          {header('size', 'Size')}
-          {header('uploadedAt', 'Date uploaded')}
-          {header('modifiedAt', 'Date modified')}
+          {sortTh('size', 'Size')}
+          {sortTh('uploadedAt', 'Date uploaded')}
+          {sortTh('modifiedAt', 'Date modified')}
           <th scope="col" aria-label="Actions" />
         </tr>
       </thead>
@@ -186,7 +170,7 @@ export function FileTable({
               </td>
               <td>
                 <span data-testid={`access-badge-${r.name}`}>
-                  <Badge tone={r.access === 'public' ? 'ok' : 'neutral'}>{r.access === 'public' ? 'Public' : 'Private'}</Badge>
+                  <AccessCell access={r.access} />
                 </span>
               </td>
               <td>{kindLabel(r)}</td>

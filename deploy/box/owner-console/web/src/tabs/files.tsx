@@ -7,8 +7,9 @@ import { DeleteDialog } from './files/delete-dialog';
 import { NewFolderModal } from './files/new-folder-modal';
 import { RenameModal } from './files/rename-modal';
 import { Button } from '../ui/button';
-import { IconSearch } from '../ui/icons';
+import { IconPlus, IconSearch, IconUpload } from '../ui/icons';
 import { FileTable, formatSize, type FileAction } from './files/file-table';
+import { FilesHelp } from './files/files-help';
 import { useToast } from '../ui/toast';
 import { UploadPanel, useUploader } from './files/upload-panel';
 
@@ -77,34 +78,37 @@ export function Files() {
 
   return (
     <div data-testid="files">
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
-        <select className="ui-select" aria-label="Department" value={dept ?? ''} disabled={depts.length === 0} onChange={(e) => {
-            setPicked(e.target.value);
-            setFilePath('');
-          }}>
-          {depts.map((d) => (
-            <option key={d} value={d}>
-              {d}
-            </option>
-          ))}
-        </select>
+      <div className="files-bar">
+        {depts.length > 1 && (
+          <select
+            className="ui-select"
+            aria-label="Department"
+            value={dept ?? ''}
+            onChange={(e) => { setPicked(e.target.value); setFilePath(''); }}
+          >
+            {depts.map((d) => (
+              <option key={d} value={d}>{d}</option>
+            ))}
+          </select>
+        )}
         <span className="field-search">
           <span className="field-search__icon"><IconSearch size={16} /></span>
           <input
             type="search"
             className="ui-input"
             aria-label="Search files"
-            placeholder="Search by name"
+            placeholder="Search for file"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
         </span>
-        <Button data-testid="upload-file" disabled={!dept} onClick={() => input.current?.click()}>
-          Upload
+        <Button variant="secondary" className="btn-ico" data-testid="upload-file" disabled={!dept} onClick={() => input.current?.click()}>
+          <IconUpload size={16} /> Upload
         </Button>
-        <Button variant="secondary" disabled={!dept} onClick={() => setModal({ kind: 'newFolder' })}>
-          New Folder
+        <Button variant="secondary" className="btn-ico" disabled={!dept} onClick={() => setModal({ kind: 'newFolder' })}>
+          <IconPlus size={16} /> New Folder
         </Button>
+        <FilesHelp />
         <input ref={input} type="file" hidden multiple aria-label="File to upload" onChange={(e) => send(e.target.files)} />
       </div>
 
@@ -112,6 +116,7 @@ export function Files() {
 
       <div
         data-testid="drop-zone"
+        className={`files-drop${over ? ' files-drop--over' : ''}`}
         onDragOver={(e) => {
           e.preventDefault();
           setOver(true);
@@ -122,19 +127,10 @@ export function Files() {
           setOver(false);
           if (dept) send(e.dataTransfer.files);
         }}
-        style={{
-          border: `2px dashed ${over ? 'var(--navy-2)' : 'var(--gray-3)'}`,
-          borderRadius: 8,
-          padding: 16,
-          marginBottom: 16,
-          textAlign: 'center',
-          color: 'var(--gray-1)',
-        }}
       >
-        Drag and drop files here to upload
+        {over && <div className="files-drop__hint">Drop files to upload</div>}
+        {body}
       </div>
-
-      {body}
 
       {uploader.items.length > 0 && (
         <UploadPanel items={uploader.items} onCancel={uploader.cancel} onCancelAll={uploader.cancelAll} onDismiss={uploader.clear} />
