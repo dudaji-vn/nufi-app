@@ -1,13 +1,19 @@
 import { useRef, useState } from 'react';
-import { exportUsersCsv, useDeleteUser, useImportUsers, useRegenerate, useUsers, type UserRow } from '../api';
+import { exportUsersCsv, exportUsersZip, useDeleteUser, useImportUsers, useRegenerate, useUsers, type UserRow } from '../api';
 import { Button } from '../ui/button';
 import { Modal } from '../ui/modal';
+import { Select } from '../ui/select';
 import { useToast } from '../ui/toast';
-import { IconPlus, IconSearch, IconUpload } from '../ui/icons';
+import { IconDownload, IconPlus, IconSearch, IconUpload } from '../ui/icons';
 import { AddUserModal } from './users/add-user-modal';
 import { UserTable } from './users/user-table';
 
-const PAGE_SIZE = 10;
+const PAGE_SIZES = [
+  { value: '10', label: '10 items/row' },
+  { value: '25', label: '25 items/row' },
+  { value: '50', label: '50 items/row' },
+  { value: '100', label: '100 items/row' },
+];
 const errText = (e: unknown, fallback: string) => (e as { error?: string }).error ?? fallback;
 
 export function Users() {
@@ -18,6 +24,7 @@ export function Users() {
   const toast = useToast();
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(100);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState(false);
   const [deleting, setDeleting] = useState<UserRow | null>(null);
@@ -28,9 +35,10 @@ export function Users() {
 
   const q = query.trim().toLowerCase();
   const filtered = q ? data.filter((u) => u.name.toLowerCase().includes(q)) : data;
-  const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const cur = Math.min(page, pages - 1);
-  const visible = filtered.slice(cur * PAGE_SIZE, (cur + 1) * PAGE_SIZE);
+  const visible = filtered.slice(cur * pageSize, (cur + 1) * pageSize);
+  const selectedRows = data.filter((u) => selected.has(u.id));
 
   const toggle = (id: string) =>
     setSelected((s) => {
@@ -75,19 +83,19 @@ export function Users() {
       </div>
 
       {selected.size > 0 && (
-        <div data-testid="bulk-bar" style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
-          <span>{selected.size} selected</span>
-          <Button
-            variant="secondary"
-            size="sm"
-            data-testid="export-csv"
-            onClick={() => exportUsersCsv([...selected]).catch((e) => toast.push(errText(e, 'Export failed'), 'bad'))}
-          >
-            Export CSV
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
-            Clear
-          </Button>
+        <div data-testid="bulk-bar" className="bulk-bar">
+          <span className="bulk-count">Selected: {selected.size}</span>
+          <span className="bulk-actions">
+            <Button variant="secondary" size="sm" className="btn-ico" data-testid="export-csv" onClick={() => exportUsersCsv([...selected]).catch((e) => toast.push(errText(e, 'Export failed'), 'bad'))}>
+              <IconDownload size={15} /> Export .CSV
+            </Button>
+            <Button variant="secondary" size="sm" className="btn-ico" data-testid="export-zip" onClick={() => exportUsersZip(selectedRows).catch((e) => toast.push(errText(e, 'Export failed'), 'bad'))}>
+              <IconDownload size={15} /> Export .zip
+            </Button>
+            <Button variant="ghost" size="sm" data-testid="deselect" onClick={() => setSelected(new Set())}>
+              ✕ Deselect
+            </Button>
+          </span>
         </div>
       )}
 
@@ -104,16 +112,28 @@ export function Users() {
         onDelete={setDeleting}
       />
 
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'flex-end', marginTop: 12 }}>
-        <span style={{ color: 'var(--gray-1)', fontSize: 'var(--fs-sm)' }}>
-          Page {cur + 1} of {pages} · {filtered.length} user{filtered.length === 1 ? '' : 's'}
+      <div className="table-foot">
+        <span className="page-size">
+          <Select
+            value={String(pageSize)}
+            onChange={(v) => {
+              setPageSize(Number(v));
+              setPage(0);
+            }}
+            options={PAGE_SIZES}
+          />
         </span>
-        <Button variant="secondary" size="sm" data-testid="prev-page" disabled={cur === 0} onClick={() => setPage(cur - 1)}>
-          Previous
-        </Button>
-        <Button variant="secondary" size="sm" data-testid="next-page" disabled={cur >= pages - 1} onClick={() => setPage(cur + 1)}>
-          Next
-        </Button>
+        <span className="pager">
+          <button type="button" className="icon-btn" data-testid="prev-page" aria-label="Previous page" disabled={cur === 0} onClick={() => setPage(cur - 1)}>
+            ←
+          </button>
+          <span className="pager-label">
+            Page {cur + 1} of {pages}
+          </span>
+          <button type="button" className="icon-btn" data-testid="next-page" aria-label="Next page" disabled={cur >= pages - 1} onClick={() => setPage(cur + 1)}>
+            →
+          </button>
+        </span>
       </div>
 
       <AddUserModal open={adding} onClose={() => setAdding(false)} />

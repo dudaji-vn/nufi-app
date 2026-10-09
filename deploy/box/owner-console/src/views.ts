@@ -214,12 +214,71 @@ export function connectPage(): string {
 </body></html>`;
 }
 
+// The owner sign-in page. Self-contained + styled to the owner-console design
+// system (navy + Open Sans + the "NF" mark), matching the Figma "Admin Access
+// Key" frame: a centred card, the logo, a secret-key field with a show/hide eye.
 export function loginPage(error?: string): string {
-  return shell('NuFi box · owner', `
-  <h1>NuFi box owner</h1>
-  <form method="post" action="/login">
-    <label>Owner password<input type="password" name="password" autofocus required></label>
-    <button type="submit">Sign in</button>
-  </form>
-  ${error ? `<p class="err">${esc(error)}</p>` : ''}`);
+  return `<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>NuFi box · Administrator Dashboard</title>
+<style>
+  :root{
+    --navy:#293069;--navy-2:#3c4d8a;--ink:#333;--gray-1:#666;--gray-2:#999;
+    --rule:#e6e6e6;--surface:#fff;--ground:#f6f7f9;--subtle:#f2f2f2;--bad:#c0392b;
+    --radius:10px;--radius-lg:14px;--shadow-lg:0 12px 32px rgba(41,48,105,.14);
+    --font:'Open Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+    color-scheme:light;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100dvh;display:flex;align-items:center;justify-content:center;
+    background:var(--ground);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.5;
+    padding:calc(16px + env(safe-area-inset-top,0px)) 16px calc(16px + env(safe-area-inset-bottom,0px));}
+  .card{width:100%;max-width:25rem;background:var(--surface);border:1px solid var(--rule);
+    border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);padding:2.25rem 2rem;text-align:center;}
+  .logo{display:inline-flex;align-items:center;justify-content:center;width:52px;height:52px;margin:0 auto;
+    border-radius:12px;border:1.5px solid var(--navy);color:var(--navy);font-weight:700;font-size:20px;letter-spacing:.5px;}
+  h1{margin:1.1rem 0 .3rem;font-size:1.15rem;font-weight:700;letter-spacing:.06em;color:var(--ink);text-transform:uppercase;}
+  .sub{margin:0 0 1.5rem;color:var(--gray-1);font-size:.9rem;}
+  form{display:block;text-align:left;}
+  .field{position:relative;display:block;}
+  .field input{width:100%;padding:.7rem 2.6rem .7rem .8rem;font:inherit;color:var(--ink);background:var(--surface);
+    border:1px solid var(--rule);border-radius:var(--radius);}
+  .field input:focus{outline:none;border-color:var(--navy-2);box-shadow:0 0 0 3px rgba(60,77,138,.16);}
+  .eye{position:absolute;top:50%;right:.5rem;transform:translateY(-50%);display:inline-flex;align-items:center;
+    justify-content:center;width:2rem;height:2rem;border:0;background:transparent;color:var(--gray-2);cursor:pointer;border-radius:8px;}
+  .eye:hover{color:var(--navy);}
+  .btn{width:100%;margin-top:1rem;padding:.7rem;font:inherit;font-weight:600;color:#fff;background:var(--navy);
+    border:1px solid var(--navy);border-radius:var(--radius);cursor:pointer;}
+  .btn:hover{background:var(--navy-2);border-color:var(--navy-2);}
+  .err{margin:1rem 0 0;color:var(--bad);font-size:.85rem;text-align:center;}
+</style>
+</head><body>
+  <main class="card">
+    <span class="logo" aria-hidden="true">NF</span>
+    <h1>Administrator Dashboard</h1>
+    <p class="sub">Enter the admin secret key to access the dashboard.</p>
+    <form method="post" action="/login">
+      <label class="field">
+        <input id="pw" type="password" name="password" placeholder="Enter secret key" autofocus required autocomplete="current-password">
+        <button type="button" class="eye" id="toggle" aria-label="Show secret key">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+      </button>
+      </label>
+      <button type="submit" class="btn">Sign in</button>
+    </form>
+    ${error ? `<p class="err">${esc(error)}</p>` : ''}
+  </main>
+  <script>
+  (function(){
+    var pw=document.getElementById('pw'),t=document.getElementById('toggle');
+    t.addEventListener('click',function(){
+      var show=pw.type==='password';pw.type=show?'text':'password';
+      t.setAttribute('aria-label',show?'Hide secret key':'Show secret key');
+      pw.focus();
+    });
+  })();
+  </script>
+</body></html>`;
 }

@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { useControl, type ControlAction } from '../../api';
 import { Button } from '../../ui/button';
 import { Modal } from '../../ui/modal';
-import { ContextMenu } from '../../ui/context-menu';
-import { IconChat, IconGear, IconLogout, IconMore, IconPower, IconRestart, IconSparkles, IconStop } from '../../ui/icons';
+import { IconGear, IconPower, IconRestart, IconStop } from '../../ui/icons';
 import { useToast } from '../../ui/toast';
 import { ConfigModal } from './config';
+import { MoreMenu } from './more-menu';
 
 // The whole-box target understood by POST /api/control.
 export const BOX = '__box__';
@@ -34,23 +34,6 @@ export function Controls({ active }: { active: boolean }) {
     );
   };
 
-  // Overflow menu: restart ONE service (not the whole box), and sign out.
-  const restartOne = (service: string, label: string) =>
-    control.mutate(
-      { action: 'restart', service },
-      {
-        onSuccess: (r) => toast.push(r.ok ? `${label} restarted` : `Could not restart ${label}`, r.ok ? 'ok' : 'bad'),
-        onError: (e) => toast.push((e as { error?: string }).error ?? `Could not restart ${label}`, 'bad'),
-      },
-    );
-  const signOut = () => {
-    fetch('/logout', { method: 'POST', credentials: 'same-origin' }).finally(() => window.location.assign('/login'));
-  };
-  const menuItems = [
-    { label: 'Restart chat', icon: <IconChat size={15} />, onSelect: () => restartOne('librechat', 'Chat') },
-    { label: 'Restart AI gateway', icon: <IconSparkles size={15} />, onSelect: () => restartOne('litellm-proxy', 'AI gateway') },
-    { label: 'Sign out', icon: <IconLogout size={15} />, danger: true, onSelect: signOut },
-  ];
 
   return (
     <div className="gen-controls" data-testid="controls">
@@ -73,11 +56,7 @@ export function Controls({ active }: { active: boolean }) {
       <Button variant="secondary" className="btn-ico" data-testid="control-config" onClick={() => setConfigOpen(true)}>
         <IconGear size={16} /> Config
       </Button>
-      <ContextMenu items={menuItems}>
-        <Button variant="secondary" className="btn-ico btn-ico--square" data-testid="control-more" aria-label="More actions">
-          <IconMore size={16} />
-        </Button>
-      </ContextMenu>
+      <MoreMenu />
       <ConfigModal open={configOpen} onClose={() => setConfigOpen(false)} />
       <Modal
         open={confirm !== null}

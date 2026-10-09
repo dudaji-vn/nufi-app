@@ -181,3 +181,25 @@
 .ui-menu__icon { display: inline-flex; }
 
 .btn-ico--square { padding-left: 10px; padding-right: 10px; }
+
+/* Shared modal form layout (Add User, etc.) */
+.form-grid { display: flex; flex-direction: column; gap: 1rem; }
+.form-intro { margin: 0; font-size: 13px; color: var(--gray-1); line-height: 1.5; }
+.form-methods { margin: 0; padding-left: 1.1rem; font-size: 13px; color: var(--gray-1); line-height: 1.55; display: flex; flex-direction: column; gap: 0.35rem; }
+.form-methods b { color: var(--ink); }
+.form-field { display: flex; flex-direction: column; gap: 0.4rem; }
+.form-field .ui-input, .form-field .ui-select { width: 100%; }
+.form-label { font-size: 13px; font-weight: 600; color: var(--ink); }
+.req { color: var(--bad); font-style: normal; }
+
+.access-link { font-family: var(--mono); font-size: 13px; color: var(--navy-2); text-decoration: underline; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: middle; }
+.access-link:hover { color: var(--navy); }
+
+/* Users: bulk-select bar + table footer (page size + pager) */
+.bulk-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.bulk-count { font-weight: 600; color: var(--ink); font-size: 14px; }
+.bulk-actions { display: inline-flex; gap: 8px; align-items: center; }
+.table-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; }
+.page-size .ui-select { min-width: 150px; }
+.pager { display: inline-flex; align-items: center; gap: 10px; }
+.pager-label { font-size: 13px; color: var(--gray-1); border: 1px solid var(--rule); border-radius: 6px; padding: 4px 10px; }

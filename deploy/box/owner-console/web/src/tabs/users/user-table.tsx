@@ -10,17 +10,19 @@ const TONE: Record<UserRow['activation'], BadgeTone> = { activated: 'ok', pendin
 const LABEL: Record<UserRow['activation'], string> = { activated: 'Activated', pending: 'Pending', expired: 'Expired' };
 const OS_LABEL: Record<UserRow['os'], string> = { macos: 'macOS', windows: 'Windows', linux: 'Linux' };
 
-/** Human-readable time left until `expiresAt`, relative to `now` (ms). Pure. */
+/** Time left until `expiresAt`, relative to `now` (ms). "Expires in MM:SS" (or
+ * "Expires in Nd Nh" when far off), else "Expired". Pure. */
 export function remaining(expiresAt: string, now: number): string {
   const s = Math.floor((Date.parse(expiresAt) - now) / 1000);
   if (!(s > 0)) return 'Expired';
   const d = Math.floor(s / 86400);
   const h = Math.floor((s % 86400) / 3600);
   const m = Math.floor((s % 3600) / 60);
-  if (d > 0) return `${d}d ${h}h`;
-  if (h > 0) return `${h}h ${m}m`;
-  if (m > 0) return `${m}m ${s % 60}s`;
-  return `${s}s`;
+  const ss = s % 60;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  if (d > 0) return `Expires in ${d}d ${h}h`;
+  if (h > 0) return `Expires in ${h}h ${pad(m)}m`;
+  return `Expires in ${pad(m)}:${pad(ss)}`;
 }
 
 function useNow(): number {
@@ -77,24 +79,34 @@ export function UserTable({
     {
       key: 'token',
       label: 'Access Key',
-      render: (u) => (
-        <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
-          <code
-            title={inviteLink(u.token)}
-            style={{ fontFamily: 'var(--mono)', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}
-          >
-            {inviteLink(u.token)}
-          </code>
-          <button type="button" className="icon-btn" data-testid={`copy-${u.id}`} aria-label={`Copy link for ${u.name}`} title="Copy link" onClick={() => copy(u)}>
-            <IconCopy size={16} />
-          </button>
-          {u.expiresAt && (
-            <span data-testid={`countdown-${u.id}`} style={{ color: 'var(--gray-1)', fontSize: 'var(--fs-sm)' }}>
-              {remaining(u.expiresAt, now)}
-            </span>
-          )}
-        </span>
-      ),
+      render: (u) => {
+        const label = u.expiresAt ? remaining(u.expiresAt, now) : '';
+        const expired = label === 'Expired';
+        return (
+          <span style={{ display: 'inline-flex', gap: 10, alignItems: 'center' }}>
+            <a
+              href={inviteLink(u.token)}
+              title={inviteLink(u.token)}
+              target="_blank"
+              rel="noopener"
+              className="access-link"
+            >
+              {inviteLink(u.token)}
+            </a>
+            {label && (
+              <span
+                data-testid={`countdown-${u.id}`}
+                style={{ color: expired ? 'var(--bad)' : 'var(--ok)', fontSize: 'var(--fs-sm)', fontWeight: 600, whiteSpace: 'nowrap' }}
+              >
+                {label}
+              </span>
+            )}
+            <button type="button" className="icon-btn" data-testid={`copy-${u.id}`} aria-label={`Copy link for ${u.name}`} title="Copy link" onClick={() => copy(u)}>
+              <IconCopy size={16} />
+            </button>
+          </span>
+        );
+      },
     },
     {
       key: 'actions',

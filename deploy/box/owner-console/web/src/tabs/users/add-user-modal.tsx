@@ -1,18 +1,27 @@
 import { useState } from 'react';
-import { useAddUser, type UserOs } from '../../api';
+import { connectorUrl, useAddUser, type UserOs } from '../../api';
 import { Button } from '../../ui/button';
+import { Input } from '../../ui/input';
+import { Select } from '../../ui/select';
 import { Modal } from '../../ui/modal';
 import { useToast } from '../../ui/toast';
 
-const OSES: { id: UserOs; label: string }[] = [
-  { id: 'macos', label: 'macOS' },
-  { id: 'windows', label: 'Windows' },
-  { id: 'linux', label: 'Linux' },
+type Method = 'private' | 'public';
+
+const OS_OPTS = [
+  { value: 'macos', label: 'macOS' },
+  { value: 'windows', label: 'Windows' },
+  { value: 'linux', label: 'Linux' },
+];
+const METHOD_OPTS = [
+  { value: 'private', label: 'Private — local LAN link (recommended)' },
+  { value: 'public', label: 'Public — downloadable join file' },
 ];
 
 export function AddUserModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [name, setName] = useState('');
   const [os, setOs] = useState<UserOs>('macos');
+  const [method, setMethod] = useState<Method>('private');
   const add = useAddUser();
   const toast = useToast();
   const valid = name.trim().length > 0;
@@ -20,6 +29,7 @@ export function AddUserModal({ open, onClose }: { open: boolean; onClose: () => 
   const close = () => {
     setName('');
     setOs('macos');
+    setMethod('private');
     onClose();
   };
   const submit = () => {
@@ -27,8 +37,17 @@ export function AddUserModal({ open, onClose }: { open: boolean; onClose: () => 
     add.mutate(
       { name: name.trim(), os },
       {
-        onSuccess: () => {
+        onSuccess: (u) => {
           toast.push('User added', 'ok');
+          // Public = hand the owner the join file to send; Private = the link in the table.
+          if (method === 'public') {
+            const a = document.createElement('a');
+            a.href = connectorUrl(u);
+            a.download = '';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+          }
           close();
         },
         onError: (e) => toast.push((e as { error?: string }).error ?? 'Could not add user', 'bad'),
@@ -39,7 +58,7 @@ export function AddUserModal({ open, onClose }: { open: boolean; onClose: () => 
   return (
     <Modal
       open={open}
-      title="Add User"
+      title="Add user"
       onClose={close}
       actions={
         <>
@@ -47,33 +66,42 @@ export function AddUserModal({ open, onClose }: { open: boolean; onClose: () => 
             Cancel
           </Button>
           <Button data-testid="add-user-submit" disabled={!valid || add.isPending} onClick={submit}>
-            Add
+            Add User
           </Button>
         </>
       }
     >
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          submit();
-        }}
-        style={{ display: 'grid', gap: 12 }}
-      >
-        <label style={{ display: 'grid', gap: 4 }}>
-          Name
-          <input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+      <div className="form-grid">
+        <p className="form-intro">Add a user to your air-gapped NuFi. There are two methods:</p>
+        <ul className="form-methods">
+          <li>
+            <b>Public</b> — a join file you send to the user to install on their machine. Your data may be at risk if the file
+            leaks.
+          </li>
+          <li>
+            <b>Private</b> — a local link to download the join file; only a user on the same LAN can open it, for maximum
+            security. <b>(Recommended)</b>
+          </li>
+        </ul>
+        <label className="form-field">
+          <span className="form-label">
+            User Name <i className="req">*</i>
+          </span>
+          <Input data-testid="add-user-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Enter user name" autoFocus />
         </label>
-        <label style={{ display: 'grid', gap: 4 }}>
-          OS
-          <select value={os} onChange={(e) => setOs(e.target.value as UserOs)}>
-            {OSES.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+        <label className="form-field">
+          <span className="form-label">
+            OS <i className="req">*</i>
+          </span>
+          <Select value={os} onChange={(v) => setOs(v as UserOs)} options={OS_OPTS} />
         </label>
-      </form>
+        <label className="form-field">
+          <span className="form-label">
+            Adding method <i className="req">*</i>
+          </span>
+          <Select value={method} onChange={(v) => setMethod(v as Method)} options={METHOD_OPTS} />
+        </label>
+      </div>
     </Modal>
   );
 }

@@ -129,6 +129,39 @@ export async function exportUsersCsv(ids: string[]): Promise<void> {
   URL.revokeObjectURL(url);
 }
 export const connectorUrl = (u: Pick<UserRow, 'id' | 'os'>) => `/api/users/${encodeURIComponent(u.id)}/connector?os=${u.os}`;
+
+// Bundle the selected users' join files into a .zip, client-side (stored zip, no
+// dependency). A macOS connector is a JSON plan, not a file — write it as a .txt
+// with the enrol command so the bundle still carries something useful.
+export async function exportUsersZip(rows: Pick<UserRow, 'id' | 'os' | 'name'>[]): Promise<void> {
+  const { makeZip } = await import('./lib/zip');
+  const files: { name: string; data: string }[] = [];
+  for (const u of rows) {
+    const r = await fetch(connectorUrl(u), { credentials: 'same-origin' });
+    unauthorized(r);
+    if (!r.ok) continue;
+    if ((r.headers.get('content-type') || '').includes('application/json')) {
+      const plan = (await r.json()) as { pkgUrl?: string; enroll?: string; chatUrl?: string };
+      files.push({
+        name: `nufi-join-${u.name}.txt`,
+        data: `# ${u.name} — macOS\n# 1) Install the agent: ${plan.pkgUrl ?? ''}\n# 2) Run in Terminal:\n${plan.enroll ?? ''}\n# 3) Open chat: ${plan.chatUrl ?? ''}\n`,
+      });
+    } else {
+      const cd = r.headers.get('content-disposition') || '';
+      const m = cd.match(/filename="([^"]+)"/);
+      files.push({ name: m ? m[1] : `nufi-join-${u.name}.sh`, data: await r.text() });
+    }
+  }
+  if (!files.length) throw { error: 'Nothing to export' };
+  const url = URL.createObjectURL(makeZip(files));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'nufi-join-files.zip';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
 export const inviteLink = (token: string) => `${window.location.origin}/connect#token=${encodeURIComponent(token)}`;
 
 export type FileRow = { name: string; kind: 'file' | 'dir'; size: number; uploadedAt: string; modifiedAt: string; access: 'public' | 'private' };
