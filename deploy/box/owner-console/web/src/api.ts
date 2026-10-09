@@ -50,11 +50,24 @@ export async function del<T>(path: string): Promise<T> {
   if (!r.ok) return fail(r);
   return (await r.json().catch(() => ({}))) as T;
 }
+// Poll so the dashboard (status pill, service cards, and the Start/Restart/Stop
+// enablement derived from them) stays live after a control action without a
+// manual reload. react-query pauses the interval when the tab is backgrounded.
 export const useStatus = () =>
-  useQuery({ queryKey: ['status'], queryFn: () => get<StatusResponse>('/api/status'), retry: false });
+  useQuery({ queryKey: ['status'], queryFn: () => get<StatusResponse>('/api/status'), retry: false, refetchInterval: 5000 });
 
-export const useControl = () =>
-  useMutation({ mutationFn: (req: ControlRequest) => post<{ ok: boolean; audit: string }>('/api/control', req) });
+export const useControl = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (req: ControlRequest) => post<{ ok: boolean; audit: string }>('/api/control', req),
+    // Refetch right after the action; the poll above then tracks the transition
+    // (services take a few seconds to stop/start) to the settled state.
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['status'] });
+      qc.invalidateQueries({ queryKey: ['remote-work'] });
+    },
+  });
+};
 
 // The real remote-work state: is the mesh (tailscale) container running? Read
 // from the box, not .env — so the toggle reflects a live stop/start.
