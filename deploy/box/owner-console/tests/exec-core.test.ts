@@ -3,7 +3,9 @@ import {
   BadRequest,
   applyConfigToYaml,
   auditLine,
+  buildBoxContainerArgv,
   buildControlArgv,
+  buildListContainersArgv,
   buildReadArgv,
   buildReconfigureArgv,
   buildRemoteWorkArgv,
@@ -31,6 +33,20 @@ describe('exec-core allowlist', () => {
     expect(buildRemoteWorkArgv(false)).toEqual(['docker', 'stop', 'nufi-box-tailscale-1']);
     expect(() => buildRemoteWorkArgv('yes' as unknown as boolean)).toThrow(BadRequest);
     expect(buildRemoteWorkStatusArgv()).toEqual(['docker', 'inspect', '-f', '{{.State.Running}}', 'nufi-box-tailscale-1']);
+  });
+  test('whole-box container control keeps the console plane up on stop/restart', () => {
+    const names = ['nufi-box-caddy-1', 'nufi-box-owner-console-1', 'nufi-box-owner-exec-1', 'nufi-box-librechat-1', 'nufi-box-postgres-1'];
+    expect(buildBoxContainerArgv('stop', names)).toEqual(['docker', 'stop', 'nufi-box-librechat-1', 'nufi-box-postgres-1']);
+    expect(buildBoxContainerArgv('restart', names)).toEqual(['docker', 'restart', 'nufi-box-librechat-1', 'nufi-box-postgres-1']);
+    // start touches everything (the plane included), so a stopped box comes fully back
+    expect(buildBoxContainerArgv('start', names)).toEqual(['docker', 'start', ...names]);
+    // junk names are dropped; a bad action is rejected
+    expect(buildBoxContainerArgv('stop', ['ok-1', 'bad name;rm', '', 'nufi-box-x-1'])).toEqual(['docker', 'stop', 'ok-1', 'nufi-box-x-1']);
+    expect(() => buildBoxContainerArgv('nuke', names)).toThrow(BadRequest);
+  });
+  test('list-containers argv (running vs all)', () => {
+    expect(buildListContainersArgv(true)).toEqual(['docker', 'ps', '--filter', 'label=com.docker.compose.project=nufi-box', '--format', '{{.Names}}']);
+    expect(buildListContainersArgv(false)).toEqual(['docker', 'ps', '-a', '--filter', 'label=com.docker.compose.project=nufi-box', '--format', '{{.Names}}']);
   });
   test('read argv exact', () => {
     expect(buildReadArgv('status')).toEqual([...C, 'ps']);

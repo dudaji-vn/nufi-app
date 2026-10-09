@@ -127,16 +127,29 @@ describe('POST /control whole box', () => {
     expect((await post('/control', { action: 'restart', service: null })).status).toBe(400);
     expect(spawned).toEqual([]);
   });
-  test('explicit __box__ restart -> box argv, audited', async () => {
-    const { spawned, audits, post } = setup();
+  const PS = ['docker', 'ps', '--filter', 'label=com.docker.compose.project=nufi-box', '--format', '{{.Names}}'];
+  test('__box__ restart: lists running containers, restarts all but the console plane', async () => {
+    const { spawned, audits, post } = setup({ stdout: 'nufi-box-caddy-1\nnufi-box-owner-console-1\nnufi-box-owner-exec-1\nnufi-box-librechat-1\nnufi-box-tailscale-1\n' });
     expect((await post('/control', { action: 'restart', service: '__box__' })).status).toBe(200);
-    expect(spawned).toEqual([['docker', 'compose', '-p', 'nufi-box', 'restart']]);
+    expect(spawned[0]).toEqual(PS);
+    expect(spawned[1]).toEqual(['docker', 'restart', 'nufi-box-librechat-1', 'nufi-box-tailscale-1']);
     expect(audits[0]).toContain('__box__');
   });
-  test('service __box__ -> box argv', async () => {
-    const { spawned, post } = setup();
+  test('__box__ stop keeps caddy + owner-console + owner-exec running', async () => {
+    const { spawned, post } = setup({ stdout: 'nufi-box-caddy-1\nnufi-box-owner-console-1\nnufi-box-owner-exec-1\nnufi-box-postgres-1\n' });
     await post('/control', { action: 'stop', service: '__box__' });
-    expect(spawned).toEqual([['docker', 'compose', '-p', 'nufi-box', 'stop']]);
+    expect(spawned[1]).toEqual(['docker', 'stop', 'nufi-box-postgres-1']);
+  });
+  test('__box__ start brings everything back, including the console plane', async () => {
+    const { spawned, post } = setup({ stdout: 'nufi-box-caddy-1\nnufi-box-postgres-1\n' });
+    await post('/control', { action: 'start', service: '__box__' });
+    expect(spawned[0]).toEqual(['docker', 'ps', '-a', '--filter', 'label=com.docker.compose.project=nufi-box', '--format', '{{.Names}}']);
+    expect(spawned[1]).toEqual(['docker', 'start', 'nufi-box-caddy-1', 'nufi-box-postgres-1']);
+  });
+  test('__box__ stop with nothing to stop -> ok, no stop spawn', async () => {
+    const { spawned, post } = setup({ stdout: 'nufi-box-caddy-1\nnufi-box-owner-console-1\nnufi-box-owner-exec-1\n' });
+    expect((await post('/control', { action: 'stop', service: '__box__' })).status).toBe(200);
+    expect(spawned).toEqual([PS]); // only the list ran
   });
   test('invalid action -> 400, no spawn', async () => {
     const { spawned, post } = setup();
