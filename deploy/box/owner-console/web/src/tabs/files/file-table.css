@@ -21,3 +21,8 @@
   cursor: pointer;
 }
 .file-table__filter:focus-visible { outline: 2px solid var(--info); outline-offset: 1px; border-color: var(--info); }
+
+.files-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 56px 16px; color: var(--gray-2); }
+.files-empty svg { color: var(--gray-3); }
+.files-empty__title { font-size: 15px; font-weight: 600; color: var(--ink); }
+.files-empty__hint { font-size: 13px; color: var(--gray-1); }

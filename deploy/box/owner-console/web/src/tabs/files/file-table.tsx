@@ -151,7 +151,17 @@ export function FileTable({
         {visible.length === 0 ? (
           <tr>
             <td className="ui-table__empty" colSpan={8}>
-              {rows.length === 0 ? empty : 'No files match your search'}
+              {rows.length === 0 ? (
+                <div className="files-empty">
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
+                  </svg>
+                  <div className="files-empty__title">{empty}</div>
+                  <div className="files-empty__hint">Click “Upload” or drag &amp; drop your file here to upload it</div>
+                </div>
+              ) : (
+                'No files match your search'
+              )}
             </td>
           </tr>
         ) : (
