@@ -1,6 +1,6 @@
 import { Hono, type Context } from 'hono';
 import { boxInfo } from '../boxinfo';
-import { isOS, macosPlan, renderConnector, type OS } from '../connector';
+import { isOS, macosPlan, renderConnector, safeMember, type OS } from '../connector';
 import { connectLink, signInvite, verifyInvite } from '../invite';
 import {
   MeshError, expireKey, listKeys, listNodes, meshConfig, mintMemberKeyWithId, revokeNode,
@@ -199,7 +199,31 @@ export function usersRoutes(ctx: UsersCtx, deps: Partial<UsersDeps> = {}): Hono 
       boxMeshHost: info.mesh.host, departments: info.departments,
       boxCaB64: '', coordCaB64: ctx.coordCaB64(), boxUrl: memberBase(c),
     };
-    if (os === 'macos') return c.json(macosPlan(input));
+    // macOS can't ship a one-click script (macOS blocks unsigned scripts), so
+    // the downloadable "join file" is a short, readable instructions .txt — the
+    // signed .pkg URL + the one enrol line to paste. (The member /connect PAGE
+    // renders these same steps from the JSON plan; this is the owner's download
+    // to send someone.)
+    if (os === 'macos') {
+      const plan = macosPlan(input);
+      const body =
+        `NuFi — join for ${rec.name} (macOS)\n` +
+        `==================================================\n\n` +
+        `macOS needs two quick steps (it blocks unsigned one-click scripts;\n` +
+        `the installer below is signed, so there is no security warning).\n\n` +
+        `1) Install the NuFi agent — download and open this installer:\n` +
+        `   ${plan.pkgUrl}\n\n` +
+        `2) Open Terminal, paste this ONE line and press Enter:\n\n` +
+        `   ${plan.enroll}\n\n` +
+        `3) Open NuFi and sign in (or sign up):\n` +
+        `   ${plan.chatUrl}\n`;
+      return new Response(body, {
+        headers: {
+          'content-type': 'text/plain; charset=utf-8',
+          'content-disposition': `attachment; filename="nufi-join-${safeMember(rec.name)}-macos.txt"`,
+        },
+      });
+    }
     const connector = renderConnector(
       { ...input, boxCaB64: await ctx.boxCaB64(), agentSha256: ctx.agentSha256() },
       ctx.templatesDir,

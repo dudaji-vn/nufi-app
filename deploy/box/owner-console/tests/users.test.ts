@@ -202,7 +202,12 @@ describe('users routes', () => {
     expect(await lin.text()).toContain('join-key');
     const mac = await call(a, 'GET', `/api/users/${u.id}/connector?os=macos`);
     expect(mac.status).toBe(200);
-    expect((await mac.json()).enroll).toContain('join-key');
+    // macOS download is a readable instructions .txt, not raw JSON.
+    expect(mac.headers.get('content-type')).toContain('text/plain');
+    expect(mac.headers.get('content-disposition')).toContain('macos.txt');
+    const macBody = await mac.text();
+    expect(macBody).toContain('join-key'); // the enrol line to paste
+    expect(macBody).toContain('Install the NuFi agent');
     expect((await call(a, 'GET', `/api/users/${u.id}/connector?os=beos`)).status).toBe(400);
     const bad = await addUser({ name: 'Bad', os: 'linux', keyId: 'k', token: 'garbage' });
     expect((await call(a, 'GET', `/api/users/${bad.id}/connector`)).status).toBe(400);

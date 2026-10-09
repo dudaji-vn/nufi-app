@@ -165,26 +165,19 @@ export async function exportUsersCsv(ids: string[]): Promise<void> {
 export const connectorUrl = (u: Pick<UserRow, 'id' | 'os'>) => `/api/users/${encodeURIComponent(u.id)}/connector?os=${u.os}`;
 
 // Bundle the selected users' join files into a .zip, client-side (stored zip, no
-// dependency). A macOS connector is a JSON plan, not a file — write it as a .txt
-// with the enrol command so the bundle still carries something useful.
+// dependency). Every OS now downloads a real file (linux .sh / windows .cmd /
+// macOS instructions .txt), so just carry each with its own filename.
 export async function exportUsersZip(rows: Pick<UserRow, 'id' | 'os' | 'name'>[]): Promise<void> {
   const { makeZip } = await import('./lib/zip');
   const files: { name: string; data: string }[] = [];
+  const ext = (os: UserRow['os']) => (os === 'windows' ? 'cmd' : os === 'macos' ? 'txt' : 'sh');
   for (const u of rows) {
     const r = await fetch(connectorUrl(u), { credentials: 'same-origin' });
     unauthorized(r);
     if (!r.ok) continue;
-    if ((r.headers.get('content-type') || '').includes('application/json')) {
-      const plan = (await r.json()) as { pkgUrl?: string; enroll?: string; chatUrl?: string };
-      files.push({
-        name: `nufi-join-${u.name}.txt`,
-        data: `# ${u.name} — macOS\n# 1) Install the agent: ${plan.pkgUrl ?? ''}\n# 2) Run in Terminal:\n${plan.enroll ?? ''}\n# 3) Open chat: ${plan.chatUrl ?? ''}\n`,
-      });
-    } else {
-      const cd = r.headers.get('content-disposition') || '';
-      const m = cd.match(/filename="([^"]+)"/);
-      files.push({ name: m ? m[1] : `nufi-join-${u.name}.sh`, data: await r.text() });
-    }
+    const cd = r.headers.get('content-disposition') || '';
+    const m = cd.match(/filename="([^"]+)"/);
+    files.push({ name: m ? m[1] : `nufi-join-${u.name}.${ext(u.os)}`, data: await r.text() });
   }
   if (!files.length) throw { error: 'Nothing to export' };
   const url = URL.createObjectURL(makeZip(files));
