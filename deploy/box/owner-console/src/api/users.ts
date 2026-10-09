@@ -13,9 +13,9 @@ export type UserRow = UserRecord & {
   expiresAt?: string;
   nodeIp?: string;
   online?: boolean;
-  // A LAN-shareable /connect link built from the box's canonical host (see
-  // canonicalBase), so a member on another machine can open it — unlike a link
-  // carrying whatever host the owner happened to open the console with.
+  // A LAN-shareable /connect link built from the box's canonical host on plain
+  // :80 (see memberBase), so a member on another machine can open it — unlike a
+  // link carrying whatever host the owner happened to open the console with.
   inviteUrl?: string;
 };
 
@@ -98,21 +98,20 @@ export function usersRoutes(ctx: UsersCtx, deps: Partial<UsersDeps> = {}): Hono 
   const rows = (cfg: MeshConfig) =>
     usersList({ listNodes: () => d.listNodes(cfg), listKeys: () => d.listKeys(cfg), listUsers: d.listUsers });
 
-  // A share link a LAN member can actually open: the box's canonical LAN host
-  // (its IP, else its configured hostname) on the SAME scheme+port the console
-  // is reached on. The owner's window.location is not usable — it may be
-  // localhost, or a name (nufi.local) only the owner's machine resolves.
-  const canonicalBase = (c: Context): string => {
-    try {
-      const u = new URL(ctx.origin(c));
-      const host = ctx.env.BOX_IP || ctx.env.BOX_HOST;
-      if (host) u.hostname = host;
-      return `${u.protocol}//${u.host}`;
-    } catch {
-      return ctx.origin(c);
+  // Where a member reaches the box: plain HTTP :80 at the box's canonical LAN
+  // host (its IP, else its configured hostname). The box Caddyfile serves
+  // /connect and /agent/* on :80 precisely for a laptop that has NOT yet
+  // trusted the box CA — the join file's `curl` of the agent can't click
+  // through a TLS warning, so it must be plain :80, not the owner's TLS :3009
+  // console origin (also a host only the owner's machine resolves).
+  const memberBase = (c: Context): string => {
+    let host = ctx.env.BOX_IP || ctx.env.BOX_HOST || '';
+    if (!host) {
+      try { host = new URL(ctx.origin(c)).hostname; } catch { host = 'localhost'; }
     }
+    return `http://${host}`;
   };
-  const withInvite = (c: Context, row: UserRow): UserRow => ({ ...row, inviteUrl: connectLink(canonicalBase(c), row.token) });
+  const withInvite = (c: Context, row: UserRow): UserRow => ({ ...row, inviteUrl: connectLink(memberBase(c), row.token) });
 
   const mint = async (cfg: MeshConfig) => {
     const { id, key } = await d.mintMemberKeyWithId(cfg);
@@ -198,7 +197,7 @@ export function usersRoutes(ctx: UsersCtx, deps: Partial<UsersDeps> = {}): Hono 
     const input = {
       os, member: rec.name, key: invite.key, serverUrl: invite.serverUrl,
       boxMeshHost: info.mesh.host, departments: info.departments,
-      boxCaB64: '', coordCaB64: ctx.coordCaB64(), boxUrl: ctx.origin(c),
+      boxCaB64: '', coordCaB64: ctx.coordCaB64(), boxUrl: memberBase(c),
     };
     if (os === 'macos') return c.json(macosPlan(input));
     const connector = renderConnector(
@@ -232,7 +231,7 @@ export function usersRoutes(ctx: UsersCtx, deps: Partial<UsersDeps> = {}): Hono 
   }));
 
   r.post('/users/export', async (c) => {
-    const origin = canonicalBase(c); // LAN-shareable links in the exported CSV, same as the table
+    const origin = memberBase(c); // LAN-shareable links in the exported CSV, same as the table
     const body = (await c.req.json().catch(() => null)) as { ids?: unknown } | null;
     const ids = body && Array.isArray(body.ids) ? body.ids : [];
     const users = await d.listUsers();

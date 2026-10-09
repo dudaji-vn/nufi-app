@@ -121,22 +121,23 @@ describe('users routes', () => {
     expect(list).toHaveLength(1);
   });
 
-  test('rows carry a LAN-shareable inviteUrl built from the box IP, not the request host', async () => {
+  test('rows carry a LAN-shareable inviteUrl on plain :80 at the box IP, not the request host', async () => {
     const a = app({ ...MESH, BOX_IP: '192.168.1.50' });
     const row = await (await call(a, 'POST', '/api/users', { name: 'Lan', os: 'linux' })).json();
-    // The owner's request host is localhost here; the link must use the box IP.
-    expect(row.inviteUrl).toBe(`https://192.168.1.50/connect#token=${encodeURIComponent(row.token)}`);
+    // The owner's request host is localhost:443(https) here; the member link
+    // must be the box IP on plain :80 (the pre-trust /connect + /agent path).
+    expect(row.inviteUrl).toBe(`http://192.168.1.50/connect#token=${encodeURIComponent(row.token)}`);
     const list = await (await call(a, 'GET', '/api/users')).json();
-    expect(list[0].inviteUrl).toBe(`https://192.168.1.50/connect#token=${encodeURIComponent(list[0].token)}`);
+    expect(list[0].inviteUrl).toBe(`http://192.168.1.50/connect#token=${encodeURIComponent(list[0].token)}`);
   });
 
   test('inviteUrl prefers BOX_IP, falls back to BOX_HOST, then the request host', async () => {
     const ip = await (await call(app({ ...MESH, BOX_IP: '10.0.0.9', BOX_HOST: 'nufi.local' }), 'POST', '/api/users', { name: 'A', os: 'linux' })).json();
-    expect(ip.inviteUrl.startsWith('https://10.0.0.9/connect#token=')).toBe(true);
+    expect(ip.inviteUrl.startsWith('http://10.0.0.9/connect#token=')).toBe(true);
     const host = await (await call(app({ ...MESH, BOX_HOST: 'box.example' }), 'POST', '/api/users', { name: 'B', os: 'linux' })).json();
-    expect(host.inviteUrl.startsWith('https://box.example/connect#token=')).toBe(true);
+    expect(host.inviteUrl.startsWith('http://box.example/connect#token=')).toBe(true);
     const neither = await (await call(app(MESH), 'POST', '/api/users', { name: 'C', os: 'linux' })).json();
-    expect(neither.inviteUrl.startsWith('https://localhost/connect#token=')).toBe(true);
+    expect(neither.inviteUrl.startsWith('http://localhost/connect#token=')).toBe(true);
   });
 
   test('DELETE removes the record and revokes a joined node; 404 when unknown', async () => {
