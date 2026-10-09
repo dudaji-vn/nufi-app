@@ -36,6 +36,26 @@ export function buildBoxArgv(action: string): string[] {
 
 export const BOX_SERVICE = '__box__';
 
+// "Allow remote work" = the box's mesh connection, which is the tailscale
+// container. Toggling it start/stops that ONE container by name (not a compose
+// op, so it needs no mesh-overlay COMPOSE_FILE and works on any box). Stopping
+// it takes the box off the mesh (LAN-only); starting it rejoins with the same
+// registration. The full `nufi-box mesh up/down` (which also rewrites .env +
+// caddy) stays a host command by design — this is the connectivity toggle only.
+export const REMOTE_WORK_CONTAINER = 'nufi-box-tailscale-1';
+
+export function buildRemoteWorkArgv(on: boolean): string[] {
+  if (typeof on !== 'boolean') throw new BadRequest('remote-work needs a boolean');
+  return ['docker', on ? 'start' : 'stop', REMOTE_WORK_CONTAINER];
+}
+
+// Whether the mesh (tailscale) container is actually running — the toggle's
+// true state, which .env (BOX_MESH_IP) does NOT reflect after a stop/start.
+// Prints `true`/`false`, or errors (non-zero) if the container does not exist.
+export function buildRemoteWorkStatusArgv(): string[] {
+  return ['docker', 'inspect', '-f', '{{.State.Running}}', REMOTE_WORK_CONTAINER];
+}
+
 const LOGS = [...COMPOSE, 'logs', '--no-color', '--tail=200'];
 
 export function buildReadArgv(cmd: string): string[] | null {

@@ -16,6 +16,11 @@ const exec = {
     yield 'line1';
     yield 'line2';
   }) as never,
+  setRemoteWork: (async (on: boolean) => {
+    calls.push(['remote-work', on]);
+    return { ok: true, audit: 'x' };
+  }) as never,
+  readRemoteWork: (async () => ({ on: true })) as never,
 };
 const app = makeApp({}, { exec });
 const post = (path: string, body: unknown, auth = true) =>
@@ -86,4 +91,12 @@ test('control without service or scope is 400 and never reaches the box path', a
   const r = await a.request('/api/control', { method: 'POST', headers: { 'content-type': 'application/json', cookie: ownerCookie() }, body: JSON.stringify({ action: 'restart' }) });
   expect(r.status).toBe(400);
   expect(seen).not.toContain('__box__');
+});
+
+test('remote-work: owner-auth required; posts the boolean to exec', async () => {
+  expect((await post('/api/remote-work', { on: true }, false)).status).toBe(401);
+  const r = await post('/api/remote-work', { on: false });
+  expect(r.status).toBe(200);
+  expect((await r.json()).ok).toBe(true);
+  expect(calls).toContainEqual(['remote-work', false]);
 });

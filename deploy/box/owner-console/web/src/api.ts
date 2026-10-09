@@ -56,6 +56,23 @@ export const useStatus = () =>
 export const useControl = () =>
   useMutation({ mutationFn: (req: ControlRequest) => post<{ ok: boolean; audit: string }>('/api/control', req) });
 
+// The real remote-work state: is the mesh (tailscale) container running? Read
+// from the box, not .env — so the toggle reflects a live stop/start.
+export const useRemoteWorkStatus = () =>
+  useQuery({ queryKey: ['remote-work'], queryFn: () => get<{ on: boolean }>('/api/remote-work'), retry: false });
+
+// "Allow remote work" toggle: start/stop the box's mesh (tailscale) connection.
+export const useRemoteWork = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (on: boolean) => post<{ ok: boolean; audit: string }>('/api/remote-work', { on }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['remote-work'] });
+      qc.invalidateQueries({ queryKey: ['status'] });
+    },
+  });
+};
+
 // The live, UI-editable model endpoint (litellm/config.yaml, not .env).
 export type ConfigView = { aiBaseUrl: string; aiModel: string };
 export const useConfig = () =>

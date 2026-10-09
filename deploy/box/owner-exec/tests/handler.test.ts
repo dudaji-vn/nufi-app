@@ -53,6 +53,25 @@ describe('POST /control', () => {
     expect(j.audit).toBe(audits[0]);
     expect(spawned).toEqual([['docker', 'compose', '-p', 'nufi-box', 'restart', 'caddy']]);
   });
+  test('GET /remote-work reports the real container running state', async () => {
+    const on = setup({ stdout: 'true\n' });
+    expect((await (await on.getJson('/remote-work')).json()).on).toBe(true);
+    expect(on.spawned).toEqual([['docker', 'inspect', '-f', '{{.State.Running}}', 'nufi-box-tailscale-1']]);
+    const off = setup({ stdout: 'false\n' });
+    expect((await (await off.getJson('/remote-work')).json()).on).toBe(false);
+  });
+
+  test('remote-work on/off spawns docker start/stop of the tailscale container', async () => {
+    const { spawned, audits, post } = setup();
+    expect((await post('/remote-work', { on: true })).status).toBe(200);
+    expect((await post('/remote-work', { on: false })).status).toBe(200);
+    expect(spawned).toEqual([
+      ['docker', 'start', 'nufi-box-tailscale-1'],
+      ['docker', 'stop', 'nufi-box-tailscale-1'],
+    ]);
+    expect(audits).toEqual(['2026-10-05T00:00:00.000Z · remote-work on', '2026-10-05T00:00:00.000Z · remote-work off']);
+  });
+
   test('off-list action or service -> 400, no spawn', async () => {
     const { spawned, post } = setup();
     expect((await post('/control', { action: 'down', service: 'caddy' })).status).toBe(400);

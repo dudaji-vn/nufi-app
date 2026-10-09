@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useStatus } from '../../api';
+import { useRemoteWork, useRemoteWorkStatus, useStatus } from '../../api';
 import { Button } from '../../ui/button';
 import { IconCopy, IconMore } from '../../ui/icons';
 import { useToast } from '../../ui/toast';
@@ -23,9 +23,32 @@ export function MoreMenu() {
   const [open, setOpen] = useState(false);
   const { data } = useStatus();
   const mesh = (data?.box?.mesh as { joined?: boolean; serverUrl?: string; host?: string } | undefined) ?? {};
-  const joined = !!mesh.joined;
+  const remoteWork = useRemoteWork();
+  const remoteStatus = useRemoteWorkStatus();
   const root = useRef<HTMLDivElement>(null);
   const toast = useToast();
+
+  // The toggle reflects whether the mesh (tailscale) container is actually
+  // running — read live from the box (remoteStatus), NOT .env's mesh.joined,
+  // which stays set after a stop. `on` is optimistic so the switch flips
+  // instantly; the live read confirms it.
+  const live = remoteStatus.data?.on;
+  const [on, setOn] = useState(live ?? !!mesh.joined);
+  useEffect(() => {
+    if (live !== undefined) setOn(live);
+  }, [live]);
+  const joined = on;
+
+  const toggleRemote = (next: boolean) => {
+    setOn(next);
+    remoteWork.mutate(next, {
+      onSuccess: (r) => (r.ok ? toast.push(next ? 'Remote work enabled' : 'Remote work disabled', 'ok') : toast.push('The box did not report success', 'bad')),
+      onError: (e) => {
+        setOn(!next);
+        toast.push((e as { error?: string }).error ?? 'Could not change remote work', 'bad');
+      },
+    });
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -64,8 +87,10 @@ export function MoreMenu() {
             <label className="switch" aria-label="Allow remote work">
               <input
                 type="checkbox"
+                data-testid="remote-work-toggle"
                 checked={joined}
-                onChange={() => copyCmd(joined ? 'nufi-box mesh down' : 'nufi-box mesh up')}
+                disabled={remoteWork.isPending}
+                onChange={(e) => toggleRemote(e.target.checked)}
               />
               <span className="switch-track" />
             </label>

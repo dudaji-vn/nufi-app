@@ -6,6 +6,8 @@ import {
   buildControlArgv,
   buildReadArgv,
   buildReconfigureArgv,
+  buildRemoteWorkArgv,
+  buildRemoteWorkStatusArgv,
   configViewFromYaml,
   validateConfigPatch,
 } from '../src/exec-core';
@@ -23,6 +25,12 @@ describe('exec-core allowlist', () => {
   test('shell metachars rejected', () => {
     expect(() => buildControlArgv('restart', 'caddy; rm')).toThrow(BadRequest);
     expect(() => buildControlArgv('restart&&x', 'caddy')).toThrow(BadRequest);
+  });
+  test('remote-work argv start/stops the tailscale container by name', () => {
+    expect(buildRemoteWorkArgv(true)).toEqual(['docker', 'start', 'nufi-box-tailscale-1']);
+    expect(buildRemoteWorkArgv(false)).toEqual(['docker', 'stop', 'nufi-box-tailscale-1']);
+    expect(() => buildRemoteWorkArgv('yes' as unknown as boolean)).toThrow(BadRequest);
+    expect(buildRemoteWorkStatusArgv()).toEqual(['docker', 'inspect', '-f', '{{.State.Running}}', 'nufi-box-tailscale-1']);
   });
   test('read argv exact', () => {
     expect(buildReadArgv('status')).toEqual([...C, 'ps']);

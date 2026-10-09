@@ -16,6 +16,8 @@ beforeEach(() => {
   vi.spyOn(api, 'useStatus').mockReturnValue({ data: { box: { name: 'b', mesh: { joined: false } } } } as never);
   vi.spyOn(api, 'useConfig').mockReturnValue({ data: undefined, isPending: false } as never);
   vi.spyOn(api, 'useApplyConfig').mockReturnValue({ mutate: vi.fn(), isPending: false } as never);
+  vi.spyOn(api, 'useRemoteWork').mockReturnValue({ mutate: vi.fn(), isPending: false } as never);
+  vi.spyOn(api, 'useRemoteWorkStatus').mockReturnValue({ data: { on: true } } as never);
 });
 
 test('Restart opens the confirm modal; confirming fires the whole-box mutation', () => {

@@ -11,6 +11,8 @@ beforeEach(() => {
   // renders without a QueryClient. (useStatus is mocked per-test below.)
   vi.spyOn(api, 'useConfig').mockReturnValue({ data: undefined, isPending: false } as never);
   vi.spyOn(api, 'useApplyConfig').mockReturnValue({ mutate: vi.fn(), isPending: false } as never);
+  vi.spyOn(api, 'useRemoteWork').mockReturnValue({ mutate: vi.fn(), isPending: false } as never);
+  vi.spyOn(api, 'useRemoteWorkStatus').mockReturnValue({ data: { on: true } } as never);
 });
 
 test('renders four service cards with Running badges', () => {

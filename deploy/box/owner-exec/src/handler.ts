@@ -11,6 +11,8 @@ import {
   buildControlArgv,
   buildReadArgv,
   buildReconfigureArgv,
+  buildRemoteWorkArgv,
+  buildRemoteWorkStatusArgv,
   configViewFromYaml,
   validateConfigPatch,
 } from '../../owner-console/src/exec-core';
@@ -60,6 +62,25 @@ export function createApp(deps: ExecDeps): Hono {
     const whole = service === BOX_SERVICE; // missing/null/other service never means whole-box
     const argv = whole ? buildBoxArgv(String(action)) : buildControlArgv(String(action), String(service)); // throws BadRequest
     const line = audit(String(action), whole ? BOX_SERVICE : String(service));
+    const proc = deps.spawn({ cmd: argv, stdout: 'ignore', stderr: 'ignore' });
+    const code = await proc.exited;
+    return c.json({ ok: code === 0, audit: line });
+  });
+
+  // The real remote-work state: is the tailscale container running? (Read-only.)
+  app.get('/remote-work', async (c) => {
+    const proc = deps.spawn({ cmd: buildRemoteWorkStatusArgv(), stdout: 'pipe', stderr: 'ignore' });
+    const out = await new Response(proc.stdout as ReadableStream<Uint8Array>).text().catch(() => '');
+    const code = await proc.exited;
+    return c.json({ on: code === 0 && out.trim() === 'true' });
+  });
+
+  // "Allow remote work" toggle: start/stop the tailscale (mesh) container by
+  // name. No shell, no input beyond a boolean; the argv is fixed by exec-core.
+  app.post('/remote-work', async (c) => {
+    const { on } = await body(c);
+    const argv = buildRemoteWorkArgv(on === true); // throws BadRequest if not boolean-ish → here always boolean
+    const line = audit(on === true ? 'remote-work on' : 'remote-work off');
     const proc = deps.spawn({ cmd: argv, stdout: 'ignore', stderr: 'ignore' });
     const code = await proc.exited;
     return c.json({ ok: code === 0, audit: line });
