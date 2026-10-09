@@ -60,16 +60,30 @@
 .ui-tab--active { background: var(--surface); color: var(--navy); box-shadow: var(--shadow); }
 
 /* Table */
-.ui-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+.ui-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--fs-sm);
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface);
+}
+.ui-table thead tr { background: var(--ground); }
 .ui-table th {
   text-align: left;
   font-weight: 600;
   color: var(--gray-1);
-  padding: 10px 12px;
+  padding: 12px;
   border-bottom: 1px solid var(--rule);
+  white-space: nowrap;
 }
 .ui-table td { padding: 12px; border-bottom: 1px solid var(--rule); color: var(--ink); }
+.ui-table tbody tr:last-child td { border-bottom: 0; }
+.ui-table tbody tr:hover td { background: var(--ground); }
 .ui-table__empty { text-align: center; color: var(--gray-2); }
+.ui-table__empty:hover { background: transparent !important; }
 
 /* Modal */
 .ui-modal__backdrop {
@@ -91,17 +105,12 @@
 
 /* Toast */
 .ui-toaster { position: fixed; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 200; }
-.ui-toast {
-  background: var(--surface);
-  border: 1px solid var(--rule);
-  border-left: 4px solid var(--gray-2);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-lg);
-  padding: 10px 14px;
-}
-.ui-toast--ok { border-left-color: var(--ok); }
-.ui-toast--bad { border-left-color: var(--bad); }
-.ui-toast--warn { border-left-color: var(--warn); }
+.ui-toast { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--rule); border-radius: 12px; box-shadow: var(--shadow-lg); padding: 11px 16px 11px 12px; font-size: 14px; font-weight: 600; color: var(--ink); min-width: 220px; }
+.ui-toast__ic { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; flex: none; color: #fff; }
+.ui-toast--ok .ui-toast__ic { background: var(--ok); }
+.ui-toast--bad .ui-toast__ic { background: var(--bad); }
+.ui-toast--warn .ui-toast__ic { background: var(--warn); }
+.ui-toast--neutral .ui-toast__ic { background: var(--gray-2); }
 
 /* Input / Select */
 .ui-input, .ui-select {
@@ -195,6 +204,10 @@
 .access-link { font-family: var(--mono); font-size: 13px; color: var(--navy-2); text-decoration: underline; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: middle; }
 .access-link:hover { color: var(--navy); }
 
+/* Public user: the Access Key cell is a "download the join file" button instead of a LAN link. */
+.join-file-btn { display: inline-flex; align-items: center; gap: 7px; font: 600 var(--fs-sm) var(--font); color: var(--navy); background: var(--subtle); border: 1px solid var(--rule); border-radius: 10px; padding: 7px 14px; cursor: pointer; text-decoration: none; white-space: nowrap; }
+.join-file-btn:hover { background: var(--gray-3); border-color: var(--gray-2); }
+
 /* Users: bulk-select bar + table footer (page size + pager) */
 .bulk-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .bulk-count { font-weight: 600; color: var(--ink); font-size: 14px; }
@@ -203,3 +216,13 @@
 .page-size .ui-select { min-width: 150px; }
 .pager { display: inline-flex; align-items: center; gap: 10px; }
 .pager-label { font-size: 13px; color: var(--gray-1); border: 1px solid var(--rule); border-radius: 6px; padding: 4px 10px; }
+
+/* Deselect pill (Users bulk bar) */
+.btn-deselect { display: inline-flex; align-items: center; gap: 6px; font: 600 var(--fs-sm) var(--font); color: var(--gray-1); background: var(--subtle); border: 0; border-radius: 12px; padding: 9px 16px; cursor: pointer; }
+.btn-deselect:hover { background: var(--gray-3); color: var(--ink); }
+
+/* Column filter (funnel icon that opens a native dropdown) */
+.col-head { display: inline-flex; align-items: center; gap: 6px; }
+.col-filter { position: relative; display: inline-flex; align-items: center; color: var(--gray-3); }
+.col-filter:hover { color: var(--navy); }
+.col-filter select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }

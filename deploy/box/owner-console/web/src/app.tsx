@@ -3,6 +3,7 @@ import { Files } from './tabs/files';
 import { General } from './tabs/general';
 import { Users } from './tabs/users';
 import { useUi, type TabId } from './store';
+import { NufiLogo } from './ui/logo';
 import { Tabs } from './ui/tabs';
 import { Toaster } from './ui/toast';
 
@@ -17,7 +18,7 @@ export function App() {
   return (
     <>
       <header className="app-header">
-        <span className="app-logo" aria-hidden="true">NF</span>
+        <span className="app-logo" aria-hidden="true"><NufiLogo height={26} /></span>
         <h1 className="app-title">Administrator Dashboard</h1>
       </header>
       <main className="app-body">

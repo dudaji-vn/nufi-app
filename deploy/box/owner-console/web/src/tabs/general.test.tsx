@@ -7,6 +7,10 @@ afterEach(cleanup);
 beforeEach(() => {
   vi.restoreAllMocks();
   vi.spyOn(api, 'useControl').mockReturnValue({ mutate: vi.fn(), isPending: false } as never);
+  // Controls mounts the Config modal (useConfig/useApplyConfig); stub so it
+  // renders without a QueryClient. (useStatus is mocked per-test below.)
+  vi.spyOn(api, 'useConfig').mockReturnValue({ data: undefined, isPending: false } as never);
+  vi.spyOn(api, 'useApplyConfig').mockReturnValue({ mutate: vi.fn(), isPending: false } as never);
 });
 
 test('renders four service cards with Running badges', () => {

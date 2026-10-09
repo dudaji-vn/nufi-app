@@ -35,7 +35,7 @@ export function AddUserModal({ open, onClose }: { open: boolean; onClose: () => 
   const submit = () => {
     if (!valid) return;
     add.mutate(
-      { name: name.trim(), os },
+      { name: name.trim(), os, method },
       {
         onSuccess: (u) => {
           toast.push('User added', 'ok');

@@ -28,12 +28,15 @@ export function useToast() {
   return { push };
 }
 
+const TOAST_ICON: Record<ToastTone, string> = { ok: '✓', bad: '✕', warn: '!', neutral: 'i' };
+
 export function Toaster() {
   const toasts = useToastStore((s) => s.toasts);
   return (
     <div className="ui-toaster" aria-live="polite">
       {toasts.map((t) => (
         <div key={t.id} role="status" className={`ui-toast ui-toast--${t.tone}`}>
+          <span className="ui-toast__ic" aria-hidden="true">{TOAST_ICON[t.tone]}</span>
           {t.msg}
         </div>
       ))}

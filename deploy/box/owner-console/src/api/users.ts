@@ -127,11 +127,12 @@ export function usersRoutes(ctx: UsersCtx, deps: Partial<UsersDeps> = {}): Hono 
   r.get('/users', withMesh(async (c, cfg) => c.json(await rows(cfg))));
 
   r.post('/users', withMesh(async (c, cfg) => {
-    const body = (await c.req.json().catch(() => ({}))) as { name?: unknown; os?: unknown };
+    const body = (await c.req.json().catch(() => ({}))) as { name?: unknown; os?: unknown; method?: unknown };
     const name = typeof body.name === 'string' ? body.name.trim() : '';
     if (!name) return c.json({ error: 'name is required' }, 400);
     if (!isOS(body.os)) return c.json({ error: 'unknown operating system' }, 400);
-    const rec = await d.addUser({ name, os: body.os, ...(await mint(cfg)) });
+    const addingMethod = body.method === 'public' ? 'public' : 'private';
+    const rec = await d.addUser({ name, os: body.os, addingMethod, ...(await mint(cfg)) });
     return c.json((await rowFor(cfg, rec.id)) ?? rec);
   }));
 

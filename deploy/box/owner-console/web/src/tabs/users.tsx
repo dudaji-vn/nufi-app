@@ -24,7 +24,9 @@ export function Users() {
   const toast = useToast();
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(100);
+  const [pageSize, setPageSize] = useState(10);
+  const [osFilter, setOsFilter] = useState('all');
+  const [actFilter, setActFilter] = useState('all');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState(false);
   const [deleting, setDeleting] = useState<UserRow | null>(null);
@@ -34,7 +36,9 @@ export function Users() {
   if (error) return <p role="alert">Could not load users: {errText(error, 'unknown error')}</p>;
 
   const q = query.trim().toLowerCase();
-  const filtered = q ? data.filter((u) => u.name.toLowerCase().includes(q)) : data;
+  let filtered = q ? data.filter((u) => u.name.toLowerCase().includes(q)) : data;
+  if (osFilter !== 'all') filtered = filtered.filter((u) => u.os === osFilter);
+  if (actFilter !== 'all') filtered = filtered.filter((u) => u.activation === actFilter);
   const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const cur = Math.min(page, pages - 1);
   const visible = filtered.slice(cur * pageSize, (cur + 1) * pageSize);
@@ -92,9 +96,9 @@ export function Users() {
             <Button variant="secondary" className="btn-ico" data-testid="export-zip" onClick={() => exportUsersZip(selectedRows).catch((e) => toast.push(errText(e, 'Export failed'), 'bad'))}>
               <IconDownload size={16} /> Export .zip
             </Button>
-            <Button variant="ghost" className="btn-ico" data-testid="deselect" onClick={() => setSelected(new Set())}>
+            <button type="button" className="btn-deselect" data-testid="deselect" onClick={() => setSelected(new Set())}>
               <IconClose size={16} /> Deselect
-            </Button>
+            </button>
           </span>
         </div>
       )}
@@ -102,6 +106,10 @@ export function Users() {
       <UserTable
         rows={visible}
         selected={selected}
+        osFilter={osFilter}
+        actFilter={actFilter}
+        onOsFilter={(v) => { setOsFilter(v); setPage(0); }}
+        onActFilter={(v) => { setActFilter(v); setPage(0); }}
         onToggle={toggle}
         onRegenerate={(u) =>
           regen.mutate(u.id, {

@@ -38,6 +38,7 @@ export async function post<T>(path: string, payload: unknown): Promise<T> {
 export type UserOs = 'macos' | 'windows' | 'linux';
 export type UserRow = {
   id: string; name: string; os: UserOs; keyId: string; token: string; createdAt: string;
+  addingMethod?: 'public' | 'private';
   activation: 'pending' | 'activated' | 'expired'; expiresAt?: string; nodeIp?: string; online?: boolean;
 };
 export async function del<T>(path: string): Promise<T> {
@@ -102,7 +103,7 @@ export async function streamConsole(cmd: string, onLine: (line: string) => void)
 
 export const useUsers = () => useQuery({ queryKey: ['users'], queryFn: () => get<UserRow[]>('/api/users'), retry: false });
 const useRefreshUsers = () => { const qc = useQueryClient(); return () => qc.invalidateQueries({ queryKey: ['users'] }); };
-export const useAddUser = () => { const refresh = useRefreshUsers(); return useMutation({ mutationFn: (req: { name: string; os: UserOs }) => post<UserRow>('/api/users', req), onSuccess: refresh }); };
+export const useAddUser = () => { const refresh = useRefreshUsers(); return useMutation({ mutationFn: (req: { name: string; os: UserOs; method?: 'public' | 'private' }) => post<UserRow>('/api/users', req), onSuccess: refresh }); };
 export const useDeleteUser = () => { const refresh = useRefreshUsers(); return useMutation({ mutationFn: (id: string) => del<unknown>('/api/users/' + encodeURIComponent(id)), onSuccess: refresh }); };
 export const useRegenerate = () => { const refresh = useRefreshUsers(); return useMutation({ mutationFn: (id: string) => post<UserRow>('/api/users/' + encodeURIComponent(id) + '/regenerate', {}), onSuccess: refresh }); };
 export const useImportUsers = () => {

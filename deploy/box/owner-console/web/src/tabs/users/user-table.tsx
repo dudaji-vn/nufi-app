@@ -34,15 +34,37 @@ function useNow(): number {
   return now;
 }
 
+const ColFilter = ({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) => (
+  <span className="col-head">
+    {label}
+    <span className="col-filter">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" /></svg>
+      <select aria-label={`Filter by ${label}`} value={value} onChange={(e) => onChange(e.target.value)}>
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+    </span>
+  </span>
+);
+
 export function UserTable({
   rows,
   selected,
+  osFilter,
+  actFilter,
+  onOsFilter,
+  onActFilter,
   onToggle,
   onRegenerate,
   onDelete,
 }: {
   rows: UserRow[];
   selected: Set<string>;
+  osFilter: string;
+  actFilter: string;
+  onOsFilter: (v: string) => void;
+  onActFilter: (v: string) => void;
   onToggle: (id: string) => void;
   onRegenerate: (u: UserRow) => void;
   onDelete: (u: UserRow) => void;
@@ -66,10 +88,40 @@ export function UserTable({
       ),
     },
     { key: 'name', label: 'Name' },
-    { key: 'os', label: 'Operating System', render: (u) => OS_LABEL[u.os] },
+    {
+      key: 'os',
+      label: 'Operating System',
+      header: (
+        <ColFilter
+          label="Operating System"
+          value={osFilter}
+          onChange={onOsFilter}
+          options={[
+            { value: 'all', label: 'All' },
+            { value: 'macos', label: 'macOS' },
+            { value: 'windows', label: 'Windows' },
+            { value: 'linux', label: 'Linux' },
+          ]}
+        />
+      ),
+      render: (u) => OS_LABEL[u.os],
+    },
     {
       key: 'activation',
       label: 'Activation',
+      header: (
+        <ColFilter
+          label="Activation"
+          value={actFilter}
+          onChange={onActFilter}
+          options={[
+            { value: 'all', label: 'All' },
+            { value: 'pending', label: 'Pending' },
+            { value: 'activated', label: 'Activated' },
+            { value: 'expired', label: 'Expired' },
+          ]}
+        />
+      ),
       render: (u) => (
         <span data-testid={`activation-${u.id}`} style={{ display: 'contents' }}>
           <Badge tone={TONE[u.activation]}>{LABEL[u.activation]}</Badge>
@@ -80,17 +132,19 @@ export function UserTable({
       key: 'token',
       label: 'Access Key',
       render: (u) => {
+        // Public = a downloadable join file to send; Private (default) = a LAN link.
+        if (u.addingMethod === 'public') {
+          return (
+            <a href={connectorUrl(u)} download data-testid={`joinfile-${u.id}`} className="join-file-btn">
+              Download join file <IconDownload size={16} />
+            </a>
+          );
+        }
         const label = u.expiresAt ? remaining(u.expiresAt, now) : '';
         const expired = label === 'Expired';
         return (
           <span style={{ display: 'inline-flex', gap: 10, alignItems: 'center' }}>
-            <a
-              href={inviteLink(u.token)}
-              title={inviteLink(u.token)}
-              target="_blank"
-              rel="noopener"
-              className="access-link"
-            >
+            <a href={inviteLink(u.token)} title={inviteLink(u.token)} target="_blank" rel="noopener" className="access-link">
               {inviteLink(u.token)}
             </a>
             {label && (
