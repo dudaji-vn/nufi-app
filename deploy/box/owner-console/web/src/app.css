@@ -13,15 +13,6 @@
 .app-logo {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: var(--radius-sm);
-  border: 1.5px solid var(--navy);
-  color: var(--navy);
-  font-weight: 700;
-  font-size: 14px;
-  letter-spacing: 0.5px;
   flex: none;
 }
 .app-title {

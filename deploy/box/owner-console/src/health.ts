@@ -17,8 +17,17 @@ const humanSize = (n: number): string => {
   return gb >= 1 ? `${gb.toFixed(1)} GB` : `${Math.round(n / 1e6)} MB`;
 };
 
-export const parseOllamaModel = (j: any): string | undefined => {
-  const m = j?.models?.[0];
+// Show the CHAT model the box serves, not whatever ollama happens to list first
+// (that is usually the embeddings model, e.g. bge-m3). Prefer the model whose
+// name matches the configured INFERENCE_MODEL — by exact name or by the part
+// before the `:tag` — and only fall back to the first entry if none matches.
+export const parseOllamaModel = (j: any, prefer?: string): string | undefined => {
+  const models: any[] = Array.isArray(j?.models) ? j.models : [];
+  const want = (prefer || '').trim();
+  const base = (n: string) => n.split(':')[0];
+  const m =
+    (want && models.find((x) => typeof x?.name === 'string' && (x.name === want || base(x.name) === base(want)))) ||
+    models[0];
   if (!m || typeof m.name !== 'string') return undefined;
   return typeof m.size === 'number' ? `${m.name} · ${humanSize(m.size)}` : m.name;
 };
@@ -56,7 +65,7 @@ export function probesForEnv(env: Record<string, string | undefined> = process.e
   probes.push({
     name: 'AI model',
     url: `${litellm}/health/liveliness`,
-    detail: { url: `${ollama}/api/tags`, parse: parseOllamaModel },
+    detail: { url: `${ollama}/api/tags`, parse: (j) => parseOllamaModel(j, env.INFERENCE_MODEL) },
   });
   return probes;
 }

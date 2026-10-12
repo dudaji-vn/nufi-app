@@ -369,6 +369,9 @@ services:
       EXEC_SOCK: /sock/exec.sock
       # Shown on the chat status card. Defaults to the chat image tag.
       NUFI_CHAT_VERSION: ${NUFI_CHAT_VERSION:-${NUFI_CHAT_TAG:-}}
+      # The chat model name, so the AI Model card shows it (not the embeddings
+      # model ollama lists first). Read-only hint; the live value is config.yaml.
+      INFERENCE_MODEL: ${INFERENCE_MODEL:-}
     volumes:
       - ${MESH_CA_FILE:-/etc/ssl/certs/ca-certificates.crt}:/mesh-ca.crt:ro
       # The exec sidecar's socket (read-write: connecting to a unix socket needs it).
@@ -568,6 +571,19 @@ services:
       # through the console, exactly as a browser would be.
       PAPERCLIP_DEPLOYMENT_EXPOSURE: private
       PAPERCLIP_PUBLIC_URL: https://${BOX_HOST}:3003
+      # Works listens on the port it is published on, not the image default
+      # 3100. The app rewrites its own public/auth base URL to the port it
+      # listens on (rewriteLocalUrlPort), assuming listen port == public port.
+      # The box breaks that: Caddy publishes :3003 in front of the container,
+      # so on 3100 the OIDC redirect_uri came out :3100 and both `nufi-box
+      # works install` and every browser sign-in were refused (INVALID_ORIGIN,
+      # then a 400 from the console on the unknown redirect_uri). Listening on
+      # 3003 makes the rewrite a no-op; Caddyfile, caddy/mesh.caddy and the
+      # healthcheck below all point at 3003 to match.
+      PORT: "3003"
+      # A member from home reaches Works as the mesh host, which the :3003 LAN
+      # base does not derive — trust that origin explicitly.
+      BETTER_AUTH_TRUSTED_ORIGINS: https://${BOX_HOST}:3003${BOX_MESH_HOST:+,https://${BOX_MESH_HOST}:3003}
       # The box's own registry (works/adapters.json): every harness on
       # litellm-proxy. Replace semantics -- what is not in the file is not
       # offered.
@@ -598,7 +614,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     entrypoint: ["/usr/local/bin/works-entrypoint.sh"]
     healthcheck:
-      test: ["CMD-SHELL", "curl -fs http://127.0.0.1:3100/api/health >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "curl -fs http://127.0.0.1:3003/api/health >/dev/null || exit 1"]
       interval: 20s
       timeout: 5s
       retries: 5

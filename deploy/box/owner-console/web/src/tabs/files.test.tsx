@@ -278,7 +278,7 @@ test('clicking the Name header toggles sort order', () => {
 
 test('accessibility filter Private hides public rows', () => {
   table();
-  fireEvent.change(screen.getByLabelText('Filter by accessibility'), { target: { value: 'private' } });
+  fireEvent.change(screen.getByLabelText('Filter by Accessibility'), { target: { value: 'private' } });
   expect(screen.queryByTestId('file-row-b.txt')).toBeNull();
   expect(screen.getByTestId('file-row-a.txt')).toBeTruthy();
 });

@@ -107,7 +107,7 @@
 # the chooser links it by name.
 {$BOX_HOST}:3003, {$BOX_IP}:3003, localhost:3003 {
 	import box_tls
-	reverse_proxy works:3100
+	reverse_proxy works:3003
 }
 
 # NUFI Studio. /nufi/* is the console, so Studio's session-expiry bounce

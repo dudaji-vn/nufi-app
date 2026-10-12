@@ -1,13 +1,20 @@
 import { useRef, useState } from 'react';
-import { exportUsersCsv, useDeleteUser, useImportUsers, useRegenerate, useUsers, type UserRow } from '../api';
+import { exportUsersCsv, exportUsersZip, useDeleteUser, useImportUsers, useRegenerate, useUsers, type UserRow } from '../api';
 import { Button } from '../ui/button';
 import { Modal } from '../ui/modal';
+import { Select } from '../ui/select';
 import { useToast } from '../ui/toast';
-import { IconPlus, IconSearch, IconUpload } from '../ui/icons';
+import { IconClose, IconDownload, IconPlus, IconSearch, IconTrash, IconUpload } from '../ui/icons';
 import { AddUserModal } from './users/add-user-modal';
+import { HelpMenu } from './users/help-menu';
 import { UserTable } from './users/user-table';
 
-const PAGE_SIZE = 10;
+const PAGE_SIZES = [
+  { value: '10', label: '10 items/row' },
+  { value: '25', label: '25 items/row' },
+  { value: '50', label: '50 items/row' },
+  { value: '100', label: '100 items/row' },
+];
 const errText = (e: unknown, fallback: string) => (e as { error?: string }).error ?? fallback;
 
 export function Users() {
@@ -18,19 +25,29 @@ export function Users() {
   const toast = useToast();
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(10);
+  const [osFilter, setOsFilter] = useState('all');
+  const [actFilter, setActFilter] = useState('all');
+  const [methodFilter, setMethodFilter] = useState('all');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState(false);
   const [deleting, setDeleting] = useState<UserRow | null>(null);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const file = useRef<HTMLInputElement>(null);
 
   if (isPending) return <p role="status">Loading…</p>;
   if (error) return <p role="alert">Could not load users: {errText(error, 'unknown error')}</p>;
 
   const q = query.trim().toLowerCase();
-  const filtered = q ? data.filter((u) => u.name.toLowerCase().includes(q)) : data;
-  const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  let filtered = q ? data.filter((u) => u.name.toLowerCase().includes(q)) : data;
+  if (osFilter !== 'all') filtered = filtered.filter((u) => u.os === osFilter);
+  if (actFilter !== 'all') filtered = filtered.filter((u) => u.activation === actFilter);
+  // Legacy users have no addingMethod — they render (and filter) as 'private'.
+  if (methodFilter !== 'all') filtered = filtered.filter((u) => (u.addingMethod ?? 'private') === methodFilter);
+  const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const cur = Math.min(page, pages - 1);
-  const visible = filtered.slice(cur * PAGE_SIZE, (cur + 1) * PAGE_SIZE);
+  const visible = filtered.slice(cur * pageSize, (cur + 1) * pageSize);
+  const selectedRows = data.filter((u) => selected.has(u.id));
 
   const toggle = (id: string) =>
     setSelected((s) => {
@@ -38,6 +55,44 @@ export function Users() {
       if (!n.delete(id)) n.add(id);
       return n;
     });
+
+  // Select-all acts on the rows currently visible (this page, after filters).
+  const allVisibleSelected = visible.length > 0 && visible.every((u) => selected.has(u.id));
+  const toggleAll = () =>
+    setSelected((s) => {
+      const n = new Set(s);
+      if (allVisibleSelected) visible.forEach((u) => n.delete(u.id));
+      else visible.forEach((u) => n.add(u.id));
+      return n;
+    });
+
+  // Export .zip carries the join FILES — only Public users have one; Private
+  // users use a LAN link (covered by Export .CSV), so they are excluded.
+  const exportZip = () => {
+    const pub = selectedRows.filter((u) => (u.addingMethod ?? 'private') === 'public');
+    if (!pub.length) {
+      toast.push('No public users selected — private users use a link (Export .CSV)', 'warn');
+      return;
+    }
+    exportUsersZip(pub).catch((e) => toast.push(errText(e, 'Export failed'), 'bad'));
+  };
+
+  const doBulkDelete = async () => {
+    const ids = [...selected];
+    setBulkDeleting(false);
+    setSelected(new Set());
+    let ok = 0;
+    let fail = 0;
+    for (const id of ids) {
+      try {
+        await del.mutateAsync(id);
+        ok++;
+      } catch {
+        fail++;
+      }
+    }
+    toast.push(`Deleted ${ok} user${ok === 1 ? '' : 's'}${fail ? `, ${fail} failed` : ''}`, fail ? 'warn' : 'ok');
+  };
 
   const onUpload = (f: File | undefined) => {
     if (!f) return;
@@ -72,28 +127,40 @@ export function Users() {
           <IconUpload size={16} /> Upload CSV
         </Button>
         <input ref={file} type="file" accept=".csv,text/csv" hidden aria-label="CSV file" onChange={(e) => onUpload(e.target.files?.[0])} />
+        <HelpMenu />
       </div>
 
       {selected.size > 0 && (
-        <div data-testid="bulk-bar" style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
-          <span>{selected.size} selected</span>
-          <Button
-            variant="secondary"
-            size="sm"
-            data-testid="export-csv"
-            onClick={() => exportUsersCsv([...selected]).catch((e) => toast.push(errText(e, 'Export failed'), 'bad'))}
-          >
-            Export CSV
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
-            Clear
-          </Button>
+        <div data-testid="bulk-bar" className="bulk-bar">
+          <span className="bulk-count">Selected: {selected.size}</span>
+          <span className="bulk-actions">
+            <Button variant="secondary" className="btn-ico" data-testid="export-csv" onClick={() => exportUsersCsv([...selected]).catch((e) => toast.push(errText(e, 'Export failed'), 'bad'))}>
+              <IconDownload size={16} /> Export .CSV
+            </Button>
+            <Button variant="secondary" className="btn-ico" data-testid="export-zip" onClick={exportZip}>
+              <IconDownload size={16} /> Export .zip
+            </Button>
+            <Button variant="danger" className="btn-ico" data-testid="bulk-delete" disabled={del.isPending} onClick={() => setBulkDeleting(true)}>
+              <IconTrash size={16} /> Delete
+            </Button>
+            <button type="button" className="btn-deselect" data-testid="deselect" onClick={() => setSelected(new Set())}>
+              <IconClose size={16} /> Deselect
+            </button>
+          </span>
         </div>
       )}
 
       <UserTable
         rows={visible}
         selected={selected}
+        allSelected={allVisibleSelected}
+        onToggleAll={toggleAll}
+        osFilter={osFilter}
+        actFilter={actFilter}
+        methodFilter={methodFilter}
+        onOsFilter={(v) => { setOsFilter(v); setPage(0); }}
+        onActFilter={(v) => { setActFilter(v); setPage(0); }}
+        onMethodFilter={(v) => { setMethodFilter(v); setPage(0); }}
         onToggle={toggle}
         onRegenerate={(u) =>
           regen.mutate(u.id, {
@@ -104,16 +171,28 @@ export function Users() {
         onDelete={setDeleting}
       />
 
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'flex-end', marginTop: 12 }}>
-        <span style={{ color: 'var(--gray-1)', fontSize: 'var(--fs-sm)' }}>
-          Page {cur + 1} of {pages} · {filtered.length} user{filtered.length === 1 ? '' : 's'}
+      <div className="table-foot">
+        <span className="page-size">
+          <Select
+            value={String(pageSize)}
+            onChange={(v) => {
+              setPageSize(Number(v));
+              setPage(0);
+            }}
+            options={PAGE_SIZES}
+          />
         </span>
-        <Button variant="secondary" size="sm" data-testid="prev-page" disabled={cur === 0} onClick={() => setPage(cur - 1)}>
-          Previous
-        </Button>
-        <Button variant="secondary" size="sm" data-testid="next-page" disabled={cur >= pages - 1} onClick={() => setPage(cur + 1)}>
-          Next
-        </Button>
+        <span className="pager">
+          <button type="button" className="icon-btn" data-testid="prev-page" aria-label="Previous page" disabled={cur === 0} onClick={() => setPage(cur - 1)}>
+            ←
+          </button>
+          <span className="pager-label">
+            Page {cur + 1} of {pages}
+          </span>
+          <button type="button" className="icon-btn" data-testid="next-page" aria-label="Next page" disabled={cur >= pages - 1} onClick={() => setPage(cur + 1)}>
+            →
+          </button>
+        </span>
       </div>
 
       <AddUserModal open={adding} onClose={() => setAdding(false)} />
@@ -150,6 +229,23 @@ export function Users() {
         }
       >
         {deleting && <p>{deleting.name} will lose access and their invite link stops working.</p>}
+      </Modal>
+      <Modal
+        open={bulkDeleting}
+        title="Delete Users?"
+        onClose={() => setBulkDeleting(false)}
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => setBulkDeleting(false)}>
+              Cancel
+            </Button>
+            <Button variant="danger" data-testid="bulk-delete-confirm" onClick={doBulkDelete}>
+              Delete {selected.size}
+            </Button>
+          </>
+        }
+      >
+        <p>{selected.size} user{selected.size === 1 ? '' : 's'} will lose access and their invite links stop working.</p>
       </Modal>
     </div>
   );

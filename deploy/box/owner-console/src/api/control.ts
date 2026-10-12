@@ -1,14 +1,16 @@
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
-import { BadRequest, BOX_SERVICE, controlService, runReadCommand } from '../exec';
+import { BadRequest, BOX_SERVICE, controlService, readRemoteWork, runReadCommand, setRemoteWork } from '../exec';
 
 // Injectable so the routes are tested without touching docker.
 export interface ControlDeps {
   controlService: typeof controlService;
   runReadCommand: typeof runReadCommand;
+  setRemoteWork: typeof setRemoteWork;
+  readRemoteWork: typeof readRemoteWork;
 }
 
-const real: ControlDeps = { controlService, runReadCommand };
+const real: ControlDeps = { controlService, runReadCommand, setRemoteWork, readRemoteWork };
 
 const message = (e: unknown): string => (e instanceof Error ? e.message : 'command failed');
 
@@ -22,6 +24,25 @@ export function controlRoutes(deps: Partial<ControlDeps> = {}): Hono {
     try {
       const service = body.scope === 'box' ? BOX_SERVICE : (body.service as string);
       const res = await d.controlService(body.action as never, service);
+      return c.json(res);
+    } catch (e) {
+      if (e instanceof BadRequest) return c.json({ error: e.message }, 400);
+      return c.json({ error: message(e) }, 500);
+    }
+  });
+
+  r.get('/remote-work', async (c) => {
+    try {
+      return c.json(await d.readRemoteWork());
+    } catch (e) {
+      return c.json({ error: message(e) }, 500);
+    }
+  });
+
+  r.post('/remote-work', async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { on?: unknown };
+    try {
+      const res = await d.setRemoteWork(body.on === true);
       return c.json(res);
     } catch (e) {
       if (e instanceof BadRequest) return c.json({ error: e.message }, 400);

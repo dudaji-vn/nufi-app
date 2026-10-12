@@ -80,6 +80,27 @@ export const IconGear = (p: P) => (
   </Svg>
 );
 
+export const IconClose = (p: P) => (
+  <Svg {...p}>
+    <path d="M18 6 6 18M6 6l12 12" />
+  </Svg>
+);
+
+export const IconMore = (p: P) => (
+  <Svg {...p}>
+    <circle cx="12" cy="5" r="1.4" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="19" r="1.4" fill="currentColor" stroke="none" />
+  </Svg>
+);
+
+export const IconLogout = (p: P) => (
+  <Svg {...p}>
+    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+    <path d="M16 17l5-5-5-5M21 12H9" />
+  </Svg>
+);
+
 export const IconSearch = (p: P) => (
   <Svg {...p}>
     <circle cx="11" cy="11" r="7" />
@@ -129,5 +150,19 @@ export const IconCopy = (p: P) => (
   <Svg {...p}>
     <rect x="9" y="9" width="11" height="11" rx="2" />
     <path d="M5 15V5a2 2 0 0 1 2-2h8" />
+  </Svg>
+);
+
+export const IconEdit = (p: P) => (
+  <Svg {...p}>
+    <path d="M12 20h9" />
+    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+  </Svg>
+);
+
+export const IconLock = (p: P) => (
+  <Svg {...p}>
+    <rect x="5" y="11" width="14" height="10" rx="2" />
+    <path d="M8 11V7a4 4 0 0 1 8 0v4" />
   </Svg>
 );

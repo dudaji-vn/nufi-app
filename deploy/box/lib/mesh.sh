@@ -530,7 +530,7 @@ except Exception:
 #   the imports — every `import <name>` in the generated file must be a
 #                 `(<name>)` snippet in this Caddyfile. Catches the drift
 #                 nobody remembered to bump, which is the one that happened.
-MESH_CADDY_REV=4
+MESH_CADDY_REV=5
 
 # mesh_caddy_stale FILE CADDYFILE — 0 (true) when FILE was written by an older
 # box, or asks CADDYFILE for a snippet it no longer defines. A file that is not
@@ -606,7 +606,7 @@ $host:3002, $ip:3002 {
 # Works accepts only its own name (PAPERCLIP_PUBLIC_URL) and loopback; the IP and mesh forms reach Caddy and are refused by Works, so the chooser links it by name.
 $host:3003, $ip:3003 {
 	import box_tls
-	reverse_proxy works:3100
+	reverse_proxy works:3003
 }
 
 $host:7860, $ip:7860 {

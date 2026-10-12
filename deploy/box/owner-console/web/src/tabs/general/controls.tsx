@@ -5,6 +5,7 @@ import { Modal } from '../../ui/modal';
 import { IconGear, IconPower, IconRestart, IconStop } from '../../ui/icons';
 import { useToast } from '../../ui/toast';
 import { ConfigModal } from './config';
+import { MoreMenu } from './more-menu';
 
 // The whole-box target understood by POST /api/control.
 export const BOX = '__box__';
@@ -33,6 +34,7 @@ export function Controls({ active }: { active: boolean }) {
     );
   };
 
+
   return (
     <div className="gen-controls" data-testid="controls">
       <span className="status-pill">
@@ -54,6 +56,7 @@ export function Controls({ active }: { active: boolean }) {
       <Button variant="secondary" className="btn-ico" data-testid="control-config" onClick={() => setConfigOpen(true)}>
         <IconGear size={16} /> Config
       </Button>
+      <MoreMenu />
       <ConfigModal open={configOpen} onClose={() => setConfigOpen(false)} />
       <Modal
         open={confirm !== null}

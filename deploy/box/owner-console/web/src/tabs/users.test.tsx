@@ -41,7 +41,7 @@ test('each activation state shows its label and tone', () => {
     row({ id: 'e', name: 'E', activation: 'expired' }),
   ]);
   render(<Users />);
-  const cases: [string, string, string][] = [['a', 'Activated', 'ok'], ['p', 'Pending', 'warn'], ['e', 'Expired', 'bad']];
+  const cases: [string, string, string][] = [['a', 'Activated', 'ok'], ['p', 'Pending', 'neutral'], ['e', 'Expired', 'bad']];
   for (const [id, label, tone] of cases) {
     const el = screen.getByTestId(`activation-${id}`).firstElementChild as HTMLElement;
     expect(el.textContent).toBe(label);
@@ -58,15 +58,28 @@ test('copy button writes the invite link', () => {
   expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/connect#token=${encodeURIComponent('tok/en+1')}`);
 });
 
-test('Add User opens the modal and submits name + os', () => {
+test('Add User opens the modal and submits name + os + method', () => {
   mockUsers([]);
   render(<Users />);
   expect(screen.queryByRole('dialog')).toBeNull();
   fireEvent.click(screen.getByTestId('add-user'));
-  fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Lan' } });
-  fireEvent.change(screen.getByLabelText('OS'), { target: { value: 'linux' } });
+  fireEvent.change(screen.getByTestId('add-user-name'), { target: { value: 'Lan' } });
+  fireEvent.change(screen.getByLabelText(/^OS/), { target: { value: 'linux' } });
   fireEvent.click(screen.getByTestId('add-user-submit'));
-  expect(mutate).toHaveBeenCalledWith({ name: 'Lan', os: 'linux' }, expect.anything());
+  // method defaults to 'private' (the LAN link); the modal always sends it.
+  expect(mutate).toHaveBeenCalledWith({ name: 'Lan', os: 'linux', method: 'private' }, expect.anything());
+});
+
+test('the help (?) menu opens the bulk-ops guide', () => {
+  mockUsers([]);
+  render(<Users />);
+  expect(screen.queryByTestId('help-panel')).toBeNull();
+  fireEvent.click(screen.getByTestId('help-menu'));
+  const panel = screen.getByTestId('help-panel');
+  expect(panel.textContent).toContain('Bulk add users by upload CSV');
+  expect(panel.textContent).toContain('Export CSV');
+  expect(panel.textContent).toContain('Export ZIP');
+  expect(screen.getByTestId('download-template')).toBeTruthy();
 });
 
 test('search filters rows by name', () => {
@@ -96,10 +109,10 @@ test('paginates client-side', () => {
 test('remaining() formats time left', () => {
   const now = Date.parse('2026-10-05T00:00:00Z');
   expect(remaining('2026-10-05T00:00:00Z', now)).toBe('Expired');
-  expect(remaining('2026-10-05T00:00:45Z', now)).toBe('45s');
-  expect(remaining('2026-10-05T00:05:10Z', now)).toBe('5m 10s');
-  expect(remaining('2026-10-05T02:03:00Z', now)).toBe('2h 3m');
-  expect(remaining('2026-10-07T03:00:00Z', now)).toBe('2d 3h');
+  expect(remaining('2026-10-05T00:00:45Z', now)).toBe('Expires in 00:45');
+  expect(remaining('2026-10-05T00:05:10Z', now)).toBe('Expires in 05:10');
+  expect(remaining('2026-10-05T02:03:00Z', now)).toBe('Expires in 2h 03m');
+  expect(remaining('2026-10-07T03:00:00Z', now)).toBe('Expires in 2d 3h');
 });
 
 test('shows loading and error states', () => {

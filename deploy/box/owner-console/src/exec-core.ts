@@ -34,7 +34,58 @@ export function buildBoxArgv(action: string): string[] {
   return [...COMPOSE, action];
 }
 
+// The console control-plane: kept running on a whole-box STOP/RESTART so the
+// Start/Restart buttons still work — a web-triggered stop must not take down the
+// very web UI that turns it back on (caddy serves the console; owner-exec runs
+// the commands). START brings everything, including these, back.
+export const CONSOLE_PLANE = ['nufi-box-caddy-1', 'nufi-box-owner-console-1', 'nufi-box-owner-exec-1'] as const;
+
+// List the box project's container NAMES (all, or only running). Robust to
+// which compose overlays are loaded — unlike `docker compose`, which needs the
+// matching COMPOSE_FILE to even name an overlay service like tailscale.
+export function buildListContainersArgv(onlyRunning: boolean): string[] {
+  const argv = ['docker', 'ps'];
+  if (!onlyRunning) argv.push('-a');
+  return [...argv, '--filter', 'label=com.docker.compose.project=nufi-box', '--format', '{{.Names}}'];
+}
+
+const CONTAINER_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
+
+// A whole-box action over container NAMES (from buildListContainersArgv).
+// stop/restart skip the console plane so the UI survives; start touches all
+// (already-running ones no-op). Names are validated; the list may be empty
+// (caller no-ops).
+export function buildBoxContainerArgv(action: string, names: string[]): string[] {
+  if (!isIn(ACTIONS, action)) throw new BadRequest('invalid action');
+  const keep = new Set<string>(CONSOLE_PLANE);
+  const picked = names
+    .map((n) => n.trim())
+    .filter((n) => CONTAINER_NAME_RE.test(n))
+    .filter((n) => (action === 'start' ? true : !keep.has(n)));
+  return ['docker', action, ...picked];
+}
+
 export const BOX_SERVICE = '__box__';
+
+// "Allow remote work" = the box's mesh connection, which is the tailscale
+// container. Toggling it start/stops that ONE container by name (not a compose
+// op, so it needs no mesh-overlay COMPOSE_FILE and works on any box). Stopping
+// it takes the box off the mesh (LAN-only); starting it rejoins with the same
+// registration. The full `nufi-box mesh up/down` (which also rewrites .env +
+// caddy) stays a host command by design — this is the connectivity toggle only.
+export const REMOTE_WORK_CONTAINER = 'nufi-box-tailscale-1';
+
+export function buildRemoteWorkArgv(on: boolean): string[] {
+  if (typeof on !== 'boolean') throw new BadRequest('remote-work needs a boolean');
+  return ['docker', on ? 'start' : 'stop', REMOTE_WORK_CONTAINER];
+}
+
+// Whether the mesh (tailscale) container is actually running — the toggle's
+// true state, which .env (BOX_MESH_IP) does NOT reflect after a stop/start.
+// Prints `true`/`false`, or errors (non-zero) if the container does not exist.
+export function buildRemoteWorkStatusArgv(): string[] {
+  return ['docker', 'inspect', '-f', '{{.State.Running}}', REMOTE_WORK_CONTAINER];
+}
 
 const LOGS = [...COMPOSE, 'logs', '--no-color', '--tail=200'];
 

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import './ui.css';
 
-export type Col<R> = { key: string; label: string; render?: (row: R) => ReactNode };
+export type Col<R> = { key: string; label: string; header?: ReactNode; render?: (row: R) => ReactNode };
 
 export function Table<R extends Record<string, unknown>>({
   columns,
@@ -22,7 +22,7 @@ export function Table<R extends Record<string, unknown>>({
         <tr>
           {columns.map((c) => (
             <th key={c.key} scope="col">
-              {c.label}
+              {c.header ?? c.label}
             </th>
           ))}
         </tr>

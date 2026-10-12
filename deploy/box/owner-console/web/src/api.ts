@@ -38,6 +38,10 @@ export async function post<T>(path: string, payload: unknown): Promise<T> {
 export type UserOs = 'macos' | 'windows' | 'linux';
 export type UserRow = {
   id: string; name: string; os: UserOs; keyId: string; token: string; createdAt: string;
+  addingMethod?: 'public' | 'private';
+  // LAN-shareable /connect link from the box (its canonical host); falls back to
+  // inviteLink(token) for older payloads that don't carry it.
+  inviteUrl?: string;
   activation: 'pending' | 'activated' | 'expired'; expiresAt?: string; nodeIp?: string; online?: boolean;
 };
 export async function del<T>(path: string): Promise<T> {
@@ -46,11 +50,41 @@ export async function del<T>(path: string): Promise<T> {
   if (!r.ok) return fail(r);
   return (await r.json().catch(() => ({}))) as T;
 }
+// Poll so the dashboard (status pill, service cards, and the Start/Restart/Stop
+// enablement derived from them) stays live after a control action without a
+// manual reload. react-query pauses the interval when the tab is backgrounded.
 export const useStatus = () =>
-  useQuery({ queryKey: ['status'], queryFn: () => get<StatusResponse>('/api/status'), retry: false });
+  useQuery({ queryKey: ['status'], queryFn: () => get<StatusResponse>('/api/status'), retry: false, refetchInterval: 5000 });
 
-export const useControl = () =>
-  useMutation({ mutationFn: (req: ControlRequest) => post<{ ok: boolean; audit: string }>('/api/control', req) });
+export const useControl = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (req: ControlRequest) => post<{ ok: boolean; audit: string }>('/api/control', req),
+    // Refetch right after the action; the poll above then tracks the transition
+    // (services take a few seconds to stop/start) to the settled state.
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['status'] });
+      qc.invalidateQueries({ queryKey: ['remote-work'] });
+    },
+  });
+};
+
+// The real remote-work state: is the mesh (tailscale) container running? Read
+// from the box, not .env — so the toggle reflects a live stop/start.
+export const useRemoteWorkStatus = () =>
+  useQuery({ queryKey: ['remote-work'], queryFn: () => get<{ on: boolean }>('/api/remote-work'), retry: false });
+
+// "Allow remote work" toggle: start/stop the box's mesh (tailscale) connection.
+export const useRemoteWork = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (on: boolean) => post<{ ok: boolean; audit: string }>('/api/remote-work', { on }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['remote-work'] });
+      qc.invalidateQueries({ queryKey: ['status'] });
+    },
+  });
+};
 
 // The live, UI-editable model endpoint (litellm/config.yaml, not .env).
 export type ConfigView = { aiBaseUrl: string; aiModel: string };
@@ -102,7 +136,7 @@ export async function streamConsole(cmd: string, onLine: (line: string) => void)
 
 export const useUsers = () => useQuery({ queryKey: ['users'], queryFn: () => get<UserRow[]>('/api/users'), retry: false });
 const useRefreshUsers = () => { const qc = useQueryClient(); return () => qc.invalidateQueries({ queryKey: ['users'] }); };
-export const useAddUser = () => { const refresh = useRefreshUsers(); return useMutation({ mutationFn: (req: { name: string; os: UserOs }) => post<UserRow>('/api/users', req), onSuccess: refresh }); };
+export const useAddUser = () => { const refresh = useRefreshUsers(); return useMutation({ mutationFn: (req: { name: string; os: UserOs; method?: 'public' | 'private' }) => post<UserRow>('/api/users', req), onSuccess: refresh }); };
 export const useDeleteUser = () => { const refresh = useRefreshUsers(); return useMutation({ mutationFn: (id: string) => del<unknown>('/api/users/' + encodeURIComponent(id)), onSuccess: refresh }); };
 export const useRegenerate = () => { const refresh = useRefreshUsers(); return useMutation({ mutationFn: (id: string) => post<UserRow>('/api/users/' + encodeURIComponent(id) + '/regenerate', {}), onSuccess: refresh }); };
 export const useImportUsers = () => {
@@ -129,6 +163,32 @@ export async function exportUsersCsv(ids: string[]): Promise<void> {
   URL.revokeObjectURL(url);
 }
 export const connectorUrl = (u: Pick<UserRow, 'id' | 'os'>) => `/api/users/${encodeURIComponent(u.id)}/connector?os=${u.os}`;
+
+// Bundle the selected users' join files into a .zip, client-side (stored zip, no
+// dependency). Every OS now downloads a real file (linux .sh / windows .cmd /
+// macOS instructions .txt), so just carry each with its own filename.
+export async function exportUsersZip(rows: Pick<UserRow, 'id' | 'os' | 'name'>[]): Promise<void> {
+  const { makeZip } = await import('./lib/zip');
+  const files: { name: string; data: string }[] = [];
+  const ext = (os: UserRow['os']) => (os === 'windows' ? 'cmd' : os === 'macos' ? 'txt' : 'sh');
+  for (const u of rows) {
+    const r = await fetch(connectorUrl(u), { credentials: 'same-origin' });
+    unauthorized(r);
+    if (!r.ok) continue;
+    const cd = r.headers.get('content-disposition') || '';
+    const m = cd.match(/filename="([^"]+)"/);
+    files.push({ name: m ? m[1] : `nufi-join-${u.name}.${ext(u.os)}`, data: await r.text() });
+  }
+  if (!files.length) throw { error: 'Nothing to export' };
+  const url = URL.createObjectURL(makeZip(files));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'nufi-join-files.zip';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
 export const inviteLink = (token: string) => `${window.location.origin}/connect#token=${encodeURIComponent(token)}`;
 
 export type FileRow = { name: string; kind: 'file' | 'dir'; size: number; uploadedAt: string; modifiedAt: string; access: 'public' | 'private' };

@@ -9,6 +9,10 @@ export type UserRecord = {
   keyId: string;
   token: string;
   createdAt: string;
+  // How the owner hands the join to the member: a downloadable join file
+  // ('public') or a LAN-only link ('private', the default). Optional so users
+  // created before this field default to 'private' (the link).
+  addingMethod?: 'public' | 'private';
 };
 
 const file = () => join(process.env.NUFI_STATE_DIR || '/state', 'users.json');
