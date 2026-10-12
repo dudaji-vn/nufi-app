@@ -87,3 +87,11 @@ ever drifts — it is written to converge, not to fail on a second run.
   exercised on a live box.** codex, claude and opencode are installed and the
   sandbox is wired up; nothing here has run one on a live box and watched it
   finish a task yet.
+- **From home, Works stays on the office network.** The box answers to a
+  second, from-home name once it is on the mesh, and chat and the drives work
+  through it — but Works does not. Its private-hostname guard accepts only the
+  box's LAN name, and its sign-in is built from that name, so a laptop reaching
+  the box by the mesh name is turned away, and even past that would be bounced
+  to an address it cannot resolve off the LAN. Letting Works answer to both
+  names is a larger change (it is per-request host handling the sign-in does
+  not do yet); for now, use Works on an office-network visit.
