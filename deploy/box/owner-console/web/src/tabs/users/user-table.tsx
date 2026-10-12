@@ -39,6 +39,8 @@ function useNow(): number {
 export function UserTable({
   rows,
   selected,
+  allSelected,
+  onToggleAll,
   osFilter,
   actFilter,
   methodFilter,
@@ -51,6 +53,8 @@ export function UserTable({
 }: {
   rows: UserRow[];
   selected: Set<string>;
+  allSelected: boolean;
+  onToggleAll: () => void;
   osFilter: string;
   actFilter: string;
   methodFilter: string;
@@ -75,6 +79,9 @@ export function UserTable({
     {
       key: 'select',
       label: '',
+      header: (
+        <input type="checkbox" data-testid="select-all" aria-label="Select all users" checked={allSelected} onChange={onToggleAll} />
+      ),
       render: (u) => (
         <input type="checkbox" aria-label={`Select ${u.name}`} checked={selected.has(u.id)} onChange={() => onToggle(u.id)} />
       ),

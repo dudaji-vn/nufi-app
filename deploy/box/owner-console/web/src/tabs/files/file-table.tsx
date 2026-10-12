@@ -3,6 +3,7 @@ import type { FileRow } from '../../api';
 import { Avatar } from '../../ui/avatar';
 import { ColFilter, SortHeader } from '../../ui/col-filter';
 import { ContextMenu } from '../../ui/context-menu';
+import { IconDownload, IconEdit, IconLock, IconSparkles, IconTrash } from '../../ui/icons';
 import '../../ui/ui.css';
 import './file-table.css';
 
@@ -180,11 +181,11 @@ export function FileTable({
               <td>
                 <ContextMenu
                   items={[
-                    { label: 'Accessibility', onSelect: () => onAction('access', r) },
-                    { label: 'Create Agent', disabled: true, onSelect: () => {} },
-                    { label: 'Rename', onSelect: () => onAction('rename', r) },
-                    ...(r.kind === 'file' ? [{ label: 'Download', onSelect: () => onAction('download', r) }] : []),
-                    { label: 'Delete', danger: true, onSelect: () => onAction('delete', r) },
+                    { label: 'Accessibility', icon: <IconLock size={15} />, onSelect: () => onAction('access', r) },
+                    { label: 'Create Agent', icon: <IconSparkles size={15} />, disabled: true, onSelect: () => {} },
+                    { label: 'Rename', icon: <IconEdit size={15} />, onSelect: () => onAction('rename', r) },
+                    ...(r.kind === 'file' ? [{ label: 'Download', icon: <IconDownload size={15} />, onSelect: () => onAction('download', r) }] : []),
+                    { label: 'Delete', icon: <IconTrash size={15} />, danger: true, onSelect: () => onAction('delete', r) },
                   ]}
                 >
                   <button type="button" className="file-table__more" aria-label={`Actions for ${r.name}`}>

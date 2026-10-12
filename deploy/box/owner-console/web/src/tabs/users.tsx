@@ -4,7 +4,7 @@ import { Button } from '../ui/button';
 import { Modal } from '../ui/modal';
 import { Select } from '../ui/select';
 import { useToast } from '../ui/toast';
-import { IconClose, IconDownload, IconPlus, IconSearch, IconUpload } from '../ui/icons';
+import { IconClose, IconDownload, IconPlus, IconSearch, IconTrash, IconUpload } from '../ui/icons';
 import { AddUserModal } from './users/add-user-modal';
 import { HelpMenu } from './users/help-menu';
 import { UserTable } from './users/user-table';
@@ -32,6 +32,7 @@ export function Users() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState(false);
   const [deleting, setDeleting] = useState<UserRow | null>(null);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const file = useRef<HTMLInputElement>(null);
 
   if (isPending) return <p role="status">Loading…</p>;
@@ -54,6 +55,44 @@ export function Users() {
       if (!n.delete(id)) n.add(id);
       return n;
     });
+
+  // Select-all acts on the rows currently visible (this page, after filters).
+  const allVisibleSelected = visible.length > 0 && visible.every((u) => selected.has(u.id));
+  const toggleAll = () =>
+    setSelected((s) => {
+      const n = new Set(s);
+      if (allVisibleSelected) visible.forEach((u) => n.delete(u.id));
+      else visible.forEach((u) => n.add(u.id));
+      return n;
+    });
+
+  // Export .zip carries the join FILES — only Public users have one; Private
+  // users use a LAN link (covered by Export .CSV), so they are excluded.
+  const exportZip = () => {
+    const pub = selectedRows.filter((u) => (u.addingMethod ?? 'private') === 'public');
+    if (!pub.length) {
+      toast.push('No public users selected — private users use a link (Export .CSV)', 'warn');
+      return;
+    }
+    exportUsersZip(pub).catch((e) => toast.push(errText(e, 'Export failed'), 'bad'));
+  };
+
+  const doBulkDelete = async () => {
+    const ids = [...selected];
+    setBulkDeleting(false);
+    setSelected(new Set());
+    let ok = 0;
+    let fail = 0;
+    for (const id of ids) {
+      try {
+        await del.mutateAsync(id);
+        ok++;
+      } catch {
+        fail++;
+      }
+    }
+    toast.push(`Deleted ${ok} user${ok === 1 ? '' : 's'}${fail ? `, ${fail} failed` : ''}`, fail ? 'warn' : 'ok');
+  };
 
   const onUpload = (f: File | undefined) => {
     if (!f) return;
@@ -98,8 +137,11 @@ export function Users() {
             <Button variant="secondary" className="btn-ico" data-testid="export-csv" onClick={() => exportUsersCsv([...selected]).catch((e) => toast.push(errText(e, 'Export failed'), 'bad'))}>
               <IconDownload size={16} /> Export .CSV
             </Button>
-            <Button variant="secondary" className="btn-ico" data-testid="export-zip" onClick={() => exportUsersZip(selectedRows).catch((e) => toast.push(errText(e, 'Export failed'), 'bad'))}>
+            <Button variant="secondary" className="btn-ico" data-testid="export-zip" onClick={exportZip}>
               <IconDownload size={16} /> Export .zip
+            </Button>
+            <Button variant="danger" className="btn-ico" data-testid="bulk-delete" disabled={del.isPending} onClick={() => setBulkDeleting(true)}>
+              <IconTrash size={16} /> Delete
             </Button>
             <button type="button" className="btn-deselect" data-testid="deselect" onClick={() => setSelected(new Set())}>
               <IconClose size={16} /> Deselect
@@ -111,6 +153,8 @@ export function Users() {
       <UserTable
         rows={visible}
         selected={selected}
+        allSelected={allVisibleSelected}
+        onToggleAll={toggleAll}
         osFilter={osFilter}
         actFilter={actFilter}
         methodFilter={methodFilter}
@@ -185,6 +229,23 @@ export function Users() {
         }
       >
         {deleting && <p>{deleting.name} will lose access and their invite link stops working.</p>}
+      </Modal>
+      <Modal
+        open={bulkDeleting}
+        title="Delete Users?"
+        onClose={() => setBulkDeleting(false)}
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => setBulkDeleting(false)}>
+              Cancel
+            </Button>
+            <Button variant="danger" data-testid="bulk-delete-confirm" onClick={doBulkDelete}>
+              Delete {selected.size}
+            </Button>
+          </>
+        }
+      >
+        <p>{selected.size} user{selected.size === 1 ? '' : 's'} will lose access and their invite links stop working.</p>
       </Modal>
     </div>
   );

@@ -19,16 +19,24 @@
 .files-crumb__root { all: unset; cursor: pointer; font-weight: 700; color: var(--ink); }
 .files-crumb__root:hover { color: var(--navy); }
 
-/* The whole list is the drop target now (no separate dashed box). */
+/* The whole list is the drop target; a slim persistent hint says so. */
 .files-drop { position: relative; border-radius: var(--radius-lg); transition: box-shadow 0.15s; }
 .files-drop--over { box-shadow: inset 0 0 0 2px var(--navy-2); }
 .files-drop__hint {
   position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center;
   background: rgba(41, 48, 105, 0.06); border-radius: var(--radius-lg); font-weight: 700; color: var(--navy); pointer-events: none;
 }
+.files-drophint {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  border: 1.5px dashed var(--gray-3); border-radius: var(--radius); background: var(--ground);
+  padding: 11px; margin-bottom: 14px; color: var(--gray-1); font-size: 13px;
+}
+.files-drophint svg { color: var(--gray-2); }
+.files-drophint b { color: var(--ink); font-weight: 600; }
 
-/* Accessibility cell: icon + label, not a coloured badge */
-.access-cell { display: inline-flex; align-items: center; gap: 7px; font-weight: 600; color: var(--ok); }
+/* Accessibility cell: icon + label, not a coloured badge (roomier spacing) */
+.access-cell { display: inline-flex; align-items: center; gap: 10px; padding: 3px 0; white-space: nowrap; font-weight: 600; color: var(--ok); }
+.access-cell svg { flex: none; }
 .access-cell--private { color: var(--gray-1); }
 
 .files-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 56px 16px; color: var(--gray-2); }

@@ -32,7 +32,8 @@ export interface ExecDeps {
 }
 
 const INFO = (cmd: string) =>
-  `"${cmd}" runs from the box's command line (nufi-box ${cmd}); the in-console version ships with the hardening sidecar.\n`;
+  `"${cmd}" is a box command — run it on the box's own terminal:\n\n    nufi-box ${cmd}\n\n` +
+  `(The hardened console runs only read-only service commands, never host commands, by design.)\n`;
 
 export function createApp(deps: ExecDeps): Hono {
   const app = new Hono();

@@ -129,6 +129,11 @@ export function Files() {
         }}
       >
         {over && <div className="files-drop__hint">Drop files to upload</div>}
+        {dept && (
+          <div className="files-drophint">
+            <IconUpload size={15} /> Drag &amp; drop files here to upload, or use <b>Upload</b>
+          </div>
+        )}
         {body}
       </div>
 
