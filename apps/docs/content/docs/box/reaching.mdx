@@ -211,8 +211,50 @@ runs its own coordinator or joins an external one, never both. And because the
 only coordinator in reach is this box, **every laptop must resolve
 `coordinator.internal` to the box** — through the office DNS, or a line in each
 laptop's hosts file. That fits a controlled site where the box keeps a fixed,
-reachable address; a box that people reach from anywhere on the open internet
-still wants a separate coordinator with a public name.
+reachable address. To reach a self-hosted coordinator from home or the open
+internet — still with no rented server — give it a public name and a way in, as
+the next section describes.
+
+### Reaching a self-hosted coordinator from home, without a VPS
+
+The on-box coordinator above is reachable only where the box's own network
+reaches. Members can still reach it from home with **no rented server** — but
+the box cannot open that path itself, because it sits behind the site's NAT.
+The site provides the way in; this is the self-contained, no-external-VPS model
+a government or enterprise deployment uses, with the box in the organisation's
+own DMZ.
+
+Three things make it work, all on infrastructure you already control:
+
+1. **A public DNS name you own**, pointing to the site's public IP (for example
+   `mesh.acme-corp.example → 203.0.113.10`). Install with it as the
+   coordinator's name: `MESH_SERVER_HOST=mesh.acme-corp.example ./install-box.sh
+   --yes --self-host-coordinator` (and `MESH_BASE_DOMAIN` for the box's own
+   from-home name). A static public IP, or dynamic DNS if it changes.
+2. **Inbound forwarded to the box by your own firewall/router** — a DMZ rule,
+   not a rented VPS:
+   - `443/tcp` — the control API *and* DERP-over-HTTPS. This one alone is
+     enough: a laptop behind a firewall that allows only HTTPS still reaches
+     the box, its traffic relayed over `443`.
+   - `3478/udp` — STUN. Optional; it lets two machines find a **direct** path
+     instead of relaying, which only matters for copying large files.
+   - `80/tcp` — only if you want a browser-trusted public certificate
+     (`TLS_MODE=acme`). Skip it and keep the default internal CA, which the
+     invite file already carries to each laptop — no public certificate needed
+     even when the coordinator is reached publicly.
+3. Nothing else. Members join exactly as before, with a single-use key from
+   `nufi-box invite`; the coordinator refuses any machine without one. **Public
+   here means reachable, not open.**
+
+This does **not** work where you cannot open an inbound path — a box behind a
+provider's carrier-grade NAT, or a site proxy you do not control (the lab
+behind a shared reverse proxy, say). There, either have that network's admin
+route `443`/`3478` to the box, or fall back to a separate coordinator with its
+own public address.
+
+(NUFI Works is the one product still reached by the box's LAN name, so it stays
+office-network only even on a reachable coordinator — see
+[Works on the box](/docs/box/works#honest-limits).)
 
 ## Which path, when
 
@@ -224,6 +266,7 @@ still wants a separate coordinator with a public name.
 | A second box someone installs to try it | the same office | a different name, and it can join the same coordinator |
 | A second company | their own network | their own coordinator; boxes and members of one never see the other's |
 | An air-gapped or no-internet site | a controlled network | the box's own coordinator (`--self-host-coordinator`), every laptop resolving `coordinator.internal` to the box |
+| A site that wants reach-from-home but no rented server | its own DMZ / firewall | the box's own coordinator given a public name, the site forwarding `443/tcp` (and `3478/udp`) to the box |
 
 Both paths are on at once for every member who has joined. Nobody has to
 switch anything when they change desks.
