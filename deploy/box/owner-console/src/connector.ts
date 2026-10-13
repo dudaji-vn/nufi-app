@@ -27,6 +27,13 @@ export type ConnectorInput = {
   // '' for an arch when the box could not read the digest — the check is then
   // skipped for that arch (the built image always ships both).
   agentSha256?: { amd64?: string; arm64?: string };
+  // Public GitHub Releases base (e.g. https://github.com/<owner>/<repo>/releases/download)
+  // and the agent version tag suffix. The linux connector downloads the agent
+  // from there first — box-independent — and falls back to the box's own /agent
+  // copy for an air-gapped site. '' for agentPublicBase disables the public path
+  // (box only), which a fork without a published release wants.
+  agentPublicBase?: string;
+  agentVersion?: string;
 };
 
 // A member name doubles as a Tailscale hostname and the download filename, so
@@ -93,21 +100,33 @@ function agentConnectorLinux(input: ConnectorInput): Connector {
   // Digests are hex ([0-9a-f]) — safe inside "…" as-is; '' when unknown.
   const shaAmd64 = input.agentSha256?.amd64 ?? '';
   const shaArm64 = input.agentSha256?.arm64 ?? '';
+  // Box config, not member input — dq'd as defence in depth, like boxUrl above.
+  const agentPublicBase = dq((input.agentPublicBase ?? '').replace(/\/$/, ''));
+  const agentVersion = dq(input.agentVersion ?? '');
   // boxCaB64 / coordCaB64 are base64 ([A-Za-z0-9+/=]) — safe inside "…" as-is.
   const body = `#!/bin/bash
-# NuFi box -- join for ${member}. Installs the NuFi agent from the box and joins.
-# No Tailscale download: the de-branded client is served by the box itself.
+# NuFi box -- join for ${member}. Installs the de-branded NuFi agent and joins.
+# The agent is downloaded from the public release (no box needed to install it);
+# an air-gapped box serves the same tarball itself and is used as the fallback.
 set -e
 echo "NuFi box -- joining as ${member}"
 ARCH="$(dpkg --print-architecture 2>/dev/null || uname -m)"
 case "$ARCH" in x86_64|amd64) ARCH=amd64;; aarch64|arm64) ARCH=arm64;; *) echo "unsupported architecture: $ARCH"; exit 2;; esac
 TMP="$(mktemp -d)"
+TGZ="nufibox-agent-linux-$ARCH.tar.gz"
+PUB="${agentPublicBase}"
 echo "Downloading the NuFi agent..."
-curl -fsS "${boxUrl}/agent/nufibox-agent-linux-$ARCH.tar.gz" -o "$TMP/agent.tgz"
-# Verify the download against the digest the box baked in at build time, BEFORE
-# we run anything from it as root. Defence in depth for the box-CA-trusted
-# delivery path: a tampered tarball is refused rather than installed.
-case "$ARCH" in amd64) WANT_SHA="${shaAmd64}";; arm64) WANT_SHA="${shaArm64}";; *) WANT_SHA="";; esac
+if [ -n "$PUB" ] && curl -fsSL "$PUB/agent-linux-v${agentVersion}/$TGZ" -o "$TMP/agent.tgz"; then
+  # From the public release: verify against the digest published beside it.
+  WANT_SHA="$(curl -fsSL "$PUB/agent-linux-v${agentVersion}/$TGZ.sha256" 2>/dev/null | tr -d '[:space:]')"
+elif curl -fsS "${boxUrl}/agent/$TGZ" -o "$TMP/agent.tgz"; then
+  # Air-gap fallback: the box's own copy, verified against the box-baked digest.
+  case "$ARCH" in amd64) WANT_SHA="${shaAmd64}";; arm64) WANT_SHA="${shaArm64}";; *) WANT_SHA="";; esac
+else
+  echo "Could not download the NuFi agent from the public release or the box." >&2
+  exit 4
+fi
+# Verify BEFORE we run anything from it as root -- a tampered tarball is refused.
 if [ -n "$WANT_SHA" ]; then
   GOT_SHA="$(sha256sum "$TMP/agent.tgz" | awk '{print $1}')"
   if [ "$GOT_SHA" != "$WANT_SHA" ]; then
