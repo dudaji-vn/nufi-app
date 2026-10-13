@@ -408,7 +408,18 @@ NUFI_MODEL="$(printf '%s' "$INFERENCE_MODEL" | tr ':/' '--')"
 EMBEDDINGS_MODEL="${EMBEDDINGS_MODEL:-bge-m3}"
 BOX_HOST="$BOX_NAME.local"
 if [ "$OS" = "Darwin" ]; then BOX_IP="$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo 127.0.0.1)"
-else BOX_IP="$(hostname -I 2>/dev/null | awk '{print $1}')" || true; BOX_IP="${BOX_IP:-127.0.0.1}"; fi
+else
+  # A member reaches the box on the address of the interface that routes out --
+  # not docker0, a container bridge, or a VPN interface, any of which
+  # `hostname -I` can list first. Taking the first address put a Docker
+  # 172.17.x into a member's join file, which no other machine could reach.
+  # The `|| true` keep a host without iproute2 -- or the Mac running the
+  # dry-run test -- from aborting under pipefail; fall back to the first
+  # global address, then to loopback, only if the route lookup yields nothing.
+  BOX_IP="$(ip -4 route get 1.1.1.1 2>/dev/null | sed -n 's/.* src \([0-9.][0-9.]*\).*/\1/p' | head -1 || true)"
+  [ -n "$BOX_IP" ] || BOX_IP="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
+  BOX_IP="${BOX_IP:-127.0.0.1}"
+fi
 [ "$DRY" = 1 ] && BOX_IP="${BOX_IP:-192.168.1.10}"
 # Two boxes announcing one name on one network: a laptop opens whichever
 # answered first, and nobody is told. Ask the network what it already says
