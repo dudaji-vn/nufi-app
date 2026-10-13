@@ -71,20 +71,30 @@ describe('macosPlan (signed .pkg + one-line enrol, no Gatekeeper warning)', () =
     expect(p.enroll).not.toContain('.command');                                  // not a downloadable script
   });
 
-  test('trusts the box CA so chat opens without a warning (parity with linux/win)', () => {
-    const p = macosPlan(base('macos'));
-    expect(p.enroll).toContain("curl -fsS 'http://nufi.local/nufi-box-ca.crt'");
-    expect(p.enroll).toContain('security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain');
-    // box CA is trusted before the join
-    expect(p.enroll.indexOf('add-trusted-cert')).toBeLessThan(p.enroll.indexOf('nufibox-agent enroll'));
+  test('with a public base the pkg comes from the release; box when empty', () => {
+    const pub = macosPlan({ ...base('macos'), agentPublicBase: 'https://github.com/dudaji-vn/nufi-app/releases/download', agentVersion: '1.102.3' });
+    expect(pub.pkgUrl).toBe('https://github.com/dudaji-vn/nufi-app/releases/download/agent-macos-v1.102.3/nufibox-agent-macos.pkg');
+    expect(macosPlan(base('macos')).pkgUrl).toBe('http://nufi.local/agent/nufibox-agent-macos.pkg'); // no base -> box
   });
 
-  test('a self-hosted coordinator fetches the coord CA and passes --ca; a public one does not', () => {
-    const selfHost = macosPlan(base('macos'));
-    expect(selfHost.enroll).toContain("curl -fsS 'http://nufi.local/agent/mesh-ca.crt'");
+  test('trusts the box CA AFTER joining, over the mesh, best effort (box-independent)', () => {
+    const p = macosPlan(base('macos'));
+    // the box CA is fetched over the MESH name (reachable once joined), not the box LAN origin
+    expect(p.enroll).toContain("curl -fsS 'http://nufi.box.internal/nufi-box-ca.crt'");
+    expect(p.enroll).toContain('security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain');
+    expect(p.enroll).toContain('|| true');                       // best effort -- never blocks the join
+    // and it runs AFTER enrol: nothing before enrol touches the box
+    expect(p.enroll.indexOf('nufibox-agent enroll')).toBeLessThan(p.enroll.indexOf('add-trusted-cert'));
+    expect(p.enroll).not.toContain('http://nufi.local/nufi-box-ca.crt'); // not the box LAN origin
+  });
+
+  test('a self-hosted coordinator EMBEDS the coord CA and passes --ca; a public one does not', () => {
+    const selfHost = macosPlan(base('macos'));            // base() sets a coord CA
+    expect(selfHost.enroll).toContain('base64 --decode > /tmp/nufi-ca.crt'); // embedded, not fetched from the box
     expect(selfHost.enroll).toContain('--ca /tmp/nufi-ca.crt');
+    expect(selfHost.enroll).not.toContain('/agent/mesh-ca.crt');            // no box fetch for the coord CA
     const pub = macosPlan({ ...base('macos'), coordCaB64: '' });
-    expect(pub.enroll).not.toContain('/agent/mesh-ca.crt');
+    expect(pub.enroll).not.toContain('base64 --decode > /tmp/nufi-ca.crt');
     expect(pub.enroll).not.toContain('--ca ');
   });
 

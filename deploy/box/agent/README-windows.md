@@ -4,6 +4,10 @@ The Windows agent is **scaffolded, not finished**. This records exactly what is
 proven and what still needs a Windows machine and a certificate, so the work can
 be picked up without re-discovering it.
 
+**To finish it, follow [`windows-agent-plan.md`](./windows-agent-plan.md)** — the
+step-by-step runbook (runtime check → wrapper → `.msi` → sign → CI → bake →
+`/connect` → docs), written to be executed on the signing Windows host.
+
 ## Proven here (cross-compiled from macOS/Linux)
 
 `build-agent-windows.sh` compiles the de-branded engine for Windows with Go
