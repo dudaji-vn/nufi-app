@@ -1,0 +1,68 @@
+name: agent-linux
+
+# Build the de-branded NufiBox Agent for Linux (the BSD-3 tailscale engine
+# shipped under nufibox names, as one tarball) and publish it as a GitHub
+# Release asset — the public download the /connect page points members at, so
+# onboarding no longer needs the box reachable at install time. The box keeps
+# serving the same tarball as an air-gap fallback.
+#
+# Mirrors agent-macos.yml, but a Linux tarball needs no code signing, so this
+# runs on a normal runner and fetches the pinned static binaries — no self-hosted
+# runner, no secrets, no Go toolchain. Keep TS_VERSION in step with the box's
+# tailscale image (docker-compose.mesh.yml).
+
+on:
+  workflow_dispatch:
+    inputs:
+      ts_version:
+        description: Tailscale engine version to bundle (BSD-3)
+        default: "1.102.3"
+        required: true
+  push:
+    tags: ['agent-linux-v*']
+
+permissions:
+  contents: write   # create/update the release that carries the tarballs
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TS_VERSION: ${{ github.event.inputs.ts_version || '1.102.3' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the agent tarballs (amd64 + arm64)
+        run: |
+          set -euo pipefail
+          for a in amd64 arm64; do
+            ARCH="$a" bash deploy/box/agent/build-agent.sh
+          done
+          ls -la deploy/box/agent/dist
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nufibox-agent-linux
+          path: |
+            deploy/box/agent/dist/nufibox-agent-linux-*.tar.gz
+            deploy/box/agent/dist/nufibox-agent-linux-*.tar.gz.sha256
+          if-no-files-found: error
+
+      - name: Publish as a release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="agent-linux-v${TS_VERSION}"
+          cd deploy/box/agent/dist
+          files=(nufibox-agent-linux-*.tar.gz nufibox-agent-linux-*.tar.gz.sha256)
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${files[@]}" --clobber
+          else
+            gh release create "$TAG" \
+              --title "NufiBox Agent (Linux) $TS_VERSION" \
+              --notes "De-branded NufiBox Agent tarballs for Linux (amd64 + arm64), BSD-3 tailscale engine shipped under nufibox names. The public download the /connect page points members at; the box serves the same tarball as an air-gap fallback." \
+              "${files[@]}"
+          fi
