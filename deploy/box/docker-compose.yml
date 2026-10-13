@@ -355,6 +355,13 @@ services:
       NUFI_SELF_HOST_COORD: ${NUFI_SELF_HOST_COORD:-0}
       BOX_MESH_IP: ${BOX_MESH_IP:-}
       BOX_MESH_HOST: ${BOX_MESH_HOST:-}
+      # The public GitHub Releases the linux connector downloads the agent from,
+      # so a member installs it without reaching the box; the box's own /agent
+      # copy is the air-gap fallback. Keep the version in step with the tailscale
+      # image in docker-compose.mesh.yml. A fork points these at its own release,
+      # or clears NUFI_AGENT_PUBLIC_BASE to serve only from the box.
+      NUFI_AGENT_PUBLIC_BASE: ${NUFI_AGENT_PUBLIC_BASE-https://github.com/dudaji-vn/nufi-app/releases/download}
+      NUFI_AGENT_VERSION: ${NUFI_AGENT_VERSION:-1.102.3}
       # The one credential the console holds: the coordinator API key, to mint a
       # member's pre-auth key when the owner generates an invite link. Node/Bun
       # trust the coordinator's certificate through NODE_EXTRA_CA_CERTS — the

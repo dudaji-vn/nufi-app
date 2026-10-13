@@ -153,7 +153,8 @@ describe('owner-console app', () => {
     expect(r.headers.get('content-disposition')).toContain('filename="nufi-join-ivy-nguyen.sh"');
     const body = await r.text();
     expect(body).toContain('k-join-xyz');                          // the key the laptop joins with
-    expect(body).toContain('http://nufi.local/agent/nufibox-agent-linux-$ARCH.tar.gz'); // agent from the box
+    expect(body).toContain('TGZ="nufibox-agent-linux-$ARCH.tar.gz"');
+    expect(body).toContain('http://nufi.local/agent/$TGZ');        // box fallback (no public base set in this env)
     expect(body).toContain('nufibox-agent/install.sh');
     expect(body).not.toContain('tailscale.com');                  // no external Tailscale download
     expect(body).toContain(`amd64) WANT_SHA="${'a'.repeat(64)}"`); // baked digest flows into the connector

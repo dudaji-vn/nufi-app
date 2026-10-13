@@ -98,17 +98,31 @@ describe('macosPlan (signed .pkg + one-line enrol, no Gatekeeper warning)', () =
   });
 });
 
-describe('renderConnector — Linux (agent flow, installs the NuFi agent from the box)', () => {
-  test('downloads the agent from the box and installs+enrols it — no tailscale.com', () => {
-    const c = renderConnector(base('linux'), TEMPLATES);
+describe('renderConnector — Linux (agent flow: public release, box as air-gap fallback)', () => {
+  test('with no public base it installs from the box (air-gap) and enrols — no tailscale.com', () => {
+    const c = renderConnector(base('linux'), TEMPLATES);   // base() sets no agentPublicBase -> box only
     expect(c.filename).toBe('nufi-join-ivy-nguyen.sh');
-    expect(c.body).toContain('http://nufi.local/agent/nufibox-agent-linux-$ARCH.tar.gz'); // from the box origin
+    expect(c.body).toContain('PUB=""');                                      // public path disabled
+    expect(c.body).toContain('TGZ="nufibox-agent-linux-$ARCH.tar.gz"');
+    expect(c.body).toContain('http://nufi.local/agent/$TGZ');                // box fallback URL
     expect(c.body).toContain('nufibox-agent/install.sh');
     expect(c.body).toContain('--server "https://coordinator.internal"');
     expect(c.body).toContain('--auth-key "k-member-secret"');
     expect(c.body).toContain('--hostname "ivy-nguyen"');
     expect(c.body).toContain('/register');            // opens sign-up after joining
     expect(c.body).not.toContain('tailscale.com');
+  });
+
+  test('with a public base it downloads from the release first, the box as fallback', () => {
+    const c = renderConnector(
+      { ...base('linux'), agentPublicBase: 'https://github.com/dudaji-vn/nufi-app/releases/download', agentVersion: '1.102.3' },
+      TEMPLATES,
+    ).body;
+    expect(c).toContain('PUB="https://github.com/dudaji-vn/nufi-app/releases/download"');
+    expect(c).toContain('"$PUB/agent-linux-v1.102.3/$TGZ"');          // public release, tried first
+    expect(c).toContain('"$PUB/agent-linux-v1.102.3/$TGZ.sha256"');   // verified against its own digest
+    expect(c).toContain('http://nufi.local/agent/$TGZ');              // box still there as the fallback
+    expect(c.indexOf('$PUB/agent-linux')).toBeLessThan(c.indexOf('/agent/$TGZ')); // public before box
   });
 
   test('trusts the box CA so the sign-up page opens without a cert warning (parity with mac/Win)', () => {

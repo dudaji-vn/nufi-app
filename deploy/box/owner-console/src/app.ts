@@ -218,8 +218,10 @@ export function createApp(env: AppEnv = process.env, deps: Deps = {}): Hono {
       departments: info.departments,
       boxCaB64: await boxCaB64(),
       coordCaB64: coordCaB64(),
-      boxUrl: originOf(c), // where the member reached us, for the agent download (linux)
+      boxUrl: originOf(c), // the box origin, used only as the air-gap fallback now (linux)
       agentSha256: agentSha256(), // verify the agent download before it runs as root (linux)
+      agentPublicBase: env.NUFI_AGENT_PUBLIC_BASE ?? '', // public release the agent downloads from first (linux)
+      agentVersion: env.NUFI_AGENT_VERSION ?? '1.102.3',
     }, templatesDir);
     return new Response(connector.body, {
       headers: {
