@@ -83,7 +83,11 @@ for _ in $(seq 1 60); do
   EMB=$(docker compose logs --no-log-prefix nufi-ingest 2>&1 | grep -a 'embedded=True' | grep -aF "legal/$DOC_NAME" | tail -1)
   [ -n "$EMB" ] && break; sleep 5
 done
-[ -n "$EMB" ] && ok "nufi-ingest embedded it" || bad "nufi-ingest never logged embedded=True for legal/$DOC_NAME"
+# A soft note, not a failure: on a box that already holds this document, or
+# whose nufi-ingest was recently recreated (an update resets its log), no fresh
+# "embedded=True" line appears even though the embedding is in the store. The
+# agent-citation check below is the authoritative RAG proof, so gate on that.
+[ -n "$EMB" ] && ok "nufi-ingest embedded it" || note "no fresh embedded=True in the ingest log (already embedded, or its log was reset by a recent recreate) — the citation check below is the real RAG proof"
 EMAIL=$(sed -n 's/^ADMIN_EMAIL=//p' "$BOX/.env"); PASS=$(sed -n 's/^ADMIN_PASSWORD=//p' "$BOX/.env")
 rm -rf /tmp/e2e-ev /tmp/e2e-dr; mkdir -p /tmp/e2e-ev /tmp/e2e-dr
 ( cd "$SCN" && python3 run_box.py --base "https://$HOST:3080" --email "$EMAIL" --password "$PASS" \
