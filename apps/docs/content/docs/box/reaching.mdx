@@ -82,6 +82,7 @@ machine — the check that catches a second box using the same name.
 | Symptom | What it is |
 |---|---|
 | `https://<box-ip>:3080` works, `https://<name>.local:3080` does not | The device does not do mDNS (older Windows without Bonjour, some Android). Use the address, or add the name to the device's hosts file. |
+| On a box running under **Windows/WSL**, neither the `.local` name nor the LAN IP opens | WSL has no mDNS for the Windows browser, and its services sit behind both the WSL and the Windows firewall. On the box machine itself use `https://localhost:<port>`; from other machines reach the box **over the mesh** (its mesh name). Exposing the LAN IP needs WSL's firewall opened — `[wsl2] firewall=false` in `.wslconfig` plus Windows inbound rules for the ports — and stays fragile, so the mesh is the supported path for a WSL box. |
 | Neither works from a phone | The phone is on a different network — a guest SSID, a second band, an extender with its own subnet. Put it on the same Wi-Fi as the box, or use the from-home path. |
 | The name resolves to a different address than the box's | Another box on this network has the same name. Rename one of them (`BOX_NAME=… ./install-box.sh`) — see above. |
 

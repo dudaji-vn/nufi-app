@@ -421,6 +421,15 @@ else
   BOX_IP="${BOX_IP:-127.0.0.1}"
 fi
 [ "$DRY" = 1 ] && BOX_IP="${BOX_IP:-192.168.1.10}"
+# On a box under WSL (Windows), the <name>.local address does not resolve in a
+# Windows browser (no mDNS there) and the LAN IP sits behind WSL's own firewall
+# plus the Windows one -- so the only address that works out of the box is
+# localhost, and only on the box machine itself. Detect it so the banner tells
+# the truth (localhost here, the mesh for other machines) instead of advertising
+# a .local/IP that silently fails. NUFI_BOX_FAKE_WSL=1 forces it for the test.
+IS_WSL=0
+{ [ "${NUFI_BOX_FAKE_WSL:-0}" = 1 ] || grep -qiE 'microsoft|wsl' /proc/sys/kernel/osrelease 2>/dev/null; } && IS_WSL=1
+BANNER_HOST="$BOX_HOST"; [ "$IS_WSL" = 1 ] && BANNER_HOST=localhost
 # Two boxes announcing one name on one network: a laptop opens whichever
 # answered first, and nobody is told. Ask the network what it already says
 # <name>.local is (the same mDNS probes doctor uses); an answer that is not
@@ -1156,25 +1165,25 @@ fi
 cat <<EOF
 
   NuFi box "$BOX_NAME" is up.
-
-  Chat:        https://$BOX_HOST:3080     (also https://$BOX_IP:3080)
-  Agents:      https://$BOX_HOST:3001/choose
-  Console:     https://$BOX_HOST:3001
-  Admin panel: https://$BOX_HOST:3002
-$( [ "$NUFI_OWNER_CONSOLE" = 1 ] && printf '\n  Owner console: https://%s:3009   (owner password below)\n' "$BOX_HOST" )
-  Certificate: http://$BOX_HOST/   ← laptops trust it once
+$( [ "$IS_WSL" = 1 ] && printf '\n  (Windows/WSL: the URLs below work on THIS machine as localhost. Other machines\n   cannot use the .local name or the LAN IP without opening the WSL firewall --\n   reach the box over the mesh instead; see From home.)\n' )
+  Chat:        https://$BANNER_HOST:3080     $( [ "$IS_WSL" = 1 ] && printf '(this machine)' || printf '(also https://%s:3080)' "$BOX_IP" )
+  Agents:      https://$BANNER_HOST:3001/choose
+  Console:     https://$BANNER_HOST:3001
+  Admin panel: https://$BANNER_HOST:3002
+$( [ "$NUFI_OWNER_CONSOLE" = 1 ] && printf '\n  Owner console: https://%s:3009   (owner password below)\n' "$BANNER_HOST" )
+  Certificate: http://$BANNER_HOST/   ← laptops trust it once
 
   Admin login: $ADMIN_EMAIL / $ADMIN_PASSWORD
 $( [ "$NUFI_OWNER_CONSOLE" = 1 ] && printf '  Owner login:   password %s  (owner console at :3009)\n' "$BOX_OWNER_PASSWORD" )
   Drives:      $NUFI_DATA_DIR/drives/<department>  → become that department's knowledge
 
-  Routines:    https://$BOX_HOST:7860  → sign in as $ADMIN_EMAIL with the
+  Routines:    https://$BANNER_HOST:7860  → sign in as $ADMIN_EMAIL with the
                Studio password in .env (STUDIO_SUPERUSER_PASSWORD). The four
                department routines are there, and a member who arrives
                through the app gets their own copy of each. A routine stops at
                2048 tokens; nothing cancels a run whose caller has gone, so run
                them on qwen2.5:1.5b or larger (README §5).
-$( [ "$NUFI_WORKS" = 1 ] && printf '\n  Works:       https://%s:3003  → enter it from the Agents page as %s.\n               Every agent run lands in a gVisor sandbox with no network\n               except the box gateway (README "NUFI Works on the box").\n' "$BOX_HOST" "$ADMIN_EMAIL" )
+$( [ "$NUFI_WORKS" = 1 ] && printf '\n  Works:       https://%s:3003  → enter it from the Agents page as %s.\n               Every agent run lands in a gVisor sandbox with no network\n               except the box gateway (README "NUFI Works on the box").\n' "$BANNER_HOST" "$ADMIN_EMAIL" )
 
   Day two:     $NB status | logs | drive add <name> | ca-cert | doctor
                $NB flows install | flows list
