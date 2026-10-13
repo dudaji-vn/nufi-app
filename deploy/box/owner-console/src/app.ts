@@ -207,6 +207,8 @@ export function createApp(env: AppEnv = process.env, deps: Deps = {}): Hono {
         os, member, key: invite.key, serverUrl: invite.serverUrl,
         boxMeshHost: info.mesh.host, departments: info.departments,
         boxCaB64: '', coordCaB64: coordCaB64(), boxUrl: originOf(c),
+        agentPublicBase: env.NUFI_AGENT_PUBLIC_BASE ?? '', // public .pkg release (box fallback when empty)
+        agentVersion: env.NUFI_AGENT_VERSION ?? '1.102.3',
       }));
     }
     const connector = renderConnector({

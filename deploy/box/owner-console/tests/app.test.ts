@@ -178,8 +178,8 @@ describe('owner-console app', () => {
     expect(plan.enroll).toContain('nufibox-agent enroll');
     expect(plan.enroll).toContain("--auth-key 'k-join-xyz'");
     expect(plan.enroll).toContain("--hostname 'ivy-nguyen'");
-    expect(plan.enroll).toContain('security add-trusted-cert');             // trusts the box CA too
-    expect(plan.enroll).toContain("curl -fsS 'http://nufi.local/agent/mesh-ca.crt'"); // connectDeps has a coord CA
+    expect(plan.enroll).toContain('security add-trusted-cert');             // trusts the box CA too (post-join)
+    expect(plan.enroll).toContain('base64 --decode > /tmp/nufi-ca.crt');    // coord CA embedded (connectDeps has one)
     expect(plan.chatUrl).toContain('/register');
   });
 

@@ -167,20 +167,30 @@ export type MacPlan = { pkgUrl: string; enroll: string; chatUrl: string };
 export function macosPlan(input: ConnectorInput): MacPlan {
   const member = safeMember(input.member);
   const boxUrl = (input.boxUrl ?? '').replace(/\/$/, '');
-  const pkgUrl = `${boxUrl}/agent/nufibox-agent-macos.pkg`;
+  const pubBase = (input.agentPublicBase ?? '').replace(/\/$/, '');
+  const ver = input.agentVersion ?? '';
+  // The signed, notarized .pkg comes from the public release first (so a member
+  // installs it without reaching the box); an air-gapped box clears the public
+  // base and serves its own copy. Both fetch the SAME pkg name.
+  const pkgUrl = pubBase
+    ? `${pubBase}/agent-macos-v${ver}/nufibox-agent-macos.pkg`
+    : `${boxUrl}/agent/nufibox-agent-macos.pkg`;
   const chatUrl = `https://${input.boxMeshHost}:3080/register`;
-  const parts: string[] = [
-    // trust the box's Caddy CA so chat opens with no warning (parity with linux/win)
-    `curl -fsS ${sq(`${boxUrl}/nufi-box-ca.crt`)} -o /tmp/nufi-box-ca.crt`,
-    `sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain /tmp/nufi-box-ca.crt`,
-  ];
+  const parts: string[] = [];
   let caArg = '';
   if (input.coordCaB64) {
-    // a self-hosted (internal-CA) coordinator: fetch its CA so the agent trusts it
-    parts.push(`curl -fsS ${sq(`${boxUrl}/agent/mesh-ca.crt`)} -o /tmp/nufi-ca.crt`);
+    // A self-hosted (internal-CA) coordinator: EMBED its CA (base64) rather than
+    // fetch it from the box, so enrolling needs nothing but the coordinator.
+    parts.push(`printf %s ${sq(input.coordCaB64)} | base64 --decode > /tmp/nufi-ca.crt`);
     caArg = ' --ca /tmp/nufi-ca.crt';
   }
+  // Enrol FIRST -- over the (public, or embedded-CA) coordinator, the box is not
+  // needed. Then, now on the mesh, trust the box's own CA so chat opens without a
+  // warning -- best effort over the mesh name (the member can click through the
+  // warning if the box is momentarily unreachable). No step before enrol touches
+  // the box, so a member on any network completes the join.
   parts.push(`sudo nufibox-agent enroll --server ${sq(input.serverUrl)} --auth-key ${sq(input.key)}${caArg} --hostname ${sq(member)}`);
+  parts.push(`{ curl -fsS ${sq(`http://${input.boxMeshHost}/nufi-box-ca.crt`)} -o /tmp/nufi-box-ca.crt && sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain /tmp/nufi-box-ca.crt; } || true`);
   return { pkgUrl, enroll: parts.join(' && '), chatUrl };
 }
 
