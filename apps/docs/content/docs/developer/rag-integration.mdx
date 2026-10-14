@@ -58,7 +58,7 @@ the chat backend embeds or stores vectors itself — it delegates to `rag_api`.
                                └───────────────┘
 ```
 
-**Where this lives in the fork** (`dudaji-vn/nufichat`):
+**Where this lives in the chat app** (`apps/chat` in `dudaji-vn/nufi-app`; the paths below are relative to `apps/chat`):
 
 - `api/server/services/Files/VectorDB/crud.js` — the `rag_api` client.
   `uploadVectors()` POSTs to `RAG_API_URL/embed`; `deleteVectors()` DELETEs from

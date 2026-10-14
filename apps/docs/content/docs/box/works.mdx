@@ -1,9 +1,9 @@
 ---
 title: Works on the box
-description: NUFI Works puts a coding-agent workspace on the box, Ubuntu only, with every run landing in a gVisor sandbox behind an egress proxy with one exit.
+description: NuFi Works puts a coding-agent workspace on the box, Ubuntu only, with every run landing in a gVisor sandbox behind an egress proxy with one exit.
 ---
 
-`install-box.sh --with-works` adds **NUFI Works** to the box at
+`install-box.sh --with-works` adds **NuFi Works** to the box at
 `https://<box>:3003`. It is reached by name, not by IP: Works' private-hostname
 guard accepts only its own name and loopback, and the console handoff is what
 carries an authenticated sign-in there, so it is entered the same way Studio
@@ -30,7 +30,7 @@ cannot host `runsc`. When it is there, the closing banner names it:
 ```
 Works:       https://<box>:3003  → enter it from the Agents page as <admin>.
              Every agent run lands in a gVisor sandbox with no network
-             except the box gateway (README "NUFI Works on the box").
+             except the box gateway (README "NuFi Works on the box").
 ```
 
 ## First sign-in

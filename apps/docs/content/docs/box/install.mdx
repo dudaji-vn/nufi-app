@@ -199,21 +199,28 @@ down within two minutes.
 ```
   NuFi box "nufi" is up.
 
-  Chat:        https://nufi.local:3080     (also https://<box-ip>:3080)
-  Agents:      https://nufi.local:3001/choose
-  Console:     https://nufi.local:3001
-  Admin panel: https://nufi.local:3002
-  Certificate: http://nufi.local/   ← laptops trust it once
+  Chat:          https://nufi.local:3080     (also https://<box-ip>:3080)
+  Agents:        https://nufi.local:3001/choose
+  Console:       https://nufi.local:3001
+  Admin panel:   https://nufi.local:3002
+  Owner console: https://nufi.local:3009   (owner password below)
+  Certificate:   http://nufi.local/   ← laptops trust it once
 
-  Admin login: admin@nufi.local / <generated password>
-  Drives:      <data dir>/drives/<department>  → become that department's knowledge
+  Admin login:   admin@nufi.local / <generated password>
+  Owner login:   password <generated>  (owner console at :3009)
+  Drives:        <data dir>/drives/<department>  → become that department's knowledge
 
-  Day two:     ./nufi-box status | logs | drive add <name> | ca-cert | doctor
+  Routines:      https://nufi.local:7860  → sign in with the Studio password in .env
+
+  Day two:       ./nufi-box status | logs | drive add <name> | ca-cert | doctor
+                 ./nufi-box flows install | flows list
 ```
 
-Four URLs, one login, and where the folders live. Write the admin password
-down now — it is generated during the install and it is in `.env`, which is
-created mode `0600` and holds every other secret the box has.
+The box's URLs, two logins — the admin account and the owner console — and
+where the folders live. The owner-console lines appear unless you pass
+`--no-owner-console`. Write both passwords down now; they are generated during
+the install and kept in `.env`, created mode `0600`, which holds every other
+secret the box has.
 
 ## If something goes wrong
 
