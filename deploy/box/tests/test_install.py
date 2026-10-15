@@ -165,6 +165,15 @@ def test_no_pull_skips_the_pull_but_still_starts_the_stack():
     assert "compose -f docker-compose.yml up -d" in out
 
 
+def test_pull_uses_plain_progress_so_a_slow_link_is_visible():
+    # On weak wifi the default (tty) pull view collapses to a spinner + elapsed
+    # time and is indistinguishable from a hang; plain progress prints each
+    # layer's bytes, so the operator can see it move and gauge the speed.
+    out = dry("--no-owner-console", NUFI_BOX_FAKE_OS="Darwin")
+    assert "--progress=plain pull" in out
+    assert "~1.6 GB" in out                 # the heads-up names the long pole
+
+
 def test_emulate_amd64_layers_the_platform_file_and_records_it_in_env():
     out = dry("--emulate-amd64", "--no-owner-console", NUFI_BOX_FAKE_OS="Darwin")
     assert "-f docker-compose.yml -f docker-compose.emulate.yml up -d" in out
