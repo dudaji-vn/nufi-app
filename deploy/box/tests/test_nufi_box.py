@@ -328,6 +328,30 @@ def test_doctor_checks_for_a_conflicting_host_tailscaled_only_when_meshed(tmp_pa
     assert "conflicting host tailscaled" not in lan.stdout
 
 
+def test_announce_installs_a_reboot_persistent_service_under_systemd(tmp_path):
+    # The reported bug: after a reboot, https://<box>:3080 was dead until the
+    # installer was re-run, because the announcer was a transient
+    # `nohup avahi-publish &` that no one restarts on boot. Under systemd,
+    # announce must install a service that survives a power-cycle.
+    r = cli("announce", NUFI_BOX_ENV=mesh_env(tmp_path), NUFI_BOX_FAKE_OS="Linux",
+            NUFI_FAKE_SYSTEMD="1")
+    assert r.returncode == 0, r.stderr
+    out = r.stdout
+    assert "/etc/systemd/system/nufi-announce.service" in out
+    assert "systemctl enable nufi-announce.service" in out
+    assert "systemctl restart nufi-announce.service" in out   # (re)start now, re-reading the address
+    assert "nohup avahi-publish" not in out                   # not the transient path
+
+
+def test_announce_falls_back_to_nohup_without_systemd(tmp_path):
+    r = cli("announce", NUFI_BOX_ENV=mesh_env(tmp_path), NUFI_BOX_FAKE_OS="Linux",
+            NUFI_FAKE_SYSTEMD="0")
+    assert r.returncode == 0, r.stderr
+    assert "nohup avahi-publish" in r.stdout
+    assert "nufi-announce.service" not in r.stdout
+    assert "will NOT survive a reboot" in (r.stdout + r.stderr)
+
+
 def test_mesh_up_refuses_without_a_coordinator(tmp_path):
     envf = tmp_path / ".env"
     envf.write_text("NUFI_DATA_DIR=%s\nBOX_NAME=nufi\n" % tmp_path)

@@ -1043,7 +1043,7 @@ case "$OS" in
               warn "no interactive terminal; share $NUFI_DATA_DIR/drives/$d by hand (System Settings → General → Sharing → File Sharing)"
             fi
           done ;;
-  Linux)  have avahi-publish && run sh -c "nohup avahi-publish -a -R $BOX_HOST $BOX_IP >/dev/null 2>&1 &" || warn "install avahi-utils to announce $BOX_HOST" ;;
+  Linux)  have avahi-publish && run "$BOX_HOME/nufi-box" announce || warn "install avahi-utils to announce $BOX_HOST" ;;   # installs a reboot-persistent systemd announcer
 esac
 run sh -c "docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt '$NUFI_DATA_DIR/nufi-box-ca.crt'"
 if [ "$OS" = "Darwin" ]; then
