@@ -77,7 +77,22 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
+# Dependencies first, as their OWN cached layer. `--no-install-workspace`
+# installs every external dependency from the lock -- the ~1.3 GB long pole --
+# but none of the workspace packages, so this layer is keyed on pyproject.toml +
+# uv.lock only. An edit to the application source then makes a box update re-pull
+# a SMALL layer, not 1.3 GB every time (a tester on weak wifi watched the whole
+# 1.3 GB come down after a one-line change). --extra postgresql pulls the
+# Postgres drivers Langflow needs at boot (declared in an optional group; a plain
+# sync installs neither and SQLAlchemy dies with ModuleNotFoundError: psycopg2).
+# --no-install-workspace needs only the root pyproject.toml + uv.lock, not the
+# member pyproject files -- verified, so no member list to keep in step here.
 COPY pyproject.toml uv.lock README.md ./
+RUN uv sync --frozen --no-dev --extra postgresql --no-install-workspace
+
+# Then the application source and the workspace packages. The deps above already
+# satisfy them, so this second sync is a small layer: it only links the editable
+# workspace members (langflow, langflow-base, lfx, the bundles).
 COPY src ./src
 # NuFi-owned backend code, kept out of the vendored tree so `git subtree pull`
 # never has to reconcile it. /app on PYTHONPATH is what makes `import nufi.…`
@@ -108,11 +123,10 @@ RUN set -eu; \
       echo "compiled JS still carries the bare word Langflow"; exit 1; fi; \
     echo "brand assertion passed"
 
-# --extra postgresql pulls the drivers Langflow needs to speak to Postgres;
-# pyproject declares them in an optional group, so a plain sync installs
-# neither and SQLAlchemy dies at boot with ModuleNotFoundError: psycopg2.
-# Missed originally because the image was only ever exercised against the
-# SQLite default -- not the configuration production actually runs.
+# Install the workspace packages now that the source is present. The external
+# deps are already in the venv from the first sync (identical flags, so the
+# resolution matches), so this adds only the editable workspace members -- a
+# small layer, which is the whole point of the split above.
 RUN uv sync --frozen --no-dev --extra postgresql
 ENV PATH="/app/.venv/bin:$PATH"
 
