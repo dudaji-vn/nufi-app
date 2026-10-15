@@ -76,6 +76,19 @@ EOF
   run sudo systemctl enable nufi-announce.service
   run sudo systemctl restart nufi-announce.service   # (re)start now, re-reading the current address
 }
+# `up` calls this so the command a user reaches for after a reboot also
+# guarantees the LAN name is published: (re)start the announcer, or install it if
+# this box has never announced since the fix. `is-active` first, so a service
+# that is already running needs no sudo.
+ensure_announce() {
+  [ "$OS" = Linux ] && has_systemd || return 0
+  if [ -f /etc/systemd/system/nufi-announce.service ]; then
+    systemctl is-active --quiet nufi-announce.service 2>/dev/null \
+      || run sudo systemctl start nufi-announce.service 2>/dev/null || true
+  else
+    announce_install_service
+  fi
+}
 die() { echo "$*" >&2; exit 2; }
 [ -f "$ENVF" ] && { set -a; . "$ENVF"; set +a; }
 # NUFI_BOX_FAKE_OS lets the tests plan the other OS's run, exactly as
@@ -424,7 +437,7 @@ case "${1:-}" in
     [ "$fail" = 0 ] && echo "All good." || { echo "Something is off; run: nufi-box logs <service>"; exit 1; } ;;
   # Both start Caddy again, so both are places a caddy/mesh.caddy left behind by
   # an older box would refuse the whole front door. Put it back in step first.
-  up) . "$HERE/lib/mesh.sh"; mesh_caddy_refresh "$HERE"; run $COMPOSE up -d ;;
+  up) . "$HERE/lib/mesh.sh"; mesh_caddy_refresh "$HERE"; run $COMPOSE up -d; ensure_announce ;;
   down) run $COMPOSE down ;;
   restart) . "$HERE/lib/mesh.sh"; mesh_caddy_refresh "$HERE"; run $COMPOSE restart ;;
   # --- the mesh ---
