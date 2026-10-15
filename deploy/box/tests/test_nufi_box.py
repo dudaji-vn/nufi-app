@@ -294,6 +294,40 @@ def test_mesh_up_plans_the_join_the_env_write_and_the_caddy_reload(tmp_path):
     assert "caddy reload --config /etc/caddy/Caddyfile" in out
 
 
+def test_mesh_up_clears_a_conflicting_host_tailscaled(tmp_path):
+    # A host tailscaled (left by running a member join on the box machine itself)
+    # owns the same host network namespace the box's mesh container needs, so a
+    # reboot leaves the box wedged. mesh up must take it out of the way first --
+    # and *disable*, not just stop, so the fix survives the next power-cycle.
+    r = cli("mesh", "up", NUFI_BOX_ENV=mesh_env(tmp_path), NUFI_BOX_FAKE_OS="Linux",
+            NUFI_FAKE_HOST_TAILSCALED="1")
+    assert r.returncode == 0, r.stderr
+    out = r.stdout
+    assert "sudo tailscale down" in out
+    assert "sudo systemctl disable --now tailscaled" in out   # disabled => clean across reboots
+    assert "rm -sf tailscale" in out                          # recreate the box's own container clean
+    assert "up -d tailscale" in out                           # and still joins the mesh
+
+
+def test_mesh_up_leaves_the_host_alone_when_there_is_no_conflict(tmp_path):
+    r = cli("mesh", "up", NUFI_BOX_ENV=mesh_env(tmp_path), NUFI_BOX_FAKE_OS="Linux",
+            NUFI_FAKE_HOST_TAILSCALED="0")
+    assert r.returncode == 0, r.stderr
+    assert "systemctl disable" not in r.stdout   # nothing to clear
+    assert "up -d tailscale" in r.stdout          # still joins
+
+
+def test_doctor_checks_for_a_conflicting_host_tailscaled_only_when_meshed(tmp_path):
+    meshed = cli("doctor", NUFI_BOX_ENV=mesh_env(tmp_path), NUFI_BOX_FAKE_OS="Linux")
+    assert "check for a conflicting host tailscaled" in meshed.stdout
+    # A LAN-only box (no coordinator) runs no mesh container, so nothing can
+    # conflict with it -- the check does not apply.
+    lan_env = tmp_path / "lan.env"
+    lan_env.write_text("NUFI_DATA_DIR=%s\nBOX_NAME=nufi\nBOX_HOST=nufi.local\n" % tmp_path)
+    lan = cli("doctor", NUFI_BOX_ENV=str(lan_env), NUFI_BOX_FAKE_OS="Linux")
+    assert "conflicting host tailscaled" not in lan.stdout
+
+
 def test_mesh_up_refuses_without_a_coordinator(tmp_path):
     envf = tmp_path / ".env"
     envf.write_text("NUFI_DATA_DIR=%s\nBOX_NAME=nufi\n" % tmp_path)
