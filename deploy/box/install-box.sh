@@ -923,15 +923,20 @@ done
 if [ "$NO_PULL" = 1 ]; then
   say "Starting the stack (--no-pull: using the images already on this machine)"
 else
-  say "Pulling images and starting the stack"
+  say "Pulling images — the Studio image is ~1.6 GB, so on a slow connection this is the long step. The per-layer MB below (Downloading X/Y) show it is moving, not stuck."
   # A dozen images over someone else's network: one flaky blob ends the whole
   # install under `set -e`. A TLS handshake timeout to ghcr.io killed a
   # blank-VM install two minutes in, with every other image already down.
   # A pull is resumable and idempotent, so try the whole thing three times
   # before giving up on it.
+  #
+  # --progress=plain: the default (tty) view collapses the download to a spinner
+  # + elapsed time, which on a weak connection is indistinguishable from a hang.
+  # plain prints each layer's bytes, so the operator can see it move and gauge
+  # the speed instead of waiting blind.
   pull_ok=0
   for attempt in 1 2 3; do
-    if run $COMPOSE pull; then pull_ok=1; break; fi
+    if run $COMPOSE --progress=plain pull; then pull_ok=1; break; fi
     warn "image pull attempt $attempt of 3 failed; retrying in 5s"
     sleep 5
   done
