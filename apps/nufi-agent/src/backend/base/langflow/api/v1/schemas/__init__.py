@@ -499,15 +499,7 @@ class ConfigResponse(BaseConfigResponse):
             allow_custom_components=settings.allow_custom_components,
             authz_enabled=bool(getattr(auth_settings, "AUTHZ_ENABLED", False)),
             embedded_mode=settings.embedded_mode,
-            hide_logout_button=(
-                settings.hide_logout_button
-                or settings.embedded_mode
-                # Under external auth the identity comes from an upstream cookie this
-                # app cannot clear, so the local Logout button is a no-op (it clears
-                # the Langflow session, then the next request re-authenticates from
-                # the still-present cookie). Hide it; logout belongs to the parent app.
-                or bool(getattr(auth_settings, "EXTERNAL_AUTH_ENABLED", False))
-            ),
+            hide_logout_button=settings.hide_logout_button or settings.embedded_mode,
             hide_new_project_button=settings.hide_new_project_button or settings.embedded_mode,
             hide_new_flow_button=settings.hide_new_flow_button or settings.embedded_mode,
             hide_starter_projects=settings.hide_starter_projects or settings.embedded_mode,
