@@ -352,6 +352,27 @@ def test_announce_falls_back_to_nohup_without_systemd(tmp_path):
     assert "will NOT survive a reboot" in (r.stdout + r.stderr)
 
 
+def test_up_ensures_the_mdns_announcer_under_systemd(tmp_path):
+    # `up` is the command a user reaches for after a reboot, so it must also
+    # guarantee the LAN name is published. On a box that has not set up the
+    # announce service yet, `up` installs it.
+    envf = tmp_path / ".env"
+    envf.write_text("NUFI_DATA_DIR=%s\nBOX_NAME=nufi\nBOX_HOST=nufi.local\n" % tmp_path)
+    r = cli("up", NUFI_BOX_ENV=str(envf), NUFI_BOX_FAKE_OS="Linux", NUFI_FAKE_SYSTEMD="1")
+    assert r.returncode == 0, r.stderr
+    assert "up -d" in r.stdout                     # still brings the stack up
+    assert "nufi-announce.service" in r.stdout     # and ensures the announcer
+
+
+def test_up_does_not_touch_announce_without_systemd(tmp_path):
+    envf = tmp_path / ".env"
+    envf.write_text("NUFI_DATA_DIR=%s\nBOX_NAME=nufi\nBOX_HOST=nufi.local\n" % tmp_path)
+    r = cli("up", NUFI_BOX_ENV=str(envf), NUFI_BOX_FAKE_OS="Linux", NUFI_FAKE_SYSTEMD="0")
+    assert r.returncode == 0, r.stderr
+    assert "up -d" in r.stdout
+    assert "nufi-announce.service" not in r.stdout
+
+
 def test_mesh_up_refuses_without_a_coordinator(tmp_path):
     envf = tmp_path / ".env"
     envf.write_text("NUFI_DATA_DIR=%s\nBOX_NAME=nufi\n" % tmp_path)
