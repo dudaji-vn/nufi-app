@@ -423,6 +423,13 @@ services:
       LANGFLOW_SUPERUSER: ${ADMIN_EMAIL}
       LANGFLOW_SUPERUSER_PASSWORD: ${STUDIO_SUPERUSER_PASSWORD}
       LANGFLOW_EXTERNAL_AUTH_ENABLED: "true"
+      # Under external auth the identity is the nufi_id cookie (minted by the
+      # console); Studio cannot clear it, so its own Logout button is a no-op --
+      # it clears the local session and the next request re-authenticates from
+      # the cookie, so the member appears never to log out. Hide it; logout is
+      # the parent app's job. LANGFLOW_ binds this UiSettings field (Settings
+      # inherits UiSettings under env_prefix LANGFLOW_), so no fork edit is needed.
+      LANGFLOW_HIDE_LOGOUT_BUTTON: "true"
       LANGFLOW_EXTERNAL_AUTH_TOKEN_COOKIE: nufi_id
       LANGFLOW_EXTERNAL_AUTH_JWKS_URL: https://${BOX_HOST}:3001/.well-known/jwks.json
       LANGFLOW_EXTERNAL_AUTH_ISSUER: https://${BOX_HOST}:3001

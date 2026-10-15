@@ -544,32 +544,6 @@ async def test_get_config_embedded_mode_false_keeps_individual_hide_flags(
     assert result["hide_getting_started_progress"] is True
 
 
-async def test_get_config_external_auth_hides_logout_button(
-    client: AsyncClient, logged_in_headers: dict, monkeypatch
-):
-    """Under external auth the identity comes from an upstream cookie this app cannot
-    clear, so the local Logout button is a no-op; /config hides it even when neither
-    hide_logout_button nor embedded_mode is set. It does not cascade to other flags."""
-    from langflow.services.deps import get_settings_service
-
-    settings_service = get_settings_service()
-    monkeypatch.setattr(settings_service.settings, "hide_logout_button", False)
-    monkeypatch.setattr(settings_service.settings, "embedded_mode", False)
-    monkeypatch.setattr(settings_service.settings, "hide_new_project_button", False)
-    monkeypatch.setattr(settings_service.settings, "hide_new_flow_button", False)
-    monkeypatch.setattr(settings_service.auth_settings, "EXTERNAL_AUTH_ENABLED", True)
-
-    response = await client.get("api/v1/config", headers=logged_in_headers)
-    result = response.json()
-
-    assert response.status_code == status.HTTP_200_OK
-    assert result["hide_logout_button"] is True
-    # External auth hides only the logout button, not the other UI elements.
-    assert result["embedded_mode"] is False
-    assert result["hide_new_project_button"] is False
-    assert result["hide_new_flow_button"] is False
-
-
 async def test_get_config_returns_mcp_and_admin_only_flags(client: AsyncClient, logged_in_headers: dict, monkeypatch):
     """Config response should expose lock/admin feature flags from settings."""
     from langflow.services.deps import get_settings_service
