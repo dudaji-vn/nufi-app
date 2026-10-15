@@ -281,6 +281,18 @@ case "${1:-}" in
     else
       echo " ok  caddy/mesh.caddy matches this Caddyfile"
     fi
+    # A host Tailscale left running on the box machine (from a member join done
+    # here) fights the box's mesh container for the host's network namespace and
+    # kills the mesh on the next reboot. Only a concern when this box is meshed.
+    if [ -n "${MESH_SERVER_URL:-}" ]; then
+      if [ "$DRY" = 1 ]; then
+        printf '  $ check for a conflicting host tailscaled\n'
+      elif mesh_host_tailscaled_present; then
+        echo " !!  a host Tailscale service is running — it conflicts with the box's mesh container and breaks the mesh after a reboot; run: nufi-box mesh up (it disables the host service)"; fail=1
+      else
+        echo " ok  no conflicting host Tailscale service"
+      fi
+    fi
     # The name every other laptop uses. Every check above this line goes to
     # localhost, which is exactly the address nobody else types -- so a box
     # whose mDNS announcement has gone stale passed all of them while being

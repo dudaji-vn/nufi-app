@@ -721,6 +721,44 @@ owner_console_refresh() {
   run $COMPOSE up -d owner-console
 }
 
+# A host-installed Tailscale is mutually exclusive with the box's mesh on Linux:
+# the box runs kernel-mode tailscale in a `network_mode: host` container, so its
+# tailscaled owns the host's network namespace (the tailscale0 interface and
+# udp/41641). A second, host-level tailscaled -- left behind by running a member
+# join ON the box machine itself -- claims the same things, and on a reboot the
+# host systemd service wins the race, so the box container can never get an
+# address and `mesh up` hangs (then times out at "tailscaled never reported an
+# address"). Detect that host service and take it out of the way before starting
+# the box's own container. NUFI_FAKE_HOST_TAILSCALED forces the branch for tests.
+mesh_host_tailscaled_present() {
+  case "${NUFI_FAKE_HOST_TAILSCALED:-}" in 1) return 0 ;; 0) return 1 ;; esac
+  [ "$OS" = "Darwin" ] && return 1
+  command -v systemctl >/dev/null 2>&1 || return 1
+  # The box's own tailscaled runs inside the container (separate PID namespace)
+  # and is NOT a systemd unit -- only a host-level one matches here.
+  systemctl list-unit-files 2>/dev/null | grep -q '^tailscaled\.service' || return 1
+  systemctl is-enabled tailscaled >/dev/null 2>&1 || systemctl is-active tailscaled >/dev/null 2>&1
+}
+
+# Stop AND disable the host tailscaled (disable so it stays off across reboots,
+# which is what makes a power-cycle come back clean), drop its stale interface,
+# and recreate the box's own container fresh -- its node key and identity live in
+# the tailscale-state volume, not the container, so nothing is lost.
+mesh_clear_host_tailscaled() {
+  mesh_host_tailscaled_present || return 0
+  echo "  A host Tailscale service is running on this machine. The box runs its own"
+  echo "  tailscale in a container that needs the host's network namespace, so the two"
+  echo "  cannot coexist -- this is why the box stops working after a reboot. Disabling"
+  echo "  the host service so the box's mesh owns the namespace, now and on every boot:"
+  # No `2>/dev/null` on the sudo lines: it would also swallow sudo's own password
+  # prompt, leaving the operator staring at a silent hang. `|| true` is enough to
+  # ride over a line that finds nothing to do (e.g. tailscale0 already gone).
+  run sudo tailscale down || true
+  run sudo systemctl disable --now tailscaled || true
+  run sudo ip link delete tailscale0 || true
+  run $(mesh_compose_cmd) rm -sf tailscale 2>/dev/null || true
+}
+
 # mesh_up — join the coordinator and serve everything on the mesh address too.
 mesh_up() {
   local ip host
@@ -730,6 +768,7 @@ mesh_up() {
   if [ "$OS" = "Darwin" ]; then
     mesh_up_native || exit 1
   else
+    mesh_clear_host_tailscaled
     echo "Joining $MESH_SERVER_URL as ${BOX_NAME:-nufi}…"
     run $(mesh_compose_cmd) up -d tailscale
   fi
