@@ -37,6 +37,45 @@ announced_ip() {
     avahi-resolve -n4 "${BOX_HOST:-nufi.local}" 2>/dev/null | awk '{print $2; exit}'
   fi
 }
+# Is this host run by systemd? (NUFI_FAKE_SYSTEMD forces the answer for tests.)
+has_systemd() {
+  case "${NUFI_FAKE_SYSTEMD:-}" in 1) return 0 ;; 0) return 1 ;; esac
+  command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]
+}
+# Install + enable a systemd service that re-publishes $BOX_HOST over mDNS on
+# every boot. The old `nohup avahi-publish &` did NOT survive a power-cycle: on
+# reboot the containers came back (restart: unless-stopped) but the name did
+# not, so https://$BOX_HOST:3080 was dead until install-box.sh was run again.
+# The service runs avahi-publish in the FOREGROUND (systemd owns it and restarts
+# it on crash) and recomputes the address each start via `announce-run`, so a
+# new DHCP lease is picked up by `nufi-box announce` (which restarts it).
+announce_install_service() {
+  _unit=/etc/systemd/system/nufi-announce.service
+  _tmp="$(mktemp)"
+  cat > "$_tmp" <<EOF
+[Unit]
+Description=Publish ${BOX_HOST:-nufi.local} on the LAN over mDNS (NuFi box)
+After=network-online.target avahi-daemon.service
+Wants=network-online.target
+Requires=avahi-daemon.service
+
+[Service]
+Type=simple
+ExecStart=$HERE/nufi-box announce-run
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  run sudo install -m 0644 "$_tmp" "$_unit"
+  rm -f "$_tmp"
+  # Drop any background publisher an older box left holding the name.
+  run pkill -f "avahi-publish -a -R ${BOX_HOST:-nufi.local}" 2>/dev/null || true
+  run sudo systemctl daemon-reload
+  run sudo systemctl enable nufi-announce.service
+  run sudo systemctl restart nufi-announce.service   # (re)start now, re-reading the current address
+}
 die() { echo "$*" >&2; exit 2; }
 [ -f "$ENVF" ] && { set -a; . "$ENVF"; set +a; }
 # NUFI_BOX_FAKE_OS lets the tests plan the other OS's run, exactly as
@@ -177,8 +216,13 @@ case "${1:-}" in
         run pkill -f "dns-sd -P ${BOX_NAME:-nufi} " || true
         run sh -c "nohup dns-sd -P ${BOX_NAME:-nufi} _https._tcp local 3080 ${BOX_HOST:-nufi.local} $_now >/dev/null 2>&1 &" ;;
       Linux)
-        run pkill -f "avahi-publish -a -R ${BOX_HOST:-nufi.local}" || true
-        run sh -c "nohup avahi-publish -a -R ${BOX_HOST:-nufi.local} $_now >/dev/null 2>&1 &" ;;
+        if has_systemd; then
+          announce_install_service                 # survives reboots (see the function)
+        else
+          run pkill -f "avahi-publish -a -R ${BOX_HOST:-nufi.local}" || true
+          run sh -c "nohup avahi-publish -a -R ${BOX_HOST:-nufi.local} $_now >/dev/null 2>&1 &"
+          echo "WARNING: no systemd here (WSL2?) — ${BOX_HOST:-nufi.local} is announced now but will NOT survive a reboot; re-run after a reboot: nufi-box announce" >&2
+        fi ;;
       *) die "no mDNS announcement for $OS" ;;
     esac
     # .env carries BOX_IP into the certificate and the banner, so it has to
@@ -188,6 +232,13 @@ case "${1:-}" in
     run envfile_set "$ENVF" BOX_IP "$_now"
     echo "BOX_IP=$_now"
     echo "Done. Check it with: nufi-box doctor" ;;
+  announce-run)
+    # Internal: the systemd ExecStart (nufi-announce.service). Foreground
+    # avahi-publish so systemd owns the process and restarts it; the address is
+    # recomputed here, so a `systemctl restart` picks up a new DHCP lease.
+    [ "$OS" = "Linux" ] || die "announce-run is Linux-only"
+    command -v avahi-publish >/dev/null 2>&1 || die "avahi-publish is not installed"
+    exec avahi-publish -a -R "${BOX_HOST:-nufi.local}" "$(this_ip)" ;;
   drive)
     if [ "${2:-}" != "add" ]; then usage; exit 2; fi
     if [ -z "${3:-}" ]; then echo "drive add: a name is required" >&2; usage; exit 2; fi
