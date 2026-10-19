@@ -54,8 +54,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # No ErrorActionPreference=Stop: Windows PowerShell turns the probe's
-          # redirected stderr into a terminating error. Exit codes are checked.
+          # Actions' powershell shell presets ErrorActionPreference=Stop, which
+          # turns the probe's "release not found" on stderr into a terminating
+          # error. Relax it; exit codes are checked instead.
+          $ErrorActionPreference = "Continue"
           $tag = "agent-windows-v$env:TS_VERSION"
           Set-Location deploy/box/agent/dist
           $files = "nufibox-agent-windows-amd64.msi", "nufibox-agent-windows-amd64.msi.sha256"
