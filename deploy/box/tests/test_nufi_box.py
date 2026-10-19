@@ -328,6 +328,19 @@ def test_doctor_checks_for_a_conflicting_host_tailscaled_only_when_meshed(tmp_pa
     assert "conflicting host tailscaled" not in lan.stdout
 
 
+def test_doctor_checks_the_owner_exec_sidecar_only_when_the_console_is_on(tmp_path):
+    # The tester's "terminal errors with a typo message" bug is a down owner-exec
+    # sidecar; doctor should name it + the fix, but only when the console runs.
+    envf = tmp_path / ".env"
+    envf.write_text("NUFI_DATA_DIR=%s\nBOX_NAME=nufi\nBOX_HOST=nufi.local\nNUFI_OWNER_CONSOLE=1\n" % tmp_path)
+    on = cli("doctor", NUFI_BOX_ENV=str(envf), NUFI_BOX_FAKE_OS="Linux")
+    assert "check the owner-exec sidecar is running" in on.stdout
+    off_env = tmp_path / "off.env"
+    off_env.write_text("NUFI_DATA_DIR=%s\nBOX_NAME=nufi\nBOX_HOST=nufi.local\n" % tmp_path)
+    off = cli("doctor", NUFI_BOX_ENV=str(off_env), NUFI_BOX_FAKE_OS="Linux")
+    assert "owner-exec sidecar" not in off.stdout
+
+
 def test_announce_installs_a_reboot_persistent_service_under_systemd(tmp_path):
     # The reported bug: after a reboot, https://<box>:3080 was dead until the
     # installer was re-run, because the announcer was a transient
