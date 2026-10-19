@@ -110,6 +110,12 @@ function agentConnectorLinux(input: ConnectorInput): Connector {
 # an air-gapped box serves the same tarball itself and is used as the fallback.
 set -e
 echo "NuFi box -- joining as ${member}"
+# Already set up on this machine? (a re-run, or a second invite on one machine --
+# one machine is one mesh node). Decide the landing page BEFORE the agent state
+# dir is (re)created below: a returning member already has an account, so open
+# sign-in, not sign-up.
+LAND=register
+if [ -d /var/lib/nufibox ]; then LAND=login; fi
 ARCH="$(dpkg --print-architecture 2>/dev/null || uname -m)"
 case "$ARCH" in x86_64|amd64) ARCH=amd64;; aarch64|arm64) ARCH=arm64;; *) echo "unsupported architecture: $ARCH"; exit 2;; esac
 TMP="$(mktemp -d)"
@@ -148,8 +154,8 @@ echo "Installing and joining (you may be asked for your password)..."
 sudo "$TMP/nufibox-agent/install.sh" enroll --server "${serverUrl}" --auth-key "${key}" $CA_ARG --hostname "${member}"
 echo "Mapping your department drives (best effort)..."
 ${drives}
-echo "Opening NuFi -- sign up (or sign in) to start chatting..."
-xdg-open "https://${meshHost}:3080/register" 2>/dev/null || echo "Open https://${meshHost}:3080/register in your browser."
+if [ "$LAND" = login ]; then echo "This machine is already set up -- opening sign-in..."; else echo "Opening NuFi -- sign up to start chatting..."; fi
+xdg-open "https://${meshHost}:3080/$LAND" 2>/dev/null || echo "Open https://${meshHost}:3080/$LAND in your browser."
 `;
   return { filename: `nufi-join-${member}.sh`, contentType: 'application/x-shellscript', body };
 }
@@ -175,7 +181,11 @@ export function macosPlan(input: ConnectorInput): MacPlan {
   const pkgUrl = pubBase
     ? `${pubBase}/agent-macos-v${ver}/nufibox-agent-macos.pkg`
     : `${boxUrl}/agent/nufibox-agent-macos.pkg`;
-  const chatUrl = `https://${input.boxMeshHost}:3080/register`;
+  // A returning member (a re-run, or a second invite on this machine -- one
+  // machine is one mesh node) already has an account, so the command lands them
+  // on sign-in, not sign-up. The "Open NuFi" fallback link points at the box
+  // home, which routes either kind of member to the right page.
+  const chatUrl = `https://${input.boxMeshHost}:3080/`;
   const parts: string[] = [];
   let caArg = '';
   if (input.coordCaB64) {
@@ -191,7 +201,11 @@ export function macosPlan(input: ConnectorInput): MacPlan {
   // the box, so a member on any network completes the join.
   parts.push(`sudo nufibox-agent enroll --server ${sq(input.serverUrl)} --auth-key ${sq(input.key)}${caArg} --hostname ${sq(member)}`);
   parts.push(`{ curl -fsS ${sq(`http://${input.boxMeshHost}/nufi-box-ca.crt`)} -o /tmp/nufi-box-ca.crt && sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain /tmp/nufi-box-ca.crt; } || true`);
-  return { pkgUrl, enroll: parts.join(' && '), chatUrl };
+  // Decide the landing page BEFORE enrol (which creates /Library/NufiBox), then
+  // open it at the end -- a returning member on this machine gets sign-in.
+  const land = `P=register; [ -d /Library/NufiBox ] && P=login`;
+  const openPage = `open ${sq(`https://${input.boxMeshHost}:3080/`)}$P`;
+  return { pkgUrl, enroll: `${land}; ${parts.join(' && ')}; ${openPage}`, chatUrl };
 }
 
 export function renderConnector(input: ConnectorInput, templatesDir: string): Connector {
