@@ -62,13 +62,27 @@ describe('macosPlan (signed .pkg + one-line enrol, no Gatekeeper warning)', () =
   test('serves the signed pkg from the box and a paste-once enrol command', () => {
     const p = macosPlan(base('macos'));
     expect(p.pkgUrl).toBe('http://nufi.local/agent/nufibox-agent-macos.pkg');   // from the box origin
-    expect(p.chatUrl).toBe('https://nufi.box.internal:3080/register');
+    expect(p.chatUrl).toBe('https://nufi.box.internal:3080/');   // "Open NuFi" fallback routes either member
     expect(p.enroll).toContain('nufibox-agent enroll');
     expect(p.enroll).toContain("--server 'https://coordinator.internal'");
     expect(p.enroll).toContain("--auth-key 'k-member-secret'");
     expect(p.enroll).toContain("--hostname 'ivy-nguyen'");
     expect(p.enroll).not.toContain('tailscale.com');
     expect(p.enroll).not.toContain('.command');                                  // not a downloadable script
+  });
+
+  test('a returning machine lands on sign-in, a fresh one on sign-up (one machine = one node)', () => {
+    // Linux: the generated script decides from the agent's state dir and opens
+    // the page it chose — sign-in when already set up, sign-up otherwise.
+    const sh = renderConnector(base('linux'), TEMPLATES).body;
+    expect(sh).toContain('LAND=register');
+    expect(sh).toContain('if [ -d /var/lib/nufibox ]; then LAND=login; fi');
+    expect(sh).toContain(':3080/$LAND');          // opens whichever it chose
+    expect(sh).not.toContain(':3080/register"');  // never a hard-coded sign-up
+    // macOS: the enrol command does the same, before enrol creates the state dir.
+    const mac = macosPlan(base('macos')).enroll;
+    expect(mac).toContain('[ -d /Library/NufiBox ] && P=login');
+    expect(mac).toMatch(/open .*:3080\/'\$P/);    // opens the decided page
   });
 
   test('with a public base the pkg comes from the release; box when empty', () => {
@@ -119,7 +133,7 @@ describe('renderConnector — Linux (agent flow: public release, box as air-gap 
     expect(c.body).toContain('--server "https://coordinator.internal"');
     expect(c.body).toContain('--auth-key "k-member-secret"');
     expect(c.body).toContain('--hostname "ivy-nguyen"');
-    expect(c.body).toContain('/register');            // opens sign-up after joining
+    expect(c.body).toContain('LAND=register');        // fresh member -> sign-up; a returning one -> sign-in
     expect(c.body).not.toContain('tailscale.com');
   });
 
