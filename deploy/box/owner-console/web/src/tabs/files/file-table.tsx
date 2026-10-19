@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import type { FileRow } from '../../api';
-import { Avatar } from '../../ui/avatar';
 import { ColFilter, SortHeader } from '../../ui/col-filter';
 import { ContextMenu } from '../../ui/context-menu';
 import { IconDownload, IconEdit, IconLock, IconSparkles, IconTrash } from '../../ui/icons';
@@ -27,10 +26,10 @@ const AccessCell = ({ access }: { access: FileRow['access'] }) =>
 
 export type SortKey = 'name' | 'size' | 'uploadedAt' | 'modifiedAt';
 export type SortDir = 'asc' | 'desc';
-export type Filters = { owner: 'all' | 'admin'; access: 'all' | FileRow['access']; kind: 'all' | 'file' | 'dir' };
+export type Filters = { access: 'all' | FileRow['access']; kind: 'all' | 'file' | 'dir' };
 export type FileAction = 'access' | 'rename' | 'download' | 'delete';
 
-export const noFilters: Filters = { owner: 'all', access: 'all', kind: 'all' };
+export const noFilters: Filters = { access: 'all', kind: 'all' };
 
 export function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -118,9 +117,6 @@ export function FileTable({
         <tr>
           {sortTh('name', 'Name')}
           <th scope="col">
-            <ColFilter label="Owner" value={filters.owner} onChange={(v) => setFilters({ ...filters, owner: v as Filters['owner'] })} options={[{ value: 'all', label: 'All' }, { value: 'admin', label: 'Admin' }]} />
-          </th>
-          <th scope="col">
             <ColFilter label="Accessibility" value={filters.access} onChange={(v) => setFilters({ ...filters, access: v as Filters['access'] })} options={[{ value: 'all', label: 'All' }, { value: 'public', label: 'Public' }, { value: 'private', label: 'Private' }]} />
           </th>
           <th scope="col">
@@ -135,7 +131,7 @@ export function FileTable({
       <tbody>
         {visible.length === 0 ? (
           <tr>
-            <td className="ui-table__empty" colSpan={8}>
+            <td className="ui-table__empty" colSpan={7}>
               {rows.length === 0 ? (
                 <div className="files-empty">
                   <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -162,11 +158,6 @@ export function FileTable({
                   ) : (
                     r.name
                   )}
-                </span>
-              </td>
-              <td>
-                <span className="file-table__name">
-                  <Avatar name="Admin" size="sm" /> Admin
                 </span>
               </td>
               <td>
