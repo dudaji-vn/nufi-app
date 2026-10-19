@@ -27,12 +27,28 @@ const defaultDeps = (): ExecDeps => ({
   sock: process.env.EXEC_SOCK || '/sock/exec.sock',
 });
 
+// The owner-exec sidecar is unreachable (stopped, or its socket gone). Bun
+// surfaces that as a raw connection error — "Unable to connect … Was there a
+// typo in the url or port?" — which leaks straight to the console as if the
+// operator mistyped a command. Convert it to a plain message that names the
+// cause and the one-line fix.
+export class SidecarDown extends Error {}
+const SIDECAR_DOWN =
+  "the box's command helper (owner-exec) isn't answering — it may be stopped. On the box, run: ./nufi-box up";
+
+async function sidecarFetch(deps: ExecDeps, url: string, init: Record<string, unknown>): Promise<Response> {
+  try {
+    return await deps.fetchImpl(url, { ...init, unix: deps.sock });
+  } catch {
+    throw new SidecarDown(SIDECAR_DOWN);
+  }
+}
+
 async function call(deps: ExecDeps, path: string, body: unknown): Promise<Response> {
-  const res = await deps.fetchImpl(`http://x${path}`, {
+  const res = await sidecarFetch(deps, `http://x${path}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
-    unix: deps.sock,
   });
   if (res.status === 400) {
     const j = (await res.json().catch(() => ({}))) as { error?: string };
@@ -78,13 +94,13 @@ export async function setRemoteWork(
 // The real remote-work state (is the mesh container running), read from the
 // sidecar — unlike mesh.joined, which is only what .env held at container start.
 export async function readRemoteWork(deps: ExecDeps = defaultDeps()): Promise<{ on: boolean }> {
-  const res = await deps.fetchImpl('http://x/remote-work', { method: 'GET', unix: deps.sock });
+  const res = await sidecarFetch(deps, 'http://x/remote-work', { method: 'GET' });
   if (!res.ok) throw new Error(`exec sidecar error (${res.status})`);
   return (await res.json()) as { on: boolean };
 }
 
 export async function readConfig(deps: ExecDeps = defaultDeps()): Promise<ConfigView> {
-  const res = await deps.fetchImpl('http://x/config', { method: 'GET', unix: deps.sock });
+  const res = await sidecarFetch(deps, 'http://x/config', { method: 'GET' });
   if (!res.ok) throw new Error(`exec sidecar error (${res.status})`);
   return (await res.json()) as ConfigView;
 }

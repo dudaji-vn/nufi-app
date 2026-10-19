@@ -357,6 +357,20 @@ case "${1:-}" in
         echo " ok  no conflicting host Tailscale service"
       fi
     fi
+    # The owner console runs every privileged command — its terminal, Start/Stop,
+    # the model-config apply — through the owner-exec sidecar over a socket. If
+    # that container is down, the console's commands fail with a raw connection
+    # error that reads like a typo (the tester saw exactly this). Catch it with
+    # the one-line fix instead.
+    if [ "${NUFI_OWNER_CONSOLE:-0}" = "1" ]; then
+      if [ "$DRY" = 1 ]; then
+        printf '  $ check the owner-exec sidecar is running\n'
+      elif [ -n "$(docker ps -q -f name=nufi-box-owner-exec-1 -f status=running 2>/dev/null)" ]; then
+        echo " ok  the owner console's command helper (owner-exec) is running"
+      else
+        echo " !!  the owner console's command helper (owner-exec) is not running — its terminal and Start/Stop will error; run: nufi-box up"; fail=1
+      fi
+    fi
     # The name every other laptop uses. Every check above this line goes to
     # localhost, which is exactly the address nobody else types -- so a box
     # whose mDNS announcement has gone stale passed all of them while being

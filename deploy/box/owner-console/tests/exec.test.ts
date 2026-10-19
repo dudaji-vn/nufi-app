@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { BadRequest, READ_CMDS, SERVICES, controlService, runReadCommand, type ExecDeps } from '../src/exec';
+import { BadRequest, READ_CMDS, SERVICES, SidecarDown, controlService, runReadCommand, type ExecDeps } from '../src/exec';
 
 const mk = (res: () => Response) => {
   const calls: { url: string; init: any }[] = [];
@@ -19,6 +19,34 @@ const drain = async (it: AsyncIterable<string>) => {
   for await (const l of it) out.push(l);
   return out;
 };
+
+const mkThrow = (): { deps: ExecDeps } => ({
+  deps: {
+    sock: '/test.sock',
+    // Bun surfaces an unreachable unix socket as a thrown connection error,
+    // the "Was there a typo in the url or port?" one the tester saw.
+    fetchImpl: (async () => {
+      throw new Error('Unable to connect. Was there a typo in the url or port?');
+    }) as ExecDeps['fetchImpl'],
+  },
+});
+
+describe('a down owner-exec sidecar is reported clearly, not as a typo', () => {
+  test('a connection failure becomes SidecarDown — plain cause + the fix', async () => {
+    const e = await controlService('restart', 'caddy', mkThrow().deps).catch((x) => x);
+    expect(e).toBeInstanceOf(SidecarDown);
+    expect(e.message).toContain('owner-exec');
+    expect(e.message).toContain('./nufi-box up');
+    expect(e.message).not.toContain('typo in the url'); // Bun's raw error never leaks
+  });
+  test('a read command surfaces the same clear message', async () => {
+    const e = await runReadCommand('status', mkThrow().deps)
+      .next()
+      .catch((x) => x);
+    expect(e).toBeInstanceOf(SidecarDown);
+    expect(e.message).toContain('./nufi-box up');
+  });
+});
 
 describe('controlService (sidecar client)', () => {
   test('POSTs /control over the socket and returns the sidecar result', async () => {
