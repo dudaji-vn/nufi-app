@@ -265,8 +265,15 @@ test('sortRows orders by key and keeps folders first', () => {
 });
 
 test('filterRows by access and kind', () => {
-  expect(filterRows(rowsFixture, { owner: 'all', access: 'public', kind: 'all' }).map((r) => r.name)).toEqual(['b.txt']);
-  expect(filterRows(rowsFixture, { owner: 'all', access: 'all', kind: 'dir' }).map((r) => r.name)).toEqual(['z']);
+  expect(filterRows(rowsFixture, { access: 'public', kind: 'all' }).map((r) => r.name)).toEqual(['b.txt']);
+  expect(filterRows(rowsFixture, { access: 'all', kind: 'dir' }).map((r) => r.name)).toEqual(['z']);
+});
+
+test('the dead Owner column is gone — no fake "Admin" owner', () => {
+  table();
+  expect(screen.queryByText('Owner')).toBeNull();
+  expect(screen.queryByText('Admin')).toBeNull();
+  expect(screen.getAllByRole('columnheader')).toHaveLength(7); // was 8 with the dead Owner column
 });
 
 test('clicking the Name header toggles sort order', () => {
