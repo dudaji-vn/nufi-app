@@ -1,0 +1,70 @@
+name: agent-windows
+
+# Build the de-branded NufiBox Agent for Windows as a SIGNED .msi, and publish it
+# as a release asset the box image can bake in (D2).
+#
+# Runs on a SELF-HOSTED Windows runner (Dudaji's signing Windows host): the
+# code-signing certificate is used in place from the signing user's
+# CurrentUser\My store -- never exported to a CI secret. So the runner must run
+# AS that user (interactive `run.cmd`, or the runner service set to log on as
+# that account). See deploy/box/agent/README-signing.md.
+#
+# Triggers are dispatch/tag only -- NEVER add pull_request: untrusted PR code must
+# not run on a self-hosted runner that holds signing keys.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ts_version:
+        description: Tailscale engine version to bundle (BSD-3)
+        default: "1.102.3"
+        required: true
+  push:
+    tags: ['agent-windows-v*']
+
+permissions:
+  contents: write   # create/update the release that carries the .msi
+
+jobs:
+  build:
+    runs-on: [self-hosted, Windows]
+    timeout-minutes: 60
+    env:
+      TS_VERSION: ${{ github.event.inputs.ts_version || '1.102.3' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build, sign, package, sign
+        shell: powershell
+        # No cert import: the signing certificate is in this user's store, and
+        # pack-agent-windows.ps1 fails before building if it is missing/expired.
+        run: deploy/box/agent/pack-agent-windows.ps1 -TsVersion $env:TS_VERSION -Arch amd64
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nufibox-agent-windows
+          path: |
+            deploy/box/agent/dist/nufibox-agent-windows-amd64.msi
+            deploy/box/agent/dist/nufibox-agent-windows-amd64.msi.sha256
+          if-no-files-found: error
+
+      - name: Publish as a release asset
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # No ErrorActionPreference=Stop: Windows PowerShell turns the probe's
+          # redirected stderr into a terminating error. Exit codes are checked.
+          $tag = "agent-windows-v$env:TS_VERSION"
+          Set-Location deploy/box/agent/dist
+          $files = "nufibox-agent-windows-amd64.msi", "nufibox-agent-windows-amd64.msi.sha256"
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag @files --clobber
+          } else {
+            gh release create $tag --title "NufiBox Agent (Windows) $env:TS_VERSION" `
+              --notes "De-branded, signed NufiBox Agent .msi for Windows (amd64). Built by the agent-windows workflow on the self-hosted signing Windows host." `
+              @files
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

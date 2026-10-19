@@ -1,0 +1,101 @@
+<!--
+  nufibox-agent.wxs: the NufiBox Mesh .msi (WiX v4).
+
+  Lays down the de-branded engine + wrapper in %ProgramFiles%\NufiBox and
+  registers the "NufiBox" service with the SAME config `nufibox-agent.ps1`
+  Daemon-Up uses for a zip install (see README-windows.md). Enrolment is NOT
+  here: the per-member key is always a separate `nufibox-agent enroll ...`
+  step, like the macOS .pkg postinstall.
+
+    wix build nufibox-agent.wxs -arch x64 -ext WixToolset.Util.wixext.dll
+      -d PayloadDir=<stage> -d Version=1.102.3 -o <out>.msi
+
+  PayloadDir holds: nufibox-tailscaled.exe, nufibox-tailscale.exe, wintun.dll
+  (official signed 0.14.1, unmodified), nufibox-agent.ps1, bin\nufibox-agent.cmd,
+  LICENSE-tailscale.txt, LICENSE-wintun.txt.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <!-- UpgradeCode is stable forever: changing it makes a new version install
+       side by side instead of upgrading. -->
+  <Package Name="NufiBox Mesh" Manufacturer="Dudaji" Version="$(var.Version)"
+           UpgradeCode="{a266858d-dc5e-44b2-ad8d-7c14b9f186ec}" Scope="perMachine" Compressed="yes">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of NufiBox Mesh is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+    <Property Id="ARPURLINFOABOUT" Value="https://nufi.me" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="NufiBox">
+        <Directory Id="BINFOLDER" Name="bin" />
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="Main">
+      <ComponentGroupRef Id="Payload" />
+    </Feature>
+
+    <ComponentGroup Id="Payload" Directory="INSTALLFOLDER">
+      <Component Id="Daemon">
+        <File Id="Tailscaled" Source="$(var.PayloadDir)\nufibox-tailscaled.exe" KeyPath="yes" />
+        <!-- The worker child the daemon re-execs inherits the no-logs-no-support
+             flag via the environment, so nothing phones home. -->
+        <ServiceInstall Name="NufiBox" DisplayName="NufiBox Mesh"
+                        Description="Connects this computer to the NufiBox mesh."
+                        Type="ownProcess" Start="auto" ErrorControl="normal"
+                        Account="LocalSystem" Arguments="--no-logs-no-support" Vital="yes">
+          <ServiceDependency Id="Dnscache" />
+          <ServiceDependency Id="iphlpsvc" />
+          <ServiceDependency Id="netprofm" />
+          <ServiceDependency Id="WinHttpAutoProxySvc" />
+          <util:ServiceConfig FirstFailureActionType="restart" SecondFailureActionType="restart"
+                              ThirdFailureActionType="restart" RestartServiceDelayInSeconds="1"
+                              ResetPeriodInDays="1" />
+        </ServiceInstall>
+        <ServiceControl Id="NufiBoxControl" Name="NufiBox" Start="install" Stop="both" Remove="uninstall" Wait="yes" />
+      </Component>
+      <Component>
+        <File Source="$(var.PayloadDir)\nufibox-tailscale.exe" KeyPath="yes" />
+      </Component>
+      <Component>
+        <File Source="$(var.PayloadDir)\wintun.dll" KeyPath="yes" />
+      </Component>
+      <Component>
+        <File Source="$(var.PayloadDir)\nufibox-agent.ps1" KeyPath="yes" />
+      </Component>
+      <Component>
+        <File Source="$(var.PayloadDir)\LICENSE-tailscale.txt" KeyPath="yes" />
+      </Component>
+      <Component>
+        <File Source="$(var.PayloadDir)\LICENSE-wintun.txt" KeyPath="yes" />
+      </Component>
+      <!-- `nufibox-agent` on PATH: the shim, not the .ps1, which PowerShell's
+           default Restricted policy would refuse. -->
+      <Component Id="Shim" Directory="BINFOLDER">
+        <File Source="$(var.PayloadDir)\bin\nufibox-agent.cmd" KeyPath="yes" />
+        <Environment Id="Path" Name="PATH" Value="[BINFOLDER]" Action="set" Part="last" System="yes" Permanent="no" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- On a real uninstall (not an upgrade), once the service has stopped:
+         the engine's own cleanup removes the adapter and routes, then the two
+         firewall rules are deleted by name (cleanup leaves NufiBox-Process).
+         Both run hidden (WixQuietExec) and never fail the uninstall. State in
+         %ProgramData%\NufiBox is kept, like Tailscale's own uninstaller. -->
+    <SetProperty Id="EngineCleanup" Value="&quot;[#Tailscaled]&quot; --cleanup"
+                 Before="EngineCleanup" Sequence="execute" />
+    <CustomAction Id="EngineCleanup" BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)" DllEntry="WixQuietExec"
+                  Execute="deferred" Impersonate="no" Return="ignore" />
+    <SetProperty Id="FirewallCleanup"
+                 Value="&quot;[System64Folder]cmd.exe&quot; /c netsh advfirewall firewall delete rule name=NufiBox-Process &amp; netsh advfirewall firewall delete rule name=NufiBox-In"
+                 Before="FirewallCleanup" Sequence="execute" />
+    <CustomAction Id="FirewallCleanup" BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)" DllEntry="WixQuietExec"
+                  Execute="deferred" Impersonate="no" Return="ignore" />
+    <InstallExecuteSequence>
+      <Custom Action="EngineCleanup" After="StopServices"
+              Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+      <Custom Action="FirewallCleanup" After="EngineCleanup"
+              Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+    </InstallExecuteSequence>
+  </Package>
+</Wix>
