@@ -103,6 +103,7 @@ describe('owner-console app', () => {
     const dir = mkdtempSync(join(tmpdir(), 'agentdist-'));
     writeFileSync(join(dir, 'nufibox-agent-linux-amd64.tar.gz'), 'FAKE-TARBALL');
     writeFileSync(join(dir, 'nufibox-agent-macos.pkg'), 'FAKE-PKG');
+    writeFileSync(join(dir, 'nufibox-agent-windows-amd64.msi'), 'FAKE-MSI');
     const app = createApp(dashEnv, { checkHealth: async () => health, agentDistDir: dir });
     const ok = await app.request('/agent/nufibox-agent-linux-amd64.tar.gz');   // public, no cookie
     expect(ok.status).toBe(200);
@@ -115,6 +116,12 @@ describe('owner-console app', () => {
     expect((await app.request('/agent/nufibox-agent-linux-arm64.tar.gz')).status).toBe(404); // allow-listed but absent
     expect((await app.request('/agent/nufibox-agent-linux-x86.tar.gz')).status).toBe(404);   // bad arch
     expect((await app.request('/agent/nufibox-agent-macos.pkg.sha256')).status).toBe(404);   // sha not served here
+    const msi = await app.request('/agent/nufibox-agent-windows-amd64.msi');
+    expect(msi.status).toBe(200);
+    expect(msi.headers.get('content-type')).toBe('application/octet-stream');
+    expect(await msi.text()).toBe('FAKE-MSI');
+    expect((await app.request('/agent/nufibox-agent-windows-arm64.msi')).status).toBe(404);  // allow-listed but absent
+    expect((await app.request('/agent/nufibox-agent-windows-x86.msi')).status).toBe(404);    // bad arch
     expect((await app.request('/agent/evil.sh')).status).toBe(404);                          // not allow-listed
   });
 
@@ -182,6 +189,29 @@ describe('owner-console app', () => {
     expect(plan.enroll).toContain('base64 --decode > /tmp/nufi-ca.crt');    // coord CA embedded (connectDeps has one)
     expect(plan.chatUrl).toMatch(/:3080\/$/);                             // "Open NuFi" fallback = box home
     expect(plan.enroll).toContain('[ -d /Library/NufiBox ] && P=login');  // a returning machine lands on sign-in
+  });
+
+  test('POST /connect/connector returns a JSON plan (msi + admin-PowerShell enrol) for Windows', async () => {
+    const app = createApp(dashEnv, connectDeps);
+    const token = signInvite(dashEnv.BOX_OWNER_SESSION_SECRET, { key: 'k-join-xyz', serverUrl: 'https://coordinator.internal' });
+    const r = await app.request('/connect/connector', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        host: 'nufi.local', 'x-forwarded-proto': 'http',
+      },
+      body: new URLSearchParams({ token, os: 'windows', member: 'Ivy Nguyen' }),
+    });
+    expect(r.status).toBe(200);
+    expect(r.headers.get('content-type')).toContain('application/json');   // a plan, not a .cmd download
+    const plan = await r.json();
+    expect(plan.msiUrl).toBe('http://nufi.local/agent/nufibox-agent-windows-amd64.msi');
+    expect(plan.enroll).toContain("-File $a enroll -Server 'https://coordinator.internal' -AuthKey 'k-join-xyz'");
+    expect(plan.enroll).toContain("-Hostname 'ivy-nguyen'");
+    expect(plan.enroll).toContain('FromBase64String(\'Y29vcmRjYQ==\')');  // coord CA embedded (connectDeps has one)
+    expect(plan.enroll).toContain('certutil -addstore -f Root');         // trusts the box CA too (post-join)
+    expect(plan.chatUrl).toMatch(/:3080\/$/);                             // "Open NuFi" fallback = box home
+    expect(plan.enroll).not.toContain('tailscale');
   });
 
   test('reads the baked .sha256 files from the dist dir; a garbled digest is dropped', async () => {

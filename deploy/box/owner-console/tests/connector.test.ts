@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
-import { macosPlan, renderConnector, safeMember, type ConnectorInput } from '../src/connector';
+import { macosPlan, renderConnector, safeMember, windowsPlan, type ConnectorInput } from '../src/connector';
 
 // The real CLI templates — the point is that the console fills THESE, not a copy.
 const TEMPLATES = join(import.meta.dir, '../../lib/join-templates');
@@ -119,6 +119,65 @@ describe('macosPlan (signed .pkg + one-line enrol, no Gatekeeper warning)', () =
     // so ; and rm never execute.
     expect(evil.enroll).toContain("--server 'https://x'\\''; rm -rf /; echo '\\'''");
     expect(evil.enroll).not.toContain("--server https://x");    // never an unquoted, splittable value
+  });
+});
+
+describe('windowsPlan (signed .msi + one admin-PowerShell enrol)', () => {
+  test('serves the signed msi from the box and a paste-once enrol command', () => {
+    const p = windowsPlan(base('windows'));
+    expect(p.msiUrl).toBe('http://nufi.local/agent/nufibox-agent-windows-amd64.msi');  // from the box origin
+    expect(p.chatUrl).toBe('https://nufi.box.internal:3080/');   // "Open NuFi" fallback routes either member
+    expect(p.enroll).toContain('$a = "$env:ProgramFiles\\NufiBox\\nufibox-agent.ps1"'); // full path: no stale-PATH miss
+    expect(p.enroll).toContain("powershell -NoProfile -ExecutionPolicy Bypass -File $a enroll -Server 'https://coordinator.internal'");
+    expect(p.enroll).not.toContain('nufibox-agent.cmd');   // cmd.exe would re-parse & and % in the values
+    expect(p.enroll).toContain("-AuthKey 'k-member-secret'");
+    expect(p.enroll).toContain("-Hostname 'ivy-nguyen'");
+    expect(p.enroll).not.toContain('tailscale');
+  });
+
+  test('with a public base the msi comes from the release; box when empty', () => {
+    const pub = windowsPlan({ ...base('windows'), agentPublicBase: 'https://github.com/dudaji-vn/nufi-app/releases/download/', agentVersion: '1.102.3' });
+    expect(pub.msiUrl).toBe('https://github.com/dudaji-vn/nufi-app/releases/download/agent-windows-v1.102.3/nufibox-agent-windows-amd64.msi');
+    expect(windowsPlan(base('windows')).msiUrl).toBe('http://nufi.local/agent/nufibox-agent-windows-amd64.msi'); // no base -> box
+  });
+
+  test('a returning machine lands on sign-in, a fresh one on sign-up -- decided before enrol, from the agent', () => {
+    const e = windowsPlan(base('windows')).enroll;
+    // the .msi's service creates %ProgramData%\NufiBox on a FRESH machine, so the
+    // agent's own status (exit 0 only once joined) decides, not the dir
+    expect(e).toContain("-File $a status *> $null; $p = if ($LASTEXITCODE -eq 0) { 'login' } else { 'register' }");
+    expect(e).not.toContain('Test-Path');
+    expect(e.indexOf('$a status')).toBeLessThan(e.indexOf('$a enroll'));
+    expect(e).toContain("Start-Process ('https://nufi.box.internal:3080/' + $p)");  // opens the decided page
+    expect(e).not.toContain(':3080/register');                                       // never a hard-coded sign-up
+  });
+
+  test('trusts the box CA AFTER joining, over the mesh, best effort, only if enrol succeeded', () => {
+    const e = windowsPlan(base('windows')).enroll;
+    expect(e).toContain("Invoke-WebRequest -UseBasicParsing 'http://nufi.box.internal/nufi-box-ca.crt'"); // mesh name
+    expect(e).toContain('certutil -addstore -f Root');
+    expect(e).toMatch(/try \{ Invoke-WebRequest .* \} catch \{\}/);   // best effort -- never blocks the join
+    expect(e.indexOf('$a enroll')).toBeLessThan(e.indexOf('certutil'));
+    expect(e).toMatch(/if \(\$LASTEXITCODE -eq 0\) \{ try \{ Invoke-WebRequest/); // gated on a successful enrol
+    expect(e).not.toContain('http://nufi.local/nufi-box-ca.crt');      // not the box LAN origin
+  });
+
+  test('a self-hosted coordinator EMBEDS the coord CA and passes -Ca; a public one does not', () => {
+    const selfHost = windowsPlan(base('windows'));           // base() sets a coord CA
+    expect(selfHost.enroll).toContain("[IO.File]::WriteAllBytes(\"$env:TEMP\\nufi-ca.crt\", [Convert]::FromBase64String('Y29vcmRjYQ=='))");
+    expect(selfHost.enroll).toContain('-Ca "$env:TEMP\\nufi-ca.crt"');
+    expect(selfHost.enroll).not.toContain('/agent/mesh-ca.crt');      // no box fetch for the coord CA
+    const pub = windowsPlan({ ...base('windows'), coordCaB64: '' });
+    expect(pub.enroll).not.toContain('nufi-ca.crt');
+    expect(pub.enroll).not.toContain('-Ca ');
+  });
+
+  test('PowerShell-quotes owner/coordinator values so a stray char cannot break the paste', () => {
+    const evil = windowsPlan({ ...base('windows'), serverUrl: "https://x'; Remove-Item C:\\ -Recurse; '", key: 'k$(whoami)' });
+    // inside '...' only '' escapes and nothing expands: the value stays ONE argument
+    expect(evil.enroll).toContain("-Server 'https://x''; Remove-Item C:\\ -Recurse; '''");
+    expect(evil.enroll).toContain("-AuthKey 'k$(whoami)'");          // single-quoted: $() never runs
+    expect(evil.enroll).not.toContain('-Server https://x');
   });
 });
 

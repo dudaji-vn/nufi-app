@@ -94,9 +94,13 @@ connects you, and there is nothing else to download.
 - **Linux** — run the downloaded file: `bash nufi-join-<you>.sh`. It downloads the
   NuFi app from NuFi's public release, trusts the box, connects, and maps your
   drives.
-- **Windows** — run the downloaded file. For now the Windows app uses Tailscale,
-  so install it from [tailscale.com/download](https://tailscale.com/download)
-  first if you are asked.
+- **Windows** — download and install the app, then paste the one command it
+  shows into PowerShell opened as administrator (right-click **Start** →
+  **Terminal (Admin)**). The app is signed by Dudaji. If SmartScreen still shows
+  a notice, check that the publisher is Dudaji, then choose **More info** →
+  **Run anyway**. The command connects, trusts the box, and opens the box in your
+  browser. On a work-managed laptop, installing apps may be blocked by your
+  company's policy — if so, use a personal device or ask IT.
 
 ### If you were sent a join file
 
@@ -125,7 +129,7 @@ not work, or you are setting up a second laptop, ask for a new one. Back in the
 office, both addresses work; you do not have to change anything.
 
 If your laptop is already on a company Tailscale network (some employers enrol
-laptops in one), the **join file** — and the Windows link — cannot connect it to
+laptops in one), the **join file** cannot connect it to
 a second one; use a personal device or ask your IT team. The **Mac and Linux
 link** does not have this limit: it runs its own private connection, separate
 from any company Tailscale.
