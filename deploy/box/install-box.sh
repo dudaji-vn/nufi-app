@@ -1048,7 +1048,19 @@ case "$OS" in
               warn "no interactive terminal; share $NUFI_DATA_DIR/drives/$d by hand (System Settings → General → Sharing → File Sharing)"
             fi
           done ;;
-  Linux)  have avahi-publish && run "$BOX_HOME/nufi-box" announce || warn "install avahi-utils to announce $BOX_HOST" ;;   # installs a reboot-persistent systemd announcer
+  Linux)
+    if ! have avahi-publish; then
+      warn "install avahi-utils to announce $BOX_HOST"
+    elif [ "$DRY" != 1 ] && command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet nufi-announce.service 2>/dev/null; then
+      # Already published by the reboot-persistent service. Re-running the
+      # announce would only reinstall the unit, which needs sudo and so fails
+      # loudly ("sudo: a terminal is required") on a non-interactive `nufi-box
+      # update`. BOX_IP is refreshed by the installer itself above, so there is
+      # nothing left to do here.
+      say "$BOX_HOST is already announced (nufi-announce.service)"
+    else
+      run "$BOX_HOME/nufi-box" announce   # first install / no service yet: installs the reboot-persistent announcer
+    fi ;;
 esac
 run sh -c "docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt '$NUFI_DATA_DIR/nufi-box-ca.crt'"
 if [ "$OS" = "Darwin" ]; then
