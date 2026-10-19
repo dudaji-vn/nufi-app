@@ -134,6 +134,15 @@ describe('owner-console app', () => {
     expect((await noCa.request('/agent/mesh-ca.crt')).status).toBe(404);        // public coordinator: nothing to serve
   });
 
+  test('GET /api/update-check compares the baked revision against main, behind owner auth', async () => {
+    const app = createApp({ ...ENV, NUFI_BUILD_REVISION: 'aaaaaaa' }, { fetchLatestMain: async () => 'bbbbbbb' });
+    expect((await app.request('/api/update-check')).status).toBe(401);          // owner-only
+    const cookie = (await app.request(form('hunter2'))).headers.get('set-cookie')!.split(';')[0];
+    const r = await app.request('/api/update-check', { headers: { cookie } });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ current: 'aaaaaaa', latest: 'bbbbbbb', updateAvailable: true });
+  });
+
   test('GET /connect is public, shows the OS picker, and carries no token', async () => {
     const app = createApp(dashEnv, connectDeps);
     const r = await app.request('/connect');       // no cookie

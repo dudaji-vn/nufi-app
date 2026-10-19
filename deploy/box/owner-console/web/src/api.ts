@@ -98,6 +98,12 @@ export const useApplyConfig = () => {
   });
 };
 
+// Read-only "is there a newer box?" check: the box's baked revision vs the
+// latest commit on main. Triggered by the owner, so it's a mutation (on demand),
+// not a poll. `updateAvailable` is null when the version can't be determined.
+export type UpdateStatus = { current: string | null; latest: string | null; updateAvailable: boolean | null; checkedAt: string };
+export const useUpdateCheck = () => useMutation({ mutationFn: () => get<UpdateStatus>('/api/update-check') });
+
 // POST /api/console and call onLine for each SSE `data:` line as it arrives.
 // Rejects with {error} on a non-2xx response or an `error` event.
 export async function streamConsole(cmd: string, onLine: (line: string) => void): Promise<void> {

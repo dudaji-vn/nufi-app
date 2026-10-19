@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import * as api from '../api';
 import { Controls } from './general/controls';
 import { Console } from './general/console';
+import { MoreMenu } from './general/more-menu';
 
 const mutate = vi.fn();
 afterEach(cleanup);
@@ -18,6 +19,7 @@ beforeEach(() => {
   vi.spyOn(api, 'useApplyConfig').mockReturnValue({ mutate: vi.fn(), isPending: false } as never);
   vi.spyOn(api, 'useRemoteWork').mockReturnValue({ mutate: vi.fn(), isPending: false } as never);
   vi.spyOn(api, 'useRemoteWorkStatus').mockReturnValue({ data: { on: true } } as never);
+  vi.spyOn(api, 'useUpdateCheck').mockReturnValue({ mutate: vi.fn(), isPending: false, data: undefined } as never);
 });
 
 test('Restart opens the confirm modal; confirming fires the whole-box mutation', () => {
@@ -94,6 +96,35 @@ test('doctor runs in-app against /api/status, not the host script', async () => 
 test('the support chip is gone (host-only, cannot run in the hardened console)', () => {
   render(<Console />);
   expect(screen.queryByTestId('console-chip-support')).toBeNull();
+});
+
+test('Check for Update copies the host command when an update is available', () => {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+  const mutate = vi.fn((_v: unknown, opts: { onSuccess: (s: unknown) => void }) =>
+    opts.onSuccess({ updateAvailable: true, current: 'a', latest: 'b', checkedAt: '' }),
+  );
+  vi.spyOn(api, 'useUpdateCheck').mockReturnValue({ mutate, isPending: false, data: { updateAvailable: true } } as never);
+  render(<MoreMenu />);
+  fireEvent.click(screen.getByTestId('control-more'));
+  fireEvent.click(screen.getByTestId('more-update'));
+  expect(mutate).toHaveBeenCalled();
+  expect(writeText).toHaveBeenCalledWith('nufi-box update'); // the update itself is a host command
+  expect(screen.getByTestId('update-status').textContent).toContain('Update available');
+});
+
+test('Check for Update says up to date and copies nothing when current', () => {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+  const mutate = vi.fn((_v: unknown, opts: { onSuccess: (s: unknown) => void }) =>
+    opts.onSuccess({ updateAvailable: false, current: 'a', latest: 'a', checkedAt: '' }),
+  );
+  vi.spyOn(api, 'useUpdateCheck').mockReturnValue({ mutate, isPending: false, data: { updateAvailable: false } } as never);
+  render(<MoreMenu />);
+  fireEvent.click(screen.getByTestId('control-more'));
+  fireEvent.click(screen.getByTestId('more-update'));
+  expect(writeText).not.toHaveBeenCalled();
+  expect(screen.getByTestId('update-status').textContent).toContain('Up to date');
 });
 
 test('a stream error shows an inline error line', async () => {
