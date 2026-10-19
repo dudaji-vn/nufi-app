@@ -178,6 +178,52 @@ describe('users routes', () => {
     expect(expired).toEqual([]);
   });
 
+  test('POST /users/delete batch-removes, revokes joined nodes, reports unknown ids', async () => {
+    const a = app();
+    const u1 = await addUser({ name: 'A', os: 'linux', keyId: 'ka', token: 't' });
+    const u2 = await addUser({ name: 'B', os: 'linux', keyId: 'kb', token: 't' });
+    const u3 = await addUser({ name: 'C', os: 'linux', keyId: 'kc', token: 't' });
+    nodes = [node('11', 'ka'), node('22', 'kc')]; // A and C joined; B pending
+    const r = await call(a, 'POST', '/api/users/delete', { ids: [u1.id, u2.id, 'ghost'] });
+    expect(r.status).toBe(200);
+    const body = await r.json();
+    expect([...body.deleted].sort()).toEqual([u1.id, u2.id].sort());
+    expect(body.failed).toEqual([{ id: 'ghost', error: 'user not found' }]);
+    expect(revoked).toEqual(['11']); // A's node revoked; B had none
+    expect((await listUsers()).map((x) => x.id)).toEqual([u3.id]); // only C left
+  });
+
+  test('POST /users/delete reads the coordinator once for the whole batch', async () => {
+    let listNodesCalls = 0;
+    const counting = app(MESH, { ...users, listNodes: async () => { listNodesCalls++; return nodes; } });
+    const u1 = await addUser({ name: 'A', os: 'linux', keyId: 'ka', token: 't' });
+    const u2 = await addUser({ name: 'B', os: 'linux', keyId: 'kb', token: 't' });
+    nodes = [node('11', 'ka'), node('22', 'kb')];
+    await call(counting, 'POST', '/api/users/delete', { ids: [u1.id, u2.id] });
+    expect(listNodesCalls).toBe(1);
+  });
+
+  test('POST /users/delete keeps a member whose revoke fails and deletes the rest', async () => {
+    const u1 = await addUser({ name: 'A', os: 'linux', keyId: 'ka', token: 't' });
+    const u2 = await addUser({ name: 'B', os: 'linux', keyId: 'kb', token: 't' });
+    nodes = [node('11', 'ka'), node('22', 'kb')];
+    const bad = app(MESH, {
+      ...users,
+      revokeNode: async (_c: unknown, id: string) => { if (id === '11') throw new MeshError('down'); revoked.push(id); },
+    });
+    const r = await call(bad, 'POST', '/api/users/delete', { ids: [u1.id, u2.id] });
+    const body = await r.json();
+    expect(body.deleted).toEqual([u2.id]);
+    expect(body.failed).toEqual([{ id: u1.id, error: 'down' }]);
+    expect((await listUsers()).map((x) => x.id)).toEqual([u1.id]); // A kept
+  });
+
+  test('POST /users/delete rejects an empty or absent ids list', async () => {
+    const a = app();
+    expect((await call(a, 'POST', '/api/users/delete', {})).status).toBe(400);
+    expect((await call(a, 'POST', '/api/users/delete', { ids: [] })).status).toBe(400);
+  });
+
   test('regenerate swaps keyId and token', async () => {
     const a = app();
     const u = await addUser({ name: 'Zed', os: 'linux', keyId: 'old', token: 'oldtoken' });

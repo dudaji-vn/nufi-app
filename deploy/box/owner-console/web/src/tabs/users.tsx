@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { exportUsersCsv, exportUsersZip, useDeleteUser, useImportUsers, useRegenerate, useUsers, type UserRow } from '../api';
+import { exportUsersCsv, exportUsersZip, useBulkDeleteUsers, useDeleteUser, useImportUsers, useRegenerate, useUsers, type UserRow } from '../api';
 import { Button } from '../ui/button';
 import { Modal } from '../ui/modal';
 import { Select } from '../ui/select';
@@ -20,6 +20,7 @@ const errText = (e: unknown, fallback: string) => (e as { error?: string }).erro
 export function Users() {
   const { data, isPending, error } = useUsers();
   const del = useDeleteUser();
+  const bulkDel = useBulkDeleteUsers();
   const regen = useRegenerate();
   const imp = useImportUsers();
   const toast = useToast();
@@ -81,17 +82,14 @@ export function Users() {
     const ids = [...selected];
     setBulkDeleting(false);
     setSelected(new Set());
-    let ok = 0;
-    let fail = 0;
-    for (const id of ids) {
-      try {
-        await del.mutateAsync(id);
-        ok++;
-      } catch {
-        fail++;
-      }
+    try {
+      const { deleted, failed } = await bulkDel.mutateAsync(ids);
+      const ok = deleted.length;
+      const fail = failed.length;
+      toast.push(`Deleted ${ok} user${ok === 1 ? '' : 's'}${fail ? `, ${fail} failed` : ''}`, fail ? 'warn' : 'ok');
+    } catch (e) {
+      toast.push(errText(e, 'Delete failed'), 'bad');
     }
-    toast.push(`Deleted ${ok} user${ok === 1 ? '' : 's'}${fail ? `, ${fail} failed` : ''}`, fail ? 'warn' : 'ok');
   };
 
   const onUpload = (f: File | undefined) => {
@@ -140,7 +138,7 @@ export function Users() {
             <Button variant="secondary" className="btn-ico" data-testid="export-zip" onClick={exportZip}>
               <IconDownload size={16} /> Export .zip
             </Button>
-            <Button variant="danger" className="btn-ico" data-testid="bulk-delete" disabled={del.isPending} onClick={() => setBulkDeleting(true)}>
+            <Button variant="danger" className="btn-ico" data-testid="bulk-delete" disabled={bulkDel.isPending} onClick={() => setBulkDeleting(true)}>
               <IconTrash size={16} /> Delete
             </Button>
             <button type="button" className="btn-deselect" data-testid="deselect" onClick={() => setSelected(new Set())}>

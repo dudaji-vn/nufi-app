@@ -138,6 +138,10 @@ export const useUsers = () => useQuery({ queryKey: ['users'], queryFn: () => get
 const useRefreshUsers = () => { const qc = useQueryClient(); return () => qc.invalidateQueries({ queryKey: ['users'] }); };
 export const useAddUser = () => { const refresh = useRefreshUsers(); return useMutation({ mutationFn: (req: { name: string; os: UserOs; method?: 'public' | 'private' }) => post<UserRow>('/api/users', req), onSuccess: refresh }); };
 export const useDeleteUser = () => { const refresh = useRefreshUsers(); return useMutation({ mutationFn: (id: string) => del<unknown>('/api/users/' + encodeURIComponent(id)), onSuccess: refresh }); };
+export type BulkDeleteResult = { deleted: string[]; failed: { id: string; error: string }[] };
+// Delete the whole selection in ONE request (vs N single-delete calls + N refetches).
+// Partial success is normal; the response says which ids went and which failed.
+export const useBulkDeleteUsers = () => { const refresh = useRefreshUsers(); return useMutation({ mutationFn: (ids: string[]) => post<BulkDeleteResult>('/api/users/delete', { ids }), onSuccess: refresh }); };
 export const useRegenerate = () => { const refresh = useRefreshUsers(); return useMutation({ mutationFn: (id: string) => post<UserRow>('/api/users/' + encodeURIComponent(id) + '/regenerate', {}), onSuccess: refresh }); };
 export const useImportUsers = () => {
   const refresh = useRefreshUsers();

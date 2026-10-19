@@ -22,6 +22,7 @@ beforeEach(() => {
   mutate.mockReset();
   vi.spyOn(api, 'useAddUser').mockReturnValue({ mutate, isPending: false } as never);
   vi.spyOn(api, 'useDeleteUser').mockReturnValue(idle);
+  vi.spyOn(api, 'useBulkDeleteUsers').mockReturnValue(idle);
   vi.spyOn(api, 'useRegenerate').mockReturnValue(idle);
   vi.spyOn(api, 'useImportUsers').mockReturnValue(idle);
 });
@@ -96,6 +97,18 @@ test('selecting a row reveals the Export CSV bar', () => {
   expect(screen.queryByTestId('export-csv')).toBeNull();
   fireEvent.click(screen.getByLabelText('Select Sun'));
   expect(screen.getByTestId('export-csv')).toBeTruthy();
+});
+
+test('bulk delete sends every selected id in ONE request', () => {
+  mockUsers([row({ id: 'a', name: 'Alice' }), row({ id: 'b', name: 'Bob' })]);
+  const mutateAsync = vi.fn().mockResolvedValue({ deleted: ['a', 'b'], failed: [] });
+  vi.spyOn(api, 'useBulkDeleteUsers').mockReturnValue({ mutateAsync, isPending: false } as never);
+  render(<Users />);
+  fireEvent.click(screen.getByTestId('select-all'));
+  fireEvent.click(screen.getByTestId('bulk-delete'));
+  fireEvent.click(screen.getByTestId('bulk-delete-confirm'));
+  expect(mutateAsync).toHaveBeenCalledTimes(1);
+  expect(mutateAsync).toHaveBeenCalledWith(['a', 'b']);
 });
 
 test('paginates client-side', () => {
