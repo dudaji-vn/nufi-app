@@ -67,10 +67,33 @@ test('typing a command + Enter streams it into the console', async () => {
   });
   render(<Console />);
   const input = screen.getByTestId('console-input');
-  fireEvent.change(input, { target: { value: 'doctor' } });
+  fireEvent.change(input, { target: { value: 'status' } });
   fireEvent.submit(input.closest('form')!);
   await screen.findByText('line one');
-  expect(api.streamConsole).toHaveBeenCalledWith('doctor', expect.any(Function));
+  expect(api.streamConsole).toHaveBeenCalledWith('status', expect.any(Function));
+});
+
+test('doctor runs in-app against /api/status, not the host script', async () => {
+  const stream = vi.spyOn(api, 'streamConsole');
+  vi.spyOn(api, 'get').mockResolvedValue({
+    box: { name: 'b' },
+    services: [
+      { name: 'librechat', ok: true, status: 200, ms: 12 },
+      { name: 'litellm-proxy', ok: false, status: 503, ms: 5, error: 'down' },
+    ],
+  } as never);
+  render(<Console />);
+  fireEvent.click(screen.getByTestId('console-chip-doctor'));
+  await screen.findByText(/FAIL litellm-proxy/);
+  expect(screen.getByText(/ok librechat/)).toBeTruthy();
+  expect(screen.getByText(/1 service need attention/)).toBeTruthy();
+  expect(api.get).toHaveBeenCalledWith('/api/status'); // read-only; no host exec
+  expect(stream).not.toHaveBeenCalled();
+});
+
+test('the support chip is gone (host-only, cannot run in the hardened console)', () => {
+  render(<Console />);
+  expect(screen.queryByTestId('console-chip-support')).toBeNull();
 });
 
 test('a stream error shows an inline error line', async () => {
