@@ -338,6 +338,20 @@ RUN cp /agent-src/dist/nufibox-agent-windows-*.msi /dist/ 2>/dev/null || true
   from `renderConnector` (the `windows.cmd` Tailscale template) to `windowsPlan`,
   the way the macOS branch already returns `macosPlan`.
 
+- **Match the returning-member landing (PR #217).** `macosPlan` /
+  `renderConnector` now decide the page the member lands on from the agent's
+  state dir: a machine that is already a mesh node (a re-run, or a second invite
+  on one machine — one machine is one node) opens `/login`; a fresh one
+  `/register`; and the "Open NuFi" fallback (`chatUrl`) points at the box **home**
+  `https://<box>:3080/`, which routes either member. `windowsPlan` must do the
+  same, decided on the Windows machine from its OWN state dir (the
+  `%ProgramData%\NufiBox` the service uses, step 1/2) BEFORE enrol creates it —
+  e.g. in the `.ps1` command:
+  `$p = if (Test-Path "$env:ProgramData\NufiBox") { 'login' } else { 'register' }`
+  then open `https://<box>:3080/$p` at the end. Read the CURRENT `macosPlan` in
+  `connector.ts` (it already does this) and mirror it; do not reintroduce a
+  hard-coded `/register`.
+
 - **Keep the interim path working until the release exists.** Until a signed
   `agent-windows-v*` release is published AND verified end to end,
   `agentPublicBase` resolves the public URL but there is no asset, and the box
@@ -349,8 +363,10 @@ RUN cp /agent-src/dist/nufibox-agent-windows-*.msi /dist/ 2>/dev/null || true
 
 - **Tests:** mirror the macOS connector tests in `tests/connector.test.ts` —
   `windowsPlan` with/without a public base (release vs box URL), the enrol command
-  shape, post-join box-CA-over-mesh, embedded coord CA for self-host, and
-  PowerShell-quoting of injected values. `bun test` green before PR.
+  shape, post-join box-CA-over-mesh, embedded coord CA for self-host,
+  PowerShell-quoting of injected values, and the returning-member landing (a
+  machine with the state dir → `/login`, a fresh one → `/register`; `chatUrl` is
+  the box home). `bun test` green before PR.
 
 ## Step 8 — Docs (any machine)
 
