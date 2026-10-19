@@ -1,4 +1,4 @@
-# Signing the macOS NufiBox Agent
+# Signing the NufiBox Agent (macOS, Windows)
 
 The `.github/workflows/agent-macos.yml` workflow builds the de-branded agent for
 macOS and produces a **signed + notarized** universal `.pkg` — so a member's Mac
@@ -64,6 +64,41 @@ NOTARIZE=0 deploy/box/agent/build-agent-macos.sh   # sign only
 
 It signs with the Developer ID identities in the keychain and notarizes with the
 `NOTARY_PROFILE` keychain profile (default `nufibox-notary`).
+
+## Windows
+
+`.github/workflows/agent-windows.yml` is the Windows twin. It builds the
+de-branded agent and produces a **signed** `.msi` (the `.exe`s inside are signed
+too), so a member's PC installs it with no SmartScreen "unknown publisher"
+warning. Authenticode signing is the Windows equivalent of notarization. The
+Apple Developer ID does nothing here.
+
+**Credential:** a DigiCert **OV code-signing certificate** issued to
+`DUDAJI VIETNAM COMPANY LIMITED`, with its private key in the signing user's
+`CurrentUser\My` store on the Windows signing host (no Azure Trusted Signing).
+It is used in place by thumbprint and never exported. Signatures are RFC3161
+timestamped (`timestamp.digicert.com`), so installers signed while the cert was
+valid stay valid after it expires. **The current certificate expires
+2026-11-17. Renew it before then.** `pack-agent-windows.ps1` picks the newest
+valid cert with that subject, so a renewed cert in the same store needs no
+change. It warns when expiry is within 30 days and refuses to build with none.
+
+**The signing host needs:** Go, WiX v4 (`dotnet tool install --global wix`;
+the util extension is fetched pinned by the script), the Windows SDK's
+`signtool`, Git and `gh`.
+
+**Runner:** GitHub → repo Settings → Actions → Runners → New self-hosted runner
+→ **Windows**. It must run **as the signing user**, because the certificate is
+in that user's store: start it with `run.cmd` in that user's session, or install
+it as a service set to log on as that account (not `NETWORK SERVICE`). Keep it
+scoped to this repo. As on macOS, **never** add a `pull_request:` trigger; the
+workflow runs on manual dispatch or an `agent-windows-v*` tag only.
+
+**Local build** on the signing host:
+
+```powershell
+deploy\box\agent\pack-agent-windows.ps1     # -> dist\nufibox-agent-windows-amd64.msi (+ .sha256)
+```
 
 ## If you ever move to a GitHub-hosted runner instead
 

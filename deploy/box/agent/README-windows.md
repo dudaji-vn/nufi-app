@@ -1,54 +1,73 @@
-# NufiBox Agent on Windows (scaffold)
+# NufiBox Agent on Windows
 
-The Windows agent is **scaffolded, not finished**. This records exactly what is
-proven and what still needs a Windows machine and a certificate, so the work can
-be picked up without re-discovering it.
+A member installs **one signed `.msi`** ("NufiBox Mesh", publisher Dudaji, with
+no "Tailscale" shown anywhere). It runs the `NufiBox` service, and then the
+member runs one elevated `nufibox-agent enroll …` command. The engine is
+tailscale (BSD-3), the same version as Linux/macOS, de-branded at the source.
+The remaining box-side steps (bake, `/connect`, docs) are in
+[`windows-agent-plan.md`](./windows-agent-plan.md).
 
-**To finish it, follow [`windows-agent-plan.md`](./windows-agent-plan.md)** — the
-step-by-step runbook (runtime check → wrapper → `.msi` → sign → CI → bake →
-`/connect` → docs), written to be executed on the signing Windows host.
+## Build
 
-## Proven here (cross-compiled from macOS/Linux)
+On the Windows signing host (see the Windows section of
+[`README-signing.md`](./README-signing.md)):
 
-`build-agent-windows.sh` compiles the de-branded engine for Windows with Go
-(`CGO_ENABLED=0 GOOS=windows`), ships it under nufibox names, and zips it with the
-wrapper:
-
-```
-./build-agent-windows.sh          # -> dist/nufibox-agent-windows-amd64.zip
+```powershell
+deploy\box\agent\pack-agent-windows.ps1     # -> dist\nufibox-agent-windows-amd64.msi (+ .sha256)
 ```
 
-`nufibox-tailscaled.exe` and `nufibox-tailscale.exe` build cleanly (PE32+ x86-64)
-— no Windows host is needed to *produce* the binaries. This is the same BSD-3
-engine the Linux and macOS agents use.
+It pins tailscale, de-brands a copy of its source (`windows/debrand-engine.ps1`),
+builds and signs the `.exe`s, fetches the pinned `wintun.dll`, builds the `.msi`
+from `windows/nufibox-agent.wxs`, and signs it. CI runs the same script
+(`.github/workflows/agent-windows.yml`).
 
-## Still needed (requires a Windows machine)
+The `.msi` installs to `%ProgramFiles%\NufiBox`: the engine, `wintun.dll`, the
+wrapper, the license notices, and `bin\nufibox-agent.cmd`, which is on PATH. It
+registers and starts the `NufiBox` service. Enrolment is never part of it.
+Uninstall stops the service and removes the adapter, routes and firewall rules
+(`--cleanup` plus deleting the rules by name), but keeps `%ProgramData%\NufiBox`.
+An upgrade replaces in place (stable UpgradeCode).
 
-- **Runtime check.** Confirm `nufibox-tailscaled.exe` drives a **wintun**
-  interface and that wintun ships correctly (embedded in the build vs a
-  `wintun.dll` that must travel alongside — and its redistribution terms).
-- **Service registration.** Decide how the daemon runs as a Windows service
-  (`install-system-daemon` if this build exposes it, or an `sc.exe` service) and
-  finish `Daemon-Up` in `nufibox-agent.ps1` (currently a `TODO` that throws).
-- **`nufibox-agent.ps1`.** The wrapper is a DRAFT: argument parsing, the
-  `certutil -addstore -f Root` CA trust, and `tailscale up` mirror the tested
-  Linux/macOS wrappers, but nothing here has run on Windows. Verify end to end.
-- **Installer.** Package into a `.msi` (WiX) or a signed installer that lays down
-  the binaries + wrapper and registers the service, so the member installs one
-  thing.
+`build-agent-windows.sh` is the original cross-compile scaffold. It does **not**
+de-brand, so its binaries collide with an official Tailscale install. Do not
+ship them.
 
-## Still needed (requires a certificate — from the repo owner)
+## Confirmed on Windows 11 (tailscale 1.102.3, Go 1.27.0)
 
-- **Code signing.** Sign the `.exe`s and the installer so SmartScreen does not
-  warn — needs an **EV code-signing certificate** or **Azure Trusted Signing**.
-  The Apple Developer ID used for macOS does nothing on Windows. This is the
-  Windows equivalent of the macOS notarization step, and the last blocker for a
-  warning-free Windows install.
+- **The engine must be de-branded at the source, not just renamed.** As a
+  service, tailscaled re-execs itself as `/subproc <logid>` and that child never
+  sees the service's flags, so `--tun`/`--statedir`/`--socket` on the binPath
+  are dropped. Its defaults are hardcoded "Tailscale" (service, adapter name +
+  tunnel type + a fixed adapter GUID, CLI pipe, state/log dirs, firewall rules),
+  which are both visible to the member and identical to an official Tailscale
+  install. `windows/debrand-engine.ps1` patches a copy of the pinned source
+  before `go build`. Every patch must match an exact count, so a `TS_VERSION`
+  bump that moves a line fails the build.
+- **wintun is a DLL shipped alongside, not embedded.** Ship the official signed
+  `wintun.dll` 0.14.1 (from wintun.net, amd64 build) unmodified next to the
+  `.exe`s, with its LICENSE. Its terms allow redistributing the signed DLL
+  unmodified. With it in place the daemon creates the adapter **`NufiBox`**
+  ("NufiBox Tunnel", GUID `{c9878163-6f55-41ea-94dc-91da8a676e55}`, which must
+  never change). No Tailscale-named adapter is created.
+- **Service registration: a plain SCM service, no `install-system-daemon`.**
+  The service is `NufiBox` (display "NufiBox Mesh"), binPath `"<dir>\nufibox-tailscaled.exe"
+  --no-logs-no-support`, auto start, depends on Dnscache/iphlpsvc/netprofm/WinHttpAutoProxySvc,
+  restart on failure. This is what `Daemon-Up` does and what the `.msi` must
+  replicate.
+- **Paths (patched defaults, no flags needed):** state
+  `%ProgramData%\NufiBox\server-state.conf`, locked to SYSTEM + Administrators
+  by the daemon on start. The CLI pipe is
+  `\\.\pipe\ProtectedPrefix\Administrators\NufiBox\tailscaled`, so the CLI needs
+  an elevated shell. Firewall rules are `NufiBox-Process` / `NufiBox-In`.
 
-## Where it plugs in
+## Still needed
 
-Once a signed Windows installer exists, it slots in exactly like macOS:
-`agent-macos.yml` has a sibling that publishes a `agent-windows-v*` release,
-box-images bakes the artifact into the owner-console image, and the `/connect`
-page's Windows branch installs it instead of today's Tailscale-app connector.
-Until then, Windows members keep using the official Tailscale flow.
+- **End-to-end enrol** of an installed `.msi` against the public coordinator with
+  a fresh `nufi-box invite … --os windows` key: the host shows in
+  `nufi-box members`, and the box's `/health` returns 200 over the mesh.
+- **SmartScreen on a clean machine.** The publisher is now signed. An OV
+  certificate (unlike EV) can still show a "not commonly downloaded" prompt
+  until the file builds download reputation.
+- **Box side** (plan steps 6–8): bake the `.msi` into the owner-console image,
+  serve it at `/agent/`, flip the `/connect` Windows branch to `windowsPlan`, and
+  update the docs. Until then, Windows members keep the official Tailscale flow.
