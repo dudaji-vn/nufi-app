@@ -14,6 +14,9 @@ RUN cd /agent-src \
 # build; copy it in if present. Best-effort: without it, /agent/nufibox-agent-
 # macos.pkg simply 404s until a signed release exists.
 RUN cp /agent-src/dist/nufibox-agent-macos.pkg /dist/ 2>/dev/null || true
+# Likewise the SIGNED Windows .msi (the `agent-windows` workflow, on the signing
+# Windows host): /agent/nufibox-agent-windows-<arch>.msi 404s until one exists.
+RUN cp /agent-src/dist/nufibox-agent-windows-*.msi /dist/ 2>/dev/null || true
 
 # Build the React SPA (web/) to web/dist; the runtime stage copies only dist.
 FROM oven/bun:1.4.2-alpine AS webbuild

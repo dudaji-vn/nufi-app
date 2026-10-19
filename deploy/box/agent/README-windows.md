@@ -68,6 +68,13 @@ ship them.
 - **SmartScreen on a clean machine.** The publisher is now signed. An OV
   certificate (unlike EV) can still show a "not commonly downloaded" prompt
   until the file builds download reputation.
-- **Box side** (plan steps 6–8): bake the `.msi` into the owner-console image,
-  serve it at `/agent/`, flip the `/connect` Windows branch to `windowsPlan`, and
-  update the docs. Until then, Windows members keep the official Tailscale flow.
+## Box side
+
+box-images bakes the latest `agent-windows-v*` `.msi` into the owner-console
+image, and the box serves it at `/agent/nufibox-agent-windows-amd64.msi`. The
+`/connect` Windows option is `windowsPlan`: download the `.msi` (public release
+first, the box copy as the air-gap fallback), then paste one admin-PowerShell
+command. The command checks `nufibox-agent status` to pick `/login` or
+`/register`; the state dir can't decide this, because the `.msi`'s service
+creates it on a fresh machine. `nufi-box invite --os windows` (the `.cmd` join
+file) still uses official Tailscale and remains the fallback.

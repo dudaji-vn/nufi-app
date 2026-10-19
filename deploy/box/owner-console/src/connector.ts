@@ -208,6 +208,51 @@ export function macosPlan(input: ConnectorInput): MacPlan {
   return { pkgUrl, enroll: `${land}; ${parts.join(' && ')}; ${openPage}`, chatUrl };
 }
 
+// PowerShell single-quote: '' is the only escape inside '...', and nothing in a
+// single-quoted string expands, so a value can never break out of its argument.
+const psq = (s: string) => `'${s.replace(/'/g, "''")}'`;
+
+// Windows members get the same two steps as macOS: install the SIGNED .msi (it
+// registers the NufiBox service; no "Tailscale" anywhere), then paste ONE
+// command into an ADMINISTRATOR PowerShell -- the daemon's pipe only admits
+// Administrators, like sudo on mac/Linux. Same rules as macosPlan: public
+// release first, the box's /agent/ copy as the air-gap fallback; a self-hosted
+// coordinator's CA is embedded; the box CA is trusted only AFTER the join, over
+// the mesh name, best effort. The wrapper .ps1 is run by its full install path
+// (a window opened before the install has the old PATH) through powershell.exe
+// -File, NOT the bin\nufibox-agent.cmd shim: arguments to a .cmd are re-parsed
+// by cmd.exe, where an unquoted & or % in a value would run as a command.
+export type WindowsPlan = { msiUrl: string; enroll: string; chatUrl: string };
+
+export function windowsPlan(input: ConnectorInput): WindowsPlan {
+  const member = safeMember(input.member);
+  const boxUrl = (input.boxUrl ?? '').replace(/\/$/, '');
+  const pubBase = (input.agentPublicBase ?? '').replace(/\/$/, '');
+  const ver = input.agentVersion ?? '';
+  const msiUrl = pubBase
+    ? `${pubBase}/agent-windows-v${ver}/nufibox-agent-windows-amd64.msi`
+    : `${boxUrl}/agent/nufibox-agent-windows-amd64.msi`;
+  const chatUrl = `https://${input.boxMeshHost}:3080/`;
+  const agent = `powershell -NoProfile -ExecutionPolicy Bypass -File $a`;
+  const parts: string[] = [`$a = "$env:ProgramFiles\\NufiBox\\nufibox-agent.ps1"`];
+  // Returning member? Decided BEFORE enrol, from the agent itself: unlike
+  // /Library/NufiBox on mac, %ProgramData%\NufiBox already exists on a fresh
+  // machine (the .msi starts the service, which creates it), so the dir cannot
+  // tell the two apart. `status` exits 0 only on a machine that already joined.
+  parts.push(`${agent} status *> $null; $p = if ($LASTEXITCODE -eq 0) { 'login' } else { 'register' }`);
+  let caArg = '';
+  if (input.coordCaB64) {
+    parts.push(`[IO.File]::WriteAllBytes("$env:TEMP\\nufi-ca.crt", [Convert]::FromBase64String(${psq(input.coordCaB64)}))`);
+    caArg = ` -Ca "$env:TEMP\\nufi-ca.crt"`;
+  }
+  parts.push(`${agent} enroll -Server ${psq(input.serverUrl)} -AuthKey ${psq(input.key)}${caArg} -Hostname ${psq(member)}`);
+  // Only once joined: trust the box CA over the mesh (best effort), then open
+  // the page decided above. A failed enrol stops here with its own message.
+  const boxCa = `try { Invoke-WebRequest -UseBasicParsing ${psq(`http://${input.boxMeshHost}/nufi-box-ca.crt`)} -OutFile "$env:TEMP\\nufi-box-ca.crt"; certutil -addstore -f Root "$env:TEMP\\nufi-box-ca.crt" | Out-Null } catch {}`;
+  parts.push(`if ($LASTEXITCODE -eq 0) { ${boxCa}; Start-Process (${psq(`https://${input.boxMeshHost}:3080/`)} + $p) }`);
+  return { msiUrl, enroll: parts.join('; '), chatUrl };
+}
+
 export function renderConnector(input: ConnectorInput, templatesDir: string): Connector {
   if (input.os === 'linux') return agentConnectorLinux(input);
   const member = safeMember(input.member);

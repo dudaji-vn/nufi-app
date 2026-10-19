@@ -9,7 +9,7 @@ import { configRoutes, type ConfigDeps } from './api/config';
 import { buildStatus } from './api/status';
 import { usersRoutes, type UsersDeps } from './api/users';
 import { boxInfo } from './boxinfo';
-import { isOS, macosPlan, renderConnector } from './connector';
+import { isOS, macosPlan, renderConnector, windowsPlan } from './connector';
 import { checkAll, probesForEnv, type Health } from './health';
 import { verifyInvite } from './invite';
 import { connectPage, loginPage } from './views';
@@ -40,7 +40,7 @@ type Deps = {
 // The NufiBox Agent bundles the box ships for a member to install — the Linux
 // tarballs (one per arch) and the signed macOS .pkg. The name is allow-listed so
 // the path can never escape the dist directory.
-const AGENT_FILE = /^nufibox-agent-(linux-(amd64|arm64)\.tar\.gz|macos\.pkg)$/;
+const AGENT_FILE = /^nufibox-agent-(linux-(amd64|arm64)\.tar\.gz|macos\.pkg|windows-(amd64|arm64)\.msi)$/;
 
 function originOf(c: { req: { header: (n: string) => string | undefined } }): string {
   const proto = c.req.header('x-forwarded-proto') ?? 'https';
@@ -178,7 +178,7 @@ export function createApp(env: AppEnv = process.env, deps: Deps = {}): Hono {
     if (!AGENT_FILE.test(file)) return c.text('not found', 404);
     const f = Bun.file(`${agentDistDir}/${file}`);
     if (!(await f.exists())) return c.text('not found', 404);
-    const type = file.endsWith('.pkg') ? 'application/octet-stream' : 'application/gzip';
+    const type = file.endsWith('.tar.gz') ? 'application/gzip' : 'application/octet-stream'; // .pkg / .msi
     return new Response(f.stream(), {
       headers: { 'content-type': type, 'content-disposition': `attachment; filename="${file}"` },
     });
@@ -208,6 +208,17 @@ export function createApp(env: AppEnv = process.env, deps: Deps = {}): Hono {
         boxMeshHost: info.mesh.host, departments: info.departments,
         boxCaB64: '', coordCaB64: coordCaB64(), boxUrl: originOf(c),
         agentPublicBase: env.NUFI_AGENT_PUBLIC_BASE ?? '', // public .pkg release (box fallback when empty)
+        agentVersion: env.NUFI_AGENT_VERSION ?? '1.102.3',
+      }));
+    }
+    // Windows: the same two steps -- install the signed .msi, then paste one
+    // command into an administrator PowerShell.
+    if (os === 'windows') {
+      return c.json(windowsPlan({
+        os, member, key: invite.key, serverUrl: invite.serverUrl,
+        boxMeshHost: info.mesh.host, departments: info.departments,
+        boxCaB64: '', coordCaB64: coordCaB64(), boxUrl: originOf(c),
+        agentPublicBase: env.NUFI_AGENT_PUBLIC_BASE ?? '', // public .msi release (box fallback when empty)
         agentVersion: env.NUFI_AGENT_VERSION ?? '1.102.3',
       }));
     }

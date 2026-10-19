@@ -38,8 +38,21 @@ const shell = (title: string, body: string, wide = false) => `<!doctype html>
 // Open Sans + cards); the "NF" mark mirrors web/src/app.tsx.
 export function connectPage(): string {
   const runHints = {
-    windows: 'On Windows, if SmartScreen says "Windows protected your PC", click More info, then Run anyway.',
     linux: 'On Linux, run it with:  bash <the downloaded file>',
+  };
+  // macOS and Windows get the same three steps (install the signed agent, paste
+  // one enrol command, open NuFi); only the wording differs.
+  const planText = {
+    macos: {
+      install: 'It is signed by Dudaji, so macOS opens it without a warning. Download it, then double-click to install.',
+      download: 'Download for macOS',
+      join: 'Open <b>Terminal</b>, paste this line and press Return.',
+    },
+    windows: {
+      install: 'It is signed by Dudaji. Download it, then double-click to install. If Windows shows a SmartScreen notice, check the publisher is Dudaji, then choose <b>More info</b> &rarr; <b>Run anyway</b>.',
+      download: 'Download for Windows',
+      join: 'Right-click <b>Start</b>, open <b>Terminal (Admin)</b> or <b>Windows PowerShell (Admin)</b>, paste this line and press Enter.',
+    },
   };
   const icons = {
     macos:
@@ -58,6 +71,7 @@ export function connectPage(): string {
   var picker = document.getElementById('picker');
   var steps = document.getElementById('steps');
   var hints = ${JSON.stringify(runHints)};
+  var planText = ${JSON.stringify(planText)};
   function setMsg(text, kind) { msg.textContent = text; msg.className = 'note' + (kind ? ' ' + kind : ''); }
   if (!tok) {
     picker.hidden = true;
@@ -72,22 +86,23 @@ export function connectPage(): string {
       if (b) { b.classList.add('detected'); b.insertAdjacentHTML('beforeend', '<span class="tag">Detected</span>'); }
     }
   }
-  function renderMac(plan) {
+  function renderPlan(os, plan) {
+    var t = planText[os];
     setMsg('You are all set once these three steps are done.', '');
     steps.hidden = false;
     steps.innerHTML =
       '<ol>' +
         '<li><div><div class="step-t">Install the NuFi Agent</div>' +
-          '<div class="step-d">It is signed by Dudaji, so macOS opens it without a warning. Download it, then double-click to install.</div>' +
-          '<a class="btn" id="pkg" download>Download for macOS</a></div></li>' +
+          '<div class="step-d">' + t.install + '</div>' +
+          '<a class="btn" id="pkg" download>' + t.download + '</a></div></li>' +
         '<li><div><div class="step-t">Join the box</div>' +
-          '<div class="step-d">Open <b>Terminal</b>, paste this line and press Return.</div>' +
+          '<div class="step-d">' + t.join + '</div>' +
           '<div class="cmd"><code id="cmd"></code><button type="button" id="copy">Copy</button></div></div></li>' +
         '<li><div><div class="step-t">Open NuFi</div>' +
           '<div class="step-d">Sign in and start chatting.</div>' +
           '<a class="btn" id="chat" target="_blank" rel="noopener"></a></div></li>' +
       '</ol>';
-    document.getElementById('pkg').href = plan.pkgUrl;
+    document.getElementById('pkg').href = plan.pkgUrl || plan.msiUrl;
     document.getElementById('cmd').textContent = plan.enroll;
     var chat = document.getElementById('chat'); chat.href = plan.chatUrl; chat.textContent = 'Open NuFi';
     var copy = document.getElementById('copy');
@@ -105,7 +120,7 @@ export function connectPage(): string {
     fetch('/connect/connector', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: bodyData })
       .then(function (r) {
         if (!r.ok) { return r.text().then(function (t) { setMsg(t, 'err'); }); }
-        if ((r.headers.get('content-type') || '').indexOf('application/json') !== -1) { return r.json().then(renderMac); }
+        if ((r.headers.get('content-type') || '').indexOf('application/json') !== -1) { return r.json().then(function (plan) { renderPlan(os, plan); }); }
         var cd = r.headers.get('content-disposition') || '';
         var m = cd.match(/filename="([^"]+)"/);
         var name = m ? m[1] : 'nufi-join.' + (os === 'windows' ? 'cmd' : 'sh');
