@@ -141,6 +141,20 @@ export function usersRoutes(ctx: UsersCtx, deps: Partial<UsersDeps> = {}): Hono 
     }
   };
 
+  // Revoke a member's joined node (if any) + expire its key, then drop the
+  // record. Throws if the mesh revoke fails — the record is KEPT, because
+  // removing it while the node still has access would orphan that laptop. A
+  // batch passes `nodes` so the coordinator is read once, not once per member.
+  const purgeMember = async (cfg: MeshConfig | undefined, rec: UserRecord, nodes?: Node[]) => {
+    if (cfg) {
+      const nodeList = nodes ?? (await d.listNodes(cfg));
+      const joined = nodeList.find((n) => n.preAuthKeyId !== undefined && n.preAuthKeyId === rec.keyId);
+      if (joined) await d.revokeNode(cfg, joined.id);
+      await expireRecordKey(cfg, rec);
+    }
+    await d.removeUser(rec.id);
+  };
+
   const rowFor = async (cfg: MeshConfig, id: string) => (await rows(cfg)).find((x) => x.id === id);
 
   r.get('/users', withMesh(async (c, cfg) => c.json((await rows(cfg)).map((row) => withInvite(c, row)))));
@@ -159,19 +173,41 @@ export function usersRoutes(ctx: UsersCtx, deps: Partial<UsersDeps> = {}): Hono 
     const id = c.req.param('id');
     const rec = (await d.listUsers()).find((u) => u.id === id);
     if (!rec) return c.json({ error: 'user not found' }, 404);
+    try {
+      await purgeMember(meshConfig(ctx.env), rec);
+    } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : 'revoke failed' }, e instanceof MeshError ? 503 : 500);
+    }
+    return c.json({ ok: true });
+  });
+
+  // Batch delete: one request for the whole selection. Each member is purged with
+  // the single-delete semantics (revoke + expire + remove, record kept on a mesh
+  // failure), and the coordinator's nodes are read ONCE for the batch. Partial
+  // success is normal, so the response reports which ids were deleted and which
+  // failed rather than failing the whole request.
+  r.post('/users/delete', async (c) => {
+    const body = (await c.req.json().catch(() => null)) as { ids?: unknown } | null;
+    const ids = body && Array.isArray(body.ids) ? body.ids.filter((x): x is string => typeof x === 'string') : [];
+    if (!ids.length) return c.json({ error: 'ids is required' }, 400);
     const cfg = meshConfig(ctx.env);
-    if (cfg) {
+    const [users, nodes] = await Promise.all([
+      d.listUsers(),
+      cfg ? d.listNodes(cfg) : Promise.resolve(undefined),
+    ]);
+    const deleted: string[] = [];
+    const failed: { id: string; error: string }[] = [];
+    for (const id of ids) {
+      const rec = users.find((u) => u.id === id);
+      if (!rec) { failed.push({ id, error: 'user not found' }); continue; }
       try {
-        const joined = (await d.listNodes(cfg)).find((n) => n.preAuthKeyId !== undefined && n.preAuthKeyId === rec.keyId);
-        if (joined) await d.revokeNode(cfg, joined.id);
-        await expireRecordKey(cfg, rec);
+        await purgeMember(cfg, rec, nodes);
+        deleted.push(id);
       } catch (e) {
-        // Keep the record: removing it while the node still has access would orphan that laptop.
-        return c.json({ error: e instanceof Error ? e.message : 'revoke failed' }, e instanceof MeshError ? 503 : 500);
+        failed.push({ id, error: e instanceof Error ? e.message : 'revoke failed' });
       }
     }
-    await d.removeUser(id);
-    return c.json({ ok: true });
+    return c.json({ deleted, failed });
   });
 
   r.post('/users/:id/regenerate', withMesh(async (c, cfg) => {

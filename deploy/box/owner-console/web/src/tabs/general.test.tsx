@@ -13,6 +13,7 @@ beforeEach(() => {
   vi.spyOn(api, 'useApplyConfig').mockReturnValue({ mutate: vi.fn(), isPending: false } as never);
   vi.spyOn(api, 'useRemoteWork').mockReturnValue({ mutate: vi.fn(), isPending: false } as never);
   vi.spyOn(api, 'useRemoteWorkStatus').mockReturnValue({ data: { on: true } } as never);
+  vi.spyOn(api, 'useUpdateCheck').mockReturnValue({ mutate: vi.fn(), isPending: false, data: undefined } as never);
 });
 
 test('renders four service cards with Running badges', () => {

@@ -45,6 +45,11 @@ COPY --from=webbuild /web/dist ./web/dist
 COPY --from=templates . ./join-templates
 # The de-branded NufiBox Agent bundles the box serves at /agent (both arches).
 COPY --from=agentbuild /dist ./agent-dist
+# The git revision this image was built from, so the console's read-only update
+# check can compare the box's version against the latest commit on main. Empty
+# for a local build (the check then reports "version unknown", never a false claim).
+ARG GIT_REVISION=""
+ENV NUFI_BUILD_REVISION=$GIT_REVISION
 ENV PORT=8890 JOIN_TEMPLATES_DIR=/app/join-templates AGENT_DIST_DIR=/app/agent-dist
 EXPOSE 8890
 # /state is a named volume (owner-console-state): the user store (users.json) and

@@ -7,6 +7,7 @@ import { filesRoutes } from './api/files';
 import { controlRoutes, type ControlDeps } from './api/control';
 import { configRoutes, type ConfigDeps } from './api/config';
 import { buildStatus } from './api/status';
+import { checkUpdate, fetchLatestMain } from './update-check';
 import { usersRoutes, type UsersDeps } from './api/users';
 import { boxInfo } from './boxinfo';
 import { isOS, macosPlan, renderConnector, windowsPlan } from './connector';
@@ -35,6 +36,9 @@ type Deps = {
   exec?: Partial<ControlDeps>;
   users?: Partial<UsersDeps>;
   config?: Partial<ConfigDeps>;
+  // The newest commit on main; injected so the update-check route is hermetic in
+  // tests. Production hits the public GitHub API.
+  fetchLatestMain?: () => Promise<string | null>;
 };
 
 // The NufiBox Agent bundles the box ships for a member to install — the Linux
@@ -118,6 +122,13 @@ export function createApp(env: AppEnv = process.env, deps: Deps = {}): Hono {
   app.get('/api/ping', (c) => c.json({ ok: true }));
 
   app.get('/api/status', async (c) => c.json(await buildStatus(() => boxInfo(env), checkHealth)));
+
+  // Read-only version check: the box's baked revision vs the latest commit on
+  // main. No host command — the update itself stays `nufi-box update` on the box.
+  const fetchLatest = deps.fetchLatestMain ?? (() => fetchLatestMain());
+  app.get('/api/update-check', async (c) =>
+    c.json(await checkUpdate({ revision: () => env.NUFI_BUILD_REVISION ?? '', fetchLatest, now: () => new Date() })),
+  );
 
   app.route('/api', controlRoutes(deps.exec));
   app.route('/api', configRoutes(deps.config));

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useRemoteWork, useRemoteWorkStatus, useStatus } from '../../api';
+import { useRemoteWork, useRemoteWorkStatus, useStatus, useUpdateCheck } from '../../api';
 import { Button } from '../../ui/button';
 import { IconCopy, IconMore } from '../../ui/icons';
 import { useToast } from '../../ui/toast';
@@ -25,6 +25,7 @@ export function MoreMenu() {
   const mesh = (data?.box?.mesh as { joined?: boolean; serverUrl?: string; host?: string } | undefined) ?? {};
   const remoteWork = useRemoteWork();
   const remoteStatus = useRemoteWorkStatus();
+  const update = useUpdateCheck();
   const root = useRef<HTMLDivElement>(null);
   const toast = useToast();
 
@@ -70,6 +71,16 @@ export function MoreMenu() {
     );
   };
 
+  // Check for an update in-app (read-only), then — only the update itself is a
+  // host command — hand over `nufi-box update` when one is available or the
+  // version can't be read; say "up to date" when it is.
+  const onCheckUpdate = () => {
+    update.mutate(undefined, {
+      onSuccess: (s) => (s.updateAvailable === false ? toast.push('The box is up to date', 'ok') : copyCmd('nufi-box update')),
+      onError: () => copyCmd('nufi-box update'),
+    });
+  };
+
   return (
     <div className="more" ref={root}>
       <Button variant="secondary" className="btn-ico btn-ico--square" data-testid="control-more" aria-label="More actions" onClick={() => setOpen((o) => !o)}>
@@ -109,10 +120,16 @@ export function MoreMenu() {
           <div className="more-row">
             <div className="more-text">
               <div className="more-title">App Update</div>
-              <div className="more-sub">Upgrade the box to the latest release</div>
+              <div className="more-sub" data-testid="update-status">
+                {update.data?.updateAvailable === true
+                  ? 'Update available'
+                  : update.data?.updateAvailable === false
+                    ? 'Up to date'
+                    : 'Upgrade the box to the latest release'}
+              </div>
             </div>
-            <Button size="sm" data-testid="more-update" onClick={() => copyCmd('nufi-box update')}>
-              Check for Update
+            <Button size="sm" data-testid="more-update" disabled={update.isPending} onClick={onCheckUpdate}>
+              {update.isPending ? 'Checking…' : 'Check for Update'}
             </Button>
           </div>
         </div>
