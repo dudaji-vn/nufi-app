@@ -740,10 +740,10 @@ mesh_host_tailscaled_present() {
   systemctl is-enabled tailscaled >/dev/null 2>&1 || systemctl is-active tailscaled >/dev/null 2>&1
 }
 
-# Stop AND disable the host tailscaled (disable so it stays off across reboots,
-# which is what makes a power-cycle come back clean), drop its stale interface,
-# and recreate the box's own container fresh -- its node key and identity live in
-# the tailscale-state volume, not the container, so nothing is lost.
+# Stop AND disable the host tailscaled SERVICE (disable so it stays off across
+# reboots, which is what makes a power-cycle come back clean). A leftover
+# tailscale0 interface with no such service is a separate case -- see
+# mesh_free_tailscale0.
 mesh_clear_host_tailscaled() {
   mesh_host_tailscaled_present || return 0
   echo "  A host Tailscale service is running on this machine. The box runs its own"
@@ -752,11 +752,39 @@ mesh_clear_host_tailscaled() {
   echo "  the host service so the box's mesh owns the namespace, now and on every boot:"
   # No `2>/dev/null` on the sudo lines: it would also swallow sudo's own password
   # prompt, leaving the operator staring at a silent hang. `|| true` is enough to
-  # ride over a line that finds nothing to do (e.g. tailscale0 already gone).
+  # ride over a line that finds nothing to do.
   run sudo tailscale down || true
   run sudo systemctl disable --now tailscaled || true
-  run sudo ip link delete tailscale0 || true
+}
+
+# Is a tailscale0 interface present in the host netns? Unlike a host tailscaled
+# SERVICE (mesh_host_tailscaled_present), a leftover interface -- from an old host
+# tailscale, or a box container that exited without cleaning up -- can be here
+# with no systemd unit at all. NUFI_FAKE_HOST_TAILSCALE0 forces the branch for tests.
+mesh_stale_tailscale0_present() {
+  case "${NUFI_FAKE_HOST_TAILSCALE0:-}" in 1) return 0 ;; 0) return 1 ;; esac
+  [ "$OS" = "Darwin" ] && return 1
+  command -v ip >/dev/null 2>&1 || return 1
+  ip link show tailscale0 >/dev/null 2>&1
+}
+
+# mesh_free_tailscale0 -- the box's tailscale runs network_mode:host and must
+# create tailscale0 in the host netns; a leftover one makes the container fail
+# with "TUN device tailscale0 is busy", and mesh up then hangs at "tailscaled
+# never reported an address" (the bug #210's host-service check does NOT catch,
+# because the leftover can have no systemd service). Take the box's OWN container
+# down first so a tailscale0 it legitimately holds is released; whatever is still
+# there is then a true leftover, so kill a stray tailscaled and drop the
+# interface. The box's node key lives in the tailscale-state volume, not the
+# container, so recreating it loses nothing.
+mesh_free_tailscale0() {
+  [ "$OS" = "Darwin" ] && return 0
   run $(mesh_compose_cmd) rm -sf tailscale 2>/dev/null || true
+  mesh_stale_tailscale0_present || return 0
+  echo "  Clearing a leftover tailscale0 interface so the box's mesh container can"
+  echo "  create its own (it was failing with 'TUN device tailscale0 is busy'):"
+  run sudo pkill -x tailscaled || true
+  run sudo ip link delete tailscale0 || true
 }
 
 # mesh_up — join the coordinator and serve everything on the mesh address too.
@@ -769,6 +797,7 @@ mesh_up() {
     mesh_up_native || exit 1
   else
     mesh_clear_host_tailscaled
+    mesh_free_tailscale0
     echo "Joining $MESH_SERVER_URL as ${BOX_NAME:-nufi}…"
     run $(mesh_compose_cmd) up -d tailscale
   fi

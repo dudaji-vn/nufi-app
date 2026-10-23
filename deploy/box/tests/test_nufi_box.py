@@ -311,10 +311,28 @@ def test_mesh_up_clears_a_conflicting_host_tailscaled(tmp_path):
 
 def test_mesh_up_leaves_the_host_alone_when_there_is_no_conflict(tmp_path):
     r = cli("mesh", "up", NUFI_BOX_ENV=mesh_env(tmp_path), NUFI_BOX_FAKE_OS="Linux",
-            NUFI_FAKE_HOST_TAILSCALED="0")
+            NUFI_FAKE_HOST_TAILSCALED="0", NUFI_FAKE_HOST_TAILSCALE0="0")
     assert r.returncode == 0, r.stderr
-    assert "systemctl disable" not in r.stdout   # nothing to clear
-    assert "up -d tailscale" in r.stdout          # still joins
+    assert "systemctl disable" not in r.stdout        # no host service to disable
+    assert "ip link delete tailscale0" not in r.stdout  # no leftover interface to clear
+    assert "up -d tailscale" in r.stdout              # still joins
+
+
+def test_mesh_up_clears_a_leftover_tailscale0_without_a_host_service(tmp_path):
+    # The gap #210 missed: a tailscale0 interface left behind (an old host
+    # tailscale, or a box container that exited dirty) makes the box's own
+    # container fail with "TUN device tailscale0 is busy" and mesh up hang -- even
+    # when NO host tailscaled SERVICE is active, so the host-service check sees
+    # nothing. mesh up must remove the leftover interface too.
+    r = cli("mesh", "up", NUFI_BOX_ENV=mesh_env(tmp_path), NUFI_BOX_FAKE_OS="Linux",
+            NUFI_FAKE_HOST_TAILSCALED="0", NUFI_FAKE_HOST_TAILSCALE0="1")
+    assert r.returncode == 0, r.stderr
+    out = r.stdout
+    assert "systemctl disable" not in out        # no host SERVICE here
+    assert "rm -sf tailscale" in out             # box container taken down first
+    assert "pkill -x tailscaled" in out          # stray host tailscaled killed
+    assert "ip link delete tailscale0" in out    # the leftover interface removed
+    assert "up -d tailscale" in out              # and still joins
 
 
 def test_doctor_checks_for_a_conflicting_host_tailscaled_only_when_meshed(tmp_path):
