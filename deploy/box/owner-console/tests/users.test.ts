@@ -259,6 +259,23 @@ describe('users routes', () => {
     expect((await call(a, 'GET', `/api/users/${bad.id}/connector`)).status).toBe(400);
   });
 
+  test('connector: the downloaded join file points at the PUBLIC agent release, not the box', async () => {
+    // The owner's downloaded join file must use the public release first (the
+    // box is only the air-gap fallback) — the same as /connect. It fell back to
+    // the box's /agent URL because the route omitted agentPublicBase/agentVersion.
+    const secret = TEST_ENV.BOX_OWNER_SESSION_SECRET;
+    const token = signInvite(secret, { key: 'join-key', serverUrl: 'https://hs.example' }, 3600);
+    const u = await addUser({ name: 'Mac', os: 'macos', keyId: 'k', token });
+    const PUB = 'https://github.com/dudaji-vn/nufi-app/releases/download';
+    const a = makeApp({ ...MESH, NUFI_AGENT_PUBLIC_BASE: PUB, NUFI_AGENT_VERSION: '1.102.3' },
+      { users, templatesDir: TEMPLATES, boxCaB64: async () => '', coordCaB64: () => '', agentSha256: () => ({ amd64: '', arm64: '' }) });
+    const mac = await (await call(a, 'GET', `/api/users/${u.id}/connector?os=macos`)).text();
+    expect(mac).toContain(`${PUB}/agent-macos-v1.102.3/nufibox-agent-macos.pkg`); // public release
+    expect(mac).not.toContain('/agent/nufibox-agent-macos.pkg');                  // not the box fallback
+    const lin = await (await call(a, 'GET', `/api/users/${u.id}/connector?os=linux`)).text();
+    expect(lin).toContain(PUB); // the linux agent script pulls from the public base
+  });
+
   test('import CSV adds rows (skipping malformed); export lists name,link', async () => {
     const a = app();
     const r = await call(a, 'POST', '/api/users/import', 'name,os\n=Ann,windows\nbroken-row\nBob,linux\n', true);
