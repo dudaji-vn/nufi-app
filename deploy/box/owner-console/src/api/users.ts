@@ -234,6 +234,12 @@ export function usersRoutes(ctx: UsersCtx, deps: Partial<UsersDeps> = {}): Hono 
       os, member: rec.name, key: invite.key, serverUrl: invite.serverUrl,
       boxMeshHost: info.mesh.host, departments: info.departments,
       boxCaB64: '', coordCaB64: ctx.coordCaB64(), boxUrl: memberBase(c),
+      // The agent comes from the public release first (the box is only the
+      // air-gap fallback), exactly as the /connect page does. Omitting these made
+      // the owner's downloaded join file fall back to the box's /agent URL even
+      // when NUFI_AGENT_PUBLIC_BASE is set.
+      agentPublicBase: ctx.env.NUFI_AGENT_PUBLIC_BASE ?? '',
+      agentVersion: ctx.env.NUFI_AGENT_VERSION ?? '1.102.3',
     };
     // macOS can't ship a one-click script (macOS blocks unsigned scripts), so
     // the downloadable "join file" is a short, readable instructions .txt — the
