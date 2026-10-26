@@ -346,6 +346,18 @@ def test_doctor_checks_for_a_conflicting_host_tailscaled_only_when_meshed(tmp_pa
     assert "conflicting host tailscaled" not in lan.stdout
 
 
+def test_doctor_checks_the_mesh_api_key_only_when_it_is_set(tmp_path):
+    # The tester's "MESH_API_KEY rejected by the coordinator" bug: a copy-paste
+    # that dropped a character leaves the owner console unable to mint invites.
+    # doctor should test the key against the coordinator -- but only when set.
+    with_key = cli("doctor", NUFI_BOX_ENV=mesh_env(tmp_path, MESH_API_KEY="hskey-api-test"),
+                   NUFI_BOX_FAKE_OS="Linux")
+    assert "check the coordinator accepts MESH_API_KEY" in with_key.stdout
+    # A meshed box with no API key (or a LAN-only box) skips the check entirely.
+    no_key = cli("doctor", NUFI_BOX_ENV=mesh_env(tmp_path), NUFI_BOX_FAKE_OS="Linux")
+    assert "MESH_API_KEY" not in no_key.stdout
+
+
 def test_doctor_checks_the_owner_exec_sidecar_only_when_the_console_is_on(tmp_path):
     # The tester's "terminal errors with a typo message" bug is a down owner-exec
     # sidecar; doctor should name it + the fix, but only when the console runs.

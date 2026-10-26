@@ -357,6 +357,20 @@ case "${1:-}" in
         echo " ok  no conflicting host Tailscale service"
       fi
     fi
+    # The owner console uses MESH_API_KEY to call the coordinator's headscale API
+    # (to mint member invites). A wrong key — most often a copy-paste that dropped
+    # a character — is accepted nowhere, so the Users tab fails with "MESH_API_KEY
+    # rejected by the coordinator" and no invite can be minted. Test the key
+    # against the coordinator; never echo it (not a `chk`, which prints its args).
+    if [ -n "${MESH_SERVER_URL:-}" ] && [ -n "${MESH_API_KEY:-}" ]; then
+      if [ "$DRY" = 1 ]; then
+        printf '  $ check the coordinator accepts MESH_API_KEY\n'
+      elif _apicode="$(curl -sk --max-time 20 -o /dev/null -w '%{http_code}' -H "Authorization: Bearer ${MESH_API_KEY}" "${MESH_SERVER_URL%/}/api/v1/node" 2>/dev/null)" && [ "$_apicode" = 200 ]; then
+        echo " ok  the coordinator accepts MESH_API_KEY"
+      else
+        echo " !!  the coordinator did not accept MESH_API_KEY (HTTP ${_apicode:-000}) — the owner console cannot mint member invites (the Users tab fails). A copy-paste often drops a character; re-set it: install-box.sh --mesh ${MESH_SERVER_URL} --mesh-api-key <key>, then nufi-box up"; fail=1
+      fi
+    fi
     # The owner console runs every privileged command — its terminal, Start/Stop,
     # the model-config apply — through the owner-exec sidecar over a socket. If
     # that container is down, the console's commands fail with a raw connection
