@@ -84,6 +84,24 @@ test('search filters rows by name', () => {
 
 const drop = (...files: File[]) => fireEvent.drop(screen.getByTestId('drop-zone'), { dataTransfer: { files } });
 
+test('dragging a file anywhere over the tab raises one full-area drop overlay', () => {
+  mockFiles([]);
+  render(<Files />);
+  const tab = screen.getByTestId('files');
+  expect(screen.queryByText('Drop files to upload')).toBeNull();
+  fireEvent.dragOver(tab, { dataTransfer: { types: ['Files'] } });
+  expect(screen.getByText('Drop files to upload')).toBeTruthy(); // the whole-tab overlay
+  fireEvent.dragLeave(tab, { relatedTarget: document.body });    // cursor left the tab
+  expect(screen.queryByText('Drop files to upload')).toBeNull();
+});
+
+test('a non-file drag (text) does not raise the overlay', () => {
+  mockFiles([]);
+  render(<Files />);
+  fireEvent.dragOver(screen.getByTestId('files'), { dataTransfer: { types: ['text/plain'] } });
+  expect(screen.queryByText('Drop files to upload')).toBeNull();
+});
+
 test('dropping two files shows two rows; completing them marks both done', () => {
   mockFiles([]);
   render(<Files />);

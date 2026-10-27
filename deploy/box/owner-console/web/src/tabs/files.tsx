@@ -77,63 +77,72 @@ export function Files() {
   }
 
   return (
-    <div data-testid="files">
-      <div className="files-bar">
-        {depts.length > 1 && (
-          <select
-            className="ui-select"
-            aria-label="Department"
-            value={dept ?? ''}
-            onChange={(e) => { setPicked(e.target.value); setFilePath(''); }}
-          >
-            {depts.map((d) => (
-              <option key={d} value={d}>{d}</option>
-            ))}
-          </select>
-        )}
-        <span className="field-search">
-          <span className="field-search__icon"><IconSearch size={16} /></span>
-          <input
-            type="search"
-            className="ui-input"
-            aria-label="Search files"
-            placeholder="Search for file"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-        </span>
-        <Button variant="secondary" className="btn-ico" data-testid="upload-file" disabled={!dept} onClick={() => input.current?.click()}>
-          <IconUpload size={16} /> Upload
-        </Button>
-        <Button variant="secondary" className="btn-ico" disabled={!dept} onClick={() => setModal({ kind: 'newFolder' })}>
-          <IconPlus size={16} /> New Folder
-        </Button>
-        <FilesHelp />
-        <input ref={input} type="file" hidden multiple aria-label="File to upload" onChange={(e) => send(e.target.files)} />
-      </div>
+    <div
+      data-testid="files"
+      className="files"
+      onDragOver={(e) => {
+        // Google-Drive style: the WHOLE tab is the drop target, and the overlay
+        // only appears for an actual file drag (not a text/link/element drag).
+        if (!dept || !e.dataTransfer.types.includes('Files')) return;
+        e.preventDefault();
+        setOver(true);
+      }}
+      onDragLeave={(e) => {
+        // Clear only when the cursor leaves the whole tab — not when it crosses
+        // between child elements, which would otherwise flicker the overlay.
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(false);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setOver(false);
+        if (dept) send(e.dataTransfer.files);
+      }}
+    >
+      {over && dept && (
+        <div className="files-dropzone" aria-hidden="true">
+          <IconUpload size={40} />
+          <div className="files-dropzone__title">Drop files to upload</div>
+          <div className="files-dropzone__sub">to the <b>{dept}</b> department</div>
+        </div>
+      )}
+      {/* drop-zone keeps its test id on the element that carries the drop target */}
+      <div data-testid="drop-zone" className="files-drop">
+        <div className="files-bar">
+          {depts.length > 1 && (
+            <select
+              className="ui-select"
+              aria-label="Department"
+              value={dept ?? ''}
+              onChange={(e) => { setPicked(e.target.value); setFilePath(''); }}
+            >
+              {depts.map((d) => (
+                <option key={d} value={d}>{d}</option>
+              ))}
+            </select>
+          )}
+          <span className="field-search">
+            <span className="field-search__icon"><IconSearch size={16} /></span>
+            <input
+              type="search"
+              className="ui-input"
+              aria-label="Search files"
+              placeholder="Search for file"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </span>
+          <Button variant="secondary" className="btn-ico" data-testid="upload-file" disabled={!dept} onClick={() => input.current?.click()}>
+            <IconUpload size={16} /> Upload
+          </Button>
+          <Button variant="secondary" className="btn-ico" disabled={!dept} onClick={() => setModal({ kind: 'newFolder' })}>
+            <IconPlus size={16} /> New Folder
+          </Button>
+          <FilesHelp />
+          <input ref={input} type="file" hidden multiple aria-label="File to upload" onChange={(e) => send(e.target.files)} />
+        </div>
 
-      <Breadcrumb path={filePath} onNavigate={setFilePath} />
+        <Breadcrumb path={filePath} onNavigate={setFilePath} />
 
-      <div
-        data-testid="drop-zone"
-        className={`files-drop${over ? ' files-drop--over' : ''}`}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setOver(true);
-        }}
-        onDragLeave={() => setOver(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setOver(false);
-          if (dept) send(e.dataTransfer.files);
-        }}
-      >
-        {over && <div className="files-drop__hint">Drop anywhere to upload</div>}
-        {dept && (
-          <div className="files-drophint">
-            <IconUpload size={15} /> Drag &amp; drop files anywhere here to upload, or use <b>Upload</b>
-          </div>
-        )}
         {body}
       </div>
 
