@@ -26,10 +26,13 @@
   position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center;
   background: rgba(41, 48, 105, 0.06); border-radius: var(--radius-lg); font-weight: 700; color: var(--navy); pointer-events: none;
 }
+/* A subtle tip bar, NOT a dashed drop-zone box: the whole list accepts drops
+   (the drag-over state highlights all of .files-drop), so the dashed border was
+   misleading — it read as the only place you could drop. */
 .files-drophint {
   display: flex; align-items: center; justify-content: center; gap: 8px;
-  border: 1.5px dashed var(--gray-3); border-radius: var(--radius); background: var(--ground);
-  padding: 11px; margin-bottom: 14px; color: var(--gray-1); font-size: 13px;
+  border-radius: var(--radius); background: var(--ground);
+  padding: 9px 12px; margin-bottom: 14px; color: var(--gray-1); font-size: 13px;
 }
 .files-drophint svg { color: var(--gray-2); }
 .files-drophint b { color: var(--ink); font-weight: 600; }

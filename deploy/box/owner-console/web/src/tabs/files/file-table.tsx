@@ -138,7 +138,7 @@ export function FileTable({
                     <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
                   </svg>
                   <div className="files-empty__title">{empty}</div>
-                  <div className="files-empty__hint">Click “Upload” or drag &amp; drop your file here to upload it</div>
+                  <div className="files-empty__hint">Click “Upload” or drag &amp; drop a file anywhere here to upload it</div>
                 </div>
               ) : (
                 'No files match your search'
