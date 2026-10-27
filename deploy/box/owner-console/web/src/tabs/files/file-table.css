@@ -20,19 +20,25 @@
 .files-crumb__root:hover { color: var(--navy); }
 
 /* The whole list is the drop target; a slim persistent hint says so. */
-.files-drop { position: relative; border-radius: var(--radius-lg); transition: box-shadow 0.15s; }
-.files-drop--over { box-shadow: inset 0 0 0 2px var(--navy-2); }
-.files-drop__hint {
-  position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center;
-  background: rgba(41, 48, 105, 0.06); border-radius: var(--radius-lg); font-weight: 700; color: var(--navy); pointer-events: none;
+/* The whole Files tab is the drop target (Google-Drive style). .files is the
+   positioning context for the drag overlay; a min-height keeps the drop area
+   substantial even when the list is short or empty. */
+.files { position: relative; min-height: 340px; }
+.files-drop { border-radius: var(--radius-lg); }
+/* Dragging a file anywhere over the tab raises ONE big overlay across the whole
+   area, so the entire list is obviously the drop target — no small box to
+   mislead. pointer-events:none so the drop still lands on the tab below. */
+.files-dropzone {
+  position: absolute; inset: 0; z-index: 30;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  background: rgba(41, 48, 105, 0.07);
+  border: 2.5px dashed var(--navy-2); border-radius: var(--radius-lg);
+  color: var(--navy); pointer-events: none; text-align: center;
 }
-.files-drophint {
-  display: flex; align-items: center; justify-content: center; gap: 8px;
-  border: 1.5px dashed var(--gray-3); border-radius: var(--radius); background: var(--ground);
-  padding: 11px; margin-bottom: 14px; color: var(--gray-1); font-size: 13px;
-}
-.files-drophint svg { color: var(--gray-2); }
-.files-drophint b { color: var(--ink); font-weight: 600; }
+.files-dropzone svg { color: var(--navy-2); }
+.files-dropzone__title { font-size: 20px; font-weight: 700; }
+.files-dropzone__sub { font-size: 14px; color: var(--gray-1); }
+.files-dropzone__sub b { color: var(--ink); font-weight: 600; }
 
 /* Accessibility cell: icon + label, not a coloured badge (roomier spacing) */
 .access-cell { display: inline-flex; align-items: center; gap: 10px; padding: 3px 0; white-space: nowrap; font-weight: 600; color: var(--ok); }
