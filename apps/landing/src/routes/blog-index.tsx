@@ -24,17 +24,17 @@ export function BlogIndex() {
             <Link
               to="/blog/hr-private-document-qa"
               className="post-card post-card--link"
-              aria-label="Read: Ask your company handbook — privately, on your own box"
+              aria-label="Read: We put our HR handbook on a box and let the team interrogate it"
             >
               <div className="post-card__media">
                 <img src="/blog/security.png" alt="A cited answer about the company security policy" loading="lazy" />
               </div>
               <div className="post-card__body">
-                <span className="post-card__kicker">Use case · HR</span>
-                <h3>Ask your company handbook — privately, on your own box</h3>
+                <span className="post-card__kicker">Field notes · HR</span>
+                <h3>We put our HR handbook on a box and let the team interrogate it</h3>
                 <p>
-                  We put an HR handbook on a NuFi Box and let the team ask it questions. Every answer cited the source
-                  document. Nothing left the building.
+                  One handbook, one box on the office network, and an afternoon of the questions people actually email
+                  HR. Every answer quoted the document, and nothing left the building.
                 </p>
                 <span className="post-card__more">
                   Read the use case <Icon name="arrow" />
