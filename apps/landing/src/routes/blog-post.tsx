@@ -10,39 +10,23 @@ export function BlogPost() {
           <Link className="back" to="/blog">
             <Icon name="arrow-l" /> All posts
           </Link>
-          <p className="eyebrow">NuFi Box · Use case</p>
-          <h1>Ask your company handbook — privately, on your own box</h1>
+          <p className="eyebrow">NuFi Box · Field notes</p>
+          <h1>We put our HR handbook on a box and let the team interrogate it</h1>
           <p className="standfirst">
-            We put an HR handbook on a NuFi Box and let the team ask it questions. Every answer cited the source
-            document. Nothing left the building.
+            One afternoon, one handbook, one box on the office network. The team asked it the questions they'd normally
+            email HR. It answered from the document, quoted the source, and never sent a word to the cloud.
           </p>
-          <p className="byline">NuFi Box · a private, on-premise AI appliance</p>
+          <p className="byline">NuFi Box · field notes from the team</p>
 
-          <h2>The problem</h2>
           <p>
-            Every team has documents it can't paste into a public chatbot: the employee handbook, contracts, internal
-            policies, customer records. The moment a question about one of them goes to a cloud AI, the document — or
-            enough of it to matter — leaves your control. For most companies, and nearly every regulated one, that's a
-            non-starter.
+            Every company has a folder like this: the handbook, the contracts, the policies, the customer files. It's the
+            knowledge people actually need, and it's the exact knowledge you can't paste into ChatGPT. So it sits in a
+            shared drive, half of it out of date, and "just ask HR" stays the only interface anyone trusts.
           </p>
           <p>
-            So the documents sit in a shared folder nobody reads, and <em>"just ask HR"</em> stays the only interface.
-            The knowledge is there; it just isn't answerable.
-          </p>
-
-          <h2>What a NuFi Box is</h2>
-          <p>
-            A <strong>NuFi Box</strong> is a small on-premise appliance that runs the whole AI stack on{' '}
-            <strong>your own hardware</strong>: a private chat that answers from your documents, on your GPU, on your
-            network. The documents are indexed locally, the model runs locally, and the answer is generated locally.
-            Nothing is sent to a third-party API.
-          </p>
-
-          <h2>The use case: an HR assistant that actually reads the handbook</h2>
-          <p>
-            We dropped a company handbook — working hours, annual leave, expenses, benefits, the code of conduct, the
-            IT-security policy — into the box's <strong>HR department drive</strong>. The box indexed it in the
-            background. Then we asked it the questions employees actually ask.
+            We wanted to see how far a private box could close that gap, so we skipped the slideware. We took a real
+            handbook (working hours, leave, expenses, the code of conduct, the IT-security policy) and dropped it into
+            the HR drive on a NuFi Box, then let it index. Then we asked the boring, real questions.
           </p>
 
           <p className="q">"How many days of annual leave do I get after three years?"</p>
@@ -52,12 +36,13 @@ export function BlogPost() {
               alt="The box answers the annual-leave question from the handbook, with a citation"
               loading="lazy"
             />
-            <figcaption>
-              Asked in plain language, answered from the handbook — <strong>20 days from the third year</strong> — with
-              a "Searched your files" citation. Not a guess from the model's training: it's pulled from <em>your</em>{' '}
-              document.
-            </figcaption>
           </figure>
+          <p>
+            Twenty, from the third year. It didn't guess a round number that sounded right. It lifted the figure
+            straight out of the handbook and showed us the line it came from. That small "Searched your files" tag
+            matters more than it looks: it's the difference between an answer you forward to an employee and one you have
+            to go check yourself.
+          </p>
 
           <p className="q">"Can I work from home, and how many days a week?"</p>
           <figure>
@@ -66,11 +51,8 @@ export function BlogPost() {
               alt="The box answers the remote-work question, quoting the policy"
               loading="lazy"
             />
-            <figcaption>
-              The remote-work policy, quoted straight from the document — up to three days a week, agreed with your
-              manager.
-            </figcaption>
           </figure>
+          <p>Up to three, agreed with your manager. Straight from the remote-work policy, not a vibe.</p>
 
           <p className="q">"What's the daily limit for meal expenses when travelling?"</p>
           <figure>
@@ -79,11 +61,8 @@ export function BlogPost() {
               alt="The box quotes the meal-expense limit from the expenses section"
               loading="lazy"
             />
-            <figcaption>
-              The box quotes the actual figure — <strong>$40 per day</strong> — from the expenses section, not a
-              plausible-sounding number.
-            </figcaption>
           </figure>
+          <p>Forty dollars a day. A cloud model will happily invent a plausible number here. This one quoted ours.</p>
 
           <p className="q">"Can I copy internal documents to my personal Google Drive?"</p>
           <figure>
@@ -92,63 +71,45 @@ export function BlogPost() {
               alt="The box answers the security-policy question correctly from the company document"
               loading="lazy"
             />
-            <figcaption>
-              The one that matters most for a <em>private</em> AI: the box answers a <strong>security-policy</strong>{' '}
-              question correctly, from the company's own document — without that document ever leaving the box.
-            </figcaption>
           </figure>
-
-          <h2>Why the citation matters</h2>
           <p>
-            An AI that answers HR questions is useful. An AI that answers them{' '}
-            <strong>and shows which part of the handbook it used</strong> is trustworthy. An employee can open the
-            source; HR can see the box isn't inventing policy. The citation turns <em>"the chatbot said so"</em> into{' '}
-            <em>"the handbook says so — here."</em>
+            No. And it got that right from the company's own security policy, without that policy ever leaving the box.
+            Read that sentence again, because it's the whole reason the box exists: the most sensitive question we could
+            ask got the correct answer, and the document holding it never touched the internet.
           </p>
 
           <div className="pull">
-            The box answered a question about the company's own security policy — correctly, from the company's own
-            document — without that document ever touching the cloud. That is the whole point.
+            An AI that answers HR questions is a party trick. The useful version shows its source, so people trust it.
           </div>
 
-          <h2>Nothing leaves the box</h2>
-          <p>This is the part a legal, HR, or finance team cares about:</p>
-          <ul>
-            <li>
-              The documents sit in the department's drive <strong>on the box</strong>.
-            </li>
-            <li>
-              The model reads them and generates the answer <strong>on the box's GPU</strong>.
-            </li>
-            <li>
-              A team member at home reaches the box over a <strong>private, encrypted mesh</strong> — and still, the
-              handbook never leaves the box.
-            </li>
-          </ul>
           <p>
-            No document is uploaded to a vendor. No prompt is logged on someone else's server. For a team sitting on
-            sensitive documents, that's the difference between <em>"we'd love to use AI on this"</em> and{' '}
-            <em>"we actually can."</em>
+            An employee can open the page the answer came from; HR can see the box isn't inventing policy. Citation turns
+            "the chatbot said so" into "the handbook says so, here." That one change is what moves a private AI from a
+            demo to something a team leaves running.
           </p>
-
-          <h2>It's the same for any team</h2>
           <p>
-            HR over the handbook is one example. The box treats every department the same way: <strong>legal</strong>{' '}
-            over contracts, <strong>support</strong> over the product docs, <strong>finance</strong> over the SOPs.
-            Create a department, drop the documents in, and the team can ask — with citations, on your own hardware.
+            The part a legal or finance team cares about is the dull part: nothing moved. The documents stayed in the
+            department drive on the box. The model read them on the box's GPU. Someone working from home reached the box
+            over an encrypted mesh, and the handbook still never left it. No upload, no vendor, no prompt sitting in
+            anyone else's logs.
+          </p>
+          <p>
+            HR over a handbook is just the first drive we pointed it at. Every department works the same: legal over the
+            contracts, support over the product docs, finance over the SOPs. Make a department, drop the files in, ask.
+            That's the box.
           </p>
 
           <div className="cta-box">
-            <h2>Want a private AI box for your team?</h2>
-            <p>NuFi Box runs your documents' AI on your own hardware — nothing leaves the building.</p>
+            <h2>Want a box like this?</h2>
+            <p>Tell us what's in the shared drive nobody opens. We'll help you put it on a box of your own.</p>
             <SectionLink id="contact" className="btn btn--primary">
               Talk to us <Icon name="arrow" />
             </SectionLink>
           </div>
 
           <p className="foot-note">
-            Captured live on a real NuFi Box (GPU inference, department-drive RAG). The handbook shown is a synthetic
-            sample; the screenshots are unretouched.
+            Captured on a real NuFi Box (GPU inference, department-drive RAG). The handbook is a synthetic sample; the
+            screenshots are untouched.
           </p>
         </article>
       </div>
