@@ -10,7 +10,7 @@ const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: '/', com
 const blogRoute = createRoute({ getParentRoute: () => rootRoute, path: '/blog', component: BlogIndex });
 const postRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/blog/hr-private-document-qa',
+  path: '/blog/$slug',
   component: BlogPost,
 });
 
