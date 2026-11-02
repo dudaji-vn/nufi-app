@@ -291,3 +291,16 @@
     .step__flow{display:none;}
     .trust__tags{margin-left:0;width:100%;}
   }
+
+  /* ---- Blog post art: the "sealed box" diagram (card thumb + in-article) ---- */
+  .post-art{width:100%;height:100%;display:grid;place-items:center;background:var(--navy-wash);padding:14px;}
+  .post-art svg{width:min(88%,560px);height:auto;}
+  .post-art .pa-ink{stroke:var(--brand);fill:none;stroke-linejoin:round;}
+  .post-art .pa-fill{fill:var(--brand);opacity:.07;}
+  .post-art .pa-mute{stroke:var(--ink-mute);fill:none;opacity:.6;}
+  .post-art .pa-accent{stroke:var(--coral);fill:none;}
+  .post-art .pa-card{fill:var(--surface);}
+  .post-art .pa-label{fill:var(--ink-mute);font-family:var(--f-mono);font-size:30px;letter-spacing:1px;}
+  .post-art .pa-label--accent{fill:var(--coral);}
+  .article .post-fig{margin:1.6rem 0 2rem;}
+  .article .post-fig .post-art{aspect-ratio:1400/560;border:1px solid var(--rule);border-radius:10px;box-shadow:var(--shadow);}
