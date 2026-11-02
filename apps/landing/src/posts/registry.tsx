@@ -2,7 +2,8 @@ import type { ComponentType } from 'react';
 import { HrBody } from './hr';
 import { SealedNetworkBody } from './sealed-network';
 import { AirGapBody } from './air-gap';
-import { SealedBoxArt, UnpluggedBoxArt } from '../components/post-art';
+import { AnsweringBody } from './answering';
+import { SealedBoxArt, UnpluggedBoxArt, AnsweringArt } from '../components/post-art';
 
 // One entry per blog post. Order is display order (newest first). A post's card
 // thumbnail is either an image (`thumbSrc`) or a drawn component (`Thumb`).
@@ -19,6 +20,16 @@ export type PostMeta = {
 };
 
 export const POSTS: PostMeta[] = [
+  {
+    slug: 'how-the-box-answers',
+    kicker: 'How it works',
+    title: 'How the box answers from your files',
+    summary:
+      "How does it know what's in your documents? It reads them on the box, finds the passages that match your question, and answers from those — with the source attached.",
+    cta: 'How it works',
+    Body: AnsweringBody,
+    Thumb: AnsweringArt,
+  },
   {
     slug: 'air-gapped-ai-for-real',
     kicker: 'How it works',

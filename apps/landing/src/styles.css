@@ -302,6 +302,10 @@
   .post-art .pa-card{fill:var(--surface);}
   .post-art .pa-label{fill:var(--ink-mute);font-family:var(--f-mono);font-size:30px;letter-spacing:1px;}
   .post-art .pa-label--accent{fill:var(--coral);}
+  .post-art .pa-dot{fill:var(--brand);}
+  .post-art .pa-dot--hot{fill:var(--coral);}
+  .post-art .pa-glyph{fill:var(--brand);font-family:var(--f-display);font-weight:800;}
   .article .post-fig{margin:1.6rem 0 2rem;}
   .article .post-fig .post-art{aspect-ratio:1400/560;border:1px solid var(--rule);border-radius:10px;box-shadow:var(--shadow);}
+  .article .post-fig--wide .post-art{aspect-ratio:1400/400;}
   .article code{font-family:var(--f-mono);font-size:0.9em;background:var(--surface-2);padding:0.08em 0.42em;border-radius:5px;}
