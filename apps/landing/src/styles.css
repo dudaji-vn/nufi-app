@@ -304,3 +304,4 @@
   .post-art .pa-label--accent{fill:var(--coral);}
   .article .post-fig{margin:1.6rem 0 2rem;}
   .article .post-fig .post-art{aspect-ratio:1400/560;border:1px solid var(--rule);border-radius:10px;box-shadow:var(--shadow);}
+  .article code{font-family:var(--f-mono);font-size:0.9em;background:var(--surface-2);padding:0.08em 0.42em;border-radius:5px;}
