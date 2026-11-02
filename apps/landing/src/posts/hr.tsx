@@ -22,6 +22,11 @@ export function HrBody() {
         handbook (working hours, leave, expenses, the code of conduct, the IT-security policy) and dropped it into the
         HR drive on a NuFi Box, then let it index. Then we asked the boring, real questions.
       </p>
+      <p>
+        Indexing took a minute or two, on the box, with nothing uploaded. The model doing the reading is a small open
+        one running on the box's own GPU — which is the quiet point of all this. You don't need a frontier model to
+        answer questions about your own handbook. You need one that will read the handbook instead of its training.
+      </p>
 
       <p className="q">"How many days of annual leave do I get after three years?"</p>
       <figure>
@@ -79,6 +84,12 @@ export function HrBody() {
         An employee can open the page the answer came from; HR can see the box isn't inventing policy. Citation turns
         "the chatbot said so" into "the handbook says so, here." That one change is what moves a private AI from a demo
         to something a team leaves running.
+      </p>
+      <p>
+        It isn't magic, and the citation is also how you see that. Ask it something the handbook doesn't cover and the
+        honest answer is "the document doesn't say"; the worse one is a confident paragraph with nothing attached.
+        Because every real answer shows its source, the empty ones are easy to catch. The box is exactly as good as the
+        documents you give it, and it always tells you which one it read.
       </p>
       <p>
         The part a legal or finance team cares about is the dull part: nothing moved. The documents stayed in the

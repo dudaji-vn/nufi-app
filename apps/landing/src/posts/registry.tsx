@@ -1,7 +1,8 @@
 import type { ComponentType } from 'react';
 import { HrBody } from './hr';
 import { SealedNetworkBody } from './sealed-network';
-import { SealedBoxArt } from '../components/post-art';
+import { AirGapBody } from './air-gap';
+import { SealedBoxArt, UnpluggedBoxArt } from '../components/post-art';
 
 // One entry per blog post. Order is display order (newest first). A post's card
 // thumbnail is either an image (`thumbSrc`) or a drawn component (`Thumb`).
@@ -18,6 +19,16 @@ export type PostMeta = {
 };
 
 export const POSTS: PostMeta[] = [
+  {
+    slug: 'air-gapped-ai-for-real',
+    kicker: 'How it works',
+    title: 'We unplugged the internet, and the box kept answering',
+    summary:
+      "Some sites can't have internet at all. We built the box so you can carry it in, load it, pull the cable, and still ask your documents questions.",
+    cta: 'How it works',
+    Body: AirGapBody,
+    Thumb: UnpluggedBoxArt,
+  },
   {
     slug: 'no-road-to-the-internet',
     kicker: 'How it works',
