@@ -27,6 +27,11 @@ export function SealedNetworkBody() {
         marked internal. There's no route from it to the open internet — not a firewall rule we keep patched, not a
         proxy the app is trusted to use. The road isn't there. A packet aimed at the outside has nowhere to go.
       </p>
+      <p>
+        Concretely, the box's network has no gateway to the outside at all. The single door that could reach out is a
+        small proxy that forwards only to addresses you've put on a list — and if you leave the list empty, there's no
+        door. The app doesn't have to be trustworthy. It has nowhere to misbehave to.
+      </p>
 
       <figure className="post-fig">
         <SealedBoxArt />
@@ -36,15 +41,19 @@ export function SealedNetworkBody() {
       </figure>
 
       <p>
-        We like that it fails in the right direction. A buggy dependency, a chatty library, a model that decides to
-        phone home — none of them matter when the network can't carry the call. You don't audit good behavior. You
-        remove the option.
+        We like that it fails in the right direction. Software reaches out more than people think — a library checking
+        for an update, a model runtime pinging a telemetry endpoint, a font loading from some CDN. On a normal server
+        those calls succeed and nobody notices. On a sealed box they meet a network with no exit and quietly fail, and
+        the box carries on. You don't have to hunt down and forbid each one; there's no road for any of them to take.
+        You don't audit good behavior. You remove the option.
       </p>
       <p>
-        A sealed box still has to be useful, so it isn't a brick. Everyone on your network reaches it as normal. Someone
-        working from home reaches it over an encrypted mesh, and the handbook still never leaves the box: the mesh
-        carries the question and the answer, not the document. If you do want something allowed out, you name it — a
-        model endpoint you host, a mail relay, one address. For the strict case, the default we ship is nothing at all.
+        A sealed box still has to be useful, so it isn't a brick. The office opens the chat and a laptop joins over the
+        mesh exactly as before: inbound and outbound are separate doors, and we only shut the one your data would leave
+        by. Someone working from home still reaches the box over an encrypted mesh, and the handbook still never leaves
+        it — the mesh carries the question and the answer, not the document. If you do want something allowed out, you
+        name it: a model endpoint you host, a mail relay, one address. For the strict case, the default we ship is
+        nothing at all.
       </p>
 
       <p>Sealing the way out is the loud part. The quiet parts decide as much:</p>
