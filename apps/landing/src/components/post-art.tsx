@@ -82,3 +82,94 @@ export function UnpluggedBoxArt() {
     </div>
   );
 }
+
+// For the "how it answers" post, step 1: documents are chunked and embedded on
+// the box's GPU into a private index.
+export function IndexingArt() {
+  return (
+    <div className="post-art">
+      <svg viewBox="0 0 1400 400" role="img" aria-label="Documents are embedded on the box's GPU into a private index">
+        {/* documents */}
+        <rect className="pa-ink" x="150" y="94" width="140" height="182" rx="10" strokeWidth="5" opacity="0.3" />
+        <rect className="pa-fill" x="170" y="112" width="140" height="182" rx="10" />
+        <rect className="pa-ink" x="170" y="112" width="140" height="182" rx="10" strokeWidth="6" />
+        <path
+          className="pa-ink"
+          d="M198 160 H282 M198 196 H282 M198 232 H264"
+          strokeWidth="6"
+          strokeLinecap="round"
+          opacity="0.5"
+        />
+        <text className="pa-label" x="240" y="350" textAnchor="middle">your documents</text>
+        {/* arrow */}
+        <path className="pa-mute" d="M372 178 l24 25 l-24 25" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" />
+        {/* GPU */}
+        <rect className="pa-fill" x="600" y="150" width="180" height="104" rx="10" />
+        <rect className="pa-ink" x="600" y="150" width="180" height="104" rx="10" strokeWidth="6" />
+        <rect className="pa-ink" x="660" y="182" width="60" height="40" rx="4" strokeWidth="4" />
+        <path
+          className="pa-ink"
+          d="M636 150 v-16 M690 150 v-16 M744 150 v-16 M636 254 v16 M690 254 v16 M744 254 v16"
+          strokeWidth="4"
+          strokeLinecap="round"
+        />
+        <text className="pa-label" x="690" y="350" textAnchor="middle">embedded on the GPU</text>
+        {/* arrow */}
+        <path className="pa-mute" d="M844 178 l24 25 l-24 25" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" />
+        {/* index */}
+        <rect className="pa-fill" x="1060" y="140" width="180" height="124" rx="10" />
+        <rect className="pa-ink" x="1060" y="140" width="180" height="124" rx="10" strokeWidth="6" />
+        <circle className="pa-dot" cx="1100" cy="172" r="9" />
+        <circle className="pa-dot" cx="1150" cy="172" r="9" />
+        <circle className="pa-dot" cx="1200" cy="172" r="9" />
+        <circle className="pa-dot" cx="1100" cy="204" r="9" />
+        <circle className="pa-dot" cx="1150" cy="204" r="9" />
+        <circle className="pa-dot" cx="1200" cy="204" r="9" />
+        <circle className="pa-dot" cx="1100" cy="236" r="9" />
+        <circle className="pa-dot" cx="1150" cy="236" r="9" />
+        <circle className="pa-dot" cx="1200" cy="236" r="9" />
+        <text className="pa-label" x="1150" y="350" textAnchor="middle">a private index</text>
+      </svg>
+    </div>
+  );
+}
+
+// Step 2: a question finds the matching pieces in the index; the model reads
+// just those and writes an answer that cites its source.
+export function AnsweringArt() {
+  return (
+    <div className="post-art">
+      <svg viewBox="0 0 1400 400" role="img" aria-label="A question finds matching passages; the model answers with a citation">
+        {/* question */}
+        <rect className="pa-fill" x="132" y="128" width="168" height="110" rx="18" />
+        <rect className="pa-ink" x="132" y="128" width="168" height="110" rx="18" strokeWidth="6" />
+        <path className="pa-ink" d="M172 236 l0 34 l34 -34" strokeWidth="6" fill="none" strokeLinejoin="round" />
+        <text className="pa-glyph" x="216" y="208" fontSize="70" textAnchor="middle">?</text>
+        <text className="pa-label" x="216" y="350" textAnchor="middle">a question</text>
+        {/* arrow */}
+        <path className="pa-mute" d="M356 170 l24 25 l-24 25" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" />
+        {/* index with matches */}
+        <rect className="pa-fill" x="560" y="130" width="180" height="124" rx="10" />
+        <rect className="pa-ink" x="560" y="130" width="180" height="124" rx="10" strokeWidth="6" />
+        <circle className="pa-dot" cx="600" cy="162" r="9" />
+        <circle className="pa-dot" cx="650" cy="162" r="9" />
+        <circle className="pa-dot" cx="700" cy="162" r="9" />
+        <circle className="pa-dot" cx="600" cy="194" r="9" />
+        <circle className="pa-dot--hot" cx="650" cy="194" r="11" />
+        <circle className="pa-dot" cx="700" cy="194" r="9" />
+        <circle className="pa-dot" cx="600" cy="226" r="9" />
+        <circle className="pa-dot" cx="650" cy="226" r="9" />
+        <circle className="pa-dot--hot" cx="700" cy="226" r="11" />
+        <text className="pa-label" x="650" y="350" textAnchor="middle">the matching pieces</text>
+        {/* arrow */}
+        <path className="pa-mute" d="M808 170 l24 25 l-24 25" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" />
+        {/* answer with source */}
+        <rect className="pa-fill" x="1000" y="120" width="210" height="150" rx="12" />
+        <rect className="pa-ink" x="1000" y="120" width="210" height="150" rx="12" strokeWidth="6" />
+        <path className="pa-ink" d="M1034 162 H1176 M1034 194 H1176" strokeWidth="5" strokeLinecap="round" opacity="0.5" />
+        <path className="pa-accent" d="M1034 228 H1140" strokeWidth="7" strokeLinecap="round" />
+        <text className="pa-label" x="1105" y="350" textAnchor="middle">an answer + its source</text>
+      </svg>
+    </div>
+  );
+}
