@@ -11,7 +11,7 @@ export function PostCard({ post }: { post: PostMeta }) {
       className="post-card post-card--link"
       aria-label={`Read: ${post.title}`}
     >
-      <div className="post-card__media">
+      <div className="post-card__media" aria-hidden="true">
         {Thumb ? <Thumb /> : <img src={post.thumbSrc} alt={post.thumbAlt} loading="lazy" />}
       </div>
       <div className="post-card__body">

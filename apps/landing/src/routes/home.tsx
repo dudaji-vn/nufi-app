@@ -2,10 +2,15 @@ import { Icon } from '../components/icon';
 import { BoxFrame } from '../components/box-frame';
 import { SectionLink } from '../components/section-link';
 import { PostCard } from '../components/post-card';
+import { useHead } from '../components/head';
 import { POSTS } from '../posts/registry';
 import { DOCS_URL, EMAIL, MAILTO } from '../content';
 
 export function Home() {
+  useHead(
+    'NuFi Box — Private AI appliance',
+    'NuFi Box is a small on-premise AI appliance that runs the whole AI stack on your own hardware — a private chat that answers from your documents, on your GPU, on your network. Nothing leaves the box.',
+  );
   return (
     <main>
       {/* Hero */}

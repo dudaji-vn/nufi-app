@@ -1,9 +1,14 @@
 import { Link } from '@tanstack/react-router';
 import { Icon } from '../components/icon';
 import { PostCard } from '../components/post-card';
+import { useHead } from '../components/head';
 import { POSTS } from '../posts/registry';
 
 export function BlogIndex() {
+  useHead(
+    'Blog — NuFi Box',
+    'Use cases and field notes from a real NuFi Box: how it answers from your documents, runs air-gapped, and keeps everything on the box.',
+  );
   return (
     <main>
       <section className="blog-hd">

@@ -19,12 +19,15 @@ function useActiveSection(enabled: boolean): string | null {
     }
     const els = SPY_IDS.map((id) => document.getElementById(id)).filter((el): el is HTMLElement => el !== null);
     if (els.length === 0) return;
+    const inView = new Set<string>();
     const obs = new IntersectionObserver(
       (entries) => {
-        const visible = entries
-          .filter((e) => e.isIntersecting)
-          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
-        if (visible.length) setActive(visible[0].target.id);
+        for (const e of entries) {
+          if (e.isIntersecting) inView.add(e.target.id);
+          else inView.delete(e.target.id);
+        }
+        // first section (in DOM order) currently in the band, or none
+        setActive(SPY_IDS.find((id) => inView.has(id)) ?? null);
       },
       { rootMargin: '-32% 0px -60% 0px', threshold: 0 },
     );
