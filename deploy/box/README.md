@@ -739,6 +739,25 @@ serves. `WORKS_BOX_KEY` in `.env` is the box admin's own Works API key
 key it mints for a sandbox carries no budget of its own — the box's usage
 limits apply through the gateway's own policy.
 
+#### Claude on the owner's subscription
+
+By default `claude_local` runs on the on-box gateway with a LiteLLM key, like
+the other harnesses. `install-box.sh --with-works --claude-subscription
+--claude-token <token>` instead runs Claude on the **owner's own Claude
+subscription**: it forwards a `CLAUDE_CODE_OAUTH_TOKEN` (from `claude
+setup-token`, which needs a Claude Pro/Max subscription) into the sandbox,
+points `claude_local` straight at `api.anthropic.com` and opens that one host
+on the sandbox egress allow list. One token serves every member — a client
+using Works needs no setup of their own.
+
+It is **opt-in**: a plain box keeps `claude_local` on the gateway and the
+sandbox sealed. The token can also come from the environment
+(`export CLAUDE_CODE_OAUTH_TOKEN=…`) and is kept at 0600 in `.env` with the
+other secrets; `--no-claude-subscription` turns a box back to the gateway.
+Under the hood the flag swaps the mounted adapters file (`WORKS_ADAPTERS_FILE`
+→ `works/adapters.claude-subscription.json`) and adds `api.anthropic.com` to
+`WORKS_EGRESS_ALLOW`.
+
 ## 6. Inference profiles
 
 | Profile | Where the model runs | Trade-off |

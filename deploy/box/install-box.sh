@@ -37,6 +37,15 @@
 #                    Not needed for a public (ACME) coordinator.
 #   --with-works     NUFI Works on this box (Ubuntu only): installs gVisor as a
 #                    Docker runtime and starts Works behind https://<box>:3003.
+#   --claude-subscription
+#                    run Claude in Works on the owner's own Claude subscription
+#                    instead of the on-box gateway. Needs --with-works and a
+#                    token; swaps claude_local to subscription mode and opens
+#                    api.anthropic.com on the sandbox egress. Off by default;
+#                    --no-claude-subscription turns a box back off.
+#   --claude-token TOKEN
+#                    the subscription token from `claude setup-token` (or export
+#                    CLAUDE_CODE_OAUTH_TOKEN). Required with --claude-subscription.
 #   --self-host-coordinator
 #                    run this box's OWN mesh coordinator on the same machine
 #                    (Ubuntu only, deploy/coordinator, TLS_MODE=internal): a
@@ -96,6 +105,10 @@ while [ $# -gt 0 ]; do
     --egress-enforce) EGRESS_ENFORCE=1 ;;
     --owner-console) NUFI_OWNER_CONSOLE=1 ;;
     --no-owner-console) NUFI_OWNER_CONSOLE=0 ;;
+    --claude-subscription) NUFI_CLAUDE_SUBSCRIPTION=1 ;;
+    --no-claude-subscription) NUFI_CLAUDE_SUBSCRIPTION=0 ;;
+    --claude-token) [ $# -ge 2 ] || die "--claude-token needs a value"; CLAUDE_CODE_OAUTH_TOKEN="$2"; shift ;;
+    --claude-token=*) CLAUDE_CODE_OAUTH_TOKEN="${1#--claude-token=}"; [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ] || die "--claude-token needs a value" ;;
     -h|--help) sed -n '2,55p' "$0"; exit 0 ;;
   esac
   shift
@@ -294,6 +307,7 @@ REUSE_VARS="$REUSE_VARS NUFI_BOX_SOURCE"
 # must not blank a console a previous run turned on, or generate a fresh
 # password an already-invited owner no longer knows.
 REUSE_VARS="$REUSE_VARS NUFI_OWNER_CONSOLE BOX_OWNER_PASSWORD BOX_OWNER_SESSION_SECRET"
+REUSE_VARS="$REUSE_VARS NUFI_CLAUDE_SUBSCRIPTION CLAUDE_CODE_OAUTH_TOKEN"
 for v in $REUSE_VARS; do eval "_caller_$v=\${$v:-}"; done
 if [ -f "$NUFI_BOX_ENV" ]; then
   ok ".env exists; keeping its answers and secrets"
@@ -522,6 +536,27 @@ else sec INGEST_PASSWORD "gen_hex 16"; fi
 # Works: on when this run asked for it, or when a previous run did (a re-run
 # without the flag must not switch a department's Works off).
 NUFI_WORKS="${NUFI_WORKS:-0}"; [ "$WITH_WORKS" = 1 ] && NUFI_WORKS=1
+# Claude subscription: opt-in, off by default so a plain box keeps its "nothing
+# leaves the box" posture. On, claude_local runs on the owner's own Claude
+# subscription (claude setup-token) direct to api.anthropic.com instead of the
+# on-box gateway -- so it needs Works (Claude runs in a sandbox) and the owner's
+# token (the box never mints one). A re-run without the flag keeps the previous
+# choice (both vars are in REUSE_VARS); --no-claude-subscription turns it off.
+NUFI_CLAUDE_SUBSCRIPTION="${NUFI_CLAUDE_SUBSCRIPTION:-0}"
+CLAUDE_CODE_OAUTH_TOKEN="${CLAUDE_CODE_OAUTH_TOKEN:-}"
+WORKS_ADAPTERS_FILE="./works/adapters.json"
+if [ "$NUFI_CLAUDE_SUBSCRIPTION" = 1 ]; then
+  [ "$NUFI_WORKS" = 1 ] || die "--claude-subscription needs --with-works: Claude runs in a Works sandbox. Re-run with both."
+  [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ] || die "--claude-subscription needs a token: run 'claude setup-token' (needs a Claude Pro/Max subscription), then pass --claude-token <token> or export CLAUDE_CODE_OAUTH_TOKEN before re-running."
+  WORKS_ADAPTERS_FILE="./works/adapters.claude-subscription.json"
+  # api.anthropic.com is the one host the sandbox may reach for this; add it to
+  # the egress allow list without dropping anything already there. The sandbox
+  # network is sealed otherwise, so this is the hole the owner opts into.
+  case ",${WORKS_EGRESS_ALLOW:-}," in
+    *,api.anthropic.com,*) : ;;
+    *) WORKS_EGRESS_ALLOW="${WORKS_EGRESS_ALLOW:+$WORKS_EGRESS_ALLOW,}api.anthropic.com" ;;
+  esac
+fi
 # Egress enforcement: the flag turns it on, a re-run keeps whatever .env had
 # (REUSE_VARS carries NUFI_EGRESS_ENFORCE/ALLOW). Validated here, once
 # INFERENCE_PROFILE is known — sealing the box network only works with the
@@ -611,6 +646,9 @@ NUFI_INGEST_TAG=${NUFI_INGEST_TAG:-main}
 NUFI_CRON_TAG=${NUFI_CRON_TAG:-main}
 NUFI_WORKS_EGRESS_TAG=${NUFI_WORKS_EGRESS_TAG:-main}
 WORKS_EGRESS_ALLOW=${WORKS_EGRESS_ALLOW:-}
+NUFI_CLAUDE_SUBSCRIPTION=${NUFI_CLAUDE_SUBSCRIPTION:-0}
+CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}
+WORKS_ADAPTERS_FILE=${WORKS_ADAPTERS_FILE:-./works/adapters.json}
 NUFI_EGRESS_ENFORCE=$NUFI_EGRESS_ENFORCE
 NUFI_EGRESS_ALLOW=$NUFI_EGRESS_ALLOW
 NUFI_WORKS=$NUFI_WORKS

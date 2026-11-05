@@ -621,9 +621,17 @@ services:
       NUFI_MODEL_API_KEY: ${WORKS_MODEL_KEY:-}
       OPENAI_API_KEY: ${WORKS_MODEL_KEY:-}
       ANTHROPIC_API_KEY: ${WORKS_MODEL_KEY:-}
+      # The owner's Claude Code subscription token (claude setup-token), present
+      # only on a --claude-subscription box. The claude-subscription adapters
+      # file forwards it into the sandbox instead of ANTHROPIC_API_KEY, so
+      # Claude runs on the subscription, direct to api.anthropic.com. Empty on
+      # every other box, where claude_local stays on the on-box gateway.
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
     volumes:
       - works-data:/paperclip
-      - ./works/adapters.json:/box/adapters.json:ro
+      # Default adapters put every harness on the on-box gateway;
+      # --claude-subscription points this at works/adapters.claude-subscription.json.
+      - ${WORKS_ADAPTERS_FILE:-./works/adapters.json}:/box/adapters.json:ro
       - ./works/entrypoint.sh:/usr/local/bin/works-entrypoint.sh:ro
       - /var/run/docker.sock:/var/run/docker.sock
     entrypoint: ["/usr/local/bin/works-entrypoint.sh"]
