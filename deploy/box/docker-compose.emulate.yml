@@ -1,16 +1,15 @@
 # Emulation layer — `install-box.sh --emulate-amd64`, or NUFI_EMULATE_AMD64=1 in
 # .env (nufi-box reads it, so `nufi-box up` keeps the platform).
 #
-# Only the images that are published amd64-only need it. Everything else has a
-# native arm64 build, and forcing linux/amd64 on those would cost a QEMU
-# translation for no reason — so this file stays deliberately short.
+# Only nufi-works is published amd64-only (agents-image.yml), so it is the one
+# service that needs forcing to linux/amd64 on an arm64 host. librechat and
+# admin-panel are multi-arch (amd64 + arm64): pinning them to linux/amd64 ran
+# their Node servers under emulation, where they segfaulted on Apple Silicon.
+# Left alone they run their native arm64 build, so they are not listed here.
+#
+# On an Apple Silicon host the amd64 works server runs reliably under Rosetta
+# (a Lima VM with rosetta.binfmt), not QEMU user-mode emulation. A real x86
+# Linux box needs none of this file.
 services:
-  librechat:
-    platform: linux/amd64
-  admin-panel:
-    platform: linux/amd64
-  # nufi-works is published for amd64 only (agents-image.yml). Sandboxes still
-  # cannot run on a Mac -- Docker Desktop has no runsc -- so this is for the
-  # server alone, on a developer's machine.
   works:
     platform: linux/amd64
