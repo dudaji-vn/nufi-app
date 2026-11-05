@@ -36,24 +36,35 @@ Works:       https://<box>:3003  → enter it from the Agents page as <admin>.
 
 ## On a Mac
 
-gVisor is Linux-only, so `--with-works` refuses on macOS directly. Run the box
-in a Linux VM instead — it installs gVisor like any Ubuntu box, and the Mac
-reaches it over the VM's network. The repo ships a Lima recipe sized for it:
+Works runs agent code in **gVisor** sandboxes, and gVisor is Linux-only —
+neither Docker Desktop nor OrbStack can host it, so `--with-works` refuses on
+macOS directly. The way to run Works on a Mac is to run the **whole box inside
+a Linux VM**: it installs gVisor exactly like any Ubuntu box and keeps the full
+sandbox isolation, and the Mac reaches it over the VM's network. This is the
+recommended setup and a one-time, roughly ten-minute step.
+
+A box *without* Works — chat, your documents and the department agents —
+installs on macOS directly, no VM. The VM is only for Works.
+
+The repo ships a Lima recipe sized for the box plus Works:
 
 ```bash
 brew install lima
 limactl start --name nufi-works deploy/box/mac/works-vm.yaml
 limactl shell nufi-works
-# inside the VM, bring in the box (git clone or `limactl copy`), then:
+# inside the VM, get the box (git clone — see Installing), then:
 ./install-box.sh --with-works --emulate-amd64
+# add --claude-subscription --claude-token <token> for Claude on your subscription
 ```
 
-`--emulate-amd64` is for the one amd64-only image, the Works server; the recipe
-turns on Rosetta so it runs reliably on Apple Silicon, where QEMU user
-emulation segfaults the emulated Node servers. The sandbox itself has a native
-arm64 build and runs under gVisor directly. The box also joins the mesh from
-the VM with its own container, so from-home access needs no native Tailscale
-app — unlike a box installed on macOS directly.
+Everything on the [Installing](/docs/box/install) page is the same inside that
+VM — you are on a normal Ubuntu machine there. Two Mac-only details: `--emulate-amd64`
+covers the one amd64-only image, the Works *server*, and the recipe turns on
+**Rosetta** so it runs reliably on Apple Silicon (plain QEMU user emulation
+segfaults the emulated Node servers). The sandbox itself has a native arm64
+build and runs under gVisor without emulation. The box also joins the mesh from
+the VM with its own container, so reaching it from home needs **no** native
+Tailscale app on the Mac — unlike a box installed on macOS directly.
 
 ## First sign-in
 
