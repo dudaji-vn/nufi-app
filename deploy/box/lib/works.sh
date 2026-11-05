@@ -63,16 +63,20 @@ works_install() {
   [ -n "${WORKS_SANDBOX_IMAGE:-}" ] || {
     echo "works: no WORKS_SANDBOX_IMAGE in .env — the installer pins the sandbox image by digest; run install-box.sh --with-works" >&2; return 2; }
   works_ensure_db
+  # A --claude-subscription box pre-hires a Claude agent, so a member can run
+  # Claude from a task without first hiring one (the box ships only the
+  # nufi_agent routines). The registrar skips it when one already exists.
+  local _claude=""; [ "${NUFI_CLAUDE_SUBSCRIPTION:-0}" = 1 ] && _claude="--claude-agent"
   if [ "$DRY" = 1 ]; then
     works_run --chat "https://${BOX_HOST:-nufi.local}:3080" --litellm "http://litellm-proxy:4000" \
-      --login "${ADMIN_EMAIL:-admin@nufi.local}" --company "${BOX_NAME:-nufi}" --image "$WORKS_SANDBOX_IMAGE"
+      --login "${ADMIN_EMAIL:-admin@nufi.local}" --company "${BOX_NAME:-nufi}" --image "$WORKS_SANDBOX_IMAGE" $_claude
     return 0
   fi
   $COMPOSE up -d works >/dev/null
   works_wait || { echo "works: Works is not answering at $WORKS_URL — check: nufi-box logs works" >&2; return 1; }
   local out rc=0; out="$(mktemp)"
   works_run --chat "https://${BOX_HOST:-nufi.local}:3080" --litellm "http://litellm-proxy:4000" \
-    --login "${ADMIN_EMAIL:-admin@nufi.local}" --company "${BOX_NAME:-nufi}" --image "$WORKS_SANDBOX_IMAGE" \
+    --login "${ADMIN_EMAIL:-admin@nufi.local}" --company "${BOX_NAME:-nufi}" --image "$WORKS_SANDBOX_IMAGE" $_claude \
     > "$out" || rc=$?
   # Written whatever the exit status: a key can be minted and printed several
   # steps before a later one fails (the plugin install, the environment

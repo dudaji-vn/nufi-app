@@ -249,6 +249,20 @@ def environment(box, company_id, image):
     return env
 
 
+def claude_agent(box, company_id):
+    """Pre-hire a Claude agent on a --claude-subscription box, so a member can
+    run Claude from a task without first hiring an agent of their own: the box
+    ships only the nufi_agent routines, and a task with no responsible agent
+    starts no run. Idempotent -- a box that already has a claude_local agent
+    (hired here, or by a member) keeps it."""
+    agents = box.must("GET", "/api/companies/%s/agents" % company_id)
+    if any(ag.get("adapterType") == "claude_local" for ag in (agents or [])):
+        return
+    box.must("POST", "/api/companies/%s/agents" % company_id,
+             {"name": "Claude", "adapterType": "claude_local"})
+    say("hired a Claude agent (claude_local) on the box's subscription")
+
+
 def model_key(box, litellm, existing, master):
     if existing:
         return None
@@ -298,6 +312,8 @@ def main():
     ap.add_argument("--company", default="nufi")
     ap.add_argument("--image", required=True)
     ap.add_argument("--plugin-path", default=PLUGIN_PATH)
+    ap.add_argument("--claude-agent", action="store_true",
+                    help="hire a claude_local agent (a --claude-subscription box)")
     ap.add_argument("--check", action="store_true")
     a = ap.parse_args()
     box = Box(a.works, a.cacert)
@@ -319,6 +335,8 @@ def main():
     plugin_ready(box, a.plugin_path)
     c = company(box, a.company)
     environment(box, c["id"], a.image)
+    if a.claude_agent:
+        claude_agent(box, c["id"])
     if a.litellm:
         mk = model_key(box, a.litellm, os.environ.get("WORKS_MODEL_KEY"), os.environ.get("LITELLM_MASTER_KEY"))
         if mk:
