@@ -646,6 +646,18 @@ def test_a_macos_mesh_box_gets_no_mesh_container(tmp_path):
     assert "docker-compose.mesh.yml" not in r.stdout
 
 
+def test_a_macos_mesh_up_restates_the_server_and_name_on_the_up_command(tmp_path):
+    """The native Tailscale `up` falls back to the public coordinator and drops
+    the hostname unless both are restated. A tester ran the printed commands and
+    the bare `up` failed; it worked only once --login-server and --hostname were
+    added. So the second printed command must carry both."""
+    r = cli("mesh", "up", NUFI_BOX_ENV=mesh_env(tmp_path), NUFI_BOX_FAKE_OS="Darwin")
+    assert r.returncode == 0, r.stderr
+    up = next(l for l in r.stdout.splitlines() if " up " in l and "accept-dns=false" in l)
+    assert "--login-server=https://coordinator.lab" in up, up
+    assert "--hostname=nufi" in up, up
+
+
 def test_mesh_up_does_not_pass_the_mesh_file_twice(tmp_path):
     """Both nufi-box and mesh_compose_cmd want to add it; the same -f twice
     asks compose to merge the file with itself."""
