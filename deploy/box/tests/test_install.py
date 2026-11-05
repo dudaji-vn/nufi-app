@@ -185,6 +185,44 @@ def test_emulate_amd64_layers_the_platform_file_and_records_it_in_env():
     assert "NUFI_EMULATE_AMD64=0" in plain
 
 
+def test_claude_subscription_swaps_the_adapters_file_and_opens_anthropic_egress():
+    out = dry("--with-works", "--claude-subscription", "--claude-token", "sk-ant-oat01-TEST",
+              NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_FAKE_LAN_ANSWER="")
+    # the works mount points at the subscription adapters, and the pieces that
+    # drive it are in .env so `nufi-box up` keeps them on day two
+    assert "WORKS_ADAPTERS_FILE=./works/adapters.claude-subscription.json" in out
+    assert "NUFI_CLAUDE_SUBSCRIPTION=1" in out
+    assert "CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-TEST" in out
+    # api.anthropic.com is opened on the sandbox egress allow list
+    assert re.search(r"WORKS_EGRESS_ALLOW=[^\n]*api\.anthropic\.com", out), out
+    # the token may also arrive from the environment instead of the flag
+    env_out = dry("--with-works", "--claude-subscription",
+                  NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_FAKE_LAN_ANSWER="",
+                  CLAUDE_CODE_OAUTH_TOKEN="sk-ant-oat01-FROMENV")
+    assert "CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-FROMENV" in env_out
+
+
+def test_a_plain_box_keeps_claude_local_on_the_on_box_gateway():
+    out = dry("--with-works", NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_FAKE_LAN_ANSWER="")
+    assert "WORKS_ADAPTERS_FILE=./works/adapters.json" in out
+    assert "NUFI_CLAUDE_SUBSCRIPTION=0" in out
+    # the egress allow list is not opened to anthropic without the flag
+    assert "api.anthropic.com" not in out
+
+
+def test_claude_subscription_needs_works_and_a_token():
+    # Claude runs in a Works sandbox, so the flag needs Works
+    r = install("--claude-subscription", "--claude-token", "sk-ant-oat01-X",
+                NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_FAKE_LAN_ANSWER="")
+    assert r.returncode != 0
+    assert "needs --with-works" in r.stderr, r.stderr
+    # and it needs the owner's own subscription token
+    r = install("--with-works", "--claude-subscription",
+                NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_FAKE_LAN_ANSWER="", CLAUDE_CODE_OAUTH_TOKEN="")
+    assert r.returncode != 0
+    assert "needs a token" in r.stderr, r.stderr
+
+
 def test_no_trust_prints_the_manual_step_instead_of_touching_the_keychain():
     out = dry("--no-trust", NUFI_BOX_FAKE_OS="Darwin")
     assert "Not touching the login keychain" in out
