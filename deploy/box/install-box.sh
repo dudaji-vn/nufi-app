@@ -60,6 +60,9 @@
 #                    separate from the admin panel. When on (default), the
 #                    installer generates BOX_OWNER_PASSWORD, printed in the
 #                    banner once the box is up.
+#   --no-studio      leave out Studio and the department routines (on by
+#                    default): saves ~6 GB of image on a box that only needs
+#                    chat, documents and agents. --studio turns it back on.
 #
 # NUFI_BOX_COMPOSE_EXTRA — space-separated extra compose files to layer last,
 # for a machine that needs a site-local tweak (a port map when something else
@@ -105,6 +108,8 @@ while [ $# -gt 0 ]; do
     --egress-enforce) EGRESS_ENFORCE=1 ;;
     --owner-console) NUFI_OWNER_CONSOLE=1 ;;
     --no-owner-console) NUFI_OWNER_CONSOLE=0 ;;
+    --studio) NUFI_STUDIO=1 ;;
+    --no-studio) NUFI_STUDIO=0 ;;
     --claude-subscription) NUFI_CLAUDE_SUBSCRIPTION=1 ;;
     --no-claude-subscription) NUFI_CLAUDE_SUBSCRIPTION=0 ;;
     --claude-token) [ $# -ge 2 ] || die "--claude-token needs a value"; CLAUDE_CODE_OAUTH_TOKEN="$2"; shift ;;
@@ -312,6 +317,7 @@ REUSE_VARS="$REUSE_VARS NUFI_BOX_SOURCE"
 # must not blank a console a previous run turned on, or generate a fresh
 # password an already-invited owner no longer knows.
 REUSE_VARS="$REUSE_VARS NUFI_OWNER_CONSOLE BOX_OWNER_PASSWORD BOX_OWNER_SESSION_SECRET"
+REUSE_VARS="$REUSE_VARS NUFI_STUDIO"
 REUSE_VARS="$REUSE_VARS NUFI_CLAUDE_SUBSCRIPTION CLAUDE_CODE_OAUTH_TOKEN"
 for v in $REUSE_VARS; do eval "_caller_$v=\${$v:-}"; done
 if [ -f "$NUFI_BOX_ENV" ]; then
@@ -583,6 +589,14 @@ fi
 # like the other NUFI_*_TAG values in render_env.
 NUFI_OWNER_CONSOLE="${NUFI_OWNER_CONSOLE:-1}"
 NUFI_OWNER_CONSOLE_TAG="${NUFI_OWNER_CONSOLE_TAG:-main}"
+# Studio (the routines/flows engine, Langflow) is ON by default; --no-studio
+# leaves it and nufi-cron out, saving ~6 GB of image on a chat-only box. A
+# re-run without the flag keeps the previous choice (NUFI_STUDIO is in
+# REUSE_VARS); --studio turns it back on. The chooser's Studio door follows
+# STUDIO_PUBLIC_URL (empty = no door), the way the Works door follows
+# WORKS_PUBLIC_URL; BOX_HOST is resolved by here.
+NUFI_STUDIO="${NUFI_STUDIO:-1}"
+if [ "$NUFI_STUDIO" = 1 ]; then STUDIO_PUBLIC_URL="https://${BOX_HOST}:7860"; else STUDIO_PUBLIC_URL=""; fi
 if [ "$NUFI_WORKS" = 1 ]; then
   WORKS_PUBLIC_URL="https://$BOX_HOST:3003"
 else
@@ -646,6 +660,8 @@ NUFI_CHAT_TAG=${NUFI_CHAT_TAG:-main}
 NUFI_CONSOLE_TAG=${NUFI_CONSOLE_TAG:-main}
 NUFI_ADMIN_TAG=${NUFI_ADMIN_TAG:-main}
 NUFI_STUDIO_TAG=${NUFI_STUDIO_TAG:-box-main}
+NUFI_STUDIO=$NUFI_STUDIO
+STUDIO_PUBLIC_URL=${STUDIO_PUBLIC_URL:-}
 NUFI_LITELLM_TAG=${NUFI_LITELLM_TAG:-main}
 NUFI_INGEST_TAG=${NUFI_INGEST_TAG:-main}
 NUFI_CRON_TAG=${NUFI_CRON_TAG:-main}
@@ -959,6 +975,7 @@ fi
 # The owner console is a plain web service (no host networking), so it runs on
 # any box, unlike the Linux-only layers above.
 [ "$NUFI_OWNER_CONSOLE" = 1 ] && COMPOSE="$COMPOSE --profile owner-console"
+[ "$NUFI_STUDIO" = 1 ] && COMPOSE="$COMPOSE --profile studio"
 for f in ${NUFI_BOX_COMPOSE_EXTRA:-}; do
   [ -f "$f" ] || die "NUFI_BOX_COMPOSE_EXTRA: no such file: $f"
   COMPOSE="$COMPOSE -f $f"
@@ -1146,14 +1163,16 @@ fi
 #
 # A warning, not a die: a box whose routines did not install is still a box
 # with chat, drives and Studio, and the operator can repeat the one command.
-say "Installing the department routines into Studio"
-if [ "$DRY" = 1 ]; then
-  _flows_env="$(mktemp)"
-  render_env > "$_flows_env"
-  NUFI_BOX_DRY_RUN=1 NUFI_BOX_FAKE_OS="$OS" NUFI_BOX_ENV="$_flows_env" "$BOX_HOME/nufi-box" flows install || true
-  rm -f "$_flows_env"
-else
-  "$BOX_HOME/nufi-box" flows install || warn "the routines are not in Studio yet; run: nufi-box flows install"
+if [ "$NUFI_STUDIO" = 1 ]; then
+  say "Installing the department routines into Studio"
+  if [ "$DRY" = 1 ]; then
+    _flows_env="$(mktemp)"
+    render_env > "$_flows_env"
+    NUFI_BOX_DRY_RUN=1 NUFI_BOX_FAKE_OS="$OS" NUFI_BOX_ENV="$_flows_env" "$BOX_HOME/nufi-box" flows install || true
+    rm -f "$_flows_env"
+  else
+    "$BOX_HOME/nufi-box" flows install || warn "the routines are not in Studio yet; run: nufi-box flows install"
+  fi
 fi
 
 # ---------- Works ---------------------------------------------------------------------
@@ -1236,17 +1255,10 @@ $( [ "$NUFI_OWNER_CONSOLE" = 1 ] && printf '\n  Owner console: https://%s:3009  
   Admin login: $ADMIN_EMAIL / $ADMIN_PASSWORD
 $( [ "$NUFI_OWNER_CONSOLE" = 1 ] && printf '  Owner login:   password %s  (owner console at :3009)\n' "$BOX_OWNER_PASSWORD" )
   Drives:      $NUFI_DATA_DIR/drives/<department>  → become that department's knowledge
-
-  Routines:    https://$BANNER_HOST:7860  → sign in as $ADMIN_EMAIL with the
-               Studio password in .env (STUDIO_SUPERUSER_PASSWORD). The four
-               department routines are there, and a member who arrives
-               through the app gets their own copy of each. A routine stops at
-               2048 tokens; nothing cancels a run whose caller has gone, so run
-               them on qwen2.5:1.5b or larger (README §5).
+$( [ "$NUFI_STUDIO" = 1 ] && printf '\n  Routines:    https://%s:7860  → sign in as %s with the\n               Studio password in .env (STUDIO_SUPERUSER_PASSWORD). The four\n               department routines are there, and a member who arrives\n               through the app gets their own copy of each. A routine stops at\n               2048 tokens; nothing cancels a run whose caller has gone, so run\n               them on qwen2.5:1.5b or larger (README §5).\n' "$BANNER_HOST" "$ADMIN_EMAIL" )
 $( [ "$NUFI_WORKS" = 1 ] && printf '\n  Works:       https://%s:3003  → enter it from the Agents page as %s.\n               Every agent run lands in a gVisor sandbox with no network\n               except the box gateway (README "NUFI Works on the box").\n' "$BANNER_HOST" "$ADMIN_EMAIL" )
 
-  Day two:     $NB status | logs | drive add <name> | ca-cert | doctor
-               $NB flows install | flows list
+  Day two:     $NB status | logs | drive add <name> | ca-cert | doctor$( [ "$NUFI_STUDIO" = 1 ] && printf '\n               %s flows install | flows list' "$NB" )
 EOF
 if [ -n "$MESH_SERVER_URL" ]; then
   cat <<EOF

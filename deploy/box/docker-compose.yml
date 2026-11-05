@@ -249,7 +249,10 @@ services:
       # Studio handoff. Empty cookie domain = host-only, shared across ports.
       OIDC_ISSUER: https://${BOX_HOST}:3001
       OIDC_PRIVATE_KEY_PEM: ${OIDC_PRIVATE_KEY_PEM}
-      STUDIO_URL: https://${BOX_HOST}:7860
+      # Empty on a --no-studio box, the same way PUBLIC_WORKS_URL is empty
+      # without Works: the chooser drops the Studio door. install-box.sh sets
+      # STUDIO_PUBLIC_URL to https://<box>:7860 when Studio is on.
+      STUDIO_URL: ${STUDIO_PUBLIC_URL:-}
       IDENTITY_COOKIE_DOMAIN: ""
       # Runtime public URLs. PUBLIC_WORKS_URL is empty on a box without Works;
       # install-box.sh --with-works sets WORKS_PUBLIC_URL and the chooser gets
@@ -403,6 +406,10 @@ services:
     networks: [box]
 
   studio:
+    # The routines/flows engine (Langflow). Optional: install-box.sh --no-studio
+    # leaves it (and nufi-cron) out -- about 6 GB of image a chat-only box does
+    # not need. On by default; the profile is added by the installer and nufi-box.
+    profiles: [studio]
     logging: *box-logging
     image: ${NUFI_REGISTRY:-ghcr.io/dudaji-vn}/nufi-studio:${NUFI_STUDIO_TAG}
     restart: unless-stopped
@@ -515,6 +522,9 @@ services:
   # Scheduled department routines. Inert until data/schedules.ini exists, so an
   # existing box gains a stopped-empty scheduler and behaves exactly as before.
   nufi-cron:
+    # Runs the Studio routines on a schedule, so it belongs to the studio
+    # profile and goes out with --no-studio.
+    profiles: [studio]
     logging: *box-logging
     image: ${NUFI_REGISTRY:-ghcr.io/dudaji-vn}/nufi-cron:${NUFI_CRON_TAG:-main}
     restart: unless-stopped

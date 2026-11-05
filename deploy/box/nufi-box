@@ -126,6 +126,9 @@ COMPOSE="docker compose -f $HERE/docker-compose.yml"
 # The owner console is opt-in per box (install-box.sh --owner-console,
 # NUFI_OWNER_CONSOLE=1); OS-agnostic since the console runs on mac and linux.
 [ "${NUFI_OWNER_CONSOLE:-0}" = "1" ] && COMPOSE="$COMPOSE --profile owner-console"
+# Studio (routines/flows) is ON by default; --no-studio (NUFI_STUDIO=0) leaves
+# it out. Default 1 so a box whose .env predates the flag keeps Studio running.
+[ "${NUFI_STUDIO:-1}" = "1" ] && COMPOSE="$COMPOSE --profile studio"
 # The egress seal is part of an enforcing box's stack, layered last so it
 # applies over every service. Without this line a day-two `restart` would bring
 # the box back up UNSEALED — the same silent-downgrade hazard the gpu.yml line

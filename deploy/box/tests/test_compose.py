@@ -32,6 +32,9 @@ def render(*files, profiles=(), **extra_env):
     env.pop("NUFI_REGISTRY", None)
     env.update({
         "BOX_HOST": "nufi.local", "BOX_IP": "192.168.1.10", "BOX_NAME": "nufi",
+        # Studio on: the installer sets this to https://<box>:7860. Empty would
+        # drop the chooser's Studio door (the --no-studio case).
+        "STUDIO_PUBLIC_URL": "https://nufi.local:7860",
         "NUFI_DATA_DIR": "./data", "NUFI_MODEL": "qwen2.5-7b",
         "INFERENCE_MODEL": "qwen2.5:7b", "INFERENCE_BASE_URL": "http://host.docker.internal:11434/v1",
         "INFERENCE_API_KEY": "ollama", "OLLAMA_BASE_URL": "http://host.docker.internal:11434",
@@ -60,7 +63,7 @@ def test_images_come_from_the_configured_registry():
     """A customer box (and the Ubuntu VM test that follows) cannot log in to
     GHCR, so every NuFi-built image must be pullable from any registry."""
     cfg = render("docker-compose.yml", "docker-compose.linux.yml", "docker-compose.gpu.yml",
-                 profiles=("linux", "gpu", "works"), NUFI_REGISTRY="10.0.0.5:5000")
+                 profiles=("linux", "gpu", "works", "studio"), NUFI_REGISTRY="10.0.0.5:5000")
     for name in NUFI_SERVICES:
         image = cfg["services"][name]["image"]
         assert image.startswith("10.0.0.5:5000/"), (name, image)
@@ -71,7 +74,7 @@ def test_images_come_from_the_configured_registry():
         assert not image.startswith("10.0.0.5:5000/"), (name, image)
 
     # Unset (the default on every box today): falls back to ghcr.io/dudaji-vn.
-    default_cfg = render(profiles=("works",))
+    default_cfg = render(profiles=("works", "studio"))
     for name in NUFI_SERVICES:
         image = default_cfg["services"][name]["image"]
         assert image.startswith("ghcr.io/dudaji-vn/"), (name, image)
@@ -269,7 +272,7 @@ def test_rag_api_uses_local_embeddings():
 
 
 def test_sso_services_share_one_hostname():
-    svcs = render()["services"]
+    svcs = render(profiles=("studio",))["services"]
     assert SSO <= set(svcs)
     console = svcs["console"]["environment"]
     assert console["CHAT_BASE_URL"] == "http://librechat:3080"
@@ -367,7 +370,7 @@ def test_studio_may_reach_the_box_model_host():
     Without this allowlist, running any flow on a default macOS box dies with
     "SSRF Protection: Hostname host.docker.internal resolves to blocked IP
     address(es)" — Studio cannot reach the box's own model."""
-    allowed = render()["services"]["studio"]["environment"]["LANGFLOW_SSRF_ALLOWED_HOSTS"]
+    allowed = render(profiles=("studio",))["services"]["studio"]["environment"]["LANGFLOW_SSRF_ALLOWED_HOSTS"]
     hosts = [h.strip() for h in allowed.split(",")]
     assert "host.docker.internal" in hosts, allowed
     assert "ollama" in hosts, allowed
@@ -474,7 +477,7 @@ def test_studio_mounts_the_department_drives_read_only():
     """The routines answer from the same folders Samba shares. Read-only: a
     flow is authored by a person, and a person editing a flow must not be able
     to rewrite the department's documents through it."""
-    vols = {v["target"]: v for v in render()["services"]["studio"]["volumes"]}
+    vols = {v["target"]: v for v in render(profiles=("studio",))["services"]["studio"]["volumes"]}
     assert "/drives" in vols, sorted(vols)
     drives = vols["/drives"]
     assert drives["source"].endswith("/drives"), drives["source"]
@@ -486,14 +489,14 @@ def test_studio_is_allowed_to_read_the_drives_and_nothing_else():
     to its working directory plus this allow-list, so without it every routine
     fails with "Directory path escapes the allowed root" — the failure a live
     run on a box without this env var actually produced."""
-    env = render()["services"]["studio"]["environment"]
+    env = render(profiles=("studio",))["services"]["studio"]["environment"]
     assert env["LANGFLOW_DIRECTORY_COMPONENT_ALLOWED_ROOTS"] == "/drives"
 
 
 def test_the_drives_reach_studio_and_ingest_from_the_same_place():
     """One folder, two readers: what a person drops on the drive has to be the
     same bytes the routine reads and the ingest daemon indexes."""
-    svcs = render()["services"]
+    svcs = render(profiles=("studio",))["services"]
     studio = next(v["source"] for v in svcs["studio"]["volumes"] if v["target"] == "/drives")
     ingest = next(v["source"] for v in svcs["nufi-ingest"]["volumes"] if v["target"] == "/drives")
     assert studio == ingest, (studio, ingest)
