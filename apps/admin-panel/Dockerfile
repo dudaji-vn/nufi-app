@@ -28,12 +28,15 @@ RUN bun install --frozen-lockfile \
 FROM base AS runtime
 ENV NODE_ENV=production
 
-COPY --from=prod-deps /app/node_modules node_modules
-COPY --from=build /app/dist dist
-COPY --from=build /app/src/server src/server
-COPY server.ts package.json ./
+# Own the files at copy time. A separate `RUN chown -R bun:bun /app` rewrites
+# every file's metadata into a new layer that duplicates all of /app — about
+# 680 MB of node_modules and build output copied for nothing. --chown on each
+# COPY sets ownership in the same layer.
+COPY --from=prod-deps --chown=bun:bun /app/node_modules node_modules
+COPY --from=build --chown=bun:bun /app/dist dist
+COPY --from=build --chown=bun:bun /app/src/server src/server
+COPY --chown=bun:bun server.ts package.json ./
 
-RUN chown -R bun:bun /app
 USER bun
 
 ENV PORT=3000
