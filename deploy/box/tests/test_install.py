@@ -159,7 +159,7 @@ def test_rerun_keeps_previous_answers_but_explicit_overrides_win():
 def test_no_pull_skips_the_pull_but_still_starts_the_stack():
     # --no-owner-console: this test asserts the minimal compose plan; the console
     # is on by default and adds --profile owner-console, which is orthogonal here.
-    out = dry("--no-pull", "--no-owner-console", NUFI_BOX_FAKE_OS="Darwin")
+    out = dry("--no-pull", "--no-owner-console", "--no-studio", NUFI_BOX_FAKE_OS="Darwin")
     assert "compose -f docker-compose.yml pull" not in out
     assert "--no-pull: using the images already on this machine" in out
     assert "compose -f docker-compose.yml up -d" in out
@@ -175,7 +175,7 @@ def test_pull_uses_plain_progress_so_a_slow_link_is_visible():
 
 
 def test_emulate_amd64_layers_the_platform_file_and_records_it_in_env():
-    out = dry("--emulate-amd64", "--no-owner-console", NUFI_BOX_FAKE_OS="Darwin")
+    out = dry("--emulate-amd64", "--no-owner-console", "--no-studio", NUFI_BOX_FAKE_OS="Darwin")
     assert "-f docker-compose.yml -f docker-compose.emulate.yml up -d" in out
     # written to .env so `nufi-box up` keeps the platform on day two
     assert "NUFI_EMULATE_AMD64=1" in out
@@ -221,6 +221,19 @@ def test_claude_subscription_needs_works_and_a_token():
                 NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_FAKE_LAN_ANSWER="", CLAUDE_CODE_OAUTH_TOKEN="")
     assert r.returncode != 0
     assert "needs a token" in r.stderr, r.stderr
+
+
+def test_studio_is_on_by_default_and_no_studio_drops_it():
+    on = dry(NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_FAKE_LAN_ANSWER="")
+    assert "NUFI_STUDIO=1" in on
+    assert "--profile studio" in on
+    assert "Installing the department routines" in on
+    off = dry("--no-studio", NUFI_BOX_FAKE_OS="Linux", NUFI_BOX_FAKE_LAN_ANSWER="")
+    assert "NUFI_STUDIO=0" in off
+    # the profile — and so the ~6 GB studio and nufi-cron images — stays out
+    assert "--profile studio" not in off
+    # and the routines are not installed into a Studio that is not there
+    assert "Installing the department routines" not in off
 
 
 def test_no_trust_prints_the_manual_step_instead_of_touching_the_keychain():
@@ -286,7 +299,7 @@ def test_bare_src_says_what_is_missing_instead_of_exiting_silently():
 def test_extra_compose_files_are_layered_last_and_must_exist(tmp_path):
     extra = tmp_path / "local-ports.yml"
     extra.write_text("services: {}\n")
-    out = dry("--emulate-amd64", "--no-owner-console", NUFI_BOX_FAKE_OS="Darwin",
+    out = dry("--emulate-amd64", "--no-owner-console", "--no-studio", NUFI_BOX_FAKE_OS="Darwin",
               NUFI_BOX_COMPOSE_EXTRA=str(extra))
     assert f"-f docker-compose.emulate.yml -f {extra} up -d" in out
     r = install(NUFI_BOX_FAKE_OS="Darwin", NUFI_BOX_COMPOSE_EXTRA="/nope/missing.yml")

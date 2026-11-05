@@ -1341,7 +1341,7 @@ def _update_stub_path(tmp_path, images_json):
         'printf "%s\\n" "$*" >> "$STUB_LOG"\n'
         'if [ "$1" = "compose" ]; then\n'
         "  shift\n"
-        '  while [ $# -gt 0 ]; do case "$1" in -f) shift 2 ;; *) break ;; esac; done\n'
+        '  while [ $# -gt 0 ]; do case "$1" in -f|--profile) shift 2 ;; *) break ;; esac; done\n'
         '  sub="$1"; [ $# -gt 0 ] && shift\n'
         '  case "$sub" in\n'
         '    config) case "$1" in --services) echo web ;; esac; exit 0 ;;\n'

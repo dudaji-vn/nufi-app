@@ -159,6 +159,21 @@ nothing printed — `curl -s` is silent while it waits, so it looks stuck.
 `ollama` and `ollama-docker` ask which model; the default is `qwen2.5:7b`.
 `remote` and `cloud` ask for a base URL and a key.
 
+### Leaving out what you don't need
+
+The box brings several services into one appliance, and the images add up. You
+can leave out the heavy pieces a given box does not use:
+
+- `--no-studio` — skip Studio and the department routines (the Langflow engine
+  and its scheduler). About **6 GB** of image a box that only needs chat,
+  documents and agents never pulls. The chooser drops its Studio door; `--studio`
+  turns it back on.
+- `--no-owner-console` — skip the no-CLI owner dashboard on `:3009`.
+- A `remote` or `cloud` inference profile skips the local Ollama image (~7 GB).
+
+Each is reversible: re-run the installer with or without the flag and it keeps
+the box's name, accounts and data.
+
 ### Changing the model later
 
 There is no settings screen for this, and you do not edit `.env` by hand —
