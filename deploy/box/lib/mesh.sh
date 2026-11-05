@@ -664,7 +664,12 @@ mesh_up_native() {
   echo
   printf '  %s login --login-server=%s --auth-key=%s --hostname=%s\n' \
     "$MESH_MACOS_TS" "$MESH_SERVER_URL" "$MESH_AUTH_KEY" "${BOX_NAME:-nufi}"
-  printf '  %s up --accept-dns=false\n' "$MESH_MACOS_TS"
+  # `up` must repeat --login-server and --hostname: without the server it falls
+  # back to the public coordinator (login.tailscale.com) and errors, and without
+  # the name it drops the --hostname the login set. A tester hit exactly this —
+  # the bare `up` failed and only worked once both were restated.
+  printf '  %s up --login-server=%s --hostname=%s --accept-dns=false\n' \
+    "$MESH_MACOS_TS" "$MESH_SERVER_URL" "${BOX_NAME:-nufi}"
   echo
   [ "$DRY" = 1 ] && return 0
   echo "Waiting up to 120 s for this Mac to come up on the mesh…"
