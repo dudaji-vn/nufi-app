@@ -1,0 +1,43 @@
+# A Linux VM for running NuFi Works on a Mac.
+#
+# Works runs agent code in gVisor (runsc) sandboxes, and gVisor is Linux-only —
+# Docker Desktop and OrbStack cannot host it. So on a Mac the box runs inside
+# this Lima VM, which installs gVisor like any Ubuntu box: the sandbox has a
+# native arm64 build and runs under gVisor directly, and only the amd64-only
+# Works server is emulated — under Rosetta on Apple Silicon (below), not QEMU.
+#
+#   brew install lima
+#   limactl start --name nufi-works deploy/box/mac/works-vm.yaml
+#   limactl shell nufi-works
+#   # inside the VM, bring in the box (git clone or `limactl copy`), then:
+#   #   ./install-box.sh --with-works --emulate-amd64
+#   #   add --claude-subscription --claude-token <token> for Claude on your subscription
+#
+# Sized for the box plus Works: 6 vCPU, 12 GiB, 64 GiB. The box alone fits in
+# less (see tests/vm/lima-ubuntu.yaml); the emulated Works server wants the
+# headroom.
+base: template:ubuntu-24.04
+
+vmType: vz
+cpus: 6
+memory: 12GiB
+disk: 64GiB
+
+# Rosetta runs the one amd64-only image (the Works server) far more reliably
+# than QEMU user emulation, which segfaults the emulated Node servers on Apple
+# Silicon. binfmt:true registers it as the x86_64 interpreter inside the guest,
+# so `docker run --platform linux/amd64` and `--emulate-amd64` just work.
+rosetta:
+  enabled: true
+  binfmt: true
+
+# vzNAT puts the guest on 192.168.64.0/24, which the Mac reaches directly — the
+# box's certificate covers that address, so the Mac opens https://<vm-ip>:3080
+# exactly as a LAN laptop would. The box also joins the mesh from here with its
+# own container, so from-home access needs no native Tailscale app on the Mac.
+networks:
+  - vzNAT: true
+
+# Nothing mounted from the Mac: the box lives in the VM. Bring the box in with a
+# git clone or `limactl copy`; the images come from the registry.
+mounts: []

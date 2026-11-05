@@ -1,6 +1,6 @@
 ---
 title: Works on the box
-description: NuFi Works puts a coding-agent workspace on the box, Ubuntu only, with every run landing in a gVisor sandbox behind an egress proxy with one exit.
+description: NuFi Works puts a coding-agent workspace on the box — on Linux, or on a Mac in a Linux VM — with every run landing in a gVisor sandbox behind an egress proxy with one exit.
 ---
 
 `install-box.sh --with-works` adds **NuFi Works** to the box at
@@ -24,14 +24,36 @@ It allows the model gateway and refuses everything else with a 403.
 ./install-box.sh --with-works
 ```
 
-Ubuntu only. The installer refuses outright on macOS, where Docker Desktop
-cannot host `runsc`. When it is there, the closing banner names it:
+Ubuntu only — or a Mac running a Linux VM, see [On a Mac](#on-a-mac). The
+installer refuses outright on macOS directly, where Docker Desktop cannot host
+`runsc`. When Works is there, the closing banner names it:
 
 ```
 Works:       https://<box>:3003  → enter it from the Agents page as <admin>.
              Every agent run lands in a gVisor sandbox with no network
              except the box gateway (README "NuFi Works on the box").
 ```
+
+## On a Mac
+
+gVisor is Linux-only, so `--with-works` refuses on macOS directly. Run the box
+in a Linux VM instead — it installs gVisor like any Ubuntu box, and the Mac
+reaches it over the VM's network. The repo ships a Lima recipe sized for it:
+
+```bash
+brew install lima
+limactl start --name nufi-works deploy/box/mac/works-vm.yaml
+limactl shell nufi-works
+# inside the VM, bring in the box (git clone or `limactl copy`), then:
+./install-box.sh --with-works --emulate-amd64
+```
+
+`--emulate-amd64` is for the one amd64-only image, the Works server; the recipe
+turns on Rosetta so it runs reliably on Apple Silicon, where QEMU user
+emulation segfaults the emulated Node servers. The sandbox itself has a native
+arm64 build and runs under gVisor directly. The box also joins the mesh from
+the VM with its own container, so from-home access needs no native Tailscale
+app — unlike a box installed on macOS directly.
 
 ## First sign-in
 
@@ -60,6 +82,24 @@ WORKS_EGRESS_ALLOW=pypi.org,files.pythonhosted.org
 Bare hostnames, comma-separated. Everything not on the list gets a 403, logged
 by hostname.
 
+## Claude on your subscription
+
+By default the Claude harness runs on the box's own gateway. To run it on your
+**Claude Pro/Max subscription** instead — so every member gets Claude through
+Works with no setup of their own — enable it at install:
+
+```bash
+claude setup-token        # on a machine signed in to your subscription; prints a token
+./install-box.sh --with-works --claude-subscription --claude-token <token>
+```
+
+The owner authenticates once; the token is forwarded into each sandbox and
+Claude talks straight to `api.anthropic.com`, which is opened on the sandbox
+egress allow list for this. It is opt-in — a plain box keeps Claude on the
+gateway and the sandbox sealed — and `--no-claude-subscription` turns it back
+off. The token lives at mode 0600 in `.env`; it can also come from the
+environment (`export CLAUDE_CODE_OAUTH_TOKEN=…`).
+
 ## Checking it
 
 ```bash
@@ -72,8 +112,10 @@ ever drifts — it is written to converge, not to fail on a second run.
 
 ## Honest limits
 
-- **x86 only.** The Works image is published for `amd64`, so a Works box is
-  an x86 Ubuntu machine — not a Mac, and not Ubuntu on Arm.
+- **The Works server is amd64-only.** On an x86 Ubuntu box it runs natively; on
+  Arm (a Mac VM, or Ubuntu on Arm) it runs under emulation — `--emulate-amd64`,
+  and Rosetta on Apple Silicon. The sandbox itself has a native arm64 build, so
+  agent code runs under gVisor without emulation.
 - **The first sign-in has to be the box admin, from the Agents page.** The
   install registered that one account as instance admin and company owner;
   everyone else waits to be invited from inside Works.
@@ -83,10 +125,10 @@ ever drifts — it is written to converge, not to fail on a second run.
 - **The smallest box models cannot drive a coding harness.** Hiring codex,
   claude or opencode as a Works agent wants real tool-calling; the box's
   smallest model does not have it.
-- **Hiring a coding agent is meant to work as in the cloud — not yet
-  exercised on a live box.** codex, claude and opencode are installed and the
-  sandbox is wired up; nothing here has run one on a live box and watched it
-  finish a task yet.
+- **Hiring a coding agent is meant to work as in the cloud.** codex, claude and
+  opencode are installed and the sandbox is wired up; Claude on a subscription
+  has answered from a sandbox on a live box, but driving a full task from the
+  Works UI as a member is newer and less exercised.
 - **From home, Works stays on the office network.** The box answers to a
   second, from-home name once it is on the mesh, and chat and the drives work
   through it — but Works does not. Its private-hostname guard accepts only the
