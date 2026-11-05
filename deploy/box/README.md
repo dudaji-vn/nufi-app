@@ -748,7 +748,10 @@ subscription**: it forwards a `CLAUDE_CODE_OAUTH_TOKEN` (from `claude
 setup-token`, which needs a Claude Pro/Max subscription) into the sandbox,
 points `claude_local` straight at `api.anthropic.com` and opens that one host
 on the sandbox egress allow list. One token serves every member — a client
-using Works needs no setup of their own.
+using Works needs no setup of their own. It also **pre-hires a Claude agent**
+in Works (the box otherwise ships only the nufi_agent routines, so a task with
+no responsible agent starts no run): a member assigns that agent to a task and
+runs Claude straight away, without hiring one first.
 
 It is **opt-in**: a plain box keeps `claude_local` on the gateway and the
 sandbox sealed. The token can also come from the environment

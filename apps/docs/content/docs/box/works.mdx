@@ -111,6 +111,11 @@ gateway and the sandbox sealed — and `--no-claude-subscription` turns it back
 off. The token lives at mode 0600 in `.env`; it can also come from the
 environment (`export CLAUDE_CODE_OAUTH_TOKEN=…`).
 
+It also **pre-hires a Claude agent** in Works. The box otherwise ships only the
+nufi_agent routines, and a task with no responsible agent starts no run — so on
+a subscription box a member assigns the ready-made Claude agent to a task and
+runs Claude straight away, without hiring one first.
+
 ## Checking it
 
 ```bash

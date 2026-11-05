@@ -944,6 +944,17 @@ def test_works_install_runs_the_registrar_inside_the_box_network(tmp_path):
     assert "--profile works" in out
 
 
+def test_works_install_hires_a_claude_agent_only_on_a_subscription_box(tmp_path):
+    """--claude-subscription pre-hires a Claude agent so a member can run Claude
+    from a task without first hiring one; a plain Works box does not."""
+    sub = cli("works", "install", NUFI_BOX_ENV=str(_works_env(tmp_path, NUFI_CLAUDE_SUBSCRIPTION="1")))
+    assert sub.returncode == 0, sub.stderr
+    assert "--claude-agent" in sub.stdout, sub.stdout
+    plain = cli("works", "install", NUFI_BOX_ENV=str(_works_env(tmp_path)))
+    assert plain.returncode == 0, plain.stderr
+    assert "--claude-agent" not in plain.stdout, plain.stdout
+
+
 def test_works_install_refuses_a_box_installed_without_works(tmp_path):
     envf = _env(tmp_path, NUFI_WORKS="0")
     r = cli("works", "install", NUFI_BOX_ENV=str(envf))
