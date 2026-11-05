@@ -17,6 +17,16 @@ description: One command, four questions, a banner. About 25 minutes on a blank 
 A GPU is optional. Without one the box answers from the CPU, which works and is
 slower; a machine serving a handful of people at once wants a GPU.
 
+### Want Works (coding agents, the Claude CLI) on a Mac?
+
+The plain box — chat, your documents and the department agents — installs on
+macOS directly, no VM. **Works is the exception.** It runs agent code in gVisor
+sandboxes, which are Linux-only, so on a Mac you run the whole box in a Linux
+VM. It is a one-time ten-minute step and the recommended way to get Works on a
+Mac, with full sandbox isolation kept. See **[Works on a
+Mac](/docs/box/works#on-a-mac)** — everything else on this page is the same
+inside that VM.
+
 ## On Windows, work inside WSL2
 
 *Running Ubuntu or macOS directly? Skip this section — go straight to [Get the box](#get-the-box).*
