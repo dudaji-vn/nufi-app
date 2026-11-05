@@ -1225,10 +1225,12 @@ built yet:
   connection from Dudaji into the box, and nothing on the box listens for
   one. Remote support access would be a separate, explicit decision — not
   something this command does on its own.
-- **NUFI Works on macOS.** Works runs on the box on Ubuntu
+- **NUFI Works on macOS.** Works runs on the box on Linux
   (`install-box.sh --with-works`, see [NUFI Works on the
-  box](#nufi-works-on-the-box)); Docker Desktop cannot host the gVisor
-  runtime it needs, so a Mac box does not get it.
+  box](#nufi-works-on-the-box)); Docker Desktop cannot host the gVisor runtime
+  it needs, so a Mac runs Works in a Linux VM instead — the Lima recipe
+  `deploy/box/mac/works-vm.yaml` sets one up (Rosetta, sized for Works), then
+  `install-box.sh --with-works --emulate-amd64` inside it.
 - **A weekly report that knows which files are this week's.** `weekly` reads
   the whole drive and asks the model to respect the period; nothing filters
   the files by their modification date. See [Departments and
