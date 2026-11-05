@@ -177,6 +177,10 @@ if [ "$OS" = "Linux" ]; then
   # needs (the plan describes the box, not the shell previewing it), and the
   # real branch installs whichever of them this machine still lacks.
   _pkgs_all="rsync avahi-daemon avahi-utils"
+  # bzip2 unpacks the gVisor release tarball; only a --with-works box installs
+  # gVisor, so only that box needs it (the installer used to die mid-install
+  # when it was missing).
+  [ "$WITH_WORKS" = 1 ] && _pkgs_all="$_pkgs_all bzip2"
   if [ "$DRY" = 1 ]; then
     printf '  $ sudo apt-get install -y %s\n' "$_pkgs_all"
   else
@@ -185,6 +189,7 @@ if [ "$OS" = "Linux" ]; then
       case "$_p" in
         rsync) have rsync || _pkgs="$_pkgs $_p" ;;
         avahi-daemon|avahi-utils) have avahi-publish || _pkgs="$_pkgs $_p" ;;
+        bzip2) have bzip2 || _pkgs="$_pkgs $_p" ;;
       esac
     done
     if [ -n "$_pkgs" ]; then

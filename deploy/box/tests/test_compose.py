@@ -352,10 +352,11 @@ def test_gpu_profile_adds_the_device_reservation_to_ollama():
 def test_emulate_layer_only_marks_the_images_published_amd64_only():
     svcs = render("docker-compose.yml", "docker-compose.emulate.yml",
                  profiles=("works",))["services"]
-    assert svcs["librechat"]["platform"] == "linux/amd64"
-    assert svcs["admin-panel"]["platform"] == "linux/amd64"
+    # nufi-works is the only amd64-only image. librechat and admin-panel are
+    # multi-arch; pinning them to linux/amd64 ran their Node servers under
+    # emulation, which segfaulted on Apple Silicon, so they stay native.
     assert svcs["works"]["platform"] == "linux/amd64"
-    for name in set(svcs) - {"librechat", "admin-panel", "works"}:
+    for name in set(svcs) - {"works"}:
         assert "platform" not in svcs[name], name
 
 
