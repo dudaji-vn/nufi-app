@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react';
 import { HrBody } from './hr';
+import { LlmSchedulingBody, LlmSchedulingFigure } from './llm-scheduling';
 import { SealedNetworkBody } from './sealed-network';
 import { AirGapBody } from './air-gap';
 import { AnsweringBody } from './answering';
@@ -30,6 +31,21 @@ export type PostMeta = {
 };
 
 export const POSTS: PostMeta[] = [
+  {
+    slug: 'when-everyone-asks-the-llm-at-once',
+    area: 'engineering',
+    series: 'ai-native-platform',
+    date: '2026-11-10',
+    readingMinutes: 9,
+    author: 'Dudaji AI team',
+    kicker: 'Engineering · AI-native platform',
+    title: 'When everyone asks the LLM at once',
+    summary:
+      'GPU time is the scarce resource of an AI-native platform. We flooded a model until an urgent agent couldn\'t get through, put a scheduler in front of it, and simulated what that means for a whole fab.',
+    cta: 'Read the post',
+    Body: LlmSchedulingBody,
+    Figure: LlmSchedulingFigure,
+  },
   {
     slug: 'how-the-box-answers',
     area: 'nufi-box',
