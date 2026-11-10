@@ -1,11 +1,13 @@
 import { Link } from '@tanstack/react-router';
 import { useHead } from '../components/head';
+import { areaHead } from '../seo';
 import { POSTS } from '../posts/registry';
 import { areaSummary, formatDate, postsInSeries, type Area } from '../posts/taxonomy';
 
 // One area of the blog: its series as numbered chapter lists.
 export function BlogArea({ area }: { area: Area }) {
-  useHead(`${area.name} — NuFi blog`, area.intro);
+  const head = areaHead(area);
+  useHead(head.title, head.description);
   return (
     <main className="lib">
       <section className="shell lib-hd">

@@ -1,4 +1,4 @@
-import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router';
+import { createRootRoute, createRoute, createRouter, type RouterHistory } from '@tanstack/react-router';
 import { RootLayout } from './routes/root';
 import { Home } from './routes/home';
 import { BlogIndex } from './routes/blog-index';
@@ -16,14 +16,18 @@ const postRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([indexRoute, blogRoute, postRoute]);
 
-export const router = createRouter({
-  routeTree,
-  defaultPreload: 'intent',
-  scrollRestoration: true,
-});
+// The browser uses the default history; the build-time prerender (entry-server.tsx) passes a memory history.
+// Scroll restoration is browser-only (on the server it would put an inline <script> into the static HTML).
+export const createAppRouter = (history?: RouterHistory) =>
+  createRouter({
+    routeTree,
+    history,
+    defaultPreload: 'intent',
+    scrollRestoration: !history,
+  });
 
 declare module '@tanstack/react-router' {
   interface Register {
-    router: typeof router;
+    router: ReturnType<typeof createAppRouter>;
   }
 }

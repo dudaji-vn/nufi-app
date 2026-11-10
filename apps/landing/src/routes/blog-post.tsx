@@ -1,5 +1,6 @@
 import { Navigate, useParams } from '@tanstack/react-router';
 import { useHead } from '../components/head';
+import { postHead } from '../seo';
 import { PostChrome } from '../components/blog/post-chrome';
 import { postBySlug, type PostMeta } from '../posts/registry';
 import { areaById } from '../posts/taxonomy';
@@ -16,7 +17,8 @@ export function BlogPost() {
 }
 
 function PostView({ post }: { post: PostMeta }) {
-  useHead(`${post.title} — NuFi`, post.summary);
+  const head = postHead(post);
+  useHead(head.title, head.description);
   const Body = post.Body;
   return (
     <main>

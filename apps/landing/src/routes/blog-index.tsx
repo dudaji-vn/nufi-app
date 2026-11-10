@@ -1,15 +1,13 @@
 import { useState } from 'react';
 import { useHead } from '../components/head';
+import { BLOG_HEAD } from '../seo';
 import { AreaFolder } from '../components/blog/area-folder';
 import { PostRow } from '../components/blog/post-row';
 import { POSTS } from '../posts/registry';
 import { AREAS, latest, type AreaId } from '../posts/taxonomy';
 
 export function BlogIndex() {
-  useHead(
-    'Blog — NuFi',
-    'Engineering notes on AI-native data platforms for factories, and field notes from the NuFi Box private AI appliance.',
-  );
+  useHead(BLOG_HEAD.title, BLOG_HEAD.description);
   const [filter, setFilter] = useState<AreaId | 'all'>('all');
   const posts = latest(POSTS).filter((p) => filter === 'all' || p.area === filter);
   const [lead, ...rest] = posts;
