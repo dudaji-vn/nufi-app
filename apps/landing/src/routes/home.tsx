@@ -4,15 +4,13 @@ import { SectionLink } from '../components/section-link';
 import { Link } from '@tanstack/react-router';
 import { PostRow } from '../components/blog/post-row';
 import { useHead } from '../components/head';
+import { HOME_HEAD } from '../seo';
 import { POSTS } from '../posts/registry';
 import { latest } from '../posts/taxonomy';
 import { DOCS_URL, EMAIL, MAILTO } from '../content';
 
 export function Home() {
-  useHead(
-    'NuFi Box — Private AI appliance',
-    'NuFi Box is a small on-premise AI appliance that runs the whole AI stack on your own hardware — a private chat that answers from your documents, on your GPU, on your network. Nothing leaves the box.',
-  );
+  useHead(HOME_HEAD.title, HOME_HEAD.description);
   return (
     <main>
       {/* Hero */}
