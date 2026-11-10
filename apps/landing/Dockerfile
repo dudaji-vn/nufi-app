@@ -20,7 +20,7 @@ FROM base AS runtime
 ENV NODE_ENV=production
 COPY --from=deps /app/node_modules node_modules
 COPY --from=build /app/dist dist
-COPY server.ts package.json ./
+COPY server.ts range.ts package.json ./
 RUN chown -R bun:bun /app
 USER bun
 ENV PORT=3000
