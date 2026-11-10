@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router';
 import { POSTS, type PostMeta } from '../../posts/registry';
 import { adjacentInSeries, areaById, latest, postsInSeries, seriesOf } from '../../posts/taxonomy';
 import { PostRow } from './post-row';
+import { PostContext } from './post-context';
 
 type Heading = { id: string; text: string };
 
@@ -51,7 +52,7 @@ export function PostChrome({ post, children }: { post: PostMeta; children: React
             </Link>
           </nav>
           <article className="article" ref={bodyRef}>
-            {children}
+            <PostContext.Provider value={post}>{children}</PostContext.Provider>
           </article>
         </div>
         <aside className="post-rail" aria-label="In this post">

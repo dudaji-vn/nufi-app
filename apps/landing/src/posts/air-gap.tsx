@@ -1,3 +1,4 @@
+import { PostByline } from '../components/blog/post-context';
 import { Icon } from '../components/icon';
 import { SectionLink } from '../components/section-link';
 import { UnpluggedBoxArt } from '../components/post-art';
@@ -12,7 +13,7 @@ export function AirGapBody() {
         box so you can carry the whole thing in on a USB stick, load it, pull the cable, and still ask your documents
         questions.
       </p>
-      <p className="byline">NuFi Box · how it works</p>
+      <PostByline />
 
       <p>
         The hardest version of "private" we design for is the site that takes your phone at the door. No phone, no

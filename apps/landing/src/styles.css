@@ -382,4 +382,5 @@
   .article th{font-family:var(--f-mono);font-size:0.74rem;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-mute);font-weight:500;}
   .article td:first-child{font-weight:600;color:var(--ink);white-space:nowrap;}
   .article td{color:var(--ink-soft);}
-  .article code{font-family:var(--f-mono);font-size:0.86em;background:var(--surface-2);padding:0.08em 0.35em;border-radius:4px;}
+  .article h2,.lib-chapter{scroll-margin-top:5.5rem;}
+  .lib-series a{color:var(--brand-link);}

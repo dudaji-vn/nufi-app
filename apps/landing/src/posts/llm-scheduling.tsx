@@ -1,3 +1,4 @@
+import { PostByline } from '../components/blog/post-context';
 // Engineering · AI-native platform · part 1. All numbers come from the real run and the simulation in
 // the hands-on (runs/*.md, sim_results.md); the simulation is labelled wherever it appears.
 
@@ -13,7 +14,7 @@ export function LlmSchedulingBody() {
         the most urgent request couldn't get through, put a small scheduler in front of it, and simulated what the same
         choice means for a whole fab.
       </p>
-      <p className="byline">Dudaji AI team · 2026.11.10 · 9 min read</p>
+      <PostByline />
 
       <p>
         02:10 at a large memory fab. An SPC chart goes out of control, and a root-cause agent starts investigating on
@@ -177,7 +178,7 @@ export function LlmSchedulingBody() {
       <h2>04 · At fab scale (simulation)</h2>
       <p>
         A laptop says nothing about absolute numbers in a fab. So we wrote a small simulator of one realistic serving
-        unit: a 70B-class model in FP8 on two H200 GPUs. We didn't measure its speed ourselves. It comes from NVIDIA's
+        unit: a 70B-class model in FP8 on two H200 GPUs. We didn't measure its speed ourselves. We derived it from NVIDIA's
         published NIM benchmark for Llama 3.3 70B on 2 × H200: about 60 tokens per second for one request alone,
         about 33 per request at a hundred in parallel, and roughly 11,000 prompt tokens per second.
       </p>
@@ -311,7 +312,7 @@ export function LlmSchedulingBody() {
       <p className="foot-note">
         Method: the real run used a synthetic, fab-vocabulary load on one laptop (no real fab data); dashboards and
         tables are unedited screenshots (dashboards cropped). The fab-scale results are a simulation. Serving speed
-        comes from NVIDIA's published NIM benchmark (Llama-3.3-70B-Instruct, FP8, TP2 on 2 × H200); the load is our
+        is derived from NVIDIA's published NIM benchmark (Llama-3.3-70B-Instruct, FP8, TP2 on 2 × H200); the load is our
         assumption and is stated on every chart. Versions as of 2026-11-10.
       </p>
     </>

@@ -21,7 +21,13 @@ export function AreaFolder({ area, posts, index }: { area: Area; posts: PostMeta
       <ul className="lib-series">
         {areaSummary(posts, area).map(({ series, count }) => (
           <li key={series.id} className={count === 0 ? 'is-empty' : undefined}>
-            <span>{series.name}</span>
+            {count > 0 ? (
+              <Link to="/blog/$slug" params={{ slug: area.id }} hash={series.id}>
+                {series.name}
+              </Link>
+            ) : (
+              <span>{series.name}</span>
+            )}
             <span className="lib-series__n">
               {count > 0 ? `${count} ${count === 1 ? 'post' : 'posts'}` : series.status === 'live' ? '—' : STATUS_LABEL[series.status]}
             </span>
