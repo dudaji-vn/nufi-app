@@ -30,6 +30,39 @@ export function PostChrome({ post, children }: { post: PostMeta; children: React
     );
   }, [post.slug]);
 
+  // Scroll-spy: the active heading is the last one whose top has passed the reading line just under
+  // the sticky nav (h2s carry scroll-margin-top: 5.5rem). At the very bottom the last heading wins,
+  // since a short final section can never reach the line.
+  const [active, setActive] = useState<string | null>(null);
+  useEffect(() => {
+    const els = toc.map((h) => document.getElementById(h.id)).filter((el): el is HTMLElement => !!el);
+    if (!els.length) return;
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      const line = 120;
+      let current: string | null = null;
+      for (const el of els) {
+        if (el.getBoundingClientRect().top - line <= 0) current = el.id;
+        else break;
+      }
+      const atBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2;
+      if (atBottom) current = els[els.length - 1]!.id;
+      setActive(current);
+    };
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(update);
+    };
+    update();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [toc]);
+
   const inSeries = postsInSeries(POSTS, post.area, post.series);
   const { prev, next } = adjacentInSeries(POSTS, post.slug);
   const more = [next, prev, ...latest(POSTS).filter((p) => p.series !== post.series || p.area !== post.area)]
@@ -61,7 +94,7 @@ export function PostChrome({ post, children }: { post: PostMeta; children: React
               <p className="lib-label">On this page</p>
               <ol className="rail-toc">
                 {toc.map((h) => (
-                  <li key={h.id}>
+                  <li key={h.id} aria-current={h.id === active ? 'location' : undefined}>
                     <a href={`#${h.id}`}>{h.text}</a>
                   </li>
                 ))}
