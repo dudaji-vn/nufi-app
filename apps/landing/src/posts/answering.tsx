@@ -1,3 +1,4 @@
+import { PostByline } from '../components/blog/post-context';
 import { Icon } from '../components/icon';
 import { SectionLink } from '../components/section-link';
 import { IndexingArt, AnsweringArt } from '../components/post-art';
@@ -11,7 +12,7 @@ export function AnsweringBody() {
         The most common question we get about the box isn't about privacy. It's simpler, and more honest: how does it
         actually know what's in my documents? It didn't write them, and we didn't train it on them.
       </p>
-      <p className="byline">NuFi Box · how it works</p>
+      <PostByline />
 
       <p>
         The short answer is that it reads them when you add them, the way a diligent new hire would, and then reads the

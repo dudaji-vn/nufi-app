@@ -1,37 +1,59 @@
-import { Link } from '@tanstack/react-router';
-import { Icon } from '../components/icon';
-import { PostCard } from '../components/post-card';
+import { useState } from 'react';
 import { useHead } from '../components/head';
+import { AreaFolder } from '../components/blog/area-folder';
+import { PostRow } from '../components/blog/post-row';
 import { POSTS } from '../posts/registry';
+import { AREAS, latest, type AreaId } from '../posts/taxonomy';
 
 export function BlogIndex() {
   useHead(
-    'Blog — NuFi Box',
-    'Use cases and field notes from a real NuFi Box: how it answers from your documents, runs air-gapped, and keeps everything on the box.',
+    'Blog — NuFi',
+    'Engineering notes on AI-native data platforms for factories, and field notes from the NuFi Box private AI appliance.',
   );
+  const [filter, setFilter] = useState<AreaId | 'all'>('all');
+  const posts = latest(POSTS).filter((p) => filter === 'all' || p.area === filter);
+  const [lead, ...rest] = posts;
+
   return (
-    <main>
-      <section className="blog-hd">
-        <div className="shell">
-          <Link className="back" to="/">
-            <Icon name="arrow-l" /> Home
-          </Link>
-          <p className="eyebrow">NuFi Box · Blog</p>
-          <h1>Use cases &amp; field notes</h1>
-          <p>
-            Real things we've run on a real box — GPU inference, department-drive RAG, cited answers. Every screenshot
-            is unretouched.
-          </p>
-        </div>
+    <main className="lib">
+      <section className="shell lib-hd">
+        <p className="lib-label">Blog · {POSTS.length} posts</p>
+        <h1>
+          We build private AI that runs on your own hardware, and we write about how factories can run their data
+          platforms on AI.
+        </h1>
       </section>
 
-      <section className="section" style={{ paddingTop: 'clamp(2rem,5vw,3rem)' }}>
-        <div className="shell">
-          <div className="posts">
-            {POSTS.map((post) => (
-              <PostCard key={post.slug} post={post} />
+      <section className="shell lib-areas" aria-label="Areas">
+        {AREAS.map((area, i) => (
+          <AreaFolder key={area.id} area={area} posts={POSTS} index={i} />
+        ))}
+      </section>
+
+      <section className="shell lib-latest" aria-labelledby="latest-h">
+        <div className="lib-latest__hd">
+          <h2 id="latest-h" className="lib-label">
+            Latest
+          </h2>
+          <div className="lib-filter" role="group" aria-label="Filter by area">
+            {(['all', ...AREAS.map((a) => a.id)] as const).map((id) => (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={filter === id}
+                className={filter === id ? 'is-on' : undefined}
+                onClick={() => setFilter(id)}
+              >
+                {id === 'all' ? 'All' : AREAS.find((a) => a.id === id)!.name}
+              </button>
             ))}
           </div>
+        </div>
+        {lead ? <PostRow post={lead} variant="lead" /> : null}
+        <div className="lib-grid">
+          {rest.map((p) => (
+            <PostRow key={p.slug} post={p} />
+          ))}
         </div>
       </section>
     </main>

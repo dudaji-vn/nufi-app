@@ -1,3 +1,4 @@
+import { PostByline } from '../components/blog/post-context';
 import { Icon } from '../components/icon';
 import { SectionLink } from '../components/section-link';
 import { SealedBoxArt } from '../components/post-art';
@@ -12,7 +13,7 @@ export function SealedNetworkBody() {
         Box, your documents have no route to the internet to take. It isn't a policy we swear to keep. It's a road that
         was never built.
       </p>
-      <p className="byline">NuFi Box · how it works</p>
+      <PostByline />
 
       <p>
         Every vendor sells "private" now. Run the model in your own cloud tenant, keep the logs in-region, sign a

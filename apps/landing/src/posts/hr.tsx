@@ -1,3 +1,4 @@
+import { PostByline } from '../components/blog/post-context';
 import { Icon } from '../components/icon';
 import { SectionLink } from '../components/section-link';
 
@@ -10,7 +11,7 @@ export function HrBody() {
         One afternoon, one handbook, one box on the office network. The team asked it the questions they'd normally
         email HR. It answered from the document, quoted the source, and never sent a word to the cloud.
       </p>
-      <p className="byline">NuFi Box · field notes from the team</p>
+      <PostByline />
 
       <p>
         Every company has a folder like this: the handbook, the contracts, the policies, the customer files. It's the
