@@ -313,7 +313,12 @@ export function LlmSchedulingBody() {
         Method: the real run used a synthetic, fab-vocabulary load on one laptop (no real fab data); dashboards and
         tables are unedited screenshots (dashboards cropped). The fab-scale results are a simulation. Serving speed
         is derived from NVIDIA's published NIM benchmark (Llama-3.3-70B-Instruct, FP8, TP2 on 2 × H200); the load is our
-        assumption and is stated on every chart. Versions as of 2026-11-10.
+        assumption and is stated on every chart. Versions as of 2026-11-10. The scheduler, load generator and simulator
+        are in{' '}
+        <a href="https://gist.github.com/minhnhat165/db4b42d046add8a67d542073db7decf6" target="_blank" rel="noopener">
+          this public gist
+        </a>
+        .
       </p>
     </>
   );
