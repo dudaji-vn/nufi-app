@@ -36,6 +36,7 @@ export const POSTS: PostMeta[] = [
       'GPU time is the scarce resource of an AI-native platform. We flooded a model until an urgent agent couldn\'t get through, put a scheduler in front of it, and simulated what that means for a whole fab.',
     Body: LlmSchedulingBody,
     Figure: LlmSchedulingFigure,
+    video: { src: '/blog/ai-native/video.mp4', poster: '/blog/ai-native/video-poster.jpg' },
   },
   {
     slug: 'how-the-box-answers',

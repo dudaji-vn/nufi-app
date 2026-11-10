@@ -1,4 +1,5 @@
 import { PostByline } from '../components/blog/post-context';
+import { PostVideo } from '../components/blog/post-video';
 // Engineering · AI-native platform · part 1. All numbers come from the real run and the simulation in
 // the hands-on (runs/*.md, sim_results.md); the simulation is labelled wherever it appears.
 
@@ -30,6 +31,12 @@ export function LlmSchedulingBody() {
         In an AI-native platform, GPU time and tokens are the scarce shared resource. If nothing decides who gets them,
         the loudest workload wins, not the most important one.
       </p>
+
+      <PostVideo
+        src={`${RUN}/video.mp4`}
+        poster={`${RUN}/video-poster.jpg`}
+        caption="The whole post in 90 seconds: the real laptop run, then the fab-scale simulation. English and Korean captions."
+      />
 
       <h2>01 · What "AI-native" actually means</h2>
       <p>
