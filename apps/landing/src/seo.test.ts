@@ -94,6 +94,13 @@ test('each post states its title and byline once (the body header is not repeate
   }
 });
 
+test('post tables become markdown pipe tables', async () => {
+  const p = POSTS.find((x) => x.slug === 'whats-inside-the-box')!;
+  const md = postMarkdown(p, extractArticle(await render(`/blog/${p.slug}`)));
+  expect(md).toContain('| Project | Version on the box | License | What it does here |');
+  expect(md).toContain('| LibreChat | v0.8.6-rc1 (our fork) | MIT |');
+});
+
 describe('crawler files', () => {
   test('llms.txt lists every post with its markdown link, newest first', () => {
     const txt = llmsTxt(POSTS);
