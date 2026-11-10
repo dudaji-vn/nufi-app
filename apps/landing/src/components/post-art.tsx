@@ -177,7 +177,7 @@ export function AnsweringArt() {
 // The box in five layers, top (what people use) to bottom (what it runs on). Names only; the post's
 // tables carry versions and licenses.
 const STACK: { layer: string; parts: string }[] = [
-  { layer: 'chat + documents', parts: 'LibreChat · RAG API · pgvector · MongoDB' },
+  { layer: 'chat + documents', parts: 'LibreChat · RAG API · PostgreSQL + pgvector' },
   { layer: 'models', parts: 'LiteLLM · Ollama · Qwen2.5 7B · BGE-M3' },
   { layer: 'agents + sandbox', parts: 'Langflow · Paperclip · gVisor · tinyproxy' },
   { layer: 'network + files', parts: 'Caddy · Tailscale · Headscale · Samba' },

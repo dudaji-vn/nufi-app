@@ -47,9 +47,9 @@ export const POSTS: PostMeta[] = [
     date: '2026-11-10',
     readingMinutes: 7,
     author: 'NuFi team',
-    title: 'Everything inside the box, by name',
+    title: "What's inside the box, by name",
     summary:
-      'What open source is actually inside NuFi Box? Every project, the version we run, its license and its job, read straight from the install files. Plus the two places the answer isn\'t simply "open source".',
+      'What open source is actually inside NuFi Box? The projects that do the work, with the version we run, the license and the job of each, read straight from the install files.',
     Body: OpenSourceBody,
     Figure: BoxStackArt,
   },

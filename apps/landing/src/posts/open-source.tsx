@@ -58,12 +58,6 @@ const CHAT: Row[] = [
     license: 'PostgreSQL License',
     job: 'Stores the passage vectors, plus the data for the model gateway, Studio and Works.',
   },
-  {
-    name: 'MongoDB',
-    version: '4.4',
-    license: 'SSPL (source-available, see below)',
-    job: 'Stores users, conversations and settings for the chat.',
-  },
 ];
 
 const MODELS: Row[] = [
@@ -190,11 +184,12 @@ export function OpenSourceBody() {
   return (
     <>
       <p className="eyebrow">NuFi Box · How it works</p>
-      <h1>Everything inside the box, by name</h1>
+      <h1>What's inside the box, by name</h1>
       <p className="standfirst">
         What open source is actually inside NuFi Box? It's a fair thing to ask about anything that sits on your
-        network. Here is the full list, read straight from the files the box installs from. Every project, the version we run, its license, and the job it
-        does. Plus the two places where the answer isn't simply "open source".
+        network. Here are the projects that do the work, read straight from the files the box installs from: the
+        version we run, its license, and the job it does. Plus the one place where the answer isn't simply "open
+        source".
       </p>
       <PostByline />
 
@@ -214,8 +209,7 @@ export function OpenSourceBody() {
       <figure className="post-fig">
         <BoxStackArt />
         <figcaption>
-          The box in five layers. Each name is a project with public code you can read and audit. One of them,
-          MongoDB, comes with a catch, explained below.
+          The box in five layers. Each name is a project with public code you can read and audit.
         </figcaption>
       </figure>
 
@@ -263,16 +257,9 @@ export function OpenSourceBody() {
       <h2>05 · The floor it all stands on</h2>
       <PartsTable rows={FLOOR} />
 
-      <h2>The two exceptions</h2>
-      <p>We'd rather point these out ourselves than have your legal team find them.</p>
+      <h2>The one exception</h2>
+      <p>We'd rather point this out ourselves than have your legal team find it.</p>
       <ul>
-        <li>
-          <strong>MongoDB is source-available, not open source.</strong> Its license (SSPL) lets you read the code and
-          run it on your own box freely. It is not approved by the Open Source Initiative, because it puts conditions
-          on offering MongoDB as a hosted service to others. For a box that sits in your own building, that condition
-          doesn't apply. We still list it honestly, and we're looking at an open-source replacement for the chat's
-          database.
-        </li>
         <li>
           <strong>Claude Code is not open source.</strong> The Works sandbox can also run Anthropic's Claude Code as a
           coding agent, but only if you connect your own Claude account. It's a proprietary tool under Anthropic's
