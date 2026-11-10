@@ -32,6 +32,22 @@ function turndown(): TurndownService {
       return src ? `\n\n[Video](${absolute(src)})\n\n` : '';
     },
   });
+  // Tables as GFM pipe tables (turndown's core has no table rule; without this every cell becomes
+  // its own paragraph). Cell text only: the tables in posts hold plain text and <strong>.
+  td.addRule('table', {
+    filter: 'table',
+    replacement: (_c, node) => {
+      const rows = Array.from((node as HTMLElement).querySelectorAll('tr')).map((tr) =>
+        Array.from(tr.querySelectorAll('th,td')).map((c) =>
+          (c.textContent ?? '').replace(/\s+/g, ' ').trim().replace(/\|/g, '\\|'),
+        ),
+      );
+      if (!rows.length) return '';
+      const line = (cells: string[]) => `| ${cells.join(' | ')} |`;
+      const [head, ...body] = rows;
+      return `\n\n${[line(head!), line(head!.map(() => '---')), ...body.map(line)].join('\n')}\n\n`;
+    },
+  });
   td.remove((node) => ['SCRIPT', 'STYLE', 'SVG', 'BUTTON'].includes(node.nodeName.toUpperCase()));
   return td;
 }

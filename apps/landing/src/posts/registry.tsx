@@ -4,6 +4,8 @@ import { LlmSchedulingBody, LlmSchedulingFigure } from './llm-scheduling';
 import { SealedNetworkBody } from './sealed-network';
 import { AirGapBody } from './air-gap';
 import { AnsweringBody } from './answering';
+import { OpenSourceBody } from './open-source';
+import { BoxStackArt } from '../components/post-art';
 import type { AreaId } from './taxonomy';
 
 // One entry per blog post. Display order comes from `date` (see taxonomy.ts).
@@ -37,6 +39,19 @@ export const POSTS: PostMeta[] = [
     Body: LlmSchedulingBody,
     Figure: LlmSchedulingFigure,
     video: { src: '/blog/ai-native/video.mp4', poster: '/blog/ai-native/video-poster.jpg' },
+  },
+  {
+    slug: 'whats-inside-the-box',
+    area: 'nufi-box',
+    series: 'how-it-works',
+    date: '2026-11-10',
+    readingMinutes: 7,
+    author: 'NuFi team',
+    title: 'Everything inside the box, by name',
+    summary:
+      'What open source is actually inside NuFi Box? Every project, the version we run, its license and its job, read straight from the install files. Plus the two places the answer isn\'t simply "open source".',
+    Body: OpenSourceBody,
+    Figure: BoxStackArt,
   },
   {
     slug: 'how-the-box-answers',

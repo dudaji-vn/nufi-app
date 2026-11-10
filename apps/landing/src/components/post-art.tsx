@@ -173,3 +173,54 @@ export function AnsweringArt() {
     </div>
   );
 }
+
+// The box in five layers, top (what people use) to bottom (what it runs on). Names only; the post's
+// tables carry versions and licenses.
+const STACK: { layer: string; parts: string }[] = [
+  { layer: 'chat + documents', parts: 'LibreChat · RAG API · pgvector · MongoDB' },
+  { layer: 'models', parts: 'LiteLLM · Ollama · Qwen2.5 7B · BGE-M3' },
+  { layer: 'agents + sandbox', parts: 'Langflow · Paperclip · gVisor · tinyproxy' },
+  { layer: 'network + files', parts: 'Caddy · Tailscale · Headscale · Samba' },
+  { layer: 'floor', parts: 'Docker · Ubuntu · Linux' },
+];
+
+export function BoxStackArt() {
+  const top = 70;
+  const h = 92;
+  const gap = 18;
+  return (
+    <div className="post-art">
+      <svg
+        viewBox="0 0 1400 660"
+        role="img"
+        aria-label="NuFi Box in five layers of open-source projects, from chat and documents down to Docker and Linux"
+      >
+        <rect className="pa-ink" x="40" y="30" width="1320" height="600" rx="34" strokeWidth="4" opacity="0.5" />
+        {STACK.map((s, i) => {
+          const y = top + i * (h + gap);
+          const last = i === STACK.length - 1;
+          return (
+            <g key={s.layer}>
+              <rect className="pa-fill" x="80" y={y} width="1240" height={h} rx="18" />
+              <rect
+                className={last ? 'pa-mute' : 'pa-ink'}
+                x="80"
+                y={y}
+                width="1240"
+                height={h}
+                rx="18"
+                strokeWidth="4"
+              />
+              <text className="pa-label pa-label--accent" x="118" y={y + h / 2 + 10}>
+                {s.layer}
+              </text>
+              <text className="pa-glyph" x="470" y={y + h / 2 + 11} fontSize="32">
+                {s.parts}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
