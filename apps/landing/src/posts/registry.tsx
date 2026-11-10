@@ -4,6 +4,7 @@ import { SealedNetworkBody } from './sealed-network';
 import { AirGapBody } from './air-gap';
 import { AnsweringBody } from './answering';
 import { SealedBoxArt, UnpluggedBoxArt, AnsweringArt } from '../components/post-art';
+import type { AreaId } from './taxonomy';
 
 // One entry per blog post. Order is display order (newest first). A post's card
 // thumbnail is either an image (`thumbSrc`) or a drawn component (`Thumb`).
@@ -17,11 +18,25 @@ export type PostMeta = {
   thumbSrc?: string;
   thumbAlt?: string;
   Thumb?: ComponentType;
+  // Library metadata (see taxonomy.ts)
+  area: AreaId;
+  series: string;
+  date: string; // ISO yyyy-mm-dd
+  readingMinutes: number;
+  author: string;
+  video?: { src: string; poster: string };
+  // A real figure from inside the post, shown in the blog's "Latest" slot
+  Figure?: ComponentType;
 };
 
 export const POSTS: PostMeta[] = [
   {
     slug: 'how-the-box-answers',
+    area: 'nufi-box',
+    series: 'how-it-works',
+    date: '2026-10-29',
+    readingMinutes: 4,
+    author: 'NuFi team',
     kicker: 'How it works',
     title: 'How the box answers from your files',
     summary:
@@ -32,6 +47,11 @@ export const POSTS: PostMeta[] = [
   },
   {
     slug: 'air-gapped-ai-for-real',
+    area: 'nufi-box',
+    series: 'how-it-works',
+    date: '2026-10-29',
+    readingMinutes: 4,
+    author: 'NuFi team',
     kicker: 'How it works',
     title: 'We unplugged the internet, and the box kept answering',
     summary:
@@ -42,6 +62,11 @@ export const POSTS: PostMeta[] = [
   },
   {
     slug: 'no-road-to-the-internet',
+    area: 'nufi-box',
+    series: 'how-it-works',
+    date: '2026-10-29',
+    readingMinutes: 4,
+    author: 'NuFi team',
     kicker: 'How it works',
     title: 'The box has no road to the internet',
     summary:
@@ -52,6 +77,11 @@ export const POSTS: PostMeta[] = [
   },
   {
     slug: 'hr-private-document-qa',
+    area: 'nufi-box',
+    series: 'field-notes',
+    date: '2026-10-29',
+    readingMinutes: 4,
+    author: 'NuFi team',
     kicker: 'Field notes · HR',
     title: 'We put our HR handbook on a box and let the team interrogate it',
     summary:
