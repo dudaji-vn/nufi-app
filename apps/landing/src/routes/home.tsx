@@ -1,9 +1,11 @@
 import { Icon } from '../components/icon';
 import { BoxFrame } from '../components/box-frame';
 import { SectionLink } from '../components/section-link';
-import { PostCard } from '../components/post-card';
+import { Link } from '@tanstack/react-router';
+import { PostRow } from '../components/blog/post-row';
 import { useHead } from '../components/head';
 import { POSTS } from '../posts/registry';
+import { latest } from '../posts/taxonomy';
 import { DOCS_URL, EMAIL, MAILTO } from '../content';
 
 export function Home() {
@@ -279,14 +281,21 @@ export function Home() {
         <div className="shell">
           <div className="sec-head">
             <p className="eyebrow">From the blog</p>
-            <h2>Use cases &amp; field notes</h2>
-            <p>Real things we've run on a real box. Every screenshot is unretouched.</p>
+            <h2>Engineering notes &amp; field notes</h2>
+            <p>Real things we've run on real hardware. Every screenshot is unretouched; every simulation says so.</p>
           </div>
-          <div className="posts">
-            {POSTS.map((post) => (
-              <PostCard key={post.slug} post={post} />
-            ))}
+          <div className="lib-grid lib-grid--3">
+            {latest(POSTS)
+              .slice(0, 3)
+              .map((post) => (
+                <PostRow key={post.slug} post={post} />
+              ))}
           </div>
+          <p className="lib-all">
+            <Link to="/blog">
+              All posts <Icon name="arrow" />
+            </Link>
+          </p>
         </div>
       </section>
 
