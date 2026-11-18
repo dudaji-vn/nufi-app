@@ -39,6 +39,7 @@ export const POSTS: PostMeta[] = [
       'The same 93.5 million synthetic readings, the same guarantees, the same questions in three databases, measured on one laptop. ClickHouse wins writing, storing and scanning history; PostgreSQL wins the lookups an index answers; TimescaleDB is not the middle it looks like.',
     Body: DeepStoreCompareBody,
     Figure: DeepStoreCompareFigure,
+    video: { src: '/blog/realtime/deep-store-compare.mp4', poster: '/blog/realtime/deep-store-compare-poster.jpg' },
   },
   {
     slug: 'when-everyone-asks-the-llm-at-once',

@@ -1,4 +1,5 @@
 import { PostByline } from '../components/blog/post-context';
+import { PostVideo } from '../components/blog/post-video';
 // Engineering · Real-time data · part 1. Every number comes from the hands-on runs of 2026-11-17/18 (C4 parts 1-4):
 // one laptop, synthetic fab readings, one run per setup after a fairness review. Nothing here is simulated.
 
@@ -174,6 +175,12 @@ export function DeepStoreCompareBody() {
         Choose a database by measuring the job it will do: the same data, the same guarantees, the same questions —
         and every answer identical before any time counts.
       </p>
+
+      <PostVideo
+        src="/blog/realtime/deep-store-compare.mp4"
+        poster="/blog/realtime/deep-store-compare-poster.jpg"
+        caption="The whole post in 90 seconds: the fair setup, writes and size, who wins where, and what we chose. English and Korean captions."
+      />
 
       <h2>01 · The setup, made fair</h2>
       <ul>
