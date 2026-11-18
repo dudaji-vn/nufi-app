@@ -2,6 +2,7 @@ import type { ComponentType } from 'react';
 import { HrBody } from './hr';
 import { LlmSchedulingBody, LlmSchedulingFigure } from './llm-scheduling';
 import { DeepStoreCompareBody, DeepStoreCompareFigure } from './deep-store-compare';
+import { OneNightBody, OneNightFigure } from './one-night';
 import { SealedNetworkBody } from './sealed-network';
 import { AirGapBody } from './air-gap';
 import { AnsweringBody } from './answering';
@@ -27,6 +28,20 @@ export type PostMeta = {
 };
 
 export const POSTS: PostMeta[] = [
+  {
+    slug: 'one-night-at-the-fab',
+    area: 'engineering',
+    series: 'realtime-data',
+    date: '2026-11-19',
+    readingMinutes: 7,
+    author: 'Dudaji AI team',
+    title: 'One night at the fab',
+    summary:
+      'A recipe change drifts one chamber while a pump wears out. We replayed that night through Kafka, Flink and ClickHouse: every alert and lot decision checked and timed, the cause found in milliseconds, and a Flink worker killed live.',
+    Body: OneNightBody,
+    Figure: OneNightFigure,
+    video: { src: '/blog/realtime/one-night.mp4', poster: '/blog/realtime/one-night-poster.jpg' },
+  },
   {
     slug: 'clickhouse-postgresql-timescaledb-sensor-history',
     area: 'engineering',
