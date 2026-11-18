@@ -21,7 +21,13 @@ export const AREAS: Area[] = [
         status: 'live',
       },
       { id: 'aiops', name: 'AIOps', intro: 'The AI platform watching itself.', status: 'next' },
-      { id: 'apache-flink', name: 'Apache Flink', intro: 'Real-time streams that wake agents up.', status: 'soon' },
+      {
+        id: 'realtime-data',
+        name: 'Real-time data',
+        intro:
+          "A fab's sensor streams with Apache Flink and ClickHouse: alerts in seconds, history in seconds or less, measured on one laptop.",
+        status: 'live',
+      },
     ],
   },
   {

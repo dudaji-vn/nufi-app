@@ -47,7 +47,7 @@ describe('blog taxonomy', () => {
     const aiops = rows.find((r) => r.series.id === 'aiops')!;
     expect(aiops.count).toBe(0);
     expect(aiops.series.status).toBe('next');
-    expect(rows.find((r) => r.series.id === 'apache-flink')!.series.status).toBe('soon');
+    expect(rows.find((r) => r.series.id === 'realtime-data')!.series.status).toBe('live');
   });
 
   test('postPath joins area and series names', () => {

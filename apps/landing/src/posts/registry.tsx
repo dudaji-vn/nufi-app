@@ -1,6 +1,7 @@
 import type { ComponentType } from 'react';
 import { HrBody } from './hr';
 import { LlmSchedulingBody, LlmSchedulingFigure } from './llm-scheduling';
+import { DeepStoreCompareBody, DeepStoreCompareFigure } from './deep-store-compare';
 import { SealedNetworkBody } from './sealed-network';
 import { AirGapBody } from './air-gap';
 import { AnsweringBody } from './answering';
@@ -26,6 +27,19 @@ export type PostMeta = {
 };
 
 export const POSTS: PostMeta[] = [
+  {
+    slug: 'clickhouse-postgresql-timescaledb-sensor-history',
+    area: 'engineering',
+    series: 'realtime-data',
+    date: '2026-11-18',
+    readingMinutes: 9,
+    author: 'Dudaji AI team',
+    title: "ClickHouse, PostgreSQL or TimescaleDB for a fab's sensor history?",
+    summary:
+      'The same 93.5 million synthetic readings, the same guarantees, the same questions in three databases, measured on one laptop. ClickHouse wins writing, storing and scanning history; PostgreSQL wins the lookups an index answers; TimescaleDB is not the middle it looks like.',
+    Body: DeepStoreCompareBody,
+    Figure: DeepStoreCompareFigure,
+  },
   {
     slug: 'when-everyone-asks-the-llm-at-once',
     area: 'engineering',
