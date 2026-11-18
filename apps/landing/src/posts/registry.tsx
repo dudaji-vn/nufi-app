@@ -3,6 +3,7 @@ import { HrBody } from './hr';
 import { LlmSchedulingBody, LlmSchedulingFigure } from './llm-scheduling';
 import { DeepStoreCompareBody, DeepStoreCompareFigure } from './deep-store-compare';
 import { OneNightBody, OneNightFigure } from './one-night';
+import { FlinkAlertsBody, FlinkAlertsFigure } from './flink-alerts';
 import { SealedNetworkBody } from './sealed-network';
 import { AirGapBody } from './air-gap';
 import { AnsweringBody } from './answering';
@@ -28,6 +29,19 @@ export type PostMeta = {
 };
 
 export const POSTS: PostMeta[] = [
+  {
+    slug: 'sensor-reading-to-alert-flink',
+    area: 'engineering',
+    series: 'realtime-data',
+    date: '2026-11-19',
+    readingMinutes: 9,
+    author: 'Dudaji AI team',
+    title: 'From a sensor reading to an alert, in Flink',
+    summary:
+      'Our Flink alert job, measured: where its 6.5 seconds go, patterns that warn 22 minutes before a limit, matching 100,000 rules in a quarter of a microsecond, exactly-once tested by crashing it — and the traps that dropped alerts without an error.',
+    Body: FlinkAlertsBody,
+    Figure: FlinkAlertsFigure,
+  },
   {
     slug: 'one-night-at-the-fab',
     area: 'engineering',
