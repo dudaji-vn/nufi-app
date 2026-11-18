@@ -252,7 +252,7 @@ export function OneNightBody() {
       <PostVideo
         src="/blog/realtime/one-night.mp4"
         poster="/blog/realtime/one-night-poster.jpg"
-        caption="The demo, recorded as it ran (3:35): Flink starting its jobs fresh, the night at 30×, the investigation in ClickHouse, a TaskManager killed. Parts are sped up; the timings in the text are from a separate measured run of the same script."
+        caption="The demo, recorded as it ran (3:24): Flink starting its jobs fresh, the night at 30×, the investigation in ClickHouse, a TaskManager killed. Parts are sped up; the timings in the text are from a separate measured run of the same script."
       />
 
       <h2>01 · What runs</h2>
