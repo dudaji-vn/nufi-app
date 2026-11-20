@@ -58,7 +58,8 @@ export function seriesOf(post: PostMeta): Series {
 
 export const postPath = (post: PostMeta): string => `${areaById(post.area)!.name} › ${seriesOf(post).name}`;
 
-const byDateAsc = (a: PostMeta, b: PostMeta) => a.date.localeCompare(b.date) || a.slug.localeCompare(b.slug);
+const byDateAsc = (a: PostMeta, b: PostMeta) =>
+  a.date.localeCompare(b.date) || (a.part ?? 0) - (b.part ?? 0) || a.slug.localeCompare(b.slug);
 
 export const postsInSeries = (posts: PostMeta[], areaId: AreaId, seriesId: string): PostMeta[] =>
   posts.filter((p) => p.area === areaId && p.series === seriesId).sort(byDateAsc);
