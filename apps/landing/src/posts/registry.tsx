@@ -4,6 +4,7 @@ import { LlmSchedulingBody, LlmSchedulingFigure } from './llm-scheduling';
 import { DeepStoreCompareBody, DeepStoreCompareFigure } from './deep-store-compare';
 import { OneNightBody, OneNightFigure } from './one-night';
 import { FlinkAlertsBody, FlinkAlertsFigure } from './flink-alerts';
+import { EquipmentCheckBody, EquipmentCheckFigure } from './equipment-check';
 import { SealedNetworkBody } from './sealed-network';
 import { AirGapBody } from './air-gap';
 import { AnsweringBody } from './answering';
@@ -29,6 +30,19 @@ export type PostMeta = {
 };
 
 export const POSTS: PostMeta[] = [
+  {
+    slug: 'equipment-check-before-a-lot',
+    area: 'engineering',
+    series: 'realtime-data',
+    date: '2026-11-20',
+    readingMinutes: 9,
+    author: 'Dudaji AI team',
+    title: 'Holding a lot before the pump fails: three versions of an equipment check',
+    summary:
+      'A Flink check that holds a lot before a chamber\'s pump reaches its alarm. The textbook join silently withheld its most important answer; a 5-minute trend would raise 87 false alarms per chamber-day on simulated wandering sensors, a significance test and the chamber\'s own band brought that to 0.016; a pump swap needed a third version.',
+    Body: EquipmentCheckBody,
+    Figure: EquipmentCheckFigure,
+  },
   {
     slug: 'sensor-reading-to-alert-flink',
     area: 'engineering',
