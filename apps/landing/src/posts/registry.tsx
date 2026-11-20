@@ -7,6 +7,7 @@ import { FlinkAlertsBody, FlinkAlertsFigure } from './flink-alerts';
 import { EquipmentCheckBody, EquipmentCheckFigure } from './equipment-check';
 import { ClickHouseHistoryBody, ClickHouseHistoryFigure } from './clickhouse-history';
 import { FlowcoBody, FlowcoFigure } from './flowco';
+import { OurNodeDesignBody, OurNodeDesignFigure } from './our-node-design';
 import { SemanticFilterOnALiveStreamBody, SemanticFilterOnALiveStreamFigure } from './semantic-filter-on-a-live-stream';
 import { SemanticOperatorsBody, SemanticOperatorsFigure } from './semantic-operators';
 import { SqlOverLiveReadingsBody, SqlOverLiveReadingsFigure } from './sql-over-live-readings';
@@ -77,6 +78,20 @@ export const POSTS: PostMeta[] = [
       'A data step you can read as a sentence, a contract or code, and edit in any of them. Flowco is the closest working system; we read its paper and code. Going down is engineered — one node and one level per LLM call, a cache, regeneration from a diff. Going up is left to a chat agent.',
     Body: FlowcoBody,
     Figure: FlowcoFigure,
+  },
+  {
+    slug: 'our-node-design-built',
+    area: 'engineering',
+    series: 'semantic-data',
+    part: 6,
+    date: '2026-11-20',
+    readingMinutes: 8,
+    author: 'Dudaji AI team',
+    title: 'Our node design, built: one data step as intent, code, schema, table and chart',
+    summary:
+      'The five posts\' answers in one working demo: a node you can read and edit as words, SQL, schema, table or chart, on a graph that updates itself in batch or live. The model writes SQL from words and judges free text; a parser, an engine and rules do the rest in milliseconds. Giving a 7B model the data\'s own values (and one prompt rule) took it from 2 to 8 of 10 intents.',
+    Body: OurNodeDesignBody,
+    Figure: OurNodeDesignFigure,
   },
   {
     slug: 'semantic-filter-on-a-live-stream',
