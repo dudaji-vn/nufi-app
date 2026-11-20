@@ -7,6 +7,7 @@ import { FlinkAlertsBody, FlinkAlertsFigure } from './flink-alerts';
 import { EquipmentCheckBody, EquipmentCheckFigure } from './equipment-check';
 import { ClickHouseHistoryBody, ClickHouseHistoryFigure } from './clickhouse-history';
 import { FlowcoBody, FlowcoFigure } from './flowco';
+import { SemanticOperatorsBody, SemanticOperatorsFigure } from './semantic-operators';
 import { SealedNetworkBody } from './sealed-network';
 import { AirGapBody } from './air-gap';
 import { AnsweringBody } from './answering';
@@ -70,6 +71,19 @@ export const POSTS: PostMeta[] = [
       'A data step you can read as a sentence, a contract or code, and edit in any of them. Flowco is the closest working system; we read its paper and code. Going down is engineered — one node and one level per LLM call, a cache, regeneration from a diff. Going up is left to a chat agent.',
     Body: FlowcoBody,
     Figure: FlowcoFigure,
+  },
+  {
+    slug: 'semantic-operators-rule-or-model',
+    area: 'engineering',
+    series: 'semantic-data',
+    date: '2026-11-20',
+    readingMinutes: 8,
+    author: 'Dudaji AI team',
+    title: 'A keyword rule or a language model? Semantic operators on 200 maintenance notes',
+    summary:
+      'We ran LOTUS with local models on synthetic maintenance notes, against a keyword rule. The rule was perfect on its own words and found none of the pump problems on new ones; qwen2.5 7B reached F1 0.911. Letting the rule pick the part and asking the model only about the symptom gave 1.000 with 74 model calls instead of 200.',
+    Body: SemanticOperatorsBody,
+    Figure: SemanticOperatorsFigure,
   },
   {
     slug: 'sensor-reading-to-alert-flink',

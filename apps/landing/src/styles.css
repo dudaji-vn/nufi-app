@@ -297,6 +297,8 @@
   .article .post-fig .post-art{aspect-ratio:1400/560;border:1px solid var(--rule);border-radius:10px;box-shadow:var(--shadow);}
   .article .post-fig--wide .post-art{aspect-ratio:1400/400;}
   .article code{font-family:var(--f-mono);font-size:0.9em;background:var(--surface-2);padding:0.08em 0.42em;border-radius:5px;}
+  .article pre{background:var(--surface-2);border-radius:8px;padding:0.9em 1em;max-width:100%;margin:1.2em 0;line-height:1.5;}
+  .article pre code{background:none;padding:0;font-size:0.82em;white-space:pre-wrap;overflow-wrap:anywhere;}
 
   /* ---- Blog "Library": areas → series → posts (text-first, no card grid) ---- */
   .lib{padding-bottom:clamp(3rem,7vw,5rem);}
