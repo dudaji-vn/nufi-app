@@ -5,6 +5,7 @@ import { DeepStoreCompareBody, DeepStoreCompareFigure } from './deep-store-compa
 import { OneNightBody, OneNightFigure } from './one-night';
 import { FlinkAlertsBody, FlinkAlertsFigure } from './flink-alerts';
 import { EquipmentCheckBody, EquipmentCheckFigure } from './equipment-check';
+import { ClickHouseHistoryBody, ClickHouseHistoryFigure } from './clickhouse-history';
 import { SealedNetworkBody } from './sealed-network';
 import { AirGapBody } from './air-gap';
 import { AnsweringBody } from './answering';
@@ -30,6 +31,19 @@ export type PostMeta = {
 };
 
 export const POSTS: PostMeta[] = [
+  {
+    slug: 'clickhouse-sensor-history-213-mib',
+    area: 'engineering',
+    series: 'realtime-data',
+    date: '2026-11-20',
+    readingMinutes: 9,
+    author: 'Dudaji AI team',
+    title: "93 million readings in 213 MiB: storing a fab's sensor history in ClickHouse",
+    summary:
+      'Measured one change at a time: two column codecs made the table 3.6 times smaller, the sort key decides what a query can skip, a 0.3 MB skip index finds a lot 90 times faster than a scan in the lab (7 times on the de-duplicating store), and the roll-ups that worked in the lab would have double-counted on the real table, so Flink computes them.',
+    Body: ClickHouseHistoryBody,
+    Figure: ClickHouseHistoryFigure,
+  },
   {
     slug: 'equipment-check-before-a-lot',
     area: 'engineering',
