@@ -186,14 +186,14 @@ export function OurNodeDesignBody() {
       <h2>03 · Edit the SQL: the rest follows, the words wait</h2>
       <p>
         We changed the anomaly limit in the SQL from 1450 to 1500. The schema was re-derived in 4 ms and the table in
-        7 ms; the two nodes that read anomalies re-ran in 32 ms. A second later the model's new intent appeared — "…above its 1500 limit." It takes the intent's place,
-        flagged as the model's suggestion ("intent?") until someone accepts it; to keep your own words, pin the
-        intent.
+        7 ms; the two nodes that read anomalies re-ran in 32 ms. A second later the model's new intent appeared — "…above its 1500 limit." — in a box under the user's own
+        words, which stay and are marked as possibly out of date. "Accept" takes the model's sentence; "Keep mine"
+        drops it. A pinned intent gets no suggestion at all.
       </p>
       <Shot
         src="/blog/semantic-data/node-anomalies.png"
-        alt="The anomalies node after a hand edit of its SQL: the suggested intent is shown with an Accept button"
-        caption="Code by user, schema by parser, table by engine, chart by rule; the intent by the model, waiting for Accept."
+        alt="The anomalies node after a hand edit of its SQL: the user's intent is kept, and the model's suggested intent is shown under it with Accept and Keep mine buttons"
+        caption="The user's intent still says 1450; the model's suggestion says 1500 and waits for Accept or Keep mine. Code by user, schema by parser, table by engine."
       />
       <p>
         When an edit upstream removes a column that others use, nothing is fixed behind your back. A new intent for the
@@ -259,10 +259,7 @@ export function OurNodeDesignBody() {
           pays off with longer history.
         </li>
         <li>Ten intents is a small test. Every number here is one run.</li>
-        <li>
-          A suggested intent replaces the old wording instead of sitting next to it; there is no "reject" that brings
-          the user's sentence back. Pinning is the only protection today.
-        </li>
+        
         <li>
           A review of the build found what a viewer would hit, and we fixed it. Examples: the live clock stopped while
           the model wrote SQL, and a model that was down left an empty node.
