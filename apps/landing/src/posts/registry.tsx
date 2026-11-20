@@ -8,6 +8,7 @@ import { EquipmentCheckBody, EquipmentCheckFigure } from './equipment-check';
 import { ClickHouseHistoryBody, ClickHouseHistoryFigure } from './clickhouse-history';
 import { FlowcoBody, FlowcoFigure } from './flowco';
 import { SemanticOperatorsBody, SemanticOperatorsFigure } from './semantic-operators';
+import { SqlOverLiveReadingsBody, SqlOverLiveReadingsFigure } from './sql-over-live-readings';
 import { WriteTheRuleOnceBody, WriteTheRuleOnceFigure } from './write-the-rule-once';
 import { SealedNetworkBody } from './sealed-network';
 import { AirGapBody } from './air-gap';
@@ -98,6 +99,19 @@ export const POSTS: PostMeta[] = [
       'Local models wrote 42 functions to replace per-row model calls. For "was a part replaced?" a third were perfect; for "does the note report a pump problem?" the score swung from 0 to 0.93 with the examples shown, and symptom functions learned only the words they were given. For the schema of a SQL query, SQLGlot got 10 of 12 right in under 0.2 s, the models 8 and 5.',
     Body: WriteTheRuleOnceBody,
     Figure: WriteTheRuleOnceFigure,
+  },
+  {
+    slug: 'z-sets-batch-and-live-sql',
+    area: 'engineering',
+    series: 'semantic-data',
+    date: '2026-11-20',
+    readingMinutes: 9,
+    author: 'Dudaji AI team',
+    title: 'One SQL program, batch and live: what incremental view maintenance costs and what it changes',
+    summary:
+      'Three views, written once, rerun from scratch after every minute or maintained incrementally by Feldera (DBSP). Same rows every time. Rerunning grew from 9 to 56 ms per minute as history grew to 72 hours; the incremental step stayed at 17–19 ms. In 10-second steps the alert appeared 50 seconds before its minute was over and was revised five times: a live answer is a running answer.',
+    Body: SqlOverLiveReadingsBody,
+    Figure: SqlOverLiveReadingsFigure,
   },
   {
     slug: 'sensor-reading-to-alert-flink',
