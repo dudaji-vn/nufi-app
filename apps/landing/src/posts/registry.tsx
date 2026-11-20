@@ -8,6 +8,7 @@ import { EquipmentCheckBody, EquipmentCheckFigure } from './equipment-check';
 import { ClickHouseHistoryBody, ClickHouseHistoryFigure } from './clickhouse-history';
 import { FlowcoBody, FlowcoFigure } from './flowco';
 import { SemanticOperatorsBody, SemanticOperatorsFigure } from './semantic-operators';
+import { WriteTheRuleOnceBody, WriteTheRuleOnceFigure } from './write-the-rule-once';
 import { SealedNetworkBody } from './sealed-network';
 import { AirGapBody } from './air-gap';
 import { AnsweringBody } from './answering';
@@ -84,6 +85,19 @@ export const POSTS: PostMeta[] = [
       'We ran LOTUS with local models on synthetic maintenance notes, against a keyword rule. The rule was perfect on its own words and found none of the pump problems on new ones; qwen2.5 7B reached F1 0.911. Letting the rule pick the part and asking the model only about the symptom gave 1.000 with 74 model calls instead of 200.',
     Body: SemanticOperatorsBody,
     Figure: SemanticOperatorsFigure,
+  },
+  {
+    slug: 'write-the-rule-once',
+    area: 'engineering',
+    series: 'semantic-data',
+    date: '2026-11-20',
+    readingMinutes: 9,
+    author: 'Dudaji AI team',
+    title: "Can the model write the rule once? Compiled semantic operators, and a query's schema without a model",
+    summary:
+      'Local models wrote 42 functions to replace per-row model calls. For "was a part replaced?" a third were perfect; for "does the note report a pump problem?" the score swung from 0 to 0.93 with the examples shown, and symptom functions learned only the words they were given. For the schema of a SQL query, SQLGlot got 10 of 12 right in under 0.2 s, the models 8 and 5.',
+    Body: WriteTheRuleOnceBody,
+    Figure: WriteTheRuleOnceFigure,
   },
   {
     slug: 'sensor-reading-to-alert-flink',
