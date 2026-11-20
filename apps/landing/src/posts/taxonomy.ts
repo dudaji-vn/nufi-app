@@ -28,6 +28,13 @@ export const AREAS: Area[] = [
           "A fab's sensor streams with Apache Flink and ClickHouse: alerts in seconds, history in seconds or less, measured on one laptop.",
         status: 'live',
       },
+      {
+        id: 'semantic-data',
+        name: 'Semantic data',
+        intro:
+          'Asking for data in your own words: semantic operators, SQL over live events, and how much of the work an algorithm can do instead of an LLM.',
+        status: 'live',
+      },
     ],
   },
   {
