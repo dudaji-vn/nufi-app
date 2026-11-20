@@ -68,6 +68,14 @@ describe('blog taxonomy', () => {
     expect(postsInSeries(posts, 'engineering', 'aiops').map((p) => p.slug)).toEqual(['one', 'two']);
   });
 
+  test('postsInSeries orders same-date posts by part, then slug', () => {
+    const posts = [
+      { ...fake('a-later', '2026-11-01', 'engineering', 'aiops'), part: 2 },
+      { ...fake('z-first', '2026-11-01', 'engineering', 'aiops'), part: 1 },
+    ];
+    expect(postsInSeries(posts, 'engineering', 'aiops').map((p) => p.slug)).toEqual(['z-first', 'a-later']);
+  });
+
   test('adjacentInSeries returns prev/next within one series only', () => {
     const posts = [
       fake('one', '2026-11-01', 'engineering', 'aiops'),

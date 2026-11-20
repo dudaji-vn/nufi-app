@@ -7,6 +7,7 @@ import { FlinkAlertsBody, FlinkAlertsFigure } from './flink-alerts';
 import { EquipmentCheckBody, EquipmentCheckFigure } from './equipment-check';
 import { ClickHouseHistoryBody, ClickHouseHistoryFigure } from './clickhouse-history';
 import { FlowcoBody, FlowcoFigure } from './flowco';
+import { SemanticFilterOnALiveStreamBody, SemanticFilterOnALiveStreamFigure } from './semantic-filter-on-a-live-stream';
 import { SemanticOperatorsBody, SemanticOperatorsFigure } from './semantic-operators';
 import { SqlOverLiveReadingsBody, SqlOverLiveReadingsFigure } from './sql-over-live-readings';
 import { WriteTheRuleOnceBody, WriteTheRuleOnceFigure } from './write-the-rule-once';
@@ -27,6 +28,8 @@ export type PostMeta = {
   area: AreaId;
   series: string;
   date: string; // ISO yyyy-mm-dd
+  // Chapter number inside the series, for posts published on the same date (else they go by slug)
+  part?: number;
   readingMinutes: number;
   author: string;
   video?: { src: string; poster: string };
@@ -65,6 +68,7 @@ export const POSTS: PostMeta[] = [
     slug: 'flowco-one-node-many-levels',
     area: 'engineering',
     series: 'semantic-data',
+    part: 1,
     date: '2026-11-20',
     readingMinutes: 8,
     author: 'Dudaji AI team',
@@ -75,9 +79,24 @@ export const POSTS: PostMeta[] = [
     Figure: FlowcoFigure,
   },
   {
+    slug: 'semantic-filter-on-a-live-stream',
+    area: 'engineering',
+    series: 'semantic-data',
+    part: 5,
+    date: '2026-11-20',
+    readingMinutes: 8,
+    author: 'Dudaji AI team',
+    title: 'A semantic filter on a live stream: when notes arrive faster than the model can read',
+    summary:
+      'Maintenance notes sent to a local 7B model at 3 to 40 per second. Reading every note it handled about 5 a second; above that the wait grew with every note, to 37 s at p95. Letting a rule answer "which part?" first sent 63 % fewer notes to the model and did more than parallel requests (20–30 %) or batching (lost accuracy).',
+    Body: SemanticFilterOnALiveStreamBody,
+    Figure: SemanticFilterOnALiveStreamFigure,
+  },
+  {
     slug: 'semantic-operators-rule-or-model',
     area: 'engineering',
     series: 'semantic-data',
+    part: 2,
     date: '2026-11-20',
     readingMinutes: 8,
     author: 'Dudaji AI team',
@@ -91,6 +110,7 @@ export const POSTS: PostMeta[] = [
     slug: 'write-the-rule-once',
     area: 'engineering',
     series: 'semantic-data',
+    part: 3,
     date: '2026-11-20',
     readingMinutes: 9,
     author: 'Dudaji AI team',
@@ -104,6 +124,7 @@ export const POSTS: PostMeta[] = [
     slug: 'z-sets-batch-and-live-sql',
     area: 'engineering',
     series: 'semantic-data',
+    part: 4,
     date: '2026-11-20',
     readingMinutes: 9,
     author: 'Dudaji AI team',
