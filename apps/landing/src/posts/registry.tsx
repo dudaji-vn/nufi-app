@@ -92,6 +92,7 @@ export const POSTS: PostMeta[] = [
       'The five posts\' answers in one working demo: a node you can read and edit as words, SQL, schema, table or chart, on a graph that updates itself in batch or live. The model writes SQL from words and judges free text; a parser, an engine and rules do the rest in milliseconds. Giving a 7B model the data\'s own values (and one prompt rule) took it from 2 to 8 of 10 intents.',
     Body: OurNodeDesignBody,
     Figure: OurNodeDesignFigure,
+    video: { src: '/blog/semantic-data/node-demo.mp4', poster: '/blog/semantic-data/node-demo-poster.jpg' },
   },
   {
     slug: 'semantic-filter-on-a-live-stream',
