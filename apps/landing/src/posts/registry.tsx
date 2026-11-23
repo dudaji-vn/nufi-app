@@ -8,6 +8,7 @@ import { EquipmentCheckBody, EquipmentCheckFigure } from './equipment-check';
 import { ClickHouseHistoryBody, ClickHouseHistoryFigure } from './clickhouse-history';
 import { FlowcoBody, FlowcoFigure } from './flowco';
 import { OurNodeDesignBody, OurNodeDesignFigure } from './our-node-design';
+import { NodeTestedBody, NodeTestedFigure } from './node-tested';
 import { SemanticFilterOnALiveStreamBody, SemanticFilterOnALiveStreamFigure } from './semantic-filter-on-a-live-stream';
 import { SemanticOperatorsBody, SemanticOperatorsFigure } from './semantic-operators';
 import { SqlOverLiveReadingsBody, SqlOverLiveReadingsFigure } from './sql-over-live-readings';
@@ -39,6 +40,20 @@ export type PostMeta = {
 };
 
 export const POSTS: PostMeta[] = [
+  {
+    slug: 'node-tested-rule-checks-feldera',
+    area: 'engineering',
+    series: 'semantic-data',
+    part: 7,
+    date: '2026-11-23',
+    readingMinutes: 8,
+    author: 'Dudaji AI team',
+    title: "Our node on a larger test: 84 intents, rule checks on the model's SQL, and a live mode on Feldera",
+    summary:
+      "Part 6's model score did not hold on 84 intents and four tables. Facts in the prompt helped; four rule checks on the model's SQL, tested on intents written before them, took a 7B model from 54 to 60 right of 84 and never turned a right answer wrong. Live mode on Feldera is 1.5x faster with a day of history — after we found our own slowest step.",
+    Body: NodeTestedBody,
+    Figure: NodeTestedFigure,
+  },
   {
     slug: 'clickhouse-sensor-history-213-mib',
     area: 'engineering',
