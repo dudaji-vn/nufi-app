@@ -1,4 +1,5 @@
 import { PostByline } from '../components/blog/post-context';
+import { PostVideo } from '../components/blog/post-video';
 // Engineering · Semantic data · part 6. Our node design from parts 1–5, built as a local demo: Python (DuckDB,
 // SQLGlot, FastAPI), a React page, qwen2.5 7B on Ollama, on an M4 Pro laptop (24 GB). Every number is one run.
 
@@ -101,6 +102,12 @@ export function OurNodeDesignBody() {
           rows as possible, and know its throughput.
         </li>
       </ul>
+
+      <PostVideo
+        src="/blog/semantic-data/node-demo.mp4"
+        poster="/blog/semantic-data/node-demo-poster.jpg"
+        caption="The demo, recorded as it ran with the local 7B model (1:50): a new node from words, a hand edit of the SQL and the suggested intent, the semantic filter, and live mode with running rows. The model's waits and part of the live replay are sped up."
+      />
 
       <h2>01 · The node, and who derives what</h2>
       <p>
