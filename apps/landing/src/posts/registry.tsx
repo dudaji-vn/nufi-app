@@ -9,6 +9,7 @@ import { ClickHouseHistoryBody, ClickHouseHistoryFigure } from './clickhouse-his
 import { FlowcoBody, FlowcoFigure } from './flowco';
 import { OurNodeDesignBody, OurNodeDesignFigure } from './our-node-design';
 import { NodeTestedBody, NodeTestedFigure } from './node-tested';
+import { NodeAskLessBody, NodeAskLessFigure } from './node-ask-less';
 import { SemanticFilterOnALiveStreamBody, SemanticFilterOnALiveStreamFigure } from './semantic-filter-on-a-live-stream';
 import { SemanticOperatorsBody, SemanticOperatorsFigure } from './semantic-operators';
 import { SqlOverLiveReadingsBody, SqlOverLiveReadingsFigure } from './sql-over-live-readings';
@@ -40,6 +41,20 @@ export type PostMeta = {
 };
 
 export const POSTS: PostMeta[] = [
+  {
+    slug: 'node-ask-the-model-less',
+    area: 'engineering',
+    series: 'semantic-data',
+    part: 8,
+    date: '2026-11-23',
+    readingMinutes: 7,
+    author: 'Dudaji AI team',
+    title: 'Ask the model one question: a semantic filter at F1 1.000, a database as a node source, and a self-test',
+    summary:
+      "The semantic filter misjudged notes inside right SQL. A rule now settles the part and the action, and the model answers one fixed question per note: F1 from about 0.8 to 1.000 on 400 held-out notes, with 9x fewer calls. Plus charts the user can edit, limits streamed from PostgreSQL by Debezium in 267 ms, and a self-test on eight written tasks.",
+    Body: NodeAskLessBody,
+    Figure: NodeAskLessFigure,
+  },
   {
     slug: 'node-tested-rule-checks-feldera',
     area: 'engineering',
